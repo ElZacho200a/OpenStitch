@@ -84,16 +84,28 @@ Item {
             objectName: "imageToolbar"
             x: 12
             y: 12
-            width: toolRow.implicitWidth + 16
+            width: Math.min(parent.width - 24, toolRow.implicitWidth + 16)
+            clip: true
             height: Theme.controlHeight + 12
             radius: Theme.radius
             color: Theme.panel
             border.color: Theme.border
             visible: root.hasImage
-            RowLayout {
-                id: toolRow
-                anchors.centerIn: parent
-                spacing: 4
+            // Never clip actions silently: the toolbar remains scrollable on narrow canvases.
+            Flickable {
+                anchors.fill: parent
+                anchors.leftMargin: 8
+                anchors.rightMargin: 8
+                clip: true
+                contentWidth: toolRow.implicitWidth
+                contentHeight: height
+                flickableDirection: Flickable.HorizontalFlick
+                boundsBehavior: Flickable.StopAtBounds
+
+                RowLayout {
+                    id: toolRow
+                    height: parent.height
+                    spacing: 4
                 Repeater {
                     model: [
                         { mode: 0, label: qsTr("Après"), tip: qsTr("Image traitée") },
@@ -124,6 +136,7 @@ Item {
                     checkable: true
                     checked: root.space && root.space.cropActive
                     onClicked: root.space.cropActive ? root.space.cancelCrop() : root.space.beginCrop()
+                }
                 }
             }
         }
@@ -173,7 +186,7 @@ Item {
             anchors.top: parent.top
             anchors.bottom: parent.bottom
             anchors.topMargin: 100
-            width: 340
+            width: Math.min(340, Math.max(180, parent.width * 0.38))
             color: Theme.panel
             border.color: Theme.border
             Controls.ScrollView {
@@ -182,7 +195,7 @@ Item {
                 contentWidth: availableWidth
                 clip: true
                 ColumnLayout {
-                    width: sidePanel.width - 28
+                    width: Math.max(0, sidePanel.width - 28)
                     spacing: 10
                     Loader {
                         Layout.fillWidth: true

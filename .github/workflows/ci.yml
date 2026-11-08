@@ -31,14 +31,60 @@ jobs:
         shell: pwsh
         run: |
           git clone https://github.com/microsoft/vcpkg.git "$env:RUNNER_TEMP/vcpkg"
-          & "$env:RUNNER_TEMP/vcpkg/bootstrap-vcpkg.bat" -disableMetrics
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to clone vcpkg' }
+          # GitHub release assets intermittently return 502/504. Retry only the download,
+          # never the build or the tests, and fail if the tool is still unavailable.
+          $ready = $false
+          for ($attempt = 1; $attempt -le 5; $attempt++) {
+            try {
+              & "$env:RUNNER_TEMP/vcpkg/bootstrap-vcpkg.bat" -disableMetrics
+              if ($LASTEXITCODE -eq 0 -and (Test-Path "$env:RUNNER_TEMP/vcpkg/vcpkg.exe")) {
+                $ready = $true
+                break
+              }
+            } catch {
+              Write-Warning "vcpkg bootstrap attempt $attempt failed: $_"
+            }
+            if ($attempt -lt 5) { Start-Sleep -Seconds (10 * $attempt) }
+          }
+          if (-not $ready) { throw 'vcpkg bootstrap failed after 5 attempts' }
           "VCPKG_ROOT=$env:RUNNER_TEMP/vcpkg" | Out-File -Append -FilePath $env:GITHUB_ENV
+
+      - name: Prefetch Boost CMake from official codeload (best effort)
+        shell: pwsh
+        run: |
+          $downloads = Join-Path $env:RUNNER_TEMP 'vcpkg/downloads'
+          New-Item -ItemType Directory -Force -Path $downloads | Out-Null
+          $target = Join-Path $downloads 'boostorg-cmake-boost-1.91.0.tar.gz'
+          $partial = "$target.part"
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            try {
+              Invoke-WebRequest -Uri 'https://codeload.github.com/boostorg/cmake/tar.gz/refs/tags/boost-1.91.0' -OutFile $partial -TimeoutSec 90
+              Move-Item -Force $partial $target
+              break
+            } catch {
+              Remove-Item -ErrorAction SilentlyContinue $partial
+              Write-Warning "Boost archive prefetch attempt $attempt failed: $_"
+              if ($attempt -lt 3) { Start-Sleep -Seconds (10 * $attempt) }
+            }
+          }
+          # vcpkg independently verifies the archive's SHA512 before using it.
 
       - name: Configure and build Release
         shell: pwsh
         run: |
           $env:QT_ROOT = $env:QT_ROOT_DIR
-          ./scripts/build.ps1 -SkipBootstrap -Configuration Release
+          # vcpkg downloads can fail transiently (GitHub archive HTTP 503/504).
+          # Retry the complete configure/build command; never skip compilation or tests.
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            ./scripts/build.ps1 -SkipBootstrap -Configuration Release
+            if ($LASTEXITCODE -eq 0) { break }
+            if ($attempt -eq 3) {
+              throw "Windows Release build failed after 3 attempts (exit $LASTEXITCODE)"
+            }
+            Write-Warning "Release build attempt $attempt failed; retrying after transient dependency download outage..."
+            Start-Sleep -Seconds 20
+          }
 
       # Disponible des la compilation, meme si les tests suivants echouent (build Release seul).
       # La publication stable reste conditionnee au succes de tous les jobs.
@@ -156,15 +202,15 @@ jobs:
           # PR #164: le test_properties_panel échoue sous Windows sans sortie CTest.
           # Lancer directement les deux exécutables suspects et afficher le journal
           # QTest même en cas de code de sortie non nul (assertion ou crash).
-          foreach ($testName in @("test_properties_panel", "test_ui_action_workflows", "test_desktop_v2_shell")) {
-            $exe = if ($testName -eq "test_desktop_v2_shell") { "build/msvc/tests/unit/desktop_v2/Release/$testName.exe" } else { "build/msvc/tests/unit/desktop/Release/$testName.exe" }
+          foreach ($testName in @("test_properties_panel", "test_ui_action_workflows", "test_desktop_v2_shell", "test_desktop_v2_studio_files")) {
+            $exe = if ($testName -in @("test_desktop_v2_shell", "test_desktop_v2_studio_files")) { "build/msvc/tests/unit/desktop_v2/Release/$testName.exe" } else { "build/msvc/tests/unit/desktop/Release/$testName.exe" }
             foreach ($i in 1..2) {
               $log = "diag-$testName-$i.txt"
               & $exe -o "$log,txt"
               $code = $LASTEXITCODE
               "${testName} run ${i}: code de sortie $code (0x{0:X})" -f $code
               if (Test-Path $log) {
-                if ($testName -eq "test_desktop_v2_shell") { Get-Content $log | Select-String -Pattern "FAIL|Totals:|Finished testing|QFATAL" } else { Get-Content $log -Tail 120 }
+                if ($testName -in @("test_desktop_v2_shell", "test_desktop_v2_studio_files")) { Get-Content $log | Select-String -Pattern "FAIL|Totals:|Finished testing|QFATAL" } else { Get-Content $log -Tail 120 }
               } else {
                 "Journal QTest absent: $log"
               }
@@ -191,6 +237,21 @@ jobs:
           git clone https://github.com/microsoft/vcpkg.git "$RUNNER_TEMP/vcpkg"
           "$RUNNER_TEMP/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
           echo "VCPKG_ROOT=$RUNNER_TEMP/vcpkg" >> "$GITHUB_ENV"
+
+      - name: Prefetch Boost CMake from official codeload (best effort)
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/vcpkg/downloads"
+          target="$RUNNER_TEMP/vcpkg/downloads/boostorg-cmake-boost-1.91.0.tar.gz"
+          if curl --fail --location --retry 5 --retry-all-errors --max-time 90 \
+            --output "$target.part" \
+            'https://codeload.github.com/boostorg/cmake/tar.gz/refs/tags/boost-1.91.0'; then
+            mv "$target.part" "$target"
+          else
+            rm -f "$target.part"
+            echo '::warning::Boost archive prefetch failed; vcpkg will try the original URL'
+          fi
+          # vcpkg verifies the SHA512 hash itself; this does not bypass integrity checks.
 
       - name: System dependencies (OpenCV via vcpkg)
         run: sudo apt-get update && sudo apt-get install -y nasm

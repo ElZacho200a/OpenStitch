@@ -1,0 +1,6 @@
+id,statut,preuve,controleur,composant
+42954eca,FUNCTIONAL_UNTESTED,"Core: test_fix_service (plan porte la revision, commande unique annulable); Studio: StudioFixTest::staleFixPlanIsRefused. Pas de correction reelle appliquee de bout en bout sur un constat du moteur",FixController::applyFix,FixPanel.qml
+1b524844,FUNCTIONAL_UNTESTED,"Core: test_fix_service (finitions fusionnees en une commande, revert exact); Studio: StudioFixTest::staleFixPlanIsRefused. Pas de bout en bout sur un constat reel",FixController::applyAllSafe,FixPanel.qml
+34422f89,TESTED,StudioFixTest::reductionIsOneUndoableStepAndRestoresColours + test_fix_service thread reduction,FixController::previewReduction / applyReduction,FixPanel.qml
+c56a6143,TESTED,StudioFixTest::panelDrivesAnalysisAndShowsTheReductionPreview,FixController::previewReduction,FixPanel.qml fixPreviewReduction
+1b7523c1,TESTED,StudioFixTest::staleReductionIsRefusedAndLeavesTheDocumentUntouched + reductionIsOneUndoableStepAndRestoresColours,FixController::applyReduction,FixPanel.qml

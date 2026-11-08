@@ -132,7 +132,7 @@ a0622ecf,action,Restaurer la disposition précédente,main_window_ux.cpp,absent,
 b0c51442,action,Restaurer les points sélectionnés,main_window_point_edit.cpp,fait,point.restore,TESTED,StudioDigitizeTest::pointEditJourney,PointEditController::restoreSelected,PointEditPanel.qml pointRestore
 ae44ff48,action,Risque de tirage du tissu,main_window_analysis.cpp,fait,analysis.fabric,FUNCTIONAL_UNTESTED,,AnalysisController::computeFabricRisk,ViewPanel.qml / GpuCanvas overlay image
 bf228390,action,Risque tissu,main_window_fabric_risk.cpp,fait,analysis.fabric,SERVICE_ONLY,,,
-34422f89,action,Réduire / fusionner les fils,main_window_colorways.cpp,partiel,mergeThreads,SERVICE_ONLY,,,
+34422f89,action,Réduire / fusionner les fils,main_window_colorways.cpp,partiel,mergeThreads,TESTED,StudioFixTest::reductionIsOneUndoableStepAndRestoresColours + test_fix_service thread reduction,FixController::previewReduction / applyReduction,FixPanel.qml
 333e240e,action,Région précédente,main_window.cpp,absent,,ABSENT,,,
 5bbcc28e,action,Région suivante,main_window.cpp,absent,,ABSENT,,,
 37a5693a,action,Réglages,main_window_realistic.cpp,fait,Réglages,FUNCTIONAL_UNTESTED,,AnalysisController::setRenderSetting,AnalysisPanel.qml rÃ©glages de rendu (le style GPU suit via ViewController::setRealisticStyle)
@@ -204,8 +204,8 @@ e4077c4b,bouton,Calculer,main_window_analysis.cpp,fait,Calculer,SERVICE_ONLY,,,
 fe930327,bouton,Comparer les méthodes,main_window_satin_auto.cpp,absent,,ABSENT,,,
 97060113,bouton,Convertir en remplissage concentrique,properties_panel.cpp,fait,contour_fill,TESTED,StudioInspectorTest::stitchTypeConversion,InspectorController::setStitchType(contour_fill),Inspector.qml typeBox
 86359fc6,bouton,Convertir en remplissage directionnel,properties_panel.cpp,fait,directional,TESTED,StudioInspectorTest::stitchTypeConversion,InspectorController::setStitchType(directional),Inspector.qml typeBox
-42954eca,bouton,Corriger,main_window_analysis.cpp,fait,Corriger,SERVICE_ONLY,,,
-1b524844,bouton,Corriger tout ce qui est sûr,main_window_analysis.cpp,absent,,ABSENT,,,
+42954eca,bouton,Corriger,main_window_analysis.cpp,fait,Corriger,FUNCTIONAL_UNTESTED,"Core: test_fix_service (plan porte la revision, commande unique annulable); Studio: StudioFixTest::staleFixPlanIsRefused. Pas de correction reelle appliquee de bout en bout sur un constat du moteur",FixController::applyFix,FixPanel.qml
+1b524844,bouton,Corriger tout ce qui est sûr,main_window_analysis.cpp,absent,,FUNCTIONAL_UNTESTED,"Core: test_fix_service (finitions fusionnees en une commande, revert exact); Studio: StudioFixTest::staleFixPlanIsRefused. Pas de bout en bout sur un constat reel",FixController::applyAllSafe,FixPanel.qml
 12510a3a,bouton,Couleur,colorway_dialog.cpp,fait,Couleur,FUNCTIONAL_UNTESTED,StudioViewTest::threadPlanColorwaysAndSewingOrder,ThreadController::recolorThread,ThreadPanel.qml
 f84eae7b,bouton,Couleur : %1 (cliquer pour changer),properties_panel.cpp,absent,,ABSENT,,,
 f893cf14,bouton,Couleur de cette couche,properties_panel.cpp,absent,,ABSENT,,,
@@ -242,7 +242,7 @@ a8d2bcf8,bouton,Remplacer ce fil par celui du catalogue,thread_panel.cpp,partiel
 6f0cec00,bouton,Retirer guides et ruptures de tous,properties_panel.cpp,partiel,fill.guides.clear,SERVICE_ONLY,,,
 29ed788a,bouton,Retirer les guides de toutes,properties_panel.cpp,partiel,fill.guides.clear,SERVICE_ONLY,,,
 0ebc96b6,bouton,Réappliquer les retouches,properties_panel.cpp,absent,,BLOCKED,aucune capture des parametres d'avant modification dans Studio (V1 : MainWindow::noteOverridesInvalidated),PointEditController,(service absent)
-c56a6143,bouton,Réduire,thread_panel.cpp,fait,Réduire,SERVICE_ONLY,,,
+c56a6143,bouton,Réduire,thread_panel.cpp,fait,Réduire,TESTED,StudioFixTest::panelDrivesAnalysisAndShowsTheReductionPreview,FixController::previewReduction,FixPanel.qml fixPreviewReduction
 ea48b8bd,bouton,Sonder les backends,ai_preferences_dialog.cpp,exclu,,ABSENT,,,
 f7de65cb,bouton,Supprimer,colorway_dialog.cpp,fait,Supprimer,FUNCTIONAL_UNTESTED,,ThreadController::removeColorway,ThreadPanel.qml
 9e718d2b,bouton,Supprimer le guide,properties_panel.cpp,absent,,UI_PARTIAL,StudioDigitizeTest::directionGuidesJourney,SatinController::clearGuides,SatinPanel.qml guidesClear (efface tous les guides de l'objet)
@@ -371,7 +371,7 @@ a815ced8,dialogue,Rapport de plantage,main_window_crash_report.cpp,absent,,ABSEN
 ea529ff7,dialogue,Rechercher une commande,command_palette_dialog.cpp,fait,Rechercher une commande,TESTED,StudioCompanionTest::paletteCommandsRunThroughTheWindowDispatcher,ActionController::searchAll/runCommand,ActionPalette.qml
 7a51550a,dialogue,Remplissage tatami,main_window_create.cpp,partiel,settableStitchTypes,SERVICE_ONLY,,,
 f15b33c8,dialogue,Rendu réaliste,realistic_render_dialog.cpp,fait,Rendu réaliste,FUNCTIONAL_UNTESTED,,AnalysisController::applyRenderPreset,RealisticToggle.qml prÃ©rÃ©glages de qualitÃ© (le dialogue complet reste dans le panneau Analyse)
-1b7523c1,dialogue,Réduire / fusionner les fils,thread_merge_dialog.cpp,partiel,mergeThreads,SERVICE_ONLY,,,
+1b7523c1,dialogue,Réduire / fusionner les fils,thread_merge_dialog.cpp,partiel,mergeThreads,TESTED,StudioFixTest::staleReductionIsRefusedAndLeavesTheDocumentUntouched + reductionIsOneUndoableStepAndRestoresColours,FixController::applyReduction,FixPanel.qml
 749748bf,dialogue,Réglages de la grille,grid_settings_dialog.cpp,partiel,gridMenu,SERVICE_ONLY,,,
 38a816ae,dialogue,Satin,main_window_satin_auto.cpp,fait,Satin,UI_PARTIAL,StudioDigitizeTest::satinColumnJourney,SatinController::diagnosis,SatinPanel.qml satinDiagnosis
 ffcf580f,dialogue,Segmenter avec l'IA,ai_segmentation_dialog.cpp,exclu,,UI_PARTIAL,StudioImageTest::aiStatusFallsBackExplicitly (sonde des backends + repli classique explicite; pas d'analyse),ImageController::refreshAiBackends,AiSection.qml
