@@ -1,5 +1,10 @@
 # Audit de performance
 
+La [campagne R01-01](validation/r01/README.md) mesure le pipeline CPU de
+bout en bout sur quatre motifs, avec échantillons bruts et budget pour
+l'expérimentation de noyaux GPU. Ce relevé utilise un banc dédié et un
+parcours différent des comparaisons historiques ci-dessous.
+
 Date : 2026-09-22. Périmètre : pipeline image → DST (image, segmentation,
 vectorisation, auto-numérisation, auto-satin, génération, finitions,
 retouches manuelles), réactivité de l'interface desktop, historique
