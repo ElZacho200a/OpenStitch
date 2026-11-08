@@ -305,12 +305,22 @@ void StudioCompanionTest::canvasRegainsKeyboardFocusAfterClick() {
     // Chaque espace instancie SON canevas (un seul à la fois) : on clique celui de l'espace actif.
     for (int space = 0; space < 4; ++space) {
         QVERIFY(rig.actions.runCommand(QStringLiteral("cmd.workspace.%1").arg(space)).isEmpty());
-        QTRY_COMPARE(rig.window->findChildren<GpuCanvas*>().size(), 1);
-        auto* active = rig.window->findChild<GpuCanvas*>();
+        const auto activeCanvas = [&]() -> GpuCanvas* {
+            GpuCanvas* found = nullptr;
+            for (auto* candidate : rig.window->findChildren<GpuCanvas*>()) {
+                if (candidate->isVisible()) {
+                    if (found) return nullptr; // exactly one interactive canvas
+                    found = candidate;
+                }
+            }
+            return found;
+        };
+        QTRY_VERIFY(activeCanvas() != nullptr);
+        auto* active = activeCanvas();
         QVERIFY(active);
         QTRY_VERIFY(active->width() > 0 && active->height() > 0);
         if (space == 3) {
-            rig.canvas = active; // l'espace Points est de retour : son canevas est neuf
+            rig.canvas = active; // l'espace Points est de retour : son canevas réutilisé
             QTest::mouseClick(rig.window, Qt::LeftButton, {}, at(rig, node.x, node.y));
         } else {
             QTest::mouseClick(
