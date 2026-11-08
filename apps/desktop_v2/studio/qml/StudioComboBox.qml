@@ -20,10 +20,10 @@ Controls.ComboBox {
 
     delegate: Controls.ItemDelegate {
         id: item
-        // Same text resolution as the Basic style delegate (arrays, ListModel, textRole).
-        text: control.textRole ? (Array.isArray(control.model) ? modelData[control.textRole]
-                                                               : model[control.textRole])
-                               : modelData
+        // textAt() resolves any model type (JS array, QVariantList of maps, ListModel, C++ model)
+        // with textRole; guessing the type from modelData left the rows blank for C++ lists
+        // (QA-STUDIO-001 CTL-011/012/013/016, POP-006).
+        text: control.textAt(index)
         width: control.popup.availableWidth
         height: Math.max(28, Math.round(Theme.controlHeight * 0.75))
         highlighted: control.highlightedIndex === index
@@ -82,7 +82,10 @@ Controls.ComboBox {
         // The popup must remain readable and clickable close to any window edge.
         parent: Controls.Overlay.overlay
         readonly property real edgeMargin: 8
-        readonly property point fieldOrigin: parent ? control.mapToItem(parent, 0, 0) : Qt.point(0, 0)
+        // mapToItem() is not reactive: a binding evaluated once at creation keeps the field's
+        // origin at (0, 0) and the list opens at the window corner. Re-read it on every opening.
+        property point fieldOrigin: Qt.point(0, 0)
+        onAboutToShow: fieldOrigin = parent ? control.mapToItem(parent, 0, 0) : Qt.point(0, 0)
         x: parent ? Math.max(edgeMargin,
                              Math.min(fieldOrigin.x, parent.width - width - edgeMargin)) : 0
         y: {

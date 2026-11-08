@@ -14,6 +14,7 @@
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QtTest/QtTest>
+#include <cmath>
 
 #include <filesystem>
 #include <fstream>
@@ -129,7 +130,9 @@ class StudioFilesTest : public QObject {
 private slots:
     void initTestCase();
     void fileMenuEntriesCloseAfterRealMouseClick();
+    void fileMenuStaysReachableInAShortWindow();
     void comboPopupOpensAboveAtWindowBottom();
+    void comboPopupFollowsMovedFieldAndShowsCppRowLabels();
     void unsavedGuardNewOpenAndQuit();
     void guardSaveWithAndWithoutPath();
     void guardDialogIsShownByTheRealQml();
@@ -172,6 +175,40 @@ void StudioFilesTest::fileMenuEntriesCloseAfterRealMouseClick() {
     QTest::mouseClick(rig.window, Qt::LeftButton, Qt::NoModifier, center(entry));
     QTRY_VERIFY_WITH_TIMEOUT(!menu->property("visible").toBool(), 3'000);
     QVERIFY(rig.files->pendingReason().isEmpty());
+}
+
+void StudioFilesTest::fileMenuStaysReachableInAShortWindow() {
+    // QA-STUDIO-001 CTL-013/015, POL-001/023: at the minimum height the File menu ran past the
+    // window bottom and EXPORTER / PROJET could not be reached.
+    Rig rig({}, true);
+    QVERIFY(rig.window);
+    QTRY_VERIFY_WITH_TIMEOUT(rig.window->isExposed(), 5'000);
+    rig.window->resize(rig.window->width(), 640);
+    QTRY_COMPARE_WITH_TIMEOUT(rig.window->height(), 640, 3'000);
+    auto* button = rig.window->findChild<QQuickItem*>(QStringLiteral("fileMenuButton"));
+    auto* menu = rig.window->findChild<QObject*>(QStringLiteral("fileMenu"));
+    QVERIFY(button);
+    QVERIFY(menu);
+    QTest::mouseClick(rig.window, Qt::LeftButton, Qt::NoModifier,
+                      button->mapToScene(QPointF(button->width() / 2, button->height() / 2)).toPoint());
+    QTRY_VERIFY_WITH_TIMEOUT(menu->property("visible").toBool(), 3'000);
+    QTest::qWait(100);
+    const double top = menu->property("y").toDouble();
+    const double height = menu->property("height").toDouble();
+    QVERIFY2(top + height <= rig.window->height() - 4.0,
+             "The File menu must fit inside the window (scrolling for the rest)");
+    auto* scroll = rig.window->findChild<QQuickItem*>(QStringLiteral("fileMenuScroll"));
+    QVERIFY2(scroll, "The File menu entries must be in a ScrollView");
+    auto* flick = scroll->property("contentItem").value<QQuickItem*>();
+    QVERIFY(flick);
+    // The last entries exist and the content can be scrolled down to them.
+    QVERIFY(flick->property("contentHeight").toDouble() > flick->height());
+    flick->setProperty("contentY", flick->property("contentHeight").toDouble() - flick->height());
+    auto* hoop = rig.window->findChild<QQuickItem*>(QStringLiteral("hoopMenuEntry"));
+    QVERIFY2(hoop, "The 'Cadre et machine' entry needs an objectName");
+    const auto rect = hoop->mapRectToScene(hoop->boundingRect());
+    QVERIFY2(rect.bottom() <= rig.window->height() && rect.top() >= top,
+             "The last entry must be visible after scrolling");
 }
 
 void StudioFilesTest::comboPopupOpensAboveAtWindowBottom() {
@@ -231,6 +268,79 @@ void StudioFilesTest::comboPopupOpensAboveAtWindowBottom() {
                       list->mapToScene(QPointF(24.0, 14.0)).toPoint());
     QTRY_COMPARE_WITH_TIMEOUT(combo->property("currentIndex").toInt(), 0, 3'000);
     QTRY_VERIFY_WITH_TIMEOUT(!popup->property("visible").toBool(), 3'000);
+}
+
+void StudioFilesTest::comboPopupFollowsMovedFieldAndShowsCppRowLabels() {
+    // QA-STUDIO-001 CTL-011/012/013/016, POP-006: in the Points inspector the choice combo
+    // is laid out after creation and fed by a C++ QVariantList of maps. The drop-down must open
+    // next to the field (not at the window corner) and every row must carry its label.
+    QQmlApplicationEngine engine;
+    QVariantList choices;
+    for (const auto* label : {"Tatami", "Satin", "Directionnel", "Contour"}) {
+        choices.push_back(QVariantMap{{QStringLiteral("label"), QString::fromUtf8(label)}});
+    }
+    engine.rootContext()->setContextProperty(QStringLiteral("cppChoices"), choices);
+    const QByteArray qml = R"qml(
+        import QtQuick
+        import QtQuick.Window
+        import "."
+        Window {
+            width: 500
+            height: 700
+            visible: true
+            Item { id: spacer; width: 10; height: 0 }
+            StudioComboBox {
+                objectName: "movedCombo"
+                x: 200
+                y: spacer.height
+                width: 180
+                model: cppChoices
+                textRole: "label"
+                currentIndex: 2
+            }
+            Component.onCompleted: spacer.height = 240   // the field moves after creation
+        }
+    )qml";
+    engine.loadData(qml, QUrl(QStringLiteral("qrc:/studio/qml/studio_combo_moved_test.qml")));
+    QVERIFY2(!engine.rootObjects().isEmpty(), "The StudioComboBox fixture must load");
+    auto* window = qobject_cast<QQuickWindow*>(engine.rootObjects().front());
+    QVERIFY(window);
+    QTRY_VERIFY_WITH_TIMEOUT(window->isExposed(), 5'000);
+    auto* combo = window->findChild<QQuickItem*>(QStringLiteral("movedCombo"));
+    QVERIFY(combo);
+    QTRY_COMPARE_WITH_TIMEOUT(combo->y(), 240.0, 3'000);
+    QCOMPARE(combo->property("displayText").toString(), QStringLiteral("Directionnel"));
+
+    const QPoint pos =
+        combo->mapToScene(QPointF(combo->width() / 2.0, combo->height() / 2.0)).toPoint();
+    QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, pos);
+    auto* popup = combo->property("popup").value<QObject*>();
+    QVERIFY(popup);
+    QTRY_VERIFY_WITH_TIMEOUT(popup->property("visible").toBool(), 3'000);
+    auto* list = popup->property("contentItem").value<QQuickItem*>();
+    QVERIFY(list);
+    QTRY_COMPARE_WITH_TIMEOUT(list->property("count").toInt(), 4, 3'000);
+    QTest::qWait(50);
+
+    const double popupY = popup->property("y").toDouble();
+    const double popupH = popup->property("height").toDouble();
+    const double popupX = popup->property("x").toDouble();
+    // Adjacent to the field (below or above it), never stranded at the window origin.
+    const bool below = std::abs(popupY - (combo->y() + combo->height())) <= 8.0;
+    const bool above = std::abs((popupY + popupH) - combo->y()) <= 8.0;
+    QVERIFY2(below || above, "The drop-down must open next to its field");
+    QVERIFY2(std::abs(popupX - combo->x()) <= 8.0 || popupX >= 8.0, "Unexpected popup x");
+    QVERIFY2(popupX > 100.0, "The drop-down opened at the window's left corner");
+
+    const QStringList expected{QStringLiteral("Tatami"), QStringLiteral("Satin"),
+                               QStringLiteral("Directionnel"), QStringLiteral("Contour")};
+    for (int i = 0; i < expected.size(); ++i) {
+        QQuickItem* row = nullptr;
+        QVERIFY(QMetaObject::invokeMethod(list, "itemAtIndex", Q_RETURN_ARG(QQuickItem*, row),
+                                          Q_ARG(int, i)));
+        QVERIFY2(row, qPrintable(QStringLiteral("Row %1 must exist").arg(i)));
+        QCOMPARE(row->property("text").toString(), expected.at(i));
+    }
 }
 
 void StudioFilesTest::unsavedGuardNewOpenAndQuit() {

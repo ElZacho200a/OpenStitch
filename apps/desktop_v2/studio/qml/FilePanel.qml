@@ -203,7 +203,18 @@ Item {
         padding: 8
         closePolicy: Controls.Popup.CloseOnEscape | Controls.Popup.CloseOnPressOutside
         background: Rectangle { color: Theme.panel; radius: Theme.radius; border.color: Theme.border }
-        contentItem: ColumnLayout {
+        // A short window (1000x640) cuts the menu: bound its height and scroll the entries
+        // so EXPORTER / PROJET stay reachable (QA-STUDIO-001 CTL-013/015, POL-001/023).
+        height: Math.min(implicitHeight, (parent ? parent.height : 640) - y - 12)
+        contentItem: Controls.ScrollView {
+            id: menuScroll
+            objectName: "fileMenuScroll"
+            clip: true
+            contentWidth: availableWidth
+            implicitHeight: menuColumn.implicitHeight
+          ColumnLayout {
+            id: menuColumn
+            width: menuScroll.availableWidth
             spacing: 2
             Entry { objectName: "newFileMenuEntry"; text: qsTr("Nouveau"); shortcutLabel: "Ctrl+N"; onClicked: panel.requestNew() }
             Entry { text: qsTr("Ouvrir…"); shortcutLabel: "Ctrl+O"; onClicked: panel.requestOpen() }
@@ -249,12 +260,13 @@ Item {
             Entry { text: qsTr("Contours en DXF…"); onClicked: panel.startExport("dxf", qsTr("Contours DXF"), [qsTr("DXF (*.dxf)")], "dxf") }
             Entry { text: qsTr("Points en SVG…"); onClicked: panel.startExport("svg", qsTr("Points SVG"), [qsTr("SVG (*.svg)")], "svg") }
             SectionLabel { text: qsTr("PROJET") }
-            Entry { text: qsTr("Cadre et machine…"); onClicked: panel.openHoopDialog() }
+            Entry { objectName: "hoopMenuEntry"; text: qsTr("Cadre et machine…"); onClicked: panel.openHoopDialog() }
             Entry {
                 text: qsTr("Ouvrir le dossier du projet")
                 enabled: studio.hasPath()
                 onClicked: panel.ctl.revealFolder()
             }
+          }
         }
     }
     Shortcut { sequence: "Ctrl+E"; enabled: panel.ctl && !studio.busy; onActivated: panel.openExportDialog() }
