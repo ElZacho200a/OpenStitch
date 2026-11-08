@@ -199,6 +199,43 @@ private slots:
         QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
     }
 
+    void vectorInspectorTabsAreClickableAndScrollable() {
+        Rig rig;
+        open(rig);
+        enterSpace(rig);
+        auto* tabs = deepItem(rig.window->contentItem(), QStringLiteral("vectorInspectorTabs"));
+        auto* layers = deepItem(rig.window->contentItem(), QStringLiteral("vectorLayersTab"));
+        auto* edit = deepItem(rig.window->contentItem(), QStringLiteral("vectorEditTab"));
+        auto* scroll = deepItem(rig.window->contentItem(), QStringLiteral("vectorActionsScroll"));
+        auto* panel = deepItem(rig.window->contentItem(), QStringLiteral("layerPanel"));
+        QVERIFY(tabs && layers && edit && scroll && panel);
+        QCOMPARE(tabs->property("currentIndex").toInt(), 0);
+        QVERIFY(panel->isVisible());
+        QVERIFY(!scroll->isVisible());
+
+        // Exercise real input delivery: invoking AbstractButton.click() cannot detect
+        // an overlapping item consuming the pointer event.
+        const auto center = [](QQuickItem* item) {
+            return item->mapToScene(QPointF(item->width() / 2, item->height() / 2)).toPoint();
+        };
+        QTest::mouseClick(rig.window, Qt::LeftButton, Qt::NoModifier, center(edit));
+        QTRY_COMPARE(tabs->property("currentIndex").toInt(), 1);
+        QVERIFY(scroll->isVisible());
+        QVERIFY(!panel->isVisible());
+        QVERIFY(scroll->height() > 0);
+
+        QTest::mouseClick(rig.window, Qt::LeftButton, Qt::NoModifier, center(layers));
+        QTRY_COMPARE(tabs->property("currentIndex").toInt(), 0);
+        QVERIFY(panel->isVisible());
+
+        rig.window->resize(1000, 640);
+        QTRY_COMPARE(rig.window->width(), 1000);
+        QTest::mouseClick(rig.window, Qt::LeftButton, Qt::NoModifier, center(edit));
+        QTRY_COMPARE(tabs->property("currentIndex").toInt(), 1);
+        QVERIFY(scroll->isVisible());
+        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+    }
+
     void clickSelectsAShapeAndShowsItsOrigin() {
         Rig rig;
         open(rig);
