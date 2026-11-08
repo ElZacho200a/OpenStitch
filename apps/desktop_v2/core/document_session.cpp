@@ -58,6 +58,9 @@ void DocumentSession::execute(std::unique_ptr<commands::ICommand> command) {
     }
     undo_.execute(std::move(command), project_);
     lastChangeAffectsEmbroidery_ = undo_.lastChangeAffectsEmbroidery();
+    lastChangeAffectsSegmentation_ = undo_.lastChangeAffectsSegmentation();
+    lastChangeAffectsSegmentation_ = undo_.lastChangeAffectsSegmentation();
+    lastChangeAffectsSegmentation_ = undo_.lastChangeAffectsSegmentation();
     changed(ChangeKind::Edited);
 }
 
@@ -88,15 +91,19 @@ bool DocumentSession::navigateHistory(std::size_t position) {
         return true;
     }
     bool affectsEmbroidery = false;
+    bool affectsSegmentation = false;
     while (undo_.position() > position) {
         undo_.undo(project_);
         affectsEmbroidery |= undo_.lastChangeAffectsEmbroidery();
+        affectsSegmentation |= undo_.lastChangeAffectsSegmentation();
+        affectsSegmentation |= undo_.lastChangeAffectsSegmentation();
     }
     while (undo_.position() < position) {
         undo_.redo(project_);
         affectsEmbroidery |= undo_.lastChangeAffectsEmbroidery();
     }
     lastChangeAffectsEmbroidery_ = affectsEmbroidery;
+    lastChangeAffectsSegmentation_ = affectsSegmentation;
     changed(position < previous ? ChangeKind::Undone : ChangeKind::Redone);
     return true;
 }
@@ -167,8 +174,47 @@ DocumentSession::BatchResult DocumentSession::applyBatch(std::string_view batchJ
             break;
         }
     }
+    // Only explicitly known non-segmentation operations can skip refreshing
+    // the region map. Unknown/mixed batches remain conservative.
+    const auto changesSegmentation = [](const std::string& op) {
+        if (op == "rename" || op == "set_locked" || op == "set_semantic") {
+            return false;
+        }
+        if (op == "set_color" || op == "set_visible" || op == "set_join") {
+            return false;
+        }
+        if (op == "set_connector" || op == "set_stitch_type") {
+            return false;
+        }
+        if (op == "set_params" || op == "set_order" || op == "optimize_order") {
+            return false;
+        }
+        if (op == "set_machine" || op == "set_finishing" || op == "set_canvas") {
+            return false;
+        }
+        if (op == "discard_overrides" || op == "set_design_points") {
+            return false;
+        }
+        if (op == "translate" || op == "rotate" || op == "scale") {
+            return false;
+        }
+        if (op == "mirror" || op == "duplicate_object" || op == "add_shape") {
+            return false;
+        }
+        if (op == "remove_object" || op == "directional_guides") {
+            return false;
+        }
+        return true;
+    };
+    bool affectsSegmentation = false;
+    for (const auto& outcome : result.report.outcomes) {
+        if (!outcome.ok || changesSegmentation(outcome.op)) {
+            affectsSegmentation = true;
+            break;
+        }
+    }
     auto replacement = std::make_unique<commands::ReplaceProjectCommand>(
-        label, std::move(before), std::move(after), affectsStitches);
+        label, std::move(before), std::move(after), affectsStitches, affectsSegmentation);
     execute(std::move(replacement));
     result.committed = true;
     return result;
@@ -186,6 +232,7 @@ void DocumentSession::replaceProject(document::Project project, bool clean) {
         bridge_->reset(); // nouvelle session pour l'agent : l'ancienne est close
     }
     lastChangeAffectsEmbroidery_ = true;
+    lastChangeAffectsSegmentation_ = true;
     changed(ChangeKind::Replaced);
 }
 
