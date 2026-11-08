@@ -177,6 +177,50 @@ Item {
         onAccepted: panel.finishExport(selectedFile)
     }
 
+    // QA-STUDIO-001 EXP-003 / HOOP-019 / JRN-024: warning BEFORE writing
+    // a machine file, never after an unacknowledged out-of-hoop export.
+    Connections {
+        target: panel.ctl
+        function onExportConfirmationRequested(warning) {
+            exportOverflowDialog.warning = warning
+            exportOverflowDialog.open()
+        }
+    }
+    Frame {
+        id: exportOverflowDialog
+        objectName: "exportOverflowDialog"
+        heading: qsTr("Confirmer l'export hors limites ?")
+        property string warning: ""
+        onClosed: if (panel.ctl) panel.ctl.confirmMachineExport(false)
+        Label {
+            text: exportOverflowDialog.warning
+        }
+        Label {
+            text: qsTr("Le motif risque de dépasser le cadre ou les limites de la machine. Vérifiez le placement avant de continuer.")
+        }
+        RowLayout {
+            Layout.alignment: Qt.AlignRight
+            spacing: 8
+            StudioButton {
+                objectName: "cancelOverflowExport"
+                text: qsTr("Annuler")
+                onClicked: {
+                    panel.ctl.confirmMachineExport(false)
+                    exportOverflowDialog.close()
+                }
+            }
+            StudioButton {
+                objectName: "acceptOverflowExport"
+                text: qsTr("Exporter quand même")
+                emphasized: true
+                onClicked: {
+                    panel.ctl.confirmMachineExport(true)
+                    exportOverflowDialog.close()
+                }
+            }
+        }
+    }
+
     // --- Glisser-déposer ----------------------------------------------------------------------
     DropArea {
         objectName: "fileDropArea"
