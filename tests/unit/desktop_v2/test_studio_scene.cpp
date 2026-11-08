@@ -11,9 +11,9 @@
 #include "document_session.hpp"
 #include "openstitch/formats/dst.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
+#include "simulation_nav.hpp"
 #include "studio_camera.hpp"
 #include "studio_scene.hpp"
-#include "simulation_nav.hpp"
 
 using namespace openstitch;
 using namespace openstitch::desktop_v2;
