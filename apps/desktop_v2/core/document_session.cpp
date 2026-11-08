@@ -121,19 +121,52 @@ DocumentSession::BatchResult DocumentSession::applyBatch(std::string_view batchJ
     // Les opérations strictement en amont ou de métadonnées ne touchent pas aux
     // points déjà générés. Un lot mixte contenant une opération inconnue reste
     // conservateur : il invalide la géométrie.
-    const auto doesNotChangeStitches = [](const std::string& op) {
-        return op == "rename" || op == "set_locked" || op == "set_semantic" ||
-               op == "set_source_image" || op == "image_denoise" ||
-               op == "segment_image" || op == "seg_merge_colors" ||
-               op == "seg_reduce_colors" || op == "seg_clean_islands" ||
-               op == "seg_merge_regions" || op == "seg_remove_region" ||
-               op == "seg_recolor_region";
+    const auto changesStitches = [](const std::string& op) {
+        if (op == "rename") {
+            return false;
+        }
+        if (op == "set_locked") {
+            return false;
+        }
+        if (op == "set_semantic") {
+            return false;
+        }
+        if (op == "set_source_image") {
+            return false;
+        }
+        if (op == "image_denoise") {
+            return false;
+        }
+        if (op == "segment_image") {
+            return false;
+        }
+        if (op == "seg_merge_colors") {
+            return false;
+        }
+        if (op == "seg_reduce_colors") {
+            return false;
+        }
+        if (op == "seg_clean_islands") {
+            return false;
+        }
+        if (op == "seg_merge_regions") {
+            return false;
+        }
+        if (op == "seg_remove_region") {
+            return false;
+        }
+        if (op == "seg_recolor_region") {
+            return false;
+        }
+        return true;
     };
-    const bool affectsStitches = !std::all_of(
-        result.report.outcomes.begin(), result.report.outcomes.end(),
-        [&](const project_ops::OperationOutcome& item) {
-            return item.ok && doesNotChangeStitches(item.op);
-        });
+    bool affectsStitches = false;
+    for (const auto& outcome : result.report.outcomes) {
+        if (!outcome.ok || changesStitches(outcome.op)) {
+            affectsStitches = true;
+            break;
+        }
+    }
     auto replacement = std::make_unique<commands::ReplaceProjectCommand>(
         label, std::move(before), std::move(after), affectsStitches);
     execute(std::move(replacement));
