@@ -16,6 +16,7 @@
 #include <QTemporaryDir>
 #include <QtTest/QtTest>
 
+#include <cmath>
 #include <filesystem>
 #include <memory>
 
@@ -89,6 +90,24 @@ QQuickItem* findVisual(QQuickItem* item, const QString& name) {
         }
     }
     return nullptr;
+}
+
+int highlightAlphaAt(const RegionLayerData& layer, int x, int y) {
+    if (layer.highlight.isNull() || layer.highlightRectMm.isEmpty() || layer.rectMm.isEmpty()) {
+        return 0;
+    }
+    const double mm = layer.rectMm.width() / layer.fill.width();
+    const int ox = static_cast<int>(std::lround(
+        (layer.highlightRectMm.left() - layer.rectMm.left()) / mm));
+    const int oy = static_cast<int>(std::lround(
+        (layer.highlightRectMm.top() - layer.rectMm.top()) / mm));
+    const int localX = x - ox;
+    const int localY = y - oy;
+    if (localX < 0 || localY < 0 || localX >= layer.highlight.width() ||
+        localY >= layer.highlight.height()) {
+        return 0;
+    }
+    return layer.highlight.pixelColor(localX, localY).alpha();
 }
 
 struct Rig {
@@ -249,13 +268,16 @@ private slots:
         QCOMPARE(static_cast<std::uint64_t>(first),
                  regionAtPixel(rig.session.project(), 20, 20).value());
         QTRY_VERIFY(rig.canvas()->regionLayer()->highlight.isNull() == false);
-        QCOMPARE(rig.canvas()->regionLayer()->highlight.pixelColor(20, 20).alpha() > 0, true);
-        QCOMPARE(rig.canvas()->regionLayer()->highlight.pixelColor(120, 90).alpha(), 0);
+        QCOMPARE(highlightAlphaAt(*rig.canvas()->regionLayer(), 20, 20) > 0, true);
+        QCOMPARE(highlightAlphaAt(*rig.canvas()->regionLayer(), 120, 90), 0);
+        // Le masque ne doit plus mesurer toute l'image pour une petite région.
+        QVERIFY(rig.canvas()->regionLayer()->highlight.width() <
+                rig.session.project().segmentation->width);
         // Ctrl : ajoute une deuxième région (multi-sélection) ; Ctrl sur la même la retire.
         QTest::mouseClick(rig.window, Qt::LeftButton, Qt::ControlModifier,
                           rig.windowPos(120, 90).toPoint());
         QTRY_COMPARE(rig.regions.selectedCount(), 2);
-        QTRY_COMPARE(rig.canvas()->regionLayer()->highlight.pixelColor(120, 90).alpha() > 0, true);
+        QTRY_VERIFY(highlightAlphaAt(*rig.canvas()->regionLayer(), 120, 90) > 0);
         QTest::mouseClick(rig.window, Qt::LeftButton, Qt::ControlModifier,
                           rig.windowPos(120, 90).toPoint());
         QTRY_COMPARE(rig.regions.selectedCount(), 1);

@@ -9,8 +9,10 @@
 // touche pas aux textures (seule la matrice du nœud bouge). Aucun nœud ni objet QML par région.
 
 #include <QImage>
+#include <QRect>
 #include <QRectF>
 #include <QSGNode>
+#include <climits>
 #include <cstdint>
 #include <memory>
 #include <vector>
@@ -26,9 +28,27 @@ struct RegionLayerData {
     QImage fill; // ARGB32 prémultiplié : régions colorées, contours assombris (ligne 0 = haut)
     QImage highlight; // sélection : voile + contour ; nul sans sélection
     QRectF rectMm;    // position en mm de scène
+    QRectF highlightRectMm; // position du seul masque sélectionné (texture ROI)
     double opacity{0.85};
     std::uint64_t fillRevision{0};
     std::uint64_t highlightRevision{0};
+};
+
+// Index spatial (1-based, comme les étiquettes) construit avec le fond, puis
+// réutilisé à chaque sélection au lieu de balayer tous les pixels.
+struct RegionPixelBounds {
+    int left{INT_MAX};
+    int top{INT_MAX};
+    int right{-1};
+    int bottom{-1};
+    [[nodiscard]] bool valid() const { return right >= left && bottom >= top; }
+};
+
+[[nodiscard]] std::vector<RegionPixelBounds> buildRegionBounds(const document::Project& project);
+
+struct RegionHighlight {
+    QImage image;
+    QRect boundsPx; // rectangle de la texture dans la segmentation complète
 };
 
 // Empreinte déterministe de la carte d'étiquettes et des couleurs (clé de reconstruction).
@@ -36,8 +56,9 @@ struct RegionLayerData {
 // Régions colorées + contours ; image nulle sans segmentation.
 [[nodiscard]] QImage buildRegionFill(const document::Project& project, bool contours);
 // Voile + contour des régions `selected` ; image nulle si rien n'est sélectionné.
-[[nodiscard]] QImage buildRegionHighlight(const document::Project& project,
-                                          const std::vector<std::uint64_t>& selected);
+[[nodiscard]] RegionHighlight buildRegionHighlight(
+    const document::Project& project, const std::vector<std::uint64_t>& selected,
+    const std::vector<RegionPixelBounds>& bounds);
 // Rectangle de scène de l'image de travail (mm).
 [[nodiscard]] QRectF regionLayerRect(const document::Project& project);
 // Pixel de l'image de travail sous un point de scène (mm) ; faux hors image.
@@ -56,6 +77,7 @@ private:
     std::uint64_t fillRevision_{0};
     std::uint64_t highlightRevision_{0};
     QRectF displayedRect_;
+    QRectF displayedHighlightRect_;
     bool hasFill_{false};
     bool hasHighlight_{false};
 };
