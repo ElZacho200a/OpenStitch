@@ -139,6 +139,7 @@ private slots:
     void recentFilesPersistPruneAndReopen();
     void dropAndCommandLineDispatchByExtension();
     void machineExportImportRoundTrip();
+    void overflowExportRequiresExplicitConfirmation();
     void exportsAreDeterministicAndRepeatable();
     void documentExportsWriteRealFiles();
     void exportOptionsAreOneUndoStepAndRefusedWhenInvalid();
@@ -564,6 +565,55 @@ void StudioFilesTest::machineExportImportRoundTrip() {
     rig.files->exportMachine(url(dir, "x.abc"));
     QVERIFY(rig.files->messageIsError());
     QVERIFY(!QFileInfo::exists(dir.filePath(QStringLiteral("x.abc"))));
+}
+
+void StudioFilesTest::overflowExportRequiresExplicitConfirmation() {
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    Rig rig({}, true);
+    QVERIFY(rig.window);
+    QTRY_VERIFY_WITH_TIMEOUT(rig.window->isExposed(), 5'000);
+
+    auto project = studioFixture();
+    project.canvas.width = Micrometers{10'000};
+    project.canvas.height = Micrometers{10'000};
+    rig.session.replaceProject(project, true);
+
+    const auto file = dir.filePath(QStringLiteral("hors_cadre.dst"));
+    const auto output = QUrl::fromLocalFile(file);
+    QSignalSpy requested(rig.files.get(), &FileController::exportConfirmationRequested);
+    auto* dialog = rig.window->findChild<QObject*>(QStringLiteral("exportOverflowDialog"));
+    auto* cancel = rig.window->findChild<QQuickItem*>(QStringLiteral("cancelOverflowExport"));
+    auto* accept = rig.window->findChild<QQuickItem*>(QStringLiteral("acceptOverflowExport"));
+    QVERIFY(dialog);
+    QVERIFY(cancel);
+    QVERIFY(accept);
+
+    rig.files->exportMachine(output);
+    QTRY_COMPARE_WITH_TIMEOUT(requested.count(), 1, 3'000);
+    QTRY_VERIFY_WITH_TIMEOUT(dialog->property("visible").toBool(), 3'000);
+    QVERIFY(!QFileInfo::exists(file)); // no premature write
+    QVERIFY(QMetaObject::invokeMethod(cancel, "click"));
+    QTRY_VERIFY_WITH_TIMEOUT(!dialog->property("visible").toBool(), 3'000);
+    QVERIFY(!QFileInfo::exists(file)); // cancellation never writes
+
+    rig.files->exportMachine(output);
+    QTRY_COMPARE_WITH_TIMEOUT(requested.count(), 2, 3'000);
+    QTRY_VERIFY_WITH_TIMEOUT(dialog->property("visible").toBool(), 3'000);
+    QVERIFY(!QFileInfo::exists(file));
+    QVERIFY(QMetaObject::invokeMethod(accept, "click"));
+    QVERIFY(rig.waitIdle());
+    QVERIFY2(QFileInfo(file).size() > 0, qPrintable(rig.files->message()));
+
+    // Consent is revision-scoped. Editing after the warning invalidates it.
+    QVERIFY(QFile::remove(file));
+    rig.files->exportMachine(output);
+    QTRY_COMPARE_WITH_TIMEOUT(requested.count(), 3, 3'000);
+    rig.studio.selectObject(QString::number(firstId));
+    QVERIFY(rig.studio.moveSelection(1, 0));
+    QVERIFY(QMetaObject::invokeMethod(accept, "click"));
+    QVERIFY(rig.files->messageIsError());
+    QVERIFY(!QFileInfo::exists(file));
 }
 
 void StudioFilesTest::exportsAreDeterministicAndRepeatable() {
