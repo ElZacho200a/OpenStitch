@@ -774,8 +774,7 @@ void FileController::confirmMachineExport(bool proceed) {
     }
     // Do not let approval for an old revision bypass checks on a modified design.
     if (studio_.session().revision() != revision) {
-        setMessage(QStringLiteral("Le motif a changé : relancez l'export pour vérifier les limites."),
-                   true);
+        setMessage(QStringLiteral("Le motif a changé : relancez l'export."), true);
         return;
     }
     runMachineExport(path, true);
@@ -808,14 +807,14 @@ void FileController::runMachineExport(const std::filesystem::path& path, bool co
                     return;
                 }
                 if (!check.ok) {
-                    setMessage(QStringLiteral("Export impossible : %1").arg(fromUtf8(check.message)),
-                               true);
+                    const QString reason = fromUtf8(check.message);
+                    setMessage(QStringLiteral("Export impossible : %1").arg(reason), true);
                     return;
                 }
                 if (!check.fitsHoop || !check.fitsMachineField || !check.formatAccepted) {
                     pendingExport_ = path;
                     pendingExportRevision_ = revision;
-                    setMessage(QStringLiteral("Export à confirmer : le motif présente des limites."));
+                    setMessage(QStringLiteral("Export à confirmer : limites dépassées."));
                     emit exportConfirmationRequested(fromUtf8(check.summary()));
                     return;
                 }
