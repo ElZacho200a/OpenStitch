@@ -246,21 +246,79 @@ Item {
                     }
                 }
                 Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }
-                LayerPanel {
-                    objectName: "layerPanel"
+
+                // A single inspector surface: layer management and editing actions no
+                // longer compete for vertical space or obscure the object tree.
+                Rectangle {
+                    id: vectorInspectorTabs
+                    objectName: "vectorInspectorTabs"
+                    property int currentIndex: 0
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: Theme.controlHeight + 12
+                    color: Theme.panel
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 12
+                        anchors.rightMargin: 12
+                        spacing: 6
+                        StudioButton {
+                            objectName: "vectorLayersTab"
+                            Layout.fillWidth: true
+                            text: qsTr("Calques")
+                            tooltip: qsTr("Afficher les calques et les objets")
+                            checkable: true
+                            checked: vectorInspectorTabs.currentIndex === 0
+                            onClicked: vectorInspectorTabs.currentIndex = 0
+                        }
+                        StudioButton {
+                            objectName: "vectorEditTab"
+                            Layout.fillWidth: true
+                            text: qsTr("Édition")
+                            tooltip: qsTr("Afficher les opérations de sélection et d'édition")
+                            checkable: true
+                            checked: vectorInspectorTabs.currentIndex === 1
+                            onClicked: vectorInspectorTabs.currentIndex = 1
+                        }
+                    }
+                }
+                StackLayout {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     Layout.minimumHeight: 100
-                }
-                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }
-                EditBar {
-                    Layout.fillWidth: true
-                    Layout.margins: 12
-                }
-                ToolOptions {
-                    visible: root.toolController !== null
-                    Layout.fillWidth: true
-                    Layout.margins: 12
+                    currentIndex: vectorInspectorTabs.currentIndex
+
+                    LayerPanel {
+                        objectName: "layerPanel"
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                    }
+                    Controls.ScrollView {
+                        id: vectorActionsScroll
+                        objectName: "vectorActionsScroll"
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        clip: true
+                        contentWidth: availableWidth
+                        Controls.ScrollBar.horizontal.policy: Controls.ScrollBar.AlwaysOff
+
+                        ColumnLayout {
+                            width: vectorActionsScroll.availableWidth
+                            spacing: 8
+                            EditBar {
+                                Layout.fillWidth: true
+                                Layout.leftMargin: 12
+                                Layout.rightMargin: 12
+                                Layout.topMargin: 12
+                            }
+                            ToolOptions {
+                                visible: root.toolController !== null
+                                Layout.fillWidth: true
+                                Layout.leftMargin: 12
+                                Layout.rightMargin: 12
+                                Layout.bottomMargin: 12
+                            }
+                        }
+                    }
                 }
             }
         }

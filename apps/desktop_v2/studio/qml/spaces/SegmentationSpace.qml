@@ -199,7 +199,7 @@ Item {
         anchors.right: parent.right
         anchors.top: parent.top
         anchors.bottom: parent.bottom
-        width: 340
+        width: Math.min(340, Math.max(180, root.width * 0.38))
         active: root.hasTools
         sourceComponent: SegmentationPanels {}
     }
