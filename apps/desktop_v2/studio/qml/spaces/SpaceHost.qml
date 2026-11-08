@@ -13,6 +13,8 @@ import ".."
 //    l'espace (`workspace.setStageAction`) ;
 //  - la vue (centre, zoom) du canevas qui part est sauvegardée, celle de l'espace qui arrive est
 //    restaurée ; la sélection vit dans la session et traverse sans copie.
+//  - Le focus est transféré explicitement au canvas actif lors du changement d'espace via 
+//    activateCanvas(), assurant que les raccourcis et interactions fonctionnent immédiatement.
 Item {
     id: host
     objectName: "spaceHost"
@@ -59,6 +61,18 @@ Item {
             workspace.saveView(loader.item.canvas.viewState())
         loader.setSource(sources[id], { "workspace": host.workspace })
         internal.loadedId = id
+    }
+
+    // Transfère le focus au canvas de l'espace actif quand il devient courant.
+    function activateCanvas() {
+        const space = loader.item
+        if (!space || !space.canvas)
+            return
+        space.canvas.setFocus()
+    }
+    Connections {
+        target: host.workspace
+        function onCurrentChanged() { activateCanvas() }
     }
 
     Connections {
@@ -211,6 +225,7 @@ Item {
                 if (item.canvas && view.zoom !== undefined)
                     item.canvas.restoreViewState(view)
                 item.active = true
+                activateCanvas()
             }
         }
     }

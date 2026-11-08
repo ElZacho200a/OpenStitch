@@ -243,10 +243,12 @@ TEST_CASE("studio resource invalidation separates geometry selection camera and 
     const auto first = build_studio_scene(project, 1, {});
     REQUIRE(first.has_value());
     StudioResourceState resources;
+    CHECK(resources.observe(nullptr, 1, 1).geometry);
+    CHECK_FALSE(resources.observe(nullptr, 1, 1).geometry);
     auto changed = resources.observe(*first, 1, 1);
     CHECK(changed.geometry);
     CHECK(changed.selection);
-    CHECK(changed.camera);
+    CHECK_FALSE(changed.camera);
     changed = resources.observe(*first, 1, 1);
     CHECK_FALSE(changed.geometry);
     CHECK_FALSE(changed.selection);
