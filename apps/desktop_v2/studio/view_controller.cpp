@@ -488,14 +488,13 @@ void ViewController::rebuildSimData() {
                     // Reproduit exactement les règles de build_thread_segments : même
                     // source, mêmes conversions float mm, saut/coupe/couleur qui rompt
                     // la continuité. Le coût est payé UNE fois sur le worker.
-                    const float x = static_cast<float>(
-                        static_cast<double>(cmd.pos.x.value) / 1000.0);
-                    const float y = static_cast<float>(
-                        -static_cast<double>(cmd.pos.y.value) / 1000.0);
+                    const float x = static_cast<float>(cmd.pos.x.value / 1000.0);
+                    const float y = static_cast<float>(-cmd.pos.y.value / 1000.0);
                     const auto source = cmd.source.value;
-                    if (sews && hasPos && lastSource == source &&
-                        (x != lastX || y != lastY) &&
-                        (data->visible.contains(source) || (source == 0 && data->imported))) {
+                    const bool moved = x != lastX || y != lastY;
+                    const bool visible =
+                        data->visible.contains(source) || (source == 0 && data->imported);
+                    if (sews && hasPos && lastSource == source && moved && visible) {
                         ++segments;
                     }
                     lastX = x;

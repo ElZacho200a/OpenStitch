@@ -97,10 +97,10 @@ int highlightAlphaAt(const RegionLayerData& layer, int x, int y) {
         return 0;
     }
     const double mm = layer.rectMm.width() / layer.fill.width();
-    const int ox = static_cast<int>(std::lround(
-        (layer.highlightRectMm.left() - layer.rectMm.left()) / mm));
-    const int oy = static_cast<int>(std::lround(
-        (layer.highlightRectMm.top() - layer.rectMm.top()) / mm));
+    const double dx = (layer.highlightRectMm.left() - layer.rectMm.left()) / mm;
+    const double dy = (layer.highlightRectMm.top() - layer.rectMm.top()) / mm;
+    const int ox = static_cast<int>(std::lround(dx));
+    const int oy = static_cast<int>(std::lround(dy));
     const int localX = x - ox;
     const int localY = y - oy;
     if (localX < 0 || localY < 0 || localX >= layer.highlight.width() ||

@@ -218,10 +218,10 @@ void SegmentationSpaceController::refresh() {
     if (project.segmentation && highlightBoundsPx_.isValid()) {
         const auto& seg = *project.segmentation;
         const double mm = project.mm_per_px.value;
-        highlightRectMm = {
-            (highlightBoundsPx_.x() - seg.width / 2.0) * mm,
-            (highlightBoundsPx_.y() - seg.height / 2.0) * mm,
-            highlightBoundsPx_.width() * mm, highlightBoundsPx_.height() * mm};
+        const double x = (highlightBoundsPx_.x() - seg.width / 2.0) * mm;
+        const double y = (highlightBoundsPx_.y() - seg.height / 2.0) * mm;
+        highlightRectMm = QRectF(x, y, highlightBoundsPx_.width() * mm,
+                                highlightBoundsPx_.height() * mm);
     }
     if (fillChanged || highlightChanged || !layer_ || layer_->opacity != opacity_ ||
         layer_->rectMm != fillRectMm || layer_->highlightRectMm != highlightRectMm) {

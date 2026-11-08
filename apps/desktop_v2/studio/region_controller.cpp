@@ -159,27 +159,29 @@ void RegionController::refresh() {
         // Le panneau n'affiche que 170 px de haut : ne jamais générer une
         // seconde carte RGBA plein format pour sa miniature.
         constexpr int maxSide = 512;
-        const double factor = std::min(1.0, static_cast<double>(maxSide) /
-                                               std::max(seg.width, seg.height));
+        const auto maxDim = std::max(seg.width, seg.height);
+        const double factor = std::min(1.0, static_cast<double>(maxSide) / maxDim);
         const int thumbW = std::max(1, static_cast<int>(std::lround(seg.width * factor)));
         const int thumbH = std::max(1, static_cast<int>(std::lround(seg.height * factor)));
         QImage preview(thumbW, thumbH, QImage::Format_RGBA8888);
         preview.fill(Qt::transparent);
         const auto w = static_cast<std::size_t>(seg.width);
         for (int y = 0; y < thumbH; ++y) {
-            const int sy = std::min(seg.height - 1,
-                                    static_cast<int>((y + 0.5) * seg.height / thumbH));
+            const double yRatio = (y + 0.5) / thumbH;
+            const int sy = std::min(seg.height - 1, static_cast<int>(yRatio * seg.height));
             auto* line = preview.scanLine(y);
             for (int x = 0; x < thumbW; ++x) {
-                const int sx = std::min(seg.width - 1,
-                                        static_cast<int>((x + 0.5) * seg.width / thumbW));
+                const double xRatio = (x + 0.5) / thumbW;
+                const int sx = std::min(seg.width - 1, static_cast<int>(xRatio * seg.width));
                 const auto idx = static_cast<std::size_t>(sy) * w + sx;
                 if (idx >= seg.labels.size()) {
                     continue;
                 }
                 const auto label = seg.labels[idx];
-                if (label == 0 || label > seg.region_slots.size() ||
-                    !seg.region_slots[label - 1]) {
+                if (label == 0 || label > seg.region_slots.size()) {
+                    continue;
+                }
+                if (!seg.region_slots[label - 1]) {
                     continue;
                 }
                 const auto& rgb = seg.region_slots[label - 1]->rgb;

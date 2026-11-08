@@ -19,11 +19,11 @@
 #include "file_controller.hpp"
 #include "gpu_canvas.hpp"
 #include "inspector_controller.hpp"
+#include "openstitch/stitch_generation/overrides.hpp"
+#include "openstitch/stitch_render/segments.hpp"
 #include "studio_controller.hpp"
 #include "thread_controller.hpp"
 #include "view_controller.hpp"
-#include "openstitch/stitch_generation/overrides.hpp"
-#include "openstitch/stitch_render/segments.hpp"
 
 using namespace openstitch;
 using namespace openstitch::desktop_v2;
@@ -214,19 +214,20 @@ void StudioViewTest::simulationNavigatesTheEffectiveSequence() {
 
 void StudioViewTest::simulationPrefixMatchesReferenceAtEveryPosition() {
     Rig rig;
-    const auto sequence = stitch_generation::effective_sequence(
-        *rig.studio.scene()->project, TaskContext{});
+    const auto& project = *rig.studio.scene()->project;
+    const auto sequence = stitch_generation::effective_sequence(project, TaskContext{});
     QVERIFY(sequence.has_value());
     QCOMPARE(rig.view.simTotal(), static_cast<int>(sequence->commands.size()));
     rig.view.startSimulation();
     for (std::size_t i = 0; i < sequence->commands.size(); ++i) {
         rig.view.setSimPosition(static_cast<int>(i));
-        const auto reference = i == 0 ? std::size_t{0}
-            : stitch_render::build_thread_segments(
-                  *sequence, i - 1,
-                  [](ObjectId) -> std::optional<std::array<std::uint8_t, 3>> {
-                      return std::array<std::uint8_t, 3>{0, 0, 0};
-                  }).size();
+        std::size_t reference = 0;
+        if (i > 0) {
+            const auto color = [](ObjectId) -> std::optional<std::array<std::uint8_t, 3>> {
+                return std::array<std::uint8_t, 3>{0, 0, 0};
+            };
+            reference = stitch_render::build_thread_segments(*sequence, i - 1, color).size();
+        }
         QCOMPARE(rig.canvas.overlays()->visibleSegments, reference);
     }
 }
