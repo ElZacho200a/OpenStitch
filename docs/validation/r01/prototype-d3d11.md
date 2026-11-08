@@ -61,3 +61,46 @@ Le banc vérifie le refus de deux requêtes coûteuses de 2 048 × 2 048
 en mode GPU forcé et le repli CPU bit à bit pour la distance en mode
 automatique. Une requête annulée pendant la lecture bloquante D3D11
 attend le retour du pilote avant d'écarter son résultat.
+
+## Campagne du 8 novembre 2026
+
+[Échantillons bruts, métadonnées, synthèse et relevé de charge](2026-11-08-d3d11-data.zip).
+Windows 11 (26200), MSVC 19.44 Release, OpenCV 4.12 sans IPP, RTX 4060
+Laptop, pilote 592.82, code `955d12412c91315eccd5ea08350bdc057605cafd`.
+Trois processus et 21 répétitions par scénario et par backend, soit
+63 mesures pour chaque distribution. L'initialisation du contexte et
+des shaders prend 226 ms en médiane, puis le premier retour GPU 6,62 ms.
+
+| Lot synthétique | CPU p50 / p95 | GPU p50 / p95 | Préparation GPU p50 | Noyaux GPU p50 | Retour et attente p50 | Charge GPU envoyée + lue |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Ouverture marine, 1 masque | 0,34 / 0,49 ms | 1,15 / 1,95 ms | 0,62 ms | 0,34 ms | 0,52 ms | 0,61 Mo |
+| Distance texte, 22 masques | 4,92 / 7,68 ms | 28,84 / 43,42 ms | 14,29 ms | 8,40 ms | 11,89 ms | 13,73 Mo |
+| Distance Tentabrode, 106 masques | 26,17 / 36,91 ms | 136,41 / 163,96 ms | 60,11 ms | 41,81 ms | 57,43 ms | 65,40 Mo |
+
+Les 16 254 résultats chronométrés, dont 8 127 GPU, concordent bit à bit
+avec la référence CPU. Les trois processus ont aussi réussi les 4 665
+comparaisons de cas limites et le repli CPU sur le masque de 2 048 × 2 048
+refusé par la limite de travail. Les 11 tests du contrat CPU passent en
+Debug et Release. Le mode sans adaptateur a été exercé sur Windows
+avec l'adaptateur omis par le banc.
+
+Un passage distinct avec NVML a relevé 34 échantillons à 200 ms. La
+charge globale de la même RTX variait de 0 à 35 %, les états de
+performance de P0 à P5 et l'horloge SM de 855 à 2 250 MHz. Les courtes
+passes D3D11 alternent avec la préparation hôte, l'attente et la lecture
+des résultats. NVML agrège la charge de tout l'adaptateur sur une
+fenêtre propre au produit. Ce relevé montre les variations de charge
+et d'horloge. Il ne permet pas d'attribuer les écarts de latence à
+une cause unique. [Définition de l'utilisation NVML](https://docs.nvidia.com/deploy/nvidia-smi/index.html#utilization).
+
+## Décision
+
+**No-go pour l'intégration de ces deux noyaux D3D11 avec transfert
+synchrone par masque.** L'ouverture est environ quatre fois plus
+lente que le CPU au p95 sur le lot marin. Pour le texte, les
+43,42 ms GPU au p95 dépassent d'environ 38 fois le budget de 1,15 ms
+du profilage CPU. Les 8,40 ms médians des noyaux dépassent déjà ce
+budget. Ce verdict concerne l'architecture et le matériel mesurés.
+L'intégration des remplissages et le retour interactif Studio
+restent conditionnés à un gain de bout en bout et à la parité sur
+le parcours complet.
