@@ -422,6 +422,11 @@ void StudioViewTest::mainQmlHostsEveryPanel() {
     // Panel "Fils".
     QVERIFY(press(window, "threadsPanelButton"));
     QCOMPARE(hub->property("openPanel").toString(), QStringLiteral("threads"));
+    // THR-003: fictional manufacturer charts must not be presented as production palettes.
+    auto* demoWarning = named(window, "demoChartWarning");
+    QVERIFY(demoWarning);
+    QTRY_VERIFY(demoWarning->isVisible());
+    QVERIFY(demoWarning->property("text").toString().contains(QStringLiteral("fictifs")));
     QTRY_VERIFY(named(window, "threadRow0") != nullptr);
     named(window, "colorwayNameField")->setProperty("text", QStringLiteral("Printemps"));
     QVERIFY(press(window, "colorwayAddButton"));
