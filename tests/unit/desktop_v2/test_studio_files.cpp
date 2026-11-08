@@ -8,6 +8,7 @@
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQmlError>
+#include <QQuickItem>
 #include <QQuickStyle>
 #include <QQuickWindow>
 #include <QSignalSpy>
@@ -127,6 +128,8 @@ class StudioFilesTest : public QObject {
     Q_OBJECT
 private slots:
     void initTestCase();
+    void fileMenuEntriesCloseAfterRealMouseClick();
+    void comboPopupOpensAboveAtWindowBottom();
     void unsavedGuardNewOpenAndQuit();
     void guardSaveWithAndWithoutPath();
     void guardDialogIsShownByTheRealQml();
@@ -147,6 +150,82 @@ void StudioFilesTest::initTestCase() {
     qmlRegisterType<GpuCanvas>("OpenStitch.Studio", 1, 0, "GpuCanvas");
     qmlRegisterUncreatableType<StudioController>("OpenStitch.Studio", 1, 0, "StudioController",
                                                  QStringLiteral("Provided by the application"));
+}
+
+void StudioFilesTest::fileMenuEntriesCloseAfterRealMouseClick() {
+    Rig rig({}, true);
+    QVERIFY(rig.window);
+    QTRY_VERIFY_WITH_TIMEOUT(rig.window->isExposed(), 5'000);
+    auto* button = rig.window->findChild<QQuickItem*>(QStringLiteral("fileMenuButton"));
+    auto* menu = rig.window->findChild<QObject*>(QStringLiteral("fileMenu"));
+    auto* entry = rig.window->findChild<QQuickItem*>(QStringLiteral("newFileMenuEntry"));
+    QVERIFY(button);
+    QVERIFY(menu);
+    QVERIFY(entry);
+    const auto center = [](QQuickItem* item) {
+        return item->mapToScene(QPointF(item->width() / 2.0, item->height() / 2.0)).toPoint();
+    };
+    QTest::mouseClick(rig.window, Qt::LeftButton, Qt::NoModifier, center(button));
+    QTRY_VERIFY_WITH_TIMEOUT(menu->property("visible").toBool(), 3'000);
+    // A physical click must both execute the action and release the modal popup;
+    // otherwise the invisible/leftover overlay swallows clicks on the rest of Studio.
+    QTest::mouseClick(rig.window, Qt::LeftButton, Qt::NoModifier, center(entry));
+    QTRY_VERIFY_WITH_TIMEOUT(!menu->property("visible").toBool(), 3'000);
+    QVERIFY(rig.files->pendingReason().isEmpty());
+}
+
+void StudioFilesTest::comboPopupOpensAboveAtWindowBottom() {
+    QQmlApplicationEngine engine;
+    const QByteArray qml = R"qml(
+        import QtQuick
+        import QtQuick.Window
+        import "."
+        Window {
+            width: 400
+            height: 300
+            visible: true
+            StudioComboBox {
+                objectName: "edgeCombo"
+                x: 230
+                y: 250
+                width: 155
+                model: ["Premier", "Deuxième", "Troisième", "Quatrième", "Cinquième"]
+                currentIndex: 4
+            }
+        }
+    )qml";
+    engine.loadData(qml, QUrl(QStringLiteral("qrc:/studio/qml/studio_combo_edge_test.qml")));
+    QVERIFY2(!engine.rootObjects().isEmpty(), "The StudioComboBox fixture must load");
+    auto* window = qobject_cast<QQuickWindow*>(engine.rootObjects().front());
+    QVERIFY(window);
+    QTRY_VERIFY_WITH_TIMEOUT(window->isExposed(), 5'000);
+    auto* combo = window->findChild<QQuickItem*>(QStringLiteral("edgeCombo"));
+    QVERIFY(combo);
+    auto* popup = combo->property("popup").value<QObject*>();
+    QVERIFY(popup);
+
+    const QPoint pos =
+        combo->mapToScene(QPointF(combo->width() / 2.0, combo->height() / 2.0)).toPoint();
+    QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, pos);
+    QTRY_VERIFY_WITH_TIMEOUT(popup->property("visible").toBool(), 3'000);
+    const double x = popup->property("x").toDouble();
+    const double y = popup->property("y").toDouble();
+    const double w = popup->property("width").toDouble();
+    const double h = popup->property("height").toDouble();
+    QVERIFY2(y >= 7 && y + h <= window->height() - 7,
+             "Drop-down extends beyond vertical window bounds");
+    QVERIFY2(x >= 7 && x + w <= window->width() - 7,
+             "Drop-down extends beyond horizontal window bounds");
+    QVERIFY(w >= combo->width());
+    QVERIFY(h >= 32.0);
+
+    auto* list = popup->property("contentItem").value<QQuickItem*>();
+    QVERIFY(list);
+    // The item is displayed above the field, and it must remain physically clickable.
+    QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier,
+                      list->mapToScene(QPointF(24.0, 14.0)).toPoint());
+    QTRY_COMPARE_WITH_TIMEOUT(combo->property("currentIndex").toInt(), 0, 3'000);
+    QTRY_VERIFY_WITH_TIMEOUT(!popup->property("visible").toBool(), 3'000);
 }
 
 void StudioFilesTest::unsavedGuardNewOpenAndQuit() {
