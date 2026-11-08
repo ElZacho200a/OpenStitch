@@ -105,6 +105,7 @@ Item {
             Layout.fillHeight: true
             color: Theme.panel
             PointsToolRail {
+                workspaceActive: root.active
                 anchors.top: parent.top
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.topMargin: 12
