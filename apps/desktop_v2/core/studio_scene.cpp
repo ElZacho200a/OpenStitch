@@ -85,8 +85,7 @@ build_studio_scene(std::shared_ptr<const document::Project> project, std::uint64
     if (!sequence) {
         return std::unexpected(sequence.error());
     }
-    scene->effectiveSequence =
-        std::make_shared<const stitch::StitchSequence>(std::move(*sequence));
+    scene->effectiveSequence = std::make_shared<const stitch::StitchSequence>(std::move(*sequence));
     const auto& effective = *scene->effectiveSequence;
     scene->commandCount = effective.commands.size();
 
