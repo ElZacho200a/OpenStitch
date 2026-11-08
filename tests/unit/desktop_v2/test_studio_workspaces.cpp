@@ -116,17 +116,19 @@ private:
                                      15'000);
         }
     }
-    // Le seul canevas instancié (échoue s'il y en a deux).
+    // Les canevas déjà visités sont mis en cache, mais UN SEUL reste visible.
     GpuCanvas* onlyCanvas(Rig& rig) {
-        GpuCanvas* found = nullptr;
-        [&] {
-            QTRY_COMPARE_WITH_TIMEOUT(rig.window->findChildren<GpuCanvas*>().size(), 1, 5'000);
-        }();
-        const auto all = rig.window->findChildren<GpuCanvas*>();
-        if (all.size() == 1) {
-            found = all.front();
-        }
-        return found;
+        const auto visible = [&] {
+            QList<GpuCanvas*> out;
+            for (auto* canvas : rig.window->findChildren<GpuCanvas*>()) {
+                if (canvas->isVisible())
+                    out.push_back(canvas);
+            }
+            return out;
+        };
+        [&] { QTRY_COMPARE_WITH_TIMEOUT(visible().size(), 1, 5'000); }();
+        const auto all = visible();
+        return all.size() == 1 ? all.front() : nullptr;
     }
     QVariantMap spaceMap(Rig& rig, const QString& id) { return rig.workspace->space(id); }
 
@@ -141,7 +143,7 @@ private slots:
                                                    QStringLiteral("Provided by the application"));
     }
 
-    void fourSpacesAndOneCanvasAtATime() {
+    void fourSpacesAndOneVisibleCanvas() {
         Rig rig;
         open(rig);
         const auto spaces = rig.workspace->spaces();
