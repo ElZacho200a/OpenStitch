@@ -453,8 +453,7 @@ void ViewController::rebuildSimData() {
                 if (!generated) {
                     return std::unexpected(generated.error());
                 }
-                sequence =
-                    std::make_shared<const stitch::StitchSequence>(std::move(*generated));
+                sequence = std::make_shared<const stitch::StitchSequence>(std::move(*generated));
             }
             auto data = std::make_shared<SimData>();
             data->project = project;
