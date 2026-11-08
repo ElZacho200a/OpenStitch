@@ -34,24 +34,27 @@ Item {
     // « stale » quand un traitement a invalidé la segmentation (le bandeau de l'espace Segmentation
     // l'affiche avec son action) ; sinon l'espace publie le détail de son étape.
     function publish() {
-        if (!space || !workspace) return
+        if (!active || !space || !workspace) return
         workspace.setStageStatus(spaceId, space.stageState, space.stageDetail)
     }
     Connections {
         target: root.space
         function onChanged() { root.publish() }
     }
-    Component.onCompleted: {
+    function activate() {
         if (space) space.attachCanvas(spaceCanvas)
         publish()
     }
-    Component.onDestruction: {
+    function deactivate() {
         if (space) {
             space.detachCanvas()
-            // « stale » doit survivre au démontage ; le reste redevient le calcul de base.
+            // Le statut « stale » doit survivre à une navigation ; les autres sont recalculés.
             if (workspace && !space.imageChanged) workspace.clearStageStatus(spaceId)
         }
     }
+    onActiveChanged: { if (active) activate(); else deactivate() }
+    Component.onCompleted: { if (active) activate() }
+    Component.onDestruction: deactivate()
 
     Item {
         id: viewport
