@@ -162,7 +162,7 @@ private slots:
         QVERIFY(mouseClick(rig.window, "fadePanelButton"));
         QTRY_COMPARE(digitizeHub->property("openPanel").toString(), QStringLiteral("fade"));
         QCOMPARE(viewHub->property("openPanel").toString(), QString());
-        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\\n')));
+        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
     }
 
     void noFloatingToolbarsAndOneSidePanel() {
