@@ -208,6 +208,13 @@ void StudioFilesTest::comboPopupOpensAboveAtWindowBottom() {
         combo->mapToScene(QPointF(combo->width() / 2.0, combo->height() / 2.0)).toPoint();
     QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, pos);
     QTRY_VERIFY_WITH_TIMEOUT(popup->property("visible").toBool(), 3'000);
+    // The ListView only receives its delegate model once the popup is visible: measuring or
+    // clicking before the five delegates exist races the layout (QA-STUDIO-001, CTL/POP).
+    auto* list = popup->property("contentItem").value<QQuickItem*>();
+    QVERIFY(list);
+    QTRY_COMPARE_WITH_TIMEOUT(list->property("count").toInt(), 5, 3'000);
+    QTRY_VERIFY_WITH_TIMEOUT(popup->property("height").toDouble() >= 100.0, 3'000);
+    QTest::qWait(50); // let the y binding (above/below) settle on the final height
     const double x = popup->property("x").toDouble();
     const double y = popup->property("y").toDouble();
     const double w = popup->property("width").toDouble();
@@ -219,8 +226,6 @@ void StudioFilesTest::comboPopupOpensAboveAtWindowBottom() {
     QVERIFY(w >= combo->width());
     QVERIFY(h >= 32.0);
 
-    auto* list = popup->property("contentItem").value<QQuickItem*>();
-    QVERIFY(list);
     // The item is displayed above the field, and it must remain physically clickable.
     QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier,
                       list->mapToScene(QPointF(24.0, 14.0)).toPoint());
