@@ -3,6 +3,14 @@
 
 #include "d3d11_kernels.hpp"
 
+#ifdef OPENSTITCH_EXPERIMENTAL_TATAMI_SCAN
+#include "tatami_d3d11.hpp"
+#include "tatami_d3d11_shader.hpp"
+
+#include <cmath>
+#include <cstring>
+#endif
+
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
@@ -51,6 +59,9 @@ struct AdapterState {
     ComPtr<ID3D11DeviceContext> context;
     std::array<ComPtr<ID3D11ComputeShader>, static_cast<std::size_t>(Kernel::Count)> shaders;
     std::mutex mutex;
+#ifdef OPENSTITCH_EXPERIMENTAL_TATAMI_SCAN
+    ComPtr<ID3D11ComputeShader> tatami_shader;
+#endif
 
     ID3D11ComputeShader* shader(Kernel kernel) const {
         return shaders[static_cast<std::size_t>(kernel)].Get();
@@ -469,6 +480,117 @@ std::expected<BackendOutput, Error> run(AdapterState& state, const Request& requ
     return output;
 }
 
+#ifdef OPENSTITCH_EXPERIMENTAL_TATAMI_SCAN
+constexpr std::size_t kTatamiMaxJobs = 65'535;
+constexpr std::size_t kTatamiMaxRows = 8'192;
+constexpr std::size_t kTatamiMaxOutputs = 4'194'304;
+
+bool supports_tatami(ID3D11Device& device) {
+    D3D11_FEATURE_DATA_DOUBLES doubles{};
+    D3D11_FEATURE_DATA_D3D11_OPTIONS options{};
+    return SUCCEEDED(
+               device.CheckFeatureSupport(D3D11_FEATURE_DOUBLES, &doubles, sizeof(doubles))) &&
+           doubles.DoublePrecisionFloatShaderOps &&
+           SUCCEEDED(device.CheckFeatureSupport(D3D11_FEATURE_D3D11_OPTIONS, &options,
+                                                sizeof(options))) &&
+           options.ExtendedDoublesShaderInstructions;
+}
+
+std::expected<void, Error> compile_tatami_shader(AdapterState& state) {
+    constexpr UINT flags =
+        D3DCOMPILE_ENABLE_STRICTNESS | D3DCOMPILE_IEEE_STRICTNESS | D3DCOMPILE_OPTIMIZATION_LEVEL3;
+    const auto& source = tatami_d3d11_shader::source;
+    ComPtr<ID3DBlob> bytecode;
+    ComPtr<ID3DBlob> errors;
+    HRESULT hr = D3DCompile(source, sizeof(source) - 1, "OpenStitch R01-04", nullptr, nullptr,
+                            "intersectRows", "cs_5_0", flags, 0, bytecode.GetAddressOf(),
+                            errors.GetAddressOf());
+    if (FAILED(hr)) {
+        if (errors) {
+            (void)std::fwrite(errors->GetBufferPointer(), 1, errors->GetBufferSize(), stderr);
+        }
+        return std::unexpected(failure(hr));
+    }
+    hr = state.device->CreateComputeShader(bytecode->GetBufferPointer(), bytecode->GetBufferSize(),
+                                           nullptr, state.tatami_shader.GetAddressOf());
+    if (FAILED(hr)) {
+        return std::unexpected(failure(hr));
+    }
+    return {};
+}
+
+bool valid_tatami_batch(std::span<const double> rows, std::span<const TatamiBatchJob> jobs,
+                        std::size_t outputCount) {
+    if (rows.size() > kTatamiMaxRows || jobs.size() > kTatamiMaxJobs ||
+        outputCount > kTatamiMaxOutputs ||
+        !std::all_of(rows.begin(), rows.end(), [](double row) { return std::isfinite(row); })) {
+        return false;
+    }
+    std::size_t nextOutput = 0;
+    for (const auto& job : jobs) {
+        if (job.row_count == 0 || job.first_row > rows.size() ||
+            job.row_count > rows.size() - job.first_row || job.output_offset != nextOutput ||
+            job.row_count > outputCount - nextOutput || !std::isfinite(job.x) ||
+            !std::isfinite(job.y) || !std::isfinite(job.dx) || !std::isfinite(job.dy) ||
+            job.dy == 0.0) {
+            return false;
+        }
+        nextOutput += job.row_count;
+    }
+    return nextOutput == outputCount;
+}
+
+std::optional<std::vector<double>> run_tatami(AdapterState& state, std::span<const double> rows,
+                                              std::span<const TatamiBatchJob> jobs,
+                                              std::size_t outputCount) {
+    if (!valid_tatami_batch(rows, jobs, outputCount)) {
+        return std::nullopt;
+    }
+    if (outputCount == 0) {
+        return std::vector<double>{};
+    }
+
+    std::scoped_lock lock(state.mutex);
+    auto& device = *state.device.Get();
+    auto& context = *state.context.Get();
+    constexpr auto valueStride = static_cast<UINT>(sizeof(double));
+    constexpr auto jobStride = static_cast<UINT>(sizeof(TatamiBatchJob));
+    const auto jobCount = static_cast<UINT>(jobs.size());
+    const auto valueCount = static_cast<UINT>(outputCount);
+    const auto outputBytes = valueCount * valueStride;
+    const auto gpuRows =
+        make_structured(device, static_cast<UINT>(rows.size()), valueStride, kRead, rows.data());
+    if (!gpuRows) {
+        return std::nullopt;
+    }
+    const auto gpuJobs = make_structured(device, jobCount, jobStride, kRead, jobs.data());
+    if (!gpuJobs) {
+        return std::nullopt;
+    }
+    const auto gpuOutput = make_structured(device, valueCount, valueStride, kWrite);
+    if (!gpuOutput) {
+        return std::nullopt;
+    }
+    const auto staging = make_buffer(device, {.ByteWidth = outputBytes,
+                                              .Usage = D3D11_USAGE_STAGING,
+                                              .CPUAccessFlags = D3D11_CPU_ACCESS_READ});
+    if (!staging) {
+        return std::nullopt;
+    }
+    std::vector<double> output(outputCount);
+    dispatch(context, state.tatami_shader.Get(), nullptr, gpuRows->read.Get(), gpuJobs->read.Get(),
+             gpuOutput->write.Get(), jobCount, 1);
+    context.CopyResource(staging->Get(), gpuOutput->buffer.Get());
+    D3D11_MAPPED_SUBRESOURCE mapped{};
+    if (FAILED(context.Map(staging->Get(), 0, D3D11_MAP_READ, 0, &mapped))) {
+        return std::nullopt;
+    }
+    std::memcpy(output.data(), mapped.pData, outputBytes);
+    context.Unmap(staging->Get(), 0);
+    return output;
+}
+#endif
+
 } // namespace
 
 std::expected<D3d11Adapter, Error> make_d3d11_adapter() {
@@ -517,5 +639,53 @@ std::expected<D3d11Adapter, Error> make_d3d11_adapter() {
         return std::unexpected(Error::BudgetExceeded);
     }
 }
+
+#ifdef OPENSTITCH_EXPERIMENTAL_TATAMI_SCAN
+std::expected<TatamiD3d11Adapter, Error> make_tatami_d3d11_adapter() {
+    try {
+        auto candidates = select_candidates();
+        if (!candidates) {
+            return std::unexpected(candidates.error());
+        }
+        if (candidates->empty()) {
+            return std::unexpected(Error::Unavailable);
+        }
+
+        const D3D_FEATURE_LEVEL required = D3D_FEATURE_LEVEL_11_0;
+        Error last = Error::Unsupported;
+        for (const auto& candidate : *candidates) {
+            auto state = std::make_shared<AdapterState>();
+            const HRESULT hr = D3D11CreateDevice(candidate.adapter.Get(), D3D_DRIVER_TYPE_UNKNOWN,
+                                                 nullptr, 0, &required, 1, D3D11_SDK_VERSION,
+                                                 state->device.ReleaseAndGetAddressOf(), nullptr,
+                                                 state->context.ReleaseAndGetAddressOf());
+            if (FAILED(hr)) {
+                last = hr == E_INVALIDARG ? Error::Unsupported : failure(hr);
+                continue;
+            }
+            if (!supports_tatami(*state->device.Get())) {
+                continue;
+            }
+            if (auto compiled = compile_tatami_shader(*state); !compiled) {
+                last = compiled.error();
+                continue;
+            }
+            return TatamiD3d11Adapter{
+                adapter_name(candidate.description.Description),
+                [state](std::span<const double> rows, std::span<const TatamiBatchJob> jobs,
+                        std::size_t outputCount) -> std::optional<std::vector<double>> {
+                    try {
+                        return run_tatami(*state, rows, jobs, outputCount);
+                    } catch (const std::bad_alloc&) {
+                        return std::nullopt;
+                    }
+                }};
+        }
+        return std::unexpected(last);
+    } catch (const std::bad_alloc&) {
+        return std::unexpected(Error::BudgetExceeded);
+    }
+}
+#endif
 
 } // namespace openstitch::compute_experiment
