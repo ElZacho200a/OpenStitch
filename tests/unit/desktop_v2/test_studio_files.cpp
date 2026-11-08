@@ -8,8 +8,8 @@
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQmlError>
-#include <QQuickStyle>
 #include <QQuickItem>
+#include <QQuickStyle>
 #include <QQuickWindow>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -204,15 +204,18 @@ void StudioFilesTest::comboPopupOpensAboveAtWindowBottom() {
     auto* popup = combo->property("popup").value<QObject*>();
     QVERIFY(popup);
 
-    const QPoint pos = combo->mapToScene(QPointF(combo->width() / 2.0, combo->height() / 2.0)).toPoint();
+    const QPoint pos =
+        combo->mapToScene(QPointF(combo->width() / 2.0, combo->height() / 2.0)).toPoint();
     QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, pos);
     QTRY_VERIFY_WITH_TIMEOUT(popup->property("visible").toBool(), 3'000);
     const double x = popup->property("x").toDouble();
     const double y = popup->property("y").toDouble();
     const double w = popup->property("width").toDouble();
     const double h = popup->property("height").toDouble();
-    QVERIFY2(y >= 7 && y + h <= window->height() - 7, "Drop-down extends beyond vertical window bounds");
-    QVERIFY2(x >= 7 && x + w <= window->width() - 7, "Drop-down extends beyond horizontal window bounds");
+    QVERIFY2(y >= 7 && y + h <= window->height() - 7,
+             "Drop-down extends beyond vertical window bounds");
+    QVERIFY2(x >= 7 && x + w <= window->width() - 7,
+             "Drop-down extends beyond horizontal window bounds");
     QVERIFY(w >= combo->width());
     QVERIFY(h >= 32.0);
 
