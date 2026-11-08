@@ -178,13 +178,19 @@ void RegionLayerNode::update(const RegionLayerData* data, QQuickWindow& window) 
         }
         hasFill_ = hasHighlight_ = false;
         fillRevision_ = highlightRevision_ = 0;
+        displayedRect_ = {};
         return;
     }
+    const bool rectChanged = displayedRect_ != data->rectMm;
     if (!hasFill_ || fillRevision_ != data->fillRevision) {
         clearChildren(*fillOpacity_);
         fillOpacity_->appendChildNode(textureNode(window, data->fill, data->rectMm));
         fillRevision_ = data->fillRevision;
         hasFill_ = true;
+    } else if (rectChanged) {
+        // A scale or document-size change moves the same segmentation texture in scene mm.
+        // Its fingerprint may be unchanged: update geometry without reallocating the texture.
+        static_cast<QSGSimpleTextureNode*>(fillOpacity_->firstChild())->setRect(data->rectMm);
     }
     if (!wantHigh) {
         if (hasHighlight_) {
@@ -196,7 +202,10 @@ void RegionLayerNode::update(const RegionLayerData* data, QQuickWindow& window) 
         highlightOpacity_->appendChildNode(textureNode(window, data->highlight, data->rectMm));
         highlightRevision_ = data->highlightRevision;
         hasHighlight_ = true;
+    } else if (rectChanged) {
+        static_cast<QSGSimpleTextureNode*>(highlightOpacity_->firstChild())->setRect(data->rectMm);
     }
+    displayedRect_ = data->rectMm;
     fillOpacity_->setOpacity(std::clamp(data->opacity, 0.0, 1.0));
     highlightOpacity_->setOpacity(1.0);
 }

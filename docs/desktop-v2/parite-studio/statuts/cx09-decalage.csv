@@ -1,0 +1,3 @@
+id,statut,preuve,controleur,composant
+522356b3,TESTED,"StudioRegistrationTest::compensatedExportDiffersFromTheDocumentAndNeverTouchesIt + staleRegistrationRefusesTheExport + panelOffersCompensationAndExport. Estimation non calibree: aucune recette sur piece-test physique",PullController::predictRegistration,PullPanel.qml pullRegistration / pullRegistrationCompensate
+129c1178,TESTED,"StudioRegistrationTest::compensatedExportDiffersFromTheDocumentAndNeverTouchesIt (fichier = octets de la sequence compensee, document inchange) + withoutCompensationNothingIsExportable + staleRegistrationRefusesTheExport. Pas de recette sur machine",PullController::exportCompensatedDst,PullPanel.qml pullExportCompensated

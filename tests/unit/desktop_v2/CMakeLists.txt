@@ -325,6 +325,18 @@ if(TARGET openstitch::studio_ui)
         get_filename_component(studio_fix_qml_imports "${Qt6_DIR}/../../../qml" ABSOLUTE)
         set_tests_properties(test_desktop_v2_studio_fix PROPERTIES
             ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QUICK_CONTROLS_STYLE=Basic;QML_IMPORT_PATH=${studio_fix_qml_imports};QT_QPA_FONTDIR=${PROJECT_SOURCE_DIR}/resources/fonts"
+        add_executable(test_desktop_v2_studio_registration test_studio_registration.cpp)
+        target_link_libraries(test_desktop_v2_studio_registration
+            PRIVATE openstitch::studio_ui Qt6::Test openstitch::warnings)
+        qt_add_resources(test_desktop_v2_studio_registration studio_registration_qml PREFIX "/studio"
+            BASE "${studio_test_qml_root}" FILES ${studio_all_qml}
+                "${studio_test_qml_root}/qml/qmldir")
+        target_compile_definitions(test_desktop_v2_studio_registration PRIVATE
+            OPENSTITCH_FIXTURES_DIR="${PROJECT_SOURCE_DIR}/tests/fixtures")
+        add_test(NAME test_desktop_v2_studio_registration COMMAND test_desktop_v2_studio_registration -o -,txt)
+        get_filename_component(studio_registration_qml_imports "${Qt6_DIR}/../../../qml" ABSOLUTE)
+        set_tests_properties(test_desktop_v2_studio_registration PROPERTIES
+            ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QUICK_CONTROLS_STYLE=Basic;QML_IMPORT_PATH=${studio_registration_qml_imports};QT_QPA_FONTDIR=${PROJECT_SOURCE_DIR}/resources/fonts"
             ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
         add_executable(test_desktop_v2_studio_space_points test_studio_space_points.cpp)
         target_link_libraries(test_desktop_v2_studio_space_points

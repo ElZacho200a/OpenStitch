@@ -184,6 +184,10 @@ struct GeometryRoot : QSGNode {
     QSGTransformNode* layers = new QSGTransformNode;
     QSGNode* overlay = new QSGNode;
     std::uint64_t overlayRevision{std::numeric_limits<std::uint64_t>::max()};
+    // Cached scene-graph layers are independent of the display-only overlay revision.
+    // A visibility change must redraw even if the document, camera and overlays did not move.
+    CanvasLayers displayedLayers;
+    std::shared_ptr<const OverlayImage> displayedVector;
     GeometryRoot() {
         appendChildNode(regions);
         world->appendChildNode(frame);
@@ -437,6 +441,9 @@ public:
         const auto dirty =
             root->resources.observe(state.scene, state.selectionRevision, state.camera.revision());
         const bool overlayDirty = root->overlayRevision != state.overlayRevision;
+        const bool layersChanged = root->displayedLayers != state.layers;
+        const bool vectorChanged = root->displayedVector != state.vectorImage;
+        const bool layerDirty = layersChanged || vectorChanged;
         const CanvasOverlays defaults;
         const CanvasOverlays& overlays = state.overlays ? *state.overlays : defaults;
         syncRegionLayer(*root, state, window);
@@ -465,7 +472,7 @@ public:
             }
             elapsed = static_cast<double>(timer.nsecsElapsed()) / 1e6;
         }
-        if (dirty.geometry || overlayDirty) {
+        if (dirty.geometry || overlayDirty || layerDirty) {
             root->frame->setOpacity(overlays.showHoop ? 1.0 : 0.0);
             root->stitches.all->setOpacity(overlays.showStitches ? 1.0 : 0.0);
             if (state.scene) {
@@ -499,7 +506,7 @@ public:
             root->world->setMatrix(matrix);
             root->layers->setMatrix(matrix);
         }
-        if (dirty.selection || dirty.camera || dirty.geometry || overlayDirty) {
+        if (dirty.selection || dirty.camera || dirty.geometry || overlayDirty || layerDirty) {
             clearChildren(*root->overlay);
             Vertices screen;
             appendScreenOverlays(screen, overlays, state);
@@ -520,6 +527,8 @@ public:
         }
         synchronizeSourceImage(*root, state, window);
         root->overlayRevision = state.overlayRevision;
+        root->displayedLayers = state.layers;
+        root->displayedVector = state.vectorImage;
         CanvasRenderResult result{root, dirty.geometry && state.scene != nullptr, elapsed};
         synchronizeRealistic(*root, state, overlays, window, dirty, overlayDirty, result);
         return result;
@@ -575,6 +584,8 @@ struct SoftwareRoot : QSGSimpleTextureNode {
     QSizeF viewport;
     double dpr{0};
     std::shared_ptr<const RegionLayerData> regions; // couche « regions » déjà rastérisée
+    CanvasLayers displayedLayers;
+    std::shared_ptr<const OverlayImage> displayedVector;
     std::uint64_t overlayRevision{std::numeric_limits<std::uint64_t>::max()};
     std::uint64_t sourceData{std::numeric_limits<std::uint64_t>::max()};
     std::uint64_t sourceView{std::numeric_limits<std::uint64_t>::max()};
@@ -590,6 +601,7 @@ public:
             root->resources.observe(state.scene, state.selectionRevision, state.camera.revision());
         if (!dirty.geometry && !dirty.camera && !dirty.selection &&
             root->regions == (state.layers.regions ? state.regions : nullptr) &&
+            root->displayedLayers == state.layers && root->displayedVector == state.vectorImage &&
             root->overlayRevision == state.overlayRevision && root->viewport == state.viewport &&
             root->sourceData == state.sourceImage.dataRevision &&
             root->sourceView == state.sourceImage.viewRevision &&
@@ -699,6 +711,8 @@ public:
         root->viewport = size;
         root->dpr = state.devicePixelRatio;
         root->overlayRevision = state.overlayRevision;
+        root->displayedLayers = state.layers;
+        root->displayedVector = state.vectorImage;
         root->sourceData = state.sourceImage.dataRevision;
         root->sourceView = state.sourceImage.viewRevision;
         return {root, dirty.geometry && state.scene != nullptr,
