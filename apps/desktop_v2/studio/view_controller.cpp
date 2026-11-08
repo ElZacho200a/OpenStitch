@@ -13,7 +13,7 @@ namespace openstitch::desktop_v2::studio {
 
 struct ViewController::SimData {
     std::shared_ptr<const document::Project> project;
-    stitch::StitchSequence sequence;
+    std::shared_ptr<const stitch::StitchSequence> sequence;
     SimulationMarks marks;
     std::set<std::uint64_t> visible;
     bool imported{false};
@@ -443,10 +443,18 @@ void ViewController::rebuildSimData() {
     const auto project = scene->project;
     tasks_.submit<std::shared_ptr<const SimData>>(
         "studio.simulation",
-        [project, revision](const TaskContext& task) -> Result<std::shared_ptr<const SimData>> {
-            auto sequence = stitch_generation::effective_sequence(*project, task);
+        [project, revision, cachedSequence = scene->effectiveSequence](const TaskContext& task)
+            -> Result<std::shared_ptr<const SimData>> {
+            // Reuse the sequence used to build the scene. Empty scenes without stitches
+            // retain the original fallback behaviour.
+            auto sequence = cachedSequence;
             if (!sequence) {
-                return std::unexpected(sequence.error());
+                auto generated = stitch_generation::effective_sequence(*project, task);
+                if (!generated) {
+                    return std::unexpected(generated.error());
+                }
+                sequence =
+                    std::make_shared<const stitch::StitchSequence>(std::move(*generated));
             }
             auto data = std::make_shared<SimData>();
             data->project = project;
@@ -457,14 +465,9 @@ void ViewController::rebuildSimData() {
                     data->visible.insert(object.id.value);
                 }
             }
-            data->sequence = std::move(*sequence);
-            auto marks = simulationMarks(*project);
-            if (marks) {
-                data->marks = std::move(*marks);
-            } else {
-                data->marks.total = data->sequence.commands.size();
-            }
-            const auto& commands = data->sequence.commands;
+            data->sequence = std::move(sequence);
+            data->marks = simulationMarks(*data->sequence);
+            const auto& commands = data->sequence->commands;
             data->stitchesBefore.reserve(commands.size() + 1);
             data->segmentsBefore.reserve(commands.size() + 1);
             std::uint32_t stitches = 0;
@@ -523,18 +526,18 @@ void ViewController::rebuildSimData() {
                 return;
             }
             sim_ = std::move(*result);
-            position_ = std::min<std::size_t>(position_, sim_->sequence.commands.size());
+            position_ = std::min<std::size_t>(position_, sim_->sequence->commands.size());
             publish();
             emit simChanged();
         });
 }
 
 int ViewController::simTotal() const {
-    return sim_ ? static_cast<int>(sim_->sequence.commands.size()) : 0;
+    return sim_ ? static_cast<int>(sim_->sequence->commands.size()) : 0;
 }
 
 std::size_t ViewController::segmentsAt(std::size_t position) const {
-    if (!sim_ || position >= sim_->sequence.commands.size()) {
+    if (!sim_ || position >= sim_->sequence->commands.size()) {
         return CanvasOverlays::all;
     }
     // O(1) pendant la lecture et le scrub ; auparavant O(position) et allocation
@@ -546,7 +549,7 @@ void ViewController::goTo(std::size_t position) {
     if (!sim_) {
         return;
     }
-    position = std::min(position, sim_->sequence.commands.size());
+    position = std::min(position, sim_->sequence->commands.size());
     if (position == position_ && simActive_) {
         return;
     }
@@ -571,7 +574,7 @@ void ViewController::startSimulation() {
 void ViewController::stopSimulation() {
     pause();
     simActive_ = false;
-    position_ = sim_ ? sim_->sequence.commands.size() : 0;
+    position_ = sim_ ? sim_->sequence->commands.size() : 0;
     publish();
     emit simChanged();
 }
@@ -580,7 +583,7 @@ void ViewController::play() {
     if (!sim_) {
         return;
     }
-    if (!simActive_ || position_ >= sim_->sequence.commands.size()) {
+    if (!simActive_ || position_ >= sim_->sequence->commands.size()) {
         position_ = 0;
         simActive_ = true;
     }
@@ -606,7 +609,7 @@ void ViewController::advance(int milliseconds) {
     carry_ += spm_ / 60.0 * speed_ * milliseconds / 1000.0;
     const auto whole = static_cast<std::size_t>(carry_);
     carry_ -= static_cast<double>(whole);
-    const auto total = sim_->sequence.commands.size();
+    const auto total = sim_->sequence->commands.size();
     const auto next = std::min(total, position_ + std::max<std::size_t>(1, whole));
     position_ = next;
     if (next >= total) {
@@ -623,9 +626,9 @@ void ViewController::step(int delta) {
     }
     pause();
     const auto current =
-        static_cast<std::int64_t>(simActive_ ? position_ : sim_->sequence.commands.size());
+        static_cast<std::int64_t>(simActive_ ? position_ : sim_->sequence->commands.size());
     const auto target = std::clamp<std::int64_t>(
-        current + delta, 0, static_cast<std::int64_t>(sim_->sequence.commands.size()));
+        current + delta, 0, static_cast<std::int64_t>(sim_->sequence->commands.size()));
     simActive_ = false; // force goTo to publish even at the same position
     goTo(static_cast<std::size_t>(target));
 }
@@ -710,7 +713,7 @@ QString ViewController::simTimeText() const {
     if (!sim_) {
         return QStringLiteral("–");
     }
-    const auto at = simActive_ ? position_ : sim_->sequence.commands.size();
+    const auto at = simActive_ ? position_ : sim_->sequence->commands.size();
     return QStringLiteral("%1 / %2 points")
         .arg(sim_->stitchesBefore[at])
         .arg(sim_->stitchesBefore.back());
@@ -720,7 +723,7 @@ QString ViewController::simEstimate() const {
     if (!sim_) {
         return {};
     }
-    const auto at = simActive_ ? position_ : sim_->sequence.commands.size();
+    const auto at = simActive_ ? position_ : sim_->sequence->commands.size();
     const double perStitch = 60.0 / spm_;
     return QStringLiteral("%1 / %2 à %3 points/min (hors changements de fil)")
         .arg(clock(sim_->stitchesBefore[at] * perStitch))
