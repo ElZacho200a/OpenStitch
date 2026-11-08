@@ -113,10 +113,37 @@ Rectangle {
 
             Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Theme.divider }
             SectionLabel { text: qsTr("CADRE ET MACHINE") }
+            Text {
+                objectName: "currentHoopSummary"
+                Layout.fillWidth: true
+                text: qsTr("Cadre actuel : %1 × %2 mm")
+                      .arg(panel.controller.currentHoop.widthMm)
+                      .arg(panel.controller.currentHoop.heightMm)
+                color: Theme.foreground
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.smallSize
+            }
             RowLayout {
                 Layout.fillWidth: true
-                StudioComboBox { id: hoopBox; objectName: "hoopBox"; Layout.fillWidth: true; model: panel.controller.libraryHoops; textRole: "name" }
-                StudioButton { objectName: "applyHoopButton"; text: qsTr("Appliquer"); onClicked: panel.controller.applyLibraryHoop(panel.controller.libraryHoops[hoopBox.currentIndex].id, 0) }
+                // This is a choice for a future change, not a readout of the current hoop.
+                // Defaulting to the library's first item misleadingly displayed 50×50 for
+                // projects whose actual hoop was 100×100 (QA-STUDIO-001 HOOP-001).
+                StudioComboBox {
+                    id: hoopBox
+                    objectName: "hoopBox"
+                    Layout.fillWidth: true
+                    model: panel.controller.libraryHoops
+                    textRole: "name"
+                    currentIndex: -1
+                    displayText: currentIndex < 0 ? qsTr("Choisir un cadre à appliquer…") : currentText
+                }
+                StudioButton {
+                    objectName: "applyHoopButton"
+                    text: qsTr("Appliquer")
+                    enabled: hoopBox.currentIndex >= 0
+                    onClicked: panel.controller.applyLibraryHoop(
+                                   panel.controller.libraryHoops[hoopBox.currentIndex].id, 0)
+                }
             }
             RowLayout {
                 Layout.fillWidth: true
