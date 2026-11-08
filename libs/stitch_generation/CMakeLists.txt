@@ -1,3 +1,5 @@
+option(OPENSTITCH_EXPERIMENTAL_TATAMI_SCAN "Enable the opt-in tatami scanline benchmark hook" OFF)
+
 add_library(openstitch_stitch_generation
     src/running_stitch.cpp
     src/tatami.cpp
@@ -37,6 +39,9 @@ add_library(openstitch_stitch_generation
 add_library(openstitch::stitch_generation ALIAS openstitch_stitch_generation)
 
 target_include_directories(openstitch_stitch_generation PUBLIC include)
+if(OPENSTITCH_EXPERIMENTAL_TATAMI_SCAN)
+    target_compile_definitions(openstitch_stitch_generation PRIVATE OPENSTITCH_EXPERIMENTAL_TATAMI_SCAN)
+endif()
 target_link_libraries(openstitch_stitch_generation
     PUBLIC openstitch::core openstitch::geometry openstitch::stitch openstitch::document
     PRIVATE openstitch::auto_satin openstitch::warnings

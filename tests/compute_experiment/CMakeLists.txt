@@ -21,4 +21,14 @@ if(WIN32)
         PRIVATE openstitch_compute_experiment opencv_core opencv_imgproc
                 nlohmann_json::nlohmann_json openstitch::warnings
                 d3d11 dxgi d3dcompiler)
+    if(OPENSTITCH_EXPERIMENTAL_TATAMI_SCAN)
+        add_executable(openstitch-tatami-batch EXCLUDE_FROM_ALL
+            tatami_batch_bench.cpp
+            d3d11_backend.cpp)
+        target_compile_definitions(openstitch-tatami-batch PRIVATE OPENSTITCH_EXPERIMENTAL_TATAMI_SCAN)
+        target_link_libraries(openstitch-tatami-batch
+            PRIVATE openstitch::project_ops openstitch::autodigitize openstitch::formats
+                    opencv_core opencv_imgproc nlohmann_json::nlohmann_json openstitch::warnings
+                    d3d11 dxgi d3dcompiler)
+    endif()
 endif()
