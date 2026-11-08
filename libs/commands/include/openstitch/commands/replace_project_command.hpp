@@ -20,8 +20,7 @@ public:
                           std::shared_ptr<const document::Project> after,
                           bool affectsEmbroidery = true, bool affectsSegmentation = true)
         : name_(std::move(name)), before_(std::move(before)), after_(std::move(after)),
-          affectsEmbroidery_(affectsEmbroidery),
-          affectsSegmentation_(affectsSegmentation) {}
+          affectsEmbroidery_(affectsEmbroidery), affectsSegmentation_(affectsSegmentation) {}
 
     void apply(document::Project& project) override { project = *after_; }
     void revert(document::Project& project) override { project = *before_; }

@@ -133,9 +133,12 @@ void VectorSpaceController::refresh() {
     const auto& session = studio_.session();
     const auto selected = selectedShapeIds();
     bool changed = false;
-    if (!layer_ || builtRevision_ != session.revision() || builtSelected_ != selected) {
+    // Une retouche de segmentation ne modifie PAS les vecteurs déjà produits.
+    // On garde le layer et son image raster, même si la révision du document avance.
+    const bool geometryDirty = builtRevision_ != session.revision() &&
+                               session.lastChangeAffectsEmbroidery();
+    if (!layer_ || geometryDirty || builtSelected_ != selected) {
         layer_ = VectorLayer::build(session.project(), selected);
-        builtRevision_ = session.revision();
         builtSelected_ = selected;
         ++builds_;
         changed = true;
@@ -143,6 +146,7 @@ void VectorSpaceController::refresh() {
             canvas_->setVectorLayer(std::shared_ptr<const OverlayImage>(layer_, &layer_->image()));
         }
     }
+    builtRevision_ = session.revision();
     const auto statuses =
         computeStageStatus(session.project(), {.segmentationDirty = dirty_,
                                                .dirtyReason = dirtyReason_.toStdString()});
