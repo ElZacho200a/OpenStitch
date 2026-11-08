@@ -10,6 +10,7 @@
 
 #include "openstitch/core/error.hpp"
 #include "openstitch/document/project.hpp"
+#include "openstitch/stitch/sequence.hpp"
 
 namespace openstitch::desktop_v2 {
 
@@ -21,6 +22,8 @@ struct SimulationMarks {
 };
 
 [[nodiscard]] Result<SimulationMarks> simulationMarks(const document::Project& project);
+// Use the already-generated effective stitch sequence for Studio simulation navigation.
+[[nodiscard]] SimulationMarks simulationMarks(const stitch::StitchSequence& sequence);
 
 // Première marque STRICTEMENT après `position`, ou `total` s'il n'y en a plus.
 [[nodiscard]] std::size_t nextMark(const std::vector<std::size_t>& marks, std::size_t position,
