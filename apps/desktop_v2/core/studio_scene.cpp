@@ -85,13 +85,16 @@ build_studio_scene(std::shared_ptr<const document::Project> project, std::uint64
     if (!sequence) {
         return std::unexpected(sequence.error());
     }
-    scene->commandCount = sequence->commands.size();
+    scene->effectiveSequence =
+        std::make_shared<const stitch::StitchSequence>(std::move(*sequence));
+    const auto& effective = *scene->effectiveSequence;
+    scene->commandCount = effective.commands.size();
 
     // Capture the original, full object identity for every emitted segment. The existing
     // segment builder remains the single authority for jump/trim/stop/source continuity.
     // A machine import has no editable objects; its unassigned source 0 remains unpickable.
     std::vector<std::uint64_t> identities;
-    identities.reserve(sequence->commands.size());
+    identities.reserve(effective.commands.size());
     const auto appendThreads = [&](const stitch::StitchSequence& part,
                                    std::optional<std::array<std::uint8_t, 3>> importedRgb) {
         return stitch_render::build_thread_segments(
@@ -116,17 +119,17 @@ build_studio_scene(std::shared_ptr<const document::Project> project, std::uint64
         const auto& blocks = scene->project->imported_design->color_blocks;
         std::size_t blockIndex = 0;
         std::size_t begin = 0;
-        for (std::size_t end = 0; end <= sequence->commands.size(); ++end) {
+        for (std::size_t end = 0; end <= effective.commands.size(); ++end) {
             if ((end % 4096) == 0 && task.cancelled()) {
                 return cancelled_error();
             }
-            if (end < sequence->commands.size() &&
-                sequence->commands[end].type != stitch::CommandType::ColorChange) {
+            if (end < effective.commands.size() &&
+                effective.commands[end].type != stitch::CommandType::ColorChange) {
                 continue;
             }
             stitch::StitchSequence part;
-            part.commands.assign(sequence->commands.begin() + static_cast<std::ptrdiff_t>(begin),
-                                 sequence->commands.begin() + static_cast<std::ptrdiff_t>(end));
+            part.commands.assign(effective.commands.begin() + static_cast<std::ptrdiff_t>(begin),
+                                 effective.commands.begin() + static_cast<std::ptrdiff_t>(end));
             const auto rgb = blockIndex < blocks.size()
                                  ? blocks[blockIndex].rgb
                                  : std::array<std::uint8_t, 3>{220, 220, 220};
@@ -136,7 +139,7 @@ build_studio_scene(std::shared_ptr<const document::Project> project, std::uint64
             ++blockIndex;
         }
     } else {
-        threads = appendThreads(*sequence, std::nullopt);
+        threads = appendThreads(effective, std::nullopt);
     }
     if (task.cancelled()) {
         return cancelled_error();
