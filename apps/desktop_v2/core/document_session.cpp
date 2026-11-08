@@ -32,12 +32,7 @@ bool DocumentSession::exists(const Target& target) const {
         if (!project_.segmentation) {
             return false;
         }
-        for (const RegionId r : segmentation::all_regions(*project_.segmentation)) {
-            if (r.value == target.id) {
-                return true;
-            }
-        }
-        return false;
+        return project_.segmentation->find(RegionId{target.id}) != nullptr;
     }
     return false;
 }
@@ -123,8 +118,24 @@ DocumentSession::BatchResult DocumentSession::applyBatch(std::string_view batchJ
         return result;
     }
     auto after = std::make_shared<const document::Project>(std::move(work));
-    execute(std::make_unique<commands::ReplaceProjectCommand>(label, std::move(before),
-                                                              std::move(after)));
+    // Les opérations strictement en amont ou de métadonnées ne touchent pas aux
+    // points déjà générés. Un lot mixte contenant une opération inconnue reste
+    // conservateur : il invalide la géométrie.
+    const auto doesNotChangeStitches = [](const std::string& op) {
+        return op == "rename" || op == "set_locked" || op == "set_semantic" ||
+               op == "set_source_image" || op == "image_denoise" ||
+               op == "segment_image" || op == "seg_merge_colors" ||
+               op == "seg_reduce_colors" || op == "seg_clean_islands" ||
+               op == "seg_merge_regions" || op == "seg_remove_region" ||
+               op == "seg_recolor_region";
+    };
+    const bool affectsStitches = !std::all_of(
+        result.report.outcomes.begin(), result.report.outcomes.end(),
+        [&](const project_ops::OperationOutcome& item) {
+            return item.ok && doesNotChangeStitches(item.op);
+        });
+    execute(std::make_unique<commands::ReplaceProjectCommand>(
+        label, std::move(before), std::move(after), affectsStitches));
     result.committed = true;
     return result;
 }

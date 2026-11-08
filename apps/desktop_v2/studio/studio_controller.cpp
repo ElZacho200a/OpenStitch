@@ -25,7 +25,7 @@ StudioController::StudioController(DocumentSession& session, QObject* parent)
             return;
         }
         lastNotifiedRevision_ = session_.revision();
-        if (scene_ && kind != ChangeKind::Replaced && !session_.lastChangeAffectsEmbroidery()) {
+        if (kind != ChangeKind::Replaced && !session_.lastChangeAffectsEmbroidery()) {
             emit changed();
             return;
         }
@@ -215,8 +215,10 @@ void StudioController::rebuildScene() {
         [snapshot, revision](const TaskContext& task) {
             return build_studio_scene(snapshot, revision, task);
         },
-        [this, request, revision](Result<std::shared_ptr<const StudioSceneSnapshot>>&& result) {
-            if (request != request_ || revision != session_.revision()) {
+        [this, request](Result<std::shared_ptr<const StudioSceneSnapshot>>&& result) {
+            // Un changement de segmentation entre-temps ne rend PAS cette géométrie
+            // périmée. Seule une mutation des points relance et remplace la requête.
+            if (request != request_) {
                 return;
             }
             busy_ = false;

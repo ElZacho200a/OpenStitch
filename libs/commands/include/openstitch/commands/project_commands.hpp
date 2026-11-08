@@ -39,6 +39,8 @@ public:
     }
     [[nodiscard]] std::string name() const override { return image::op_name(op_); }
 
+    [[nodiscard]] bool affectsEmbroidery() const override { return false; }
+
 private:
     image::ImageOp op_;
     std::optional<segmentation::Segmentation> stashedSegmentation_;
@@ -67,6 +69,8 @@ public:
         previous_.reset();
     }
     [[nodiscard]] std::string name() const override { return "Segmenter l'image"; }
+
+    [[nodiscard]] bool affectsEmbroidery() const override { return false; }
 
 private:
     std::optional<segmentation::Segmentation> next_;
@@ -105,6 +109,8 @@ public:
         return erase_ ? "Effacer une zone de détail" : "Peindre une zone de détail";
     }
 
+    [[nodiscard]] bool affectsEmbroidery() const override { return false; }
+
 private:
     int width_;
     int height_;
@@ -128,6 +134,8 @@ public:
         previous_ = {};
     }
     [[nodiscard]] std::string name() const override { return "Effacer les zones de détail"; }
+
+    [[nodiscard]] bool affectsEmbroidery() const override { return false; }
 
 private:
     segmentation::DetailMask previous_;
@@ -1029,6 +1037,8 @@ public:
         return locked_ ? "Figer l'ordre de l'objet" : "Libérer l'ordre de l'objet";
     }
 
+    [[nodiscard]] bool affectsEmbroidery() const override { return false; }
+
 private:
     ObjectId id_;
     bool locked_;
@@ -1175,6 +1185,8 @@ public:
     }
     [[nodiscard]] std::string name() const override { return "Mémoire sémantique"; }
 
+    [[nodiscard]] bool affectsEmbroidery() const override { return false; }
+
 private:
     ObjectId id_;
     std::optional<document::SemanticAnnotation> next_;
@@ -1198,6 +1210,8 @@ public:
         }
     }
     [[nodiscard]] std::string name() const override { return "Renommer l'objet"; }
+
+    [[nodiscard]] bool affectsEmbroidery() const override { return false; }
 
 private:
     ObjectId id_;

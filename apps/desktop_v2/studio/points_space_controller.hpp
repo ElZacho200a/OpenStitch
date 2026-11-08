@@ -8,6 +8,7 @@
 // (`effective_sequence`), ils suivent leurs formes à chaque changement.
 
 #include <QObject>
+#include <cstdint>
 #include <QString>
 #include <QVariantMap>
 
@@ -49,6 +50,7 @@ private:
     void refresh();
 
     StudioController& studio_;
+    std::uint64_t lastSeenRevision_{~0ULL};
     int objectCount_{0};
     int orphanCount_{0};
     QString state_{QStringLiteral("empty")};

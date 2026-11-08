@@ -17,7 +17,15 @@ PointsSpaceController::PointsSpaceController(StudioController& studio, QObject* 
 }
 
 void PointsSpaceController::refresh() {
-    const auto& project = studio_.session().project();
+    const auto& session = studio_.session();
+    if (lastSeenRevision_ == session.revision()) {
+        return; // statut ou sélection QML : pas de changement des objets
+    }
+    lastSeenRevision_ = session.revision();
+    if (!session.lastChangeAffectsEmbroidery()) {
+        return; // édition source : points et liens vers leurs formes inchangés
+    }
+    const auto& project = session.project();
     QVariantMap sources;
     int orphans = 0;
     int linked = 0;
