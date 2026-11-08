@@ -4,8 +4,9 @@ import QtQuick
 import QtQuick.Layouts
 import "."
 
-// CX04: catalogue de raccourcis vers les outils EXISTANTS. Aucun objet n'est créé ici :
-// seul ToolController valide les gestes via DocumentSession (une opération annulable).
+// CX04 : première tranche, accès aux outils de dessin EXISTANTS. Les six formes
+// spéciales de la V1 (dont cœur, flèche et spirale) nécessitent encore leur moteur
+// d'insertion dédié. Seul ToolController valide les gestes via DocumentSession.
 ColumnLayout {
     id: gallery
     objectName: "shapeGallery"
@@ -23,7 +24,7 @@ ColumnLayout {
         { id: "star", label: qsTr("Étoile"), tool: "draw.polygon-regular", sides: 5, star: true }
     ]
 
-    SectionLabel { text: qsTr("FORMES PRÉDÉFINIES") }
+    SectionLabel { text: qsTr("FORMES COURANTES") }
 
     Flow {
         Layout.fillWidth: true
