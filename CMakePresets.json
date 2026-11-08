@@ -7,7 +7,8 @@
       "binaryDir": "${sourceDir}/build/msvc",
       "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
       "cacheVariables": {
-        "CMAKE_PREFIX_PATH": "$env{QT_ROOT}"
+        "CMAKE_PREFIX_PATH": "$env{QT_ROOT}",
+        "OPENSTITCH_BUILD_LEGACY_V1": "ON"
       },
       "condition": {
         "type": "equals",

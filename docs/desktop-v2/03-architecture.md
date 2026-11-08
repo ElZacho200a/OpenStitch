@@ -2,6 +2,11 @@
 
 Décisions : [ADR 0003 (technologie)](../adr/0003-desktop-v2-technologie.md), [ADR 0004 (architecture)](../adr/0004-desktop-v2-architecture.md).
 
+**Évolution du 2026-11-06 :** le shell cible devient Qt Quick avec un canevas de géométrie GPU
+([ADR 0005](../adr/0005-studio-qtquick-gpu.md), [architecture Studio et migration](17-studio-gpu.md)).
+Les modèles `core/` décrits ici restent partagés ; la description Widgets ci-dessous documente
+le front existant conservé pendant la transition.
+
 ## Principe directeur
 
 Le moteur offre déjà les bons contrats (voir `01`). Desktop V2 ajoute **quatre modèles partagés** que l'ancien desktop

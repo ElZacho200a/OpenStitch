@@ -1,0 +1,24 @@
+id,statut,preuve,controleur,composant
+133ffb33,TESTED,StudioCompanionTest::companionPanelAndDialogsOpenFromQml,ActionController::runCommand(cmd.companion.open),CompanionPanel.qml
+b2820172,TESTED,StudioCompanionTest::companionApproveIsOneUndoStep,CompanionController::send/approve/undoLast,CompanionPanel.qml companionProposal
+031c45f1,TESTED,StudioCompanionTest::bridgeFollowsTheOpenDocument,CompanionController::setBridgeEnabled,CompanionPanel.qml companionBridgeToggle
+6835033c,UI_PARTIAL,StudioCompanionTest::bridgeFollowsTheOpenDocument (pont + commande copiee ; pas de lancement de terminal),CompanionController::prepareClaudeCode,CompanionPanel.qml companionOpenClaudeCode
+d0300f93,TESTED,StudioCompanionTest::helpIsGeneratedFromDefinitions,HelpController::shortcuts/gestures,ShortcutsSheet.qml
+de2f043a,TESTED,StudioCompanionTest::companionPanelAndDialogsOpenFromQml,HelpController::shortcuts,ShortcutsSheet.qml shortcutsSheet
+80d5551a,FUNCTIONAL_UNTESTED,HelpController::guide teste ; affichage du dialogue non pilote,HelpController::guide,HelpDialog.qml helpGuide
+aca41aaf,FUNCTIONAL_UNTESTED,HelpController::guide teste ; affichage du dialogue non pilote,HelpController::guide,HelpDialog.qml
+dcdb3679,FUNCTIONAL_UNTESTED,HelpController::aboutText teste ; dialogue ouvert sans verification du contenu,HelpController::aboutText,HelpDialog.qml helpAbout
+59c34276,FUNCTIONAL_UNTESTED,HelpController::toolHelp teste ; dialogue non pilote,HelpController::toolHelp,HelpDialog.qml helpTool
+7fd6fced,UI_PARTIAL,boutons Aide / IA / Preferences / Commandes dans la barre du document (pas de menu),Main.qml dispatch,Main.qml helpButton
+3a4ee332,TESTED,StudioCompanionTest::preferencesPersistAndRestore,PreferencesController,PreferencesDialog.qml
+c0dbf1e6,FUNCTIONAL_UNTESTED,StudioCompanionTest::keyIsOnlyInTheSecretStore (controleur ; formulaire non pilote),CompanionController::setApiKey/setModel/setProviderEnabled,PreferencesDialog.qml apiKeyField
+ea529ff7,TESTED,StudioCompanionTest::paletteCommandsRunThroughTheWindowDispatcher,ActionController::searchAll/runCommand,ActionPalette.qml
+2a299c02,ABSENT,,,
+65160629,ABSENT,,,
+6c667c5a,ABSENT,,,
+8a282d1d,ABSENT,,,
+249c0de8,ABSENT,,,
+ea48b8bd,ABSENT,,,
+e51f01aa,ABSENT,,,
+e7e778d4,ABSENT,,,
+063f27c8,ABSENT,,,

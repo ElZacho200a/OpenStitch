@@ -1,0 +1,12 @@
+id,statut,preuve,controleur,composant
+0134085f,TESTED,StudioToolsTest::basicShapesByMouse,ToolController::press/release (draw.rectangle),ToolRail tool_draw.rectangle + GpuCanvas Gesture::Tool
+b8cd428a,TESTED,StudioToolsTest::basicShapesByMouse,ToolController::press/release (draw.ellipse),ToolRail tool_draw.ellipse + GpuCanvas Gesture::Tool
+79f92460,TESTED,StudioToolsTest::polygonAndRegularShapes,ToolController::finish (draw.polygon),ToolRail tool_draw.polygon + ToolOverlay
+b5f01e17,TESTED,StudioToolsTest::polygonAndRegularShapes,ToolController::commitBox (draw.polygon-regular + etoile),ToolRail tool_draw.polygon-regular + ToolOptions sidesSpin/starCheck
+a8ddefdf,TESTED,StudioToolsTest::penBezierAndFreehand,ToolController::finish (draw.bezier ; createPenShape),ToolRail tool_draw.bezier + ToolOverlay
+c5d6568a,TESTED,StudioToolsTest::penBezierAndFreehand,ToolController::release (draw.freeform ; createFreehandShape),ToolRail tool_draw.freeform
+e22edfe6,TESTED,StudioToolsTest::knifeAndBooleans,ToolController::release (knife ; batchSplit),ToolRail tool_knife
+5a001324,TESTED,StudioToolsTest::nodeEditByMouse,ToolController::deleteSelectedNodes,ToolOptions nodeDeleteButton + touche Suppr du canevas
+fc27db70,TESTED,StudioToolsTest::snappingIsConfigurable,ToolController::snapped (grille),ToolOptions snapGridCheck
+6b06d4a3,TESTED,StudioToolsTest::snappingIsConfigurable,ToolController::snapped (sommets),ToolOptions snapVerticesCheck/snapRadiusSpin
+18202d51,UI_PARTIAL,StudioToolsTest::polygonAndRegularShapes (etoile seulement),ToolController::setStar,ToolOptions starCheck (autres formes predefinies absentes)

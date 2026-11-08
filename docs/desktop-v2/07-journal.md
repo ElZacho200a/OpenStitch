@@ -524,6 +524,26 @@ encore le desktop principal.
 - **Captures réelles** (premières de la V2 avec police) : 28 images, 5 inspectées ; cinq défauts d'affichage trouvés et corrigés, trois restent (voir `14`).
 - Ce que ce journal ne dit pas encore : le résultat de la CI de GitHub pour ces lots ; il est ajouté après le premier push.
 
+## 2026-11-06 — Fondations OpenStitch Studio Qt Quick / GPU
+
+- Audit des modèles V2, canevas Widgets, services de rendu, CMake/tests/CI et PR ouvertes (#236,
+  #279, #280) avant la bascule. Nouvelle [ADR 0005](../adr/0005-studio-qtquick-gpu.md) ; les
+  contrats de session, de sélection et de commandes de l'ADR 0004 sont conservés.
+- Cible expérimentale `openstitch_v2_studio`, shell QML graphite/framboise, chargement `.osp` en
+  tâche, scène immuable issue de `effective_sequence`, géométries QSG groupées, caméra et
+  sélection C++ communes. Les espaces filtrent le contexte d'un seul document. Le repli explicite
+  `--software` peint les segments CPU dans une texture de viewport ; Widgets conserve ses outils.
+- [Architecture et migration](17-studio-gpu.md), [banc natif reproductible](18-studio-benchmarks.md)
+  (1k/10k/50k/100k et Tentabrode 300 mm), génération de fixture par `run_digitize`, mesures de
+  cadence swap Quick / peinture CPU Widgets distinctes. Aucun gain de vitesse supposé ; mémoire
+  GPU et latence physique d'entrée restent indisponibles. Les résultats d'exécution sont ajoutés
+  après compilation et mesure, puis la CI est vérifiée après push.
+- Tests ciblés : caméra, sélection, géométrie/invalidation et invariants document/DST ; la
+  géométrie et les commandes restent testables sans Qt/GPU. Le shell de visualisation ne prétend
+  pas encore à la parité d'édition, enregistrement, exports ou compagnon. Les fichiers/branches des
+  PR ouvertes sont conservés et les nouveaux documents utilisent 17/18 pour éviter leur chevauchement.
+- Lot 1 Studio (ouvrir/enregistrer/undo/déplacer) : voir [19](19-studio-matrice-migration.md).
+
 ## 2026-11-06 — Session 4 : parité moteur, édition vectorielle (type de nœud, trous, texte)
 
 - Demande : « tout ce que le moteur peut faire doit se retrouver dans le desktop ». Instrument : `scripts/engine_parity.py` + `15-parite-moteur.md` (51 opérations dont 12 non référencées par nom ; 86 commandes dont 29 utilisées par la V1 seulement). **Recherche de noms : elle surestime et sous-estime** ; seule une qualification à la main fait foi.
@@ -558,3 +578,21 @@ encore le desktop principal.
 ## 2026-11-06 — Session 5 (suite 4) : menu radial
 
 - Menu radial (F2) : huit secteurs au plus, mêmes commandes que la barre flottante, clavier 1-8 / flèches / Entrée / Échap. Piège de test : un widget `WA_DeleteOnClose` fermé reste trouvable par `findChild` jusqu'à la suppression différée (plantage dans QTest) : le test prend le menu visible. Un premier rendu coupait « Premier plan » (zone de texte trop basse) : corrigé après capture. Option `--command radial.open` ajoutée à la capture. Vu à l'écran : `captures/menu-radial.png` (thème sombre).
+
+## 2026-11-07 — Studio : validation native et intégration de main
+
+- Sur `1372589`, builds complets MSVC Debug et Release réussis ; **2 579 / 2 579 tests**
+  dans chaque configuration. Quatre échecs CLI du premier passage Release provenaient du
+  décodage UTF-8 en CP850 par le CMake local ; relance complète réussie avec console UTF-8,
+  sans changer les assertions. [Recette et périmètre](17-studio-gpu.md#validation-locale-confirmée).
+- Cœur V2 effectivement compilé avec recherche Qt désactivée ; clang-format 18 vérifié sur
+  les 1 229 fichiers C++ puis les derniers correctifs. Captures Qt natives D3D11 et CPU au
+  DPR 1,5, sélection commune canevas/liste. Le Studio a aussi été lancé avec Tentabrode.
+- [Mesures MSAA 4×](18-studio-benchmarks.md) : environ 60 swaps/s jusqu'à 100k points,
+  géométrie construite une fois après 270 gestes. La cible stricte p95 local < 16,7 ms reste
+  non atteinte ; aucune supériorité globale sur Widgets n'est déduite. Essai OpenGL séparé.
+- Intégration de `main` `8c200e0` dans la branche de la PR #282 : conflits d'ajouts dans ce
+  journal et la roadmap résolus en conservant les deux historiques ; listes CMake vérifiées
+  comme l'union des deux parents. Après intégration : cinq cibles V2/Studio reconstruites,
+  **293 cas / 7 620 assertions** du cœur et les **deux shells QTest** réussis. CI GitHub suivie
+  séparément ; le prototype reste expérimental et la PR reste ouverte.

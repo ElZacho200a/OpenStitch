@@ -250,6 +250,7 @@ if(WIN32)
 endif()
 
 add_executable(openstitch WIN32 main.cpp)
+set_target_properties(openstitch PROPERTIES OUTPUT_NAME openstitch-v1)
 target_link_libraries(openstitch PRIVATE openstitch_desktop_widgets openstitch::warnings)
 
 # Copie les DLL Qt à côté de l'exécutable pour pouvoir le lancer directement.

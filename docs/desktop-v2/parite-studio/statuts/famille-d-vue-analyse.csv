@@ -1,0 +1,38 @@
+id,statut,preuve,controleur,composant
+eeb30959,TESTED,StudioViewTest::mainQmlHostsEveryPanel,ViewController::setGridVisible,ViewPanel.qml / GpuCanvas overlay grille
+ea169d9f,FUNCTIONAL_UNTESTED,StudioViewTest::gridGuidesAndLayersPersist,ViewController::setGridStepMm,ViewPanel.qml / persistance studio-view.txt
+b4e5b433,FUNCTIONAL_UNTESTED,,ViewController::setGuidesVisible,ViewPanel.qml / GpuCanvas overlay guides
+c150e52b,TESTED,StudioViewTest::mainQmlHostsEveryPanel,ViewController::addGuide(vertical),ViewPanel.qml / GpuCanvas overlay guides
+e00cf219,FUNCTIONAL_UNTESTED,StudioViewTest::gridGuidesAndLayersPersist,ViewController::addGuide(horizontal),ViewPanel.qml / GpuCanvas overlay guides
+694f85ac,FUNCTIONAL_UNTESTED,StudioViewTest::gridGuidesAndLayersPersist,ViewController::clearGuides,ViewPanel.qml / GpuCanvas overlay guides
+ca67b4fd,FUNCTIONAL_UNTESTED,,ViewController::setGuideColor,ViewPanel.qml / GpuCanvas overlay guides
+1b1d8969,TESTED,StudioViewTest::mainQmlHostsEveryPanel,ViewController::zoomRectangle,ViewPanel.qml / GpuCanvas::zoomRectMode rubberBand
+fb5f812c,FUNCTIONAL_UNTESTED,StudioViewTest::zoomCommandsAndCalibration,ViewController::calibrateZoom100,ViewPanel.qml / GpuCanvas::zoomToScale
+a766d0d5,FUNCTIONAL_UNTESTED,StudioViewTest::simulationNavigatesTheEffectiveSequence,ViewController::previousColour,SimulationBar.qml
+b24bb78f,FUNCTIONAL_UNTESTED,StudioViewTest::simulationNavigatesTheEffectiveSequence,ViewController::nextColour,SimulationBar.qml
+669c1398,FUNCTIONAL_UNTESTED,StudioViewTest::simulationNavigatesTheEffectiveSequence,ViewController::previousObject,SimulationBar.qml
+c492f162,FUNCTIONAL_UNTESTED,StudioViewTest::simulationNavigatesTheEffectiveSequence,ViewController::nextObject,SimulationBar.qml
+328035a0,FUNCTIONAL_UNTESTED,StudioViewTest::simulationNavigatesTheEffectiveSequence,ViewController::step(-1),SimulationBar.qml
+7e4bb52e,TESTED,StudioViewTest::mainQmlHostsEveryPanel,ViewController::step(1),SimulationBar.qml
+bf476973,TESTED,StudioViewTest::mainQmlHostsEveryPanel,ViewController::toEnd,SimulationBar.qml
+f271218c,TESTED,StudioViewTest::mainQmlHostsEveryPanel,ViewController::play/advance,SimulationBar.qml
+9caa2191,TESTED,StudioViewTest::mainQmlHostsEveryPanel,AnalysisController::runDiagnostics,AnalysisPanel.qml
+26ac8a5a,FUNCTIONAL_UNTESTED,,AnalysisController::centerOnFinding,AnalysisPanel.qml
+1e5cd1fe,TESTED,StudioViewTest::mainQmlHostsEveryPanel,AnalysisController::runDiagnostics,AnalysisPanel.qml
+5b0f567d,FUNCTIONAL_UNTESTED,,AnalysisController::computeDensity,ViewPanel.qml / GpuCanvas overlay image
+ae44ff48,FUNCTIONAL_UNTESTED,,AnalysisController::computeFabricRisk,ViewPanel.qml / GpuCanvas overlay image
+a6809735,FUNCTIONAL_UNTESTED,,AnalysisController::computeFabricRisk,ViewPanel.qml / GpuCanvas overlay image
+0e876999,FUNCTIONAL_UNTESTED,,AnalysisController::selectFindingObjects,AnalysisPanel.qml
+64625b92,FUNCTIONAL_UNTESTED,StudioViewTest::threadPlanColorwaysAndSewingOrder,ThreadController::selectThreadObjects,ThreadPanel.qml
+12510a3a,FUNCTIONAL_UNTESTED,StudioViewTest::threadPlanColorwaysAndSewingOrder,ThreadController::recolorThread,ThreadPanel.qml
+71dc358c,TESTED,StudioViewTest::mainQmlHostsEveryPanel,ThreadController::addColorway,ThreadPanel.qml
+abf0f4bd,FUNCTIONAL_UNTESTED,,ThreadController::activateColorway,ThreadPanel.qml
+f7de65cb,FUNCTIONAL_UNTESTED,,ThreadController::removeColorway,ThreadPanel.qml
+75d84458,FUNCTIONAL_UNTESTED,,ThreadController::nearestToSelection,ThreadPanel.qml
+a8d2bcf8,FUNCTIONAL_UNTESTED,StudioViewTest::threadPlanColorwaysAndSewingOrder,ThreadController::assignChartThread,ThreadPanel.qml
+fdbcceb1,FUNCTIONAL_UNTESTED,,ThreadController::snapFreeColours,ThreadPanel.qml
+1ebf6e41,FUNCTIONAL_UNTESTED,,ThreadController::importChart,ThreadPanel.qml
+71f07976,FUNCTIONAL_UNTESTED,,ThreadController::removeChart,ThreadPanel.qml
+d2b89407,FUNCTIONAL_UNTESTED,StudioViewTest::threadPlanColorwaysAndSewingOrder,ThreadController::moveInOrder,ThreadPanel.qml
+e1ae3eac,TESTED,StudioViewTest::mainQmlHostsEveryPanel,ThreadController::moveInOrder,ThreadPanel.qml
+4959ff8d,FUNCTIONAL_UNTESTED,StudioViewTest::hoopsAndMachine,AnalysisController::setMachine,AnalysisPanel.qml

@@ -23,6 +23,7 @@ add_library(openstitch_desktop_v2_core STATIC
     core/transform_batch.cpp
     core/edit_batch.cpp
     core/diagnostics_service.cpp
+    core/fix_service.cpp
     core/live_companion.cpp
     core/fade_axis.cpp
     core/path_optimizer.cpp
@@ -39,6 +40,7 @@ add_library(openstitch_desktop_v2_core STATIC
     core/document_services.cpp
     core/thread_plan.cpp
     core/workflow_guide.cpp
+    core/stage_status.cpp
     core/fade_service.cpp
     core/workspace_state.cpp
     core/arrange_batch.cpp
@@ -57,6 +59,7 @@ add_library(openstitch_desktop_v2_core STATIC
     core/simulation_nav.cpp
     core/point_edit.cpp
     core/source_image_tools.cpp
+    core/studio_scene.cpp
 )
 add_library(openstitch::desktop_v2_core ALIAS openstitch_desktop_v2_core)
 target_include_directories(openstitch_desktop_v2_core PUBLIC core)
@@ -73,12 +76,33 @@ target_link_libraries(openstitch_desktop_v2_core
 if(NOT OPENSTITCH_BUILD_DESKTOP)
     return()
 endif()
-find_package(Qt6 COMPONENTS Widgets Network QUIET)
-if(NOT Qt6_FOUND)
+
+# Le pont MCP live est partagé par les interfaces Widgets et Qt Quick. Le compiler dans chaque
+# bibliothèque duplique son Q_OBJECT/MOC dès qu'un exécutable lie les deux interfaces (par exemple
+# openstitch-studio-bench), ce que MSVC refuse avec LNK2005/LNK1169.
+find_package(Qt6 COMPONENTS Network QUIET)
+if(NOT TARGET Qt6::Network)
+    return()
+endif()
+set(CMAKE_AUTOMOC ON)
+add_library(openstitch_desktop_v2_live STATIC
+    ui/live_server.cpp
+    ui/live_server.hpp
+)
+add_library(openstitch::desktop_v2_live ALIAS openstitch_desktop_v2_live)
+target_include_directories(openstitch_desktop_v2_live PUBLIC ui)
+target_link_libraries(openstitch_desktop_v2_live
+    PUBLIC Qt6::Network openstitch::mcp
+    PRIVATE openstitch::warnings)
+
+if(OPENSTITCH_BUILD_STUDIO)
+    add_subdirectory(studio)
+endif()
+find_package(Qt6 COMPONENTS Widgets QUIET)
+if(NOT TARGET Qt6::Widgets)
     return()
 endif()
 
-set(CMAKE_AUTOMOC ON)
 add_library(openstitch_desktop_v2_ui STATIC
     ui/shell_window.cpp
     ui/shell_window.hpp
@@ -125,8 +149,6 @@ add_library(openstitch_desktop_v2_ui STATIC
     ui/chat_panel.hpp
     ui/companion_panel.cpp
     ui/companion_panel.hpp
-    ui/live_server.cpp
-    ui/live_server.hpp
     ui/thread_panel.hpp
     ui/welcome_page.cpp
     ui/welcome_page.hpp
@@ -144,7 +166,7 @@ target_include_directories(openstitch_desktop_v2_ui PUBLIC ui)
 target_link_libraries(openstitch_desktop_v2_ui
     PUBLIC Qt6::Widgets Qt6::Network openstitch::desktop_v2_core openstitch::project_io
            openstitch::agent openstitch::companion_backends
-    PRIVATE openstitch::warnings)
+    PRIVATE openstitch::desktop_v2_live openstitch::warnings)
 
 add_executable(openstitch_v2 WIN32 ui/main.cpp)
 target_link_libraries(openstitch_v2 PRIVATE openstitch::desktop_v2_ui openstitch::warnings)

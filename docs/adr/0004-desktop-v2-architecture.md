@@ -2,6 +2,9 @@
 
 Statut : **accepté** (2026-11-04).
 
+Le shell cible est révisé par l'[ADR 0005 — Studio Qt Quick / GPU](0005-studio-qtquick-gpu.md)
+(2026-11-06). Les modèles communs, l'historique unique et le chemin de mutation de cette ADR sont conservés.
+
 ## Contexte
 
 `MainWindow` porte 174 actions et ≈ 449 champs d'état ; la sélection, les tâches et les outils n'ont pas de modèle
