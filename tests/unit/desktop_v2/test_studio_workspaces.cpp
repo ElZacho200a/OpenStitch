@@ -157,6 +157,7 @@ private slots:
         QCOMPARE(rig.workspace->current(), QStringLiteral("points")); // comportement historique
         QVERIFY(onlyCanvas(rig));
         QCOMPARE(onlyCanvas(rig)->objectName(), QStringLiteral("studioCanvas"));
+        GpuCanvas* initialPoints = onlyCanvas(rig);
         for (const auto& id : {QStringLiteral("image"), QStringLiteral("segmentation"),
                                QStringLiteral("vector"), QStringLiteral("points")}) {
             rig.workspace->setCurrent(id);
@@ -166,6 +167,10 @@ private slots:
                     id == QStringLiteral("points"));
         }
         QVERIFY(rig.window->findChild<QObject*>(QStringLiteral("pointsSpace")));
+        // Les quatre scènes visitées sont gardées en mémoire, mais une seule est visible.
+        QCOMPARE(rig.window->findChildren<GpuCanvas*>().size(), 4);
+        rig.workspace->setCurrent(QStringLiteral("points"));
+        QCOMPARE(onlyCanvas(rig), initialPoints);
         // Le canevas de l'espace Vecteurs est vide de points (couche « stitches » éteinte).
         rig.workspace->setCurrent(QStringLiteral("vector"));
         QVERIFY(!onlyCanvas(rig)->layers().value("stitches").toBool());
