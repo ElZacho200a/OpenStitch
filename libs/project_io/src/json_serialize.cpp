@@ -1731,19 +1731,19 @@ Result<document::Project> project_from_json(const json& j) {
             // QA-STUDIO-001 ROB-006: never narrow unchecked JSON numbers to int32_t.
             // A forged canvas must not load and subsequently export as a valid DST.
 
-            const auto width = canvas_int32("width", 100'000);
+            const auto width = canvas_int32(c, "width", 100'000);
             if (!width) {
                 return std::unexpected(width.error());
             }
-            const auto height = canvas_int32("height", 100'000);
+            const auto height = canvas_int32(c, "height", 100'000);
             if (!height) {
                 return std::unexpected(height.error());
             }
-            const auto margin = canvas_int32("margin", 0);
+            const auto margin = canvas_int32(c, "margin", 0);
             if (!margin) {
                 return std::unexpected(margin.error());
             }
-            const auto radius = canvas_int32("cornerRadius", 0);
+            const auto radius = canvas_int32(c, "cornerRadius", 0);
             if (!radius) {
                 return std::unexpected(radius.error());
             }
