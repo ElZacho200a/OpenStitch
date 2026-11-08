@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "openstitch/commands/composite_command.hpp"
 
-#include <utility>
 #include <algorithm>
+#include <utility>
 
 namespace openstitch::commands {
 

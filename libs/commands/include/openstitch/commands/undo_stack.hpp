@@ -32,9 +32,7 @@ public:
     // redo) : base de la révision du pont live (ADR 0001). `clear` l'incrémente aussi, jamais
     // de retour en arrière.
     [[nodiscard]] std::uint64_t version() const { return version_; }
-    [[nodiscard]] bool lastChangeAffectsEmbroidery() const {
-        return lastChangeAffectsEmbroidery_;
-    }
+    [[nodiscard]] bool lastChangeAffectsEmbroidery() const { return lastChangeAffectsEmbroidery_; }
 
     // Marqueur « document propre » (état enregistré). markClean() mémorise la
     // position courante ; isClean() reste vrai après undo+redo qui y reviennent

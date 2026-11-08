@@ -25,8 +25,7 @@ StudioController::StudioController(DocumentSession& session, QObject* parent)
             return;
         }
         lastNotifiedRevision_ = session_.revision();
-        if (scene_ && kind != ChangeKind::Replaced &&
-            !session_.lastChangeAffectsEmbroidery()) {
+        if (scene_ && kind != ChangeKind::Replaced && !session_.lastChangeAffectsEmbroidery()) {
             emit changed();
             return;
         }

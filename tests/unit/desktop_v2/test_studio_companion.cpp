@@ -309,7 +309,8 @@ void StudioCompanionTest::canvasRegainsKeyboardFocusAfterClick() {
             GpuCanvas* found = nullptr;
             for (auto* candidate : rig.window->findChildren<GpuCanvas*>()) {
                 if (candidate->isVisible()) {
-                    if (found) return nullptr; // exactly one interactive canvas
+                    if (found)
+                        return nullptr; // exactly one interactive canvas
                     found = candidate;
                 }
             }

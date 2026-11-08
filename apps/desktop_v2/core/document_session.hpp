@@ -39,9 +39,7 @@ public:
     [[nodiscard]] std::shared_ptr<const document::Project> snapshot() const;
     [[nodiscard]] std::uint64_t revision() const { return revision_; }
     // Scope of the most recent document mutation, including undo/redo.
-    [[nodiscard]] bool lastChangeAffectsEmbroidery() const {
-        return lastChangeAffectsEmbroidery_;
-    }
+    [[nodiscard]] bool lastChangeAffectsEmbroidery() const { return lastChangeAffectsEmbroidery_; }
     [[nodiscard]] bool dirty() const { return !undo_.isClean(); }
     [[nodiscard]] bool canUndo() const { return undo_.canUndo(); }
     [[nodiscard]] bool canRedo() const { return undo_.canRedo(); }
