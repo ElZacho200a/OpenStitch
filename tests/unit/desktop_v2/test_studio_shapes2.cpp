@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// CX04 : clics QTest dans la galerie des formes de la V1.
+// CX04 : clics QTest dans la galerie des outils de dessin courants.
 // L'insertion des formes et l'annulation restent couvertes par test_studio_tools.cpp.
 #include <QGuiApplication>
 #include <QQmlComponent>
