@@ -57,6 +57,16 @@ bool press(QQuickWindow* window, const char* name) {
     auto* item = named(window, name);
     return item && item->isEnabled() && QMetaObject::invokeMethod(item, "click");
 }
+bool mouseClick(QQuickWindow* window, const char* name) {
+    auto* item = named(window, name);
+    if (!item || !item->isEnabled() || !item->isVisible()) {
+        return false;
+    }
+    const auto center =
+        item->mapToScene(QPointF(item->width() / 2.0, item->height() / 2.0)).toPoint();
+    QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, center);
+    return true;
+}
 
 struct Rig {
     DocumentSession session;
@@ -131,6 +141,28 @@ private slots:
         qmlRegisterType<GpuCanvas>("OpenStitch.Studio", 1, 0, "GpuCanvas");
         qmlRegisterUncreatableType<StudioController>("OpenStitch.Studio", 1, 0, "StudioController",
                                                      QStringLiteral("Provided by the application"));
+    }
+
+    void panelToolbarButtonsReceiveRealMouseClicks() {
+        Rig rig;
+        open(rig);
+        auto* digitizeHub = named(rig.window, "digitizeHub");
+        auto* viewHub = named(rig.window, "viewHub");
+        QVERIFY(digitizeHub && viewHub);
+        QTRY_VERIFY(digitizeHub->property("ready").toBool());
+        QTRY_VERIFY(viewHub->property("ready").toBool());
+
+        // Previous tests called AbstractButton.click() directly. That cannot reveal
+        // input occlusion from an overlapping overlay, popup or sibling item.
+        QVERIFY(mouseClick(rig.window, "satinPanelButton"));
+        QTRY_COMPARE(digitizeHub->property("openPanel").toString(), QStringLiteral("satin"));
+        QVERIFY(mouseClick(rig.window, "viewPanelButton"));
+        QTRY_COMPARE(viewHub->property("openPanel").toString(), QStringLiteral("view"));
+        QCOMPARE(digitizeHub->property("openPanel").toString(), QString());
+        QVERIFY(mouseClick(rig.window, "fadePanelButton"));
+        QTRY_COMPARE(digitizeHub->property("openPanel").toString(), QStringLiteral("fade"));
+        QCOMPARE(viewHub->property("openPanel").toString(), QString());
+        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\\n')));
     }
 
     void noFloatingToolbarsAndOneSidePanel() {
