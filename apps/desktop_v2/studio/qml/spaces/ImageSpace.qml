@@ -91,12 +91,21 @@ Item {
             color: Theme.panel
             border.color: Theme.border
             visible: root.hasImage
-            RowLayout {
-                id: toolRow
-                anchors.verticalCenter: parent.verticalCenter
-                anchors.left: parent.left
+            // Never clip actions silently: the toolbar remains scrollable on narrow canvases.
+            Flickable {
+                anchors.fill: parent
                 anchors.leftMargin: 8
-                spacing: 4
+                anchors.rightMargin: 8
+                clip: true
+                contentWidth: toolRow.implicitWidth
+                contentHeight: height
+                flickableDirection: Flickable.HorizontalFlick
+                boundsBehavior: Flickable.StopAtBounds
+
+                RowLayout {
+                    id: toolRow
+                    height: parent.height
+                    spacing: 4
                 Repeater {
                     model: [
                         { mode: 0, label: qsTr("Après"), tip: qsTr("Image traitée") },
@@ -127,6 +136,7 @@ Item {
                     checkable: true
                     checked: root.space && root.space.cropActive
                     onClicked: root.space.cropActive ? root.space.cancelCrop() : root.space.beginCrop()
+                }
                 }
             }
         }
