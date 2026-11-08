@@ -199,6 +199,42 @@ private slots:
         QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
     }
 
+    void togglingVectorVisibilityRepaintsWithoutMovingCamera() {
+        Rig rig;
+        open(rig);
+        enterSpace(rig);
+        const QPoint left = at(rig, -2.5, 0.0);
+        const QPoint right = at(rig, 2.5, 0.0);
+        QTRY_VERIFY_WITH_TIMEOUT(
+            [&] {
+                const auto image = rig.window->grabWindow();
+                return reddish(image.pixelColor(left)) && bluish(image.pixelColor(right));
+            }(),
+            8'000);
+
+        const auto cameraRevision = rig.canvas->camera().revision();
+        // A layer toggle is not a document or camera change. Both the software fallback
+        // and the scene-graph backend must invalidate their cached image independently.
+        rig.canvas->setLayers(QVariantMap{{QStringLiteral("vectors"), false}});
+        QTRY_VERIFY_WITH_TIMEOUT(
+            [&] {
+                const auto image = rig.window->grabWindow();
+                return !reddish(image.pixelColor(left)) && !bluish(image.pixelColor(right));
+            }(),
+            8'000);
+        QCOMPARE(rig.canvas->camera().revision(), cameraRevision);
+
+        rig.canvas->setLayers(QVariantMap{{QStringLiteral("vectors"), true}});
+        QTRY_VERIFY_WITH_TIMEOUT(
+            [&] {
+                const auto image = rig.window->grabWindow();
+                return reddish(image.pixelColor(left)) && bluish(image.pixelColor(right));
+            }(),
+            8'000);
+        QCOMPARE(rig.canvas->camera().revision(), cameraRevision);
+        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+    }
+
     void clickSelectsAShapeAndShowsItsOrigin() {
         Rig rig;
         open(rig);
