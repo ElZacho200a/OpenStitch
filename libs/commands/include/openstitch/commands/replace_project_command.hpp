@@ -17,7 +17,8 @@ namespace openstitch::commands {
 class ReplaceProjectCommand final : public ICommand {
 public:
     ReplaceProjectCommand(std::string name, std::shared_ptr<const document::Project> before,
-                          std::shared_ptr<const document::Project> after, bool affectsEmbroidery = true)
+                          std::shared_ptr<const document::Project> after,
+                          bool affectsEmbroidery = true)
         : name_(std::move(name)), before_(std::move(before)), after_(std::move(after)),
           affectsEmbroidery_(affectsEmbroidery) {}
 

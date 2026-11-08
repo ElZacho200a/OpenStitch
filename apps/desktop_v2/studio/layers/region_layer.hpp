@@ -25,10 +25,12 @@ class QQuickWindow;
 namespace openstitch::desktop_v2::studio {
 
 struct RegionLayerData {
-    QImage fill; // ARGB32 prémultiplié : régions colorées, contours assombris (ligne 0 = haut)
-    QImage highlight; // sélection : voile + contour ; nul sans sélection
-    QRectF rectMm;    // position en mm de scène
-    QRectF highlightRectMm; // position du seul masque sélectionné (texture ROI)
+    // ARGB32 prémultiplié : régions colorées, contours assombris.
+    QImage fill;
+    // Voile + contour de sélection, texture recadrée à la zone retenue.
+    QImage highlight;
+    QRectF rectMm;
+    QRectF highlightRectMm;
     double opacity{0.85};
     std::uint64_t fillRevision{0};
     std::uint64_t highlightRevision{0};
@@ -56,9 +58,9 @@ struct RegionHighlight {
 // Régions colorées + contours ; image nulle sans segmentation.
 [[nodiscard]] QImage buildRegionFill(const document::Project& project, bool contours);
 // Voile + contour des régions `selected` ; image nulle si rien n'est sélectionné.
-[[nodiscard]] RegionHighlight buildRegionHighlight(
-    const document::Project& project, const std::vector<std::uint64_t>& selected,
-    const std::vector<RegionPixelBounds>& bounds);
+[[nodiscard]] RegionHighlight buildRegionHighlight(const document::Project& project,
+                                                   const std::vector<std::uint64_t>& selected,
+                                                   const std::vector<RegionPixelBounds>& bounds);
 // Rectangle de scène de l'image de travail (mm).
 [[nodiscard]] QRectF regionLayerRect(const document::Project& project);
 // Pixel de l'image de travail sous un point de scène (mm) ; faux hors image.

@@ -8,9 +8,9 @@
 // (`effective_sequence`), ils suivent leurs formes à chaque changement.
 
 #include <QObject>
-#include <cstdint>
 #include <QString>
 #include <QVariantMap>
+#include <cstdint>
 
 #include "studio_controller.hpp"
 

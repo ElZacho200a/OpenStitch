@@ -134,8 +134,9 @@ DocumentSession::BatchResult DocumentSession::applyBatch(std::string_view batchJ
         [&](const project_ops::OperationOutcome& item) {
             return item.ok && doesNotChangeStitches(item.op);
         });
-    execute(std::make_unique<commands::ReplaceProjectCommand>(
-        label, std::move(before), std::move(after), affectsStitches));
+    auto replacement = std::make_unique<commands::ReplaceProjectCommand>(
+        label, std::move(before), std::move(after), affectsStitches);
+    execute(std::move(replacement));
     result.committed = true;
     return result;
 }

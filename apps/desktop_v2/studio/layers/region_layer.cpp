@@ -242,7 +242,8 @@ void RegionLayerNode::update(const RegionLayerData* data, QQuickWindow& window) 
         hasHighlight_ = false;
     } else if (!hasHighlight_ || highlightRevision_ != data->highlightRevision) {
         clearChildren(*highlightOpacity_);
-        highlightOpacity_->appendChildNode(textureNode(window, data->highlight, data->highlightRectMm));
+        auto* high = textureNode(window, data->highlight, data->highlightRectMm);
+        highlightOpacity_->appendChildNode(high);
         highlightRevision_ = data->highlightRevision;
         hasHighlight_ = true;
     } else if (highlightRectChanged) {
