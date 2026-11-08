@@ -178,9 +178,9 @@ void StudioFilesTest::comboPopupOpensAboveAtWindowBottom() {
     QQmlApplicationEngine engine;
     const QByteArray qml = R"qml(
         import QtQuick
-        import QtQuick.Window
+        import QtQuick.Controls
         import "."
-        Window {
+        ApplicationWindow {
             width: 400
             height: 300
             visible: true
