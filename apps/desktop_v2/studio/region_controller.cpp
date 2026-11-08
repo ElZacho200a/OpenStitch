@@ -4,6 +4,7 @@
 #include <QColor>
 #include <QImage>
 #include <algorithm>
+#include <cmath>
 
 #include "source_image_tools.hpp"
 
@@ -70,6 +71,16 @@ RegionController::~RegionController() {
     pump_.stop();
     tasks_.cancelAll();
     studio_.session().unsubscribe(token_);
+}
+
+int RegionController::mapWidth() const {
+    const auto& seg = studio_.session().project().segmentation;
+    return seg ? seg->width : 0;
+}
+
+int RegionController::mapHeight() const {
+    const auto& seg = studio_.session().project().segmentation;
+    return seg ? seg->height : 0;
 }
 
 bool RegionController::hasSegmentation() const {
@@ -143,12 +154,43 @@ void RegionController::refresh() {
     std::erase_if(selected_, [&](std::uint64_t id) {
         return std::find(ids.begin(), ids.end(), id) == ids.end();
     });
-    if (project.segmentation) {
-        const auto map = renderRegionMap(project, std::vector<std::uint64_t>{});
-        images_.images()->set(
-            QStringLiteral("regions"),
-            QImage(map.rgba.data(), map.width, map.height, map.width * 4, QImage::Format_RGBA8888)
-                .copy());
+    if (project.segmentation && project.segmentation->width > 0 &&
+        project.segmentation->height > 0) {
+        const auto& seg = *project.segmentation;
+        // Le panneau n'affiche que 170 px de haut : ne jamais générer une
+        // seconde carte RGBA plein format pour sa miniature.
+        constexpr int maxSide = 512;
+        const double factor = std::min(1.0, static_cast<double>(maxSide) /
+                                               std::max(seg.width, seg.height));
+        const int thumbW = std::max(1, static_cast<int>(std::lround(seg.width * factor)));
+        const int thumbH = std::max(1, static_cast<int>(std::lround(seg.height * factor)));
+        QImage preview(thumbW, thumbH, QImage::Format_RGBA8888);
+        preview.fill(Qt::transparent);
+        const auto w = static_cast<std::size_t>(seg.width);
+        for (int y = 0; y < thumbH; ++y) {
+            const int sy = std::min(seg.height - 1,
+                                    static_cast<int>((y + 0.5) * seg.height / thumbH));
+            auto* line = preview.scanLine(y);
+            for (int x = 0; x < thumbW; ++x) {
+                const int sx = std::min(seg.width - 1,
+                                        static_cast<int>((x + 0.5) * seg.width / thumbW));
+                const auto idx = static_cast<std::size_t>(sy) * w + sx;
+                if (idx >= seg.labels.size()) {
+                    continue;
+                }
+                const auto label = seg.labels[idx];
+                if (label == 0 || label > seg.region_slots.size() ||
+                    !seg.region_slots[label - 1]) {
+                    continue;
+                }
+                const auto& rgb = seg.region_slots[label - 1]->rgb;
+                line[x * 4] = rgb[0];
+                line[x * 4 + 1] = rgb[1];
+                line[x * 4 + 2] = rgb[2];
+                line[x * 4 + 3] = 255;
+            }
+        }
+        images_.images()->set(QStringLiteral("regions"), std::move(preview));
     } else {
         images_.images()->set(QStringLiteral("regions"), {});
     }

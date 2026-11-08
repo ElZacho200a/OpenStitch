@@ -24,6 +24,8 @@ class RegionController : public QObject {
     Q_PROPERTY(bool hasSegmentation READ hasSegmentation NOTIFY regionsChanged)
     Q_PROPERTY(QVariantList regions READ regions NOTIFY regionsChanged)
     Q_PROPERTY(int mapRevision READ mapRevision NOTIFY regionsChanged)
+    Q_PROPERTY(int mapWidth READ mapWidth NOTIFY regionsChanged)
+    Q_PROPERTY(int mapHeight READ mapHeight NOTIFY regionsChanged)
     Q_PROPERTY(QVariantList selected READ selected NOTIFY selectionChanged)
     Q_PROPERTY(int selectedCount READ selectedCount NOTIFY selectionChanged)
     Q_PROPERTY(bool stale READ stale NOTIFY staleChanged)
@@ -41,6 +43,8 @@ public:
     [[nodiscard]] bool hasSegmentation() const;
     [[nodiscard]] QVariantList regions() const { return regions_; }
     [[nodiscard]] int mapRevision() const { return mapRevision_; }
+    [[nodiscard]] int mapWidth() const;
+    [[nodiscard]] int mapHeight() const;
     [[nodiscard]] QVariantList selected() const;
     [[nodiscard]] int selectedCount() const { return static_cast<int>(selected_.size()); }
     [[nodiscard]] bool stale() const { return stale_; }
