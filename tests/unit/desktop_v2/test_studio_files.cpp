@@ -268,8 +268,7 @@ void StudioFilesTest::comboPopupOpensAboveAtWindowBottom() {
     // may scroll the first visible row away from index 0; explicitly scroll to the
     // beginning before testing a physical click on the first row.
     QVERIFY(QMetaObject::invokeMethod(list, "positionViewAtBeginning"));
-    QTRY_VERIFY_WITH_TIMEOUT(std::abs(list->property("contentY").toDouble()) < 0.5,
-                             3'000);
+    QTRY_VERIFY_WITH_TIMEOUT(std::abs(list->property("contentY").toDouble()) < 0.5, 3'000);
     // The item is displayed above the field, and it must remain physically clickable.
     QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier,
                       list->mapToScene(QPointF(24.0, 14.0)).toPoint());
