@@ -11,6 +11,7 @@ ColumnLayout {
     id: rail
     objectName: "pointsToolRail"
     required property var canvas
+    property bool workspaceActive: true
     readonly property var toolCtl: typeof tools !== "undefined" ? tools : null
     readonly property var digitizeCtl: typeof digitizer !== "undefined" ? digitizer : null
     // [mode, libellé, icône, infobulle, raccourci]
@@ -107,7 +108,7 @@ ColumnLayout {
             required property var modelData
             Shortcut {
                 sequence: holder.modelData[4]
-                enabled: sequence !== ""
+                enabled: rail.workspaceActive && sequence !== ""
                 onActivated: rail.toggleMode(holder.modelData[0])
             }
         }
