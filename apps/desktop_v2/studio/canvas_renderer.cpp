@@ -441,8 +441,9 @@ public:
         const auto dirty =
             root->resources.observe(state.scene, state.selectionRevision, state.camera.revision());
         const bool overlayDirty = root->overlayRevision != state.overlayRevision;
-        const bool layerDirty = root->displayedLayers != state.layers ||
-                                root->displayedVector != state.vectorImage;
+        const bool layersChanged = root->displayedLayers != state.layers;
+        const bool vectorChanged = root->displayedVector != state.vectorImage;
+        const bool layerDirty = layersChanged || vectorChanged;
         const CanvasOverlays defaults;
         const CanvasOverlays& overlays = state.overlays ? *state.overlays : defaults;
         syncRegionLayer(*root, state, window);
