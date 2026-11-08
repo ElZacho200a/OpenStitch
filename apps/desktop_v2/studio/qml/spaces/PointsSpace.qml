@@ -175,6 +175,9 @@ Item {
                 }
 
                 ViewPanel {
+
+
+                    active: root.active
                     id: viewHub
                     objectName: "viewHub"
                     anchors.fill: parent
