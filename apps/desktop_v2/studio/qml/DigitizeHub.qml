@@ -34,6 +34,7 @@ Item {
                     StudioButton { objectName: "fadePanelButton"; text: qsTr("Fondu"); checkable: true; checked: hub.openPanel === "fade"; onClicked: hub.toggle("fade") }
                     StudioButton { objectName: "pointEditPanelButton"; text: qsTr("Points"); checkable: true; checked: hub.openPanel === "points"; onClicked: hub.toggle("points") }
                     StudioButton { objectName: "pullPanelButton"; visible: typeof pull !== "undefined"; text: qsTr("Tirage"); checkable: true; checked: hub.openPanel === "pull"; onClicked: hub.toggle("pull") }
+                    StudioButton { objectName: "fixPanelButton"; visible: typeof fix !== "undefined"; text: qsTr("Corriger"); checkable: true; checked: hub.openPanel === "fix"; onClicked: hub.toggle("fix") }
                     StudioButton { objectName: "appliquePanelButton"; visible: typeof applique !== "undefined"; text: qsTr("Appliqué"); checkable: true; checked: hub.openPanel === "applique"; onClicked: hub.toggle("applique") }
                 }
             }
@@ -76,6 +77,7 @@ Item {
                 PointEditPanel { anchors.fill: parent; visible: hub.openPanel === "points"; controller: pointEdit }
                 PullPanel { anchors.fill: parent; visible: hub.openPanel === "pull"; controller: typeof pull !== "undefined" ? pull : null }
                 AppliquePanel { anchors.fill: parent; visible: hub.openPanel === "applique"; controller: typeof applique !== "undefined" ? applique : null }
+                FixPanel { anchors.fill: parent; visible: hub.openPanel === "fix"; controller: typeof fix !== "undefined" ? fix : null }
             }
         }
     }

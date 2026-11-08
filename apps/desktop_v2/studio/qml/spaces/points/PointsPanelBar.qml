@@ -43,6 +43,7 @@ Rectangle {
         Tab { objectName: "fadePanelButton"; visible: bar.digitizeHub.ready; iconName: "fade"; text: bar.label(qsTr("Fondu")); tooltip: qsTr("Fondu de deux couleurs"); checked: bar.digitizeHub.openPanel === "fade"; onClicked: bar.digitizeHub.toggle("fade") }
         Tab { objectName: "pointEditPanelButton"; visible: bar.digitizeHub.ready; iconName: "stitches"; text: bar.label(qsTr("Retouche")); tooltip: qsTr("Retouche point à point"); checked: bar.digitizeHub.openPanel === "points"; onClicked: bar.digitizeHub.toggle("points") }
         Tab { objectName: "pullPanelButton"; visible: bar.digitizeHub.ready && typeof pull !== "undefined"; iconName: "pull"; text: bar.label(qsTr("Tirage")); tooltip: qsTr("Compensation du tirage du tissu"); checked: bar.digitizeHub.openPanel === "pull"; onClicked: bar.digitizeHub.toggle("pull") }
+        Tab { objectName: "fixPanelButton"; visible: bar.digitizeHub.ready && typeof fix !== "undefined"; iconName: "analysis"; text: bar.label(qsTr("Corriger")); tooltip: qsTr("Corriger les problèmes, réduire les fils"); checked: bar.digitizeHub.openPanel === "fix"; onClicked: bar.digitizeHub.toggle("fix") }
         Tab { objectName: "appliquePanelButton"; visible: bar.digitizeHub.ready && typeof applique !== "undefined"; iconName: "applique"; text: bar.label(qsTr("Appliqué")); tooltip: qsTr("Appliqué : placement, maintien, découpe"); checked: bar.digitizeHub.openPanel === "applique"; onClicked: bar.digitizeHub.toggle("applique") }
 
         Item { Layout.fillWidth: true }

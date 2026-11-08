@@ -23,6 +23,7 @@ add_library(openstitch_desktop_v2_core STATIC
     core/transform_batch.cpp
     core/edit_batch.cpp
     core/diagnostics_service.cpp
+    core/fix_service.cpp
     core/live_companion.cpp
     core/fade_axis.cpp
     core/path_optimizer.cpp
