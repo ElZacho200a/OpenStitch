@@ -44,12 +44,12 @@ struct Sample {
 // Only the standalone benchmark enables recording, around one synchronous pipeline run.
 // Worker tasks update the same sample and must have joined before the recording ends.
 using Samples = std::array<Sample, stage_names.size()>;
-inline std::atomic<Samples*> active_samples{nullptr};
+inline std::atomic<Sample*> active_samples{nullptr};
 
 class Recording {
 public:
     explicit Recording(Samples& samples) {
-        active_samples.store(&samples, std::memory_order_release);
+        active_samples.store(samples.data(), std::memory_order_release);
     }
     ~Recording() { active_samples.store(nullptr, std::memory_order_release); }
     Recording(const Recording&) = delete;
@@ -61,7 +61,7 @@ public:
     explicit Scope(Stage stage, std::size_t upload = 0, std::size_t download = 0,
                    std::size_t buffers = 0) {
         if (auto* samples = active_samples.load(std::memory_order_acquire)) {
-            sample_ = &(*samples)[static_cast<std::size_t>(stage)];
+            sample_ = &samples[static_cast<std::size_t>(stage)];
             sample_->upload_bytes.fetch_add(upload, std::memory_order_relaxed);
             sample_->download_bytes.fetch_add(download, std::memory_order_relaxed);
             sample_->buffers.fetch_add(buffers, std::memory_order_relaxed);

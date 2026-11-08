@@ -135,6 +135,15 @@ template <typename Range> std::string hash(const Range& values) {
 }
 
 json stage_data(const pipeline_profile::Samples& samples) {
+    using pipeline_profile::Stage;
+    for (const auto stage :
+         {Stage::Decode, Stage::Preprocess, Stage::Segment, Stage::Digitize, Stage::Finish}) {
+        const auto index = static_cast<std::size_t>(stage);
+        if (samples[index].calls.load() == 0) {
+            throw std::runtime_error(std::string("missing timing for ") +
+                                     pipeline_profile::stage_names[index]);
+        }
+    }
     json result = json::object();
     for (std::size_t i = 0; i < samples.size(); ++i) {
         const auto& sample = samples[i];
