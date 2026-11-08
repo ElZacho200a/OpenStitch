@@ -732,7 +732,8 @@ void StudioEditTest::focusedFieldOwnsArrowKeysDeleteAndEscape() {
     component.setData(R"qml(
         import QtQuick
         TextInput { objectName: "qaField"; width: 80; height: 20 }
-    )qml", QUrl());
+    )qml",
+                      QUrl());
     auto* field = qobject_cast<QQuickItem*>(component.create());
     QVERIFY2(field, qPrintable(component.errorString()));
     field->setParentItem(rig.window->contentItem());
