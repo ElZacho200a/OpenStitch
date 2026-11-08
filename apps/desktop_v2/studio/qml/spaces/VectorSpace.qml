@@ -249,14 +249,37 @@ Item {
                     Layout.minimumHeight: 100
                 }
                 Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }
-                EditBar {
+                // Keep the layer tree usable while the many editing actions scroll in their
+                // own bounded area. Without this viewport, the ColumnLayout's implicit
+                // heights can exceed the inspector and overlap the layer rows.
+                Controls.ScrollView {
+                    id: vectorActionsScroll
+                    objectName: "vectorActionsScroll"
                     Layout.fillWidth: true
-                    Layout.margins: 12
-                }
-                ToolOptions {
-                    visible: root.toolController !== null
-                    Layout.fillWidth: true
-                    Layout.margins: 12
+                    Layout.preferredHeight: 260
+                    Layout.minimumHeight: 100
+                    Layout.maximumHeight: 320
+                    clip: true
+                    contentWidth: availableWidth
+                    Controls.ScrollBar.horizontal.policy: Controls.ScrollBar.AlwaysOff
+
+                    ColumnLayout {
+                        width: vectorActionsScroll.availableWidth
+                        spacing: 8
+                        EditBar {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: 12
+                            Layout.rightMargin: 12
+                            Layout.topMargin: 12
+                        }
+                        ToolOptions {
+                            visible: root.toolController !== null
+                            Layout.fillWidth: true
+                            Layout.leftMargin: 12
+                            Layout.rightMargin: 12
+                            Layout.bottomMargin: 12
+                        }
+                    }
                 }
             }
         }
