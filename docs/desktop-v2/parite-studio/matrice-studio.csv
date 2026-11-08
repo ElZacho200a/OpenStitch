@@ -50,7 +50,7 @@ c97c7aae,action,Créer un remplissage tatami,main_window.cpp,partiel,settableSti
 42245f06,action,Dupliquer la couche,document_panel.cpp,absent,,ABSENT,,,
 54f0a20a,action,Dupliquer la forme,main_window.cpp,fait,edit.duplicate,SERVICE_ONLY,,,
 b8d50ff8,action,Déboguer : afficher toutes les données,main_window_context_menu.cpp,absent,,ABSENT,,,
-522356b3,action,Décalage entre couleurs,main_window_analysis.cpp,absent,,ABSENT,,,
+522356b3,action,Décalage entre couleurs,main_window_analysis.cpp,absent,,TESTED,StudioRegistrationTest::compensatedExportDiffersFromTheDocumentAndNeverTouchesIt + staleRegistrationRefusesTheExport + panelOffersCompensationAndExport. Estimation non calibree: aucune recette sur piece-test physique,PullController::predictRegistration,PullPanel.qml pullRegistration / pullRegistrationCompensate
 3e57366b,action,Décaler,main_window_context_menu.cpp,absent,,ABSENT,,,
 d44d8b2a,action,Décaler la forme,main_window.cpp,absent,,ABSENT,,,
 a6809735,action,Déformation prévue du tissu,main_window_analysis.cpp,fait,Déformation prévue du tissu,FUNCTIONAL_UNTESTED,,AnalysisController::computeFabricRisk,ViewPanel.qml / GpuCanvas overlay image
@@ -67,7 +67,7 @@ a9055127,action,Exporter avec les derniers réglages,main_window.cpp,fait,file.e
 00565df7,action,Exporter la liste des fils (CSV),main_window_threads.cpp,fait,file.export-threads,TESTED,StudioFilesTest::documentExportsWriteRealFiles,FileController::exportThreadList,FilePanel.qml menu Exporter
 692834e4,action,Exporter le contour de découpe,main_window_applique.cpp,absent,,ABSENT,,,
 4922cbdc,action,Exporter le rendu réaliste (PNG),main_window_production.cpp,partiel,Exporter l'image,TESTED,StudioFilesTest::documentExportsWriteRealFiles,FileController::exportImage,FilePanel.qml menu Exporter
-129c1178,action,Exporter un DST compensé du décalage,main_window_analysis.cpp,absent,,ABSENT,,,
+129c1178,action,Exporter un DST compensé du décalage,main_window_analysis.cpp,absent,,TESTED,"StudioRegistrationTest::compensatedExportDiffersFromTheDocumentAndNeverTouchesIt (fichier = octets de la sequence compensee, document inchange) + withoutCompensationNothingIsExportable + staleRegistrationRefusesTheExport. Pas de recette sur machine",PullController::exportCompensatedDst,PullPanel.qml pullExportCompensated
 08ee1b58,action,Exporter une broderie machine,main_window.cpp,fait,Exporter pour la machine,TESTED,StudioFilesTest::machineExportImportRoundTrip,FileController::exportMachine,FilePanel.qml exportDialog
 d0850557,action,Fiche de production,main_window_production.cpp,fait,Fiche de production,TESTED,StudioFilesTest::documentExportsWriteRealFiles,FileController::exportProductionSheet,FilePanel.qml menu Exporter
 aba3cc8d,action,Fidélité à l'image,main_window_analysis.cpp,absent,,ABSENT,,,
