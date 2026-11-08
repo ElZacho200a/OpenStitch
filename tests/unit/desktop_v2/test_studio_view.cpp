@@ -22,6 +22,8 @@
 #include "studio_controller.hpp"
 #include "thread_controller.hpp"
 #include "view_controller.hpp"
+#include "openstitch/stitch_generation/overrides.hpp"
+#include "openstitch/stitch_render/segments.hpp"
 
 using namespace openstitch;
 using namespace openstitch::desktop_v2;
@@ -87,6 +89,7 @@ private slots:
     void zoomCommandsAndCalibration();
     void gridGuidesAndLayersPersist();
     void simulationNavigatesTheEffectiveSequence();
+    void simulationPrefixMatchesReferenceAtEveryPosition();
     void threadPlanColorwaysAndSewingOrder();
     void diagnosticsDensityRiskAndOptimisation();
     void hoopsAndMachine();
@@ -207,6 +210,25 @@ void StudioViewTest::simulationNavigatesTheEffectiveSequence() {
     QCOMPARE(rig.canvas.overlays()->visibleSegments, CanvasOverlays::all);
     rig.view.setMachineSpm(50); // refused
     QCOMPARE(rig.view.machineSpm(), 800);
+}
+
+void StudioViewTest::simulationPrefixMatchesReferenceAtEveryPosition() {
+    Rig rig;
+    const auto sequence = stitch_generation::effective_sequence(
+        *rig.studio.scene()->project, TaskContext{});
+    QVERIFY(sequence.has_value());
+    QCOMPARE(rig.view.simTotal(), static_cast<int>(sequence->commands.size()));
+    rig.view.startSimulation();
+    for (std::size_t i = 0; i < sequence->commands.size(); ++i) {
+        rig.view.setSimPosition(static_cast<int>(i));
+        const auto reference = i == 0 ? std::size_t{0}
+            : stitch_render::build_thread_segments(
+                  *sequence, i - 1,
+                  [](ObjectId) -> std::optional<std::array<std::uint8_t, 3>> {
+                      return std::array<std::uint8_t, 3>{0, 0, 0};
+                  }).size();
+        QCOMPARE(rig.canvas.overlays()->visibleSegments, reference);
+    }
 }
 
 void StudioViewTest::threadPlanColorwaysAndSewingOrder() {

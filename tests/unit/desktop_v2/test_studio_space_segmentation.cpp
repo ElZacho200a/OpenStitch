@@ -305,6 +305,7 @@ private slots:
         const auto mapRevision = rig.regions.mapRevision();
         const int fillRebuilds = rig.space.fillRebuilds();
         const int highlightRebuilds = rig.space.highlightRebuilds();
+        QSignalSpy geometry(&rig.studio, &StudioController::sceneChanged);
 
         // A simple click updates the lightweight selection overlay, not the region data.
         rig.regions.selectAtPixel(20, 20);
@@ -323,6 +324,7 @@ private slots:
         QVERIFY(rig.studio.scene() == scene);
         QVERIFY(rig.session.redo());
         QVERIFY(rig.studio.scene() == scene);
+        QCOMPARE(geometry.count(), 0);
         QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\\n')));
     }
 

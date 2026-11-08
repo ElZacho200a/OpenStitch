@@ -149,10 +149,9 @@ void RegionController::refresh() {
                         {QStringLiteral("pixels"), static_cast<qulonglong>(info.pixels)}});
     }
     // Élague la sélection : une région fusionnée ou supprimée n'existe plus.
-    const auto ids = allRegionIds(project);
     const auto before = selected_.size();
     std::erase_if(selected_, [&](std::uint64_t id) {
-        return std::find(ids.begin(), ids.end(), id) == ids.end();
+        return !project.segmentation || !project.segmentation->find(RegionId{id});
     });
     if (project.segmentation && project.segmentation->width > 0 &&
         project.segmentation->height > 0) {
