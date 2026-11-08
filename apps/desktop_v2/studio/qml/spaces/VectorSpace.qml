@@ -27,7 +27,7 @@ Item {
 
     // --- état publié et action « mettre à jour » du bandeau -----------------------------------
     function publish() {
-        if (!root.stage)
+        if (!root.active || !root.stage)
             return
         root.workspace.setStageStatus(root.spaceId, root.stage.stageState, root.stage.stageDetail)
         root.workspace.setStageAction(root.spaceId, qsTr("Mettre à jour depuis la segmentation"),
@@ -38,20 +38,21 @@ Item {
             root.stage.setSegmentationDirty(root.workspace.segmentationDirty, root.workspace.dirtyReason)
     }
 
-    Component.onCompleted: {
+    function activate() {
         if (root.stage) {
             root.stage.attach(spaceCanvas)
             root.syncDirty()
         }
         root.publish()
     }
-    Component.onDestruction: {
-        if (root.stage)
-            root.stage.detach()
-        // L'état se déduit à nouveau du document (calcul de base) une fois l'espace quitté.
+    function deactivate() {
+        if (root.stage) root.stage.detach()
         root.workspace.clearStageStatus(root.spaceId)
         root.workspace.setStageAction(root.spaceId, "", false)
     }
+    onActiveChanged: { if (active) activate(); else deactivate() }
+    Component.onCompleted: { if (active) activate() }
+    Component.onDestruction: deactivate()
 
     Connections {
         target: root.stage
@@ -65,7 +66,7 @@ Item {
         function onSpacesChanged() { root.syncDirty() }
         // L'espace courant exécute la mise à jour de SON étape (une seule étape d'annulation).
         function onUpdateRequested(id) {
-            if (id === root.spaceId && root.stage)
+            if (root.active && id === root.spaceId && root.stage)
                 shapePanel.askUpdate()
         }
     }
