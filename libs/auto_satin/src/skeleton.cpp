@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "openstitch/auto_satin/skeleton.hpp"
 
+#include "openstitch/core/pipeline_profile.hpp"
+
 #include <array>
 #include <cstdint>
 #include <vector>
@@ -72,6 +74,8 @@ constexpr auto kDeletable = make_tables();
 // parcours du bord (vérifié contre l'implémentation de référence naïve dans
 // tests/unit/auto_satin/test_skeleton_equivalence.cpp).
 RasterMask thin_zhang_suen(const RasterMask& mask) {
+    const auto bytes = mask.pixels.size();
+    const pipeline_profile::Scope profile(pipeline_profile::Stage::Skeleton, bytes, bytes);
     RasterMask out = mask;
     if (mask.width <= 0 || mask.height <= 0) {
         return out;

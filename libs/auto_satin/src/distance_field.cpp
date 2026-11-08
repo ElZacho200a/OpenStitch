@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "openstitch/auto_satin/distance_field.hpp"
 
+#include "openstitch/core/pipeline_profile.hpp"
+
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
 
@@ -34,7 +36,12 @@ DistanceField distance_transform(const RasterMask& mask) {
         }
     }
     cv::Mat dist;
-    cv::distanceTransform(bin, dist, cv::DIST_L2, 3); // en pixels
+    {
+        const auto pixels = bin.total();
+        const pipeline_profile::Scope profile(pipeline_profile::Stage::Distance, pixels,
+                                              pixels * sizeof(float), 1);
+        cv::distanceTransform(bin, dist, cv::DIST_L2, 3); // en pixels
+    }
     const float px = static_cast<float>(mask.transform.pixel_size_um);
     for (int y = 0; y < mask.height; ++y) {
         const auto* row = dist.ptr<float>(y);

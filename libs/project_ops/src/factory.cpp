@@ -9,6 +9,7 @@
 
 #include "debug_dump.hpp"
 #include "openstitch/autodigitize/autodigitize.hpp"
+#include "openstitch/core/pipeline_profile.hpp"
 #include "openstitch/geometry/polyline.hpp"
 #include "openstitch/image/image.hpp"
 #include "openstitch/image/ops.hpp"
@@ -498,7 +499,10 @@ Result<DigitizeReport> digitize_image_into(document::Project& project,
                     "valeurs : shapes, contours, stipple");
     }
 
-    const auto loaded = image::load_image(imagePath);
+    const auto loaded = [&] {
+        const pipeline_profile::Scope profile(pipeline_profile::Stage::Decode);
+        return image::load_image(imagePath);
+    }();
     if (!loaded) {
         return fail(ErrorCategory::InvalidFile,
                     "chargement de l'image impossible : " + loaded.error().message,
@@ -535,7 +539,12 @@ Result<DigitizeReport> digitize_image_into(document::Project& project,
     }
     image::Image working = project.original;
     if (!preOps->empty()) {
-        auto processed = image::apply_pipeline(project.original, *preOps);
+        auto processed = [&] {
+            const auto bytes = project.original.rgba.size();
+            const pipeline_profile::Scope profile(pipeline_profile::Stage::Preprocess, bytes,
+                                                  bytes);
+            return image::apply_pipeline(project.original, *preOps);
+        }();
         if (!processed) {
             return fail(ErrorCategory::OperationImpossible,
                         "traitement d'image impossible : " + processed.error().message,
@@ -563,9 +572,12 @@ Result<DigitizeReport> digitize_image_into(document::Project& project,
     // Stippling : pas de segmentation, l'image est lue comme une carte de tons.
     std::optional<segmentation::BackgroundCandidate> candidate;
     if (!stippling) {
-        auto seg = segmentation::segment(working, {.max_colors = s.max_colors,
+        auto seg = [&] {
+            const pipeline_profile::Scope profile(pipeline_profile::Stage::Segment);
+            return segmentation::segment(working, {.max_colors = s.max_colors,
                                                    .min_region_px = s.min_region_px,
                                                    .smoothing_radius_px = s.smoothing_px});
+        }();
         if (!seg) {
             return fail(ErrorCategory::OperationImpossible,
                         "segmentation impossible : " + seg.error().message,
@@ -603,8 +615,11 @@ Result<DigitizeReport> digitize_image_into(document::Project& project,
     autodigitize::LineLayerMasks debugMasks;
     const DigitizeSource src{project.segmentation ? &*project.segmentation : nullptr, &working,
                              project.mm_per_px};
-    auto outcome = digitize_objects(src, project.object_ids, s, skipLargest, log,
-                                    s.debug_dir.empty() ? nullptr : &debugMasks);
+    auto outcome = [&] {
+        const pipeline_profile::Scope profile(pipeline_profile::Stage::Digitize);
+        return digitize_objects(src, project.object_ids, s, skipLargest, log,
+                                s.debug_dir.empty() ? nullptr : &debugMasks);
+    }();
     if (!outcome) {
         return fail(ErrorCategory::OperationImpossible,
                     "numérisation impossible : " + outcome.error().message,

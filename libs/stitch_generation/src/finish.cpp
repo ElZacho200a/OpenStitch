@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "openstitch/stitch_generation/finish.hpp"
 
+#include "openstitch/core/pipeline_profile.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <map>
@@ -118,6 +120,7 @@ FinishResult finish_sequence_report(const stitch::StitchSequence& sequence,
     if (!f.enabled) {
         return {sequence, report};
     }
+    const pipeline_profile::Scope profile(pipeline_profile::Stage::Finish);
     // Points courts d'abord (Lot F) : les verrous ajoutés ensuite ne sont
     // jamais filtrés.
     // « Optimiser les trajets » niveau 3 : ordre et sens des passes de sous-couche (invisible,
@@ -226,6 +229,7 @@ FinishResult finish_sequence_report(const stitch::StitchSequence& sequence,
                     ++report.skipped_by_scope;
                 } else if (needTrim && !alwaysTrim && !colorChange && onlyJumps) {
                     ++report.candidate_gaps;
+                    const pipeline_profile::Scope routing(pipeline_profile::Stage::HiddenTravel);
                     travelPlan = planner->plan(prev->end - 1, last.pos, cmds[run.begin].pos);
                     switch (travelPlan.refusal) {
                     case TravelRefusal::TooLong:
