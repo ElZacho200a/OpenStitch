@@ -21,6 +21,7 @@
 #include "edit_controller.hpp"
 #include "fade_controller.hpp"
 #include "file_controller.hpp"
+#include "fix_controller.hpp"
 #include "gpu_canvas.hpp"
 #include "help_controller.hpp"
 #include "history_controller.hpp"
@@ -69,9 +70,10 @@ int main(int argc, char** argv) {
                       QStringLiteral("id")});
     parser.addOption(
         {QStringLiteral("open-panels"),
-         QStringLiteral("Recette : ouvre ces panneaux avant --screenshot (liste séparée par des "
-                        "virgules : vue, fils, analyse, satin, fondu, points, tirage, applique, "
-                        "inspecteur ; un seul panneau à la fois par groupe, le dernier gagne)"),
+         QStringLiteral(
+             "Recette : ouvre ces panneaux avant --screenshot (liste séparée par des "
+             "virgules : vue, fils, analyse, satin, fondu, points, tirage, applique, corriger, "
+             "inspecteur ; un seul panneau à la fois par groupe, le dernier gagne)"),
          QStringLiteral("liste")});
     parser.process(app);
     {
@@ -122,6 +124,7 @@ int main(int argc, char** argv) {
     DigitizeGestures digitizer(controller, pointEdit, fade, satin);
     PullController pull(controller, &inspector);
     AppliqueController applique(controller, inspector);
+    FixController fix(controller);
     PointsSpaceController pointsSpace(controller);
     VectorSpaceController vectorStage(controller);
     QQmlApplicationEngine engine;
@@ -129,6 +132,7 @@ int main(int argc, char** argv) {
     engine.rootContext()->setContextProperty(QStringLiteral("digitizer"), &digitizer);
     engine.rootContext()->setContextProperty(QStringLiteral("pull"), &pull);
     engine.rootContext()->setContextProperty(QStringLiteral("applique"), &applique);
+    engine.rootContext()->setContextProperty(QStringLiteral("fix"), &fix);
     engine.addImageProvider(QStringLiteral("prepare"), imageTools.createProvider());
     engine.rootContext()->setContextProperty(QStringLiteral("satin"), &satin);
     engine.rootContext()->setContextProperty(QStringLiteral("fade"), &fade);
@@ -185,6 +189,8 @@ int main(int argc, char** argv) {
                        (name == QStringLiteral("satin") || name == QStringLiteral("points") ||
                         name == QStringLiteral("applique"))) {
                 digitizeHub->setProperty("openPanel", name);
+            } else if (digitizeHub && name == QStringLiteral("corriger")) {
+                digitizeHub->setProperty("openPanel", QStringLiteral("fix"));
             } else if (digitizeHub && name == QStringLiteral("fondu")) {
                 digitizeHub->setProperty("openPanel", QStringLiteral("fade"));
             } else if (digitizeHub && name == QStringLiteral("tirage")) {
