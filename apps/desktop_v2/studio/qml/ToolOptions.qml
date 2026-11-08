@@ -38,7 +38,7 @@ ColumnLayout {
         visible: text !== ""
     }
 
-    // CX04 : galerie des formes de la V1, branchée sur le contrôleur de dessin existant.
+    // CX04 : accès rapide aux formes courantes, sans remplacer les six préréglages V1 à migrer.
     ShapeGallery { Layout.fillWidth: true; toolCtl: panel.toolCtl }
 
     RowLayout {
