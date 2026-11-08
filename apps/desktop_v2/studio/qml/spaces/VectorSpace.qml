@@ -110,7 +110,7 @@ Item {
                     implicitHeight: 1
                     color: Theme.divider
                 }
-                ToolRail { Layout.alignment: Qt.AlignHCenter }
+                ToolRail { Layout.alignment: Qt.AlignHCenter; workspaceActive: root.active }
                 Rectangle {
                     visible: root.toolController !== null
                     Layout.alignment: Qt.AlignHCenter
