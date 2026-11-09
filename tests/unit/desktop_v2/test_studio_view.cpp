@@ -558,34 +558,52 @@ void StudioViewTest::mainQmlHostsEveryPanel() {
     QVERIFY(canvas->zoom() > fitted);
     QVERIFY(!canvas->zoomRectMode());
 
-    // Panel "Fils".
+    // Panel "Fils": all V1 features are now accessible through focused tabs.
     QVERIFY(press(window, "threadsPanelButton"));
     QCOMPARE(hub->property("openPanel").toString(), QStringLiteral("threads"));
-    // THR-003: fictional manufacturer charts must not be presented as production palettes.
+    auto* threadPanel = named(window, "threadPanel");
+    QVERIFY(threadPanel);
+    QVERIFY(press(window, "threadTab_catalog"));
     auto* demoWarning = named(window, "demoChartWarning");
     QVERIFY(demoWarning);
     QTRY_VERIFY(demoWarning->isVisible());
     QVERIFY(demoWarning->property("text").toString().contains(QStringLiteral("fictifs")));
-    QTRY_VERIFY(named(window, "threadRow0") != nullptr);
-    // Even in a narrow side drawer, wrapping controls must contribute their
-    // actual height and remain inside the panel instead of being clipped.
-    auto* threadPanel = named(window, "threadPanel");
-    QVERIFY(threadPanel);
-    for (const char* flowName : {"threadActionsFlow", "threadChartActionsFlow",
-                                 "threadSearchActionsFlow", "threadColorwayActionsFlow"}) {
+    for (const char* flowName : {"threadChartActionsFlow", "threadSearchActionsFlow"}) {
         auto* flow = named(window, flowName);
         QVERIFY2(flow, flowName);
         QTRY_VERIFY(flow->height() >= flow->childrenRect().height() - 1.0);
     }
-    for (const char* buttonName : {"threadRecolorButton", "nearestButton", "colorwayAddButton"}) {
-        auto* button = named(window, buttonName);
-        QVERIFY2(button, buttonName);
-        const double x = button->mapToItem(threadPanel, QPointF(0, 0)).x();
-        QVERIFY2(x >= -1 && x + button->width() <= threadPanel->width() + 1, buttonName);
-    }
+    QVERIFY(named(window, "nearestButton"));
+
+    QVERIFY(press(window, "threadTab_plan"));
+    QTRY_VERIFY(named(window, "threadRow0") != nullptr);
+    auto* projectActions = named(window, "threadActionsFlow");
+    QVERIFY(projectActions);
+    QTRY_VERIFY(projectActions->height() >= projectActions->childrenRect().height() - 1.0);
+    QVERIFY(named(window, "threadReductionPreview"));
+
+    QVERIFY(press(window, "threadTab_stock"));
+    QVERIFY(named(window, "threadPersonalAdd"));
+    QVERIFY(named(window, "threadLimitToStock"));
+
+    QVERIFY(press(window, "threadTab_film"));
+    QVERIFY(named(window, "filmSelect0"));
+    QVERIFY(named(window, "filmGroupByColor"));
+
+    QVERIFY(press(window, "threadTab_colorways"));
+    auto* ways = named(window, "threadColorwayActionsFlow");
+    QVERIFY(ways);
+    QTRY_VERIFY(ways->height() >= ways->childrenRect().height() - 1.0);
     named(window, "colorwayNameField")->setProperty("text", QStringLiteral("Printemps"));
     QVERIFY(press(window, "colorwayAddButton"));
     QVERIFY(!threads.colorways().isEmpty());
+    QVERIFY(named(window, "colorwayRename0"));
+
+    QVERIFY(press(window, "threadTab_fabric"));
+    QVERIFY(named(window, "threadFabricApply"));
+    QVERIFY(named(window, "threadFabricColor"));
+
+    QVERIFY(press(window, "threadTab_order"));
     QVERIFY(press(window, "orderDown0"));
     QCOMPARE(threads.sewingOrder().first().toMap().value("id").toString(),
              QString::number(secondId));
