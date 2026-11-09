@@ -212,6 +212,7 @@ struct GeometryRoot : QSGNode {
     std::shared_ptr<const OverlayImage> displayedVector;
     std::vector<OverlayImageKey> displayedImageKeys;
     GeometryRoot() {
+        vector->setOpacity(0.0); // vector layer disabled until its space enables it
         appendChildNode(regions);
         world->appendChildNode(frame);
         world->appendChildNode(stitches.all);
