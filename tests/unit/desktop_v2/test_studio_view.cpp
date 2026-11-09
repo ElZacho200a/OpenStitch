@@ -92,6 +92,8 @@ private slots:
     void simulationPrefixMatchesReferenceAtEveryPosition();
     void metadataBatchDoesNotRebuildStitches();
     void threadPlanColorwaysAndSewingOrder();
+    void stockInventoryAndAtomicClosestThreadAssignment();
+    void colorFilmReductionAndFabricAreUndoable();
     void diagnosticsDensityRiskAndOptimisation();
     void hoopsAndMachine();
     void initTestCase();
@@ -302,6 +304,88 @@ void StudioViewTest::threadPlanColorwaysAndSewingOrder() {
     QVERIFY(rig.threads.exportThreadList(
         QUrl::fromLocalFile(out.filePath(QStringLiteral("threads.csv")))));
     QVERIFY(QFileInfo::exists(out.filePath(QStringLiteral("threads.csv"))));
+}
+
+void StudioViewTest::stockInventoryAndAtomicClosestThreadAssignment() {
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const auto cfg = std::filesystem::path(directory.path().toStdWString());
+    DocumentSession session;
+    StudioController studio(session);
+    session.replaceProject(fixture(), true);
+    ThreadController threads(studio, cfg);
+    const QString chart = threads.charts().first().toMap().value("id").toString();
+    const auto nearest = threads.nearestToEntry(0, chart, 1);
+    QVERIFY(!nearest.isEmpty());
+    const QString code = nearest.first().toMap().value("code").toString();
+    QVERIFY(threads.setOwnedThread(chart, code, true));
+    QVERIFY(threads.ownsThread(chart, code));
+    QVERIFY(!threads.setOwnedThread(chart, code, true)); // no duplicate
+    QVERIFY(threads.addPersonalThread(QStringLiteral("MY-01"),
+                                      QStringLiteral("Raspberry"),
+                                      QStringLiteral("#b41141")));
+    QCOMPARE(threads.stockCount(), 2);
+    threads.setLimitToStock(true);
+    QVERIFY(threads.limitToStock());
+    const auto closest = threads.nearestToEntry(0, chart, 1);
+    QCOMPARE(closest.first().toMap().value("code").toString(), QStringLiteral("MY-01"));
+
+    const auto beforeUndo = session.undoNames().size();
+    QCOMPARE(threads.snapFreeColours(chart), 2);
+    QCOMPARE(session.undoNames().size(), beforeUndo + 1);
+    QVERIFY(session.project().embroidery_objects[0].thread.has_value());
+    QVERIFY(session.project().embroidery_objects[1].thread.has_value());
+    QVERIFY(session.undo());
+    QVERIFY(!session.project().embroidery_objects[0].thread.has_value());
+    QVERIFY(!session.project().embroidery_objects[1].thread.has_value());
+
+    // Stock is a user preference, not stored inside Project or the undo history.
+    ThreadController reloaded(studio, cfg);
+    QCOMPARE(reloaded.stockCount(), 2);
+    QVERIFY(reloaded.limitToStock());
+    QCOMPARE(reloaded.ownedThreads().size(), 2);
+    QVERIFY(reloaded.removeOwnedThread(QStringLiteral("personal"), QStringLiteral("MY-01")));
+    QCOMPARE(reloaded.stockCount(), 1);
+    QVERIFY(reloaded.setOwnedThread(chart, code, false));
+    QCOMPARE(reloaded.stockCount(), 0);
+    QCOMPARE(threads.stockCount(), 2); // each instance caches its own preferences
+}
+
+void StudioViewTest::colorFilmReductionAndFabricAreUndoable() {
+    Rig rig;
+    auto blocks = rig.threads.colorFilm();
+    QCOMPARE(blocks.size(), 2);
+    QCOMPARE(rig.threads.filmChanges(), 1);
+    QVERIFY(rig.threads.selectFilmBlock(0));
+    QCOMPARE(rig.session.selection().targets().size(), std::size_t{1});
+    const auto oldFirst = rig.session.project().embroidery_objects.front().id;
+    QVERIFY(rig.threads.moveFilmBlock(0, 1));
+    QCOMPARE(rig.session.project().embroidery_objects.front().id, ObjectId{secondId});
+    QVERIFY(rig.session.undo());
+    QCOMPARE(rig.session.project().embroidery_objects.front().id, oldFirst);
+
+    const auto preview = rig.threads.previewReduction(1);
+    QCOMPARE(preview.value("before").toInt(), 2);
+    QCOMPARE(preview.value("after").toInt(), 1);
+    QCOMPARE(preview.value("affected").toInt(), 1);
+    const auto before = rig.session.undoNames().size();
+    QVERIFY(rig.threads.applyReduction());
+    QCOMPARE(rig.session.undoNames().size(), before + 1);
+    QVERIFY(!rig.threads.applyReduction()); // a preview can only be accepted once
+    QVERIFY(rig.session.undo());
+    QCOMPARE(rig.threads.threadCount(), 2);
+
+    const auto original = rig.threads.fabric();
+    QCOMPARE(original.value("color").value<QColor>(), QColor(Qt::white));
+    QVERIFY(!rig.threads.setFabric(QStringLiteral("bad"), QString(), QString(),
+                                    QString(), 0, 1));
+    QVERIFY(rig.threads.setFabric(QStringLiteral("#112233"), QStringLiteral("Lin"),
+                                  QStringLiteral("woven"), QStringLiteral("cut-away"),
+                                  30, 1.25));
+    QCOMPARE(rig.threads.fabric().value("name").toString(), QStringLiteral("Lin"));
+    QCOMPARE(rig.session.project().fabric.material, std::string("woven"));
+    QVERIFY(rig.session.undo());
+    QCOMPARE(rig.threads.fabric().value("color").value<QColor>(), QColor(Qt::white));
 }
 
 void StudioViewTest::diagnosticsDensityRiskAndOptimisation() {
