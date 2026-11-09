@@ -15,7 +15,10 @@ ColumnLayout {
                                       : (editor.layers.length > 0 ? editor.layers[0].id : "")
 
     Flow {
+        objectName: "layerActionsFlow"
         Layout.fillWidth: true
+        // Wrapped rows must take their real height above ObjectTree.
+        implicitHeight: childrenRect.height
         Layout.leftMargin: 10
         Layout.rightMargin: 10
         Layout.topMargin: 6
