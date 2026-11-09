@@ -82,6 +82,18 @@ class DeterminismGateTests(unittest.TestCase):
             ["pass-1:invalid-json-stitches"],
         )
 
+    def test_fractional_boolean_and_negative_counts_are_rejected(self):
+        for value in (1.5, True, -1, "2"):
+            with self.subTest(value=value):
+                def fake(argv, **kwargs):
+                    Path(argv[3]).write_bytes(dst())
+                    return SimpleNamespace(
+                        returncode=0, stdout=json.dumps({"stitches": value})
+                    )
+
+                report = verify(Path("fake-cli"), Path("fixture.png"), runner=fake)
+                self.assertEqual(report["failures"], ["pass-1:invalid-json-stitches"])
+
     def test_timeout_and_truncated_dst_are_failures(self):
         def timed_out(argv, **kwargs):
             raise subprocess.TimeoutExpired(cmd=argv, timeout=kwargs["timeout"])
