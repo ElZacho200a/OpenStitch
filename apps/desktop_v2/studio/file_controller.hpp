@@ -72,7 +72,7 @@ public:
     // Annuler » doit répondre par resolveGuard("save" | "discard" | "cancel").
     Q_INVOKABLE void requestNew();
     Q_INVOKABLE void requestOpenRecent(int index);
-    // Ouvre selon l'extension : .osp, broderie machine, image (demande les options), SVG, DXF.
+    // Ouvre selon l'extension : .osp, broderie machine, image (source seule), SVG, DXF.
     Q_INVOKABLE void openPath(const QString& path);
     Q_INVOKABLE void openUrl(const QUrl& url);
     // Glisser-déposer : traite le premier fichier local de la liste.
@@ -136,8 +136,8 @@ signals:
     // QML doit ouvrir « Enregistrer sous » pour poursuivre (document sans fichier).
     void saveAsRequested();
     void quitApproved();
-    // Une image a été demandée : QML ouvre la boîte d'options puis appelle importImage().
-    void imageImportRequested(const QString& path);
+    // Image chargée et adoptée : QML active l'espace Image, sans lancer la segmentation.
+    void imageImported();
 
 private:
     void setMessage(const QString& text, bool error = false);
