@@ -12,8 +12,8 @@
 #include "openstitch/thread_palette/thread_stock.hpp"
 
 #include "document_services.hpp"
-#include "thread_palette_service.hpp"
 #include "studio_controller.hpp"
+#include "thread_palette_service.hpp"
 
 namespace openstitch::desktop_v2::studio {
 
@@ -82,11 +82,11 @@ public:
     Q_INVOKABLE int snapFreeColours(const QString& chartId);
     Q_INVOKABLE bool setOwnedThread(const QString& chartId, const QString& code, bool owned);
     Q_INVOKABLE bool addPersonalThread(const QString& code, const QString& name,
-                                      const QString& hexColor);
+                                       const QString& hexColor);
     Q_INVOKABLE bool removeOwnedThread(const QString& chartId, const QString& code);
     Q_INVOKABLE bool assignOwnedThread(int entry, const QString& chartId, const QString& code);
     Q_INVOKABLE [[nodiscard]] bool ownsThread(const QString& chartId,
-                                              const QString& code) const;
+                                               const QString& code) const;
     Q_INVOKABLE [[nodiscard]] QVariantMap previewReduction(int maxThreads);
     Q_INVOKABLE bool applyReduction();
     Q_INVOKABLE bool selectFilmBlock(int index);
@@ -117,10 +117,9 @@ private:
     [[nodiscard]] std::vector<ThreadChoice> stockChoices() const;
     [[nodiscard]] std::vector<ThreadChoice> nearestChoices(
         std::array<std::uint8_t, 3> rgb, const QString& chartId, int topN) const;
-    [[nodiscard]] std::optional<std::vector<stitch_analysis::ColorFilmBlock>>
-    currentFilm() const;
-    [[nodiscard]] bool commitSewingOrder(const std::vector<ObjectId>& ids,
-                                         const QString& label);
+    using ColorFilm = std::vector<stitch_analysis::ColorFilmBlock>;
+    [[nodiscard]] std::optional<ColorFilm> currentFilm() const;
+    [[nodiscard]] bool commitSewingOrder(const std::vector<ObjectId>& ids, const QString& label);
     StudioController& studio_;
     std::filesystem::path chartDir_;
     std::filesystem::path stockPath_;
