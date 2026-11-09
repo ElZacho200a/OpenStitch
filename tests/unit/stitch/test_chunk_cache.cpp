@@ -87,6 +87,39 @@ TEST_CASE("chunk cache : sequence identique avec et sans cache") {
     CHECK(stats.hits == 4);
 }
 
+TEST_CASE("chunk cache : fragments immuables reutilises avec jointures automatiques") {
+    document::Project project = make_project();
+    project.finishing.auto_join = true;
+    const auto reference = uncached(project);
+
+    clear_chunk_cache();
+    const auto cold = generate_sequence(project);
+    const auto warm = generate_sequence(project);
+    REQUIRE(cold.has_value());
+    REQUIRE(warm.has_value());
+    CHECK(cold->commands == reference.commands);
+    CHECK(warm->commands == reference.commands);
+    CHECK(chunk_cache_stats().hits == 4);
+
+    // Les voisins sont lus directement depuis les fragments en cache, même si
+    // l'objet du milieu a été modifié et doit, lui, être regénéré.
+    std::get<document::TatamiParams>(project.embroidery_objects[1].params).row_spacing =
+        Micrometers{550};
+    const auto edited = generate_sequence(project);
+    REQUIRE(edited.has_value());
+    CHECK(edited->commands == uncached(project).commands);
+    CHECK(chunk_cache_stats().hits == 7);
+    CHECK(chunk_cache_stats().misses == 5);
+
+    const auto cachedFinal = effective_sequence(project);
+    REQUIRE(cachedFinal.has_value());
+    set_chunk_cache_enabled(false);
+    const auto uncachedFinal = effective_sequence(project);
+    set_chunk_cache_enabled(true);
+    REQUIRE(uncachedFinal.has_value());
+    CHECK(cachedFinal->commands == uncachedFinal->commands);
+}
+
 TEST_CASE("chunk cache : modifier un objet ne regenere que lui") {
     document::Project project = make_project();
     clear_chunk_cache();
