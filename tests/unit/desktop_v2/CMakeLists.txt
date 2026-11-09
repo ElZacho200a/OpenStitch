@@ -176,7 +176,7 @@ if(TARGET openstitch::studio_ui)
         add_executable(test_desktop_v2_studio_autodigitize_presets
             test_studio_autodigitize_presets.cpp)
         target_link_libraries(test_desktop_v2_studio_autodigitize_presets
-            PRIVATE openstitch::studio_ui Qt6::Test openstitch::warnings)
+            PRIVATE openstitch::studio_ui openstitch::project_ops Qt6::Test openstitch::warnings)
         add_test(NAME test_desktop_v2_studio_autodigitize_presets
             COMMAND test_desktop_v2_studio_autodigitize_presets -o -,txt)
         set_tests_properties(test_desktop_v2_studio_autodigitize_presets PROPERTIES
