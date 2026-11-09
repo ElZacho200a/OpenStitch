@@ -179,6 +179,15 @@ private slots:
         QCOMPARE(canvas->sourceImage().data->after.width(), images.imageWidth());
         QCOMPARE(canvas->sourceImage().data->after.height(), images.imageHeight());
         QVERIFY(imageSpace.layerRevision() > 0);
+        // Les événements d'état/sélection, ou deux notifications pour la même image, ne
+        // doivent pas déclencher de nouveau redimensionnement ni rafraîchir les bindings.
+        const int originalLayerRevision = imageSpace.layerRevision();
+        QSignalSpy imageStageChanged(&imageSpace, &ImageSpaceController::changed);
+        QVERIFY(QMetaObject::invokeMethod(&images, "imagesChanged", Qt::DirectConnection));
+        QVERIFY(QMetaObject::invokeMethod(&images, "previewChanged", Qt::DirectConnection));
+        QCOMPARE(imageSpace.layerRevision(), originalLayerRevision);
+        QVERIFY(QMetaObject::invokeMethod(&studio, "changed", Qt::DirectConnection));
+        QCOMPARE(imageStageChanged.count(), 0);
         QVERIFY(!named(window, QStringLiteral("imageEmptyState"))->isVisible());
         QVERIFY(named(window, QStringLiteral("imageSidePanel"))->isVisible());
         QVERIFY(named(window, QStringLiteral("imagePrepSection")));
