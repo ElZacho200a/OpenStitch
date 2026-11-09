@@ -14,7 +14,6 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
-#include <unordered_map>
 #include <vector>
 
 #include "canvas_renderer.hpp"
@@ -35,11 +34,6 @@ struct VectorShape {
 class VectorLayer {
 public:
     [[nodiscard]] static std::shared_ptr<const VectorLayer> build(const document::Project& project);
-    // Rasterise uniquement les formes sélectionnées dans leur rectangle local.
-    // Ne touche jamais au fond ni aux QPainterPath déjà construits.
-    [[nodiscard]] std::shared_ptr<const OverlayImage>
-    selectionOverlay(const std::vector<std::uint64_t>& selectedShapes) const;
-
     [[nodiscard]] const std::vector<VectorShape>& shapes() const { return shapes_; }
     [[nodiscard]] const OverlayImage& image() const { return image_; }
     // Forme la plus haute sous le point (mm scène), tolérance en mm ; ignore les formes
@@ -48,10 +42,7 @@ public:
 
 private:
     std::vector<VectorShape> shapes_;
-    // Selection hot path: resolve only selected objects, not every visible shape.
-    std::unordered_map<std::uint64_t, std::size_t> shapeIndex_;
     OverlayImage image_;
-    double pxPerMm_{1.0};
 };
 
 } // namespace openstitch::desktop_v2::studio
