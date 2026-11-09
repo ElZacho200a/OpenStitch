@@ -304,8 +304,8 @@ QVariantList GpuCanvas::toolOverlay() const {
         QVariantList pts;
         for (const auto& p : item.points) {
             const auto s = camera_.worldToScreen(p);
-            if (isMarker && (s.x < -marginPx || s.y < -marginPx ||
-                             s.x > width() + marginPx || s.y > height() + marginPx)) {
+            if (isMarker && (s.x < -marginPx || s.y < -marginPx || s.x > width() + marginPx ||
+                             s.y > height() + marginPx)) {
                 continue;
             }
             pts << s.x << s.y;
