@@ -31,7 +31,10 @@ ColumnLayout {
 
     SectionLabel { text: qsTr("ÉDITION") }
     Flow {
+        objectName: "editSelectionFlow"
         Layout.fillWidth: true
+        // Wraps must contribute their actual height to the enclosing ColumnLayout.
+        implicitHeight: childrenRect.height
         spacing: 3
         Mini { objectName: "selectAllButton"; text: qsTr("Tout"); tooltip: qsTr("Tout sélectionner"); shortcutLabel: "Ctrl+A"; onClicked: editor.selectAll() }
         Mini { objectName: "invertButton"; text: qsTr("Inverser"); shortcutLabel: "Ctrl+I"; onClicked: editor.invertSelection() }
@@ -42,7 +45,9 @@ ColumnLayout {
         Mini { text: qsTr("Rappeler ▾"); enabled: editor.savedSelections.length > 0; onClicked: recallMenu.popup() }
     }
     Flow {
+        objectName: "editTransformFlow"
         Layout.fillWidth: true
+        implicitHeight: childrenRect.height
         spacing: 3
         Mini { objectName: "rotateCwButton"; text: "⟳90"; enabled: bar.some; tooltip: qsTr("Pivoter de 90° (horaire)"); shortcutLabel: "R"; onClicked: editor.rotate90(true) }
         Mini { objectName: "rotateCcwButton"; text: "⟲90"; enabled: bar.some; tooltip: qsTr("Pivoter de 90° (antihoraire)"); shortcutLabel: "Maj+R"; onClicked: editor.rotate90(false) }
