@@ -160,6 +160,7 @@ private slots:
     void penBezierAndFreehand();
     void escapeCancelsGestures();
     void nodeEditByMouse();
+    void nodeDragFromSelectTool();
     void knifeAndBooleans();
     void snappingIsConfigurable();
 };
@@ -481,6 +482,26 @@ void StudioToolsTest::escapeCancelsGestures() {
     QCOMPARE(nodeCount(rig.session.project(), rig.session.selection().targets().front().id),
              std::size_t{3});
     QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+}
+
+// Régression : en outil Sélection, glisser un nœud de la forme sélectionnée déplace ce nœud
+// (et non une forme voisine, ni ne désélectionne).
+void StudioToolsTest::nodeDragFromSelectTool() {
+    Rig rig;
+    open(rig);
+    const auto id = draw(rig, "draw.rectangle", {-12, -8}, {12, 8});
+    QVERIFY(id != 0);
+    rig.tools.setActiveTool(QStringLiteral("select"));
+    const auto before = nodeView(rig.session.project(), id);
+    QVERIFY(before.has_value());
+    const auto p0 = before->nodes[0].pos;
+    const auto baseSteps = steps(rig);
+    drag(rig, at(rig, p0.x, p0.y), at(rig, p0.x, p0.y) + QPoint(40, -30));
+    QCOMPARE(steps(rig), baseSteps + 1);
+    const auto after = nodeView(rig.session.project(), id);
+    QVERIFY(after.has_value());
+    QVERIFY(std::abs(after->nodes[0].pos.x - p0.x) > 1.0);
+    QCOMPARE(static_cast<int>(rig.session.selection().targets().size()), 1);
 }
 
 void StudioToolsTest::nodeEditByMouse() {

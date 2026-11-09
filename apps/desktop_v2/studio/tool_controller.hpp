@@ -94,6 +94,8 @@ public:
     Q_INVOKABLE bool removeHole();
 
     [[nodiscard]] const std::vector<ToolOverlayItem>& overlay() const { return overlay_; }
+    // Diagonale (mm) de la boîte des nœuds de la forme éditée ; 0 sans nœuds visibles.
+    [[nodiscard]] double nodeSpanMm() const;
     [[nodiscard]] QString info() const { return info_; }
     [[nodiscard]] QString cursorName() const;
 

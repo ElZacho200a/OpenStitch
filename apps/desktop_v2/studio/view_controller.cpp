@@ -443,8 +443,8 @@ void ViewController::rebuildSimData() {
     const auto project = scene->project;
     tasks_.submit<std::shared_ptr<const SimData>>(
         "studio.simulation",
-        [project, revision, cachedSequence = scene->effectiveSequence](const TaskContext& task)
-            -> Result<std::shared_ptr<const SimData>> {
+        [project, revision, cachedSequence = scene->effectiveSequence](
+            const TaskContext& task) -> Result<std::shared_ptr<const SimData>> {
             // Reuse the sequence used to build the scene. Empty scenes without stitches
             // retain the original fallback behaviour.
             auto sequence = cachedSequence;
