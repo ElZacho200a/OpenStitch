@@ -143,6 +143,31 @@ private slots:
                                                    QStringLiteral("Provided by the application"));
     }
 
+    void stageStatusDoesNotRescanDocumentForUnrelatedChanges() {
+        DocumentSession session;
+        StudioController studio(session);
+        WorkspaceController workspace;
+        workspace.setController(&studio);
+        QCoreApplication::processEvents();
+        QSignalSpy refreshes(&workspace, &WorkspaceController::spacesChanged);
+
+        // La scène, l'état de chargement et les sélections notifient parfois changed()
+        // sans changer la révision du document : cela ne doit pas invalider les étapes.
+        QVERIFY(QMetaObject::invokeMethod(&studio, "changed", Qt::DirectConnection));
+        QCoreApplication::processEvents();
+        QCOMPARE(refreshes.count(), 0);
+
+        // Un changement de statut amont (sans révision) doit en revanche rester visible.
+        workspace.setSegmentationDirty(true);
+        QCoreApplication::processEvents();
+        QCOMPARE(refreshes.count(), 1);
+        QCOMPARE(workspace.segmentationDirty(), true);
+
+        session.replaceProject(pipelineProject(), false);
+        QTRY_VERIFY_WITH_TIMEOUT(refreshes.count() > 1, 5'000);
+        QVERIFY(!workspace.spaces().isEmpty());
+    }
+
     void fourSpacesAndOneVisibleCanvas() {
         Rig rig;
         open(rig);
