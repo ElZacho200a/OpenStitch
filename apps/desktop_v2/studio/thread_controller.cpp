@@ -569,8 +569,8 @@ const std::optional<ThreadController::ColorFilm>& ThreadController::currentFilm(
     cachedFilmScene_ = scene;
     cachedFilmRevision_ = revision;
     if (scene && scene->effectiveSequence) {
-        cachedFilm_ = stitch_analysis::color_film(studio_.session().project(),
-                                                 *scene->effectiveSequence);
+        const auto& project = studio_.session().project();
+        cachedFilm_ = stitch_analysis::color_film(project, *scene->effectiveSequence);
     } else {
         cachedFilm_.reset();
     }
