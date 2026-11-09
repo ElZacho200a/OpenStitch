@@ -2,10 +2,23 @@
 #include "thread_controller.hpp"
 
 #include <QColor>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QSaveFile>
+#include <QSettings>
+#include <algorithm>
+#include <cmath>
+#include <numbers>
 #include <set>
 #include <unordered_set>
 
 #include "file_io.hpp"
+#include "openstitch/commands/colorway_commands.hpp"
+#include "openstitch/commands/project_commands.hpp"
+#include "openstitch/commands/thread_commands.hpp"
+#include "openstitch/stitch_analysis/thread_usage.hpp"
+#include "openstitch/thread_palette/color_distance.hpp"
 #include "thread_palette_service.hpp"
 #include "thread_plan.hpp"
 
@@ -35,9 +48,35 @@ ThreadController::ThreadController(StudioController& studio, std::filesystem::pa
     connect(&studio_, &StudioController::changed, this, &ThreadController::changed);
     if (!configDir.empty()) {
         chartDir_ = configDir / "charts";
+        stockPath_ = configDir / "my_threads.json";
+        settingsPath_ = configDir / "thread_preferences.ini";
         for (const auto& problem : loadUserCharts(chartDir_)) {
             message_ = q(problem); // a refused file is reported, never silently dropped
             ok_ = false;
+        }
+        QSettings settings(QString::fromStdWString(settingsPath_.wstring()),
+                           QSettings::IniFormat);
+        limitToStock_ = settings.value(QStringLiteral("limitToStock"), false).toBool();
+        const QString filename = QString::fromStdWString(stockPath_.wstring());
+        if (QFile::exists(filename)) {
+            QFile file(filename);
+            if (!file.open(QIODevice::ReadOnly)) {
+                stockWritable_ = false;
+                ok_ = false;
+                message_ = QStringLiteral("Impossible de lire Mes fils : %1").arg(file.errorString());
+            } else {
+                const auto bytes = file.readAll();
+                const auto parsed = thread_palette::stock_from_json(
+                    std::string_view(bytes.constData(), static_cast<std::size_t>(bytes.size())));
+                if (parsed) {
+                    stock_ = std::move(*parsed);
+                } else {
+                    stockWritable_ = false; // never silently overwrite a damaged inventory
+                    ok_ = false;
+                    message_ = QStringLiteral("Mes fils : fichier invalide conservé (%1)")
+                                   .arg(q(parsed.error().message));
+                }
+            }
         }
     }
 }
@@ -49,6 +88,111 @@ bool ThreadController::report(const ServiceResult& result, const QString& succes
     message_ = result.ok ? success : q(result.message);
     emit messageChanged();
     return result.ok;
+}
+
+bool ThreadController::persistStock(const thread_palette::ThreadStock& stock) {
+    if (!stockWritable_) {
+        return report({false, "Stock illisible : fichier conservé, corrigez-le avant de modifier Mes fils"}, {});
+    }
+    if (stockPath_.empty()) {
+        return true; // stateless tests and embedded preview
+    }
+    const QString path = QString::fromStdWString(stockPath_.wstring());
+    if (!QDir().mkpath(QFileInfo(path).absolutePath())) {
+        return report({false, "Impossible de créer le dossier de Mes fils"}, {});
+    }
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly)) {
+        return report({false, "Impossible d'ouvrir le stock de fils pour écriture"}, {});
+    }
+    const auto json = thread_palette::stock_to_json(stock);
+    if (file.write(json.data(), static_cast<qint64>(json.size())) !=
+            static_cast<qint64>(json.size()) ||
+        !file.commit()) {
+        return report({false, "Écriture atomique du stock de fils impossible"}, {});
+    }
+    return true;
+}
+
+bool ThreadController::persistStockSetting(bool limit) {
+    if (settingsPath_.empty()) {
+        return true;
+    }
+    const QString path = QString::fromStdWString(settingsPath_.wstring());
+    if (!QDir().mkpath(QFileInfo(path).absolutePath())) {
+        return false;
+    }
+    QSettings settings(path, QSettings::IniFormat);
+    settings.setValue(QStringLiteral("limitToStock"), limit);
+    settings.sync();
+    return settings.status() == QSettings::NoError;
+}
+
+void ThreadController::setLimitToStock(bool value) {
+    if (limitToStock_ == value) {
+        return;
+    }
+    if (!persistStockSetting(value)) {
+        report({false, "Impossible d'enregistrer le filtre Mes fils"}, {});
+        return;
+    }
+    limitToStock_ = value;
+    emit stockChanged();
+    report({true, {}}, value ? QStringLiteral("Recherche limitée à Mes fils")
+                             : QStringLiteral("Recherche dans tout le nuancier"));
+}
+
+QVariantList ThreadController::ownedThreads() const {
+    QVariantList list;
+    for (const auto& choice : stockChoices()) {
+        list.push_back(choiceMap(choice));
+    }
+    return list;
+}
+
+int ThreadController::stockCount() const {
+    return static_cast<int>(stock_.size());
+}
+
+std::vector<ThreadChoice> ThreadController::stockChoices() const {
+    std::vector<ThreadChoice> list;
+    for (const auto& key : stock_.owned_keys()) {
+        const auto matches = desktop_v2::searchThreads(key.chart_id, key.code);
+        const auto exact = std::find_if(matches.begin(), matches.end(), [&](const auto& t) {
+            return t.chartId == key.chart_id && t.code == key.code;
+        });
+        if (exact != matches.end()) {
+            list.push_back(*exact);
+        }
+    }
+    for (const auto& thread : stock_.personal_threads()) {
+        list.push_back({thread.key.chart_id, thread.key.code, thread.name, thread.brand,
+                        thread.rgb, 0.0});
+    }
+    return list;
+}
+
+std::vector<ThreadChoice> ThreadController::nearestChoices(
+    std::array<std::uint8_t, 3> rgb, const QString& chartId, int topN) const {
+    if (topN < 1) {
+        return {};
+    }
+    if (!limitToStock_) {
+        return nearestThreads(rgb, chartId.toStdString(), static_cast<std::size_t>(topN));
+    }
+    auto choices = stockChoices();
+    const auto target = thread_palette::to_cielab(rgb);
+    for (auto& choice : choices) {
+        choice.distance = thread_palette::ciede2000(
+            target, thread_palette::to_cielab(choice.rgb));
+    }
+    std::stable_sort(choices.begin(), choices.end(), [](const auto& a, const auto& b) {
+        return a.distance < b.distance;
+    });
+    if (choices.size() > static_cast<std::size_t>(topN)) {
+        choices.resize(static_cast<std::size_t>(topN));
+    }
+    return choices;
 }
 
 QVariantList ThreadController::entries() const {
