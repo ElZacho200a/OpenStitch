@@ -1216,6 +1216,14 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
     }
 
     // Phase 3 -- assemblage séquentiel, dans l'ordre de couture.
+    // Le fragment est déjà immutable sur un hit : seule l'insertion dans la sortie copie
+    // les commandes. Aucun buffer mutable intermédiaire à allouer pour les objets inchangés.
+    const auto commandsFor = [&](std::size_t index) -> const std::vector<stitch::StitchCommand>& {
+        if (cachedChunks[index]) {
+            return cachedChunks[index]->commands;
+        }
+        return chunks[index].commands;
+    };
     const document::EmbroideryObject* previous = nullptr;
     for (std::size_t u = 0; u < units.size(); ++u) {
         if (task.cancelled()) {
@@ -1261,14 +1269,12 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
             joinHere ? std::optional<Vec2um>{sequence.commands.back().pos} : std::nullopt;
 
         if (unit.kind == Kind::Independent) {
-            const auto& chunk =
-                cachedChunks[u] ? cachedChunks[u]->commands : chunks[u].commands;
+            const auto& chunk = commandsFor(u);
             const auto* tatami = std::get_if<document::TatamiParams>(&object.params);
             if (joinHere && !(tatami != nullptr && tatami->entry_point)) {
                 std::optional<Vec2um> nextStart;
                 if (u + 1 < units.size() && units[u + 1].kind == Kind::Independent) {
-                    const auto& next =
-                        cachedChunks[u + 1] ? cachedChunks[u + 1]->commands : chunks[u + 1].commands;
+                    const auto& next = commandsFor(u + 1);
                     if (!next.empty()) {
                         nextStart = next.front().pos;
                     }
