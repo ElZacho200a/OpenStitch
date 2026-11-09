@@ -348,8 +348,7 @@ QVariantList ThreadController::nearestToEntry(int entry, const QString& chartId,
         return list;
     }
     for (const auto& choice :
-         nearestThreads(all[static_cast<std::size_t>(entry)].rgb, chartId.toStdString(),
-                        static_cast<std::size_t>(topN))) {
+         nearestChoices(all[static_cast<std::size_t>(entry)].rgb, chartId, topN)) {
         list.push_back(choiceMap(choice));
     }
     return list;
@@ -365,8 +364,7 @@ QVariantList ThreadController::nearestToSelection(const QString& chartId, int to
             if (object.id.value == target.id) {
                 QVariantList list;
                 for (const auto& choice :
-                     nearestThreads(object.rgb, chartId.toStdString(),
-                                    static_cast<std::size_t>(std::max(1, topN)))) {
+                     nearestChoices(object.rgb, chartId, std::max(1, topN))) {
                     list.push_back(choiceMap(choice));
                 }
                 return list;
@@ -386,35 +384,144 @@ bool ThreadController::assignChartThread(int entry, const QString& chartId, cons
 }
 
 int ThreadController::snapFreeColours(const QString& chartId) {
-    int changed = 0;
-    std::set<std::array<std::uint8_t, 3>> attempted;
-    for (;;) {
-        const auto all = threadEntries(studio_.session().project());
-        std::optional<std::size_t> target;
-        for (std::size_t i = 0; i < all.size(); ++i) {
-            if (all[i].label.rfind('#', 0) == 0 && !attempted.contains(all[i].rgb)) {
-                target = i;
-                break;
+    // One command for ALL assignments (V1 parity); the previous implementation
+    // pushed one undo entry for each colour.
+    const auto& project = studio_.session().project();
+    std::unordered_set<std::uint64_t> selected;
+    for (const auto& target : studio_.session().selection().targets()) {
+        if (target.kind == TargetKind::EmbroideryObject) {
+            selected.insert(target.id);
+        } else if (target.kind == TargetKind::VectorObject) {
+            for (const auto& object : project.embroidery_objects) {
+                if (object.source_vector.value == target.id) {
+                    selected.insert(object.id.value);
+                }
             }
         }
-        if (!target) {
-            break;
+    }
+    if (limitToStock_ && stockChoices().empty()) {
+        report({false, "Mes fils est vide ou ses références ne sont plus disponibles"}, {});
+        return 0;
+    }
+    std::vector<commands::ObjectThreadAssignment> assignments;
+    for (const auto& object : project.embroidery_objects) {
+        if (object.thread || (!selected.empty() && !selected.contains(object.id.value))) {
+            continue;
         }
-        attempted.insert(all[*target].rgb);
-        const auto nearest = nearestThreads(all[*target].rgb, chartId.toStdString(), 1);
+        const auto nearest = nearestChoices(object.rgb, chartId, 1);
         if (nearest.empty()) {
             report({false, "Nuancier inconnu ou vide"}, {});
-            return changed;
+            return 0;
         }
-        if (desktop_v2::assignChartThread(studio_.session(), *target, nearest.front().chartId,
-                                          nearest.front().code)
-                .ok) {
-            ++changed;
+        const auto& choice = nearest.front();
+        assignments.push_back({object.id, thread_palette::ThreadKey{choice.chartId, choice.code},
+                               choice.rgb});
+    }
+    if (assignments.empty()) {
+        report({false, "Aucune couleur libre à associer"}, {});
+        return 0;
+    }
+    const int count = static_cast<int>(assignments.size());
+    studio_.session().execute(std::make_unique<commands::SetObjectThreadCommand>(
+        std::move(assignments), "Couleurs libres vers fils proches"));
+    report({true, {}}, QStringLiteral("%1 objet(s) associés aux fils les plus proches").arg(count));
+    return count;
+}
+
+bool ThreadController::ownsThread(const QString& chartId, const QString& code) const {
+    return stock_.owns({chartId.toStdString(), code.toStdString()});
+}
+
+bool ThreadController::setOwnedThread(const QString& chartId, const QString& code, bool owned) {
+    const auto key = thread_palette::ThreadKey{chartId.toStdString(), code.toStdString()};
+    if (key.chart_id.empty() || key.code.empty() ||
+        key.chart_id == thread_palette::kPersonalChartId) {
+        return report({false, "Choisissez une référence de nuancier valide"}, {});
+    }
+    if (owned) {
+        const auto choices = desktop_v2::searchThreads(key.chart_id, key.code);
+        if (std::none_of(choices.begin(), choices.end(), [&](const auto& t) {
+                return t.chartId == key.chart_id && t.code == key.code;
+            })) {
+            return report({false, "Référence introuvable dans le nuancier"}, {});
         }
     }
-    report({changed > 0, "Aucune couleur libre à associer"},
-           QStringLiteral("%1 couleur(s) associée(s) au fil le plus proche").arg(changed));
-    return changed;
+    auto next = stock_;
+    if (owned ? !next.own(key) : !next.disown(key)) {
+        return report({false, owned ? "Ce fil est déjà dans Mes fils"
+                                    : "Ce fil n'est pas dans Mes fils"}, {});
+    }
+    if (!persistStock(next)) {
+        return false;
+    }
+    stock_ = std::move(next);
+    emit stockChanged();
+    return report({true, {}}, owned ? QStringLiteral("Fil ajouté à Mes fils")
+                                    : QStringLiteral("Fil retiré de Mes fils"));
+}
+
+bool ThreadController::addPersonalThread(const QString& code, const QString& name,
+                                          const QString& hexColor) {
+    const QColor color(hexColor);
+    if (!color.isValid() || code.trimmed().isEmpty()) {
+        return report({false, "Référence ou couleur personnelle invalide"}, {});
+    }
+    thread_palette::Thread thread;
+    thread.key = {thread_palette::kPersonalChartId, code.trimmed().toStdString()};
+    thread.name = name.trimmed().toStdString();
+    thread.rgb = {static_cast<std::uint8_t>(color.red()),
+                  static_cast<std::uint8_t>(color.green()),
+                  static_cast<std::uint8_t>(color.blue())};
+    auto next = stock_;
+    auto added = next.add_personal(thread);
+    if (!added) {
+        return report({false, added.error().message}, {});
+    }
+    if (!persistStock(next)) {
+        return false;
+    }
+    stock_ = std::move(next);
+    emit stockChanged();
+    return report({true, {}}, QStringLiteral("Fil personnel %1 enregistré").arg(code));
+}
+
+bool ThreadController::removeOwnedThread(const QString& chartId, const QString& code) {
+    auto next = stock_;
+    if (!next.disown({chartId.toStdString(), code.toStdString()})) {
+        return report({false, "Ce fil n'est pas dans Mes fils"}, {});
+    }
+    if (!persistStock(next)) {
+        return false;
+    }
+    stock_ = std::move(next);
+    emit stockChanged();
+    return report({true, {}}, QStringLiteral("Fil retiré du stock"));
+}
+
+bool ThreadController::assignOwnedThread(int entry, const QString& chartId,
+                                          const QString& code) {
+    if (entry < 0) {
+        return report({false, "Sélectionnez un fil du projet"}, {});
+    }
+    const auto all = threadEntries(studio_.session().project());
+    if (static_cast<std::size_t>(entry) >= all.size()) {
+        return report({false, "Fil du projet inconnu"}, {});
+    }
+    const auto matches = stockChoices();
+    const auto it = std::find_if(matches.begin(), matches.end(), [&](const auto& t) {
+        return t.chartId == chartId.toStdString() && t.code == code.toStdString();
+    });
+    if (it == matches.end()) {
+        return report({false, "Fil absent de Mes fils"}, {});
+    }
+    std::vector<ObjectId> ids;
+    for (const auto id : all[static_cast<std::size_t>(entry)].objects) {
+        ids.push_back(ObjectId{id});
+    }
+    studio_.session().execute(std::make_unique<commands::SetObjectThreadCommand>(
+        ids, thread_palette::ThreadKey{it->chartId, it->code}, it->rgb,
+        "Assigner un fil possédé"));
+    return report({true, {}}, QStringLiteral("Fil %1 assigné").arg(code));
 }
 
 bool ThreadController::importChart(const QUrl& file) {
