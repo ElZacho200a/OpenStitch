@@ -9,6 +9,8 @@ ColumnLayout {
     id: panel
     objectName: "layerPanel"
     spacing: 4
+    // ObjectTree owns its scrolling. Never let an undersized dock paint over its siblings.
+    clip: true
     readonly property alias tree: objectTree
     readonly property string layerId: objectTree.currentLayer.length > 0
                                       ? objectTree.currentLayer
@@ -88,6 +90,6 @@ ColumnLayout {
         id: objectTree
         Layout.fillWidth: true
         Layout.fillHeight: true
-        Layout.minimumHeight: 120
+        Layout.minimumHeight: 48
     }
 }
