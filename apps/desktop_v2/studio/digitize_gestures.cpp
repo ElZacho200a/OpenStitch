@@ -29,13 +29,19 @@ DigitizeGestures::DigitizeGestures(StudioController& studio, PointEditController
     // Ne pas écouter StudioController::changed en plus : une simple sélection lançait
     // quatre reconstructions, dont trois sans rapport avec l'outil actif.
     connect(&points_, &PointEditController::changed, this, [this] {
-        if (mode_ == QLatin1String("points")) rebuildStatic();
+        if (mode_ == QLatin1String("points")) {
+            rebuildStatic();
+        }
     });
     connect(&fade_, &FadeController::changed, this, [this] {
-        if (mode_ == QLatin1String("fade")) rebuildStatic();
+        if (mode_ == QLatin1String("fade")) {
+            rebuildStatic();
+        }
     });
     connect(&satin_, &SatinController::changed, this, [this] {
-        if (mode_ == QLatin1String("satin")) rebuildStatic();
+        if (mode_ == QLatin1String("satin")) {
+            rebuildStatic();
+        }
     });
 }
 
