@@ -177,8 +177,27 @@ Item {
                             Layout.fillWidth: true
                             Text { text: qsTr("Pas (mm)"); color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize }
                             StudioTextField { id: stepField; objectName: "gridStepField"; implicitWidth: 70; text: view.gridStepMm; onEditingFinished: view.gridStepMm = parseFloat(text) }
-                            Text { text: qsTr("Guide (mm)"); color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize }
-                            StudioTextField { id: guideField; objectName: "guideField"; implicitWidth: 70; text: "0" }
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Text { text: qsTr("Couleur des guides"); color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize }
+                            StudioButton { 
+                                objectName: "guideColorPickerButton"; 
+                                iconSource: "qrc:/icons/color.svg"
+                                iconSize: 16
+                                text: view.guideColor.name() // "#RRGGBB"
+                                onClicked: {
+                                    var color = Qt.colorDialog(view.guideColor, hub)
+                                    if (color) {
+                                        view.setGuideColor(color)
+                                    }
+                                }
+                            }
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Text { text: qsTr("Position (mm)"); color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize }
+                            StudioTextField { id: guideField; objectName: "guideField"; implicitWidth: 70; placeholderText: qsTr("ex: 25") }
                         }
                         Flow {
                             Layout.fillWidth: true

@@ -422,6 +422,8 @@ private:
     std::vector<double> guidesX_;
     std::vector<double> guidesY_;
     QColor guideColor_{0, 170, 120};
+    const QColor& guideColor() const { return guideColor_; }
+    Q_PROPERTY(QColor guideColor READ guideColor WRITE setGuideColor NOTIFY guideColorChanged)
     void updateGuides();
     void refreshThemedIcons();
     std::vector<int> pointSels_; // poignées choisies (la principale, `pointSel_`, en fait partie)
@@ -439,6 +441,8 @@ private:
     QTimer* simTimer_{nullptr};
     std::optional<std::size_t> simLimit_;
     double gridSpacingMm_{0.0};
+    const double& gridStepMm() const { return gridSpacingMm_; }
+    Q_PROPERTY(double gridStepMm READ gridStepMm WRITE setGridStepMm NOTIFY gridStepMmChanged)
     QString themeMode_{QStringLiteral("system")};
     UiDensity density_{UiDensity::Normal};
     void savePreferencesNow();
