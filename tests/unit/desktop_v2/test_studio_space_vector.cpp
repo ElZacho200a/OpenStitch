@@ -392,7 +392,7 @@ private slots:
         QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
     }
 
-    void stitchParameterAndFabricChangesDoNotRerasterizeVectors() {
+    void stitchParameterChangesDoNotRerasterizeVectors() {
         Rig rig;
         open(rig);
         enterSpace(rig);
