@@ -13,6 +13,7 @@
 #include <QVariantList>
 #include <QVariantMap>
 #include <array>
+#include <cstdint>
 #include <optional>
 
 #include "stage_status.hpp"
@@ -90,7 +91,7 @@ private:
         QString actionLabel;
         bool actionEnabled{true};
     };
-    void invalidate();
+    void invalidate(bool force = false);
     [[nodiscard]] const std::array<StageStatus, 4>& base() const;
     [[nodiscard]] StageState stateOf(int index) const;
     [[nodiscard]] QString detailOf(int index) const;
@@ -105,6 +106,7 @@ private:
     std::array<Published, 4> published_;
     mutable std::array<StageStatus, 4> base_;
     mutable bool baseValid_{false};
+    std::uint64_t lastInvalidatedRevision_{~std::uint64_t{0}};
     bool refreshQueued_{false};
 };
 
