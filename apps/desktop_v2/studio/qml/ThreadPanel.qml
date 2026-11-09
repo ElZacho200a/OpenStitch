@@ -464,6 +464,261 @@ Rectangle {
                 }
             }
             }
+            ColumnLayout {
+                objectName: "threadStockSection"
+                visible: panel.page === "stock"
+                Layout.fillWidth: true
+                spacing: 8
+                SectionLabel { text: qsTr("MES FILS · %1 références").arg(panel.controller ? panel.controller.stockCount : 0) }
+                Text {
+                    Layout.fillWidth: true
+                    color: Theme.muted
+                    wrapMode: Text.WordWrap
+                    text: qsTr("Vos bobines sont conservées sur cet ordinateur, pas dans le projet OSP.")
+                }
+                StudioCheckBox {
+                    objectName: "threadLimitToStock"
+                    text: qsTr("Limiter la recherche et les couleurs proches à mes fils")
+                    checked: panel.controller ? panel.controller.limitToStock : false
+                    onToggled: if (panel.controller) panel.controller.limitToStock = checked
+                }
+                Repeater {
+                    model: panel.controller ? panel.controller.ownedThreads : []
+                    delegate: RowLayout {
+                        id: stockRow
+                        required property var modelData
+                        Layout.fillWidth: true
+                        spacing: 6
+                        Rectangle {
+                            implicitWidth: 16; implicitHeight: 16; radius: 3
+                            color: stockRow.modelData.color
+                            border.color: Theme.border
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            elide: Text.ElideRight
+                            color: Theme.foreground
+                            font.pixelSize: Theme.smallSize
+                            text: stockRow.modelData.code + " · " + stockRow.modelData.name
+                        }
+                        StudioButton {
+                            text: qsTr("Assigner")
+                            quiet: true
+                            enabled: panel.current >= 0
+                            onClicked: panel.controller.assignOwnedThread(
+                                panel.current, stockRow.modelData.chartId, stockRow.modelData.code)
+                        }
+                        StudioButton {
+                            text: qsTr("Retirer")
+                            quiet: true
+                            onClicked: panel.controller.removeOwnedThread(
+                                stockRow.modelData.chartId, stockRow.modelData.code)
+                        }
+                    }
+                }
+                SectionLabel { text: qsTr("AJOUTER UN FIL PERSONNEL") }
+                StudioTextField {
+                    id: personalCodeField
+                    objectName: "threadPersonalCode"
+                    Layout.fillWidth: true
+                    placeholderText: qsTr("Référence (obligatoire)")
+                }
+                StudioTextField {
+                    id: personalNameField
+                    objectName: "threadPersonalName"
+                    Layout.fillWidth: true
+                    placeholderText: qsTr("Nom du fil")
+                }
+                Flow {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: childrenRect.height
+                    spacing: 6
+                    StudioTextField {
+                        id: personalColorField
+                        objectName: "threadPersonalColor"
+                        width: 125
+                        text: "#ffffff"
+                        placeholderText: qsTr("#RRGGBB")
+                    }
+                    StudioButton {
+                        objectName: "threadPersonalColorPick"
+                        text: qsTr("Choisir…")
+                        onClicked: {
+                            personalColorDialog.selectedColor = personalColorField.text
+                            personalColorDialog.open()
+                        }
+                    }
+                    StudioButton {
+                        objectName: "threadPersonalAdd"
+                        text: qsTr("Ajouter")
+                        emphasized: true
+                        onClicked: {
+                            if (panel.controller.addPersonalThread(personalCodeField.text,
+                                                                   personalNameField.text,
+                                                                   personalColorField.text)) {
+                                personalCodeField.text = ""
+                                personalNameField.text = ""
+                            }
+                        }
+                    }
+                }
+            }
+            ColumnLayout {
+                objectName: "threadFilmSection"
+                visible: panel.page === "film"
+                Layout.fillWidth: true
+                spacing: 8
+                SectionLabel { text: qsTr("FILM COULEUR") }
+                Text {
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
+                    color: Theme.muted
+                    text: qsTr("%1 changements de fil · passages dans l'ordre réel de couture")
+                          .arg(panel.controller ? panel.controller.filmChanges : 0)
+                }
+                Repeater {
+                    model: panel.controller ? panel.controller.colorFilm : []
+                    delegate: RowLayout {
+                        id: filmRow
+                        required property var modelData
+                        Layout.fillWidth: true
+                        spacing: 5
+                        Rectangle {
+                            implicitWidth: 15; implicitHeight: 15; radius: 3
+                            color: filmRow.modelData.color
+                            border.color: Theme.border
+                        }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 1
+                            Text {
+                                Layout.fillWidth: true
+                                elide: Text.ElideRight
+                                color: Theme.foreground
+                                font.pixelSize: Theme.bodySize
+                                text: (filmRow.modelData.index + 1) + ". " + filmRow.modelData.label
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                color: Theme.faint
+                                font.pixelSize: Theme.smallSize
+                                text: qsTr("%1 obj. · %2 points%3")
+                                      .arg(filmRow.modelData.objectCount)
+                                      .arg(filmRow.modelData.stitches)
+                                      .arg(filmRow.modelData.locked ? qsTr(" · ordre figé") : "")
+                            }
+                        }
+                        StudioButton {
+                            objectName: "filmSelect" + filmRow.modelData.index
+                            quiet: true
+                            text: qsTr("Voir")
+                            onClicked: panel.controller.selectFilmBlock(filmRow.modelData.index)
+                        }
+                        StudioButton {
+                            objectName: "filmUp" + filmRow.modelData.index
+                            quiet: true
+                            text: "↑"
+                            enabled: filmRow.modelData.index > 0 && !filmRow.modelData.locked
+                            onClicked: panel.controller.moveFilmBlock(filmRow.modelData.index,
+                                                                       filmRow.modelData.index - 1)
+                        }
+                        StudioButton {
+                            objectName: "filmDown" + filmRow.modelData.index
+                            quiet: true
+                            text: "↓"
+                            enabled: !filmRow.modelData.locked &&
+                                     panel.controller &&
+                                     filmRow.modelData.index < panel.controller.colorFilm.length - 1
+                            onClicked: panel.controller.moveFilmBlock(filmRow.modelData.index,
+                                                                       filmRow.modelData.index + 1)
+                        }
+                    }
+                }
+                StudioButton {
+                    objectName: "filmGroupByColor"
+                    text: qsTr("Regrouper les passages d'une même couleur…")
+                    enabled: panel.controller && panel.controller.colorFilm.length > 1
+                    onClicked: filmDialog.open()
+                }
+            }
+            ColumnLayout {
+                objectName: "threadFabricSection"
+                visible: panel.page === "fabric"
+                Layout.fillWidth: true
+                spacing: 8
+                SectionLabel { text: qsTr("TISSU DU PROJET") }
+                Text {
+                    Layout.fillWidth: true
+                    color: Theme.muted
+                    wrapMode: Text.WordWrap
+                    text: qsTr("Couleur de fond, matière et stabilisateur, conservés dans le projet OSP.")
+                }
+                StudioTextField {
+                    id: fabricNameField
+                    objectName: "threadFabricName"
+                    Layout.fillWidth: true
+                    placeholderText: qsTr("Nom du tissu")
+                    text: panel.controller ? panel.controller.fabric.name : ""
+                }
+                Flow {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: childrenRect.height
+                    spacing: 6
+                    StudioTextField {
+                        id: fabricColorField
+                        objectName: "threadFabricColor"
+                        width: 126
+                        text: panel.controller ? panel.controller.fabric.color.toString() : "#ffffff"
+                    }
+                    StudioButton {
+                        objectName: "threadFabricColorPick"
+                        text: qsTr("Choisir une couleur")
+                        onClicked: {
+                            fabricColorDialog.selectedColor = fabricColorField.text
+                            fabricColorDialog.open()
+                        }
+                    }
+                }
+                StudioTextField {
+                    id: fabricMaterialField
+                    objectName: "threadFabricMaterial"
+                    Layout.fillWidth: true
+                    placeholderText: qsTr("Matière (woven, jersey, denim…)")
+                    text: panel.controller ? panel.controller.fabric.material : ""
+                }
+                StudioTextField {
+                    id: fabricStabilizerField
+                    objectName: "threadFabricStabilizer"
+                    Layout.fillWidth: true
+                    placeholderText: qsTr("Stabilisateur (cut-away, tear-away…)")
+                    text: panel.controller ? panel.controller.fabric.stabilizer : ""
+                }
+                Text { text: qsTr("Angle de chaîne (°)"); color: Theme.muted }
+                StudioSpinBox {
+                    id: fabricGrainField
+                    objectName: "threadFabricGrain"
+                    from: -360; to: 360
+                    value: panel.controller ? Math.round(panel.controller.fabric.grainAngleDeg) : 0
+                    editable: true
+                }
+                Text { text: qsTr("Souplesse trame × 100 (25 à 400)"); color: Theme.muted }
+                StudioSpinBox {
+                    id: fabricSoftnessField
+                    objectName: "threadFabricSoftness"
+                    from: 25; to: 400
+                    value: panel.controller ? Math.round(panel.controller.fabric.weftSoftness * 100) : 100
+                    editable: true
+                }
+                StudioButton {
+                    objectName: "threadFabricApply"
+                    text: qsTr("Appliquer au projet")
+                    emphasized: true
+                    onClicked: panel.controller.setFabric(
+                        fabricColorField.text, fabricNameField.text,
+                        fabricMaterialField.text, fabricStabilizerField.text,
+                        fabricGrainField.value, fabricSoftnessField.value / 100)
+                }
+            }
             Text {
                 objectName: "threadMessage"
                 Layout.fillWidth: true
