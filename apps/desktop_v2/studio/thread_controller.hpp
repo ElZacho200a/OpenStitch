@@ -117,7 +117,7 @@ private:
     [[nodiscard]] Choices stockChoices() const;
     [[nodiscard]] auto nearestChoices(Rgb rgb, const QString& chart, int n) const -> Choices;
     using ColorFilm = std::vector<stitch_analysis::ColorFilmBlock>;
-    [[nodiscard]] std::optional<ColorFilm> currentFilm() const;
+    [[nodiscard]] const std::optional<ColorFilm>& currentFilm() const;
     [[nodiscard]] bool commitSewingOrder(const std::vector<ObjectId>& ids, const QString& label);
     StudioController& studio_;
     std::filesystem::path chartDir_;
@@ -126,6 +126,9 @@ private:
     thread_palette::ThreadStock stock_;
     bool stockWritable_{true};
     bool limitToStock_{false};
+    mutable std::optional<ColorFilm> cachedFilm_;
+    mutable std::uint64_t cachedFilmRevision_{0};
+    mutable std::shared_ptr<const StudioSceneSnapshot> cachedFilmScene_;
     std::optional<stitch_analysis::ThreadMergePlan> reduction_;
     std::uint64_t reductionRevision_{0};
     QString message_;
