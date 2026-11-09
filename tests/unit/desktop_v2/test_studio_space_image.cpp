@@ -20,6 +20,7 @@
 #include "action_controller.hpp"
 #include "digitize_pipeline.hpp"
 #include "edit_controller.hpp"
+#include "file_controller.hpp"
 #include "gpu_canvas.hpp"
 #include "image_controller.hpp"
 #include "image_space_controller.hpp"
@@ -133,6 +134,79 @@ private slots:
         QCOMPARE(pieces[1].srcPx.left(), 25.0);
         view.mode = SourceCompare::Before;
         QCOMPARE(sourceImagePieces(view).size(), std::size_t{1});
+    }
+
+    void importingRasterBeginsWithImageOnlyAndSegmentationIsExplicit() {
+        DocumentSession session;
+        StudioController studio(session);
+        ActionController actions(studio);
+        EditController editor(studio);
+        ImageController images(studio);
+        ImageSpaceController imageSpace(studio, images);
+        FileController files(studio, &actions);
+        QTemporaryDir dir;
+        const QString path = writeImage(dir.path());
+        QQmlApplicationEngine engine;
+        QStringList warnings;
+        connect(&engine, &QQmlApplicationEngine::warnings, this,
+                [&](const QList<QQmlError>& errors) {
+                    for (const auto& error : errors) {
+                        warnings.push_back(error.toString());
+                    }
+                });
+        engine.addImageProvider(QStringLiteral("prepare"), images.createProvider());
+        auto* ctx = engine.rootContext();
+        ctx->setContextProperty(QStringLiteral("studio"), &studio);
+        ctx->setContextProperty(QStringLiteral("actions"), &actions);
+        ctx->setContextProperty(QStringLiteral("editor"), &editor);
+        ctx->setContextProperty(QStringLiteral("files"), &files);
+        ctx->setContextProperty(QStringLiteral("imageTools"), &images);
+        ctx->setContextProperty(QStringLiteral("imageSpace"), &imageSpace);
+        engine.load(QUrl(QStringLiteral("qrc:/studio/qml/Main.qml")));
+        QVERIFY2(!engine.rootObjects().isEmpty(), qPrintable(warnings.join('\n')));
+        auto* window = qobject_cast<QQuickWindow*>(engine.rootObjects().front());
+        QVERIFY(window);
+        auto* workspace = window->findChild<WorkspaceController*>();
+        QVERIFY(workspace);
+        QVERIFY(!session.project().hasImage());
+
+        // Same public entrypoint as FilePanel's file chooser, drag-and-drop and Ctrl+O.
+        QSignalSpy imageLoaded(&files, &FileController::imageImported);
+        files.openPath(path);
+        QTRY_COMPARE_WITH_TIMEOUT(imageLoaded.count(), 1, 15'000);
+        QTRY_COMPARE(workspace->current(), QStringLiteral("image"));
+        QTRY_VERIFY_WITH_TIMEOUT(!files.busy() && !studio.busy(), 15'000);
+        QCOMPARE(studio.title(), QStringLiteral("blocks.png"));
+        QVERIFY(studio.dirty());
+        QVERIFY(!studio.hasPath());
+        QVERIFY(session.project().hasImage());
+        QCOMPARE(session.project().original.width, 160);
+        QCOMPARE(session.project().original.height, 120);
+        QVERIFY(session.project().ops.empty());
+        QVERIFY(!session.project().segmentation.has_value());
+        QVERIFY(session.project().vector_objects.empty());
+        QVERIFY(session.project().embroidery_objects.empty());
+        QCOMPARE(studio.commandCount(), 0);
+        QVERIFY(!named(window, QStringLiteral("importOptions")));
+
+        // The first space actually receives and displays the original pixels.
+        auto* canvas = qobject_cast<GpuCanvas*>(named(window, QStringLiteral("imageCanvas")));
+        QVERIFY(canvas);
+        QTRY_VERIFY_WITH_TIMEOUT(canvas->sourceImage().data != nullptr, 15'000);
+        QCOMPARE(canvas->sourceImage().data->after.width(), 160);
+        QCOMPARE(canvas->sourceImage().data->after.height(), 120);
+        QVERIFY(named(window, QStringLiteral("imageSidePanel"))->isVisible());
+
+        // Visiting Segmentation does not compute it. Only the explicit action does.
+        workspace->setCurrent(QStringLiteral("segmentation"));
+        QVERIFY(!session.project().segmentation.has_value());
+        QVERIFY(session.project().vector_objects.empty());
+        QVERIFY(session.project().embroidery_objects.empty());
+        images.applySegmentation(images.segmentationDefaults());
+        QTRY_VERIFY_WITH_TIMEOUT(session.project().segmentation.has_value(), 20'000);
+        QVERIFY(session.project().vector_objects.empty());
+        QVERIFY(session.project().embroidery_objects.empty());
+        QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join('\n')));
     }
 
     void imageSpaceJourneyOnRealMainQml() {
