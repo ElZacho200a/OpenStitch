@@ -199,6 +199,33 @@ private slots:
         QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
     }
 
+    void republishingImmutableCanvasLayersIsAFreeNoOp() {
+        Rig rig;
+        open(rig);
+        enterSpace(rig);
+        const auto vectorImage = rig.canvas->vectorImage();
+        QVERIFY(vectorImage);
+        const auto firstRevision = rig.canvas->overlayRevision();
+
+        rig.canvas->setVectorLayer(vectorImage);
+        QCOMPARE(rig.canvas->overlayRevision(), firstRevision);
+        rig.canvas->setOverlays(std::make_shared<CanvasOverlays>());
+        const auto overlaysRevision = rig.canvas->overlayRevision();
+        rig.canvas->setOverlays(rig.canvas->overlays());
+        QCOMPARE(rig.canvas->overlayRevision(), overlaysRevision);
+
+        // Changer la texture vectorielle reste visible même sans incrémenter la révision
+        // des overlays. Le backend logiciel détecte l'identité de la couche séparément.
+        const QPoint left = at(rig, -2.5, 0.0);
+        QTRY_VERIFY_WITH_TIMEOUT(reddish(rig.window->grabWindow().pixelColor(left)), 5'000);
+        rig.canvas->setVectorLayer(nullptr);
+        QCOMPARE(rig.canvas->overlayRevision(), overlaysRevision);
+        QTRY_VERIFY_WITH_TIMEOUT(!reddish(rig.window->grabWindow().pixelColor(left)), 5'000);
+        rig.canvas->setVectorLayer(vectorImage);
+        QCOMPARE(rig.canvas->overlayRevision(), overlaysRevision);
+        QTRY_VERIFY_WITH_TIMEOUT(reddish(rig.window->grabWindow().pixelColor(left)), 5'000);
+    }
+
     void togglingVectorVisibilityRepaintsWithoutMovingCamera() {
         Rig rig;
         open(rig);
@@ -276,7 +303,11 @@ private slots:
         Rig rig;
         open(rig);
         enterSpace(rig);
+        const int buildsBefore = rig.stage.layerBuildCount();
         QTest::mouseClick(rig.window, Qt::LeftButton, {}, at(rig, 2.5, 0.0));
+        // Un clic génère déjà StudioController::changed ; aucun second refresh ni
+        // reconstruction via le signal selectionChanged.
+        QTRY_COMPARE(rig.stage.layerBuildCount(), buildsBefore + 1);
         QTRY_VERIFY_WITH_TIMEOUT(rig.session.selection().primary().has_value(), 3'000);
         const auto target = *rig.session.selection().primary();
         QCOMPARE(target.kind, TargetKind::VectorObject);
