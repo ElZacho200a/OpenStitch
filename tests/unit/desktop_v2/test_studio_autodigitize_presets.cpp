@@ -26,6 +26,33 @@ private slots:
         QCOMPARE(store.all().size(), std::size_t{3});
     }
 
+    void updatingUserPresetDoesNotMutateBuiltinsOrOtherProfiles() {
+        AutodigitizePresetStore store;
+        auto original = store.apply("Standard");
+        QVERIFY(original.has_value());
+        auto customized = *original;
+        customized.max_colors = 3;
+        customized.fill_overlap_mm = 0.8;
+        QVERIFY(!store.update("Standard", customized));
+        QVERIFY(!store.update("Inconnu", customized));
+        QVERIFY(store.save("Premier", *original));
+        QVERIFY(store.save("Second", *original));
+        QVERIFY(store.update("Premier", customized));
+        const auto changed = store.apply("Premier");
+        const auto untouched = store.apply("Second");
+        const auto builtin = store.apply("Standard");
+        QVERIFY(changed.has_value());
+        QVERIFY(untouched.has_value());
+        QVERIFY(builtin.has_value());
+        QCOMPARE(changed->max_colors, 3);
+        QCOMPARE(changed->fill_overlap_mm, 0.8);
+        QCOMPARE(untouched->max_colors, original->max_colors);
+        QCOMPARE(builtin->max_colors, original->max_colors);
+        QCOMPARE(store.all().size(), std::size_t{5});
+        QVERIFY(store.remove("Premier"));
+        QVERIFY(!store.update("Premier", customized));
+    }
+
     void userPresetRoundTripPreservesAdvancedSettings() {
         AutodigitizePresetStore store;
         openstitch::project_ops::DigitizeSettings custom;
