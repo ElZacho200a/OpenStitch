@@ -83,8 +83,8 @@ Fresh revectorize(const document::Project& project) {
 
 VectorSpaceController::VectorSpaceController(StudioController& studio, QObject* parent)
     : QObject(parent), studio_(studio) {
+    // StudioController::selectionChanged émet aussi changed : un seul refresh par clic.
     connect(&studio_, &StudioController::changed, this, &VectorSpaceController::refresh);
-    connect(&studio_, &StudioController::selectionChanged, this, &VectorSpaceController::refresh);
     refresh();
 }
 
@@ -137,13 +137,23 @@ void VectorSpaceController::refresh() {
     // On garde le layer et son image raster, même si la révision du document avance.
     const bool newRevision = builtRevision_ != session.revision();
     const bool geometryDirty = newRevision && session.lastChangeAffectsEmbroidery();
-    if (!layer_ || geometryDirty || builtSelected_ != selected) {
-        layer_ = VectorLayer::build(session.project(), selected);
-        builtSelected_ = selected;
+    const bool rebuildBase = !layer_ || geometryDirty;
+    if (rebuildBase) {
+        layer_ = VectorLayer::build(session.project());
         ++builds_;
         changed = true;
         if (canvas_) {
             canvas_->setVectorLayer(std::shared_ptr<const OverlayImage>(layer_, &layer_->image()));
+        }
+    }
+    if (rebuildBase || builtSelected_ != selected) {
+        // Un clic ne doit pas redessiner le fond, seulement le ROI des formes retenues.
+        selectionLayer_ = layer_->selectionOverlay(selected);
+        builtSelected_ = selected;
+        ++selectionBuilds_;
+        changed = true;
+        if (canvas_) {
+            canvas_->setVectorSelectionLayer(selectionLayer_);
         }
     }
     builtRevision_ = session.revision();
@@ -167,7 +177,14 @@ void VectorSpaceController::refresh() {
 }
 
 void VectorSpaceController::attach(QObject* canvas) {
+    if (canvas_ && canvas_ == qobject_cast<GpuCanvas*>(canvas)) {
+        refresh();
+        return; // le même Loader ne doit pas détruire et renvoyer sa texture
+    }
     detach();
+    // Actualiser d'abord hors canevas : si le calque doit être reconstruit, il ne sera
+    // publié qu'une fois, une fois le nouveau canevas branché.
+    refresh();
     canvas_ = qobject_cast<GpuCanvas*>(canvas);
     if (!canvas_) {
         return;
@@ -175,16 +192,17 @@ void VectorSpaceController::attach(QObject* canvas) {
     canvas_->setVectorPicker([this](double x, double y, double tolerance, bool toggle) {
         pickAt(x, y, tolerance, toggle);
     });
-    refresh();
     if (layer_) {
         canvas_->setVectorLayer(std::shared_ptr<const OverlayImage>(layer_, &layer_->image()));
     }
+    canvas_->setVectorSelectionLayer(selectionLayer_);
 }
 
 void VectorSpaceController::detach() {
     if (canvas_) {
         canvas_->setVectorPicker({});
         canvas_->setVectorLayer(nullptr);
+        canvas_->setVectorSelectionLayer(nullptr);
     }
     canvas_.clear();
 }

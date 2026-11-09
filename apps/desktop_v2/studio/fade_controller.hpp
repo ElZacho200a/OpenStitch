@@ -12,6 +12,7 @@
 #include <QVariantList>
 #include <QVariantMap>
 #include <cstdint>
+#include <vector>
 
 #include "fade_axis.hpp"
 #include "fade_service.hpp"
@@ -74,6 +75,8 @@ private:
     [[nodiscard]] static QVariantMap axisMap(const std::optional<FadeAxisView>& view);
 
     StudioController& studio_;
+    std::uint64_t lastSeenRevision_{~std::uint64_t{0}};
+    std::vector<Target> lastSeenSelection_;
     std::uint64_t id_{0};
     std::optional<FadeSettings> settings_;
     std::optional<FadeAxisView> axis_;

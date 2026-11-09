@@ -179,6 +179,10 @@ QJsonObject run(const Options& options, const QString& name,
     result["commands"] = double(snapshot->commandCount);
     result["rendered_segments"] = double(snapshot->segments.size());
     result["scene_build_ms"] = sceneMs;
+    // Phases indépendantes : elles indiquent où un cache incrémental serait rentable.
+    result["scene_effective_sequence_ms"] = snapshot->timing.effectiveSequenceMs;
+    result["scene_thread_segments_ms"] = snapshot->timing.threadSegmentsMs;
+    result["scene_vertices_ms"] = snapshot->timing.verticesMs;
     result["cpu_scene_vertex_bytes"] = double(snapshot->vertices.size() * sizeof(StudioVertex));
     result["cpu_scene_segment_bytes"] = double(snapshot->segments.size() * sizeof(StudioSegment));
     std::vector<stitch_render::ThreadSegment> threads;

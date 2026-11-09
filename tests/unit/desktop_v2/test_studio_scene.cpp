@@ -114,6 +114,9 @@ TEST_CASE("studio preserves sewing order thread colours and full 64 bit object i
     const auto& scene = **built;
     CHECK(scene.project == project);
     CHECK(scene.revision == 42);
+    CHECK(scene.timing.effectiveSequenceMs >= 0.0);
+    CHECK(scene.timing.threadSegmentsMs >= 0.0);
+    CHECK(scene.timing.verticesMs >= 0.0);
     REQUIRE(scene.effectiveSequence);
     const auto effective = stitch_generation::effective_sequence(*project);
     REQUIRE(effective.has_value());

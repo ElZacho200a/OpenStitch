@@ -67,18 +67,25 @@ void WorkspaceController::setController(StudioController* controller) {
                 published = Published{};
             }
             clearView();
-            invalidate();
+            invalidate(true); // la publication des étapes a été vidée
         });
         connect(controller_, &QObject::destroyed, this, [this] {
             controller_ = nullptr;
-            invalidate();
+            invalidate(true);
         });
     }
     emit controllerChanged();
-    invalidate();
+    invalidate(true);
 }
 
-void WorkspaceController::invalidate() {
+void WorkspaceController::invalidate(bool force) {
+    const auto revision = controller_ ? controller_->session().revision() : ~std::uint64_t{0};
+    // La sélection et les changements de statut Studio ne modifient ni le pipeline ni
+    // son état : ne pas recopier le projet pour computeStageStatus à chaque clic.
+    if (!force && lastInvalidatedRevision_ == revision) {
+        return;
+    }
+    lastInvalidatedRevision_ = revision;
     baseValid_ = false;
     if (refreshQueued_) {
         return;
@@ -256,7 +263,7 @@ void WorkspaceController::setSegmentationDirty(bool dirty) {
         return;
     }
     segmentationDirty_ = dirty;
-    invalidate();
+    invalidate(true);
 }
 
 void WorkspaceController::setDirtyReason(const QString& reason) {
@@ -264,7 +271,7 @@ void WorkspaceController::setDirtyReason(const QString& reason) {
         return;
     }
     dirtyReason_ = reason;
-    invalidate();
+    invalidate(true);
 }
 
 void WorkspaceController::setTreeMode(bool value) {

@@ -171,6 +171,24 @@ struct StitchBatches {
 
 struct RealisticLayer;
 
+// Signature bon marché des calques auxiliaires : les overlays immuables peuvent changer
+// (curseur, grille, progression) sans modifier une seule image. QImage::cacheKey identifie
+// ses pixels sans parcourir la texture ni la recopier.
+struct OverlayImageKey {
+    qint64 pixels{0};
+    double x0{0}, y0{0}, widthMm{0}, heightMm{0};
+    bool operator==(const OverlayImageKey&) const = default;
+};
+
+std::vector<OverlayImageKey> imageKeys(const std::vector<OverlayImage>& images) {
+    std::vector<OverlayImageKey> keys;
+    keys.reserve(images.size());
+    for (const auto& img : images) {
+        keys.push_back({img.image.cacheKey(), img.x0, img.y0, img.widthMm, img.heightMm});
+    }
+    return keys;
+}
+
 struct GeometryRoot : QSGNode {
     StudioResourceState resources;
     // Couche « regions » (sous les points) : sa matrice suit la caméra, ses textures la révision.
@@ -182,17 +200,30 @@ struct GeometryRoot : QSGNode {
     StitchBatches stitches;
     SourceImageNodes source; // couche « sourceImage » (layers/source_image_layer.*)
     QSGTransformNode* layers = new QSGTransformNode;
+    // Deux ressources indépendantes : le curseur/les guides ne doivent plus effacer et
+    // retéléverser la texture vectorielle à chaque mise à jour des overlays.
+    QSGOpacityNode* vector = new QSGOpacityNode;
+    QSGNode* vectorBase = new QSGNode;
+    QSGNode* vectorHighlight = new QSGNode;
+    QSGNode* overlayImages = new QSGNode;
     QSGNode* overlay = new QSGNode;
     std::uint64_t overlayRevision{std::numeric_limits<std::uint64_t>::max()};
     // Cached scene-graph layers are independent of the display-only overlay revision.
     // A visibility change must redraw even if the document, camera and overlays did not move.
     CanvasLayers displayedLayers;
     std::shared_ptr<const OverlayImage> displayedVector;
+    std::shared_ptr<const OverlayImage> displayedVectorSelection;
+    std::vector<OverlayImageKey> displayedImageKeys;
     GeometryRoot() {
+        vector->setOpacity(0.0); // vector layer disabled until its space enables it
         appendChildNode(regions);
         world->appendChildNode(frame);
         world->appendChildNode(stitches.all);
         appendChildNode(world);
+        vector->appendChildNode(vectorBase);
+        vector->appendChildNode(vectorHighlight);
+        layers->appendChildNode(vector);
+        layers->appendChildNode(overlayImages);
         appendChildNode(layers);
         appendChildNode(overlay);
     }
@@ -443,7 +474,8 @@ public:
         const bool overlayDirty = root->overlayRevision != state.overlayRevision;
         const bool layersChanged = root->displayedLayers != state.layers;
         const bool vectorChanged = root->displayedVector != state.vectorImage;
-        const bool layerDirty = layersChanged || vectorChanged;
+        const bool vectorSelectionChanged =
+            root->displayedVectorSelection != state.vectorSelectionImage;
         const CanvasOverlays defaults;
         const CanvasOverlays& overlays = state.overlays ? *state.overlays : defaults;
         syncRegionLayer(*root, state, window);
@@ -472,30 +504,59 @@ public:
             }
             elapsed = static_cast<double>(timer.nsecsElapsed()) / 1e6;
         }
-        if (dirty.geometry || overlayDirty || layerDirty) {
+        if (dirty.geometry || overlayDirty || layersChanged) {
             root->frame->setOpacity(overlays.showHoop ? 1.0 : 0.0);
             root->stitches.all->setOpacity(overlays.showStitches ? 1.0 : 0.0);
             if (state.scene) {
                 applySimulation(*root, state.scene->vertices, overlays.visibleSegments);
             }
-            clearChildren(*root->layers);
+        }
+        // La texture des vecteurs dépend uniquement du snapshot vectoriel, ni de la caméra
+        // ni du curseur de simulation ni des autres images superposées.
+        if (vectorChanged) {
+            clearChildren(*root->vectorBase);
             if (state.vectorImage && !state.vectorImage->image.isNull()) {
                 const auto& v = *state.vectorImage;
                 auto* node = new QSGSimpleTextureNode;
                 node->setOwnsTexture(true);
                 node->setTexture(window.createTextureFromImage(v.image));
                 node->setRect(QRectF(v.x0, v.y0, v.widthMm, v.heightMm));
-                root->layers->appendChildNode(node);
+                root->vectorBase->appendChildNode(node);
             }
-            for (const auto& layer : overlays.images) {
-                if (layer.image.isNull() || layer.widthMm <= 0 || layer.heightMm <= 0) {
-                    continue;
-                }
+        }
+        if (vectorSelectionChanged) {
+            clearChildren(*root->vectorHighlight);
+            if (state.vectorSelectionImage && !state.vectorSelectionImage->image.isNull()) {
+                const auto& selection = *state.vectorSelectionImage;
                 auto* node = new QSGSimpleTextureNode;
                 node->setOwnsTexture(true);
-                node->setTexture(window.createTextureFromImage(layer.image));
-                node->setRect(QRectF(layer.x0, layer.y0, layer.widthMm, layer.heightMm));
-                root->layers->appendChildNode(node);
+                node->setTexture(window.createTextureFromImage(selection.image));
+                node->setRect(
+                    QRectF(selection.x0, selection.y0, selection.widthMm, selection.heightMm));
+                root->vectorHighlight->appendChildNode(node);
+            }
+        }
+        // Afficher/masquer n'est pas une modification de texture.
+        if (layersChanged) {
+            root->vector->setOpacity(state.layers.vectors ? 1.0 : 0.0);
+        }
+        // Les changements de grille, marqueurs ou simulation ne changent pas les images.
+        // Comparer seulement les clés des QImage plutôt que les pixels.
+        if (overlayDirty) {
+            auto keys = imageKeys(overlays.images);
+            if (keys != root->displayedImageKeys) {
+                clearChildren(*root->overlayImages);
+                for (const auto& layer : overlays.images) {
+                    if (layer.image.isNull() || layer.widthMm <= 0 || layer.heightMm <= 0) {
+                        continue;
+                    }
+                    auto* node = new QSGSimpleTextureNode;
+                    node->setOwnsTexture(true);
+                    node->setTexture(window.createTextureFromImage(layer.image));
+                    node->setRect(QRectF(layer.x0, layer.y0, layer.widthMm, layer.heightMm));
+                    root->overlayImages->appendChildNode(node);
+                }
+                root->displayedImageKeys = std::move(keys);
             }
         }
         if (dirty.camera || dirty.geometry) {
@@ -506,7 +567,7 @@ public:
             root->world->setMatrix(matrix);
             root->layers->setMatrix(matrix);
         }
-        if (dirty.selection || dirty.camera || dirty.geometry || overlayDirty || layerDirty) {
+        if (dirty.selection || dirty.camera || dirty.geometry || overlayDirty || layersChanged) {
             clearChildren(*root->overlay);
             Vertices screen;
             appendScreenOverlays(screen, overlays, state);
@@ -529,6 +590,7 @@ public:
         root->overlayRevision = state.overlayRevision;
         root->displayedLayers = state.layers;
         root->displayedVector = state.vectorImage;
+        root->displayedVectorSelection = state.vectorSelectionImage;
         CanvasRenderResult result{root, dirty.geometry && state.scene != nullptr, elapsed};
         synchronizeRealistic(*root, state, overlays, window, dirty, overlayDirty, result);
         return result;
@@ -586,6 +648,7 @@ struct SoftwareRoot : QSGSimpleTextureNode {
     std::shared_ptr<const RegionLayerData> regions; // couche « regions » déjà rastérisée
     CanvasLayers displayedLayers;
     std::shared_ptr<const OverlayImage> displayedVector;
+    std::shared_ptr<const OverlayImage> displayedVectorSelection;
     std::uint64_t overlayRevision{std::numeric_limits<std::uint64_t>::max()};
     std::uint64_t sourceData{std::numeric_limits<std::uint64_t>::max()};
     std::uint64_t sourceView{std::numeric_limits<std::uint64_t>::max()};
@@ -602,6 +665,7 @@ public:
         if (!dirty.geometry && !dirty.camera && !dirty.selection &&
             root->regions == (state.layers.regions ? state.regions : nullptr) &&
             root->displayedLayers == state.layers && root->displayedVector == state.vectorImage &&
+            root->displayedVectorSelection == state.vectorSelectionImage &&
             root->overlayRevision == state.overlayRevision && root->viewport == state.viewport &&
             root->sourceData == state.sourceImage.dataRevision &&
             root->sourceView == state.sourceImage.viewRevision &&
@@ -628,8 +692,13 @@ public:
         root->regions = state.layers.regions ? state.regions : nullptr;
         const CanvasOverlays defaults;
         const CanvasOverlays& overlays = state.overlays ? *state.overlays : defaults;
-        if (state.vectorImage && !state.vectorImage->image.isNull()) {
+        if (state.layers.vectors && state.vectorImage && !state.vectorImage->image.isNull()) {
             const auto& v = *state.vectorImage;
+            painter.drawImage(QRectF(v.x0, v.y0, v.widthMm, v.heightMm), v.image);
+        }
+        if (state.layers.vectors && state.vectorSelectionImage &&
+            !state.vectorSelectionImage->image.isNull()) {
+            const auto& v = *state.vectorSelectionImage;
             painter.drawImage(QRectF(v.x0, v.y0, v.widthMm, v.heightMm), v.image);
         }
         if (state.scene) {
@@ -713,6 +782,7 @@ public:
         root->overlayRevision = state.overlayRevision;
         root->displayedLayers = state.layers;
         root->displayedVector = state.vectorImage;
+        root->displayedVectorSelection = state.vectorSelectionImage;
         root->sourceData = state.sourceImage.dataRevision;
         root->sourceView = state.sourceImage.viewRevision;
         return {root, dirty.geometry && state.scene != nullptr,

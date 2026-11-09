@@ -342,6 +342,10 @@ void GpuCanvas::setPanMode(bool value) {
 }
 
 void GpuCanvas::setOverlays(std::shared_ptr<const CanvasOverlays> overlays) {
+    // Les overlays sont des snapshots immuables : une même instance ne peut pas changer.
+    if (overlays_ == overlays) {
+        return;
+    }
     overlays_ = std::move(overlays);
     ++overlayRevision_;
     update();
@@ -356,8 +360,18 @@ void GpuCanvas::setSourceImage(SourceImageView view) {
 }
 
 void GpuCanvas::setVectorLayer(std::shared_ptr<const OverlayImage> image) {
+    if (vectorImage_ == image) {
+        return; // pas de texture à republier pour un snapshot identique
+    }
     vectorImage_ = std::move(image);
-    ++overlayRevision_; // même chemin que les autres calques d'image : une révision, un rendu
+    update(); // le backend suit séparément l'identité de l'image vectorielle
+}
+
+void GpuCanvas::setVectorSelectionLayer(std::shared_ptr<const OverlayImage> image) {
+    if (vectorSelectionImage_ == image) {
+        return;
+    }
+    vectorSelectionImage_ = std::move(image);
     update();
 }
 
@@ -489,6 +503,9 @@ QVariantMap GpuCanvas::layers() const {
 }
 
 void GpuCanvas::setRegionLayer(std::shared_ptr<const RegionLayerData> data) {
+    if (regionLayer_ == data) {
+        return;
+    }
     regionLayer_ = std::move(data);
     update();
 }
@@ -621,7 +638,8 @@ QSGNode* GpuCanvas::updatePaintNode(QSGNode* oldNode, UpdatePaintNodeData*) {
                             layers_,
                             layers_.sourceImage ? sourceImage_ : SourceImageView{},
                             regionLayer_,
-                            layers_.vectors ? vectorImage_ : nullptr};
+                            layers_.vectors ? vectorImage_ : nullptr,
+                            layers_.vectors ? vectorSelectionImage_ : nullptr};
     const auto result = backend.synchronize(oldNode, state, *window());
     // Render thread must never write QObject properties or read the live document. Queue
     // diagnostics.

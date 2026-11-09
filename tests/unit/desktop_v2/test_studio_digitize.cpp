@@ -18,6 +18,7 @@
 
 #include "action_controller.hpp"
 #include "analysis_controller.hpp"
+#include "digitize_gestures.hpp"
 #include "edit_controller.hpp"
 #include "fade_controller.hpp"
 #include "file_controller.hpp"
@@ -96,6 +97,7 @@ class StudioDigitizeTest : public QObject {
     Q_OBJECT
 private slots:
     void initTestCase();
+    void statusSignalsDoNotRecalculateDigitizeGeometry();
     void pointEditJourney();
     void pointEditPersistsInOsp();
     void fadeJourney();
@@ -113,6 +115,35 @@ void StudioDigitizeTest::initTestCase() {
     qmlRegisterType<GpuCanvas>("OpenStitch.Studio", 1, 0, "GpuCanvas");
     qmlRegisterUncreatableType<StudioController>("OpenStitch.Studio", 1, 0, "StudioController",
                                                  QStringLiteral("Provided by the application"));
+}
+
+void StudioDigitizeTest::statusSignalsDoNotRecalculateDigitizeGeometry() {
+    Rig rig;
+    rig.addRect();
+    rig.select(rig.id);
+    rig.points.setActive(true);
+    DigitizeGestures gestures(rig.studio, rig.points, rig.fade, rig.satin);
+    gestures.setMode(QStringLiteral("points"));
+
+    QSignalSpy pointsChanged(&rig.points, &PointEditController::changed);
+    QSignalSpy fadeChanged(&rig.fade, &FadeController::changed);
+    QSignalSpy satinChanged(&rig.satin, &SatinController::changed);
+    QSignalSpy overlaysChanged(&gestures, &DigitizeGestures::overlayChanged);
+
+    // Chargement, progression et état métier sans mutation : strictement zéro recalcul.
+    QVERIFY(QMetaObject::invokeMethod(&rig.studio, "changed", Qt::DirectConnection));
+    QCOMPARE(pointsChanged.count(), 0);
+    QCOMPARE(fadeChanged.count(), 0);
+    QCOMPARE(satinChanged.count(), 0);
+    QCOMPARE(overlaysChanged.count(), 0);
+
+    // Changer réellement la sélection doit toujours actualiser chaque adaptateur,
+    // mais uniquement la surcouche du mode de numérisation actif.
+    rig.studio.clearSelection();
+    QCOMPARE(pointsChanged.count(), 1);
+    QCOMPARE(fadeChanged.count(), 1);
+    QCOMPARE(satinChanged.count(), 1);
+    QCOMPARE(overlaysChanged.count(), 1);
 }
 
 void StudioDigitizeTest::pointEditJourney() {

@@ -29,6 +29,13 @@ SatinController::SatinController(StudioController& studio, QObject* parent)
 SatinController::~SatinController() = default;
 
 void SatinController::refresh() {
+    const auto& session = studio_.session();
+    const auto& targets = session.selection().targets();
+    if (lastSeenRevision_ == session.revision() && lastSeenSelection_ == targets) {
+        return; // diagnostic satin inchangé pour les événements de statut
+    }
+    lastSeenRevision_ = session.revision();
+    lastSeenSelection_ = targets;
     std::uint64_t id = 0;
     int count = 0;
     for (const auto& target : studio_.session().selection().targets()) {

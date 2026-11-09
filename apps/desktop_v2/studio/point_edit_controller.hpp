@@ -81,6 +81,10 @@ private:
     [[nodiscard]] std::vector<std::size_t> selectedIndices() const;
 
     StudioController& studio_;
+    // Cache d'invalidation : le recalcul de points peut générer des milliers de points.
+    std::uint64_t lastSeenRevision_{~std::uint64_t{0}};
+    std::vector<Target> lastSeenSelection_;
+    bool lastSeenActive_{false};
     bool active_{false};
     std::uint64_t id_{0};
     PointView view_;

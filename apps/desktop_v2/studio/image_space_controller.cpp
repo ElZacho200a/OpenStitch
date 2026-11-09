@@ -188,6 +188,11 @@ QString ImageSpaceController::stageDetail() const {
 void ImageSpaceController::attachCanvas(QObject* canvas) {
     canvas_ = qobject_cast<GpuCanvas*>(canvas);
     publishLayer();
+    // Si les octets n'ont pas changé, publishLayer évite volontairement de les convertir ;
+    // un nouveau canevas doit néanmoins recevoir le snapshot déjà construit.
+    if (canvas_ && view_.data) {
+        canvas_->setSourceImage(view_);
+    }
 }
 
 void ImageSpaceController::detachCanvas() {
@@ -210,6 +215,7 @@ void ImageSpaceController::publishLayer() {
     const double mm = mmPerPx();
     const bool had = view_.data != nullptr;
     if (!hasImage() || after.isNull() || mm <= 0.0) {
+        imageKeysSet_ = false;
         if (had) {
             view_.data.reset();
             ++view_.dataRevision;
@@ -222,6 +228,16 @@ void ImageSpaceController::publishLayer() {
         }
         return;
     }
+    // Plusieurs signaux (preview/images) peuvent désigner exactement les mêmes pixels.
+    // Ne pas réduire deux images ni réallouer des textures dans ce cas.
+    if (imageKeysSet_ && beforeKey_ == before.cacheKey() && afterKey_ == after.cacheKey() &&
+        imageMmPerPx_ == mm) {
+        return;
+    }
+    beforeKey_ = before.cacheKey();
+    afterKey_ = after.cacheKey();
+    imageMmPerPx_ = mm;
+    imageKeysSet_ = true;
     auto data = std::make_shared<SourceImageData>();
     data->mmPerPx = mm;
     const int side = std::max({after.width(), after.height(), before.width(), before.height()});
@@ -269,6 +285,11 @@ void ImageSpaceController::trackSegmentation() {
 }
 
 void ImageSpaceController::refresh() {
+    const auto revision = studio_.session().revision();
+    if (observedRevision_ == revision) {
+        return; // sélection, progression et statut : les opérations d'image n'ont pas changé
+    }
+    observedRevision_ = revision;
     trackSegmentation();
     emit changed();
 }
