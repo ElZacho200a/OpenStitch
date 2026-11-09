@@ -65,18 +65,34 @@ ColumnLayout {
     }
 
     // Placement numérique (centre et taille de la boîte, en mm modèle : Y vers le haut).
-    RowLayout {
+    Flow {
+        objectName: "editPlacementFlow"
         Layout.fillWidth: true
+        implicitHeight: childrenRect.height
         spacing: 4
         visible: bar.hasBox
-        Text { text: "X"; color: Theme.faint; font.pixelSize: Theme.smallSize }
-        Num { id: xField; objectName: "placeX"; text: bar.hasBox ? bar.box.cx.toFixed(2) : "" }
-        Text { text: "Y"; color: Theme.faint; font.pixelSize: Theme.smallSize }
-        Num { id: yField; objectName: "placeY"; text: bar.hasBox ? (-bar.box.cy).toFixed(2) : "" }
-        Text { text: "L"; color: Theme.faint; font.pixelSize: Theme.smallSize }
-        Num { id: wField; objectName: "placeW"; text: bar.hasBox ? bar.box.width.toFixed(2) : "" }
-        Text { text: "H"; color: Theme.faint; font.pixelSize: Theme.smallSize }
-        Num { id: hField; objectName: "placeH"; text: bar.hasBox ? bar.box.height.toFixed(2) : "" }
+        // Each label stays with its field. A narrow dock wraps pairs instead of
+        // forcing a four-field RowLayout wider than the inspector.
+        RowLayout {
+            spacing: 3
+            Text { text: "X"; color: Theme.faint; font.pixelSize: Theme.smallSize }
+            Num { id: xField; objectName: "placeX"; text: bar.hasBox ? bar.box.cx.toFixed(2) : "" }
+        }
+        RowLayout {
+            spacing: 3
+            Text { text: "Y"; color: Theme.faint; font.pixelSize: Theme.smallSize }
+            Num { id: yField; objectName: "placeY"; text: bar.hasBox ? (-bar.box.cy).toFixed(2) : "" }
+        }
+        RowLayout {
+            spacing: 3
+            Text { text: "L"; color: Theme.faint; font.pixelSize: Theme.smallSize }
+            Num { id: wField; objectName: "placeW"; text: bar.hasBox ? bar.box.width.toFixed(2) : "" }
+        }
+        RowLayout {
+            spacing: 3
+            Text { text: "H"; color: Theme.faint; font.pixelSize: Theme.smallSize }
+            Num { id: hField; objectName: "placeH"; text: bar.hasBox ? bar.box.height.toFixed(2) : "" }
+        }
     }
     RowLayout {
         Layout.fillWidth: true
