@@ -24,6 +24,8 @@ ColumnLayout {
         return spaceCtl && spaceCtl.sources[objectId] ? spaceCtl.sources[objectId] : null
     }
     spacing: 0
+    // Keep excess content inside its panel, not across the point inspector.
+    clip: true
 
     RowLayout {
         Layout.fillWidth: true
@@ -96,7 +98,7 @@ ColumnLayout {
         visible: panel.workspace.treeMode
         Layout.fillWidth: true
         Layout.fillHeight: true
-        Layout.minimumHeight: 100
+        Layout.minimumHeight: 80
     }
 
     ListView {
@@ -105,7 +107,7 @@ ColumnLayout {
         visible: !panel.workspace.treeMode
         Layout.fillWidth: true
         Layout.fillHeight: true
-        Layout.minimumHeight: 100
+        Layout.minimumHeight: 80
         clip: true
         boundsBehavior: Flickable.StopAtBounds
         model: studio.objects
@@ -208,10 +210,30 @@ ColumnLayout {
         }
     }
 
-    EditBar {
+    // Wrapped actions can be taller than the dock. Keep a scrollable section
+    // instead of painting them over the object tree or parameter inspector.
+    Flickable {
+        id: editActionsScroll
+        objectName: "pointsEditActionsScroll"
         visible: panel.workspace.editOpen
         Layout.fillWidth: true
-        Layout.margins: 12
+        Layout.minimumHeight: 0
+        Layout.preferredHeight: visible ? Math.min(editActions.implicitHeight + 24,
+                                                   Math.max(96, panel.height * 0.45)) : 0
+        Layout.maximumHeight: visible ? Math.max(0, panel.height - 205) : 0
+        clip: true
+        contentWidth: width
+        contentHeight: editActions.implicitHeight + 24
+        boundsBehavior: Flickable.StopAtBounds
+        flickableDirection: Flickable.VerticalFlick
+        Controls.ScrollBar.vertical: Controls.ScrollBar { }
+
+        EditBar {
+            id: editActions
+            x: 12
+            y: 12
+            width: Math.max(0, editActionsScroll.width - 24)
+        }
     }
 
     Text {
