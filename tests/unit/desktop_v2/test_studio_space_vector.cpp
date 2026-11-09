@@ -238,7 +238,7 @@ private slots:
         QTRY_COMPARE(rig.stage.selectionBuildCount(), selectionBuilds + 1);
         const auto firstOverlay = rig.canvas->vectorSelectionImage();
         QVERIFY(firstOverlay);
-        QCOMPARE(rig.canvas->vectorImage(), background);
+        QVERIFY(rig.canvas->vectorImage() == background);
         QCOMPARE(rig.stage.layerBuildCount(), baseBuilds);
 
         QTest::mouseClick(rig.window, Qt::LeftButton, {}, at(rig, 2.5, 0.0));
@@ -246,7 +246,7 @@ private slots:
         const auto secondOverlay = rig.canvas->vectorSelectionImage();
         QVERIFY(secondOverlay);
         QVERIFY(secondOverlay != firstOverlay);
-        QCOMPARE(rig.canvas->vectorImage(), background);
+        QVERIFY(rig.canvas->vectorImage() == background);
         QCOMPARE(rig.stage.layerBuildCount(), baseBuilds);
         QCOMPARE(firstOverlay->image.width(), secondOverlay->image.width());
         QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
@@ -337,7 +337,7 @@ private slots:
         // jamais le fond de toutes les formes vectorielles.
         QCOMPARE(rig.stage.layerBuildCount(), buildsBefore);
         QTRY_COMPARE(rig.stage.selectionBuildCount(), selectionsBefore + 1);
-        QCOMPARE(rig.canvas->vectorImage(), base);
+        QVERIFY(rig.canvas->vectorImage() == base);
         QVERIFY(rig.canvas->vectorSelectionImage());
         QTRY_VERIFY_WITH_TIMEOUT(rig.session.selection().primary().has_value(), 3'000);
         const auto target = *rig.session.selection().primary();
