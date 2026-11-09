@@ -24,6 +24,8 @@
 #include "gpu_canvas.hpp"
 #include "image_controller.hpp"
 #include "image_space_controller.hpp"
+#include "region_controller.hpp"
+#include "segmentation_space_controller.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
 #include "studio_controller.hpp"
 #include "workspace_controller.hpp"
@@ -143,6 +145,8 @@ private slots:
         EditController editor(studio);
         ImageController images(studio);
         ImageSpaceController imageSpace(studio, images);
+        RegionController regions(studio, images);
+        SegmentationSpaceController segmentationSpace(studio, images, regions);
         FileController files(studio, &actions);
         QTemporaryDir dir;
         const QString path = writeImage(dir.path());
@@ -162,6 +166,8 @@ private slots:
         ctx->setContextProperty(QStringLiteral("files"), &files);
         ctx->setContextProperty(QStringLiteral("imageTools"), &images);
         ctx->setContextProperty(QStringLiteral("imageSpace"), &imageSpace);
+        ctx->setContextProperty(QStringLiteral("regionTools"), &regions);
+        ctx->setContextProperty(QStringLiteral("segmentationSpace"), &segmentationSpace);
         engine.load(QUrl(QStringLiteral("qrc:/studio/qml/Main.qml")));
         QVERIFY2(!engine.rootObjects().isEmpty(), qPrintable(warnings.join('\n')));
         auto* window = qobject_cast<QQuickWindow*>(engine.rootObjects().front());
@@ -202,7 +208,9 @@ private slots:
         QVERIFY(!session.project().segmentation.has_value());
         QVERIFY(session.project().vector_objects.empty());
         QVERIFY(session.project().embroidery_objects.empty());
-        images.applySegmentation(images.segmentationDefaults());
+        QTRY_VERIFY_WITH_TIMEOUT(named(window, QStringLiteral("segmentEmptyButton")) != nullptr,
+                                 5'000);
+        segmentationSpace.segmentImage({});
         QTRY_VERIFY_WITH_TIMEOUT(session.project().segmentation.has_value(), 20'000);
         QVERIFY(session.project().vector_objects.empty());
         QVERIFY(session.project().embroidery_objects.empty());
