@@ -31,7 +31,7 @@ Le recalcul est justifié **pour la séquence cousue**, mais pas pour les contou
 
 ### Correctif de cette PR
 
-- À chaque **révision du document**, calculer une petite signature visuelle ordonnée des objets vectoriels : id, visible, verrouillé, lien région, couleur et géométrie (empreinte sémantique + origine absolue, car l'empreinte sémantique seule est invariante par translation). Aucune recherche ni signature sur un simple changement de sélection.
+- Quand une **révision peut modifier les vecteurs**, calculer une petite signature visuelle ordonnée : id, visible, verrouillé, lien région, couleur et géométrie (empreinte sémantique + origine absolue, car l'empreinte sémantique seule est invariante par translation). Les mutations explicitement limitées à l'image/segmentation sont ignorées d'emblée ; aucun parcours des nœuds sur un simple clic.
 - Refaire le fond vectoriel **seulement si la signature de la liste a changé**. Le ROI de sélection reste indépendant.
 - Éviter `computeStageStatus` sur simple sélection ou fin de worker ; invalider le cache de statut sur révision ou `setSegmentationDirty`. Le comportement de l'état de l'étape reste identique.
 
