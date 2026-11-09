@@ -171,7 +171,7 @@ Rectangle {
         anchors.leftMargin: 10
         anchors.rightMargin: 10
         height: 34
-        contentWidth: threadTabs.implicitWidth
+        contentWidth: threadTabs.childrenRect.width
         contentHeight: height
         flickableDirection: Flickable.HorizontalFlick
         boundsBehavior: Flickable.StopAtBounds
@@ -256,6 +256,18 @@ Rectangle {
                 spacing: 4
                 enabled: panel.current >= 0
                 StudioButton { objectName: "threadSelectButton"; text: qsTr("Sélectionner les objets"); onClicked: panel.controller.selectThreadObjects(panel.current) }
+                StudioButton {
+                    objectName: "threadMoveUpButton"
+                    text: qsTr("Monter")
+                    enabled: panel.current > 0
+                    onClicked: panel.controller.moveThread(panel.current, panel.current - 1)
+                }
+                StudioButton {
+                    objectName: "threadMoveDownButton"
+                    text: qsTr("Descendre")
+                    enabled: panel.current >= 0 && panel.current < panel.entryList.length - 1
+                    onClicked: panel.controller.moveThread(panel.current, panel.current + 1)
+                }
                 StudioButton {
                     objectName: "threadToggleButton"
                     readonly property bool shown: panel.current >= 0 && panel.current < panel.entryList.length ? panel.entryList[panel.current].visible : true
@@ -387,9 +399,12 @@ Rectangle {
                         Text { Layout.fillWidth: true; elide: Text.ElideRight; text: result.modelData.code + "  " + result.modelData.name; color: Theme.foreground; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize }
                         StudioButton {
                             objectName: "threadCatalogOwn"
-                            text: panel.controller.ownsThread(result.modelData.chartId,
-                                                              result.modelData.code)
-                                  ? qsTr("Possédé") : qsTr("+ Mes fils")
+                            text: {
+                                const count = panel.controller.stockCount
+                                return panel.controller.ownsThread(result.modelData.chartId,
+                                                                  result.modelData.code)
+                                       ? qsTr("Possédé") : qsTr("+ Mes fils")
+                            }
                             quiet: true
                             onClicked: panel.controller.setOwnedThread(
                                 result.modelData.chartId, result.modelData.code,
