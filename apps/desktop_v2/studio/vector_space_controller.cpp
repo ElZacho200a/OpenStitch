@@ -83,8 +83,8 @@ Fresh revectorize(const document::Project& project) {
 
 VectorSpaceController::VectorSpaceController(StudioController& studio, QObject* parent)
     : QObject(parent), studio_(studio) {
+    // StudioController::selectionChanged émet aussi changed : un seul refresh par clic.
     connect(&studio_, &StudioController::changed, this, &VectorSpaceController::refresh);
-    connect(&studio_, &StudioController::selectionChanged, this, &VectorSpaceController::refresh);
     refresh();
 }
 
@@ -168,6 +168,9 @@ void VectorSpaceController::refresh() {
 
 void VectorSpaceController::attach(QObject* canvas) {
     detach();
+    // Actualiser d'abord hors canevas : si le calque doit être reconstruit, il ne sera
+    // publié qu'une fois, une fois le nouveau canevas branché.
+    refresh();
     canvas_ = qobject_cast<GpuCanvas*>(canvas);
     if (!canvas_) {
         return;
@@ -175,7 +178,6 @@ void VectorSpaceController::attach(QObject* canvas) {
     canvas_->setVectorPicker([this](double x, double y, double tolerance, bool toggle) {
         pickAt(x, y, tolerance, toggle);
     });
-    refresh();
     if (layer_) {
         canvas_->setVectorLayer(std::shared_ptr<const OverlayImage>(layer_, &layer_->image()));
     }
