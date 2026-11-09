@@ -18,6 +18,7 @@
 #include "edit_controller.hpp"
 #include "gpu_canvas.hpp"
 #include "openstitch/commands/project_commands.hpp"
+#include "openstitch/commands/replace_project_command.hpp"
 #include "openstitch/project_io/project_io.hpp"
 #include "openstitch/vectorization/vectorize.hpp"
 #include "studio_controller.hpp"
@@ -357,6 +358,84 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(rig.session.selection().empty(), 3'000);
         QCOMPARE(rig.stage.layerBuildCount(), buildsBefore);
         QVERIFY(!rig.canvas->vectorSelectionImage());
+    }
+
+    void visualPropertiesInvalidateVectorRasterButNamesDoNot() {
+        Rig rig;
+        open(rig);
+        enterSpace(rig);
+        const int initialBuilds = rig.stage.layerBuildCount();
+        const auto originalRaster = rig.canvas->vectorImage();
+
+        const auto original = rig.session.snapshot();
+        auto recolored = std::make_shared<document::Project>(*original);
+        recolored->vector_objects.front().rgb = {10, 190, 40};
+        auto recolorCommand = std::make_unique<commands::ReplaceProjectCommand>(
+            "Recolorer une forme", original, recolored);
+        rig.session.execute(std::move(recolorCommand));
+        QCOMPARE(rig.stage.layerBuildCount(), initialBuilds + 1);
+        QVERIFY(rig.canvas->vectorImage() != originalRaster);
+
+        // A display-only name change does not repaint vector geometry.
+        const auto colorProject = rig.session.snapshot();
+        auto renamed = std::make_shared<document::Project>(*colorProject);
+        renamed->vector_objects.front().name = "New label";
+        rig.session.execute(std::make_unique<commands::ReplaceProjectCommand>(
+            "Renommer une forme", colorProject, renamed, false, false));
+        QCOMPARE(rig.stage.layerBuildCount(), initialBuilds + 1);
+
+        const auto namedProject = rig.session.snapshot();
+        auto hidden = std::make_shared<document::Project>(*namedProject);
+        hidden->vector_objects.front().visible = false;
+        rig.session.execute(std::make_unique<commands::ReplaceProjectCommand>(
+            "Masquer une forme", namedProject, hidden));
+        QCOMPARE(rig.stage.layerBuildCount(), initialBuilds + 2);
+        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+    }
+
+    void stitchParameterChangesDoNotRerasterizeVectors() {
+        Rig rig;
+        open(rig);
+        enterSpace(rig);
+        auto project = rig.session.project();
+        document::EmbroideryObject embroidery;
+        embroidery.id = project.object_ids.next();
+        embroidery.source_vector = project.vector_objects.front().id;
+        embroidery.params = document::RunningStitchParams{};
+        const auto id = embroidery.id;
+        project.embroidery_objects.push_back(embroidery);
+        rig.session.replaceProject(std::move(project), false);
+        QTRY_VERIFY_WITH_TIMEOUT(!rig.controller.busy(), 15'000);
+        const int builds = rig.stage.layerBuildCount();
+        const auto base = rig.canvas->vectorImage();
+        QVERIFY(base);
+
+        // Changing stitch length invalidates the machine sequence, not the vector texture.
+        auto params = std::get<document::RunningStitchParams>(
+            rig.session.project().embroidery_objects.front().params);
+        params.stitch_length = Micrometers{2'000};
+        rig.session.execute(
+            std::make_unique<commands::SetStitchParamsCommand>(id, params, "Longueur"));
+        QTRY_VERIFY_WITH_TIMEOUT(!rig.controller.busy(), 15'000);
+        QCOMPARE(rig.stage.layerBuildCount(), builds);
+        QVERIFY(rig.canvas->vectorImage() == base);
+
+        // Undo/redo have the same invalidation scope.
+        QVERIFY(rig.session.undo());
+        QTRY_VERIFY_WITH_TIMEOUT(!rig.controller.busy(), 15'000);
+        QCOMPARE(rig.stage.layerBuildCount(), builds);
+        QVERIFY(rig.session.redo());
+        QTRY_VERIFY_WITH_TIMEOUT(!rig.controller.busy(), 15'000);
+        QCOMPARE(rig.stage.layerBuildCount(), builds);
+        QVERIFY(rig.canvas->vectorImage() == base);
+
+        // A real move (semantic fingerprint itself is translation invariant) must redraw.
+        const auto source = rig.session.project().vector_objects.front().id;
+        rig.session.execute(std::make_unique<commands::TranslateVectorObjectCommand>(
+            source, Vec2um{Micrometers{1'000}, Micrometers{0}}));
+        QTRY_COMPARE(rig.stage.layerBuildCount(), builds + 1);
+        QVERIFY(rig.canvas->vectorImage() != base);
+        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
     }
 
     void goToRegionSwitchesToSegmentationWithTheRegionSelected() {

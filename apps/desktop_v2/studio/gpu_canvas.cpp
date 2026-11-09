@@ -294,11 +294,24 @@ QVariantList GpuCanvas::toolOverlay() const {
     // Rayon d'un nœud proportionnel à la forme éditée (~1,5 % de sa diagonale à l'écran), borné.
     const double spanPx = tools_->nodeSpanMm() * camera_.scale();
     const double markerPx = std::clamp(spanPx * 0.015, 1.5, 3.5);
+    // QML Canvas node markers are visible only inside the viewport. Large vector
+    // objects may carry thousands of nodes; skip their QVariant allocations offscreen.
+    // Do not cull lines: an edge may cross the viewport with both endpoints outside.
+    constexpr double marginPx = 8.0;
     for (const auto& item : tools_->overlay()) {
+        const bool isMarker = item.kind == ToolOverlayItem::Kind::Point ||
+                              item.kind == ToolOverlayItem::Kind::Selected;
         QVariantList pts;
         for (const auto& p : item.points) {
             const auto s = camera_.worldToScreen(p);
+            if (isMarker && (s.x < -marginPx || s.y < -marginPx || s.x > width() + marginPx ||
+                             s.y > height() + marginPx)) {
+                continue;
+            }
             pts << s.x << s.y;
+        }
+        if (pts.isEmpty()) {
+            continue;
         }
         QVariantMap entry{
             {QStringLiteral("kind"), QString::fromLatin1(kKinds[static_cast<int>(item.kind)])},

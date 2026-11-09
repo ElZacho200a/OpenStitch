@@ -79,6 +79,38 @@ Fresh revectorize(const document::Project& project) {
     return out;
 }
 
+// One key per vector in painter order. semantic_geometry_fingerprint is translation
+// invariant, so include the absolute first node as well. The UI-only signature also
+// captures every field consumed by VectorLayer::build (not stitch parameters).
+std::vector<std::uint64_t> vectorVisualKeys(const document::Project& project) {
+    std::vector<std::uint64_t> keys;
+    keys.reserve(project.vector_objects.size());
+    for (const auto& object : project.vector_objects) {
+        std::uint64_t key = 14695981039346656037ULL;
+        const auto mix = [&](std::uint64_t value) {
+            for (unsigned byte = 0; byte < 8; ++byte) {
+                key ^= (value >> (byte * 8U)) & 0xffU;
+                key *= 1099511628211ULL;
+            }
+        };
+        mix(object.id.value);
+        mix(object.visible ? 1 : 0);
+        mix(object.locked ? 1 : 0);
+        mix(object.source_region ? object.source_region->value : 0);
+        for (const auto color : object.rgb) {
+            mix(color);
+        }
+        mix(document::semantic_geometry_fingerprint(object));
+        if (!object.paths.empty() && !object.paths.front().outer.nodes.empty()) {
+            const auto origin = object.paths.front().outer.nodes.front().pos;
+            mix(static_cast<std::uint64_t>(origin.x.value));
+            mix(static_cast<std::uint64_t>(origin.y.value));
+        }
+        keys.push_back(key);
+    }
+    return keys;
+}
+
 } // namespace
 
 VectorSpaceController::VectorSpaceController(StudioController& studio, QObject* parent)
@@ -133,13 +165,23 @@ void VectorSpaceController::refresh() {
     const auto& session = studio_.session();
     const auto selected = selectedShapeIds();
     bool changed = false;
-    // Une retouche de segmentation ne modifie PAS les vecteurs déjà produits.
-    // On garde le layer et son image raster, même si la révision du document avance.
+    // Une modification des points, du tissu ou de la segmentation peut avancer la
+    // révision sans changer les formes. Comparer seulement leurs propriétés visuelles,
+    // avant d'allouer une grande QImage ou de republier la texture GPU.
     const bool newRevision = builtRevision_ != session.revision();
-    const bool geometryDirty = newRevision && session.lastChangeAffectsEmbroidery();
-    const bool rebuildBase = !layer_ || geometryDirty;
+    // Segmentation/image-only commands promise not to change any vector: avoid even
+    // scanning their nodes during a rapid succession of brush edits.
+    const bool mayChangeVectors =
+        session.lastChangeAffectsEmbroidery() || !session.lastChangeAffectsSegmentation();
+    std::vector<std::uint64_t> nextVisualKeys;
+    if (!layer_ || (newRevision && mayChangeVectors)) {
+        nextVisualKeys = vectorVisualKeys(session.project());
+    }
+    const bool rebuildBase =
+        !layer_ || (newRevision && mayChangeVectors && nextVisualKeys != renderedVisualKeys_);
     if (rebuildBase) {
         layer_ = VectorLayer::build(session.project());
+        renderedVisualKeys_ = std::move(nextVisualKeys);
         ++builds_;
         changed = true;
         if (canvas_) {
@@ -157,19 +199,24 @@ void VectorSpaceController::refresh() {
         }
     }
     builtRevision_ = session.revision();
-    const auto statuses =
-        computeStageStatus(session.project(), {.segmentationDirty = dirty_,
-                                               .dirtyReason = dirtyReason_.toStdString()});
-    const auto& vec = statuses[2];
-    const QString state = QString::fromUtf8(stageStateName(vec.state));
-    QString detail = QString::fromStdString(vec.detail);
-    if (vec.state == StageState::UpToDate) {
-        detail = tr("%1 forme(s) vectorielle(s)").arg(shapeCount());
-    }
-    if (state != stageState_ || detail != stageDetail_) {
-        stageState_ = state;
-        stageDetail_ = detail;
-        changed = true;
+    // Le statut du workflow dépend du document et de l'état de segmentation,
+    // jamais d'un clic de sélection ni de la fin d'un calcul de scène.
+    if (statusRevision_ != session.revision()) {
+        const auto statuses =
+            computeStageStatus(session.project(), {.segmentationDirty = dirty_,
+                                                   .dirtyReason = dirtyReason_.toStdString()});
+        const auto& vec = statuses[2];
+        const QString state = QString::fromUtf8(stageStateName(vec.state));
+        QString detail = QString::fromStdString(vec.detail);
+        if (vec.state == StageState::UpToDate) {
+            detail = tr("%1 forme(s) vectorielle(s)").arg(shapeCount());
+        }
+        if (state != stageState_ || detail != stageDetail_) {
+            stageState_ = state;
+            stageDetail_ = detail;
+            changed = true;
+        }
+        statusRevision_ = session.revision();
     }
     if (changed) {
         emit layerChanged();
@@ -213,6 +260,7 @@ void VectorSpaceController::setSegmentationDirty(bool dirty, const QString& reas
     }
     dirty_ = dirty;
     dirtyReason_ = reason;
+    statusRevision_ = 0; // l'état de segmentation n'incrémente pas toujours la révision
     refresh();
 }
 

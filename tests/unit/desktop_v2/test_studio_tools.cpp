@@ -161,6 +161,7 @@ private slots:
     void escapeCancelsGestures();
     void nodeEditByMouse();
     void nodeDragFromSelectTool();
+    void offscreenNodeHandlesDoNotFillQmlCanvas();
     void knifeAndBooleans();
     void snappingIsConfigurable();
 };
@@ -502,6 +503,33 @@ void StudioToolsTest::nodeDragFromSelectTool() {
     QVERIFY(after.has_value());
     QVERIFY(std::abs(after->nodes[0].pos.x - p0.x) > 1.0);
     QCOMPARE(static_cast<int>(rig.session.selection().targets().size()), 1);
+}
+
+void StudioToolsTest::offscreenNodeHandlesDoNotFillQmlCanvas() {
+    Rig rig;
+    open(rig);
+    const auto id = draw(rig, "draw.rectangle", {-12, -8}, {12, 8});
+    QVERIFY(id != 0);
+    rig.tools.setActiveTool(QStringLiteral("select"));
+    const auto countMarkers = [](const QVariantList& items) {
+        int markers = 0;
+        for (const auto& item : items) {
+            const auto kind = item.toMap().value(QStringLiteral("kind")).toString();
+            if (kind == QStringLiteral("point") || kind == QStringLiteral("selected")) {
+                ++markers;
+            }
+        }
+        return markers;
+    };
+    const auto visible = rig.canvas->toolOverlay();
+    QVERIFY(countMarkers(visible) >= 4);
+    rig.canvas->panBy(20'000.0, 20'000.0);
+    const auto outside = rig.canvas->toolOverlay();
+    QCOMPARE(countMarkers(outside), 0);
+    // Keep the outline even when both endpoints are outside the screen: it
+    // may cross the viewport in other pan/zoom configurations.
+    QVERIFY(!outside.isEmpty());
+    QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
 }
 
 void StudioToolsTest::nodeEditByMouse() {

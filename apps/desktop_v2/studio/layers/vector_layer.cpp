@@ -6,7 +6,7 @@
 #include <QPen>
 #include <algorithm>
 #include <cmath>
-#include <unordered_set>
+#include <utility>
 
 namespace openstitch::desktop_v2::studio {
 
@@ -71,6 +71,7 @@ std::shared_ptr<const VectorLayer> VectorLayer::build(const document::Project& p
         }
         shape.bounds = shape.path.boundingRect();
         all = all.isNull() ? shape.bounds : all.united(shape.bounds);
+        layer->shapeIndex_.emplace(shape.id, layer->shapes_.size());
         layer->shapes_.push_back(std::move(shape));
     }
     if (layer->shapes_.empty() || all.width() <= 0 || all.height() <= 0) {
@@ -113,18 +114,23 @@ VectorLayer::selectionOverlay(const std::vector<std::uint64_t>& selectedShapes) 
     if (selectedShapes.empty() || shapes_.empty() || image_.image.isNull()) {
         return {};
     }
-    const std::unordered_set<std::uint64_t> ids(selectedShapes.begin(), selectedShapes.end());
-    QRectF bounds;
-    bool hasSelected = false;
-    for (const auto& shape : shapes_) {
-        if (!ids.contains(shape.id)) {
-            continue;
+    std::vector<std::size_t> selectedIndices;
+    selectedIndices.reserve(selectedShapes.size());
+    for (const auto id : selectedShapes) {
+        if (const auto found = shapeIndex_.find(id); found != shapeIndex_.end()) {
+            selectedIndices.push_back(found->second);
         }
-        bounds = hasSelected ? bounds.united(shape.bounds) : shape.bounds;
-        hasSelected = true;
     }
-    if (!hasSelected) {
+    if (selectedIndices.empty()) {
         return {};
+    }
+    // Preserve painter order for overlapping selected shapes, regardless of selection order.
+    std::sort(selectedIndices.begin(), selectedIndices.end());
+    selectedIndices.erase(std::unique(selectedIndices.begin(), selectedIndices.end()),
+                          selectedIndices.end());
+    QRectF bounds = shapes_[selectedIndices.front()].bounds;
+    for (const auto index : selectedIndices) {
+        bounds = bounds.united(shapes_[index].bounds);
     }
 
     // Ne rasteriser que le voisinage des contours et poignées effectivement sélectionnés.
@@ -144,10 +150,8 @@ VectorLayer::selectionOverlay(const std::vector<std::uint64_t>& selectedShapes) 
     painter.scale(pxPerMm_, pxPerMm_);
     painter.translate(-area.topLeft());
     const QColor accent(229, 99, 137);
-    for (const auto& shape : shapes_) {
-        if (!ids.contains(shape.id)) {
-            continue;
-        }
+    for (const auto index : selectedIndices) {
+        const auto& shape = shapes_[index];
         painter.setBrush(Qt::NoBrush);
         painter.setPen(QPen(accent, 0.45));
         painter.drawPath(shape.path);
