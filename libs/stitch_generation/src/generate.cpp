@@ -1125,6 +1125,9 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
         }
     }
     std::vector<stitch::StitchSequence> chunks(units.size());
+    // A cache hit already owns an immutable sequence. Keep its shared pointer rather
+    // than cloning thousands of commands into a temporary mutable chunk.
+    std::vector<std::shared_ptr<const stitch::StitchSequence>> cachedChunks(units.size());
     std::atomic<std::size_t> unitsDone{0};
     const std::size_t unitsTotal = units.size();
     parallel_for(parallelUnits.size(), [&](std::size_t k) {
@@ -1156,7 +1159,7 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
         // HP-PERF-002 : séquence inchangée depuis le dernier calcul -> servie du cache (clé
         // exacte : identifiant, paramètres, géométrie source).
         if (const auto hit = chunk_cache_find(object.id, object.params, unit.source->paths)) {
-            chunk = *hit;
+            cachedChunks[u] = hit;
             return;
         }
         std::visit(
@@ -1258,17 +1261,25 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
             joinHere ? std::optional<Vec2um>{sequence.commands.back().pos} : std::nullopt;
 
         if (unit.kind == Kind::Independent) {
-            auto& chunk = chunks[u].commands;
+            const auto& chunk =
+                cachedChunks[u] ? cachedChunks[u]->commands : chunks[u].commands;
             const auto* tatami = std::get_if<document::TatamiParams>(&object.params);
             if (joinHere && !(tatami != nullptr && tatami->entry_point)) {
                 std::optional<Vec2um> nextStart;
-                if (u + 1 < units.size() && units[u + 1].kind == Kind::Independent &&
-                    !chunks[u + 1].commands.empty()) {
-                    nextStart = chunks[u + 1].commands.front().pos;
+                if (u + 1 < units.size() && units[u + 1].kind == Kind::Independent) {
+                    const auto& next =
+                        cachedChunks[u + 1] ? cachedChunks[u + 1]->commands : chunks[u + 1].commands;
+                    if (!next.empty()) {
+                        nextStart = next.front().pos;
+                    }
                 }
-                chunk = orient_chunk(chunk, previousEnd, nextStart);
+                // orient_chunk retourne un nouvel ordre uniquement quand la jointure
+                // est demandée : ne jamais modifier le fragment conservé dans le cache.
+                const auto oriented = orient_chunk(chunk, previousEnd, nextStart);
+                sequence.commands.insert(sequence.commands.end(), oriented.begin(), oriented.end());
+            } else {
+                sequence.commands.insert(sequence.commands.end(), chunk.begin(), chunk.end());
             }
-            sequence.commands.insert(sequence.commands.end(), chunk.begin(), chunk.end());
             previous = &object;
             continue;
         }
