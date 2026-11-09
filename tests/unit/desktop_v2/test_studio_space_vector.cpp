@@ -236,6 +236,10 @@ private slots:
         QVERIFY(background);
         const QPoint left = at(rig, -2.5, 0.0);
         const QPoint right = at(rig, 2.5, 0.0);
+        QTRY_VERIFY_WITH_TIMEOUT(
+            reddish(rig.window->grabWindow().pixelColor(left)) &&
+                bluish(rig.window->grabWindow().pixelColor(right)),
+            8'000);
         const QColor leftBefore = rig.window->grabWindow().pixelColor(left);
         const QColor rightBefore = rig.window->grabWindow().pixelColor(right);
 
