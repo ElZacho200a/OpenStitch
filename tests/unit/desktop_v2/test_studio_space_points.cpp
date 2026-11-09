@@ -208,6 +208,65 @@ private slots:
         QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
     }
 
+    void narrowObjectPanelKeepsTreeEditActionsAndInspectorSeparated() {
+        Rig rig;
+        open(rig);
+        rig.window->resize(1000, 640);
+        rig.studio.selectObject(
+            QString::number(rig.session.project().embroidery_objects.front().id.value));
+        rig.workspace->setEditOpen(true);
+        QTRY_VERIFY_WITH_TIMEOUT(rig.inspector.count() > 0, 5'000);
+
+        auto* panel = named(rig.window, "pointsObjectsPanel");
+        auto* scroll = named(rig.window, "pointsEditActionsScroll");
+        auto* inspectorArea = named(rig.window, "inspectorArea");
+        auto* selectionFlow = named(rig.window, "editSelectionFlow");
+        auto* transformFlow = named(rig.window, "editTransformFlow");
+        auto* placementFlow = named(rig.window, "editPlacementFlow");
+        QVERIFY(panel && scroll && inspectorArea);
+        QVERIFY(selectionFlow && transformFlow && placementFlow);
+        const auto top = [](QQuickItem* item) {
+            return item->mapToScene(QPointF(0.0, 0.0)).y();
+        };
+        const auto bottom = [&](QQuickItem* item) { return top(item) + item->height(); };
+
+        for (const bool treeMode : {true, false}) {
+            rig.workspace->setTreeMode(treeMode);
+            auto* list = named(rig.window, treeMode ? "objectTreeList" : "objectList");
+            QVERIFY(list);
+            QTRY_VERIFY_WITH_TIMEOUT(scroll->height() >= 60 && list->height() >= 60, 5'000);
+            QVERIFY(scroll->isVisible());
+            QVERIFY(inspectorArea->isVisible());
+            // Every wrapped row contributes to EditBar's measured height.
+            for (auto* flow : {selectionFlow, transformFlow, placementFlow}) {
+                QVERIFY2(flow->implicitHeight() + 1.0 >= flow->childrenRect().height(),
+                         qPrintable(flow->objectName()));
+            }
+            if (treeMode) {
+                auto* layerActions = named(rig.window, "layerActionsFlow");
+                QVERIFY(layerActions);
+                QTRY_VERIFY(layerActions->implicitHeight() >=
+                            layerActions->childrenRect().height() - 1.0);
+                QVERIFY(bottom(layerActions) <= top(list) + 2.0);
+            }
+            // On screen, the three panels must be disjoint, not painted on top
+            // of each other. The edit actions use their own clipped Flickable.
+            QVERIFY(bottom(list) <= top(scroll) + 2.0);
+            QVERIFY(bottom(scroll) <= bottom(panel) + 2.0);
+            QVERIFY(bottom(panel) <= top(inspectorArea) + 2.0);
+            QVERIFY(scroll->property("contentHeight").toDouble() >= scroll->height());
+            QVERIFY(top(inspectorArea) < bottom(inspectorArea));
+        }
+
+        // The last actions remain accessible by scrolling, not by overflowing.
+        const double maximum = scroll->property("contentHeight").toDouble() - scroll->height();
+        QVERIFY(maximum > 5.0);
+        QVERIFY(scroll->setProperty("contentY", maximum));
+        QTRY_VERIFY(scroll->property("contentY").toDouble() > 0.0);
+        QVERIFY(named(rig.window, "deleteButton"));
+        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+    }
+
     void everyPointTypeIsInTheSelector() {
         Rig rig;
         open(rig);
