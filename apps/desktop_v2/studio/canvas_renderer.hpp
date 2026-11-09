@@ -85,8 +85,6 @@ struct CanvasRenderState {
     std::shared_ptr<const RegionLayerData> regions;
     // Couche « vectors » : image des formes (mm scène), dessinée sous les points (espace Vecto).
     std::shared_ptr<const OverlayImage> vectorImage;
-    // Separate selection ROI: changing it never reallocates the permanent vector texture.
-    std::shared_ptr<const OverlayImage> vectorSelectionImage;
 };
 
 struct CanvasRenderResult {

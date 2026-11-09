@@ -493,6 +493,14 @@ void StudioToolsTest::nodeDragFromSelectTool() {
     const auto id = draw(rig, "draw.rectangle", {-12, -8}, {12, 8});
     QVERIFY(id != 0);
     rig.tools.setActiveTool(QStringLiteral("select"));
+    // The interactive top layer must remain, even after removal of the old
+    // white/pink vector-selection texture below it.
+    const auto upperOverlay = rig.canvas->toolOverlay();
+    const bool hasNodes = std::ranges::any_of(upperOverlay, [](const QVariant& value) {
+        const auto kind = value.toMap().value(QStringLiteral("kind")).toString();
+        return kind == QStringLiteral("point") || kind == QStringLiteral("selected");
+    });
+    QVERIFY(hasNodes);
     const auto before = nodeView(rig.session.project(), id);
     QVERIFY(before.has_value());
     const auto p0 = before->nodes[0].pos;

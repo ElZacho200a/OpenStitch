@@ -115,7 +115,10 @@ std::vector<std::uint64_t> vectorVisualKeys(const document::Project& project) {
 
 VectorSpaceController::VectorSpaceController(StudioController& studio, QObject* parent)
     : QObject(parent), studio_(studio) {
-    // StudioController::selectionChanged émet aussi changed : un seul refresh par clic.
+    // La sélection actualise l'inspecteur, sans rasteriser un calque de poignées
+    // redondant avec l'overlay interactif de ToolController.
+    connect(&studio_, &StudioController::selectionChanged, this,
+            &VectorSpaceController::layerChanged);
     connect(&studio_, &StudioController::changed, this, &VectorSpaceController::refresh);
     refresh();
 }
@@ -163,7 +166,6 @@ std::vector<std::uint64_t> VectorSpaceController::selectedShapeIds() const {
 
 void VectorSpaceController::refresh() {
     const auto& session = studio_.session();
-    const auto selected = selectedShapeIds();
     bool changed = false;
     // Une modification des points, du tissu ou de la segmentation peut avancer la
     // révision sans changer les formes. Comparer seulement leurs propriétés visuelles,
@@ -186,16 +188,6 @@ void VectorSpaceController::refresh() {
         changed = true;
         if (canvas_) {
             canvas_->setVectorLayer(std::shared_ptr<const OverlayImage>(layer_, &layer_->image()));
-        }
-    }
-    if (rebuildBase || builtSelected_ != selected) {
-        // Un clic ne doit pas redessiner le fond, seulement le ROI des formes retenues.
-        selectionLayer_ = layer_->selectionOverlay(selected);
-        builtSelected_ = selected;
-        ++selectionBuilds_;
-        changed = true;
-        if (canvas_) {
-            canvas_->setVectorSelectionLayer(selectionLayer_);
         }
     }
     builtRevision_ = session.revision();
@@ -242,14 +234,12 @@ void VectorSpaceController::attach(QObject* canvas) {
     if (layer_) {
         canvas_->setVectorLayer(std::shared_ptr<const OverlayImage>(layer_, &layer_->image()));
     }
-    canvas_->setVectorSelectionLayer(selectionLayer_);
 }
 
 void VectorSpaceController::detach() {
     if (canvas_) {
         canvas_->setVectorPicker({});
         canvas_->setVectorLayer(nullptr);
-        canvas_->setVectorSelectionLayer(nullptr);
     }
     canvas_.clear();
 }

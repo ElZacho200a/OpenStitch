@@ -2,8 +2,8 @@
 #pragma once
 
 // Studio : adaptateur Qt des formes vectorielles et de leur sélection.
-// Le fond raster suit la géométrie ; le calque léger suit uniquement la sélection.
-// L'espace assure aussi le picking, les liens aux régions et les conversions.
+// Le fond raster suit la géométrie ; les poignées restent dans l'overlay des outils.
+// L'espace assure le picking, les liens aux régions et les conversions.
 // Toute mutation passe par DocumentSession (une seule étape d'annulation).
 
 #include <QObject>
@@ -25,7 +25,6 @@ class VectorSpaceController : public QObject {
     Q_OBJECT
     Q_PROPERTY(int shapeCount READ shapeCount NOTIFY layerChanged)
     Q_PROPERTY(int layerBuildCount READ layerBuildCount NOTIFY layerChanged)
-    Q_PROPERTY(int selectionBuildCount READ selectionBuildCount NOTIFY layerChanged)
     Q_PROPERTY(QVariantMap selectedShape READ selectedShape NOTIFY layerChanged)
     Q_PROPERTY(QString stageState READ stageState NOTIFY layerChanged)
     Q_PROPERTY(QString stageDetail READ stageDetail NOTIFY layerChanged)
@@ -35,7 +34,6 @@ public:
 
     [[nodiscard]] int shapeCount() const;
     [[nodiscard]] int layerBuildCount() const { return builds_; }
-    [[nodiscard]] int selectionBuildCount() const { return selectionBuilds_; }
     [[nodiscard]] QVariantMap selectedShape() const;
     [[nodiscard]] QString stageState() const { return stageState_; }
     [[nodiscard]] QString stageDetail() const { return stageDetail_; }
@@ -74,14 +72,11 @@ private:
     StudioController& studio_;
     QPointer<GpuCanvas> canvas_;
     std::shared_ptr<const VectorLayer> layer_;
-    std::shared_ptr<const OverlayImage> selectionLayer_;
     std::uint64_t builtRevision_{0};
     std::uint64_t statusRevision_{0};
     // Visual-only fingerprints: a stitch parameter change must not repaint vector shapes.
     std::vector<std::uint64_t> renderedVisualKeys_;
-    std::vector<std::uint64_t> builtSelected_;
     int builds_{0};
-    int selectionBuilds_{0};
     bool dirty_{false};
     QString dirtyReason_;
     QString stageState_{QStringLiteral("empty")};
