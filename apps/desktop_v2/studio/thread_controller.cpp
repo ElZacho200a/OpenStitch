@@ -92,9 +92,7 @@ bool ThreadController::report(const ServiceResult& result, const QString& succes
 
 bool ThreadController::persistStock(const thread_palette::ThreadStock& stock) {
     if (!stockWritable_) {
-        const ServiceResult refusal{false,
-                                    "Stock illisible : fichier conservé, corrigez-le avant de modifier Mes fils"};
-        return report(refusal, {});
+        return report({false, "Stock illisible : fichier conservé"}, {});
     }
     if (stockPath_.empty()) {
         return true; // stateless tests and embedded preview
@@ -179,14 +177,12 @@ std::vector<ThreadChoice> ThreadController::stockChoices() const {
     return list;
 }
 
-std::vector<ThreadChoice>
-ThreadController::nearestChoices(std::array<std::uint8_t, 3> rgb, const QString& chartId,
-                                 int topN) const {
-    if (topN < 1) {
+auto ThreadController::nearestChoices(Rgb rgb, const QString& chart, int n) const -> Choices {
+    if (n < 1) {
         return {};
     }
     if (!limitToStock_) {
-        return nearestThreads(rgb, chartId.toStdString(), static_cast<std::size_t>(topN));
+        return nearestThreads(rgb, chart.toStdString(), static_cast<std::size_t>(n));
     }
     auto choices = stockChoices();
     const auto target = thread_palette::to_cielab(rgb);
@@ -198,8 +194,8 @@ ThreadController::nearestChoices(std::array<std::uint8_t, 3> rgb, const QString&
         return a.distance < b.distance;
     };
     std::stable_sort(choices.begin(), choices.end(), closer);
-    if (choices.size() > static_cast<std::size_t>(topN)) {
-        choices.resize(static_cast<std::size_t>(topN));
+    if (choices.size() > static_cast<std::size_t>(n)) {
+        choices.resize(static_cast<std::size_t>(n));
     }
     return choices;
 }
@@ -457,9 +453,7 @@ bool ThreadController::setOwnedThread(const QString& chartId, const QString& cod
     }
     auto next = stock_;
     if (owned ? !next.own(key) : !next.disown(key)) {
-        const char* reason = owned ? "Ce fil est déjà dans Mes fils"
-                                   : "Ce fil n'est pas dans Mes fils";
-        return report({false, reason}, {});
+        return report({false, owned ? "Fil déjà possédé" : "Fil non possédé"}, {});
     }
     if (!persistStock(next)) {
         return false;
@@ -507,8 +501,7 @@ bool ThreadController::removeOwnedThread(const QString& chartId, const QString& 
     return report({true, {}}, QStringLiteral("Fil retiré du stock"));
 }
 
-bool ThreadController::assignOwnedThread(int entry, const QString& chartId,
-                                         const QString& code) {
+bool ThreadController::assignOwnedThread(int entry, const QString& c, const QString& code) {
     if (entry < 0) {
         return report({false, "Sélectionnez un fil du projet"}, {});
     }
@@ -518,7 +511,7 @@ bool ThreadController::assignOwnedThread(int entry, const QString& chartId,
     }
     const auto matches = stockChoices();
     const auto it = std::find_if(matches.begin(), matches.end(), [&](const auto& t) {
-        return t.chartId == chartId.toStdString() && t.code == code.toStdString();
+        return t.chartId == c.toStdString() && t.code == code.toStdString();
     });
     if (it == matches.end()) {
         return report({false, "Fil absent de Mes fils"}, {});
@@ -625,8 +618,7 @@ bool ThreadController::selectFilmBlock(int index) {
     return report({true, {}}, QStringLiteral("Objets de ce passage sélectionnés"));
 }
 
-bool ThreadController::commitSewingOrder(const std::vector<ObjectId>& ids,
-                                         const QString& label) {
+bool ThreadController::commitSewingOrder(const std::vector<ObjectId>& ids, const QString& label) {
     const auto& project = studio_.session().project();
     if (ids.size() != project.embroidery_objects.size()) {
         return report({false, "Ordre incomplet : déplacement refusé"}, {});
@@ -742,8 +734,8 @@ bool ThreadController::setFabric(const QString& hexColor, const QString& name,
                                  double grainAngleDeg, double weftSoftness) {
     const QColor color(hexColor);
     const bool invalidAngle = !std::isfinite(grainAngleDeg) || std::abs(grainAngleDeg) > 360.0;
-    const bool invalidSoftness = !std::isfinite(weftSoftness) ||
-                                 weftSoftness < 0.25 || weftSoftness > 4.0;
+    const bool invalidSoftness =
+        !std::isfinite(weftSoftness) || weftSoftness < 0.25 || weftSoftness > 4.0;
     if (!color.isValid() || invalidAngle || invalidSoftness) {
         return report({false, "Tissu invalide : couleur, angle ou souplesse hors limites"}, {});
     }
