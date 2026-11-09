@@ -370,8 +370,9 @@ private slots:
         const auto original = rig.session.snapshot();
         auto recolored = std::make_shared<document::Project>(*original);
         recolored->vector_objects.front().rgb = {10, 190, 40};
-        rig.session.execute(std::make_unique<commands::ReplaceProjectCommand>(
-            "Recolorer une forme", original, recolored));
+        auto recolorCommand = std::make_unique<commands::ReplaceProjectCommand>(
+            "Recolorer une forme", original, recolored);
+        rig.session.execute(std::move(recolorCommand));
         QCOMPARE(rig.stage.layerBuildCount(), initialBuilds + 1);
         QVERIFY(rig.canvas->vectorImage() != originalRaster);
 
