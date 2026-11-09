@@ -247,7 +247,8 @@ private slots:
         QCOMPARE(rig.window->grabWindow().pixelColor(right), rightBefore);
 
         QTest::mouseClick(rig.window, Qt::LeftButton, {}, right);
-        QTRY_COMPARE(rig.session.selection().primary()->kind, TargetKind::VectorObject);
+        QTRY_VERIFY_WITH_TIMEOUT(rig.session.selection().primary().has_value(), 3'000);
+        QCOMPARE(rig.session.selection().primary()->kind, TargetKind::VectorObject);
         QCOMPARE(rig.stage.layerBuildCount(), baseBuilds);
         QVERIFY(rig.canvas->vectorImage() == background);
         QCOMPARE(rig.window->grabWindow().pixelColor(left), leftBefore);
