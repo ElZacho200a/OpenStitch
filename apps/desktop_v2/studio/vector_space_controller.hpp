@@ -3,8 +3,8 @@
 
 // Studio -- espace « Vectorisation » : adaptateur Qt SANS logique métier propre. Il (1) publie au
 // canevas de l'espace la couche « vectors » (fond immuable par révision géométrique,
-// surbrillance séparée par sélection), (2) traduit le clic canevas en sélection de FORME, (3) expose le
-// lien amont (région d'origine) et l'état de l'étape, (4) exécute « Mettre à jour depuis la
+// surbrillance séparée par sélection), (2) traduit le clic canevas en sélection de FORME,
+// (3) expose le lien amont (région d'origine) et l'état de l'étape, (4) exécute « Mettre à jour depuis la
 // segmentation » et « Convertir en broderie » en UNE étape d'annulation chacun, via
 // DocumentSession.
 
