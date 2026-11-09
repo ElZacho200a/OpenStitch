@@ -76,6 +76,9 @@ private:
     std::shared_ptr<const VectorLayer> layer_;
     std::shared_ptr<const OverlayImage> selectionLayer_;
     std::uint64_t builtRevision_{0};
+    std::uint64_t statusRevision_{0};
+    // Visual-only fingerprints: a stitch parameter change must not repaint vector shapes.
+    std::vector<std::uint64_t> renderedVisualKeys_;
     std::vector<std::uint64_t> builtSelected_;
     int builds_{0};
     int selectionBuilds_{0};
