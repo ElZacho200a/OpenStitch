@@ -225,9 +225,7 @@ private slots:
         auto* placementFlow = named(rig.window, "editPlacementFlow");
         QVERIFY(panel && scroll && inspectorArea);
         QVERIFY(selectionFlow && transformFlow && placementFlow);
-        const auto top = [](QQuickItem* item) {
-            return item->mapToScene(QPointF(0.0, 0.0)).y();
-        };
+        const auto top = [](QQuickItem* item) { return item->mapToScene(QPointF(0.0, 0.0)).y(); };
         const auto bottom = [&](QQuickItem* item) { return top(item) + item->height(); };
 
         for (const bool treeMode : {true, false}) {
