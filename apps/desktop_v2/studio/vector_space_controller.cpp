@@ -169,11 +169,16 @@ void VectorSpaceController::refresh() {
     // révision sans changer les formes. Comparer seulement leurs propriétés visuelles,
     // avant d'allouer une grande QImage ou de republier la texture GPU.
     const bool newRevision = builtRevision_ != session.revision();
+    // Segmentation/image-only commands promise not to change any vector: avoid even
+    // scanning their nodes during a rapid succession of brush edits.
+    const bool mayChangeVectors =
+        session.lastChangeAffectsEmbroidery() || !session.lastChangeAffectsSegmentation();
     std::vector<std::uint64_t> nextVisualKeys;
-    if (newRevision || !layer_) {
+    if (!layer_ || (newRevision && mayChangeVectors)) {
         nextVisualKeys = vectorVisualKeys(session.project());
     }
-    const bool rebuildBase = !layer_ || (newRevision && nextVisualKeys != renderedVisualKeys_);
+    const bool rebuildBase =
+        !layer_ || (newRevision && mayChangeVectors && nextVisualKeys != renderedVisualKeys_);
     if (rebuildBase) {
         layer_ = VectorLayer::build(session.project());
         renderedVisualKeys_ = std::move(nextVisualKeys);
