@@ -46,6 +46,14 @@ Une table `id → index de VectorShape` et des rectangles spatiaux accélérerai
 
 Le moteur utilise déjà un `effectiveSequence` partagé entre scène et simulation : **ne pas introduire une seconde séquence indépendante**.
 
+### Cache local déjà présent — et copie évitable corrigée
+
+Il existe **déjà** un cache LRU des fragments indépendants, `libs/stitch_generation/src/chunk_cache.cpp` (HP-PERF-002, budget 64 Mio). `generate.cpp` recherche par identité, paramètres et géométrie exacte, et le préchauffage est parallèle. Ce cache préserve donc la génération locale entre deux changements d'un seul objet. **Inutile d'en créer un deuxième.**
+
+Avant ce correctif, un hit faisait néanmoins `chunk = *hit` : il recopiait tout le vecteur de points dans un fragment mutable local, avant de recopier ses commandes dans la séquence finale, même quand la jointure n'en modifiait pas l'ordre.
+
+**Optimisation implémentée dans cette PR :** le fragment du cache reste un `shared_ptr<const StitchSequence>` ; l'assemblage lit directement ses commandes. `orient_chunk` fabrique une copie uniquement lorsque la jointure automatique en a réellement besoin. La séquence effective finale et ses passes globales restent rigoureusement inchangées. Un nouveau test vérifie cache froid/chaud, jointure automatique, mutation d'un seul objet et égalité de `effective_sequence` avec le cache désactivé.
+
 ### Pourquoi une régénération seulement de l'objet changé serait dangereuse
 
 - `emit_polyline` peut supprimer un Jump quand la fin précédente coïncide avec le premier point. Cette continuité dépend du contexte d'assemblage.
@@ -56,15 +64,15 @@ Le moteur utilise déjà un `effectiveSequence` partagé entre scène et simulat
 
 **Décision :** ne pas créer de cache de **séquence effective finale par objet** sans une preuve que les dépendances et passes globales sont inchangées.
 
-### Découpage proposé (futur chantier moteur)
+### Découpage pour les optimisations suivantes
 
-**A. Génération locale :** cache de fragments bruts par objet (id stable, géométrie, paramètres, dépendances locales, version d'algorithme). Le cœur conserve une seule sortie publique `effective_sequence`. Il assemble ces fragments et continue à appliquer overrides/pull/finitions au niveau global. Un champ d'invalidation « objets touchés » en complément de `ICommand::affectsEmbroidery` sera nécessaire ; le booléen actuel est trop grossier.
+**A. Génération locale : existant.** Conserver et mesurer le LRU actuel (`chunk_cache_stats`, hits, misses, octets). Le changement de cette PR élimine une copie sur chaque hit. Si nécessaire, étendre prudemment la couverture des types de points encore séquentiels. Le cœur conserve une seule sortie publique `effective_sequence`. Un champ d'invalidation « objets touchés » en complément de `ICommand::affectsEmbroidery` serait utile pour invalider des fragments dérivés du document ; le booléen actuel est trop grossier.
 
 **B. Passes globales :** calcul entier tant que le mode `Predicted` ou les finitions impliquent plusieurs objets. Optimisation par fenêtre d'invalidation uniquement après comparaison stricte contre le pipeline de référence. Lors d'un changement de tissu, de finitions, d'ordre ou de visibilité, élargir automatiquement la fenêtre, voire tout invalider.
 
 **C. Présentation :** sur une nouvelle séquence effective, comparer des plages de commandes adjacentes et leurs couleurs/sources ; réutiliser seulement les batches GPU rigoureusement identiques. La scène doit conserver l'ordre de couture, et le backend doit pouvoir mettre à jour une plage sans désynchroniser la simulation et les autres couches.
 
-Le risque de A est contenu si la sortie finale est toujours recalculée et comparée ; B et C demandent une vraie refonte des structures de cache.
+A existe déjà et la copie supprimée dans cette PR ne change aucun algorithme. B et C demandent une refonte des structures de cache et des preuves d'équivalence.
 
 ### Instrumentation ajoutée
 
@@ -89,4 +97,4 @@ Pas de spinner ajouté pour cacher un calcul évitable. Un indicateur discret (p
 
 ## Validation
 
-Les tests du refactoring vectoriel ont été ajoutés. La CI et les benchmarks matériels doivent confirmer le fonctionnement du GPU et du backend logiciel ; **aucun gain en ms ou FPS n'est revendiqué sans mesure sur machine**.
+Les tests du refactoring vectoriel et du cache moteur (y compris jointure automatique) ont été ajoutés. La CI et les benchmarks matériels doivent confirmer le fonctionnement du GPU et du backend logiciel ; **aucun gain en ms ou FPS n'est revendiqué sans mesure sur machine**.
