@@ -40,6 +40,7 @@ using openstitch::desktop::NodeHandleItem;
 using openstitch::desktop::Preset;
 using openstitch::desktop::ResizeHandleItem;
 using openstitch::desktop::SelectMode;
+using openstitch::desktop::VectorObjectBodyItem;
 
 namespace {
 
@@ -913,6 +914,48 @@ private slots:
         QCOMPARE(selection.count(), 0);
         QCOMPARE(rectangle.count(), 0);
         QVERIFY(!view.gestureActive());
+    }
+
+    // Régression « nœuds des régions non éditables » : une forme vectorielle sélectionnée
+    // (corps déplaçable, z=10) reste sous ses poignées de nœud (z=100). Glisser une poignée
+    // doit la déplacer elle seule, jamais le corps de la forme.
+    void nodeHandleAboveSelectedVectorBodyIsGrabbedNotTheBody_data() {
+        QTest::addColumn<double>("zoom");
+        QTest::newRow("zoom-0.2") << 0.2;
+        QTest::newRow("zoom-1") << 1.0;
+        QTest::newRow("zoom-4") << 4.0;
+        QTest::newRow("zoom-400") << 400.0;
+    }
+
+    void nodeHandleAboveSelectedVectorBodyIsGrabbedNotTheBody() {
+        QFETCH(double, zoom);
+        QGraphicsScene scene;
+        CanvasView view(&scene);
+        prepareView(view);
+        view.setBaseContext(Context::Select);
+        view.setSelectionRectangleEnabled(true);
+        view.zoomAt(zoom / view.pixelsPerMm(), QPointF(view.viewport()->rect().center()));
+        view.centerOn(0.0, 0.0);
+        QPainterPath outline;
+        outline.addRect(-30.0, -20.0, 60.0, 40.0);
+        auto* body = new VectorObjectBodyItem(outline, QPen(), QBrush(), {});
+        body->setZValue(10);
+        scene.addItem(body);
+        int releasedCount = 0;
+        auto* handle = new NodeHandleItem(QPointF(10.0, -5.0), [&](QPointF) { ++releasedCount; });
+        scene.addItem(handle);
+        const QPoint at = view.mapFromScene(handle->pos());
+        const QPoint to = at + QPoint(40, 30);
+
+        sendMouse(view, QEvent::MouseButtonPress, at, Qt::LeftButton, Qt::LeftButton,
+                  Qt::NoModifier);
+        sendMouse(view, QEvent::MouseMove, to, Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+        sendMouse(view, QEvent::MouseButtonRelease, to, Qt::LeftButton, Qt::NoButton,
+                  Qt::NoModifier);
+
+        QCOMPARE(releasedCount, 1);
+        QCOMPARE(body->pos(), QPointF());
+        QVERIFY(handle->pos() != QPointF(10.0, -5.0));
     }
 
     void plainClickEmitsCanvasClickedMm() {
