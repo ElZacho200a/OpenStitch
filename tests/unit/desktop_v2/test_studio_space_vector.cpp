@@ -226,6 +226,32 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(reddish(rig.window->grabWindow().pixelColor(left)), 5'000);
     }
 
+    void switchingSelectionReusesBaseAndOnlyRecreatesLocalOverlay() {
+        Rig rig;
+        open(rig);
+        enterSpace(rig);
+        const auto background = rig.canvas->vectorImage();
+        const int baseBuilds = rig.stage.layerBuildCount();
+        const int selectionBuilds = rig.stage.selectionBuildCount();
+
+        QTest::mouseClick(rig.window, Qt::LeftButton, {}, at(rig, -2.5, 0.0));
+        QTRY_COMPARE(rig.stage.selectionBuildCount(), selectionBuilds + 1);
+        const auto firstOverlay = rig.canvas->vectorSelectionImage();
+        QVERIFY(firstOverlay);
+        QCOMPARE(rig.canvas->vectorImage(), background);
+        QCOMPARE(rig.stage.layerBuildCount(), baseBuilds);
+
+        QTest::mouseClick(rig.window, Qt::LeftButton, {}, at(rig, 2.5, 0.0));
+        QTRY_COMPARE(rig.stage.selectionBuildCount(), selectionBuilds + 2);
+        const auto secondOverlay = rig.canvas->vectorSelectionImage();
+        QVERIFY(secondOverlay);
+        QVERIFY(secondOverlay != firstOverlay);
+        QCOMPARE(rig.canvas->vectorImage(), background);
+        QCOMPARE(rig.stage.layerBuildCount(), baseBuilds);
+        QCOMPARE(firstOverlay->image.width(), secondOverlay->image.width());
+        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+    }
+
     void togglingVectorVisibilityRepaintsWithoutMovingCamera() {
         Rig rig;
         open(rig);
@@ -304,10 +330,15 @@ private slots:
         open(rig);
         enterSpace(rig);
         const int buildsBefore = rig.stage.layerBuildCount();
+        const int selectionsBefore = rig.stage.selectionBuildCount();
+        const auto base = rig.canvas->vectorImage();
         QTest::mouseClick(rig.window, Qt::LeftButton, {}, at(rig, 2.5, 0.0));
-        // Un clic génère déjà StudioController::changed ; aucun second refresh ni
-        // reconstruction via le signal selectionChanged.
-        QTRY_COMPARE(rig.stage.layerBuildCount(), buildsBefore + 1);
+        // Une sélection ne doit modifier que la petite texture des poignées,
+        // jamais le fond de toutes les formes vectorielles.
+        QCOMPARE(rig.stage.layerBuildCount(), buildsBefore);
+        QTRY_COMPARE(rig.stage.selectionBuildCount(), selectionsBefore + 1);
+        QCOMPARE(rig.canvas->vectorImage(), base);
+        QVERIFY(rig.canvas->vectorSelectionImage());
         QTRY_VERIFY_WITH_TIMEOUT(rig.session.selection().primary().has_value(), 3'000);
         const auto target = *rig.session.selection().primary();
         QCOMPARE(target.kind, TargetKind::VectorObject);
@@ -318,11 +349,14 @@ private slots:
         auto* origin = deepItem(rig.window->contentItem(), QStringLiteral("vectorShapeOrigin"));
         QVERIFY(origin);
         QVERIFY(origin->property("text").toString().contains(QStringLiteral("région 2")));
-        // La sélection est redessinée (nœuds visibles) : une reconstruction de plus.
-        QVERIFY(rig.stage.layerBuildCount() >= 2);
+        const auto overlay = rig.canvas->vectorSelectionImage();
+        QVERIFY(overlay);
+        QVERIFY(overlay->image.width() < base->image.width());
         // Clic dans le vide : plus de sélection.
         QTest::mouseClick(rig.window, Qt::LeftButton, {}, at(rig, 0.0, 6.0));
         QTRY_VERIFY_WITH_TIMEOUT(rig.session.selection().empty(), 3'000);
+        QCOMPARE(rig.stage.layerBuildCount(), buildsBefore);
+        QVERIFY(!rig.canvas->vectorSelectionImage());
     }
 
     void goToRegionSwitchesToSegmentationWithTheRegionSelected() {
