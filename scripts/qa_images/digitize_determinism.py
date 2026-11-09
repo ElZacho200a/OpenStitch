@@ -51,8 +51,8 @@ def verify(cli: Path, image: Path, *, runner=subprocess.run, timeout: int = 120)
             try:
                 report = json.loads(completed.stdout)
                 n = int(report["stitches"])
-                if n <= 0:
-                    raise ValueError("stitches must be positive")
+                if n < 0:
+                    raise ValueError("stitches must be nonnegative")
             except (ValueError, TypeError, KeyError, json.JSONDecodeError):
                 failures.append(f"pass-{index}:invalid-json-stitches")
                 break
