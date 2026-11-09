@@ -54,8 +54,7 @@ ThreadController::ThreadController(StudioController& studio, std::filesystem::pa
             message_ = q(problem); // a refused file is reported, never silently dropped
             ok_ = false;
         }
-        QSettings settings(QString::fromStdWString(settingsPath_.wstring()),
-                           QSettings::IniFormat);
+        QSettings settings(QString::fromStdWString(settingsPath_.wstring()), QSettings::IniFormat);
         limitToStock_ = settings.value(QStringLiteral("limitToStock"), false).toBool();
         const QString filename = QString::fromStdWString(stockPath_.wstring());
         if (QFile::exists(filename)) {
@@ -63,7 +62,8 @@ ThreadController::ThreadController(StudioController& studio, std::filesystem::pa
             if (!file.open(QIODevice::ReadOnly)) {
                 stockWritable_ = false;
                 ok_ = false;
-                message_ = QStringLiteral("Impossible de lire Mes fils : %1").arg(file.errorString());
+                message_ =
+                    QStringLiteral("Impossible de lire Mes fils : %1").arg(file.errorString());
             } else {
                 const auto bytes = file.readAll();
                 const auto parsed = thread_palette::stock_from_json(
@@ -92,7 +92,9 @@ bool ThreadController::report(const ServiceResult& result, const QString& succes
 
 bool ThreadController::persistStock(const thread_palette::ThreadStock& stock) {
     if (!stockWritable_) {
-        return report({false, "Stock illisible : fichier conservé, corrigez-le avant de modifier Mes fils"}, {});
+        const ServiceResult refusal{false,
+                                    "Stock illisible : fichier conservé, corrigez-le avant de modifier Mes fils"};
+        return report(refusal, {});
     }
     if (stockPath_.empty()) {
         return true; // stateless tests and embedded preview
@@ -166,14 +168,20 @@ std::vector<ThreadChoice> ThreadController::stockChoices() const {
         }
     }
     for (const auto& thread : stock_.personal_threads()) {
-        list.push_back({thread.key.chart_id, thread.key.code, thread.name, thread.brand,
-                        thread.rgb, 0.0});
+        ThreadChoice choice;
+        choice.chartId = thread.key.chart_id;
+        choice.code = thread.key.code;
+        choice.name = thread.name;
+        choice.brand = thread.brand;
+        choice.rgb = thread.rgb;
+        list.push_back(std::move(choice));
     }
     return list;
 }
 
-std::vector<ThreadChoice> ThreadController::nearestChoices(
-    std::array<std::uint8_t, 3> rgb, const QString& chartId, int topN) const {
+std::vector<ThreadChoice>
+ThreadController::nearestChoices(std::array<std::uint8_t, 3> rgb, const QString& chartId,
+                                 int topN) const {
     if (topN < 1) {
         return {};
     }
@@ -183,12 +191,13 @@ std::vector<ThreadChoice> ThreadController::nearestChoices(
     auto choices = stockChoices();
     const auto target = thread_palette::to_cielab(rgb);
     for (auto& choice : choices) {
-        choice.distance = thread_palette::ciede2000(
-            target, thread_palette::to_cielab(choice.rgb));
+        const auto actual = thread_palette::to_cielab(choice.rgb);
+        choice.distance = thread_palette::ciede2000(target, actual);
     }
-    std::stable_sort(choices.begin(), choices.end(), [](const auto& a, const auto& b) {
+    const auto closer = [](const ThreadChoice& a, const ThreadChoice& b) {
         return a.distance < b.distance;
-    });
+    };
+    std::stable_sort(choices.begin(), choices.end(), closer);
     if (choices.size() > static_cast<std::size_t>(topN)) {
         choices.resize(static_cast<std::size_t>(topN));
     }
@@ -363,8 +372,8 @@ QVariantList ThreadController::nearestToSelection(const QString& chartId, int to
         for (const auto& object : project.embroidery_objects) {
             if (object.id.value == target.id) {
                 QVariantList list;
-                for (const auto& choice :
-                     nearestChoices(object.rgb, chartId, std::max(1, topN))) {
+                const auto matches = nearestChoices(object.rgb, chartId, std::max(1, topN));
+                for (const auto& choice : matches) {
                     list.push_back(choiceMap(choice));
                 }
                 return list;
@@ -414,8 +423,8 @@ int ThreadController::snapFreeColours(const QString& chartId) {
             return 0;
         }
         const auto& choice = nearest.front();
-        assignments.push_back({object.id, thread_palette::ThreadKey{choice.chartId, choice.code},
-                               choice.rgb});
+        const thread_palette::ThreadKey key{choice.chartId, choice.code};
+        assignments.push_back({object.id, key, choice.rgb});
     }
     if (assignments.empty()) {
         report({false, "Aucune couleur libre à associer"}, {});
@@ -448,8 +457,9 @@ bool ThreadController::setOwnedThread(const QString& chartId, const QString& cod
     }
     auto next = stock_;
     if (owned ? !next.own(key) : !next.disown(key)) {
-        return report({false, owned ? "Ce fil est déjà dans Mes fils"
-                                    : "Ce fil n'est pas dans Mes fils"}, {});
+        const char* reason = owned ? "Ce fil est déjà dans Mes fils"
+                                   : "Ce fil n'est pas dans Mes fils";
+        return report({false, reason}, {});
     }
     if (!persistStock(next)) {
         return false;
@@ -461,7 +471,7 @@ bool ThreadController::setOwnedThread(const QString& chartId, const QString& cod
 }
 
 bool ThreadController::addPersonalThread(const QString& code, const QString& name,
-                                          const QString& hexColor) {
+                                         const QString& hexColor) {
     const QColor color(hexColor);
     if (!color.isValid() || code.trimmed().isEmpty()) {
         return report({false, "Référence ou couleur personnelle invalide"}, {});
@@ -469,9 +479,8 @@ bool ThreadController::addPersonalThread(const QString& code, const QString& nam
     thread_palette::Thread thread;
     thread.key = {thread_palette::kPersonalChartId, code.trimmed().toStdString()};
     thread.name = name.trimmed().toStdString();
-    thread.rgb = {static_cast<std::uint8_t>(color.red()),
-                  static_cast<std::uint8_t>(color.green()),
-                  static_cast<std::uint8_t>(color.blue())};
+    using Byte = std::uint8_t;
+    thread.rgb = {Byte(color.red()), Byte(color.green()), Byte(color.blue())};
     auto next = stock_;
     auto added = next.add_personal(thread);
     if (!added) {
@@ -499,7 +508,7 @@ bool ThreadController::removeOwnedThread(const QString& chartId, const QString& 
 }
 
 bool ThreadController::assignOwnedThread(int entry, const QString& chartId,
-                                          const QString& code) {
+                                         const QString& code) {
     if (entry < 0) {
         return report({false, "Sélectionnez un fil du projet"}, {});
     }
@@ -518,9 +527,9 @@ bool ThreadController::assignOwnedThread(int entry, const QString& chartId,
     for (const auto id : all[static_cast<std::size_t>(entry)].objects) {
         ids.push_back(ObjectId{id});
     }
+    const thread_palette::ThreadKey key{it->chartId, it->code};
     studio_.session().execute(std::make_unique<commands::SetObjectThreadCommand>(
-        ids, thread_palette::ThreadKey{it->chartId, it->code}, it->rgb,
-        "Assigner un fil possédé"));
+        ids, key, it->rgb, "Assigner un fil possédé"));
     return report({true, {}}, QStringLiteral("Fil %1 assigné").arg(code));
 }
 
