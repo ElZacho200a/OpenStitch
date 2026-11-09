@@ -11,12 +11,22 @@ Rectangle {
     id: panel
     objectName: "threadPanel"
     property var controller
-    property int current: -1
+    property string currentId
+    readonly property int current: entryList.findIndex(entry => entry.id === currentId)
     property string chartId: controller && controller.charts.length > 0 ? controller.charts[0].id : ""
     readonly property var entryList: controller ? controller.entries : []
     color: Theme.panel
     border.color: Theme.divider
     radius: Theme.radius
+
+    ColorDialog {
+        id: recolorDialog
+        title: qsTr("Couleur du fil")
+        onAccepted: {
+            if (panel.current >= 0 && selectedColor.toString() !== panel.entryList[panel.current].color.toString())
+                panel.controller.recolorThread(panel.current, selectedColor.toString())
+        }
+    }
 
     FileDialog {
         id: importDialog
@@ -58,7 +68,7 @@ Rectangle {
                     radius: Theme.radius
                     color: panel.current === modelData.index ? Theme.accentSoft : (modelData.selected ? Theme.raised : "transparent")
                     opacity: modelData.visible ? 1 : 0.5
-                    MouseArea { anchors.fill: parent; onClicked: panel.current = row.modelData.index }
+                    MouseArea { anchors.fill: parent; onClicked: panel.currentId = row.modelData.id }
                     RowLayout {
                         anchors.fill: parent
                         anchors.leftMargin: 6
@@ -73,7 +83,7 @@ Rectangle {
             Flow {
                 objectName: "threadActionsFlow"
                 Layout.fillWidth: true
-                implicitHeight: childrenRect.height
+                Layout.preferredHeight: childrenRect.height
                 spacing: 4
                 enabled: panel.current >= 0
                 StudioButton { objectName: "threadSelectButton"; text: qsTr("Sélectionner les objets"); onClicked: panel.controller.selectThreadObjects(panel.current) }
@@ -92,11 +102,18 @@ Rectangle {
                     textRole: "label"
                     onActivated: {
                         panel.controller.mergeThreads(panel.current, currentIndex)
-                        panel.current = -1
+                        panel.currentId = ""
                     }
                 }
-                StudioTextField { id: recolorField; objectName: "threadRecolorField"; implicitWidth: 90; placeholderText: "#rrggbb" }
-                StudioButton { objectName: "threadRecolorButton"; text: qsTr("Recolorer"); onClicked: panel.controller.recolorThread(panel.current, recolorField.text) }
+                StudioButton {
+                    objectName: "threadRecolorButton"
+                    text: qsTr("Changer la couleur…")
+                    enabled: panel.current >= 0 && panel.current < panel.entryList.length
+                    onClicked: {
+                        recolorDialog.selectedColor = panel.entryList[panel.current].color
+                        recolorDialog.open()
+                    }
+                }
             }
             StudioButton { text: qsTr("Exporter la liste (CSV)"); onClicked: exportDialog.open() }
 
@@ -105,7 +122,7 @@ Rectangle {
             Flow {
                 objectName: "threadChartActionsFlow"
                 Layout.fillWidth: true
-                implicitHeight: childrenRect.height
+                Layout.preferredHeight: childrenRect.height
                 spacing: 6
                 StudioComboBox {
                     id: chartBox
@@ -139,7 +156,7 @@ Rectangle {
             Flow {
                 objectName: "threadSearchActionsFlow"
                 Layout.fillWidth: true
-                implicitHeight: childrenRect.height
+                Layout.preferredHeight: childrenRect.height
                 spacing: 6
                 StudioTextField {
                     id: searchField
@@ -196,7 +213,7 @@ Rectangle {
             Flow {
                 objectName: "threadColorwayActionsFlow"
                 Layout.fillWidth: true
-                implicitHeight: childrenRect.height
+                Layout.preferredHeight: childrenRect.height
                 spacing: 6
                 StudioTextField { id: colorwayName; objectName: "colorwayNameField"; width: Math.min(250, Math.max(140, parent.width - 88)); placeholderText: qsTr("Nom du nouveau coloris") }
                 StudioButton { objectName: "colorwayAddButton"; text: qsTr("Créer"); onClicked: { if (panel.controller.addColorway(colorwayName.text)) colorwayName.text = "" } }

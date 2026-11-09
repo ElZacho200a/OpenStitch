@@ -4,6 +4,7 @@
 #include <memory>
 
 #include "document_session.hpp"
+#include "openstitch/commands/project_commands.hpp"
 #include "openstitch/commands/thread_commands.hpp"
 #include "openstitch/project_ops/factory.hpp"
 #include "shape_batch.hpp"
@@ -59,6 +60,37 @@ TEST_CASE("merging threads is one undo step and gives one colour", "[desktop_v2]
     CHECK(threadEntries(s.project()).size() == 1);
     s.undo();
     CHECK(threadEntries(s.project()).size() == 2);
+}
+
+TEST_CASE("thread group moves respect sewing layers and locked positions",
+          "[desktop_v2][threads]") {
+    auto s = threeObjects();
+    const auto first = s.project().embroidery_objects.front().id;
+    s.execute(std::make_unique<commands::SetObjectThreadCommand>(
+        std::vector<ObjectId>{first}, std::nullopt, std::array<std::uint8_t, 3>{255, 0, 0}));
+    REQUIRE(threadEntries(s.project()).size() == 2);
+    s.execute(std::make_unique<commands::SetEmbroideryLockCommand>(first, true));
+    const auto before = s.historyPosition();
+    CHECK_FALSE(moveThread(s, 0, 1).ok);
+    CHECK(s.historyPosition() == before);
+    REQUIRE(s.undo());
+
+    auto project = s.project();
+    if (project.calques.empty()) {
+        project.calques.push_back({project.object_ids.next(), "Base"});
+    }
+    const auto upper = project.object_ids.next();
+    project.calques.push_back({upper, "Upper"});
+    auto* shape = project.findObject(project.embroidery_objects[1].source_vector);
+    REQUIRE(shape != nullptr);
+    shape->calque = upper;
+    shape = project.findObject(project.embroidery_objects[2].source_vector);
+    REQUIRE(shape != nullptr);
+    shape->calque = upper;
+    s.replaceProject(std::move(project), true);
+    CHECK_FALSE(moveThread(s, 0, 1).ok);
+    CHECK_FALSE(s.canUndo());
+    CHECK(orderRows(s.project()).front().id == first.value);
 }
 
 TEST_CASE("the sewing order list can move an object and refuses a no-op", "[desktop_v2][threads]") {

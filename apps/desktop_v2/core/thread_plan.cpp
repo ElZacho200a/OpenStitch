@@ -3,10 +3,13 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <map>
 #include <memory>
 #include <optional>
+#include <unordered_map>
 
 #include "openstitch/commands/colorway_commands.hpp"
+#include "openstitch/commands/project_commands.hpp"
 #include "openstitch/commands/sewing_order_commands.hpp"
 #include "openstitch/commands/thread_commands.hpp"
 
@@ -27,9 +30,7 @@ std::string hexLabel(const std::array<std::uint8_t, 3>& c) {
 struct Key {
     std::optional<thread_palette::ThreadKey> thread;
     std::array<std::uint8_t, 3> rgb{};
-    bool operator==(const Key& o) const {
-        return thread ? (o.thread && *thread == *o.thread) : (!o.thread && rgb == o.rgb);
-    }
+    auto operator<=>(const Key&) const = default;
 };
 std::string trimmed(const std::string& s) {
     const auto b = s.find_first_not_of(" \t");
@@ -46,20 +47,18 @@ std::vector<ObjectId> toIds(const std::vector<std::uint64_t>& raw) {
 
 std::vector<ThreadEntry> threadEntries(const document::Project& project) {
     std::vector<ThreadEntry> out;
-    std::vector<Key> keys;
+    std::map<Key, std::size_t> indices;
     for (const std::size_t index : project.sewingOrder()) {
         const auto& o = project.embroidery_objects[index];
-        const Key key{o.thread, o.rgb};
-        auto it = std::find(keys.begin(), keys.end(), key);
-        if (it == keys.end()) {
-            keys.push_back(key);
+        const Key key{o.thread, o.thread ? decltype(o.rgb){} : o.rgb};
+        const auto [it, inserted] = indices.try_emplace(key, out.size());
+        if (inserted) {
             ThreadEntry e;
             e.rgb = o.rgb;
             e.label = o.thread ? o.thread->chart_id + " " + o.thread->code : hexLabel(o.rgb);
             out.push_back(std::move(e));
-            it = keys.end() - 1;
         }
-        out[static_cast<std::size_t>(it - keys.begin())].objects.push_back(o.id.value);
+        out[it->second].objects.push_back(o.id.value);
     }
     return out;
 }
@@ -100,6 +99,62 @@ ServiceResult setThreadVisible(DocumentSession& session, std::size_t entry, bool
     }
     session.execute(std::make_unique<commands::SetThreadVisibleCommand>(
         toIds(entries[entry].objects), visible));
+    return ok();
+}
+
+ServiceResult moveThread(DocumentSession& session, std::size_t from, std::size_t to) {
+    const auto& project = session.project();
+    auto entries = threadEntries(project);
+    if (from >= entries.size() || to >= entries.size() || from == to) {
+        return refuse("Choisissez deux fils différents.");
+    }
+
+    const auto first = std::min(from, to);
+    const auto last = std::max(from, to);
+    auto begin = entries.begin() + static_cast<std::ptrdiff_t>(first);
+    auto end = entries.begin() + static_cast<std::ptrdiff_t>(last + 1);
+    std::rotate(begin, from < to ? begin + 1 : end - 1, end);
+
+    // Regroupe les fils dans chaque calque. La première apparition de chaque fil doit
+    // correspondre à l'ordre demandé et les objets figés gardent leur position de couture.
+    const auto& objects = project.embroidery_objects;
+    std::unordered_map<std::uint64_t, std::size_t> slotsById;
+    slotsById.reserve(objects.size());
+    std::vector<std::size_t> ranks(objects.size());
+    for (std::size_t i = 0; i < objects.size(); ++i) {
+        slotsById.emplace(objects[i].id.value, i);
+        if (project.calques.size() > 1) {
+            ranks[i] = project.calqueRankOf(objects[i]);
+        }
+    }
+    struct Slot {
+        std::size_t object;
+        std::size_t thread;
+    };
+    std::vector<std::vector<Slot>> layers(std::max(std::size_t{1}, project.calques.size()));
+    for (std::size_t i = 0; i < entries.size(); ++i) {
+        for (const auto id : entries[i].objects) {
+            const auto slot = slotsById.at(id);
+            layers[ranks[slot]].push_back({slot, i});
+        }
+    }
+    std::vector<ObjectId> order;
+    order.reserve(objects.size());
+    for (const auto& object : objects) {
+        order.push_back(object.id);
+    }
+    std::size_t nextThread = 0;
+    std::vector<std::size_t> nextInLayer(layers.size());
+    for (const auto slot : project.sewingOrder()) {
+        const auto rank = ranks[slot];
+        const auto [replacement, thread] = layers[rank][nextInLayer[rank]++];
+        if (thread > nextThread || (objects[slot].locked && replacement != slot)) {
+            return refuse("Ce déplacement modifierait l’ordre des calques ou des objets figés.");
+        }
+        nextThread += thread == nextThread ? 1 : 0;
+        order[slot] = objects[replacement].id;
+    }
+    session.execute(std::make_unique<commands::ReorderEmbroideryCommand>(std::move(order)));
     return ok();
 }
 

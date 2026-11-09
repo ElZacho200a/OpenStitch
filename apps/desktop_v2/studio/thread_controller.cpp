@@ -3,6 +3,7 @@
 
 #include <QColor>
 #include <set>
+#include <unordered_set>
 
 #include "file_io.hpp"
 #include "thread_palette_service.hpp"
@@ -53,7 +54,13 @@ bool ThreadController::report(const ServiceResult& result, const QString& succes
 QVariantList ThreadController::entries() const {
     QVariantList list;
     const auto& project = studio_.session().project();
-    std::set<std::uint64_t> selected;
+    std::unordered_set<std::uint64_t> visible;
+    for (const auto& object : project.embroidery_objects) {
+        if (object.visible) {
+            visible.insert(object.id.value);
+        }
+    }
+    std::unordered_set<std::uint64_t> selected;
     for (const auto& target : studio_.session().selection().targets()) {
         if (target.kind == TargetKind::EmbroideryObject) {
             selected.insert(target.id);
@@ -65,14 +72,11 @@ QVariantList ThreadController::entries() const {
         bool anySelected = false;
         for (const auto id : entry.objects) {
             anySelected = anySelected || selected.contains(id);
-            for (const auto& object : project.embroidery_objects) {
-                if (object.id.value == id && object.visible) {
-                    anyVisible = true;
-                }
-            }
+            anyVisible = anyVisible || visible.contains(id);
         }
         list.push_back(
             QVariantMap{{QStringLiteral("index"), index++},
+                        {QStringLiteral("id"), QString::number(entry.objects.front())},
                         {QStringLiteral("label"), q(entry.label)},
                         {QStringLiteral("color"), QColor(entry.rgb[0], entry.rgb[1], entry.rgb[2])},
                         {QStringLiteral("objectCount"), static_cast<int>(entry.objects.size())},
@@ -118,6 +122,15 @@ QVariantList ThreadController::charts() const {
                                    {QStringLiteral("user"), chart.user}});
     }
     return list;
+}
+
+bool ThreadController::moveThread(int from, int to) {
+    if (from < 0 || to < 0) {
+        return report({false, "Choisissez deux fils différents."}, {});
+    }
+    return report(desktop_v2::moveThread(studio_.session(), static_cast<std::size_t>(from),
+                                         static_cast<std::size_t>(to)),
+                  tr("Ordre des fils modifié"));
 }
 
 bool ThreadController::mergeThreads(int from, int into) {

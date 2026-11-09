@@ -20,7 +20,7 @@ ColumnLayout {
         objectName: "layerActionsFlow"
         Layout.fillWidth: true
         // Wrapped rows must take their real height above ObjectTree.
-        implicitHeight: childrenRect.height
+        Layout.preferredHeight: childrenRect.height
         Layout.leftMargin: 10
         Layout.rightMargin: 10
         Layout.topMargin: 6

@@ -34,7 +34,7 @@ ColumnLayout {
         objectName: "editSelectionFlow"
         Layout.fillWidth: true
         // Wraps must contribute their actual height to the enclosing ColumnLayout.
-        implicitHeight: childrenRect.height
+        Layout.preferredHeight: childrenRect.height
         spacing: 3
         Mini { objectName: "selectAllButton"; text: qsTr("Tout"); tooltip: qsTr("Tout sélectionner"); shortcutLabel: "Ctrl+A"; onClicked: editor.selectAll() }
         Mini { objectName: "invertButton"; text: qsTr("Inverser"); shortcutLabel: "Ctrl+I"; onClicked: editor.invertSelection() }
@@ -47,7 +47,7 @@ ColumnLayout {
     Flow {
         objectName: "editTransformFlow"
         Layout.fillWidth: true
-        implicitHeight: childrenRect.height
+        Layout.preferredHeight: childrenRect.height
         spacing: 3
         Mini { objectName: "rotateCwButton"; text: "⟳90"; enabled: bar.some; tooltip: qsTr("Pivoter de 90° (horaire)"); shortcutLabel: "R"; onClicked: editor.rotate90(true) }
         Mini { objectName: "rotateCcwButton"; text: "⟲90"; enabled: bar.some; tooltip: qsTr("Pivoter de 90° (antihoraire)"); shortcutLabel: "Maj+R"; onClicked: editor.rotate90(false) }
@@ -68,7 +68,7 @@ ColumnLayout {
     Flow {
         objectName: "editPlacementFlow"
         Layout.fillWidth: true
-        implicitHeight: childrenRect.height
+        Layout.preferredHeight: childrenRect.height
         spacing: 4
         visible: bar.hasBox
         // Each label stays with its field. A narrow dock wraps pairs instead of

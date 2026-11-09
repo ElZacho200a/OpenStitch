@@ -31,6 +31,9 @@ ServiceResult recolorThread(DocumentSession& session, std::size_t entry,
 // Masque ou affiche tous les objets d'un fil.
 ServiceResult setThreadVisible(DocumentSession& session, std::size_t entry, bool visible);
 
+// Déplace un groupe de fil vers son indice final, en conservant l'ordre interne des groupes.
+ServiceResult moveThread(DocumentSession& session, std::size_t from, std::size_t to);
+
 struct OrderRow {
     std::uint64_t id{0};
     std::string name;

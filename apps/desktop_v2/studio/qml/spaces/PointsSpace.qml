@@ -2,6 +2,7 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls as Controls
+import QtQuick.Dialogs
 import QtQuick.Layouts
 import OpenStitch.Studio 1.0
 import ".."
@@ -35,6 +36,25 @@ Item {
                 ++count
         return count
     }
+    readonly property var threadController: typeof threads !== "undefined" ? threads : null
+
+    ColorDialog {
+        id: threadColorDialog
+        objectName: "pointsThreadColorDialog"
+        property string entryId
+        title: qsTr("Couleur du fil")
+        function edit(entry) {
+            entryId = entry.id
+            selectedColor = entry.color
+            open()
+        }
+        onAccepted: {
+            const index = swatches.model.findIndex(entry => entry.id === entryId)
+            if (index >= 0 && selectedColor.toString() !== swatches.model[index].color.toString())
+                root.threadController.recolorThread(index, selectedColor.toString())
+        }
+    }
+
     // Panneau latéral ouvert ("" = aucun) : un seul à la fois, tous hubs confondus.
     readonly property string openPanel: digitizeHub.openPanel !== "" ? digitizeHub.openPanel : viewHub.openPanel
 
@@ -322,6 +342,151 @@ Item {
                         }
                     }
                 }
+            }
+
+            Rectangle {
+                id: threadStrip
+                objectName: "pointsThreadStrip"
+                visible: swatches.count > 0
+                Layout.fillWidth: true
+                implicitHeight: 48
+                color: Theme.panel
+                border.color: Theme.divider
+
+                ListView {
+                    id: swatches
+                    anchors.fill: parent
+                    anchors.margins: 6
+                    orientation: ListView.Horizontal
+                    boundsBehavior: Flickable.StopAtBounds
+                    clip: true
+                    spacing: 4
+                    model: root.threadController ? root.threadController.entries : []
+                    property int dragFrom: -1
+                    property int dropIndex: -1
+                    property real pointerX: 0
+                    readonly property int tileWidth: 32
+                    onModelChanged: {
+                        if (stripMouse)
+                            stripMouse.pressedIndex = -1
+                        dragFrom = -1
+                        dropIndex = -1
+                    }
+
+                    function indexAtX(x, clamp) {
+                        if (x < 0 || x >= width)
+                            return -1
+                        const offset = contentX + x - originX
+                        const stride = tileWidth + spacing
+                        const index = Math.floor(offset / stride)
+                        if (clamp)
+                            return Math.min(count - 1, index)
+                        return index < count && offset % stride < tileWidth ? index : -1
+                    }
+
+                    Timer {
+                        interval: 25
+                        repeat: true
+                        running: swatches.dragFrom >= 0 && swatches.dropIndex >= 0
+                                 && swatches.contentWidth > swatches.width
+                                 && (swatches.pointerX < 18 || swatches.pointerX > swatches.width - 18)
+                        onTriggered: {
+                            const delta = swatches.pointerX < 18 ? -8 : 8
+                            swatches.contentX = Math.max(swatches.originX,
+                                Math.min(swatches.originX + swatches.contentWidth - swatches.width,
+                                         swatches.contentX + delta))
+                            swatches.dropIndex = swatches.indexAtX(swatches.pointerX, true)
+                        }
+                    }
+
+                    Controls.ScrollBar.horizontal: Controls.ScrollBar {}
+                    delegate: Rectangle {
+                        id: swatch
+                        required property var modelData
+                        objectName: "pointsThreadSwatch" + modelData.index
+                        width: swatches.tileWidth
+                        height: 28
+                        radius: 4
+                        color: modelData.color
+                        opacity: modelData.visible && swatches.dragFrom !== modelData.index ? 1 : 0.5
+                        border.width: modelData.selected || activeFocus || swatches.dropIndex === modelData.index ? 2 : 1
+                        border.color: swatches.dropIndex === modelData.index ? Theme.accent
+                                    : modelData.selected || activeFocus ? Theme.foreground : Theme.border
+                        activeFocusOnTab: true
+                        Accessible.role: Accessible.Button
+                        Accessible.name: qsTr("Fil %1 · %2 objet(s)").arg(modelData.label).arg(modelData.objectCount)
+                        Accessible.onPressAction: root.threadController.selectThreadObjects(modelData.index)
+                        Keys.onSpacePressed: root.threadController.selectThreadObjects(modelData.index)
+
+                        Keys.onPressed: event => {
+                            if (event.key === Qt.Key_F2) {
+                                threadColorDialog.edit(modelData)
+                                event.accepted = true
+                            }
+                        }
+                    }
+                }
+
+                MouseArea {
+                    id: stripMouse
+                    anchors.fill: swatches
+                    anchors.bottomMargin: 8
+                    acceptedButtons: Qt.LeftButton | Qt.RightButton
+                    hoverEnabled: true
+                    property real pressX
+                    property int pressedIndex: -1
+                    readonly property int hoveredIndex: containsMouse ? swatches.indexAtX(mouseX, false) : -1
+                    readonly property bool hovered: hoveredIndex >= 0 && swatches.dragFrom < 0 && !pressed
+                    cursorShape: swatches.dragFrom >= 0 ? Qt.ClosedHandCursor
+                                 : hoveredIndex >= 0 ? Qt.PointingHandCursor : Qt.ArrowCursor
+
+                    onPressed: function(event) {
+                        pressX = event.x
+                        pressedIndex = swatches.indexAtX(event.x, false)
+                        event.accepted = pressedIndex >= 0
+                    }
+                    onPositionChanged: function(event) {
+                        if (pressedIndex < 0 || !(pressedButtons & Qt.LeftButton))
+                            return
+                        if (swatches.dragFrom < 0 && Math.abs(event.x - pressX) < Qt.styleHints.startDragDistance)
+                            return
+                        swatches.dragFrom = pressedIndex
+                        swatches.pointerX = event.x
+                        swatches.dropIndex = swatches.indexAtX(event.x, true)
+                    }
+                    onReleased: function(event) {
+                        const from = swatches.dragFrom
+                        const to = event.y >= 0 && event.y < height ? swatches.indexAtX(event.x, true) : -1
+                        swatches.dragFrom = -1
+                        swatches.dropIndex = -1
+                        if (from >= 0) {
+                            if (to >= 0 && from !== to && !root.threadController.moveThread(from, to))
+                                errorTip.show(root.threadController.message, 3000)
+                        } else if (pressedIndex >= 0 && pressedIndex === swatches.indexAtX(event.x, false)) {
+                            if (event.button === Qt.RightButton)
+                                threadColorDialog.edit(swatches.model[pressedIndex])
+                            else
+                                root.threadController.selectThreadObjects(pressedIndex)
+                        }
+                        pressedIndex = -1
+                    }
+                    onCanceled: {
+                        pressedIndex = -1
+                        swatches.dragFrom = -1
+                        swatches.dropIndex = -1
+                    }
+
+                    StudioToolTip {
+                        text: {
+                            const entry = stripMouse.hoveredIndex >= 0
+                                        ? swatches.model[stripMouse.hoveredIndex] : null
+                            return entry ? qsTr("%1 · %2 objet(s)\nCliquer pour sélectionner · Glisser pour réordonner · Clic droit pour recolorer")
+                                           .arg(entry.label).arg(entry.objectCount) : ""
+                        }
+                    }
+                }
+
+                Controls.ToolTip { id: errorTip }
             }
         }
 

@@ -491,7 +491,7 @@ void StudioViewTest::mainQmlHostsEveryPanel() {
                                  "threadSearchActionsFlow", "threadColorwayActionsFlow"}) {
         auto* flow = named(window, flowName);
         QVERIFY2(flow, flowName);
-        QTRY_VERIFY(flow->implicitHeight() >= flow->childrenRect().height() - 1.0);
+        QTRY_VERIFY(flow->height() >= flow->childrenRect().height() - 1.0);
     }
     for (const char* buttonName : {"threadRecolorButton", "nearestButton", "colorwayAddButton"}) {
         auto* button = named(window, buttonName);
