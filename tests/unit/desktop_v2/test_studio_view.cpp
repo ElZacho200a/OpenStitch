@@ -321,9 +321,10 @@ void StudioViewTest::stockInventoryAndAtomicClosestThreadAssignment() {
     QVERIFY(threads.setOwnedThread(chart, code, true));
     QVERIFY(threads.ownsThread(chart, code));
     QVERIFY(!threads.setOwnedThread(chart, code, true)); // no duplicate
-    QVERIFY(threads.addPersonalThread(QStringLiteral("MY-01"),
-                                      QStringLiteral("Raspberry"),
-                                      QStringLiteral("#b41141")));
+    const QString personalRef = QStringLiteral("MY-01");
+    const QString personalName = QStringLiteral("Raspberry");
+    const QString personalColor = QStringLiteral("#b41141");
+    QVERIFY(threads.addPersonalThread(personalRef, personalName, personalColor));
     QCOMPARE(threads.stockCount(), 2);
     threads.setLimitToStock(true);
     QVERIFY(threads.limitToStock());
@@ -363,6 +364,7 @@ void StudioViewTest::colorFilmReductionAndFabricAreUndoable() {
     QCOMPARE(rig.session.project().embroidery_objects.front().id, ObjectId{secondId});
     QVERIFY(rig.session.undo());
     QCOMPARE(rig.session.project().embroidery_objects.front().id, oldFirst);
+    rig.wait();
 
     const auto preview = rig.threads.previewReduction(1);
     QCOMPARE(preview.value("before").toInt(), 2);
@@ -377,11 +379,12 @@ void StudioViewTest::colorFilmReductionAndFabricAreUndoable() {
 
     const auto original = rig.threads.fabric();
     QCOMPARE(original.value("color").value<QColor>(), QColor(Qt::white));
-    QVERIFY(!rig.threads.setFabric(QStringLiteral("bad"), QString(), QString(),
-                                    QString(), 0, 1));
-    QVERIFY(rig.threads.setFabric(QStringLiteral("#112233"), QStringLiteral("Lin"),
-                                  QStringLiteral("woven"), QStringLiteral("cut-away"),
-                                  30, 1.25));
+    QVERIFY(!rig.threads.setFabric(QStringLiteral("bad"), {}, {}, {}, 0, 1));
+    const QString navy = QStringLiteral("#112233");
+    const QString linen = QStringLiteral("Lin");
+    const QString woven = QStringLiteral("woven");
+    const QString stabilizer = QStringLiteral("cut-away");
+    QVERIFY(rig.threads.setFabric(navy, linen, woven, stabilizer, 30, 1.25));
     QCOMPARE(rig.threads.fabric().value("name").toString(), QStringLiteral("Lin"));
     QCOMPARE(rig.session.project().fabric.material, std::string("woven"));
     QVERIFY(rig.session.undo());
