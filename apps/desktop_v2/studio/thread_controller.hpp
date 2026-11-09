@@ -19,7 +19,7 @@ class ThreadController : public QObject {
     Q_OBJECT
     Q_PROPERTY(QString message READ message NOTIFY messageChanged)
     Q_PROPERTY(bool lastOk READ lastOk NOTIFY messageChanged)
-    // [{index, label, color, objectCount, visible, selected}] in order of first sewing.
+    // [{index, id, label, color, objectCount, visible, selected}] in order of first sewing.
     Q_PROPERTY(QVariantList entries READ entries NOTIFY changed)
     Q_PROPERTY(int threadCount READ threadCount NOTIFY changed)
     // [{id, name, color, position}] in sewing order, background first.
@@ -43,6 +43,7 @@ public:
     [[nodiscard]] QVariantList charts() const;
 
     // --- Thread plan ---------------------------------------------------------------------------
+    Q_INVOKABLE bool moveThread(int from, int to);
     Q_INVOKABLE bool mergeThreads(int from, int into);
     Q_INVOKABLE bool recolorThread(int entry, const QString& hex);
     Q_INVOKABLE bool setThreadVisible(int entry, bool visible);

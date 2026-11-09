@@ -98,7 +98,7 @@ ColumnLayout {
         visible: panel.workspace.treeMode
         Layout.fillWidth: true
         Layout.fillHeight: true
-        Layout.minimumHeight: 148
+        Layout.minimumHeight: implicitHeight
     }
 
     ListView {
@@ -217,10 +217,11 @@ ColumnLayout {
         objectName: "pointsEditActionsScroll"
         visible: panel.workspace.editOpen
         Layout.fillWidth: true
-        Layout.minimumHeight: 0
+        Layout.fillHeight: true
+        Layout.minimumHeight: visible ? Theme.rowHeight : 0
         Layout.preferredHeight: visible ? Math.min(editActions.implicitHeight + 24,
                                                    Math.max(96, panel.height * 0.45)) : 0
-        Layout.maximumHeight: visible ? Math.max(0, panel.height - 205) : 0
+        Layout.maximumHeight: Layout.preferredHeight
         clip: true
         contentWidth: width
         contentHeight: editActions.implicitHeight + 24

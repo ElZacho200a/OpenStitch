@@ -22,6 +22,8 @@
 #include "file_controller.hpp"
 #include "gpu_canvas.hpp"
 #include "inspector_controller.hpp"
+#include "openstitch/commands/thread_commands.hpp"
+#include "openstitch/project_io/project_io.hpp"
 #include "openstitch/project_ops/factory.hpp"
 #include "point_edit_controller.hpp"
 #include "points_space_controller.hpp"
@@ -29,6 +31,7 @@
 #include "shape_batch.hpp"
 #include "studio_controller.hpp"
 #include "thread_controller.hpp"
+#include "thread_plan.hpp"
 #include "tool_controller.hpp"
 #include "view_controller.hpp"
 #include "workspace_controller.hpp"
@@ -143,6 +146,72 @@ private slots:
                                                      QStringLiteral("Provided by the application"));
     }
 
+    void threadStripSelectsMovesAndRecolors() {
+        Rig rig;
+        open(rig);
+        QVERIFY(rig.session.applyBatch(batchAddRect({60, 0}, 20, 20), "B").committed);
+        QVERIFY(rig.session.applyBatch(batchAddRect({90, 0}, 20, 20), "C").committed);
+        const auto& objects = rig.session.project().embroidery_objects;
+        QCOMPARE(objects.size(), std::size_t{3});
+        const auto first = objects[0].id;
+        const auto second = objects[1].id;
+        const auto third = objects[2].id;
+        rig.session.execute(std::make_unique<commands::SetObjectThreadCommand>(
+            std::vector<ObjectId>{second}, std::nullopt, std::array<std::uint8_t, 3>{255, 0, 0}));
+        QTRY_VERIFY(named(rig.window, "pointsThreadSwatch1"));
+        QVERIFY(mouseClick(rig.window, "pointsThreadSwatch0"));
+        QCOMPARE(rig.session.selection().targets().size(), std::size_t{2});
+        QVERIFY(rig.session.selection().contains({TargetKind::EmbroideryObject, first.value}));
+        QVERIFY(rig.session.selection().contains({TargetKind::EmbroideryObject, third.value}));
+
+        const auto center = [&](const char* name) {
+            const auto* item = named(rig.window, name);
+            return item->mapToScene({item->width() / 2, item->height() / 2}).toPoint();
+        };
+        const auto start = center("pointsThreadSwatch0");
+        const auto end = center("pointsThreadSwatch1");
+        const auto beforeMove = rig.session.historyPosition();
+        QTest::mousePress(rig.window, Qt::LeftButton, Qt::NoModifier, start);
+        QTest::mouseMove(rig.window, end);
+        QCOMPARE(rig.session.historyPosition(), beforeMove);
+        QTest::mouseRelease(rig.window, Qt::LeftButton, Qt::NoModifier, end);
+        QCOMPARE(rig.session.historyPosition(), beforeMove + 1);
+        const auto moved = orderRows(rig.session.project());
+        QCOMPARE(moved[0].id, second.value);
+        QCOMPARE(moved[1].id, first.value);
+        QCOMPARE(moved[2].id, third.value);
+        QVERIFY(rig.session.undo());
+        QCOMPARE(orderRows(rig.session.project())[0].id, first.value);
+        QVERIFY(rig.session.redo());
+        QCOMPARE(orderRows(rig.session.project())[0].id, second.value);
+
+        QTRY_VERIFY(named(rig.window, "pointsThreadSwatch1"));
+        auto* dialog = rig.window->findChild<QObject*>(QStringLiteral("pointsThreadColorDialog"));
+        QVERIFY(dialog);
+        QTest::mouseClick(rig.window, Qt::RightButton, Qt::NoModifier,
+                          center("pointsThreadSwatch1"));
+        QTRY_VERIFY(dialog->property("visible").toBool());
+        const QColor blue(0, 0, 255);
+        QVERIFY(dialog->setProperty("selectedColor", blue));
+        const auto beforeColor = rig.session.historyPosition();
+        QVERIFY(QMetaObject::invokeMethod(dialog, "accept"));
+        QCOMPARE(rig.session.historyPosition(), beforeColor + 1);
+        QCOMPARE(rig.threads.entries()[1].toMap().value(QStringLiteral("color")).value<QColor>(),
+                 blue);
+        QCOMPARE(threadEntries(rig.session.project())[1].objects.size(), std::size_t{2});
+        QVERIFY(rig.session.undo());
+        QVERIFY(rig.session.redo());
+
+        const auto saved = rig.cfg / "thread-strip.osp";
+        QVERIFY(project_io::save_project(saved, rig.session.project()).has_value());
+        const auto reopened = project_io::load_project(saved);
+        QVERIFY(reopened.has_value());
+        QCOMPARE(orderRows(*reopened)[0].id, second.value);
+        QCOMPARE(orderRows(*reopened)[1].id, first.value);
+        QCOMPARE(threadEntries(*reopened)[1].label, std::string("#0000ff"));
+        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+    }
+
     void panelToolbarButtonsReceiveRealMouseClicks() {
         Rig rig;
         open(rig);
@@ -237,21 +306,20 @@ private slots:
             QVERIFY(inspectorArea->isVisible());
             // Every wrapped row contributes to EditBar's measured height.
             for (auto* flow : {selectionFlow, transformFlow, placementFlow}) {
-                QVERIFY2(flow->implicitHeight() + 1.0 >= flow->childrenRect().height(),
+                QVERIFY2(flow->height() + 1.0 >= flow->childrenRect().height(),
                          qPrintable(flow->objectName()));
             }
             if (treeMode) {
                 auto* layerActions = named(rig.window, "layerActionsFlow");
                 QVERIFY(layerActions);
-                QTRY_VERIFY(layerActions->implicitHeight() >=
-                            layerActions->childrenRect().height() - 1.0);
+                QTRY_VERIFY(layerActions->height() >= layerActions->childrenRect().height() - 1.0);
                 QVERIFY(bottom(layerActions) <= top(list) + 2.0);
             }
             // On screen, the three panels must be disjoint, not painted on top
             // of each other. The edit actions use their own clipped Flickable.
-            QVERIFY(bottom(list) <= top(scroll) + 2.0);
-            QVERIFY(bottom(scroll) <= bottom(panel) + 2.0);
-            QVERIFY(bottom(panel) <= top(inspectorArea) + 2.0);
+            QTRY_VERIFY(bottom(list) <= top(scroll) + 2.0);
+            QTRY_VERIFY(bottom(scroll) <= bottom(panel) + 2.0);
+            QTRY_VERIFY(bottom(panel) <= top(inspectorArea) + 2.0);
             QVERIFY(scroll->property("contentHeight").toDouble() >= scroll->height());
             QVERIFY(top(inspectorArea) < bottom(inspectorArea));
         }

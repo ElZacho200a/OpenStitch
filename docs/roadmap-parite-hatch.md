@@ -2178,6 +2178,7 @@ couches ; objets verrouillables ; coût estimé ; routage satin multi-colonnes.
 
 ### HP-SEQ-002 — Ordre par glisser-déposer [P1] — ◐ Partiel (2026-10-26)
 - Livré (2026-10-26) : Glisser-déposer dans le dock « Ordre de couture » (`OrderListWidget`, `MoveInSewingOrderCommand`, un pas d'annulation, refuse de franchir un calque). Reste : film couleur.
+- Studio (2026-11-09) : bande de fils sous le canevas Points. Un clic sélectionne le groupe, le glisser-déposer change l'ordre de couture en une commande et le clic droit ouvre le sélecteur de couleur. L'ordre des calques et les positions figées restent prioritaires. Recette Studio à valider après intégration.
 - Voir HP-OBJ-011 ; dans le film couleur (HP-THR-005) aussi.
 
 ### HP-SEQ-003 — Séquencer par couleur depuis le film couleur [P0] — ◐ Partiel (2026-10-25)
@@ -4569,6 +4570,7 @@ ouvrant le lot (§0.1).
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-11-09 | Codex (Studio, F27-01 et F27-04) | HP-SEQ-002 : bande de fils dans Points, sélection groupée, réordonnancement annulable et sélecteur de couleur. Statut partiel conservé. Correction du démarrage Qt 6.8.3 après #310 via les hauteurs préférées des groupes d’actions. |
 | 2026-11-07 | Claude (Studio par défaut) | Roadmap : aucune entrée HP précise. Studio devient l'application par défaut : exécutable `openstitch.exe` (cible `openstitch_v2_studio`), installeur et artefacts de release construits sur Studio ; la V1 Widgets passe derrière `OPENSTITCH_BUILD_LEGACY_V1` (OFF par défaut, ON dans le preset `msvc` tant que la parité n'est pas complète) et devient `openstitch-v1.exe`. Suppression de la V1 : reportée à la fermeture des lignes ABSENT de la matrice de parité. |
 | 2026-11-07 | Codex (validation Studio) | Builds Debug/Release et suites complètes sur `1372589` : 2 579/2 579 chacune ; cœur compilé sans Qt, captures natives et mesures MSAA 4× publiées. Intégration de `main` `8c200e0` dans #282 : deux historiques conservés ; vérification ciblée après intégration (293 cas du cœur, deux shells QTest). Fondation toujours partielle, aucun statut HP-* clos ; cible p95 <16,7 ms non atteinte, CI suivie sur GitHub. |
 | 2026-11-06 | Codex (fondations Studio) | Prototype expérimental Qt Quick / canevas GPU dans `openstitch_v2_studio` ; `.osp`, caméra et sélection sur les modèles V2 existants, backend CPU explicite, géométrie Qt-free et banc natif 1k/10k/50k/100k + projet réel. [ADR 0005](adr/0005-studio-qtquick-gpu.md), [migration](desktop-v2/17-studio-gpu.md), [protocole de mesure](desktop-v2/18-studio-benchmarks.md). Fondation partielle : aucun statut HP-* de parité déclaré clos ; Widgets conservé et 60 FPS soumis aux mesures, validation de la CI après push. |
