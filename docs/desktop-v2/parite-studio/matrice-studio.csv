@@ -228,7 +228,7 @@ a8e5be69,bouton,Modifier le texte,properties_panel.cpp,fait,Modifier le texte,FU
 3bda7e57,bouton,Ouvrir le dossier,main_window_files.cpp,absent,,FUNCTIONAL_UNTESTED,,FileController::revealFolder,FilePanel.qml menu Projet
 9c53cfd1,bouton,Ouvrir les préférences,ai_segmentation_dialog.cpp,exclu,,ABSENT,,,
 8f650f08,bouton,Ouvrir un projet,empty_state_widget.cpp,fait,Ouvrir une image ou un projet,FUNCTIONAL_UNTESTED,,FileController::openPath,Main.qml bouton Ouvrir un projet
-237f3d36,bouton,Ouvrir une image ou un SVG,empty_state_widget.cpp,fait,Ouvrir une image ou un projet,FUNCTIONAL_UNTESTED,,FileController::imageImportRequested,Main.qml welcomeImportImage + FilePanel importOptions
+237f3d36,bouton,Ouvrir une image,empty_state_widget.cpp,fait,Ouvrir une image source,TESTED,StudioSpaceImageTest::importingRasterBeginsWithImageOnlyAndSegmentationIsExplicit,FileController::imageImported,Main.qml FilePanel ouvre Image (pas de segmentation)
 249c0de8,bouton,Parcourir,ai_preferences_dialog.cpp,fait,Parcourir,ABSENT,,,
 3dcea6a1,bouton,Peindre les zones de détail,segmentation_dialog.cpp,absent,,ABSENT,,,
 5c1da94d,bouton,Pivoter,main_window_files.cpp,fait,Pivoter,ABSENT,,,

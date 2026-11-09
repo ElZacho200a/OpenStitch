@@ -94,6 +94,9 @@ Window {
     property bool closeApproved: false
     FilePanel {
         id: filePanel
+        // A raster import is an image-only operation: enter the first workspace
+        // after the project has been successfully adopted.
+        onImageImported: workspaceCtl.setCurrent("image")
         onQuitApproved: {
             window.closeApproved = true
             window.close()

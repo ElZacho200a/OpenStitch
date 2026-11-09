@@ -556,16 +556,20 @@ void StudioFilesTest::dropAndCommandLineDispatchByExtension() {
     // Glisser-déposer d'un projet.
     rig.files->openDropped({QUrl::fromLocalFile(a)});
     QTRY_VERIFY_WITH_TIMEOUT(rig.studio.path() == a && rig.studio.scene() != nullptr, 15'000);
-    // Une image demande ses options avant toute numérisation.
+    // Dropping an image loads ONLY the source, with no digitization dialog.
     QImage image(40, 40, QImage::Format_RGB32);
     image.fill(Qt::white);
     const auto png = dir.filePath(QStringLiteral("dessin.png"));
     QVERIFY(image.save(png));
-    QSignalSpy asked(rig.files.get(), &FileController::imageImportRequested);
+    QSignalSpy imported(rig.files.get(), &FileController::imageImported);
     rig.files->openDropped({QUrl::fromLocalFile(png)});
-    QCOMPARE(asked.count(), 1);
-    QCOMPARE(asked.front().front().toString(), png);
-    QCOMPARE(rig.studio.path(), a);
+    QTRY_COMPARE_WITH_TIMEOUT(imported.count(), 1, 15'000);
+    QVERIFY(rig.waitIdle());
+    QCOMPARE(rig.studio.path(), QString());
+    QVERIFY(rig.session.project().hasImage());
+    QVERIFY(!rig.session.project().segmentation.has_value());
+    QVERIFY(rig.session.project().vector_objects.empty());
+    QVERIFY(rig.session.project().embroidery_objects.empty());
     // Format inconnu et URL distante : refus lisible.
     QFile unknown(dir.filePath(QStringLiteral("x.xyz")));
     QVERIFY(unknown.open(QIODevice::WriteOnly));
@@ -781,20 +785,33 @@ void StudioFilesTest::imageAndVectorImports() {
     Rig rig;
     rig.session.replaceProject(studioFixture(), true);
     rig.makeDirty();
-    // Hors bornes : refus avant toute numérisation.
+    // Physical scale is checked before loading the source.
     rig.files->importImage(png, {{QStringLiteral("heightMm"), 2.0}});
     QVERIFY(rig.files->messageIsError());
     QVERIFY(!rig.files->busy());
     // L'import remplace le document : protégé par la question « Enregistrer ? ».
     auto options = rig.files->imageImportDefaults();
+    QVERIFY(options.contains(QStringLiteral("heightMm")));
+    QVERIFY(!options.contains(QStringLiteral("maxColors")));
+    QVERIFY(!options.contains(QStringLiteral("smoothingPx")));
     options[QStringLiteral("heightMm")] = 40.0;
-    options[QStringLiteral("maxColors")] = 3;
     rig.files->importImage(png, options);
     QCOMPARE(rig.files->pendingReason(), QStringLiteral("importer"));
     rig.files->resolveGuard(QStringLiteral("discard"));
     QVERIFY(rig.waitIdle());
     QVERIFY2(!rig.files->messageIsError(), qPrintable(rig.files->message()));
-    QVERIFY(!rig.session.project().embroidery_objects.empty());
+    const auto& loaded = rig.session.project();
+    QVERIFY(loaded.hasImage());
+    QCOMPARE(loaded.original.width, 120);
+    QCOMPARE(loaded.original.height, 120);
+    QCOMPARE(loaded.mm_per_px.value, 40.0 / 120.0);
+    QVERIFY(loaded.ops.empty());
+    QVERIFY(!loaded.segmentation.has_value());
+    QVERIFY(loaded.vector_objects.empty());
+    QVERIFY(loaded.embroidery_objects.empty());
+    QVERIFY(!loaded.imported_design.has_value());
+    QTRY_VERIFY_WITH_TIMEOUT(!rig.studio.busy(), 15'000);
+    QCOMPARE(rig.studio.commandCount(), 0);
     QCOMPARE(rig.studio.title(), QStringLiteral("logo.png"));
     QVERIFY(!rig.studio.hasPath());
     QVERIFY(rig.studio.dirty()); // à enregistrer

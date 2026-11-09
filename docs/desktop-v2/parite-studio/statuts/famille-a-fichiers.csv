@@ -3,7 +3,7 @@ a4c1ad2b,FUNCTIONAL_UNTESTED,StudioFilesTest::unsavedGuardNewOpenAndQuit,FileCon
 bfb1ac5d,TESTED,StudioFilesTest::recentFilesPersistPruneAndReopen,FileController::recent/requestOpenRecent,FilePanel.qml fileMenu
 7dcd5e07,TESTED,StudioFilesTest::recentFilesPersistPruneAndReopen,FileController::clearRecent,FilePanel.qml clearRecentEntry
 8f650f08,FUNCTIONAL_UNTESTED,,FileController::openPath,Main.qml bouton Ouvrir un projet
-237f3d36,FUNCTIONAL_UNTESTED,,FileController::imageImportRequested,Main.qml welcomeImportImage + FilePanel importOptions
+237f3d36,TESTED,StudioSpaceImageTest::importingRasterBeginsWithImageOnlyAndSegmentationIsExplicit,FileController::imageImported,Main.qml FilePanel ouvre Image sans segmentation
 f38a9ef0,FUNCTIONAL_UNTESTED,,FileController::openPath(machine),Main.qml welcomeImportMachine
 c4719a5d,TESTED,StudioFilesTest::imageAndVectorImports,FileController::importImage/importVector,FilePanel.qml menu Importer
 7c94f4bb,TESTED,StudioFilesTest::machineExportImportRoundTrip,FileController::openPath(machine),FilePanel.qml menu Importer

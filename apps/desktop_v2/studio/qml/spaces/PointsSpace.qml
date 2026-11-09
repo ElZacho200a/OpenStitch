@@ -252,7 +252,7 @@ Item {
                         spacing: 8
                         StudioButton {
                             objectName: "welcomeImportImage"
-                            text: qsTr("Importer une image ou un SVG")
+                            text: qsTr("Commencer à partir d’une image")
                             onClicked: actions.runCommand("cmd.file.import-image")
                         }
                         StudioButton {

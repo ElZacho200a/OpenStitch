@@ -6,19 +6,18 @@ import QtQuick.Layouts
 import "."
 
 // Famille A : menu Fichier, contrôle des modifications non enregistrées, récents, glisser-déposer,
-// options d'import et d'export, cadre/machine, récupération après interruption. Tout passe par le
+// import d'image sans options de segmentation, export, cadre/machine, récupération. Tout passe par le
 // contrôleur `files` (FileController) ; sans lui (tests de la coque seule) chaque entrée retombe
 // sur `studio`, et le panneau ne fait alors que les gestes de base.
 Item {
     id: panel
     signal quitApproved()
+    signal imageImported()
     objectName: "filePanel"
     anchors.fill: parent
 
     readonly property var ctl: (typeof files !== "undefined") ? files : null
     property string exportKind: ""
-    property var importValues: ({})
-    property string importPath: ""
     property var exportValues: ({})
 
     // --- API pour Main.qml -----------------------------------------------------------------
@@ -138,7 +137,7 @@ Item {
     }
     FileDialog {
         id: imageDialog
-        title: qsTr("Importer une image")
+        title: qsTr("Choisir une image source")
         nameFilters: [qsTr("Image (*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.webp)")]
         onAccepted: if (panel.ctl) panel.ctl.openUrl(selectedFile)
     }
@@ -280,7 +279,7 @@ Item {
                 onClicked: panel.ctl.clearRecent()
             }
             SectionLabel { text: qsTr("IMPORTER") }
-            Entry { text: qsTr("Une image…"); onClicked: panel.importImageDialog() }
+            Entry { text: qsTr("Une image (espace Image)…"); onClicked: panel.importImageDialog() }
             Entry { text: qsTr("Un SVG ou un DXF…"); onClicked: panel.importVectorDialog() }
             Entry { text: qsTr("Une broderie machine…"); onClicked: panel.importMachineDialog() }
             SectionLabel { text: qsTr("EXPORTER") }
@@ -341,11 +340,7 @@ Item {
         ignoreUnknownSignals: true
         function onSaveAsRequested() { guardSaveDialog.open() }
         function onQuitApproved() { panel.quitApproved() }
-        function onImageImportRequested(path) {
-            panel.importPath = path
-            panel.importValues = panel.ctl.imageImportDefaults()
-            importOptions.open()
-        }
+        function onImageImported() { panel.imageImported() }
     }
 
     // --- Récupération après interruption ------------------------------------------------------
@@ -364,66 +359,9 @@ Item {
         }
     }
 
-    // --- Options d'import d'image -------------------------------------------------------------
-    Frame {
-        id: importOptions
-        objectName: "importOptions"
-        heading: qsTr("Importer une image")
-        Label { text: panel.importPath }
-        GridLayout {
-            columns: 2
-            columnSpacing: 12
-            rowSpacing: 8
-            Layout.fillWidth: true
-            Label { text: qsTr("Hauteur du motif (mm)") }
-            StudioSpinBox {
-                objectName: "importHeight"
-                from: 5; to: 1000
-                value: panel.importValues.heightMm || 100
-                editable: true
-                onValueModified: panel.importValues.heightMm = value
-            }
-            Label { text: qsTr("Nombre de couleurs") }
-            StudioSpinBox {
-                objectName: "importColors"
-                from: 2; to: 32
-                value: panel.importValues.maxColors || 8
-                editable: true
-                onValueModified: panel.importValues.maxColors = value
-            }
-            Label { text: qsTr("Lissage (px)") }
-            StudioSpinBox {
-                from: 0; to: 20
-                value: panel.importValues.smoothingPx === undefined ? 3 : panel.importValues.smoothingPx
-                editable: true
-                onValueModified: panel.importValues.smoothingPx = value
-            }
-            Label { text: qsTr("Mode") }
-            StudioComboBox {
-                model: [{ t: qsTr("Formes remplies"), v: "shapes" }, { t: qsTr("Contours"), v: "contours" }, { t: qsTr("Pointillé"), v: "stipple" }]
-                textRole: "t"
-                onActivated: panel.importValues.mode = model[currentIndex].v
-            }
-            Label { text: qsTr("Fond") }
-            StudioComboBox {
-                model: [{ t: qsTr("Automatique"), v: -1 }, { t: qsTr("Ne pas retirer"), v: 0 }, { t: qsTr("Retirer cette couleur"), v: 1 }, { t: qsTr("Retirer à l'extérieur seulement"), v: 2 }]
-                textRole: "t"
-                onActivated: panel.importValues.skipBackground = model[currentIndex].v
-            }
-        }
-        RowLayout {
-            Layout.alignment: Qt.AlignRight
-            spacing: 8
-            StudioButton { text: qsTr("Annuler"); onClicked: importOptions.close() }
-            StudioButton {
-                objectName: "importConfirm"
-                text: qsTr("Importer")
-                emphasized: true
-                onClicked: { importOptions.close(); panel.ctl.importImage(panel.importPath, panel.importValues) }
-            }
-        }
-    }
-
+    // Importer une image ouvre seulement le sélecteur de fichier : la préparation
+    // a lieu dans l'espace Image, la segmentation dans l'espace suivant.
+    
     // --- Export pour la machine ---------------------------------------------------------------
     Frame {
         id: exportDialog
