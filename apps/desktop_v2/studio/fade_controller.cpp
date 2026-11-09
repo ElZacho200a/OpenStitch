@@ -25,6 +25,13 @@ FadeController::FadeController(StudioController& studio, QObject* parent)
 FadeController::~FadeController() = default;
 
 void FadeController::refresh() {
+    const auto& session = studio_.session();
+    const auto& targets = session.selection().targets();
+    if (lastSeenRevision_ == session.revision() && lastSeenSelection_ == targets) {
+        return; // aucun axe de fondu à recalculer pour un simple statut
+    }
+    lastSeenRevision_ = session.revision();
+    lastSeenSelection_ = targets;
     std::uint64_t id = 0;
     int count = 0;
     for (const auto& target : studio_.session().selection().targets()) {
