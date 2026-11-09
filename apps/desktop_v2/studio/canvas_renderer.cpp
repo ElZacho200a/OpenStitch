@@ -203,6 +203,8 @@ struct GeometryRoot : QSGNode {
     // Deux ressources indépendantes : le curseur/les guides ne doivent plus effacer et
     // retéléverser la texture vectorielle à chaque mise à jour des overlays.
     QSGOpacityNode* vector = new QSGOpacityNode;
+    QSGNode* vectorBase = new QSGNode;
+    QSGNode* vectorHighlight = new QSGNode;
     QSGNode* overlayImages = new QSGNode;
     QSGNode* overlay = new QSGNode;
     std::uint64_t overlayRevision{std::numeric_limits<std::uint64_t>::max()};
@@ -210,6 +212,7 @@ struct GeometryRoot : QSGNode {
     // A visibility change must redraw even if the document, camera and overlays did not move.
     CanvasLayers displayedLayers;
     std::shared_ptr<const OverlayImage> displayedVector;
+    std::shared_ptr<const OverlayImage> displayedVectorSelection;
     std::vector<OverlayImageKey> displayedImageKeys;
     GeometryRoot() {
         vector->setOpacity(0.0); // vector layer disabled until its space enables it
@@ -217,6 +220,8 @@ struct GeometryRoot : QSGNode {
         world->appendChildNode(frame);
         world->appendChildNode(stitches.all);
         appendChildNode(world);
+        vector->appendChildNode(vectorBase);
+        vector->appendChildNode(vectorHighlight);
         layers->appendChildNode(vector);
         layers->appendChildNode(overlayImages);
         appendChildNode(layers);
@@ -469,6 +474,8 @@ public:
         const bool overlayDirty = root->overlayRevision != state.overlayRevision;
         const bool layersChanged = root->displayedLayers != state.layers;
         const bool vectorChanged = root->displayedVector != state.vectorImage;
+        const bool vectorSelectionChanged =
+            root->displayedVectorSelection != state.vectorSelectionImage;
         const CanvasOverlays defaults;
         const CanvasOverlays& overlays = state.overlays ? *state.overlays : defaults;
         syncRegionLayer(*root, state, window);
@@ -507,14 +514,26 @@ public:
         // La texture des vecteurs dépend uniquement du snapshot vectoriel, ni de la caméra
         // ni du curseur de simulation ni des autres images superposées.
         if (vectorChanged) {
-            clearChildren(*root->vector);
+            clearChildren(*root->vectorBase);
             if (state.vectorImage && !state.vectorImage->image.isNull()) {
                 const auto& v = *state.vectorImage;
                 auto* node = new QSGSimpleTextureNode;
                 node->setOwnsTexture(true);
                 node->setTexture(window.createTextureFromImage(v.image));
                 node->setRect(QRectF(v.x0, v.y0, v.widthMm, v.heightMm));
-                root->vector->appendChildNode(node);
+                root->vectorBase->appendChildNode(node);
+            }
+        }
+        if (vectorSelectionChanged) {
+            clearChildren(*root->vectorHighlight);
+            if (state.vectorSelectionImage && !state.vectorSelectionImage->image.isNull()) {
+                const auto& selection = *state.vectorSelectionImage;
+                auto* node = new QSGSimpleTextureNode;
+                node->setOwnsTexture(true);
+                node->setTexture(window.createTextureFromImage(selection.image));
+                node->setRect(
+                    QRectF(selection.x0, selection.y0, selection.widthMm, selection.heightMm));
+                root->vectorHighlight->appendChildNode(node);
             }
         }
         // Afficher/masquer n'est pas une modification de texture.
@@ -571,6 +590,7 @@ public:
         root->overlayRevision = state.overlayRevision;
         root->displayedLayers = state.layers;
         root->displayedVector = state.vectorImage;
+        root->displayedVectorSelection = state.vectorSelectionImage;
         CanvasRenderResult result{root, dirty.geometry && state.scene != nullptr, elapsed};
         synchronizeRealistic(*root, state, overlays, window, dirty, overlayDirty, result);
         return result;
@@ -628,6 +648,7 @@ struct SoftwareRoot : QSGSimpleTextureNode {
     std::shared_ptr<const RegionLayerData> regions; // couche « regions » déjà rastérisée
     CanvasLayers displayedLayers;
     std::shared_ptr<const OverlayImage> displayedVector;
+    std::shared_ptr<const OverlayImage> displayedVectorSelection;
     std::uint64_t overlayRevision{std::numeric_limits<std::uint64_t>::max()};
     std::uint64_t sourceData{std::numeric_limits<std::uint64_t>::max()};
     std::uint64_t sourceView{std::numeric_limits<std::uint64_t>::max()};
@@ -644,6 +665,7 @@ public:
         if (!dirty.geometry && !dirty.camera && !dirty.selection &&
             root->regions == (state.layers.regions ? state.regions : nullptr) &&
             root->displayedLayers == state.layers && root->displayedVector == state.vectorImage &&
+            root->displayedVectorSelection == state.vectorSelectionImage &&
             root->overlayRevision == state.overlayRevision && root->viewport == state.viewport &&
             root->sourceData == state.sourceImage.dataRevision &&
             root->sourceView == state.sourceImage.viewRevision &&
@@ -672,6 +694,11 @@ public:
         const CanvasOverlays& overlays = state.overlays ? *state.overlays : defaults;
         if (state.layers.vectors && state.vectorImage && !state.vectorImage->image.isNull()) {
             const auto& v = *state.vectorImage;
+            painter.drawImage(QRectF(v.x0, v.y0, v.widthMm, v.heightMm), v.image);
+        }
+        if (state.layers.vectors && state.vectorSelectionImage &&
+            !state.vectorSelectionImage->image.isNull()) {
+            const auto& v = *state.vectorSelectionImage;
             painter.drawImage(QRectF(v.x0, v.y0, v.widthMm, v.heightMm), v.image);
         }
         if (state.scene) {
@@ -755,6 +782,7 @@ public:
         root->overlayRevision = state.overlayRevision;
         root->displayedLayers = state.layers;
         root->displayedVector = state.vectorImage;
+        root->displayedVectorSelection = state.vectorSelectionImage;
         root->sourceData = state.sourceImage.dataRevision;
         root->sourceView = state.sourceImage.viewRevision;
         return {root, dirty.geometry && state.scene != nullptr,
