@@ -33,6 +33,16 @@ class DeterminismGateTests(unittest.TestCase):
         self.assertEqual(report["sha256"][0], report["sha256"][1])
         self.assertNotEqual(outputs[0].parent, outputs[1].parent)
 
+    def test_zero_stitches_are_valid_for_empty_digitization(self):
+        def fake(argv, **kwargs):
+            Path(argv[3]).write_bytes(dst())
+            return SimpleNamespace(returncode=0, stdout='{"stitches":0}')
+
+        report = verify(Path("fake-cli"), Path("fixture.png"), runner=fake)
+        self.assertEqual(report["failures"], [])
+        self.assertEqual(report["stitches"], [0, 0])
+        self.assertEqual(report["passes"], 2)
+
     def test_detects_byte_drift_even_when_stitch_counts_agree(self):
         counter = 0
 
