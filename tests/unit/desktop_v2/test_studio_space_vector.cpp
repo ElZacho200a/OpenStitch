@@ -359,6 +359,51 @@ private slots:
         QVERIFY(!rig.canvas->vectorSelectionImage());
     }
 
+    void stitchParameterAndFabricChangesDoNotRerasterizeVectors() {
+        Rig rig;
+        open(rig);
+        enterSpace(rig);
+        auto project = rig.session.project();
+        document::EmbroideryObject embroidery;
+        embroidery.id = project.object_ids.next();
+        embroidery.source_vector = project.vector_objects.front().id;
+        embroidery.params = document::RunningStitchParams{};
+        const auto id = embroidery.id;
+        project.embroidery_objects.push_back(embroidery);
+        rig.session.replaceProject(std::move(project), false);
+        QTRY_VERIFY_WITH_TIMEOUT(!rig.controller.busy(), 15'000);
+        const int builds = rig.stage.layerBuildCount();
+        const auto base = rig.canvas->vectorImage();
+        QVERIFY(base);
+
+        // Changing stitch length invalidates the machine sequence, not the vector texture.
+        auto params = std::get<document::RunningStitchParams>(
+            rig.session.project().embroidery_objects.front().params);
+        params.stitch_length = Micrometers{2'000};
+        rig.session.execute(std::make_unique<commands::SetStitchParamsCommand>(
+            id, params, "Longueur"));
+        QTRY_VERIFY_WITH_TIMEOUT(!rig.controller.busy(), 15'000);
+        QCOMPARE(rig.stage.layerBuildCount(), builds);
+        QVERIFY(rig.canvas->vectorImage() == base);
+
+        // Undo/redo have the same invalidation scope.
+        QVERIFY(rig.session.undo());
+        QTRY_VERIFY_WITH_TIMEOUT(!rig.controller.busy(), 15'000);
+        QCOMPARE(rig.stage.layerBuildCount(), builds);
+        QVERIFY(rig.session.redo());
+        QTRY_VERIFY_WITH_TIMEOUT(!rig.controller.busy(), 15'000);
+        QCOMPARE(rig.stage.layerBuildCount(), builds);
+        QVERIFY(rig.canvas->vectorImage() == base);
+
+        // A real move (semantic fingerprint itself is translation invariant) must redraw.
+        const auto source = rig.session.project().vector_objects.front().id;
+        rig.session.execute(std::make_unique<commands::TranslateVectorObjectCommand>(
+            source, Vec2um{Micrometers{1'000}, Micrometers{0}}));
+        QTRY_COMPARE(rig.stage.layerBuildCount(), builds + 1);
+        QVERIFY(rig.canvas->vectorImage() != base);
+        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+    }
+
     void goToRegionSwitchesToSegmentationWithTheRegionSelected() {
         Rig rig;
         open(rig);
