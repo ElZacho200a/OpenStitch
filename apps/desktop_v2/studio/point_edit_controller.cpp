@@ -28,6 +28,15 @@ void PointEditController::setActive(bool value) {
 }
 
 void PointEditController::refresh() {
+    const auto& session = studio_.session();
+    const auto& targets = session.selection().targets();
+    if (lastSeenRevision_ == session.revision() && lastSeenActive_ == active_ &&
+        lastSeenSelection_ == targets) {
+        return; // état de chargement, sélection QML ou autre contrôleur : points inchangés
+    }
+    lastSeenRevision_ = session.revision();
+    lastSeenSelection_ = targets;
+    lastSeenActive_ = active_;
     const auto before = id_;
     std::uint64_t id = 0;
     int count = 0;
