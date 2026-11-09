@@ -341,7 +341,12 @@ Item {
                     workspace: root.workspace
                     Layout.fillWidth: true
                     Layout.fillHeight: !inspectorArea.active
-                    Layout.preferredHeight: inspectorArea.active ? Math.max(170, root.height * 0.32) : -1
+                    // When EditBar is open, allocate enough room for its own scroll area
+                    // and the object tree. The point inspector remains independently scrollable.
+                    Layout.minimumHeight: inspectorArea.active ? 230 : 0
+                    Layout.preferredHeight: inspectorArea.active
+                                            ? Math.min(520, root.height * (root.workspace.editOpen ? 0.56 : 0.38))
+                                            : -1
                 }
 
                 Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }
@@ -352,8 +357,10 @@ Item {
                     readonly property bool active: inspectorPanel.active
                     Layout.fillWidth: true
                     Layout.fillHeight: active
+                    Layout.minimumHeight: active ? 150 : 0
                     Layout.preferredHeight: active ? -1 : 0
                     visible: active
+                    clip: true
                     Inspector {
                         id: inspectorPanel
                         anchors.fill: parent
