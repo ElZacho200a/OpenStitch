@@ -136,6 +136,7 @@ private slots:
     void unsavedGuardNewOpenAndQuit();
     void guardSaveWithAndWithoutPath();
     void guardDialogIsShownByTheRealQml();
+    void discardFromCloseDialogClosesWindowWithoutSaving();
     void recentFilesPersistPruneAndReopen();
     void dropAndCommandLineDispatchByExtension();
     void machineExportImportRoundTrip();
@@ -464,6 +465,46 @@ void StudioFilesTest::guardDialogIsShownByTheRealQml() {
     QVERIFY(rig.window->findChild<QObject*>(QStringLiteral("fileDropArea")));
     QVERIFY(rig.window->findChild<QObject*>(QStringLiteral("fileMenuButton")));
     QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+}
+
+void StudioFilesTest::discardFromCloseDialogClosesWindowWithoutSaving() {
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const auto path = osp(dir, "a.osp", studioFixture());
+    QVERIFY(!path.isEmpty());
+    const auto original = bytes(path);
+    Rig rig({}, true);
+    QVERIFY2(rig.window, qPrintable(rig.warnings.join('\n')));
+    rig.load(path);
+    rig.makeDirty();
+    QTRY_VERIFY(rig.window->isExposed());
+
+    auto* guard = rig.window->findChild<QObject*>(QStringLiteral("guardDialog"));
+    auto* cancel = rig.window->findChild<QQuickItem*>(QStringLiteral("guardCancel"));
+    auto* discard = rig.window->findChild<QQuickItem*>(QStringLiteral("guardDiscard"));
+    QVERIFY(guard);
+    QVERIFY(cancel);
+    QVERIFY(discard);
+    const auto click = [&](QQuickItem* button) {
+        const auto center = QPointF(button->width() / 2, button->height() / 2);
+        QTest::mouseClick(rig.window, Qt::LeftButton, Qt::NoModifier,
+                          button->mapToScene(center).toPoint());
+    };
+
+    rig.window->close();
+    QTRY_VERIFY(guard->property("visible").toBool());
+    click(cancel);
+    QTRY_VERIFY(!guard->property("visible").toBool());
+    QVERIFY(rig.window->isVisible());
+    QVERIFY(rig.studio.dirty());
+
+    QSignalSpy approved(rig.files.get(), &FileController::quitApproved);
+    rig.window->close();
+    QTRY_VERIFY(guard->property("visible").toBool());
+    click(discard);
+    QCOMPARE(approved.count(), 1);
+    QTRY_VERIFY(!rig.window->isVisible());
+    QCOMPARE(bytes(path), original);
 }
 
 void StudioFilesTest::recentFilesPersistPruneAndReopen() {

@@ -163,8 +163,8 @@ TEST_CASE("regeneration keeps IDs for source regions with unchanged generated ge
     session.replaceProject(*baseline->after, true);
     const auto before = session.snapshot();
     REQUIRE_FALSE(before->embroidery_objects.empty());
-    const auto repeated = regenerateObjects(before, session.revision(), d.working, d.settings,
-                                            TaskContext{});
+    const auto repeated =
+        regenerateObjects(before, session.revision(), d.working, d.settings, TaskContext{});
     REQUIRE(repeated.has_value());
     CHECK(repeated->objectsAfter == repeated->objectsBefore);
     CHECK(repeated->reused == before->embroidery_objects.size());
