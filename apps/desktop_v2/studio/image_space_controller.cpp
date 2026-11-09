@@ -230,8 +230,8 @@ void ImageSpaceController::publishLayer() {
     }
     // Plusieurs signaux (preview/images) peuvent désigner exactement les mêmes pixels.
     // Ne pas réduire deux images ni réallouer des textures dans ce cas.
-    if (imageKeysSet_ && beforeKey_ == before.cacheKey() &&
-        afterKey_ == after.cacheKey() && imageMmPerPx_ == mm) {
+    if (imageKeysSet_ && beforeKey_ == before.cacheKey() && afterKey_ == after.cacheKey() &&
+        imageMmPerPx_ == mm) {
         return;
     }
     beforeKey_ = before.cacheKey();
