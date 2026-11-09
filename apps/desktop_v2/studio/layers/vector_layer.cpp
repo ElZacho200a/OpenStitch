@@ -6,7 +6,6 @@
 #include <QPen>
 #include <algorithm>
 #include <cmath>
-#include <utility>
 
 namespace openstitch::desktop_v2::studio {
 
@@ -71,7 +70,6 @@ std::shared_ptr<const VectorLayer> VectorLayer::build(const document::Project& p
         }
         shape.bounds = shape.path.boundingRect();
         all = all.isNull() ? shape.bounds : all.united(shape.bounds);
-        layer->shapeIndex_.emplace(shape.id, layer->shapes_.size());
         layer->shapes_.push_back(std::move(shape));
     }
     if (layer->shapes_.empty() || all.width() <= 0 || all.height() <= 0) {
@@ -80,8 +78,7 @@ std::shared_ptr<const VectorLayer> VectorLayer::build(const document::Project& p
     const double margin = 2.0; // mm : le trait et les nœuds débordent un peu
     const QRectF area = all.adjusted(-margin, -margin, margin, margin);
     // Résolution bornée : une seule image, quelle que soit la taille du motif.
-    layer->pxPerMm_ = std::clamp(4096.0 / std::max(area.width(), area.height()), 1.0, 12.0);
-    const double pxPerMm = layer->pxPerMm_;
+    const double pxPerMm = std::clamp(4096.0 / std::max(area.width(), area.height()), 1.0, 12.0);
     QImage image(std::max(1, static_cast<int>(std::ceil(area.width() * pxPerMm))),
                  std::max(1, static_cast<int>(std::ceil(area.height() * pxPerMm))),
                  QImage::Format_ARGB32_Premultiplied);
@@ -107,70 +104,6 @@ std::shared_ptr<const VectorLayer> VectorLayer::build(const document::Project& p
     layer->image_.widthMm = area.width();
     layer->image_.heightMm = area.height();
     return layer;
-}
-
-std::shared_ptr<const OverlayImage>
-VectorLayer::selectionOverlay(const std::vector<std::uint64_t>& selectedShapes) const {
-    if (selectedShapes.empty() || shapes_.empty() || image_.image.isNull()) {
-        return {};
-    }
-    std::vector<std::size_t> selectedIndices;
-    selectedIndices.reserve(selectedShapes.size());
-    for (const auto id : selectedShapes) {
-        if (const auto found = shapeIndex_.find(id); found != shapeIndex_.end()) {
-            selectedIndices.push_back(found->second);
-        }
-    }
-    if (selectedIndices.empty()) {
-        return {};
-    }
-    // Preserve painter order for overlapping selected shapes, regardless of selection order.
-    std::sort(selectedIndices.begin(), selectedIndices.end());
-    selectedIndices.erase(std::unique(selectedIndices.begin(), selectedIndices.end()),
-                          selectedIndices.end());
-    QRectF bounds = shapes_[selectedIndices.front()].bounds;
-    for (const auto index : selectedIndices) {
-        bounds = bounds.united(shapes_[index].bounds);
-    }
-
-    // Ne rasteriser que le voisinage des contours et poignées effectivement sélectionnés.
-    // Conserver l'échelle px/mm de l'image de fond pour un rendu superposable.
-    constexpr double marginMm = 2.0;
-    const QRectF full(image_.x0, image_.y0, image_.widthMm, image_.heightMm);
-    const QRectF area = bounds.adjusted(-marginMm, -marginMm, marginMm, marginMm).intersected(full);
-    if (area.isEmpty()) {
-        return {};
-    }
-    QImage image(std::max(1, static_cast<int>(std::ceil(area.width() * pxPerMm_))),
-                 std::max(1, static_cast<int>(std::ceil(area.height() * pxPerMm_))),
-                 QImage::Format_ARGB32_Premultiplied);
-    image.fill(Qt::transparent);
-    QPainter painter(&image);
-    painter.setRenderHint(QPainter::Antialiasing);
-    painter.scale(pxPerMm_, pxPerMm_);
-    painter.translate(-area.topLeft());
-    const QColor accent(229, 99, 137);
-    for (const auto index : selectedIndices) {
-        const auto& shape = shapes_[index];
-        painter.setBrush(Qt::NoBrush);
-        painter.setPen(QPen(accent, 0.45));
-        painter.drawPath(shape.path);
-        painter.setBrush(QColor(255, 255, 255));
-        painter.setPen(QPen(accent, 0.2));
-        const double half =
-            std::clamp(std::min(shape.bounds.width(), shape.bounds.height()) / 40.0, 0.25, 0.8);
-        for (const auto& node : shape.nodes) {
-            painter.drawRect(QRectF(node.x() - half, node.y() - half, 2 * half, 2 * half));
-        }
-    }
-    painter.end();
-    auto out = std::make_shared<OverlayImage>();
-    out->image = std::move(image);
-    out->x0 = area.x();
-    out->y0 = area.y();
-    out->widthMm = area.width();
-    out->heightMm = area.height();
-    return out;
 }
 
 std::optional<std::uint64_t> VectorLayer::pick(double x, double y, double toleranceMm) const {
