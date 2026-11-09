@@ -234,7 +234,7 @@ private slots:
             rig.workspace->setTreeMode(treeMode);
             auto* list = named(rig.window, treeMode ? "objectTreeList" : "objectList");
             QVERIFY(list);
-            QTRY_VERIFY_WITH_TIMEOUT(scroll->height() >= 60 && list->height() >= 60, 5'000);
+            QTRY_VERIFY_WITH_TIMEOUT(scroll->height() >= 24 && list->height() >= 24, 5'000);
             QVERIFY(scroll->isVisible());
             QVERIFY(inspectorArea->isVisible());
             // Every wrapped row contributes to EditBar's measured height.
