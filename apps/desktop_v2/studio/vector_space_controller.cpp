@@ -167,6 +167,10 @@ void VectorSpaceController::refresh() {
 }
 
 void VectorSpaceController::attach(QObject* canvas) {
+    if (canvas_ && canvas_ == qobject_cast<GpuCanvas*>(canvas)) {
+        refresh();
+        return; // le même Loader ne doit pas détruire et renvoyer sa texture
+    }
     detach();
     // Actualiser d'abord hors canevas : si le calque doit être reconstruit, il ne sera
     // publié qu'une fois, une fois le nouveau canevas branché.
