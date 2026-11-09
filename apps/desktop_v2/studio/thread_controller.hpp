@@ -85,8 +85,7 @@ public:
                                        const QString& hexColor);
     Q_INVOKABLE bool removeOwnedThread(const QString& chartId, const QString& code);
     Q_INVOKABLE bool assignOwnedThread(int entry, const QString& chartId, const QString& code);
-    Q_INVOKABLE [[nodiscard]] bool ownsThread(const QString& chartId,
-                                               const QString& code) const;
+    Q_INVOKABLE bool ownsThread(const QString& chartId, const QString& code) const;
     Q_INVOKABLE [[nodiscard]] QVariantMap previewReduction(int maxThreads);
     Q_INVOKABLE bool applyReduction();
     Q_INVOKABLE bool selectFilmBlock(int index);
@@ -114,9 +113,9 @@ private:
     bool report(const ServiceResult& result, const QString& success);
     [[nodiscard]] bool persistStock(const thread_palette::ThreadStock& stock);
     [[nodiscard]] bool persistStockSetting(bool limit);
-    [[nodiscard]] std::vector<ThreadChoice> stockChoices() const;
-    [[nodiscard]] std::vector<ThreadChoice> nearestChoices(
-        std::array<std::uint8_t, 3> rgb, const QString& chartId, int topN) const;
+    using Choices = std::vector<ThreadChoice>;
+    [[nodiscard]] Choices stockChoices() const;
+    [[nodiscard]] auto nearestChoices(Rgb rgb, const QString& chart, int n) const -> Choices;
     using ColorFilm = std::vector<stitch_analysis::ColorFilmBlock>;
     [[nodiscard]] std::optional<ColorFilm> currentFilm() const;
     [[nodiscard]] bool commitSewingOrder(const std::vector<ObjectId>& ids, const QString& label);
