@@ -41,12 +41,9 @@ public:
         presets_.push_back({"Aplats simples", simple, true});
     }
 
-    [[nodiscard]] const std::vector<AutodigitizePreset>& all() const noexcept {
-        return presets_;
-    }
+    [[nodiscard]] const std::vector<AutodigitizePreset>& all() const noexcept { return presets_; }
 
-    [[nodiscard]] std::optional<project_ops::DigitizeSettings>
-    apply(std::string_view name) const {
+    [[nodiscard]] std::optional<project_ops::DigitizeSettings> apply(std::string_view name) const {
         const auto it = find(name);
         if (it == presets_.end()) {
             return std::nullopt;
@@ -83,9 +80,7 @@ private:
 
     [[nodiscard]] Iterator find(std::string_view name) const {
         return std::find_if(presets_.cbegin(), presets_.cend(),
-                            [name](const AutodigitizePreset& entry) {
-                                return entry.name == name;
-                            });
+                            [name](const AutodigitizePreset& entry) { return entry.name == name; });
     }
 
     std::vector<AutodigitizePreset> presets_;
