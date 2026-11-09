@@ -487,20 +487,17 @@ void StudioViewTest::mainQmlHostsEveryPanel() {
     // actual height and remain inside the panel instead of being clipped.
     auto* threadPanel = named(window, "threadPanel");
     QVERIFY(threadPanel);
-    for (const char* flowName :
-         {"threadActionsFlow", "threadChartActionsFlow", "threadSearchActionsFlow",
-          "threadColorwayActionsFlow"}) {
+    for (const char* flowName : {"threadActionsFlow", "threadChartActionsFlow",
+                                 "threadSearchActionsFlow", "threadColorwayActionsFlow"}) {
         auto* flow = named(window, flowName);
         QVERIFY2(flow, flowName);
         QTRY_VERIFY(flow->implicitHeight() >= flow->childrenRect().height() - 1.0);
     }
-    for (const char* buttonName :
-         {"threadRecolorButton", "nearestButton", "colorwayAddButton"}) {
+    for (const char* buttonName : {"threadRecolorButton", "nearestButton", "colorwayAddButton"}) {
         auto* button = named(window, buttonName);
         QVERIFY2(button, buttonName);
         const double x = button->mapToItem(threadPanel, QPointF(0, 0)).x();
-        QVERIFY2(x >= -1 && x + button->width() <= threadPanel->width() + 1,
-                 buttonName);
+        QVERIFY2(x >= -1 && x + button->width() <= threadPanel->width() + 1, buttonName);
     }
     named(window, "colorwayNameField")->setProperty("text", QStringLiteral("Printemps"));
     QVERIFY(press(window, "colorwayAddButton"));
