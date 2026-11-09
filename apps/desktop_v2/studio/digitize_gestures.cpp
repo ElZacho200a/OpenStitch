@@ -25,10 +25,18 @@ PointMm mapPoint(const QVariantMap& m) {
 DigitizeGestures::DigitizeGestures(StudioController& studio, PointEditController& points,
                                    FadeController& fade, SatinController& satin, QObject* parent)
     : QObject(parent), studio_(studio), points_(points), fade_(fade), satin_(satin) {
-    connect(&studio_, &StudioController::changed, this, &DigitizeGestures::rebuildStatic);
-    connect(&points_, &PointEditController::changed, this, &DigitizeGestures::rebuildStatic);
-    connect(&fade_, &FadeController::changed, this, &DigitizeGestures::rebuildStatic);
-    connect(&satin_, &SatinController::changed, this, &DigitizeGestures::rebuildStatic);
+    // Chaque adaptateur publie un snapshot par changement effectif de document/sélection.
+    // Ne pas écouter StudioController::changed en plus : une simple sélection lançait
+    // quatre reconstructions, dont trois sans rapport avec l'outil actif.
+    connect(&points_, &PointEditController::changed, this, [this] {
+        if (mode_ == QLatin1String("points")) rebuildStatic();
+    });
+    connect(&fade_, &FadeController::changed, this, [this] {
+        if (mode_ == QLatin1String("fade")) rebuildStatic();
+    });
+    connect(&satin_, &SatinController::changed, this, [this] {
+        if (mode_ == QLatin1String("satin")) rebuildStatic();
+    });
 }
 
 void DigitizeGestures::setMode(const QString& mode) {
