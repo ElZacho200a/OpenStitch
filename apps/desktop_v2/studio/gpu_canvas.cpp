@@ -291,15 +291,23 @@ QVariantList GpuCanvas::toolOverlay() const {
     if (!tools_) {
         return out;
     }
+    // Rayon d'un nœud proportionnel à la forme éditée (~1,5 % de sa diagonale à l'écran), borné.
+    const double spanPx = tools_->nodeSpanMm() * camera_.scale();
+    const double markerPx = std::clamp(spanPx * 0.015, 1.5, 3.5);
     for (const auto& item : tools_->overlay()) {
         QVariantList pts;
         for (const auto& p : item.points) {
             const auto s = camera_.worldToScreen(p);
             pts << s.x << s.y;
         }
-        out.push_back(QVariantMap{
+        QVariantMap entry{
             {QStringLiteral("kind"), QString::fromLatin1(kKinds[static_cast<int>(item.kind)])},
-            {QStringLiteral("pts"), pts}});
+            {QStringLiteral("pts"), pts}};
+        if (item.kind == ToolOverlayItem::Kind::Point ||
+            item.kind == ToolOverlayItem::Kind::Selected) {
+            entry.insert(QStringLiteral("r"), markerPx);
+        }
+        out.push_back(entry);
     }
     return out;
 }
@@ -696,6 +704,14 @@ void GpuCanvas::mousePressEvent(QMouseEvent* event) {
             gesture_ = Gesture::Tool;
             gestureActive_ = true;
         }
+    } else if (tools_ && event->button() == Qt::LeftButton && !tools_->capturesMouse() &&
+               tools_->press(camera_.screenToWorld({lastMouse_.x(), lastMouse_.y()}).x,
+                             camera_.screenToWorld({lastMouse_.x(), lastMouse_.y()}).y,
+                             camera_.scale(), event->modifiers())) {
+        // Sélection : un clic sur un nœud de la forme sélectionnée édite le contour ; sinon
+        // ToolController::press rend false et la sélection classique ci-dessous s'applique.
+        gesture_ = Gesture::Tool;
+        gestureActive_ = true;
     } else if (vectorPicker_ && layers_.vectors && !layers_.stitches &&
                event->button() == Qt::LeftButton) {
         // Espace Vectorisation : le clic choisit une FORME (couche vectors), pas un objet de

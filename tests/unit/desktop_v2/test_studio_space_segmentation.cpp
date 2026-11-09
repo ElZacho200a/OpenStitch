@@ -325,7 +325,7 @@ private slots:
         QVERIFY(rig.session.redo());
         QVERIFY(rig.studio.scene() == scene);
         QCOMPARE(geometry.count(), 0);
-        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\\n')));
+        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
     }
 
     // --- état publié et mise à jour de l'aval ----------------------------------------------
