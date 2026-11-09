@@ -2,8 +2,8 @@
 #pragma once
 
 // Studio -- espace « Vectorisation » : adaptateur Qt SANS logique métier propre. Il (1) publie au
-// canevas de l'espace la couche « vectors » (image immuable, UNE reconstruction par révision du
-// document ou de la sélection), (2) traduit le clic canevas en sélection de FORME, (3) expose le
+// canevas de l'espace la couche « vectors » (fond immuable par révision géométrique,
+// surbrillance séparée par sélection), (2) traduit le clic canevas en sélection de FORME, (3) expose le
 // lien amont (région d'origine) et l'état de l'étape, (4) exécute « Mettre à jour depuis la
 // segmentation » et « Convertir en broderie » en UNE étape d'annulation chacun, via
 // DocumentSession.
@@ -27,6 +27,7 @@ class VectorSpaceController : public QObject {
     Q_OBJECT
     Q_PROPERTY(int shapeCount READ shapeCount NOTIFY layerChanged)
     Q_PROPERTY(int layerBuildCount READ layerBuildCount NOTIFY layerChanged)
+    Q_PROPERTY(int selectionBuildCount READ selectionBuildCount NOTIFY layerChanged)
     Q_PROPERTY(QVariantMap selectedShape READ selectedShape NOTIFY layerChanged)
     Q_PROPERTY(QString stageState READ stageState NOTIFY layerChanged)
     Q_PROPERTY(QString stageDetail READ stageDetail NOTIFY layerChanged)
@@ -36,6 +37,7 @@ public:
 
     [[nodiscard]] int shapeCount() const;
     [[nodiscard]] int layerBuildCount() const { return builds_; }
+    [[nodiscard]] int selectionBuildCount() const { return selectionBuilds_; }
     [[nodiscard]] QVariantMap selectedShape() const;
     [[nodiscard]] QString stageState() const { return stageState_; }
     [[nodiscard]] QString stageDetail() const { return stageDetail_; }
@@ -74,10 +76,11 @@ private:
     StudioController& studio_;
     QPointer<GpuCanvas> canvas_;
     std::shared_ptr<const VectorLayer> layer_;
+    std::shared_ptr<const OverlayImage> selectionLayer_;
     std::uint64_t builtRevision_{0};
-    std::uint64_t builtSelection_{0};
     std::vector<std::uint64_t> builtSelected_;
     int builds_{0};
+    int selectionBuilds_{0};
     bool dirty_{false};
     QString dirtyReason_;
     QString stageState_{QStringLiteral("empty")};
