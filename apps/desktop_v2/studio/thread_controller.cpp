@@ -558,6 +558,204 @@ bool ThreadController::exportThreadList(const QUrl& file) {
     return report(result, QStringLiteral("%1 fil(s) exporté(s)").arg(rows));
 }
 
+std::optional<std::vector<stitch_analysis::ColorFilmBlock>>
+ThreadController::currentFilm() const {
+    const auto& scene = studio_.scene();
+    if (!scene || !scene->effectiveSequence) {
+        return std::nullopt;
+    }
+    return stitch_analysis::color_film(studio_.session().project(), *scene->effectiveSequence);
+}
+
+QVariantList ThreadController::colorFilm() const {
+    QVariantList list;
+    const auto film = currentFilm();
+    if (!film) {
+        return list;
+    }
+    for (std::size_t i = 0; i < film->size(); ++i) {
+        const auto& block = (*film)[i];
+        QString label;
+        if (block.identity.key) {
+            label = q(block.identity.key->chart_id + " " + block.identity.key->code);
+        } else {
+            label = QColor(block.identity.rgb[0], block.identity.rgb[1],
+                           block.identity.rgb[2]).name().toUpper();
+        }
+        list.push_back(
+            QVariantMap{{QStringLiteral("index"), static_cast<int>(i)},
+                        {QStringLiteral("label"), label},
+                        {QStringLiteral("color"), QColor(block.identity.rgb[0],
+                                                        block.identity.rgb[1],
+                                                        block.identity.rgb[2])},
+                        {QStringLiteral("objectCount"), static_cast<int>(block.objects.size())},
+                        {QStringLiteral("stitches"), static_cast<int>(block.stitch_count)},
+                        {QStringLiteral("lengthMm"), block.length_mm},
+                        {QStringLiteral("locked"), block.locked}});
+    }
+    return list;
+}
+
+int ThreadController::filmChanges() const {
+    const auto film = currentFilm();
+    return film ? static_cast<int>(stitch_analysis::color_change_count(*film)) : 0;
+}
+
+bool ThreadController::selectFilmBlock(int index) {
+    const auto film = currentFilm();
+    if (!film || index < 0 || static_cast<std::size_t>(index) >= film->size()) {
+        return report({false, "Passage de fil inconnu"}, {});
+    }
+    std::vector<Target> targets;
+    for (const auto id : (*film)[static_cast<std::size_t>(index)].objects) {
+        targets.push_back({TargetKind::EmbroideryObject, id.value});
+    }
+    if (targets.empty()) {
+        return report({false, "Aucun objet dans ce passage"}, {});
+    }
+    studio_.session().selection().replace(std::move(targets));
+    return report({true, {}}, QStringLiteral("Objets de ce passage sélectionnés"));
+}
+
+bool ThreadController::commitSewingOrder(const std::vector<ObjectId>& ids,
+                                          const QString& label) {
+    const auto& project = studio_.session().project();
+    if (ids.size() != project.embroidery_objects.size()) {
+        return report({false, "Ordre incomplet : déplacement refusé"}, {});
+    }
+    std::unordered_set<std::uint64_t> seen;
+    std::size_t previousRank = 0;
+    for (std::size_t i = 0; i < ids.size(); ++i) {
+        const auto* object = project.findEmbroidery(ids[i]);
+        if (!object || !seen.insert(ids[i].value).second) {
+            return report({false, "Ordre invalide : identifiants manquants ou répétés"}, {});
+        }
+        const auto rank = project.calqueRankOf(*object);
+        if (rank < previousRank) {
+            return report({false, "Déplacement entre calques interdit"}, {});
+        }
+        previousRank = rank;
+        if (project.embroidery_objects[i].locked && project.embroidery_objects[i].id != ids[i]) {
+            return report({false, "Un objet a son ordre de couture figé"}, {});
+        }
+    }
+    bool different = false;
+    for (std::size_t i = 0; i < ids.size(); ++i) {
+        different = different || ids[i] != project.embroidery_objects[i].id;
+    }
+    if (!different) {
+        return report({false, "L'ordre de couture est déjà identique"}, {});
+    }
+    studio_.session().execute(std::make_unique<commands::ReorderEmbroideryCommand>(ids));
+    return report({true, {}}, label);
+}
+
+bool ThreadController::moveFilmBlock(int from, int to) {
+    const auto film = currentFilm();
+    if (!film || from < 0 || to < 0 ||
+        static_cast<std::size_t>(from) >= film->size() ||
+        static_cast<std::size_t>(to) >= film->size()) {
+        return report({false, "Passage de fil ou destination invalide"}, {});
+    }
+    const auto order = stitch_analysis::reorder_film_blocks(
+        studio_.session().project(), *film, static_cast<std::size_t>(from),
+        static_cast<std::size_t>(to));
+    return order && commitSewingOrder(*order, QStringLiteral("Passage de fil déplacé"));
+}
+
+bool ThreadController::groupFilmByColor() {
+    const auto film = currentFilm();
+    if (!film || film->size() < 2) {
+        return report({false, "Pas assez de passages de fil à grouper"}, {});
+    }
+    return commitSewingOrder(
+        stitch_analysis::merge_same_thread_blocks(studio_.session().project(), *film),
+        QStringLiteral("Passages regroupés par couleur (empilement modifié)"));
+}
+
+QVariantMap ThreadController::previewReduction(int maxThreads) {
+    reduction_.reset();
+    if (maxThreads < 1 || maxThreads > 64) {
+        report({false, "Nombre de fils demandé hors limites (1 à 64)"}, {});
+        return {};
+    }
+    const auto& scene = studio_.scene();
+    if (!scene || !scene->effectiveSequence || studio_.busy()) {
+        report({false, "Générez d'abord des points et attendez la fin du rendu"}, {});
+        return {};
+    }
+    const auto& project = studio_.session().project();
+    const auto usage = stitch_analysis::thread_usage(project, *scene->effectiveSequence);
+    auto plan = stitch_analysis::plan_reduce_threads(usage,
+                                                     static_cast<std::size_t>(maxThreads));
+    if (plan.empty()) {
+        report({false, "Le motif utilise déjà ce nombre de fils ou moins"}, {});
+        return {};
+    }
+    const auto result = QVariantMap{
+        {QStringLiteral("before"), static_cast<int>(plan.before)},
+        {QStringLiteral("after"), static_cast<int>(plan.after)},
+        {QStringLiteral("affected"), static_cast<int>(plan.reassignments.size())}};
+    reduction_ = std::move(plan);
+    reductionRevision_ = studio_.session().revision();
+    report({true, {}}, QStringLiteral("Aperçu de réduction prêt : aucune modification appliquée"));
+    return result;
+}
+
+bool ThreadController::applyReduction() {
+    if (!reduction_ || reductionRevision_ != studio_.session().revision()) {
+        reduction_.reset();
+        return report({false, "Aperçu périmé : recalculez la réduction"}, {});
+    }
+    std::vector<commands::ObjectThreadAssignment> assignments;
+    for (const auto& change : reduction_->reassignments) {
+        assignments.push_back({change.object, change.thread, change.rgb});
+    }
+    reduction_.reset();
+    if (assignments.empty()) {
+        return report({false, "Aucun fil à réduire"}, {});
+    }
+    studio_.session().execute(std::make_unique<commands::SetObjectThreadCommand>(
+        std::move(assignments), "Réduire la palette de fils"));
+    return report({true, {}}, QStringLiteral("Palette réduite en une étape annulable"));
+}
+
+QVariantMap ThreadController::fabric() const {
+    const auto& f = studio_.session().project().fabric;
+    return {{QStringLiteral("color"), QColor(f.color[0], f.color[1], f.color[2])},
+            {QStringLiteral("name"), q(f.name)},
+            {QStringLiteral("material"), q(f.material)},
+            {QStringLiteral("stabilizer"), q(f.stabilizer)},
+            {QStringLiteral("grainAngleDeg"),
+             f.grain_angle.radians * 180.0 / std::numbers::pi},
+            {QStringLiteral("weftSoftness"), f.weft_softness}};
+}
+
+bool ThreadController::setFabric(const QString& hexColor, const QString& name,
+                                  const QString& material, const QString& stabilizer,
+                                  double grainAngleDeg, double weftSoftness) {
+    const QColor color(hexColor);
+    if (!color.isValid() || !std::isfinite(grainAngleDeg) ||
+        !std::isfinite(weftSoftness) || grainAngleDeg < -360.0 ||
+        grainAngleDeg > 360.0 || weftSoftness < 0.25 || weftSoftness > 4.0) {
+        return report({false, "Tissu invalide : couleur, angle ou souplesse hors limites"}, {});
+    }
+    document::FabricSettings next;
+    next.color = {static_cast<std::uint8_t>(color.red()),
+                  static_cast<std::uint8_t>(color.green()),
+                  static_cast<std::uint8_t>(color.blue())};
+    next.name = name.trimmed().toStdString();
+    next.material = material.trimmed().toStdString();
+    next.stabilizer = stabilizer.trimmed().toStdString();
+    next.grain_angle = Angle{grainAngleDeg * std::numbers::pi / 180.0};
+    next.weft_softness = weftSoftness;
+    if (next == studio_.session().project().fabric) {
+        return report({false, "Réglages du tissu inchangés"}, {});
+    }
+    studio_.session().execute(std::make_unique<commands::SetFabricCommand>(next));
+    return report({true, {}}, QStringLiteral("Tissu du projet mis à jour"));
+}
+
 bool ThreadController::addColorway(const QString& name) {
     return report(desktop_v2::addColorway(studio_.session(), name.toStdString()),
                   QStringLiteral("Coloris « %1 » créé").arg(name));
