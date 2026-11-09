@@ -5,6 +5,33 @@ son **espace** dédié ; les espaces sont **séparés** (un canevas, une barre d
 chacun) mais **liés** (un changement amont a une incidence visible sur l'aval). Ce chapitre est le
 **contrat** des quatre agents qui remplissent chacun un espace en parallèle.
 
+## Import d'image : entrée dans le workflow (Studio)
+
+**Ouvrir / importer une image raster** (`Fichier > Une image…`, `Ctrl+O`, dépôt d'un
+fichier ou accueil) ne doit charger **que l'original** dans un nouveau document :
+`Project::original`, échelle par défaut de 100 mm de hauteur, pile `ops` vide. Le
+contrôleur utilise un worker annulable et protège les modifications non enregistrées.
+
+Quand l'import réussit, le Studio active automatiquement **Image** (`Ctrl+1`). L'ouverture
+ne doit déclencher **aucun** traitement de segmentation, vectorisation, génération de
+points ou création d'objet. Pas de dialogue préalable sur les couleurs, le lissage,
+le fond ou le type de points.
+
+La progression est volontaire et réversible :
+1. **Image** — charger, recadrer, régler la lumière et les autres prétraitements ;
+2. **Segmentation** (`Ctrl+2`) — choisir ses couleurs, son lissage et ses régions ;
+   démarrer explicitement « Segmenter l'image » ;
+3. **Vectorisation** (`Ctrl+3`) — examiner/corriger les formes, puis lancer
+   explicitement leur mise à jour depuis la segmentation ;
+4. **Points** (`Ctrl+4`) — convertir les formes en objets de broderie, choisir les
+   types et les paramètres des points.
+
+Revenir à une étape antérieure ne détruit pas implicitement les formes ni les points ;
+les étapes aval signalent ce qui est devenu obsolète et proposent une mise à jour
+explicite. Ce changement de parcours concerne l'import raster Studio, **pas** l'ouverture
+de projets `.osp` ni l'import de broderies machine, et ne modifie pas le moteur d'auto-
+numérisation explicitement invoqué par le CLI ou d'autres usages.
+
 ## 1. Vue d'ensemble
 
 ```
