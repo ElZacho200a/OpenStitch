@@ -11,6 +11,7 @@ Rectangle {
     id: panel
     objectName: "threadPanel"
     property var controller
+    property string page: "plan"
     property string currentId
     readonly property int current: entryList.findIndex(entry => entry.id === currentId)
     property string chartId: controller && controller.charts.length > 0 ? controller.charts[0].id : ""
@@ -44,8 +45,54 @@ Rectangle {
     }
 
     Flickable {
-        anchors.fill: parent
-        anchors.margins: 10
+        id: threadSections
+        objectName: "threadSections"
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.topMargin: 8
+        anchors.leftMargin: 10
+        anchors.rightMargin: 10
+        height: 34
+        contentWidth: threadTabs.implicitWidth
+        contentHeight: height
+        flickableDirection: Flickable.HorizontalFlick
+        boundsBehavior: Flickable.StopAtBounds
+        clip: true
+        Row {
+            id: threadTabs
+            spacing: 4
+            Repeater {
+                model: [
+                    { id: "plan", text: qsTr("Projet") },
+                    { id: "catalog", text: qsTr("Nuanciers") },
+                    { id: "stock", text: qsTr("Mes fils") },
+                    { id: "film", text: qsTr("Film couleur") },
+                    { id: "colorways", text: qsTr("Coloris") },
+                    { id: "fabric", text: qsTr("Tissu") },
+                    { id: "order", text: qsTr("Ordre") }
+                ]
+                delegate: StudioButton {
+                    required property var modelData
+                    objectName: "threadTab_" + modelData.id
+                    text: modelData.text
+                    checkable: true
+                    checked: panel.page === modelData.id
+                    onClicked: panel.page = modelData.id
+                }
+            }
+        }
+    }
+
+    Flickable {
+        objectName: "threadPageScroll"
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: threadSections.bottom
+        anchors.bottom: parent.bottom
+        anchors.leftMargin: 10
+        anchors.rightMargin: 10
+        anchors.bottomMargin: 10
         contentWidth: width
         contentHeight: content.implicitHeight
         clip: true
@@ -56,7 +103,12 @@ Rectangle {
             width: parent.width - 12
             spacing: 8
 
-            SectionLabel { text: qsTr("PLAN DE FILS") + "  ·  " + panel.entryList.length }
+            ColumnLayout {
+                objectName: "threadProjectSection"
+                visible: panel.page === "plan"
+                Layout.fillWidth: true
+                spacing: 8
+                SectionLabel { text: qsTr("PLAN DE FILS") + "  ·  " + panel.entryList.length }
             Repeater {
                 model: panel.entryList
                 delegate: Rectangle {
@@ -117,8 +169,13 @@ Rectangle {
             }
             StudioButton { text: qsTr("Exporter la liste (CSV)"); onClicked: exportDialog.open() }
 
-            Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Theme.divider }
-            SectionLabel { text: qsTr("NUANCIERS") }
+            }
+            ColumnLayout {
+                objectName: "threadCatalogSection"
+                visible: panel.page === "catalog"
+                Layout.fillWidth: true
+                spacing: 8
+                SectionLabel { text: qsTr("NUANCIERS") }
             Flow {
                 objectName: "threadChartActionsFlow"
                 Layout.fillWidth: true
@@ -196,8 +253,13 @@ Rectangle {
                 }
             }
 
-            Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Theme.divider }
-            SectionLabel { text: qsTr("COLORIS") }
+            }
+            ColumnLayout {
+                objectName: "threadColorwaysSection"
+                visible: panel.page === "colorways"
+                Layout.fillWidth: true
+                spacing: 8
+                SectionLabel { text: qsTr("COLORIS") }
             Repeater {
                 model: panel.controller ? panel.controller.colorways : []
                 delegate: RowLayout {
@@ -219,8 +281,13 @@ Rectangle {
                 StudioButton { objectName: "colorwayAddButton"; text: qsTr("Créer"); onClicked: { if (panel.controller.addColorway(colorwayName.text)) colorwayName.text = "" } }
             }
 
-            Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Theme.divider }
-            SectionLabel { text: qsTr("ORDRE DE COUTURE") }
+            }
+            ColumnLayout {
+                objectName: "threadOrderSection"
+                visible: panel.page === "order"
+                Layout.fillWidth: true
+                spacing: 8
+                SectionLabel { text: qsTr("ORDRE DE COUTURE") }
             Repeater {
                 model: panel.controller ? panel.controller.sewingOrder : []
                 delegate: RowLayout {
@@ -232,6 +299,7 @@ Rectangle {
                     StudioButton { objectName: "orderUp" + ord.modelData.position; text: "▲"; quiet: true; enabled: ord.modelData.position > 0; onClicked: panel.controller.moveInOrder(ord.modelData.id, ord.modelData.position - 1) }
                     StudioButton { objectName: "orderDown" + ord.modelData.position; text: "▼"; quiet: true; onClicked: panel.controller.moveInOrder(ord.modelData.id, ord.modelData.position + 1) }
                 }
+            }
             }
             Text {
                 objectName: "threadMessage"
