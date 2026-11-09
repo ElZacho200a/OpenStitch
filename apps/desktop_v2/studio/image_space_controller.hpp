@@ -6,6 +6,8 @@
 #include <QPointer>
 #include <QString>
 #include <QVariantList>
+#include <cstdint>
+#include <limits>
 #include <memory>
 
 #include "layers/source_image_layer.hpp"
@@ -108,6 +110,12 @@ private:
     bool hadSegmentation_{false};
     bool imageChanged_{false};
     std::size_t lastOpCount_{0};
+    std::uint64_t observedRevision_{std::numeric_limits<std::uint64_t>::max()};
+    // Identité des images SOURCE, avant la réduction potentiellement coûteuse à 4096 px.
+    bool imageKeysSet_{false};
+    qint64 beforeKey_{0};
+    qint64 afterKey_{0};
+    double imageMmPerPx_{0};
     QString message_;
 };
 
