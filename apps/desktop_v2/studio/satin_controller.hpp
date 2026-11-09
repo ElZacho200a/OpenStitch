@@ -11,6 +11,7 @@
 #include <QVariantList>
 #include <QVariantMap>
 #include <cstdint>
+#include <vector>
 
 #include "satin_column.hpp"
 #include "studio_controller.hpp"
@@ -79,6 +80,8 @@ private:
     [[nodiscard]] static std::optional<RailSide> sideOf(const QString& side);
 
     StudioController& studio_;
+    std::uint64_t lastSeenRevision_{~std::uint64_t{0}};
+    std::vector<Target> lastSeenSelection_;
     std::uint64_t id_{0};
     int railA_{0};
     int railB_{0};
