@@ -334,6 +334,10 @@ void GpuCanvas::setPanMode(bool value) {
 }
 
 void GpuCanvas::setOverlays(std::shared_ptr<const CanvasOverlays> overlays) {
+    // Les overlays sont des snapshots immuables : une même instance ne peut pas changer.
+    if (overlays_ == overlays) {
+        return;
+    }
     overlays_ = std::move(overlays);
     ++overlayRevision_;
     update();
@@ -348,9 +352,11 @@ void GpuCanvas::setSourceImage(SourceImageView view) {
 }
 
 void GpuCanvas::setVectorLayer(std::shared_ptr<const OverlayImage> image) {
+    if (vectorImage_ == image) {
+        return; // pas de texture à republier pour un snapshot identique
+    }
     vectorImage_ = std::move(image);
-    ++overlayRevision_; // même chemin que les autres calques d'image : une révision, un rendu
-    update();
+    update(); // le backend suit séparément l'identité de l'image vectorielle
 }
 
 void GpuCanvas::setZoomRectMode(bool value) {
@@ -481,6 +487,9 @@ QVariantMap GpuCanvas::layers() const {
 }
 
 void GpuCanvas::setRegionLayer(std::shared_ptr<const RegionLayerData> data) {
+    if (regionLayer_ == data) {
+        return;
+    }
     regionLayer_ = std::move(data);
     update();
 }
