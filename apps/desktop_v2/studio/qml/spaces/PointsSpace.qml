@@ -343,9 +343,9 @@ Item {
                     Layout.fillHeight: !inspectorArea.active
                     // When EditBar is open, allocate enough room for its own scroll area
                     // and the object tree. The point inspector remains independently scrollable.
-                    Layout.minimumHeight: inspectorArea.active ? 230 : 0
+                    Layout.minimumHeight: inspectorArea.active ? (root.workspace.editOpen ? 275 : 180) : 0
                     Layout.preferredHeight: inspectorArea.active
-                                            ? Math.min(520, root.height * (root.workspace.editOpen ? 0.56 : 0.38))
+                                            ? Math.min(580, root.height * (root.workspace.editOpen ? 0.62 : 0.38))
                                             : -1
                 }
 
