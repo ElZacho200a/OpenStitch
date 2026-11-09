@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
-// Studio -- couche « vectors » du canevas (espace Vectorisation). Construite UNE fois par révision
-// du document (et de la sélection), jamais au pan/zoom : les formes vectorielles
+// Studio -- couche « vectors » du canevas (espace Vectorisation). Construite UNIQUEMENT
+// lorsque les formes changent, jamais lors de la sélection ni au pan/zoom : les formes vectorielles
 // (`Project::vector_objects`, mm scène, Y vers le bas) sont rastérisées dans une image partagée
 // immuable, publiée comme calque d'image du canevas (nœud texture standard : fonctionne aussi
 // avec le backend logiciel de Qt Quick). Aucun objet QML par forme ni par nœud.
@@ -33,9 +33,11 @@ struct VectorShape {
 
 class VectorLayer {
 public:
-    // `selectedShapes` : identifiants de formes mises en évidence (contour + nœuds visibles).
-    [[nodiscard]] static std::shared_ptr<const VectorLayer>
-    build(const document::Project& project, const std::vector<std::uint64_t>& selectedShapes);
+    [[nodiscard]] static std::shared_ptr<const VectorLayer> build(const document::Project& project);
+    // Rasterise uniquement les formes sélectionnées dans leur rectangle local.
+    // Ne touche jamais au fond ni aux QPainterPath déjà construits.
+    [[nodiscard]] std::shared_ptr<const OverlayImage>
+    selectionOverlay(const std::vector<std::uint64_t>& selectedShapes) const;
 
     [[nodiscard]] const std::vector<VectorShape>& shapes() const { return shapes_; }
     [[nodiscard]] const OverlayImage& image() const { return image_; }
@@ -46,6 +48,7 @@ public:
 private:
     std::vector<VectorShape> shapes_;
     OverlayImage image_;
+    double pxPerMm_{1.0};
 };
 
 } // namespace openstitch::desktop_v2::studio

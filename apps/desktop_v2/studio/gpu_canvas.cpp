@@ -359,6 +359,14 @@ void GpuCanvas::setVectorLayer(std::shared_ptr<const OverlayImage> image) {
     update(); // le backend suit séparément l'identité de l'image vectorielle
 }
 
+void GpuCanvas::setVectorSelectionLayer(std::shared_ptr<const OverlayImage> image) {
+    if (vectorSelectionImage_ == image) {
+        return;
+    }
+    vectorSelectionImage_ = std::move(image);
+    update();
+}
+
 void GpuCanvas::setZoomRectMode(bool value) {
     if (value == zoomRectMode_) {
         return;
@@ -622,7 +630,8 @@ QSGNode* GpuCanvas::updatePaintNode(QSGNode* oldNode, UpdatePaintNodeData*) {
                             layers_,
                             layers_.sourceImage ? sourceImage_ : SourceImageView{},
                             regionLayer_,
-                            layers_.vectors ? vectorImage_ : nullptr};
+                            layers_.vectors ? vectorImage_ : nullptr,
+                            layers_.vectors ? vectorSelectionImage_ : nullptr};
     const auto result = backend.synchronize(oldNode, state, *window());
     // Render thread must never write QObject properties or read the live document. Queue
     // diagnostics.

@@ -39,7 +39,15 @@ struct StudioSegment {
     std::uint64_t objectId{0}; // full identity; never encoded in RGB or a JavaScript number
 };
 
+// Non fonctionnel : ventilation du temps de construction mesuré par le banc Studio.
+struct StudioSceneBuildTiming {
+    double effectiveSequenceMs{0};
+    double threadSegmentsMs{0};
+    double verticesMs{0};
+};
+
 struct StudioSceneSnapshot {
+    StudioSceneBuildTiming timing;
     std::shared_ptr<const document::Project> project;
     // One immutable effective sequence shared by scene rendering and simulation.
     std::shared_ptr<const stitch::StitchSequence> effectiveSequence;

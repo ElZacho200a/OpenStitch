@@ -2,6 +2,7 @@
 #include "studio_scene.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <utility>
 
@@ -9,6 +10,11 @@
 
 namespace openstitch::desktop_v2 {
 namespace {
+using Clock = std::chrono::steady_clock;
+
+double millis(Clock::time_point start) {
+    return std::chrono::duration<double, std::milli>(Clock::now() - start).count();
+}
 
 void include(stitch_render::RectMm& into, const stitch_render::RectMm& other) {
     into = {std::min(into.x0, other.x0), std::min(into.y0, other.y0), std::max(into.x1, other.x1),
@@ -81,14 +87,17 @@ build_studio_scene(std::shared_ptr<const document::Project> project, std::uint64
     if (colours.empty() && !scene->project->imported_design) {
         return std::shared_ptr<const StudioSceneSnapshot>(std::move(scene));
     }
+    const auto sequenceStart = Clock::now();
     auto sequence = stitch_generation::effective_sequence(*scene->project, task);
     if (!sequence) {
         return std::unexpected(sequence.error());
     }
+    scene->timing.effectiveSequenceMs = millis(sequenceStart);
     scene->effectiveSequence = std::make_shared<const stitch::StitchSequence>(std::move(*sequence));
     const auto& effective = *scene->effectiveSequence;
     scene->commandCount = effective.commands.size();
 
+    const auto segmentsStart = Clock::now();
     // Capture the original, full object identity for every emitted segment. The existing
     // segment builder remains the single authority for jump/trim/stop/source continuity.
     // A machine import has no editable objects; its unassigned source 0 remains unpickable.
@@ -143,6 +152,8 @@ build_studio_scene(std::shared_ptr<const document::Project> project, std::uint64
     if (task.cancelled()) {
         return cancelled_error();
     }
+    scene->timing.threadSegmentsMs = millis(segmentsStart);
+    const auto verticesStart = Clock::now();
     scene->segments.reserve(threads.size());
     scene->vertices.reserve(threads.size() * 6);
     const double halfWidth = threadWidthMm / 2.0;
@@ -192,6 +203,7 @@ build_studio_scene(std::shared_ptr<const document::Project> project, std::uint64
     if (task.cancelled()) {
         return cancelled_error();
     }
+    scene->timing.verticesMs = millis(verticesStart);
     return std::shared_ptr<const StudioSceneSnapshot>(std::move(scene));
 }
 
