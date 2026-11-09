@@ -380,8 +380,8 @@ private slots:
         auto params = std::get<document::RunningStitchParams>(
             rig.session.project().embroidery_objects.front().params);
         params.stitch_length = Micrometers{2'000};
-        rig.session.execute(std::make_unique<commands::SetStitchParamsCommand>(
-            id, params, "Longueur"));
+        rig.session.execute(
+            std::make_unique<commands::SetStitchParamsCommand>(id, params, "Longueur"));
         QTRY_VERIFY_WITH_TIMEOUT(!rig.controller.busy(), 15'000);
         QCOMPARE(rig.stage.layerBuildCount(), builds);
         QVERIFY(rig.canvas->vectorImage() == base);
