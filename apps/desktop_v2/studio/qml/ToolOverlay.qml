@@ -28,14 +28,18 @@ Canvas {
             var it = items[i], p = it.pts
             ctx.beginPath()
             if (it.kind === "point" || it.kind === "selected") {
-                for (var k = 0; k + 1 < p.length; k += 2) {
-                    ctx.rect(p[k] - 4, p[k + 1] - 4, 8, 8)
-                }
-                ctx.fillStyle = it.kind === "selected" ? String(Theme.accent) : String(Theme.foreground)
-                ctx.fill()
+                // Nœuds : petits disques dont le rayon suit la taille de la forme (gpu.toolOverlay).
+                var sel = it.kind === "selected"
+                var r = (it.r !== undefined ? it.r : 3) + (sel ? 0.5 : 0)
+                ctx.fillStyle = sel ? String(Theme.accent) : String(Theme.foreground)
                 ctx.strokeStyle = String(Theme.accentInk)
                 ctx.lineWidth = 1
-                ctx.stroke()
+                for (var k = 0; k + 1 < p.length; k += 2) {
+                    ctx.beginPath()
+                    ctx.arc(p[k], p[k + 1], r, 0, 2 * Math.PI)
+                    ctx.fill()
+                    ctx.stroke()
+                }
                 continue
             }
             ctx.moveTo(p[0], p[1])
