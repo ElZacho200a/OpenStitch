@@ -98,7 +98,7 @@ ColumnLayout {
         visible: panel.workspace.treeMode
         Layout.fillWidth: true
         Layout.fillHeight: true
-        Layout.minimumHeight: 115
+        Layout.minimumHeight: 148
     }
 
     ListView {
