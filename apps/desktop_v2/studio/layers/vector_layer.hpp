@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <unordered_map>
 #include <vector>
 
 #include "canvas_renderer.hpp"
@@ -47,6 +48,8 @@ public:
 
 private:
     std::vector<VectorShape> shapes_;
+    // Selection hot path: resolve only selected objects, not every visible shape.
+    std::unordered_map<std::uint64_t, std::size_t> shapeIndex_;
     OverlayImage image_;
     double pxPerMm_{1.0};
 };
