@@ -560,17 +560,26 @@ bool ThreadController::exportThreadList(const QUrl& file) {
     return report(result, QStringLiteral("%1 fil(s) exporté(s)").arg(rows));
 }
 
-std::optional<ThreadController::ColorFilm> ThreadController::currentFilm() const {
+const std::optional<ThreadController::ColorFilm>& ThreadController::currentFilm() const {
     const auto& scene = studio_.scene();
-    if (!scene || !scene->effectiveSequence) {
-        return std::nullopt;
+    const auto revision = studio_.session().revision();
+    if (cachedFilmRevision_ == revision && cachedFilmScene_ == scene) {
+        return cachedFilm_;
     }
-    return stitch_analysis::color_film(studio_.session().project(), *scene->effectiveSequence);
+    cachedFilmScene_ = scene;
+    cachedFilmRevision_ = revision;
+    if (scene && scene->effectiveSequence) {
+        cachedFilm_ = stitch_analysis::color_film(studio_.session().project(),
+                                                 *scene->effectiveSequence);
+    } else {
+        cachedFilm_.reset();
+    }
+    return cachedFilm_;
 }
 
 QVariantList ThreadController::colorFilm() const {
     QVariantList list;
-    const auto film = currentFilm();
+    const auto& film = currentFilm();
     if (!film) {
         return list;
     }
@@ -598,12 +607,12 @@ QVariantList ThreadController::colorFilm() const {
 }
 
 int ThreadController::filmChanges() const {
-    const auto film = currentFilm();
+    const auto& film = currentFilm();
     return film ? static_cast<int>(stitch_analysis::color_change_count(*film)) : 0;
 }
 
 bool ThreadController::selectFilmBlock(int index) {
-    const auto film = currentFilm();
+    const auto& film = currentFilm();
     if (!film || index < 0 || static_cast<std::size_t>(index) >= film->size()) {
         return report({false, "Passage de fil inconnu"}, {});
     }
@@ -651,7 +660,7 @@ bool ThreadController::commitSewingOrder(const std::vector<ObjectId>& ids, const
 }
 
 bool ThreadController::moveFilmBlock(int from, int to) {
-    const auto film = currentFilm();
+    const auto& film = currentFilm();
     if (!film || from < 0 || to < 0 || static_cast<std::size_t>(from) >= film->size() ||
         static_cast<std::size_t>(to) >= film->size()) {
         return report({false, "Passage de fil ou destination invalide"}, {});
@@ -664,7 +673,7 @@ bool ThreadController::moveFilmBlock(int from, int to) {
 }
 
 bool ThreadController::groupFilmByColor() {
-    const auto film = currentFilm();
+    const auto& film = currentFilm();
     if (!film || film->size() < 2) {
         return report({false, "Pas assez de passages de fil à grouper"}, {});
     }
