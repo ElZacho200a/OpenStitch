@@ -52,13 +52,14 @@ std::vector<PointMm> sampleBezier(PointMm p0, PointMm c1, PointMm c2, PointMm p1
 ToolController::ToolController(StudioController& studio, QObject* parent)
     : QObject(parent), studio_(studio), registry_(ToolRegistry::builtin()) {
     connect(&studio_, &StudioController::selectionChanged, this, [this] {
-        if (tool_ == QStringLiteral("node.edit")) {
+        if (tool_ == QStringLiteral("node.edit") || tool_ == QStringLiteral("select")) {
             refreshNodeView();
             rebuild();
         }
     });
     connect(&studio_, &StudioController::sceneChanged, this, [this] {
-        if (tool_ == QStringLiteral("node.edit") && drag_ == Drag::None) {
+        if ((tool_ == QStringLiteral("node.edit") || tool_ == QStringLiteral("select")) &&
+            drag_ == Drag::None) {
             refreshNodeView();
             rebuild();
         }
@@ -259,7 +260,8 @@ bool ToolController::cancel() {
 void ToolController::refreshNodeView() {
     view_.reset();
     const auto ids = selectedIds();
-    if (tool_ != QStringLiteral("node.edit") || ids.size() != 1) {
+    if ((tool_ != QStringLiteral("node.edit") && tool_ != QStringLiteral("select")) ||
+        ids.size() != 1) {
         nodeObject_ = 0;
         nodeSel_.clear();
         return;
@@ -277,6 +279,23 @@ void ToolController::refreshNodeView() {
     } else {
         nodeSel_.clear();
     }
+}
+
+double ToolController::nodeSpanMm() const {
+    if (!view_ || view_->nodes.empty()) {
+        return 0.0;
+    }
+    double x0 = 1e18;
+    double y0 = 1e18;
+    double x1 = -1e18;
+    double y1 = -1e18;
+    for (const auto& n : view_->nodes) {
+        x0 = std::min(x0, n.pos.x);
+        y0 = std::min(y0, n.pos.y);
+        x1 = std::max(x1, n.pos.x);
+        y1 = std::max(y1, n.pos.y);
+    }
+    return std::hypot(x1 - x0, y1 - y0);
 }
 
 void ToolController::createdFrom(std::uint64_t id, const QString& label) {
@@ -368,12 +387,15 @@ bool ToolController::commitBox(PointMm a, PointMm b, Qt::KeyboardModifiers mods)
 
 bool ToolController::press(double x, double y, double pxPerMm, Qt::KeyboardModifiers mods) {
     scale_ = pxPerMm;
-    if (!capturesMouse()) {
+    // En Sélection, seul un clic sur un nœud de la forme unique sélectionnée est pris ici ; le
+    // reste (sélection, déplacement de forme) reste au canevas.
+    const bool selectNodes = tool_ == QStringLiteral("select");
+    if (!capturesMouse() && !selectNodes) {
         return false;
     }
     mods_ = mods;
     const PointMm raw = toModel(x, y);
-    const bool nodeTool = tool_ == QStringLiteral("node.edit");
+    const bool nodeTool = tool_ == QStringLiteral("node.edit") || selectNodes;
     const PointMm p = nodeTool ? raw : snapped(raw);
     current_ = p;
     anchor_ = p;
@@ -440,14 +462,19 @@ bool ToolController::press(double x, double y, double pxPerMm, Qt::KeyboardModif
                 rebuild();
                 return true;
             }
-            // 3. segment : glisser = courber, double-clic = insérer
-            if (const auto seg = nearestSegment(*view_, raw, hit)) {
-                segment_ = *seg;
-                drag_ = Drag::Segment;
-                anchor_ = raw;
-                rebuild();
-                return true;
+            // 3. segment : glisser = courber, double-clic = insérer (outil Nœuds seulement)
+            if (!selectNodes) {
+                if (const auto seg = nearestSegment(*view_, raw, hit)) {
+                    segment_ = *seg;
+                    drag_ = Drag::Segment;
+                    anchor_ = raw;
+                    rebuild();
+                    return true;
+                }
             }
+        }
+        if (selectNodes) {
+            return false; // rien de touché sur la forme sélectionnée : le canevas gère la sélection
         }
         // 4. autre objet sous le curseur : il devient l'objet édité
         const auto& scene = studio_.scene();
@@ -466,7 +493,8 @@ bool ToolController::press(double x, double y, double pxPerMm, Qt::KeyboardModif
 }
 
 void ToolController::move(double x, double y, Qt::KeyboardModifiers mods) {
-    if (!capturesMouse()) {
+    // En Sélection, seul un glisser de nœud commencé par press() arrive ici.
+    if (!capturesMouse() && drag_ == Drag::None) {
         return;
     }
     const bool nodeTool = tool_ == QStringLiteral("node.edit");
@@ -506,8 +534,8 @@ void ToolController::move(double x, double y, Qt::KeyboardModifiers mods) {
 }
 
 void ToolController::release(double x, double y, Qt::KeyboardModifiers mods) {
-    if (!capturesMouse() || drag_ == Drag::None) {
-        if (drag_ == Drag::None && penDragging_) {
+    if (drag_ == Drag::None) {
+        if (penDragging_) {
             penDragging_ = false;
         }
         return;
@@ -809,7 +837,7 @@ void ToolController::rebuild() {
             }
         }
     }
-    if (tool_ == QStringLiteral("node.edit") && view_) {
+    if ((tool_ == QStringLiteral("node.edit") || tool_ == QStringLiteral("select")) && view_) {
         const bool dragging =
             drag_ == Drag::Nodes || drag_ == Drag::Tangent || drag_ == Drag::Segment;
         std::optional<std::vector<std::vector<PointMm>>> preview;

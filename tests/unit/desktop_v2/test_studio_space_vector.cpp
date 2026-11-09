@@ -417,7 +417,7 @@ private slots:
         // Correction source : le rendu de la forme reste en cache tant que
         // l'utilisateur n'applique pas explicitement la revectorisation.
         const int initialBuilds = rig.stage.layerBuildCount();
-        const auto* initialImage = rig.canvas->vectorImage();
+        const auto initialImage = rig.canvas->vectorImage();
         rig.session.execute(
             std::make_unique<commands::MergeRegionsCommand>(RegionId{1}, RegionId{2}));
         QTRY_COMPARE_WITH_TIMEOUT(
