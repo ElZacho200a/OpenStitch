@@ -203,6 +203,7 @@ def dataset_digest(rows: list[dict]) -> str:
 
 
 def train_model(rows: list[dict], epochs: int = 500) -> dict:
+    rows = sorted(rows, key=lambda row: row["sample_id"])
     train, validation = split_by_motif(rows)
     model = {"schema": MODEL_SCHEMA, "feature_names": list(FEATURE_NAMES),
              "weights": fit(train, epochs=epochs),
