@@ -11,6 +11,7 @@
 #include <QPdfWriter>
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <fstream>
 #include <set>
 
@@ -19,6 +20,8 @@
 #include "export_settings.hpp"
 #include "file_io.hpp"
 #include "openstitch/formats/svg.hpp"
+#include "openstitch/image/image.hpp"
+#include "openstitch/project_ops/factory.hpp"
 #include "openstitch/stitch_analysis/placement_template.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
 #include "production_sheet.hpp"
@@ -481,7 +484,9 @@ void FileController::openPath(const QString& path) {
     } else if (isMachineDesignFile(toPath(path))) {
         guarded(QStringLiteral("ouvrir"), [this, path] { doOpenMachine(path); });
     } else if (isImageSuffix(suffix)) {
-        emit imageImportRequested(path);
+        // Opening a raster image starts in the Image space. Segmentation,
+        // vectorization and stitch generation are separate, explicit steps.
+        importImage(path, {});
     } else if (suffix == QLatin1String("svg") || suffix == QLatin1String("dxf")) {
         importVector(path);
     } else {
@@ -548,13 +553,9 @@ void FileController::doOpenMachine(const QString& path) {
 // --- Imports -----------------------------------------------------------------------------------
 
 QVariantMap FileController::imageImportDefaults() const {
-    const project_ops::DigitizeSettings defaults;
-    return {{QStringLiteral("heightMm"), 100.0},
-            {QStringLiteral("maxColors"), defaults.max_colors},
-            {QStringLiteral("minRegionPx"), defaults.min_region_px},
-            {QStringLiteral("smoothingPx"), defaults.smoothing_px},
-            {QStringLiteral("skipBackground"), defaults.skip_background},
-            {QStringLiteral("mode"), fromUtf8(defaults.mode)}};
+    // Physical scale is a document property. Colour count, region smoothing and
+    // stitch type are intentionally NOT import settings in the four-space Studio.
+    return {{QStringLiteral("heightMm"), 100.0}};
 }
 
 void FileController::importImage(const QString& path, const QVariantMap& options) {
@@ -562,56 +563,68 @@ void FileController::importImage(const QString& path, const QVariantMap& options
         setMessage(QStringLiteral("Image introuvable : %1").arg(path), true);
         return;
     }
-    const auto defaults = imageImportDefaults();
-    DigitizeRequest request;
-    request.image = toPath(path);
-    request.target_height_mm = numberOr(options, "heightMm", defaults.value("heightMm").toDouble());
-    if (request.target_height_mm < 5.0 || request.target_height_mm > 1000.0) {
-        setMessage(QStringLiteral("Hauteur du motif : entre 5 et 1000 mm."), true);
+    if (!isImageSuffix(lowerSuffix(path))) {
+        setMessage(QStringLiteral("Ce fichier n'est pas une image raster prise en charge."), true);
         return;
     }
-    auto& s = request.settings;
-    s.max_colors = static_cast<int>(numberOr(options, "maxColors", s.max_colors));
-    s.min_region_px = static_cast<int>(numberOr(options, "minRegionPx", s.min_region_px));
-    s.smoothing_px = static_cast<int>(numberOr(options, "smoothingPx", s.smoothing_px));
-    s.skip_background = static_cast<int>(numberOr(options, "skipBackground", s.skip_background));
-    if (const auto mode = options.value(QStringLiteral("mode")).toString(); !mode.isEmpty()) {
-        if (mode != QLatin1String("shapes") && mode != QLatin1String("contours") &&
-            mode != QLatin1String("stipple")) {
-            setMessage(QStringLiteral("Mode d'import inconnu : %1").arg(mode), true);
-            return;
-        }
-        s.mode = toUtf8(mode);
-    }
-    if (s.max_colors < 2 || s.max_colors > 32) {
-        setMessage(QStringLiteral("Nombre de couleurs : entre 2 et 32."), true);
+    const double targetHeightMm = numberOr(options, "heightMm", 100.0);
+    if (!std::isfinite(targetHeightMm) || targetHeightMm < 5.0 || targetHeightMm > 1000.0) {
+        setMessage(QStringLiteral("Hauteur de l'image : entre 5 et 1000 mm."), true);
         return;
     }
     const QString name = QFileInfo(path).fileName();
-    guarded(QStringLiteral("importer"), [this, request, name] {
+    const auto file = toPath(path);
+    guarded(QStringLiteral("importer"), [this, file, name, targetHeightMm] {
         const auto revision = studio_.session().revision();
-        setMessage(QStringLiteral("Numérisation de %1…").arg(name));
-        runJob<DigitizeOutput>(
-            QStringLiteral("Numérisation de %1").arg(name),
-            [request](const TaskContext& task) { return run_digitize(request, task); },
-            [this, name, revision](DigitizeOutput&& out) {
+        setMessage(QStringLiteral("Chargement de l'image %1…").arg(name));
+        runJob<document::Project>(
+            QStringLiteral("Chargement de %1").arg(name),
+            [file, targetHeightMm](const TaskContext& task) -> Result<document::Project> {
+                if (task.cancelled()) {
+                    return cancelled_error();
+                }
+                auto source = image::load_image(file);
+                if (!source) {
+                    return std::unexpected(source.error());
+                }
+                if (task.cancelled()) {
+                    return cancelled_error();
+                }
+                if (source->height <= 0 || source->width <= 0) {
+                    return fail(ErrorCategory::InvalidFile, "Dimensions de l'image invalides.");
+                }
+                auto project = project_ops::create_empty_project({});
+                if (!project) {
+                    return std::unexpected(project.error());
+                }
+                // Keep the original pixels unmodified. The physical scale can be
+                // edited later; no segmentation, vector, or stitch data is produced.
+                project->mm_per_px =
+                    Millimeters{targetHeightMm / static_cast<double>(source->height)};
+                project->original = std::move(*source);
+                return std::move(*project);
+            },
+            [this, name, revision](document::Project&& project) {
                 if (revision != studio_.session().revision()) {
                     setMessage(QStringLiteral("Document modifié pendant l'import : résultat "
                                               "ignoré."),
                                true);
                     return;
                 }
-                const auto objects = out.report.embroidery_objects;
-                const auto stitches = out.stats.stitches;
+                const auto width = project.original.width;
+                const auto height = project.original.height;
                 studio_.session().selection().clear();
-                studio_.adoptProject(std::move(out.project), {}, name, false);
-                setMessage(QStringLiteral("%1 objets, %2 points, %3 × %4 mm")
-                               .arg(objects)
-                               .arg(stitches)
-                               .arg(out.width_mm, 0, 'f', 1)
-                               .arg(out.height_mm, 0, 'f', 1));
+                studio_.adoptProject(std::move(project), {}, name, false);
+                // Route to Image only after a successful adoption, not on selection
+                // of a file or after a cancelled/failed import.
+                emit imageImported();
+                setMessage(QStringLiteral("%1 importée (%2 × %3 px). Préparez l'image, puis "
+                                          "passez à la segmentation.")
+                               .arg(name)
+                               .arg(width)
+                               .arg(height));
             },
-            QStringLiteral("Numérisation impossible : "));
+            QStringLiteral("Chargement de l'image impossible : "));
     });
 }
 
