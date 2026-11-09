@@ -436,6 +436,7 @@ Item {
                     property real pressX
                     property int pressedIndex: -1
                     readonly property int hoveredIndex: containsMouse ? swatches.indexAtX(mouseX, false) : -1
+                    readonly property bool hovered: hoveredIndex >= 0 && swatches.dragFrom < 0 && !pressed
                     cursorShape: swatches.dragFrom >= 0 ? Qt.ClosedHandCursor
                                  : hoveredIndex >= 0 ? Qt.PointingHandCursor : Qt.ArrowCursor
 
@@ -475,12 +476,13 @@ Item {
                         swatches.dropIndex = -1
                     }
 
-                    Controls.ToolTip.visible: hoveredIndex >= 0 && swatches.dragFrom < 0 && !pressed
-                    Controls.ToolTip.delay: 600
-                    Controls.ToolTip.text: {
-                        const entry = hoveredIndex >= 0 ? swatches.model[hoveredIndex] : null
-                        return entry ? qsTr("%1 · %2 objet(s)\nClic : sélectionner · Glisser : réordonner · Clic droit : recolorer")
-                                       .arg(entry.label).arg(entry.objectCount) : ""
+                    StudioToolTip {
+                        text: {
+                            const entry = stripMouse.hoveredIndex >= 0
+                                        ? swatches.model[stripMouse.hoveredIndex] : null
+                            return entry ? qsTr("%1 · %2 objet(s)\nCliquer pour sélectionner · Glisser pour réordonner · Clic droit pour recolorer")
+                                           .arg(entry.label).arg(entry.objectCount) : ""
+                        }
                     }
                 }
 
