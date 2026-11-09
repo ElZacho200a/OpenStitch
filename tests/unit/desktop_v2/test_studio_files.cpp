@@ -791,8 +791,10 @@ void StudioFilesTest::imageAndVectorImports() {
     QVERIFY(!rig.files->busy());
     // L'import remplace le document : protégé par la question « Enregistrer ? ».
     auto options = rig.files->imageImportDefaults();
+    QVERIFY(options.contains(QStringLiteral("heightMm")));
+    QVERIFY(!options.contains(QStringLiteral("maxColors")));
+    QVERIFY(!options.contains(QStringLiteral("smoothingPx")));
     options[QStringLiteral("heightMm")] = 40.0;
-    options[QStringLiteral("maxColors")] = 3;
     rig.files->importImage(png, options);
     QCOMPARE(rig.files->pendingReason(), QStringLiteral("importer"));
     rig.files->resolveGuard(QStringLiteral("discard"));
