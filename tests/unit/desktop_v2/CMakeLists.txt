@@ -168,6 +168,22 @@ file(GLOB_RECURSE studio_all_qml CONFIGURE_DEPENDS "${studio_test_qml_root}/qml/
     endif()
 endif()
 
+# CX05 (premier lot) : propriétés de presets basées sur les vrais réglages CLI/MCP.
+if(TARGET openstitch::studio_ui)
+    find_package(Qt6 COMPONENTS Test QUIET)
+    if(Qt6Test_FOUND)
+        set(CMAKE_AUTOMOC ON)
+        add_executable(test_desktop_v2_studio_autodigitize_presets
+            test_studio_autodigitize_presets.cpp)
+        target_link_libraries(test_desktop_v2_studio_autodigitize_presets
+            PRIVATE openstitch::studio_ui Qt6::Test openstitch::warnings)
+        add_test(NAME test_desktop_v2_studio_autodigitize_presets
+            COMMAND test_desktop_v2_studio_autodigitize_presets -o -,txt)
+        set_tests_properties(test_desktop_v2_studio_autodigitize_presets PROPERTIES
+            ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+    endif()
+endif()
+
 # Studio view / analysis / thread adapters (QTest headless, real documents, no QML needed).
 if(TARGET openstitch::studio_ui)
     find_package(Qt6 COMPONENTS Test QUIET)
