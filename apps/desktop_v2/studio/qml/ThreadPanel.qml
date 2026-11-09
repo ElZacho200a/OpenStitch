@@ -36,6 +36,7 @@ Rectangle {
     Flickable {
         anchors.fill: parent
         anchors.margins: 10
+        contentWidth: width
         contentHeight: content.implicitHeight
         clip: true
         Controls.ScrollBar.vertical: Controls.ScrollBar {}
@@ -70,7 +71,9 @@ Rectangle {
                 }
             }
             Flow {
+                objectName: "threadActionsFlow"
                 Layout.fillWidth: true
+                implicitHeight: childrenRect.height
                 spacing: 4
                 enabled: panel.current >= 0
                 StudioButton { objectName: "threadSelectButton"; text: qsTr("Sélectionner les objets"); onClicked: panel.controller.selectThreadObjects(panel.current) }
@@ -99,12 +102,15 @@ Rectangle {
 
             Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Theme.divider }
             SectionLabel { text: qsTr("NUANCIERS") }
-            RowLayout {
+            Flow {
+                objectName: "threadChartActionsFlow"
                 Layout.fillWidth: true
+                implicitHeight: childrenRect.height
+                spacing: 6
                 StudioComboBox {
                     id: chartBox
                     objectName: "chartBox"
-                    Layout.fillWidth: true
+                    width: Math.min(240, Math.max(150, parent.width - 160))
                     model: panel.controller ? panel.controller.charts : []
                     textRole: "name"
                     onActivated: panel.chartId = model[currentIndex].id
@@ -130,12 +136,15 @@ Rectangle {
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.smallSize
             }
-            RowLayout {
+            Flow {
+                objectName: "threadSearchActionsFlow"
                 Layout.fillWidth: true
+                implicitHeight: childrenRect.height
+                spacing: 6
                 StudioTextField {
                     id: searchField
                     objectName: "chartSearchField"
-                    Layout.fillWidth: true
+                    width: Math.min(220, Math.max(140, parent.width - 180))
                     placeholderText: qsTr("Nom ou référence")
                 }
                 StudioButton { objectName: "nearestButton"; text: qsTr("Plus proches"); enabled: panel.current >= 0; onClicked: resultList.model = panel.controller.nearestToEntry(panel.current, panel.chartId, 8) }
@@ -184,9 +193,12 @@ Rectangle {
                     StudioButton { objectName: "colorwayRemove" + way.index; text: qsTr("Supprimer"); quiet: true; onClicked: panel.controller.removeColorway(way.index) }
                 }
             }
-            RowLayout {
+            Flow {
+                objectName: "threadColorwayActionsFlow"
                 Layout.fillWidth: true
-                StudioTextField { id: colorwayName; objectName: "colorwayNameField"; Layout.fillWidth: true; placeholderText: qsTr("Nom du nouveau coloris") }
+                implicitHeight: childrenRect.height
+                spacing: 6
+                StudioTextField { id: colorwayName; objectName: "colorwayNameField"; width: Math.min(250, Math.max(140, parent.width - 88)); placeholderText: qsTr("Nom du nouveau coloris") }
                 StudioButton { objectName: "colorwayAddButton"; text: qsTr("Créer"); onClicked: { if (panel.controller.addColorway(colorwayName.text)) colorwayName.text = "" } }
             }
 
