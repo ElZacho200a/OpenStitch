@@ -24,9 +24,9 @@
 #include "gpu_canvas.hpp"
 #include "image_controller.hpp"
 #include "image_space_controller.hpp"
+#include "openstitch/stitch_generation/overrides.hpp"
 #include "region_controller.hpp"
 #include "segmentation_space_controller.hpp"
-#include "openstitch/stitch_generation/overrides.hpp"
 #include "studio_controller.hpp"
 #include "workspace_controller.hpp"
 
