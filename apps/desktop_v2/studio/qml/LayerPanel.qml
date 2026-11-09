@@ -9,13 +9,18 @@ ColumnLayout {
     id: panel
     objectName: "layerPanel"
     spacing: 4
+    // ObjectTree owns its scrolling. Never let an undersized dock paint over its siblings.
+    clip: true
     readonly property alias tree: objectTree
     readonly property string layerId: objectTree.currentLayer.length > 0
                                       ? objectTree.currentLayer
                                       : (editor.layers.length > 0 ? editor.layers[0].id : "")
 
     Flow {
+        objectName: "layerActionsFlow"
         Layout.fillWidth: true
+        // Wrapped rows must take their real height above ObjectTree.
+        implicitHeight: childrenRect.height
         Layout.leftMargin: 10
         Layout.rightMargin: 10
         Layout.topMargin: 6
@@ -85,6 +90,6 @@ ColumnLayout {
         id: objectTree
         Layout.fillWidth: true
         Layout.fillHeight: true
-        Layout.minimumHeight: 120
+        Layout.minimumHeight: 48
     }
 }
