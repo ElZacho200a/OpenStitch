@@ -12,6 +12,8 @@ Rectangle {
     objectName: "threadPanel"
     property var controller
     property string page: "plan"
+    property var reductionPreview: ({})
+    property int renameColorwayIndex: -1
     property string currentId
     readonly property int current: entryList.findIndex(entry => entry.id === currentId)
     property string chartId: controller && controller.charts.length > 0 ? controller.charts[0].id : ""
@@ -26,6 +28,121 @@ Rectangle {
         onAccepted: {
             if (panel.current >= 0 && selectedColor.toString() !== panel.entryList[panel.current].color.toString())
                 panel.controller.recolorThread(panel.current, selectedColor.toString())
+        }
+    }
+
+    ColorDialog {
+        id: personalColorDialog
+        title: qsTr("Couleur du fil personnel")
+        onAccepted: personalColorField.text = selectedColor.toString()
+    }
+    ColorDialog {
+        id: fabricColorDialog
+        title: qsTr("Couleur du tissu")
+        onAccepted: fabricColorField.text = selectedColor.toString()
+    }
+
+    Controls.Popup {
+        id: reductionDialog
+        objectName: "threadReductionDialog"
+        parent: Controls.Overlay.overlay
+        anchors.centerIn: parent
+        modal: true
+        width: Math.min(360, parent ? parent.width - 32 : 360)
+        padding: 16
+        background: Rectangle { color: Theme.panel; radius: Theme.radius; border.color: Theme.border }
+        contentItem: ColumnLayout {
+            spacing: 12
+            Text {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                color: Theme.foreground
+                font.pixelSize: Theme.bodySize
+                text: qsTr("Réduire de %1 à %2 fils (%3 objets modifiés) ?")
+                      .arg(panel.reductionPreview.before).arg(panel.reductionPreview.after)
+                      .arg(panel.reductionPreview.affected)
+            }
+            Text {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                color: Theme.warning
+                font.pixelSize: Theme.smallSize
+                text: qsTr("Les couleurs et les références seront remplacées. Ctrl+Z annulera cette opération.")
+            }
+            RowLayout {
+                Layout.alignment: Qt.AlignRight
+                StudioButton { text: qsTr("Annuler"); onClicked: reductionDialog.close() }
+                StudioButton {
+                    objectName: "threadReduceConfirm"
+                    text: qsTr("Appliquer")
+                    emphasized: true
+                    onClicked: {
+                        panel.controller.applyReduction()
+                        reductionDialog.close()
+                    }
+                }
+            }
+        }
+    }
+    Controls.Popup {
+        id: filmDialog
+        objectName: "threadFilmConfirm"
+        parent: Controls.Overlay.overlay
+        anchors.centerIn: parent
+        modal: true
+        width: Math.min(360, parent ? parent.width - 32 : 360)
+        padding: 16
+        background: Rectangle { color: Theme.panel; radius: Theme.radius; border.color: Theme.border }
+        contentItem: ColumnLayout {
+            spacing: 10
+            Text {
+                Layout.fillWidth: true
+                color: Theme.foreground
+                wrapMode: Text.WordWrap
+                text: qsTr("Regrouper les passages d'un même fil réduit les changements de bobine, mais peut modifier les superpositions.")
+            }
+            RowLayout {
+                Layout.alignment: Qt.AlignRight
+                StudioButton { text: qsTr("Annuler"); onClicked: filmDialog.close() }
+                StudioButton {
+                    objectName: "threadFilmGroupConfirm"
+                    text: qsTr("Regrouper")
+                    emphasized: true
+                    onClicked: {
+                        panel.controller.groupFilmByColor()
+                        filmDialog.close()
+                    }
+                }
+            }
+        }
+    }
+    Controls.Popup {
+        id: renameDialog
+        parent: Controls.Overlay.overlay
+        anchors.centerIn: parent
+        modal: true
+        width: Math.min(330, parent ? parent.width - 32 : 330)
+        padding: 16
+        background: Rectangle { color: Theme.panel; radius: Theme.radius; border.color: Theme.border }
+        contentItem: ColumnLayout {
+            spacing: 8
+            Text { text: qsTr("Renommer le coloris"); color: Theme.foreground }
+            StudioTextField {
+                id: renameField
+                objectName: "threadColorwayRenameField"
+                Layout.fillWidth: true
+                placeholderText: qsTr("Nom du coloris")
+            }
+            RowLayout {
+                StudioButton { text: qsTr("Annuler"); onClicked: renameDialog.close() }
+                StudioButton {
+                    text: qsTr("Renommer")
+                    onClicked: {
+                        if (panel.controller.renameColorway(panel.renameColorwayIndex, renameField.text))
+                            renameDialog.close()
+                    }
+                }
+            }
         }
     }
 
@@ -167,6 +284,31 @@ Rectangle {
                     }
                 }
             }
+            Flow {
+                objectName: "threadReductionActions"
+                Layout.fillWidth: true
+                Layout.preferredHeight: childrenRect.height
+                spacing: 6
+                StudioSpinBox {
+                    id: reductionTarget
+                    objectName: "threadReductionTarget"
+                    from: 1; to: 64
+                    value: 8
+                    editable: true
+                }
+                StudioButton {
+                    objectName: "threadReductionPreview"
+                    text: qsTr("Réduire à N fils…")
+                    enabled: panel.entryList.length > 1
+                    onClicked: {
+                        const result = panel.controller.previewReduction(reductionTarget.value)
+                        if (result.before !== undefined) {
+                            panel.reductionPreview = result
+                            reductionDialog.open()
+                        }
+                    }
+                }
+            }
             StudioButton { text: qsTr("Exporter la liste (CSV)"); onClicked: exportDialog.open() }
 
             }
@@ -244,6 +386,17 @@ Rectangle {
                         Rectangle { implicitWidth: 16; implicitHeight: 16; radius: 3; color: result.modelData.color; border.color: Theme.border }
                         Text { Layout.fillWidth: true; elide: Text.ElideRight; text: result.modelData.code + "  " + result.modelData.name; color: Theme.foreground; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize }
                         StudioButton {
+                            objectName: "threadCatalogOwn"
+                            text: panel.controller.ownsThread(result.modelData.chartId,
+                                                              result.modelData.code)
+                                  ? qsTr("Possédé") : qsTr("+ Mes fils")
+                            quiet: true
+                            onClicked: panel.controller.setOwnedThread(
+                                result.modelData.chartId, result.modelData.code,
+                                !panel.controller.ownsThread(result.modelData.chartId,
+                                                             result.modelData.code))
+                        }
+                        StudioButton {
                             text: qsTr("Assigner")
                             enabled: panel.current >= 0
                             quiet: true
@@ -269,7 +422,17 @@ Rectangle {
                     Layout.fillWidth: true
                     Text { Layout.fillWidth: true; text: (way.modelData.active ? "● " : "○ ") + way.modelData.name; color: Theme.foreground; font.family: Theme.fontFamily; font.pixelSize: Theme.bodySize }
                     StudioButton { objectName: "colorwayActivate" + way.index; text: qsTr("Activer"); quiet: true; enabled: !way.modelData.active; onClicked: panel.controller.activateColorway(way.index) }
-                    StudioButton { objectName: "colorwayRemove" + way.index; text: qsTr("Supprimer"); quiet: true; onClicked: panel.controller.removeColorway(way.index) }
+                    StudioButton {
+                        objectName: "colorwayRename" + way.index
+                        text: qsTr("Renommer")
+                        quiet: true
+                        onClicked: {
+                            panel.renameColorwayIndex = way.index
+                            renameField.text = way.modelData.name
+                            renameDialog.open()
+                        }
+                    }
+                    StudioButton { objectName: "colorwayRemove" + way.index; text: qsTr("Supprimer"); quiet: true; enabled: !way.modelData.active; onClicked: panel.controller.removeColorway(way.index) }
                 }
             }
             Flow {
