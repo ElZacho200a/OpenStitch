@@ -22,6 +22,7 @@ def verify(cli: Path, image: Path, *, runner=subprocess.run, timeout: int = 120)
     digests: list[str] = []
     stitches: list[int] = []
     failures: list[str] = []
+    invalid_json_diagnostics: list[dict] = []
     with tempfile.TemporaryDirectory(prefix="openstitch-e16-golden-") as tmp:
         for index in (1, 2):
             output = Path(tmp) / f"pass-{index}" / "design.dst"
@@ -54,6 +55,16 @@ def verify(cli: Path, image: Path, *, runner=subprocess.run, timeout: int = 120)
                 if type(n) is not int or n < 0:
                     raise ValueError("stitches must be a nonnegative JSON integer")
             except (ValueError, TypeError, KeyError, json.JSONDecodeError):
+                # Preserve bounded, non-sensitive CLI contract evidence in CI logs.
+                observed = locals().get("report")
+                if isinstance(observed, dict):
+                    value = observed.get("stitches", "<missing>")
+                    detail = {"pass": index, "type": type(value).__name__,
+                              "value": repr(value)[:120],
+                              "keys": sorted(str(key) for key in observed)[:20]}
+                else:
+                    detail = {"pass": index, "stdout_prefix": completed.stdout[:200]}
+                invalid_json_diagnostics.append(detail)
                 failures.append(f"pass-{index}:invalid-json-stitches")
                 break
 
@@ -69,6 +80,7 @@ def verify(cli: Path, image: Path, *, runner=subprocess.run, timeout: int = 120)
         "sha256": digests,
         "stitches": stitches,
         "failures": failures,
+        "invalid_json_diagnostics": invalid_json_diagnostics,
     }
 
 
