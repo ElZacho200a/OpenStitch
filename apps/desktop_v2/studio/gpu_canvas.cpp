@@ -3,7 +3,6 @@
 
 #include <QHoverEvent>
 #include <QKeyEvent>
-#include <algorithm>
 #include <QMouseEvent>
 #include <QQuickWindow>
 #include <QSGRendererInterface>
