@@ -137,13 +137,23 @@ void VectorSpaceController::refresh() {
     // On garde le layer et son image raster, même si la révision du document avance.
     const bool newRevision = builtRevision_ != session.revision();
     const bool geometryDirty = newRevision && session.lastChangeAffectsEmbroidery();
-    if (!layer_ || geometryDirty || builtSelected_ != selected) {
-        layer_ = VectorLayer::build(session.project(), selected);
-        builtSelected_ = selected;
+    const bool rebuildBase = !layer_ || geometryDirty;
+    if (rebuildBase) {
+        layer_ = VectorLayer::build(session.project());
         ++builds_;
         changed = true;
         if (canvas_) {
             canvas_->setVectorLayer(std::shared_ptr<const OverlayImage>(layer_, &layer_->image()));
+        }
+    }
+    if (rebuildBase || builtSelected_ != selected) {
+        // Un clic ne doit pas redessiner le fond, seulement le ROI des formes retenues.
+        selectionLayer_ = layer_->selectionOverlay(selected);
+        builtSelected_ = selected;
+        ++selectionBuilds_;
+        changed = true;
+        if (canvas_) {
+            canvas_->setVectorSelectionLayer(selectionLayer_);
         }
     }
     builtRevision_ = session.revision();
@@ -185,12 +195,14 @@ void VectorSpaceController::attach(QObject* canvas) {
     if (layer_) {
         canvas_->setVectorLayer(std::shared_ptr<const OverlayImage>(layer_, &layer_->image()));
     }
+    canvas_->setVectorSelectionLayer(selectionLayer_);
 }
 
 void VectorSpaceController::detach() {
     if (canvas_) {
         canvas_->setVectorPicker({});
         canvas_->setVectorLayer(nullptr);
+        canvas_->setVectorSelectionLayer(nullptr);
     }
     canvas_.clear();
 }
