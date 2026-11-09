@@ -537,7 +537,7 @@ Rectangle {
                         id: personalColorField
                         objectName: "threadPersonalColor"
                         width: 125
-                        text: "#ffffff"
+                        text: Qt.rgba(1, 1, 1, 1).toString()
                         placeholderText: qsTr("#RRGGBB")
                     }
                     StudioButton {
@@ -668,7 +668,7 @@ Rectangle {
                         id: fabricColorField
                         objectName: "threadFabricColor"
                         width: 126
-                        text: panel.controller ? panel.controller.fabric.color.toString() : "#ffffff"
+                        text: panel.controller ? panel.controller.fabric.color.toString() : Qt.rgba(1, 1, 1, 1).toString()
                     }
                     StudioButton {
                         objectName: "threadFabricColorPick"
