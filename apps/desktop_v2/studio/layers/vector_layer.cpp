@@ -6,6 +6,7 @@
 #include <QPen>
 #include <algorithm>
 #include <cmath>
+#include <utility>
 
 namespace openstitch::desktop_v2::studio {
 
