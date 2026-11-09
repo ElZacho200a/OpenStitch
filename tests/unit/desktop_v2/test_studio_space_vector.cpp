@@ -18,6 +18,7 @@
 #include "edit_controller.hpp"
 #include "gpu_canvas.hpp"
 #include "openstitch/commands/project_commands.hpp"
+#include "openstitch/commands/replace_project_command.hpp"
 #include "openstitch/project_io/project_io.hpp"
 #include "openstitch/vectorization/vectorize.hpp"
 #include "studio_controller.hpp"
@@ -357,6 +358,38 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(rig.session.selection().empty(), 3'000);
         QCOMPARE(rig.stage.layerBuildCount(), buildsBefore);
         QVERIFY(!rig.canvas->vectorSelectionImage());
+    }
+
+    void visualPropertiesInvalidateVectorRasterButNamesDoNot() {
+        Rig rig;
+        open(rig);
+        enterSpace(rig);
+        const int initialBuilds = rig.stage.layerBuildCount();
+        const auto originalRaster = rig.canvas->vectorImage();
+
+        const auto original = rig.session.snapshot();
+        auto recolored = std::make_shared<document::Project>(*original);
+        recolored->vector_objects.front().rgb = {10, 190, 40};
+        rig.session.execute(std::make_unique<commands::ReplaceProjectCommand>(
+            "Recolorer une forme", original, recolored));
+        QCOMPARE(rig.stage.layerBuildCount(), initialBuilds + 1);
+        QVERIFY(rig.canvas->vectorImage() != originalRaster);
+
+        // A display-only name change does not repaint vector geometry.
+        const auto colorProject = rig.session.snapshot();
+        auto renamed = std::make_shared<document::Project>(*colorProject);
+        renamed->vector_objects.front().name = "New label";
+        rig.session.execute(std::make_unique<commands::ReplaceProjectCommand>(
+            "Renommer une forme", colorProject, renamed, false, false));
+        QCOMPARE(rig.stage.layerBuildCount(), initialBuilds + 1);
+
+        const auto namedProject = rig.session.snapshot();
+        auto hidden = std::make_shared<document::Project>(*namedProject);
+        hidden->vector_objects.front().visible = false;
+        rig.session.execute(std::make_unique<commands::ReplaceProjectCommand>(
+            "Masquer une forme", namedProject, hidden));
+        QCOMPARE(rig.stage.layerBuildCount(), initialBuilds + 2);
+        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
     }
 
     void stitchParameterAndFabricChangesDoNotRerasterizeVectors() {
