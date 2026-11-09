@@ -304,10 +304,16 @@ private slots:
         open(rig);
         enterSpace(rig);
         const int buildsBefore = rig.stage.layerBuildCount();
+        const auto baseImage = rig.canvas->vectorImage();
+        const auto pointsScene = rig.controller.scene();
+        QVERIFY(baseImage);
+        QVERIFY(pointsScene);
+        QSignalSpy sceneChanges(&rig.controller, &StudioController::sceneChanged);
+        auto* overlay =
+            rig.canvas->findChild<QQuickItem*>(QStringLiteral("vectorSelectionOverlay"));
+        QVERIFY(overlay);
+        QVERIFY(!overlay->isVisible());
         QTest::mouseClick(rig.window, Qt::LeftButton, {}, at(rig, 2.5, 0.0));
-        // Un clic génère déjà StudioController::changed ; aucun second refresh ni
-        // reconstruction via le signal selectionChanged.
-        QTRY_COMPARE(rig.stage.layerBuildCount(), buildsBefore + 1);
         QTRY_VERIFY_WITH_TIMEOUT(rig.session.selection().primary().has_value(), 3'000);
         const auto target = *rig.session.selection().primary();
         QCOMPARE(target.kind, TargetKind::VectorObject);
@@ -318,11 +324,19 @@ private slots:
         auto* origin = deepItem(rig.window->contentItem(), QStringLiteral("vectorShapeOrigin"));
         QVERIFY(origin);
         QVERIFY(origin->property("text").toString().contains(QStringLiteral("région 2")));
-        // La sélection est redessinée (nœuds visibles) : une reconstruction de plus.
-        QVERIFY(rig.stage.layerBuildCount() >= 2);
+        QTRY_VERIFY(overlay->isVisible());
+        QVERIFY(overlay->width() < rig.canvas->width());
+        const auto overlayX = overlay->x();
+        rig.canvas->panBy(10.0, 0.0);
+        QVERIFY(overlay->x() != overlayX);
         // Clic dans le vide : plus de sélection.
         QTest::mouseClick(rig.window, Qt::LeftButton, {}, at(rig, 0.0, 6.0));
         QTRY_VERIFY_WITH_TIMEOUT(rig.session.selection().empty(), 3'000);
+        QVERIFY(!overlay->isVisible());
+        QCOMPARE(rig.stage.layerBuildCount(), buildsBefore);
+        QVERIFY(rig.canvas->vectorImage() == baseImage);
+        QVERIFY(rig.controller.scene() == pointsScene);
+        QCOMPARE(sceneChanges.count(), 0);
     }
 
     void goToRegionSwitchesToSegmentationWithTheRegionSelected() {
@@ -407,6 +421,8 @@ private slots:
         const auto center = ok->mapToScene(QPointF(ok->width() / 2, ok->height() / 2));
         QTest::mouseClick(rig.window, Qt::LeftButton, {}, center.toPoint());
         QTRY_COMPARE_WITH_TIMEOUT(steps(rig), undoBefore + 1, 3'000);
+        QCOMPARE(rig.stage.layerBuildCount(), initialBuilds + 1);
+        QVERIFY(rig.canvas->vectorImage() != initialImage);
         // La forme de la région 1 couvre maintenant toute l'image (largeur ~10 mm).
         const auto& shapes = rig.session.project().vector_objects;
         double x0 = 1e9, x1 = -1e9;

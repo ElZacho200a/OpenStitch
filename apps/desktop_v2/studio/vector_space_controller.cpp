@@ -136,15 +136,21 @@ void VectorSpaceController::refresh() {
     // Une retouche de segmentation ne modifie PAS les vecteurs déjà produits.
     // On garde le layer et son image raster, même si la révision du document avance.
     const bool newRevision = builtRevision_ != session.revision();
-    const bool geometryDirty = newRevision && session.lastChangeAffectsEmbroidery();
-    if (!layer_ || geometryDirty || builtSelected_ != selected) {
-        layer_ = VectorLayer::build(session.project(), selected);
-        builtSelected_ = selected;
+    const bool rebuildLayer = !layer_ || (newRevision && session.lastChangeAffectsEmbroidery());
+    if (rebuildLayer) {
+        layer_ = VectorLayer::build(session.project());
         ++builds_;
         changed = true;
         if (canvas_) {
             canvas_->setVectorLayer(std::shared_ptr<const OverlayImage>(layer_, &layer_->image()));
         }
+    }
+    if (rebuildLayer || builtSelected_ != selected) {
+        builtSelected_ = selected;
+        if (selectionOverlay_) {
+            selectionOverlay_->setSelection(layer_, builtSelected_);
+        }
+        changed = true;
     }
     builtRevision_ = session.revision();
     const auto statuses =
@@ -185,9 +191,12 @@ void VectorSpaceController::attach(QObject* canvas) {
     if (layer_) {
         canvas_->setVectorLayer(std::shared_ptr<const OverlayImage>(layer_, &layer_->image()));
     }
+    selectionOverlay_ = new VectorSelectionOverlay(*canvas_);
+    selectionOverlay_->setSelection(layer_, builtSelected_);
 }
 
 void VectorSpaceController::detach() {
+    delete selectionOverlay_.data();
     if (canvas_) {
         canvas_->setVectorPicker({});
         canvas_->setVectorLayer(nullptr);

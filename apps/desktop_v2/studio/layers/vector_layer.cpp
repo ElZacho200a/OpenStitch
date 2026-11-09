@@ -6,6 +6,9 @@
 #include <QPen>
 #include <algorithm>
 #include <cmath>
+#include <utility>
+
+#include "gpu_canvas.hpp"
 
 namespace openstitch::desktop_v2::studio {
 
@@ -46,9 +49,7 @@ void appendPath(QPainterPath& out, const geometry::Path& path, std::vector<QPoin
 
 } // namespace
 
-std::shared_ptr<const VectorLayer>
-VectorLayer::build(const document::Project& project,
-                   const std::vector<std::uint64_t>& selectedShapes) {
+std::shared_ptr<const VectorLayer> VectorLayer::build(const document::Project& project) {
     auto layer = std::make_shared<VectorLayer>();
     QRectF all;
     for (const auto& object : project.vector_objects) {
@@ -89,9 +90,6 @@ VectorLayer::build(const document::Project& project,
     painter.setRenderHint(QPainter::Antialiasing);
     painter.scale(pxPerMm, pxPerMm);
     painter.translate(-area.topLeft());
-    const auto isSelected = [&](std::uint64_t id) {
-        return std::ranges::find(selectedShapes, id) != selectedShapes.end();
-    };
     for (const auto& shape : layer->shapes_) {
         QColor fill = shape.color;
         fill.setAlpha(shape.sourceRegion != 0 ? 235 : 200);
@@ -102,22 +100,6 @@ VectorLayer::build(const document::Project& project,
         painter.setPen(outline);
         painter.drawPath(shape.path);
     }
-    const QColor accent(229, 99, 137);
-    for (const auto& shape : layer->shapes_) {
-        if (!isSelected(shape.id)) {
-            continue;
-        }
-        painter.setBrush(Qt::NoBrush);
-        painter.setPen(QPen(accent, 0.45));
-        painter.drawPath(shape.path);
-        painter.setBrush(QColor(255, 255, 255));
-        painter.setPen(QPen(accent, 0.2));
-        const double half =
-            std::clamp(std::min(shape.bounds.width(), shape.bounds.height()) / 40.0, 0.25, 0.8);
-        for (const auto& node : shape.nodes) {
-            painter.drawRect(QRectF(node.x() - half, node.y() - half, 2 * half, 2 * half));
-        }
-    }
     painter.end();
     layer->image_.image = std::move(image);
     layer->image_.x0 = area.x();
@@ -125,6 +107,73 @@ VectorLayer::build(const document::Project& project,
     layer->image_.widthMm = area.width();
     layer->image_.heightMm = area.height();
     return layer;
+}
+
+VectorSelectionOverlay::VectorSelectionOverlay(GpuCanvas& canvas)
+    : QQuickPaintedItem(&canvas), canvas_(canvas) {
+    setObjectName(QStringLiteral("vectorSelectionOverlay"));
+    setAcceptedMouseButtons(Qt::NoButton);
+    setVisible(false);
+    connect(&canvas, &GpuCanvas::viewChanged, this, &VectorSelectionOverlay::updateViewport);
+}
+
+void VectorSelectionOverlay::setSelection(std::shared_ptr<const VectorLayer> layer,
+                                          const std::vector<std::uint64_t>& ids) {
+    selected_.clear();
+    bounds_ = {};
+    layer_ = std::move(layer);
+    for (const auto id : ids) {
+        const auto& shapes = layer_->shapes();
+        const auto shape = std::ranges::find(shapes, id, &VectorShape::id);
+        if (shape != shapes.end()) {
+            selected_.push_back(&*shape);
+            bounds_ = bounds_.united(shape->bounds.adjusted(-1, -1, 1, 1));
+        }
+    }
+    updateViewport();
+}
+
+void VectorSelectionOverlay::updateViewport() {
+    if (selected_.empty()) {
+        setVisible(false);
+        return;
+    }
+    const auto& camera = canvas_.camera();
+    const auto first = camera.worldToScreen({bounds_.left(), bounds_.top()});
+    const auto last = camera.worldToScreen({bounds_.right(), bounds_.bottom()});
+    const auto rect = QRectF(QPointF(first.x, first.y), QPointF(last.x, last.y))
+                          .adjusted(-1, -1, 1, 1)
+                          .intersected(QRectF(0, 0, canvas_.width(), canvas_.height()))
+                          .toAlignedRect();
+    setVisible(!rect.isEmpty());
+    if (rect.isEmpty()) {
+        return;
+    }
+    const auto zero = camera.worldToScreen({0, 0});
+    origin_ = QPointF(zero.x, zero.y) - rect.topLeft();
+    scale_ = camera.scale();
+    setPosition(rect.topLeft());
+    setSize(rect.size());
+    update();
+}
+
+void VectorSelectionOverlay::paint(QPainter* painter) {
+    painter->setRenderHint(QPainter::Antialiasing);
+    painter->translate(origin_);
+    painter->scale(scale_, scale_);
+    const QColor accent(229, 99, 137);
+    for (const auto* shape : selected_) {
+        painter->setBrush(Qt::NoBrush);
+        painter->setPen(QPen(accent, 0.45));
+        painter->drawPath(shape->path);
+        painter->setBrush(Qt::white);
+        painter->setPen(QPen(accent, 0.2));
+        const double half =
+            std::clamp(std::min(shape->bounds.width(), shape->bounds.height()) / 40.0, 0.25, 0.8);
+        for (const auto& node : shape->nodes) {
+            painter->drawRect(QRectF(node.x() - half, node.y() - half, 2 * half, 2 * half));
+        }
+    }
 }
 
 std::optional<std::uint64_t> VectorLayer::pick(double x, double y, double toleranceMm) const {
