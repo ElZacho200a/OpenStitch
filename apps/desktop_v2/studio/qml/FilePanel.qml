@@ -6,7 +6,7 @@ import QtQuick.Layouts
 import "."
 
 // Famille A : menu Fichier, contrôle des modifications non enregistrées, récents, glisser-déposer,
-// options d'import et d'export, cadre/machine, récupération après interruption. Tout passe par le
+// import d'image sans options de segmentation, export, cadre/machine, récupération. Tout passe par le
 // contrôleur `files` (FileController) ; sans lui (tests de la coque seule) chaque entrée retombe
 // sur `studio`, et le panneau ne fait alors que les gestes de base.
 Item {
@@ -137,7 +137,7 @@ Item {
     }
     FileDialog {
         id: imageDialog
-        title: qsTr("Importer une image")
+        title: qsTr("Choisir une image source")
         nameFilters: [qsTr("Image (*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.webp)")]
         onAccepted: if (panel.ctl) panel.ctl.openUrl(selectedFile)
     }
@@ -279,7 +279,7 @@ Item {
                 onClicked: panel.ctl.clearRecent()
             }
             SectionLabel { text: qsTr("IMPORTER") }
-            Entry { text: qsTr("Une image…"); onClicked: panel.importImageDialog() }
+            Entry { text: qsTr("Une image (espace Image)…"); onClicked: panel.importImageDialog() }
             Entry { text: qsTr("Un SVG ou un DXF…"); onClicked: panel.importVectorDialog() }
             Entry { text: qsTr("Une broderie machine…"); onClicked: panel.importMachineDialog() }
             SectionLabel { text: qsTr("EXPORTER") }
