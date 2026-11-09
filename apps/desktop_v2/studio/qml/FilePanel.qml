@@ -11,6 +11,7 @@ import "."
 // sur `studio`, et le panneau ne fait alors que les gestes de base.
 Item {
     id: panel
+    signal quitApproved()
     objectName: "filePanel"
     anchors.fill: parent
 
@@ -339,7 +340,7 @@ Item {
         target: panel.ctl
         ignoreUnknownSignals: true
         function onSaveAsRequested() { guardSaveDialog.open() }
-        function onQuitApproved() { Qt.quit() }
+        function onQuitApproved() { panel.quitApproved() }
         function onImageImportRequested(path) {
             panel.importPath = path
             panel.importValues = panel.ctl.imageImportDefaults()

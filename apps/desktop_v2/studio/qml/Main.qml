@@ -91,12 +91,21 @@ Window {
         onAccepted: studio.saveProjectAs(selectedFile)
     }
 
-    FilePanel { id: filePanel }
+    property bool closeApproved: false
+    FilePanel {
+        id: filePanel
+        onQuitApproved: {
+            window.closeApproved = true
+            window.close()
+        }
+    }
     onClosing: function (close) {
-        if (!filePanel.requestQuit())
+        if (!window.closeApproved && !filePanel.requestQuit()) {
             close.accepted = false
-        else
-            window.persistSession()
+            return
+        }
+        window.closeApproved = false
+        window.persistSession()
     }
     ActionPalette { id: palette }
     CompanionPanel { id: companionPanel }

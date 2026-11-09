@@ -302,7 +302,7 @@ void StudioCompanionTest::canvasRegainsKeyboardFocusAfterClick() {
     QCOMPARE(rig.session.undoNames().size(), base + 2);
     QVERIFY(rig.window->activeFocusItem() == rig.canvas);
     // Un changement d'espace ne laisse pas le focus sur un contrôle masqué.
-    // Chaque espace instancie SON canevas (un seul à la fois) : on clique celui de l'espace actif.
+    // Les espaces gardent leurs canevas en cache ; seul celui de l'espace actif reçoit les clics.
     for (int space = 0; space < 4; ++space) {
         QVERIFY(rig.actions.runCommand(QStringLiteral("cmd.workspace.%1").arg(space)).isEmpty());
         const auto activeCanvas = [&]() -> GpuCanvas* {
@@ -326,9 +326,16 @@ void StudioCompanionTest::canvasRegainsKeyboardFocusAfterClick() {
         } else {
             QTest::mouseClick(
                 rig.window, Qt::LeftButton, {},
-                active->mapToScene(QPointF(active->width() / 2, active->height() / 2)).toPoint());
+                // Le centre peut être occupé par le bouton d'import d'un espace vide.
+                active->mapToScene(QPointF(active->width() / 4, active->height() * 3 / 4))
+                    .toPoint());
         }
-        QVERIFY(rig.window->activeFocusItem() == active);
+        const auto* focused = rig.window->activeFocusItem();
+        QVERIFY2(focused == active,
+                 qPrintable(QStringLiteral("Workspace %1: expected %2, focused %3")
+                                .arg(space)
+                                .arg(active->objectName(),
+                                     focused ? focused->objectName() : QStringLiteral("<none>"))));
     }
     // Une fenêtre modale fermée ne laisse pas le focus sur l'un de ses boutons masqués.
     QVERIFY(rig.actions.runCommand(QStringLiteral("cmd.help.about")).isEmpty());
