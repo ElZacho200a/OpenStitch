@@ -20,6 +20,7 @@
 #include "openstitch/stitch_generation/overrides.hpp"
 #include "preview_service.hpp"
 #include "shape_batch.hpp"
+#include "studio_scene.hpp"
 #include "transform_batch.hpp"
 
 using namespace openstitch;
@@ -117,5 +118,69 @@ TEST_CASE("responsiveness with 1, 100, 500 and 1000 objects", "[.perf][desktop_v
                     count, addMs, copyMs, seqMs, previewMs, p95, max, oneMs, moveMs);
         // Plafond du retour local : 50 ms au 95e centile, même en Debug sur une machine lente.
         CHECK(p95 < 50.0);
+    }
+}
+
+namespace {
+
+// Serpentin de N segments de ~1 mm (comme les scenes du banc Studio), 1 000 segments par objet.
+[[nodiscard]] StudioSceneSnapshot syntheticPickScene(std::size_t count) {
+    StudioSceneSnapshot scene;
+    scene.threadWidthMm = 0.22;
+    const int perRow = 200;
+    scene.segments.reserve(count);
+    for (std::size_t i = 0; i < count; ++i) {
+        const int row = static_cast<int>(i) / perRow;
+        const int col = static_cast<int>(i) % perRow;
+        const float x = static_cast<float>(row % 2 == 0 ? col : perRow - col);
+        const float y = static_cast<float>(row) * 0.5F;
+        const float dx = row % 2 == 0 ? 1.0F : -1.0F;
+        scene.segments.push_back({{x, y, x + dx, y, {10, 20, 30}}, 1 + i / 1000});
+    }
+    return scene;
+}
+
+} // namespace
+
+// Survol Studio : pick() est appele a chaque mouvement de souris sur le fil d'interface.
+TEST_CASE("perf: StudioSceneSnapshot pick au survol", "[.perf][pick]") {
+    for (const std::size_t count : {1000UL, 10000UL, 100000UL, 500000UL}) {
+        const auto linear = syntheticPickScene(count);
+        auto indexed = linear;
+        const auto gridStart = Clock::now();
+        indexed.pickGrid = build_pick_grid(indexed.segments);
+        std::printf("[perf-pick] n=%zu grid build=%.2fms\n", count, msSince(gridStart));
+        REQUIRE(indexed.pickGrid);
+        const double height = static_cast<double>(count / 200) * 0.5 + 1.0;
+        for (const auto& [mode, scene] :
+             {std::pair<const char*, const StudioSceneSnapshot*>{"linear", &linear},
+              std::pair<const char*, const StudioSceneSnapshot*>{"grid  ", &indexed}}) {
+            std::vector<double> hitUs;
+            std::vector<double> missUs;
+            std::uint32_t state = 12345;
+            const auto next = [&state] {
+                state = state * 1664525U + 1013904223U;
+                return static_cast<double>(state >> 8) / static_cast<double>(1U << 24);
+            };
+            for (int i = 0; i < 2000; ++i) {
+                const double x = next() * 200.0;
+                const double y = next() * height;
+                const auto start = Clock::now();
+                const auto found = scene->pick(x, y, 0.3);
+                const double us = msSince(start) * 1000.0;
+                (found ? hitUs : missUs).push_back(us);
+            }
+            const auto report = [&](const char* label, const std::vector<double>& v) {
+                if (!v.empty()) {
+                    std::printf(
+                        "[perf-pick] n=%zu %s %s count=%zu p50=%.1fus p95=%.1fus p99=%.1fus\n",
+                        count, mode, label, v.size(), percentile(v, 0.50), percentile(v, 0.95),
+                        percentile(v, 0.99));
+                }
+            };
+            report("hit ", hitUs);
+            report("miss", missUs);
+            CHECK(hitUs.size() + missUs.size() == 2000);
+        }
     }
 }

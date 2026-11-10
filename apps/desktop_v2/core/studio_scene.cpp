@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <limits>
 #include <utility>
 
 #include "openstitch/stitch_generation/overrides.hpp"
@@ -34,7 +35,110 @@ double distanceSquared(double x, double y, const stitch_render::ThreadSegment& s
     return ex * ex + ey * ey;
 }
 
+constexpr double kPickCellMm = 2.0;
+constexpr std::int64_t kMaxPickCells = 4'000'000;
+constexpr std::int64_t kMaxPickCellsPerQuery = 4096;
+
+bool finiteSegment(const stitch_render::ThreadSegment& s) {
+    return std::isfinite(s.ax) && std::isfinite(s.ay) && std::isfinite(s.bx) && std::isfinite(s.by);
+}
+
+// Indice de cellule entier le long d'un axe, borné à [0, count - 1].
+int cellIndex(double value, double origin, double cell, int count) {
+    const double raw = std::floor((value - origin) / cell);
+    return static_cast<int>(std::clamp(raw, 0.0, static_cast<double>(count - 1)));
+}
+
 } // namespace
+
+std::shared_ptr<const StudioPickGrid> build_pick_grid(const std::vector<StudioSegment>& segments) {
+    auto grid = std::make_shared<StudioPickGrid>();
+    grid->segmentCount = segments.size();
+    double minX = std::numeric_limits<double>::infinity();
+    double minY = minX;
+    double maxX = -minX;
+    double maxY = -minX;
+    for (const auto& segment : segments) {
+        const auto& t = segment.thread;
+        if (segment.objectId == 0 || !finiteSegment(t)) {
+            continue;
+        }
+        minX = std::min({minX, static_cast<double>(t.ax), static_cast<double>(t.bx)});
+        maxX = std::max({maxX, static_cast<double>(t.ax), static_cast<double>(t.bx)});
+        minY = std::min({minY, static_cast<double>(t.ay), static_cast<double>(t.by)});
+        maxY = std::max({maxY, static_cast<double>(t.ay), static_cast<double>(t.by)});
+    }
+    if (!(minX <= maxX) || !(minY <= maxY)) {
+        return grid; // aucune géométrie sélectionnable : columns == 0, pick répond « rien »
+    }
+    double cell = kPickCellMm;
+    const auto cellsFor = [&](double size) {
+        const auto cols = static_cast<std::int64_t>(std::floor((maxX - minX) / size)) + 1;
+        const auto rows = static_cast<std::int64_t>(std::floor((maxY - minY) / size)) + 1;
+        return std::pair{cols, rows};
+    };
+    while (true) {
+        const auto [cols, rows] = cellsFor(cell);
+        if (cols * rows <= kMaxPickCells) {
+            break;
+        }
+        cell *= 2.0;
+    }
+    const auto [cols, rows] = cellsFor(cell);
+    grid->originX = minX;
+    grid->originY = minY;
+    grid->cellMm = cell;
+    grid->columns = static_cast<int>(cols);
+    grid->rows = static_cast<int>(rows);
+
+    const auto cellCount = static_cast<std::size_t>(cols * rows);
+    const auto forEachCell = [&](const stitch_render::ThreadSegment& t, auto&& visit) {
+        const int c0 = cellIndex(std::min(t.ax, t.bx), minX, cell, grid->columns);
+        const int c1 = cellIndex(std::max(t.ax, t.bx), minX, cell, grid->columns);
+        const int r0 = cellIndex(std::min(t.ay, t.by), minY, cell, grid->rows);
+        const int r1 = cellIndex(std::max(t.ay, t.by), minY, cell, grid->rows);
+        for (int r = r0; r <= r1; ++r) {
+            for (int c = c0; c <= c1; ++c) {
+                visit(static_cast<std::size_t>(r) * static_cast<std::size_t>(grid->columns) +
+                      static_cast<std::size_t>(c));
+            }
+        }
+    };
+    // Passe 1 : compter ; passe 2 : remplir. Les indices de segment croissent donc chaque cellule
+    // est triée sans tri explicite, et la construction est déterministe.
+    std::vector<std::uint32_t> counts(cellCount + 1, 0);
+    std::size_t total = 0;
+    for (const auto& segment : segments) {
+        if (segment.objectId == 0 || !finiteSegment(segment.thread)) {
+            continue;
+        }
+        forEachCell(segment.thread, [&](std::size_t cellId) {
+            ++counts[cellId + 1];
+            ++total;
+        });
+    }
+    // Garde-fou mémoire : une scène pathologique (segments immenses) retombe sur le balayage.
+    if (total > segments.size() * 32 + 1'000'000 ||
+        total > std::numeric_limits<std::uint32_t>::max()) {
+        return nullptr;
+    }
+    for (std::size_t i = 1; i < counts.size(); ++i) {
+        counts[i] += counts[i - 1];
+    }
+    grid->offsets = counts;
+    grid->items.resize(total);
+    std::vector<std::uint32_t> cursor(counts.begin(), counts.end() - 1);
+    for (std::size_t i = 0; i < segments.size(); ++i) {
+        const auto& segment = segments[i];
+        if (segment.objectId == 0 || !finiteSegment(segment.thread)) {
+            continue;
+        }
+        forEachCell(segment.thread, [&](std::size_t cellId) {
+            grid->items[cursor[cellId]++] = static_cast<std::uint32_t>(i);
+        });
+    }
+    return grid;
+}
 
 std::optional<std::uint64_t> StudioSceneSnapshot::pick(double xMm, double yMm,
                                                        double toleranceMm) const {
@@ -43,8 +147,51 @@ std::optional<std::uint64_t> StudioSceneSnapshot::pick(double xMm, double yMm,
         return std::nullopt;
     }
     const double radius = toleranceMm + threadWidthMm / 2.0;
+    const double radiusSquared = radius * radius;
+    if (pickGrid && pickGrid->segmentCount == segments.size()) {
+        const auto& grid = *pickGrid;
+        if (grid.columns == 0) {
+            return std::nullopt;
+        }
+        // Marge de 1 nm : l'arrondi flottant ne doit jamais exclure une cellule candidate.
+        const double reach = radius + 1e-6;
+        const double hi = static_cast<double>(grid.columns);
+        const double hj = static_cast<double>(grid.rows);
+        if (xMm + reach < grid.originX || yMm + reach < grid.originY ||
+            xMm - reach > grid.originX + hi * grid.cellMm ||
+            yMm - reach > grid.originY + hj * grid.cellMm) {
+            return std::nullopt;
+        }
+        const int c0 = cellIndex(xMm - reach, grid.originX, grid.cellMm, grid.columns);
+        const int c1 = cellIndex(xMm + reach, grid.originX, grid.cellMm, grid.columns);
+        const int r0 = cellIndex(yMm - reach, grid.originY, grid.cellMm, grid.rows);
+        const int r1 = cellIndex(yMm + reach, grid.originY, grid.cellMm, grid.rows);
+        const auto queryCells = static_cast<std::int64_t>(c1 - c0 + 1) * (r1 - r0 + 1);
+        if (queryCells <= kMaxPickCellsPerQuery) {
+            std::optional<std::uint32_t> best;
+            for (int r = r0; r <= r1; ++r) {
+                for (int c = c0; c <= c1; ++c) {
+                    const auto cellId =
+                        static_cast<std::size_t>(r) * static_cast<std::size_t>(grid.columns) +
+                        static_cast<std::size_t>(c);
+                    // Indices croissants : on part de la fin et on s'arrête au premier trouvé.
+                    for (auto k = grid.offsets[cellId + 1]; k > grid.offsets[cellId]; --k) {
+                        const std::uint32_t index = grid.items[k - 1];
+                        if (best && index <= *best) {
+                            break;
+                        }
+                        if (distanceSquared(xMm, yMm, segments[index].thread) <= radiusSquared) {
+                            best = index;
+                            break;
+                        }
+                    }
+                }
+            }
+            return best ? std::optional(segments[*best].objectId) : std::nullopt;
+        }
+    }
     for (auto it = segments.rbegin(); it != segments.rend(); ++it) {
-        if (it->objectId != 0 && distanceSquared(xMm, yMm, it->thread) <= radius * radius) {
+        if (it->objectId != 0 && distanceSquared(xMm, yMm, it->thread) <= radiusSquared) {
             return it->objectId; // last sewn object wins, including overlapping colours
         }
     }
@@ -204,6 +351,12 @@ build_studio_scene(std::shared_ptr<const document::Project> project, std::uint64
         return cancelled_error();
     }
     scene->timing.verticesMs = millis(verticesStart);
+    const auto gridStart = Clock::now();
+    scene->pickGrid = build_pick_grid(scene->segments);
+    scene->timing.pickGridMs = millis(gridStart);
+    if (task.cancelled()) {
+        return cancelled_error();
+    }
     return std::shared_ptr<const StudioSceneSnapshot>(std::move(scene));
 }
 
