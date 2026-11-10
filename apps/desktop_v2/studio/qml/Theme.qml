@@ -33,6 +33,11 @@ QtObject {
     readonly property color accentSoft: light ? "#f6d9e6" : "#4b344c"
     readonly property color accentInk: light ? "#ffffff" : "#281a28"
     readonly property color success: light ? "#2c6b4b" : "#93d5b9"
+    // Couleurs proposées pour les guides du canevas (panneau Vue).
+    readonly property color guideCyan: "#00bcd4"
+    readonly property color guideRed: "#e53935"
+    readonly property color guideGreen: "#43a047"
+    readonly property color guideMagenta: "#d81b60"
 
     // Shared visual rhythm; avoid local type scales and duplicated sizes.
     // Qt falls back to the system sans-serif if the variable face is unavailable.

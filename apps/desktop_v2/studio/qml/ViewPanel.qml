@@ -261,8 +261,8 @@ Item {
                             spacing: 4
                             Text { text: qsTr("Couleur des guides"); color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize }
                             Repeater {
-                                model: [ { name: qsTr("Cyan"), color: "#00bcd4" }, { name: qsTr("Rouge"), color: "#e53935" },
-                                         { name: qsTr("Vert"), color: "#43a047" }, { name: qsTr("Magenta"), color: "#d81b60" } ]
+                                model: [ { name: qsTr("Cyan"), color: Theme.guideCyan }, { name: qsTr("Rouge"), color: Theme.guideRed },
+                                         { name: qsTr("Vert"), color: Theme.guideGreen }, { name: qsTr("Magenta"), color: Theme.guideMagenta } ]
                                 delegate: StudioButton {
                                     required property var modelData
                                     required property int index

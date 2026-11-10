@@ -212,6 +212,26 @@ private slots:
         // Molette sur la largeur (comme les champs numériques de V1) : +1 mm par cran, une seule
         // étape d'annulation après la rafale (validation différée).
         {
+            // Fenêtre basse : le panneau déborde et son défilement doit rester immobile pendant la
+            // molette sur le champ (la molette règle la valeur, elle ne fait pas défiler).
+            const auto originalSize = window->size();
+            window->resize(1440, 480);
+            QTRY_COMPARE(window->height(), 480);
+            auto* sidePanel = named(window, QStringLiteral("imageSidePanel"));
+            QQuickItem* scroller = nullptr;
+            QTRY_VERIFY_WITH_TIMEOUT(
+                [&] {
+                    for (auto* item : sidePanel->findChildren<QQuickItem*>()) {
+                        const auto content = item->property("contentHeight");
+                        if (content.isValid() && content.toDouble() > item->height() + 10.0) {
+                            scroller = item;
+                            return true;
+                        }
+                    }
+                    return false;
+                }(),
+                5'000);
+            const double scrollBefore = scroller->property("contentY").toDouble();
             auto* widthField = named(window, QStringLiteral("imageWidthMm"));
             const double widthBefore = imageSpace.imageWidthMm();
             QTRY_COMPARE(widthField->property("text").toString(),
@@ -227,8 +247,11 @@ private slots:
             QTRY_VERIFY_WITH_TIMEOUT(
                 std::abs(imageSpace.imageWidthMm() - (widthBefore + 3.0)) < 0.1, 5'000);
             QCOMPARE(session.undoNames().size(), depth + 1);
+            QCOMPARE(scroller->property("contentY").toDouble(), scrollBefore);
             QVERIFY(session.undo()); // la taille d'origine revient d'un coup
             QVERIFY(std::abs(imageSpace.imageWidthMm() - widthBefore) < 1e-6);
+            window->resize(originalSize);
+            QTRY_COMPARE(window->size(), originalSize);
         }
 
         // Visiting Segmentation does not compute it. Only the explicit action does.

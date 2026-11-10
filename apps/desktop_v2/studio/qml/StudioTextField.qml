@@ -53,6 +53,7 @@ Controls.TextField {
     }
     WheelHandler {
         objectName: "wheelStepper"
+        blocking: true // la molette sur un champ numérique ne fait JAMAIS défiler le panneau derrière
         enabled: control.wheelStep > 0 && control.enabled
         acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
         onWheel: (event) => {
