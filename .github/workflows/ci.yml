@@ -100,38 +100,6 @@ jobs:
             build/msvc/apps/mcp/Release/
             build/msvc/apps/desktop_v2/studio/Release/
 
-      - name: Capture Desktop V2 screenshots (offscreen)
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $env:QT_QPA_PLATFORM = 'offscreen'
-          $env:QT_SCALE_FACTOR = '1'
-          $env:QT_QPA_PLATFORM_PLUGIN_PATH = Join-Path $env:QT_ROOT_DIR 'plugins/platforms'
-          New-Item -ItemType Directory -Force -Path dist/v2-screenshots | Out-Null
-          $exe = Get-ChildItem build/msvc -Filter openstitch_v2.exe -Recurse -File |
-            Where-Object { $_.FullName -match 'Release' } | Select-Object -First 1
-          if (-not $exe) { throw 'openstitch_v2.exe not found in Release build' }
-          foreach ($size in @('1280x720', '1920x1080')) {
-            $output = Join-Path (Resolve-Path dist/v2-screenshots) "openstitch-v2-$size.png"
-            # WIN32 GUI executables launch asynchronously with PowerShell's call operator.
-            # Wait for the actual process before checking the screenshot and its exit code.
-            $process = Start-Process -FilePath $exe.FullName -ArgumentList @(
-              '--new', '--demo-shapes', '--screenshot', $output, '--screenshot-size', $size
-            ) -Wait -PassThru -NoNewWindow
-            if ($process.ExitCode -ne 0) { throw "V2 screenshot failed for $size (exit $($process.ExitCode))" }
-            if (-not (Test-Path $output)) { throw "Missing screenshot: $output" }
-            if ((Get-Item $output).Length -lt 1024) { throw "Screenshot unexpectedly small: $output" }
-          }
-
-      - name: Upload Desktop V2 screenshots
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: openstitch-v2-screenshots-windows
-          if-no-files-found: warn
-          retention-days: 30
-          path: dist/v2-screenshots/*.png
-
       - name: Build and capture experimental Qt Quick Studio
         shell: pwsh
         run: |

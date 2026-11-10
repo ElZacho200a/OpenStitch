@@ -596,3 +596,14 @@ encore le desktop principal.
   comme l'union des deux parents. Après intégration : cinq cibles V2/Studio reconstruites,
   **293 cas / 7 620 assertions** du cœur et les **deux shells QTest** réussis. CI GitHub suivie
   séparément ; le prototype reste expérimental et la PR reste ouverte.
+
+## 2026-11-10 — suppression de l'interface V2 Widgets
+
+- Supprimés : `apps/desktop_v2/ui/` (58 fichiers), cible `openstitch_v2`, bibliothèque
+  `openstitch_desktop_v2_ui`, `test_desktop_v2_shell` (`test_shell_window.cpp`), étape CI
+  « Capture Desktop V2 screenshots », volet « Widgets » de `openstitch-studio-bench` et de
+  `scripts/performance/benchmark_studio.ps1` (le banc utilise `QGuiApplication`, sans Qt Widgets).
+- Conservés : `apps/desktop_v2/core/`, le Studio, `live_server` (déplacé dans `live/`), la V1
+  `apps/desktop`. Le banc reste nécessaire à la CI pour générer le projet réel (`--generate-project`).
+- Preuve : voir la PR de suppression (build complet de toutes les cibles, tests). La parité
+  fonctionnelle du Studio n'est pas démontrée par cette suppression.
