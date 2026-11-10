@@ -437,6 +437,30 @@ private slots:
                      expectedPreview.value("after").toInt());
         rig.regions.selectAtPixel(20, 20);
         QCOMPARE(rig.regions.selectedCount(), 1);
+        // F08-02: a user-chosen destination replaces the automatic first
+        // neighbour. One real document command, one undo, and target ID kept.
+        const auto sourceId = rig.regions.selected().front().toDouble();
+        double destinationId = 0;
+        for (const auto& item : rig.regions.regions()) {
+            const double id = item.toMap().value("id").toDouble();
+            if (id != sourceId) {
+                destinationId = id;
+                break;
+            }
+        }
+        QVERIFY(destinationId > 0);
+        const auto beforeTargetMerge = rig.session.undoNames().size();
+        QVERIFY(rig.press("regionChooseMergeTarget"));
+        QTRY_VERIFY(palette->property("choosingMergeTarget").toBool());
+        QVERIFY(QMetaObject::invokeMethod(
+            palette, "tappedRegion", Qt::DirectConnection,
+            Q_ARG(QVariant, QVariant(destinationId)),
+            Q_ARG(QVariant, QVariant(false))));
+        QCOMPARE(rig.session.undoNames().size(), beforeTargetMerge + 1);
+        QTRY_VERIFY(!palette->property("choosingMergeTarget").toBool());
+        QVERIFY(rig.session.undo());
+        rig.regions.selectAtPixel(20, 20);
+        QCOMPARE(rig.regions.selectedCount(), 1);
         rig.named("regionColorField")->setProperty("text", QStringLiteral("#00aa55"));
         QTRY_VERIFY(rig.named("regionRecolor")->isEnabled());
         QVERIFY(rig.press("regionRecolor"));
