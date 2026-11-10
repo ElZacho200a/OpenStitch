@@ -19,6 +19,19 @@ Rectangle {
         return isFinite(number) ? number : NaN
     }
     function validRailCoordinate(value) { return isFinite(parseRailCoordinate(value)) }
+    function validGuidePoints() {
+        if (!validRailCoordinate(guideX0.text) || !validRailCoordinate(guideY0.text)
+                || !validRailCoordinate(guideX1.text) || !validRailCoordinate(guideY1.text))
+            return false
+        return parseRailCoordinate(guideX0.text) !== parseRailCoordinate(guideX1.text)
+            || parseRailCoordinate(guideY0.text) !== parseRailCoordinate(guideY1.text)
+    }
+    function guidePoints() {
+        return [
+            { x: parseRailCoordinate(guideX0.text), y: parseRailCoordinate(guideY0.text) },
+            { x: parseRailCoordinate(guideX1.text), y: parseRailCoordinate(guideY1.text) }
+        ]
+    }
     color: Theme.panel
     border.color: Theme.divider
     radius: Theme.radius
@@ -89,6 +102,50 @@ Rectangle {
                     onClicked: panel.controller.moveRailNode(side.currentText, node.value,
                         panel.parseRailCoordinate(nx.text), panel.parseRailCoordinate(ny.text))
                 }
+            }
+            SectionLabel { text: qsTr("TRACER UN GUIDE (mm)") }
+            RowLayout {
+                Layout.fillWidth: true
+                StudioLabel { text: qsTr("Début") }
+                StudioTextField {
+                    id: guideX0
+                    objectName: "guideStartX"
+                    Layout.fillWidth: true
+                    placeholderText: qsTr("X0")
+                    invalid: text.length > 0 && !panel.validRailCoordinate(text)
+                }
+                StudioTextField {
+                    id: guideY0
+                    objectName: "guideStartY"
+                    Layout.fillWidth: true
+                    placeholderText: qsTr("Y0")
+                    invalid: text.length > 0 && !panel.validRailCoordinate(text)
+                }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                StudioLabel { text: qsTr("Fin") }
+                StudioTextField {
+                    id: guideX1
+                    objectName: "guideEndX"
+                    Layout.fillWidth: true
+                    placeholderText: qsTr("X1")
+                    invalid: text.length > 0 && !panel.validRailCoordinate(text)
+                }
+                StudioTextField {
+                    id: guideY1
+                    objectName: "guideEndY"
+                    Layout.fillWidth: true
+                    placeholderText: qsTr("Y1")
+                    invalid: text.length > 0 && !panel.validRailCoordinate(text)
+                }
+            }
+            StudioButton {
+                objectName: "addDirectionGuide"
+                text: qsTr("Ajouter le guide")
+                enabled: panel.ready && panel.validGuidePoints()
+                tooltip: qsTr("Crée un guide de direction entre deux points du modèle (mm)")
+                onClicked: panel.controller.addGuide(panel.guidePoints(), false)
             }
             SectionLabel { text: qsTr("GUIDES DE DIRECTION") }
             Text {
