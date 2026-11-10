@@ -125,7 +125,10 @@ def score(model: dict, candidate: dict) -> float:
         type(w) not in (float, int) or not math.isfinite(w) for w in weights
     ):
         fail("invalid model weights")
-    return sum(a * b for a, b in zip(weights, vector(candidate)))
+    result = sum(a * b for a, b in zip(weights, vector(candidate)))
+    if not math.isfinite(result):
+        fail("nonfinite candidate score")
+    return result
 
 
 def rank(model: dict, row: dict) -> list[dict]:
