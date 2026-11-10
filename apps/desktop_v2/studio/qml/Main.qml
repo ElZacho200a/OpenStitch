@@ -542,6 +542,16 @@ Window {
                     Accessible.role: Accessible.StaticText
                     Accessible.name: text
                 }
+                Rectangle {
+                    objectName: "studioReducedMotionBusy"
+                    visible: studio.busy && Theme.reducedMotion
+                    implicitWidth: 10
+                    implicitHeight: 10
+                    radius: 5
+                    color: Theme.info
+                    Accessible.role: Accessible.StaticText
+                    Accessible.name: qsTr("Opération en cours")
+                }
                 Controls.BusyIndicator {
                     objectName: "studioBusyIndicator"
                     visible: studio.busy
