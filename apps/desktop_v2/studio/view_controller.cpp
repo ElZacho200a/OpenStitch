@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "view_controller.hpp"
 
+#include "task_pump.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <fstream>
@@ -71,9 +73,7 @@ ViewController::ViewController(StudioController& studio, std::filesystem::path c
     }
     connect(&studio_, &StudioController::changed, this, &ViewController::changed);
     connect(&studio_, &StudioController::sceneChanged, this, &ViewController::onSceneChanged);
-    pump_.setInterval(8);
-    connect(&pump_, &QTimer::timeout, this, [this] { tasks_.pump(); });
-    pump_.start();
+    attachTaskPump(tasks_, this);
     playTimer_.setInterval(33);
     connect(&playTimer_, &QTimer::timeout, this, [this] { advance(33); });
     if (studio_.scene()) {
@@ -82,7 +82,6 @@ ViewController::ViewController(StudioController& studio, std::filesystem::path c
 }
 
 ViewController::~ViewController() {
-    pump_.stop();
     playTimer_.stop();
     tasks_.cancelAll();
 }

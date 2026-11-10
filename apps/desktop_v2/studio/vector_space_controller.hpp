@@ -96,7 +96,6 @@ private:
     int builds_{0};
     // Reconstruction asynchrone : une seule à la fois, les résultats périmés sont ignorés.
     TaskManager tasks_;
-    QTimer pump_;
     std::uint64_t buildRequest_{0};
     bool pending_{false};
     std::vector<std::uint64_t> pendingVisualKeys_;

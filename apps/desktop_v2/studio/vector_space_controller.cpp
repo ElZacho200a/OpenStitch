@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "vector_space_controller.hpp"
 
+#include "task_pump.hpp"
+
 #include <algorithm>
 
 #include "gpu_canvas.hpp"
@@ -120,14 +122,11 @@ VectorSpaceController::VectorSpaceController(StudioController& studio, QObject* 
     connect(&studio_, &StudioController::selectionChanged, this,
             &VectorSpaceController::layerChanged);
     connect(&studio_, &StudioController::changed, this, &VectorSpaceController::refresh);
-    pump_.setInterval(8);
-    connect(&pump_, &QTimer::timeout, this, [this] { tasks_.pump(); });
-    pump_.start();
+    attachTaskPump(tasks_, this);
     refresh();
 }
 
 VectorSpaceController::~VectorSpaceController() {
-    pump_.stop();
     tasks_.cancelAll();
 }
 

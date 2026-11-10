@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "analysis_controller.hpp"
 
+#include "task_pump.hpp"
+
 #include <QImage>
 #include <algorithm>
 #include <cmath>
@@ -91,13 +93,10 @@ AnalysisController::AnalysisController(StudioController& studio, ViewController&
         }
     });
     connect(&studio_, &StudioController::changed, this, &AnalysisController::onDocumentChanged);
-    pump_.setInterval(8);
-    connect(&pump_, &QTimer::timeout, this, [this] { tasks_.pump(); });
-    pump_.start();
+    attachTaskPump(tasks_, this);
 }
 
 AnalysisController::~AnalysisController() {
-    pump_.stop();
     tasks_.cancelAll();
 }
 

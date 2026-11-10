@@ -204,7 +204,6 @@ private:
     int spm_{800};
     double carry_{0.0};
     QTimer playTimer_;
-    QTimer pump_;
     TaskManager tasks_;
 };
 

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "file_controller.hpp"
 
+#include "task_pump.hpp"
+
 #include <QColor>
 #include <QDesktopServices>
 #include <QDir>
@@ -240,9 +242,7 @@ FileController::FileController(StudioController& studio, ActionController* actio
             setMessage(studio_.status(), true);
         }
     });
-    pump_.setInterval(16);
-    connect(&pump_, &QTimer::timeout, this, [this] { tasks_.pump(); });
-    pump_.start();
+    attachTaskPump(tasks_, this);
     autosaveTimer_.setInterval(60'000);
     connect(&autosaveTimer_, &QTimer::timeout, this, [this] { (void)autosaveNow(); });
     if (autosave_) {
@@ -251,7 +251,6 @@ FileController::FileController(StudioController& studio, ActionController* actio
 }
 
 FileController::~FileController() {
-    pump_.stop();
     autosaveTimer_.stop();
     tasks_.cancelAll();
 }

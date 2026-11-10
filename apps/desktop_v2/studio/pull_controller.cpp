@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "pull_controller.hpp"
 
+#include "task_pump.hpp"
+
 #include <QFile>
 #include <QSaveFile>
 #include <algorithm>
@@ -17,9 +19,7 @@ QString q(const std::string& s) {
 PullController::PullController(StudioController& studio, InspectorController* inspector,
                                QObject* parent)
     : QObject(parent), studio_(studio), inspector_(inspector) {
-    pump_.setInterval(8);
-    connect(&pump_, &QTimer::timeout, this, [this] { tasks_.pump(); });
-    pump_.start();
+    attachTaskPump(tasks_, this);
     connect(&studio_, &StudioController::changed, this, [this] { emit changed(); });
     if (inspector_ != nullptr) {
         connect(inspector_, &QObject::destroyed, this, [this] { inspector_ = nullptr; });

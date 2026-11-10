@@ -361,3 +361,21 @@ touche ni la broderie ni la segmentation, et les commandes d'image/segmentation 
 relance pas la scène pour elles, d'après `lastChangeAffectsEmbroidery()`, mais ce n'est pas testé
 ici) ; `rebuildScene` annule aussi toutes les tâches de son `TaskManager`, qui ne porte que
 l'ouverture de projet et la géométrie (PERF-012 : sans autre tâche à épargner dans ce contrôleur).
+
+## 10 novembre 2026 — Fin du sondage `TaskManager::pump()` par minuteur (PERF-STUDIO, lot « 60 fps »)
+
+**Constat (code de `feat/studio-parity-f26-…`)** : 11 contrôleurs Studio (`StudioController`,
+`FileController`, `ImageController`, `RegionController`, `ViewController`, `AnalysisController`,
+`FixController`, `PullController`, `VectorSpaceController`, `BucketTool`, `WarpTool`) gardaient
+chacun un `QTimer` de 8 ou 16 ms allumé en permanence pour appeler `tasks_.pump()` : environ
+1 100 réveils/s du fil d'interface au repos, sans tâche en cours.
+
+**Correctif** : `TaskManager::setCompletionNotifier` (appelé depuis le fil de travail, hors verrou)
+et `studio/task_pump.hpp::attachTaskPump`, qui poste un seul événement coalescé ; `pump()` tourne
+sur le fil du contrôleur quand une tâche se termine. Livraison inchangée (même fil, même ordre).
+
+**Preuves** : `test_task_manager` (notifieur : un appel par tâche, aucun avant, retirable) ;
+`test_studio_shell::idleControllerDoesNotWakeTheEventLoop` (réveils au repos ≤ base + 5) ; suites
+Studio shell/files/view/image/fix/warp_bucket/space_vector/space_segmentation vertes (Debug,
+offscreen). **Non mesuré** : gain de fps de l'application entière (Release, fenêtre native,
+projet réel), CI GitHub. Le test n'a pas été vérifié en rouge sur l'ancien code.

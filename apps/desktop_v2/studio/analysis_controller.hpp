@@ -168,7 +168,6 @@ private:
     std::optional<std::uint64_t> realisticRevision_;
     std::vector<UserHoop> userHoops_;
     RenderSettings render_;
-    QTimer pump_;
     TaskManager tasks_;
 };
 

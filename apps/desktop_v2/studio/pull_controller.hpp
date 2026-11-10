@@ -94,7 +94,6 @@ private:
     InspectorController* inspector_;
     PullCalibration calibration_;
     TaskManager tasks_;
-    QTimer pump_;
     QVariantMap comparison_;
     QVariantMap registration_;
     std::vector<std::uint8_t> compensatedDst_;

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "region_controller.hpp"
 
+#include "task_pump.hpp"
+
 #include <QColor>
 #include <QImage>
 #include <algorithm>
@@ -47,9 +49,7 @@ double numberOr(const QVariantMap& map, const char* key, double fallback) {
 RegionController::RegionController(StudioController& studio, ImageController& images,
                                    QObject* parent)
     : QObject(parent), studio_(studio), images_(images) {
-    pump_.setInterval(16);
-    connect(&pump_, &QTimer::timeout, this, [this] { tasks_.pump(); });
-    pump_.start();
+    attachTaskPump(tasks_, this);
     refreshTimer_.setSingleShot(true);
     refreshTimer_.setInterval(0);
     connect(&refreshTimer_, &QTimer::timeout, this, [this] { refresh(); });
@@ -76,7 +76,6 @@ RegionController::RegionController(StudioController& studio, ImageController& im
 }
 
 RegionController::~RegionController() {
-    pump_.stop();
     tasks_.cancelAll();
     studio_.session().unsubscribe(token_);
 }
