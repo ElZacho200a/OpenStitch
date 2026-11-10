@@ -1,5 +1,7 @@
 """Tests sans dépendances ni poids téléchargés pour IA-AUTO-01 L2."""
 import importlib.util
+import contextlib
+import io
 import json
 from pathlib import Path
 import tempfile
@@ -44,6 +46,39 @@ def sample(index=0, kind="synthetic"):
 
 
 class RankerTest(unittest.TestCase):
+    def test_assess_cli_exposes_all_quality_thresholds(self):
+        model = ranker.train_model([sample(i) for i in range(6)], epochs=10)
+        with tempfile.TemporaryDirectory() as folder:
+            model_path = Path(folder) / "model.json"
+            sample_path = Path(folder) / "sample.json"
+            model_path.write_text(json.dumps(model), encoding="utf-8")
+            sample_path.write_text(json.dumps(sample()), encoding="utf-8")
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                status = ranker.main(["assess", str(model_path), str(sample_path),
+                                      "--min-coverage", "0.99",
+                                      "--max-uncovered", "0.01",
+                                      "--max-short-stitches", "0",
+                                      "--max-overdensity", "0"])
+            self.assertEqual(status, 0)
+            result = json.loads(stdout.getvalue())
+            self.assertEqual(result["decision"], "abstain")
+            self.assertEqual(result["reason"], "no_admissible_candidate")
+            self.assertEqual(len(result["rejected"]), 2)
+            self.assertFalse(result["applied"])
+
+    def test_assess_cli_invalid_threshold_returns_error(self):
+        model = ranker.train_model([sample(i) for i in range(6)], epochs=10)
+        with tempfile.TemporaryDirectory() as folder:
+            model_path = Path(folder) / "model.json"
+            sample_path = Path(folder) / "sample.json"
+            model_path.write_text(json.dumps(model), encoding="utf-8")
+            sample_path.write_text(json.dumps(sample()), encoding="utf-8")
+            with contextlib.redirect_stderr(io.StringIO()):
+                status = ranker.main(["assess", str(model_path), str(sample_path),
+                                      "--max-overdensity", "nan"])
+            self.assertEqual(status, 2)
+
     def test_valid_example(self):
         ranker.check_sample(sample())
 
