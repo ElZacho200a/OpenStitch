@@ -571,9 +571,34 @@ void StudioDigitizeTest::mainQmlHostsDigitizePanels() {
     QVERIFY(press(window, "fadeRemove"));
     QTRY_VERIFY(!fade.hasFade());
 
-    // Satin panel.
+    // Satin panel: F19-02, numeric rail moves use full validated values
+    // and bound node indices, not partial parseFloat("0,5") == 0.
     QVERIFY(press(window, "satinPanelButton"));
     QVERIFY(named(window, "satinPanel")->isVisible());
+    const auto rung = [](double x, double y0, double y1) {
+        return QVariantMap{{"ax", x}, {"ay", y0}, {"bx", x}, {"by", y1}};
+    };
+    const auto satinId = satin.createFromRungs(
+        {rung(-10, 0, 4), rung(0, 1, 5), rung(10, 0, 4)});
+    QVERIFY(!satinId.isEmpty());
+    studio.selectObject(satinId);
+    QTRY_VERIFY(satin.isSatin());
+    auto* xField = named(window, "satinNodeX");
+    auto* yField = named(window, "satinNodeY");
+    auto* railNode = named(window, "satinNode");
+    auto* moveRail = named(window, "satinMoveNode");
+    QVERIFY(xField && yField && railNode && moveRail);
+    QTRY_COMPARE(railNode->property("to").toInt(), 2);
+    QVERIFY(xField->setProperty("text", QStringLiteral("0,5mm")));
+    QVERIFY(yField->setProperty("text", QStringLiteral("1,5")));
+    QTRY_VERIFY(!moveRail->isEnabled());
+    QVERIFY(xField->property("invalid").toBool());
+    QVERIFY(xField->setProperty("text", QStringLiteral("0,5")));
+    QTRY_VERIFY(moveRail->isEnabled());
+    const auto railDepth = session.undoNames().size();
+    QVERIFY(press(window, "satinMoveNode"));
+    QCOMPARE(session.undoNames().size(), railDepth + 1);
+    QVERIFY(session.undo());
     QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join('\n')));
 }
 
