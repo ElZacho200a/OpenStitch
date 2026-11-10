@@ -147,6 +147,7 @@ void StudioShellTest::realProjectSelectionAndViewInteractions() {
     QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, windowPoint(*canvas, firstPoint));
     QTRY_VERIFY(session.selection().contains({TargetKind::EmbroideryObject, firstId}));
     QTRY_VERIFY(controller.objects().front().toMap().value(QStringLiteral("selected")).toBool());
+    QCOMPARE(controller.primarySelectionId(), QString::number(firstId));
 
     QQuickItem* secondRow = nullptr;
     QTRY_VERIFY(QMetaObject::invokeMethod(objectList, "itemAtIndex",
@@ -159,6 +160,7 @@ void StudioShellTest::realProjectSelectionAndViewInteractions() {
     QCOMPARE(session.selection().targets().size(), std::size_t{1});
     QVERIFY(!controller.objects().front().toMap().value(QStringLiteral("selected")).toBool());
     QVERIFY(controller.objects().back().toMap().value(QStringLiteral("selected")).toBool());
+    QCOMPARE(controller.primarySelectionId(), QString::number(secondId));
 
     const ScenePoint cursor{canvas->width() * 0.4, canvas->height() * 0.4};
     const auto anchor = canvas->camera().screenToWorld(cursor);
