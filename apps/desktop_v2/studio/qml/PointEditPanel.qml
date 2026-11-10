@@ -15,7 +15,7 @@ Rectangle {
     // to PointEditController. parseFloat("0,5") is 0 and parseFloat("1mm") is 1.
     function parseOffset(value) {
         const normalized = String(value).trim().replace(",", ".")
-        if (!/^[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)$/.test(normalized))
+        if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(normalized))
             return NaN
         const number = Number(normalized)
         return isFinite(number) ? number : NaN
