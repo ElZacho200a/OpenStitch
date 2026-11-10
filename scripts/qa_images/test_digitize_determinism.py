@@ -33,6 +33,26 @@ class DeterminismGateTests(unittest.TestCase):
         self.assertEqual(report["sha256"][0], report["sha256"][1])
         self.assertNotEqual(outputs[0].parent, outputs[1].parent)
 
+    def test_opencv_startup_log_before_json_is_accepted(self):
+        def fake(argv, **kwargs):
+            Path(argv[3]).write_bytes(dst())
+            return SimpleNamespace(
+                returncode=0,
+                stdout='[ INFO:0@0.196] global registry_parallel.impl.hpp:96 Enabled backends\\n{"stitches":4}\\n',
+            )
+
+        report = verify(Path("fake-cli"), Path("fixture.png"), runner=fake)
+        self.assertEqual(report["failures"], [])
+        self.assertEqual(report["passes"], 2)
+
+    def test_startup_log_without_json_is_rejected(self):
+        def fake(argv, **kwargs):
+            Path(argv[3]).write_bytes(dst())
+            return SimpleNamespace(returncode=0, stdout="[ INFO:0] OpenCV startup\\n")
+
+        report = verify(Path("fake-cli"), Path("fixture.png"), runner=fake)
+        self.assertEqual(report["failures"], ["pass-1:invalid-json-stitches"])
+
     def test_zero_stitches_are_valid_for_empty_digitization(self):
         def fake(argv, **kwargs):
             Path(argv[3]).write_bytes(dst())
