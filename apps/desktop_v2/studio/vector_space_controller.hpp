@@ -26,6 +26,12 @@ class GpuCanvas;
 class VectorSpaceController : public QObject {
     Q_OBJECT
     Q_PROPERTY(int shapeCount READ shapeCount NOTIFY layerChanged)
+    // Précision de la vectorisation (V1) : tolérance de simplification en mm (polygones), ou
+    // courbes de Bézier avec un écart maximal en pixels. Appliquée à updateFromSegmentation().
+    Q_PROPERTY(double precisionMm READ precisionMm WRITE setPrecisionMm NOTIFY optionsChanged)
+    Q_PROPERTY(bool curves READ curves WRITE setCurves NOTIFY optionsChanged)
+    Q_PROPERTY(double curveTolerancePx READ curveTolerancePx WRITE setCurveTolerancePx NOTIFY
+                   optionsChanged)
     Q_PROPERTY(int layerBuildCount READ layerBuildCount NOTIFY layerChanged)
     // Vrai pendant qu'un calque est rasterisé sur un worker : l'ancien reste affiché.
     Q_PROPERTY(bool layerPending READ layerPending NOTIFY layerChanged)
@@ -74,7 +80,16 @@ public:
     // Numérise en objets de broderie les formes sans objet (UNE étape d'annulation).
     Q_INVOKABLE bool convertToEmbroidery();
 
+public:
+    [[nodiscard]] double precisionMm() const { return precisionMm_; }
+    [[nodiscard]] bool curves() const { return curves_; }
+    [[nodiscard]] double curveTolerancePx() const { return curveTolerancePx_; }
+    void setPrecisionMm(double mm);
+    void setCurves(bool on);
+    void setCurveTolerancePx(double px);
+
 signals:
+    void optionsChanged();
     void layerChanged();
     void messageChanged();
 
@@ -85,6 +100,9 @@ private:
     void startAsyncBuild(std::vector<std::uint64_t> keys);
     [[nodiscard]] std::vector<std::uint64_t> selectedShapeIds() const;
     void say(const QString& text);
+    double precisionMm_{0.2};
+    bool curves_{false};
+    double curveTolerancePx_{1.5};
 
     StudioController& studio_;
     QPointer<GpuCanvas> canvas_;

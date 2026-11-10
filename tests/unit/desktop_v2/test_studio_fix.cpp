@@ -14,6 +14,7 @@
 #include "fix_controller.hpp"
 #include "openstitch/commands/finishing_commands.hpp"
 #include "studio_controller.hpp"
+#include "vector_space_controller.hpp"
 
 using namespace openstitch;
 using namespace openstitch::desktop_v2;
@@ -165,6 +166,44 @@ private slots:
         rig.fix.discardReduction();
         QVERIFY(!rig.fix.reductionReady());
         QCOMPARE(rig.session.undoNames().size(), depth);
+    }
+    // Précision de la vectorisation sur une vraie image : une tolérance large donne moins de
+    // nœuds qu'une tolérance fine, et les courbes de Bézier produisent des tangentes.
+    void vectorizationPrecisionAndCurvesChangeTheContours() {
+        Rig rig;
+        rig.load();
+        VectorSpaceController vec(rig.studio);
+        const auto nodes = [&] {
+            std::size_t count = 0;
+            for (const auto& shape : rig.session.project().vector_objects) {
+                for (const auto& set : shape.paths) {
+                    count += set.outer.nodes.size();
+                    for (const auto& hole : set.holes) {
+                        count += hole.nodes.size();
+                    }
+                }
+            }
+            return count;
+        };
+        vec.setPrecisionMm(0.05);
+        (void)vec.updateFromSegmentation();
+        const auto fine = nodes();
+        vec.setPrecisionMm(1.0);
+        QVERIFY(vec.updateFromSegmentation());
+        const auto coarse = nodes();
+        QVERIFY2(coarse < fine, qPrintable(QStringLiteral("%1 >= %2").arg(coarse).arg(fine)));
+        vec.setCurves(true);
+        vec.setCurveTolerancePx(1.5);
+        QVERIFY(vec.updateFromSegmentation());
+        bool curved = false;
+        for (const auto& shape : rig.session.project().vector_objects) {
+            for (const auto& set : shape.paths) {
+                for (const auto& node : set.outer.nodes) {
+                    curved = curved || node.tan_in.has_value() || node.tan_out.has_value();
+                }
+            }
+        }
+        QVERIFY(curved);
     }
 };
 

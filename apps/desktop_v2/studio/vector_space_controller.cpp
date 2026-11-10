@@ -2,6 +2,9 @@
 #include "vector_space_controller.hpp"
 
 #include <algorithm>
+#include <cmath>
+
+#include <algorithm>
 
 #include "gpu_canvas.hpp"
 #include "openstitch/commands/composite_command.hpp"
@@ -31,7 +34,8 @@ struct Fresh {
     int orphan{0};
 };
 
-Fresh revectorize(const document::Project& project) {
+Fresh revectorize(const document::Project& project, double simplifyMm, bool curves,
+                  double curveTolerancePx) {
     Fresh out;
     if (!project.segmentation) {
         return out;
@@ -42,8 +46,13 @@ Fresh revectorize(const document::Project& project) {
             ids.push_back(slot->id);
         }
     }
-    const vectorization::VectorizeOptions options{.mm_per_px = project.mm_per_px,
-                                                  .detail_mask = &project.detail_mask};
+    const vectorization::VectorizeOptions options{
+        .mm_per_px = project.mm_per_px,
+        .simplify_tolerance = to_micrometers(Millimeters{simplifyMm}),
+        .curve_tolerance = curves ? Micrometers{static_cast<std::int32_t>(std::lround(
+                                        curveTolerancePx * project.mm_per_px.value * 1000.0))}
+                                  : Micrometers{0},
+        .detail_mask = &project.detail_mask};
     const auto results = vectorization::vectorize_regions(*project.segmentation, ids, options);
     for (std::size_t i = 0; i < ids.size(); ++i) {
         if (!results[i]) {
@@ -405,8 +414,32 @@ bool VectorSpaceController::selectOriginRegion() {
     return true;
 }
 
+void VectorSpaceController::setPrecisionMm(double mm) {
+    const double clamped = std::clamp(mm, 0.02, 2.0);
+    if (clamped != precisionMm_) {
+        precisionMm_ = clamped;
+        emit optionsChanged();
+    }
+}
+
+void VectorSpaceController::setCurves(bool on) {
+    if (on != curves_) {
+        curves_ = on;
+        emit optionsChanged();
+    }
+}
+
+void VectorSpaceController::setCurveTolerancePx(double px) {
+    const double clamped = std::clamp(px, 0.5, 10.0);
+    if (clamped != curveTolerancePx_) {
+        curveTolerancePx_ = clamped;
+        emit optionsChanged();
+    }
+}
+
 QVariantMap VectorSpaceController::updatePlan() const {
-    const auto fresh = revectorize(studio_.session().project());
+    const auto fresh =
+        revectorize(studio_.session().project(), precisionMm_, curves_, curveTolerancePx_);
     return {{QStringLiteral("replace"), static_cast<int>(fresh.replace.size())},
             {QStringLiteral("add"), static_cast<int>(fresh.add.size())},
             {QStringLiteral("keep"), fresh.keep},
@@ -419,7 +452,7 @@ bool VectorSpaceController::updateFromSegmentation() {
         say(tr("Aucune segmentation : rien à vectoriser."));
         return false;
     }
-    auto fresh = revectorize(session.project());
+    auto fresh = revectorize(session.project(), precisionMm_, curves_, curveTolerancePx_);
     if (fresh.replace.empty() && fresh.add.empty()) {
         say(tr("Les formes suivent déjà la segmentation."));
         return false;
