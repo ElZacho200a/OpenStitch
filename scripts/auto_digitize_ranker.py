@@ -282,7 +282,13 @@ def assess_candidates(model: dict, row: dict, *, min_margin: float = 0.1,
                 "margin": None, "rejected": rejected, "applied": False}
     accepted_ids = {c["id"] for c in accepted}
     ranked = [item for item in all_ranked if item["id"] in accepted_ids]
-    baseline = sorted(accepted, key=lambda c: (-heuristic(c), c["id"]))[0]["id"]
+    # The fallback must obey the same Pareto gate as the learned proposal:
+    # a heuristic winner can otherwise be strictly dominated on every
+    # measured quality/cost axis by another admissible candidate.
+    frontier = [c for c in accepted if not any(
+        other["id"] != c["id"] and dominates_quality(other, c)
+        for other in accepted)]
+    baseline = sorted(frontier, key=lambda c: (-heuristic(c), c["id"]))[0]["id"]
     selected_candidate = next(c for c in accepted if c["id"] == ranked[0]["id"])
     dominators = sorted(c["id"] for c in accepted
                         if c["id"] != selected_candidate["id"]
