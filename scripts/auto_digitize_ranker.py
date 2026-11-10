@@ -266,12 +266,17 @@ def assess_candidates(model: dict, row: dict, *, min_margin: float = 0.1,
     margin = ranked[0]["score"] - ranked[1]["score"] if len(ranked) > 1 else None
     if margin is not None and not math.isfinite(margin):
         fail("nonfinite ranking margin")
+    # Synthetic-only training is useful for CI, never for autonomous decisions.
+    # Missing provenance is also treated conservatively.
+    training = model.get("training")
+    human_validated = isinstance(training, dict) and training.get("synthetic_only") is False
     # A single admissible candidate needs no learned arbitration.
-    confident = len(ranked) > 1 and margin >= min_margin
+    confident = human_validated and len(ranked) > 1 and margin >= min_margin
     return {"schema": "openstitch.ai.assessment/1",
             "decision": "recommend" if confident else "fallback",
             "reason": "sufficient_margin" if confident else
-                      ("single_admissible_candidate" if len(ranked) == 1 else "low_margin"),
+                      ("synthetic_or_unverified_model" if not human_validated else
+                       "single_admissible_candidate" if len(ranked) == 1 else "low_margin"),
             "selected_id": ranked[0]["id"] if confident else baseline,
             "model_choice": ranked[0]["id"], "heuristic_choice": baseline,
             "margin": margin, "rejected": rejected, "applied": False}
