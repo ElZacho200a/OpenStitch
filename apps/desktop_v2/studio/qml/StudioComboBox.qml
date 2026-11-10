@@ -27,6 +27,7 @@ Controls.ComboBox {
         width: control.popup.availableWidth
         height: Math.max(28, Math.round(Theme.controlHeight * 0.75))
         highlighted: control.highlightedIndex === index
+        hoverEnabled: true
         padding: 8
         contentItem: Text {
             text: item.text
