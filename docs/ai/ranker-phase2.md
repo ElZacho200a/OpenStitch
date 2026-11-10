@@ -141,6 +141,26 @@ effectives (couverture, détails, points, trajets et coupes) sans valeur
 synthétique. Ne pas utiliser une décision du modèle pour modifier un OSP/DST
 avant l'intégration et les garde-fous de brodabilité.
 
+## Garde-fous de décision (prototype hors moteur)
+
+~~~bash
+python3 scripts/auto_digitize_ranker.py assess ./local_model.json ./query.json --min-margin 0.1
+~~~
+
+L'évaluation applique cinq améliorations expérimentales : (1) filtrage des
+candidats sur couverture, zones non couvertes, points courts et surdensité ;
+(2) abstention explicite si aucun candidat n'est admissible ; (3) repli
+heuristique lorsqu'un seul candidat passe ou lorsque la marge est faible ;
+(4) marge de score configurable entre les deux meilleurs candidats
+admissibles ; (5) métriques top-2 et rang réciproque moyen (MRR) lors de
+l'entraînement et de l'évaluation. Les seuils sont des **valeurs de
+recherche**, pas des limites textiles validées. Le résultat est uniquement
+consultatif : `applied: false`, sans mutation OSP/DST.
+
+Les métriques de couverture et de brodabilité doivent être **mesurées** sur
+des candidats générés par le moteur C++ ; elles ne sont pas produites par ce
+script. Aucun gain de retouche n'est démontré à ce stade.
+
 ## Intégration future : contrats et dépendances
 
 1. **Producteur de candidats (L1)** : intégrer un adaptateur C++/CLI de
