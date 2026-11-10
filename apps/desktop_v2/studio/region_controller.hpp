@@ -74,6 +74,8 @@ public:
     // --- Retouches (chacune : UNE étape d'annulation ; "" = fait, sinon le refus) -------------
     Q_INVOKABLE QString recolorSelected(const QString& hexColor);
     Q_INVOKABLE QString mergeSelected();
+    // Merge the single selected (source) region into a user-chosen target.
+    Q_INVOKABLE QString mergeSelectedInto(double target);
     Q_INVOKABLE QString mergeWithNeighbour(double id);
     Q_INVOKABLE QString mergeColorInto(double source, double target);
     Q_INVOKABLE QString deleteSelected();
