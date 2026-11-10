@@ -61,6 +61,23 @@ class DeterminismGateTests(unittest.TestCase):
         report = verify(Path("fake-cli"), Path("fixture.png"), runner=fake)
         self.assertEqual(report["failures"], ["pass-1:invalid-json-stitches"])
 
+    def test_second_pass_invalid_json_does_not_reuse_first_pass_diagnostics(self):
+        calls = 0
+
+        def fake(argv, **kwargs):
+            nonlocal calls
+            calls += 1
+            Path(argv[3]).write_bytes(dst())
+            stdout = '{"stitches":4}' if calls == 1 else 'not-json'
+            return SimpleNamespace(returncode=0, stdout=stdout)
+
+        report = verify(Path("fake-cli"), Path("fixture.png"), runner=fake)
+        self.assertEqual(report["passes"], 1)
+        self.assertEqual(report["failures"], ["pass-2:invalid-json-stitches"])
+        self.assertEqual(report["invalid_json_diagnostics"], [
+            {"pass": 2, "stdout_prefix": "not-json"}
+        ])
+
     def test_zero_stitches_are_valid_for_empty_digitization(self):
         def fake(argv, **kwargs):
             Path(argv[3]).write_bytes(dst())
