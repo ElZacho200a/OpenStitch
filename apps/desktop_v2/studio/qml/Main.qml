@@ -434,7 +434,8 @@ Window {
                 StudioButton {
                     objectName: "historyToggle"
                     text: qsTr("Historique")
-                    iconName: "undo"
+                    iconName: "chevron"
+                    iconRotation: historyHub.opened ? 90 : 0
                     visible: historyHub.available
                     active: historyHub.opened
                     tooltip: qsTr("Afficher les étapes du document")
