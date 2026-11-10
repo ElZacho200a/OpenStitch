@@ -590,7 +590,8 @@ Window {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         anchors.rightMargin: 20
-        anchors.bottomMargin: 48
+        // The FilePanel already owns a centred task toast; never overlap it.
+        anchors.bottomMargin: filePanel.notificationVisible ? 108 : 48
         visible: window.feedbackText.length > 0
         enabled: false
         implicitWidth: Math.min(440, Math.max(160, feedbackLabel.implicitWidth + 28))
