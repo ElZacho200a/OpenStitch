@@ -118,12 +118,15 @@ Item {
                 Qt.point(root.box.x, root.box.y + root.box.height),
                 Qt.point(root.box.x, cy), Qt.point(cx, root.box.y - 26)]
             objectName: "handle" + index
-            width: 9
-            height: 9
-            radius: index === 8 ? 5 : 1
-            x: pts[index].x - 4.5
-            y: pts[index].y - 4.5
-            color: index === 8 ? Theme.accent : Theme.foreground
+            width: (root.resizing && index !== 8) || (root.rotating && index === 8) ? 11 : 9
+            height: width
+            radius: index === 8 ? width / 2 : 1
+            x: pts[index].x - width / 2
+            y: pts[index].y - height / 2
+            color: index === 8 || (root.resizing && index !== 8) ? Theme.accent : Theme.foreground
+            opacity: root.rotating && index !== 8 ? 0.65 : 1
+            Behavior on width { NumberAnimation { duration: Theme.feedbackFastMs } }
+            Behavior on opacity { NumberAnimation { duration: Theme.feedbackFastMs } }
             border.color: Theme.accent
             border.width: 1.5
             Behavior on color { ColorAnimation { duration: Theme.feedbackFastMs } }
