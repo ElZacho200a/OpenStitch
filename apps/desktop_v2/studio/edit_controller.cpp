@@ -446,6 +446,25 @@ bool EditController::rotate(double degrees) {
                       QStringLiteral("Pivoter"), {});
 }
 
+bool EditController::rotateAround(double degrees, double pivotXmm, double pivotYmm) {
+    if (!std::isfinite(degrees) || !std::isfinite(pivotXmm) || !std::isfinite(pivotYmm)) {
+        return refuse(QStringLiteral("Pivoter : angle ou centre invalide"));
+    }
+    if (std::abs(degrees) > 360.0) {
+        return refuse(QStringLiteral("Pivoter : angle entre -360 et 360 degrés"));
+    }
+    if (selectedIds().empty()) {
+        return refuse(QStringLiteral("Pivoter : sélection vide"));
+    }
+    return applyBatch(batchRotate(selectedIds(), degrees, {pivotXmm, pivotYmm}),
+                      QStringLiteral("Pivoter autour d'un centre"), {});
+}
+
+QVariantMap EditController::selectionCentreMm() const {
+    const auto centre = selectionCentreModel();
+    return {{QStringLiteral("x"), centre.x}, {QStringLiteral("y"), centre.y}};
+}
+
 bool EditController::rotate90(bool clockwise) {
     return applyBatch(batchRotate(selectedIds(), clockwise ? -90.0 : 90.0, selectionCentreModel()),
                       QStringLiteral("Pivoter de 90°"), {});

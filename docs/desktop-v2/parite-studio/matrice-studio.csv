@@ -340,7 +340,7 @@ ab829014,case,Écrire les coupes de fil (réglage de ce fichier),machine_export_
 41976bc1,dialogue,Ajouter un fil personnel,thread_panel.cpp,absent,,ABSENT,,,
 d06da014,dialogue,Aperçu avant impression - fiche de production,production_dialog.cpp,absent,,ABSENT,,,
 308f4162,dialogue,Cadre de broderie,main_window_files.cpp,fait,Cadre de broderie,TESTED,StudioShellTest::actionCatalogIsFullyReachable,ActionController::run(canvas.set),ActionPalette.qml
-531ea643,dialogue,Centre de rotation,main_window_rotation.cpp,absent,,ABSENT,,,
+531ea643,dialogue,Centre de rotation,main_window_rotation.cpp,absent,,TESTED,StudioEditTest::rotationAroundAChosenCentreIsOneUndoStep,EditController::rotateAround,EditBar.qml pivotApply
 5750c9de,dialogue,Choisir une référence de fil,main_window_gradient.cpp,absent,,ABSENT,,,
 65d01889,dialogue,Coloris et tissu,colorway_dialog.cpp,absent,,ABSENT,,,
 4c7db5cd,dialogue,Combler les vides du bloc,main_window_shapes.cpp,absent,,ABSENT,,,

@@ -8,4 +8,5 @@ d39e212d,TESTED,StudioInspectorTest::colourOfTheSelectionIncludingMixedTypes,Ins
 0d67e9bf,TESTED,StudioViewTest::statisticsAndFidelityOfTheEmbroidery,AnalysisController::statistics,AnalysisPanel.qml statisticsText
 980fefff,TESTED,StudioViewTest::mainQmlHostsEveryPanel (removeGuide_N),ViewController::removeGuide,ViewPanel.qml removeGuide_N
 f893cf14,TESTED,StudioInspectorTest::colourOfTheSelectionIncludingMixedTypes,InspectorController::setColour,Inspector.qml inspectorColourButton
+531ea643,TESTED,StudioEditTest::rotationAroundAChosenCentreIsOneUndoStep,EditController::rotateAround,EditBar.qml pivotApply
 dcaa0480,TESTED,StudioToolsTest::outlineAroundTheSelectionIsARingInOneStep,VectorController::outlineShapes,ToolOptions.qml outlineButton

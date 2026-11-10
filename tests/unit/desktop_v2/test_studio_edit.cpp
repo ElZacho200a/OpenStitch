@@ -156,6 +156,7 @@ private slots:
     void initTestCase();
     void selectionCommandsOnRealObjects();
     void objectLockAndMoveToLayerAreUndoable();
+    void rotationAroundAChosenCentreIsOneUndoStep();
     void duplicatingALayerCopiesItsObjectsInOneStep();
     void rectangleSelectionByMouse();
     void savedSelectionsAreRecalled();
@@ -307,6 +308,38 @@ void StudioEditTest::duplicatingALayerCopiesItsObjectsInOneStep() {
     QCOMPARE(rig.editor.layers().size(), layersBefore);
     QCOMPARE(rig.session.project().embroidery_objects.size(), objectsBefore);
     QCOMPARE(rig.session.project().vector_objects.size(), shapesBefore);
+}
+
+// Rotation autour d'un centre choisi : la ligne tourne autour du point donné (et non de son propre
+// centre), en une étape d'annulation ; angle ou centre invalide refusé.
+void StudioEditTest::rotationAroundAChosenCentreIsOneUndoStep() {
+    Rig rig;
+    open(rig);
+    const auto base = steps(rig);
+    select(rig, {kLone}); // ligne horizontale de x = 40 à 50, y = 25 (mm modèle)
+    const auto centre = rig.editor.selectionCentreMm();
+    QVERIFY(std::abs(centre.value("x").toDouble() - 45.0) < 0.05);
+    QVERIFY(std::abs(centre.value("y").toDouble() - 25.0) < 0.05);
+    // 90° anti-horaires autour de l'origine : (x, y) -> (-y, x). Le centre (45, 25) va en (-25,
+    // 45).
+    QVERIFY(rig.editor.rotateAround(90.0, 0.0, 0.0));
+    QCOMPARE(steps(rig), base + 1);
+    settle(rig); // la boîte de sélection vient de la scène recalculée
+    const auto moved = rig.editor.selectionCentreMm();
+    QVERIFY(std::abs(moved.value("x").toDouble() - (-25.0)) < 0.1);
+    QVERIFY(std::abs(moved.value("y").toDouble() - 45.0) < 0.1);
+    QVERIFY(rig.session.undo());
+    QCOMPARE(steps(rig), base);
+    settle(rig);
+    const auto back = rig.editor.selectionCentreMm();
+    QVERIFY(std::abs(back.value("x").toDouble() - 45.0) < 0.05);
+
+    QVERIFY(!rig.editor.rotateAround(400.0, 0.0, 0.0));
+    QVERIFY(!rig.editor.rotateAround(std::nan(""), 0.0, 0.0));
+    QVERIFY(!rig.editor.rotateAround(10.0, std::nan(""), 0.0));
+    QCOMPARE(steps(rig), base);
+    QVERIFY(rig.window->findChild<QQuickItem*>(QStringLiteral("pivotApply")));
+    QVERIFY(rig.window->findChild<QQuickItem*>(QStringLiteral("pivotX")));
 }
 
 void StudioEditTest::rectangleSelectionByMouse() {
