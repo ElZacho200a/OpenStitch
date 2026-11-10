@@ -129,6 +129,7 @@ class RankerTest(unittest.TestCase):
     def test_assessment_safety_gates_reject_unsafe_candidates(self):
         row = sample()
         row["candidates"][0]["features"]["coverage_ratio"] = 0.1
+        row["candidates"][1]["features"] = dict(candidate("safe", "tatami", True)["features"])
         model = ranker.train_model([sample(i) for i in range(8)], epochs=50)
         result = ranker.assess_candidates(model, row)
         self.assertEqual(result["decision"], "fallback")
@@ -148,10 +149,11 @@ class RankerTest(unittest.TestCase):
     def test_assessment_low_margin_uses_baseline(self):
         row = sample()
         model = ranker.train_model([sample(i) for i in range(8)], epochs=50)
+        row["candidates"][1]["features"] = dict(candidate("safe", "tatami", True)["features"])
         result = ranker.assess_candidates(model, row, min_margin=1.0)
         self.assertEqual(result["decision"], "fallback")
         self.assertEqual(result["selected_id"], result["heuristic_choice"])
-        self.assertEqual(result["reason"], "single_admissible_candidate")
+        self.assertEqual(result["reason"], "low_margin")
 
     def test_assessment_rejects_invalid_threshold(self):
         model = ranker.train_model([sample(i) for i in range(8)], epochs=50)
