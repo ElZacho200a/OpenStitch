@@ -13,6 +13,15 @@ ColumnLayout {
 
     property string confirmText: ""
     property bool pendingResegment: false
+    property bool choosingMergeTarget: false
+    function tappedRegion(id, ctrlHeld) {
+        if (choosingMergeTarget) {
+            if (regionTools.mergeSelectedInto(id) === "")
+                choosingMergeTarget = false
+        } else {
+            regionTools.selectRegion(id, ctrlHeld ? "toggle" : "replace")
+        }
+    }
     // Sourced from the active SegmentationSection in Studio, not hardcoded defaults.
     property var segmentationOptions: imageTools.segmentationDefaults
     property var pendingOptions: ({})
@@ -133,6 +142,7 @@ ColumnLayout {
             model: regionTools.regions
             delegate: Rectangle {
                 required property var modelData
+                objectName: "regionRow_" + modelData.id
                 readonly property bool isSelected: regionTools.selected.indexOf(modelData.id) >= 0
                 width: ListView.view.width
                 height: 24
@@ -148,8 +158,8 @@ ColumnLayout {
                     }
                 }
                 TapHandler {
-                    onTapped: regionTools.selectRegion(modelData.id,
-                              (point.modifiers & Qt.ControlModifier) ? "toggle" : "replace")
+                    onTapped: section.tappedRegion(modelData.id,
+                              (point.modifiers & Qt.ControlModifier) !== 0)
                 }
             }
         }
@@ -186,7 +196,26 @@ ColumnLayout {
         StudioButton { objectName: "regionMerge"; text: qsTr("Fusionner la sélection"); enabled: regionTools.selectedCount > 1; onClicked: regionTools.mergeSelected() }
         StudioButton { objectName: "regionMergeNeighbour"; text: qsTr("Fusionner dans la voisine"); enabled: regionTools.selectedCount === 1
             onClicked: regionTools.mergeWithNeighbour(regionTools.selected[0]) }
+        StudioButton {
+            objectName: "regionChooseMergeTarget"
+            text: section.choosingMergeTarget ? qsTr("Annuler cible") : qsTr("Choisir la cible…")
+            checkable: true
+            checked: section.choosingMergeTarget
+            enabled: regionTools.selectedCount === 1 || section.choosingMergeTarget
+            tooltip: qsTr("Sélectionnez une région source puis cliquez la région à conserver dans la liste")
+            onClicked: section.choosingMergeTarget = !section.choosingMergeTarget
+        }
         StudioButton { objectName: "regionDelete"; text: qsTr("Supprimer"); enabled: regionTools.selectedCount > 0; onClicked: regionTools.deleteSelected() }
+    }
+    Text {
+        objectName: "regionMergeTargetHint"
+        Layout.fillWidth: true
+        visible: section.choosingMergeTarget
+        text: qsTr("Cliquez dans la liste sur la région qui doit absorber la sélection ; annulez avec le même bouton.")
+        wrapMode: Text.WordWrap
+        color: Theme.accent
+        font.pixelSize: Theme.smallSize
+        font.family: Theme.fontFamily
     }
     RowLayout {
         Layout.fillWidth: true
