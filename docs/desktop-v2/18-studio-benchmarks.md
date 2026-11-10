@@ -209,3 +209,155 @@ pendant les gestes. Le protocole de repli est décrit dans [l'architecture](17-s
 
 Références : [QQuickWindow::frameSwapped](https://doc.qt.io/qt-6.8/qquickwindow.html#frameSwapped),
 [rétention des géométries du renderer Qt Quick](https://doc.qt.io/qt-6.8/qtquick-visualcanvas-scenegraph-renderer.html).
+
+## Survol et clic : `StudioSceneSnapshot::pick` (PERF-015, volet scène de points)
+
+`pick` est appelé à chaque mouvement de souris par le survol (`GpuCanvas::hoverMoveEvent`), au
+clic et par les outils. Il parcourait tous les segments à l'envers : coût **linéaire**, sur le fil
+d'interface. Le snapshot porte désormais une grille uniforme immuable (`StudioPickGrid`, format
+CSR, cellules de 2 mm, plafond de 4 M de cellules) construite sur le worker par
+`build_studio_scene`. Chaque cellule liste les segments par indice croissant ; `pick` prend le plus
+grand indice qui touche le point, donc **le même objet que le balayage** (dernier segment cousu,
+`objectId` 0 ignoré, segments non finis ignorés). Garde-fous : grille absente, périmée (taille de
+`segments` différente) ou requête de plus de 4 096 cellules → repli sur le balayage ; scène
+pathologique (> 32 entrées par segment) → pas de grille.
+
+Mesure : `test_desktop_v2_core "[pick]"`, Release, MSVC, scène synthétique en serpentin (pas de
+0,5 mm, 1 000 segments par objet), tolérance 0,3 mm, 2 000 requêtes pseudo-aléatoires fixes par
+taille, 3 exécutions (écarts < 5 %). Machine de développement non étalonnée : ces chiffres ne
+valent que pour comparer avant/après sur la même machine ; pas de GPU, pas de fenêtre.
+
+| Segments | balayage p50 / p95 | grille p50 / p95 | construction (worker) |
+| ---: | ---: | ---: | ---: |
+| 10 000 | 14 µs / 28 µs | 0,1 µs / 0,6 µs | 0,75 ms |
+| 100 000 | 144 µs / 283 µs | 0,4 µs / 1,0 µs | 7,3 ms |
+| 500 000 | 720 µs / 1 410 µs | 0,5 µs / 1,3 µs | 36 ms |
+
+Lecture honnête : à 100 000 segments le balayage coûtait ~1,7 % d'une frame de 16,7 ms, et ~8,5 %
+à 500 000. Ce n'était pas un gel, mais une marge consommée par un mouvement de souris sans rapport
+avec la charge de travail ; la grille la rend négligeable. **Non mesuré** : le coût mémoire exact de
+la grille sur un `.osp` réel (Tentabrode), le temps de frame de l'application entière, et l'effet
+sur le p95 d'interaction bout en bout. `test_studio_scene.cpp` vérifie l'équivalence exacte avec le
+balayage sur 20 000 requêtes (tolérances 0 à 150 mm, requêtes hors scène, segments d'`objectId` 0,
+longs, diagonaux et de longueur nulle, grille périmée).
+
+## Formes vectorielles : `VectorLayer::pick` et `VectorLayer::build` (PERF-015, PERF-024)
+
+Banc : `OPENSTITCH_PERF=1 test_desktop_v2_studio_space_vector perfVectorLayer` (QTest, Release,
+`QT_QPA_PLATFORM=offscreen`). Il est désactivé sans la variable (QSKIP) et écrit ses lignes
+`[perf-vector]` via `qInfo` : avec `-o fichier,txt`, car la console de l'exécutable n'affiche rien
+sous PowerShell. Carrés de 8 mm au pas de 10 mm, 3 exécutions (écarts < 5 %), même machine non
+étalonnée que le tableau précédent.
+
+| Formes | `build` p50 | `pick` p50 / p95 |
+| ---: | ---: | ---: |
+| 1 | 0,08 ms | < 0,1 µs |
+| 100 | 5,4 ms | 0,3 µs / 0,3 µs |
+| 500 | ~26,7 ms | 1,3 µs / 1,5 µs |
+| 1 000 | ~52 ms | 2,2 µs / ~3 µs |
+
+- **`pick` : pas d'index spatial justifié.** Il rejette d'abord par boîte englobante et ne teste le
+  tracé exact que sur les boîtes touchées ; 3 µs à 1 000 formes est négligeable devant 16,7 ms. Piste
+  PERF-015 (volet formes) close sur mesure, sans changement de code.
+- **`build` : le coût est réel et linéaire.** Une expérience à 2 formes sur la même surface que
+  1 000 formes donne ~6,8 ms : l'allocation et le remplissage de l'image (jusqu'à ~4 000 × 4 000 px)
+  pèsent ~6,8 ms, le dessin antialiasé des formes (~45 µs par forme) le reste. Or
+  `VectorSpaceController::refresh()` appelle `build` **de façon synchrone**, donc sur le fil
+  d'interface, à chaque modification de formes (clés visuelles changées). À 500 formes cela fait
+  ~27 ms (~1,6 frame de 16,7 ms), à 1 000 formes ~52 ms (~3 frames) de blocage par validation d'édition.
+- **Non mesuré ni corrigé ici** : la fréquence réelle de ces reconstructions pendant un geste
+  (le glisser d'un nœud passe-t-il par `refresh` à chaque pas ?), l'effet d'un `build` hors du fil
+  d'interface, une re-rastérisation par zone sale, ni un projet réel à ~1 000 régions.
+  Le correctif « publication asynchrone » est décrit et mesuré ci-dessous ; la re-rastérisation par
+  zone sale n'est pas faite.
+
+### Reconstruction du calque vectoriel hors du fil d'interface
+
+`VectorSpaceController::refresh()` garde le chemin synchrone jusqu'à `kSyncShapeLimit` = 150 formes
+(≈ 8 ms, dans le budget d'une frame ; comportement et tests inchangés). **Au-delà**, la
+rasterisation part sur un `TaskManager` du contrôleur, sur une copie immuable de
+`Project::vector_objects` (`VectorLayer::build(const std::vector<VectorObject>&)`, le même code que
+`build(project)` : pixels identiques). Règles :
+
+- **L'ancien calque reste affiché** pendant la reconstruction (pas de clignotement) ;
+  `layerPending` (propriété QML) est vrai entre-temps. Le calque n'est publié (`publishLayer`,
+  compteur `layerBuildCount`, texture du canevas) qu'une fois terminé, sur le fil d'interface.
+- **Une seule reconstruction à la fois, résultats périmés ignorés** : chaque demande porte un
+  numéro (`buildRequest_`) ; un résultat dont le numéro n'est plus courant est jeté. Une modification
+  qui en suit une autre annule et remplace la précédente. Un document revenu à l'état déjà affiché
+  (annulation) abandonne la reconstruction en cours. Revenir sous 150 formes repasse en synchrone et
+  abandonne l'asynchrone.
+- **Clic pendant la reconstruction** : `pick` interroge l'ancien calque ; `selectShape` ignore déjà
+  un identifiant qui n'existe plus dans le document, donc aucune sélection fantôme.
+- **Statut de l'étape** (`stageDetail`, `shapeCount`) : il lit le document et non le calque, donc
+  il n'est pas retardé ; `publishedShapeCount()` donne le nombre de formes du calque réellement
+  affiché (utilisé par les tests).
+- Un résultat annulé ne relance pas de reconstruction (pas de boucle) ; le destructeur arrête la
+  pompe et annule les tâches.
+
+Mesure (`OPENSTITCH_PERF=1 test_desktop_v2_studio_space_vector perfVectorRefreshBlocking`, Release,
+3 exécutions, offscreen + rendu logiciel ; `replaceProject` d'un document complet) : temps pendant
+lequel le **fil d'interface est bloqué** par le déclenchement de la reconstruction.
+
+| Formes | Fil d'interface bloqué (p50) | Chemin |
+| ---: | ---: | --- |
+| 100 | ~6,1 ms | synchrone |
+| 140 | ~7,9 ms | synchrone |
+| 160 | ~1,4 ms | asynchrone |
+| 500 | ~1,7 ms | asynchrone |
+| 1 000 | ~2,2 ms | asynchrone |
+
+Avant : ~27 ms à 500 formes et ~52 ms à 1 000 formes (`build` seul, sur le fil d'interface). La
+latence jusqu'au calque publié n'est **pas** rapportée : `QTRY_VERIFY` sonde toutes les 50 ms, ce qui
+fausse le chiffre (~55 et ~105 ms observés) ; la rasterisation elle-même vaut ~52 ms à 1 000 formes
+et ne bloque plus l'interface. Tests : `layerBuildsIdenticallyOnAnotherThread` (pixels identiques
+entre un fil et un autre, 200 formes), `largeDocumentsRasteriseOffTheGuiThreadAndDropStaleResults`
+(deux remplacements successifs : seul le dernier état est publié ; retour synchrone sous 150).
+**Non vérifié** : un projet réel à ~1 000 régions, le rendu sur D3D11 / fenêtre native, l'effet sur le
+p95 d'interaction de l'application entière, et le comportement de mémoire (une copie des formes par
+reconstruction). La re-rastérisation par zone sale (qui réduirait aussi le coût de calcul) n'est pas
+traitée.
+
+## Reconstruction complète de la scène : `build_studio_scene` (PERF-004, PERF-005, PERF-011)
+
+Banc : `test_desktop_v2_core "[scene][.perf]"` (Release, MSVC, 3 exécutions, même machine non
+étalonnée). Projet de N rectangles de 8 mm (une couture par objet), `build_studio_scene` sur la
+copie immuable du projet ; 5 passes par taille, p50 rapporté. C'est le coût de **chaque** édition qui
+touche la broderie (`StudioController` relance toujours la scène entière), exécuté sur un worker.
+
+| Objets | Segments | Total p50 | Séquence | Segments | Sommets | Grille de `pick` |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 100 | 7 135 | ~2,5 ms | 1,5 ms | 0,1 ms | 0,3 ms | 0,6 ms |
+| 500 | 35 672 | ~9,3 ms | 4,7 ms | 0,6 ms | 1,5 ms | 2,1 ms |
+| 1 000 | 71 344 | ~17,5 ms | ~9 ms | 1,1 ms | 3,1 ms | 4,2 ms |
+
+- **Copie du projet (`snapshot`)** : 0,2 ms à 1 000 objets (banc `responsiveness with 1, 100, 500 and
+  1000 objects`, déjà présent). Le coût de PERF-004 est donc négligeable pour la copie elle-même ;
+  le nombre d'appels par interaction n'est pas instrumenté ici.
+- **Un cache de géométrie par objet (PERF-011) gagnerait au plus ~17 ms de latence de worker à
+  1 000 objets** (~9 ms à 500), et ce plafond n'est atteint que si la reconstruction devient
+  quasi gratuite : la séquence effective (~50 % du total) dépend de tous les objets. Le gain est
+  borné ; le coût de conception (invalidation par objet, ordre de couture, finitions, recouvrements)
+  est élevé et touche le déterminisme. **Non justifié sans trace d'un blocage visible.**
+- **Coût de la grille de `pick` (lot PERF-015)** : il s'ajoute à chaque reconstruction, ~4,2 ms à
+  1 000 objets (~24 % du total ; 5,4 ms avant la substitution des divisions par des
+  multiplications). C'est un échange assumé : il retire ~285 µs (100 000 segments) à chaque
+  mouvement de souris du survol, mais allonge de ~4 ms le délai avant que la nouvelle géométrie soit
+  prête. Piste non faite : construire la grille après publication de la scène.
+- **À vérifier, non mesuré** : `StudioController` fait `scene_.reset()` puis `sceneChanged` avant
+  chaque reconstruction (`studio_controller.cpp`) ; la couche de points disparaît donc le temps de
+  la reconstruction (≥ 17 ms à 1 000 objets, plus le délai de la pompe de 8 ms et le téléversement
+  GPU). Impact visuel réel (clignotement) non constaté : aucune capture ni mesure de fenêtre ici.
+
+### Reconstructions de scène par type de modification (PERF-005, PERF-021)
+
+`StudioController::sceneBuildCount()` compte les reconstructions complètes lancées. Le test
+`sceneRebuildsExactlyOncePerGeometryChange` (`test_studio_history.cpp`, projet de deux rectangles)
+établit : sélection d'objet et `markSaved` (même révision) → **0** reconstruction ; édition de
+broderie, annulation, rétablissement, saut de plusieurs étapes dans l'historique → **exactement 1**
+chacun. Donc l'annulation d'une édition de broderie ne refait pas la scène deux fois et un saut
+d'historique ne rejoue pas les étapes intermédiaires. **Non couvert** : une vraie mutation qui ne
+touche ni la broderie ni la segmentation, et les commandes d'image/segmentation (le contrôleur ne
+relance pas la scène pour elles, d'après `lastChangeAffectsEmbroidery()`, mais ce n'est pas testé
+ici) ; `rebuildScene` annule aussi toutes les tâches de son `TaskManager`, qui ne porte que
+l'ouverture de projet et la géométrie (PERF-012 : sans autre tâche à épargner dans ce contrôleur).

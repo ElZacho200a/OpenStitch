@@ -179,6 +179,41 @@ private slots:
         QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join('\n')));
     }
 
+    // PERF-005 / PERF-021 : une édition de broderie lance UNE reconstruction de scène ;
+    // l'annulation, le rétablissement et le saut dans l'historique aussi ; une sélection ou un
+    // simple enregistrement (même révision) n'en lancent aucune.
+    void sceneRebuildsExactlyOncePerGeometryChange() {
+        Rig rig;
+        rig.fixture();
+        QTRY_VERIFY_WITH_TIMEOUT(!rig.studio.busy(), 15'000);
+        int builds = rig.studio.sceneBuildCount();
+        const auto settle = [&rig] { QTRY_VERIFY_WITH_TIMEOUT(!rig.studio.busy(), 15'000); };
+
+        // Sans effet sur la géométrie : aucune reconstruction.
+        rig.studio.selectObject(
+            QString::number(rig.session.project().embroidery_objects.back().id.value));
+        rig.session.markSaved();
+        rig.studio.selectObject(
+            QString::number(rig.session.project().embroidery_objects.front().id.value));
+        QCOMPARE(rig.studio.sceneBuildCount(), builds);
+
+        QVERIFY(rig.studio.moveSelection(2, 0)); // édition de broderie
+        settle();
+        QCOMPARE(rig.studio.sceneBuildCount(), ++builds);
+        QVERIFY(rig.session.undo()); // annulation d'une édition de broderie
+        settle();
+        QCOMPARE(rig.studio.sceneBuildCount(), ++builds);
+        QVERIFY(rig.session.redo());
+        settle();
+        QCOMPARE(rig.studio.sceneBuildCount(), ++builds);
+        QVERIFY(rig.studio.moveSelection(0, 3));
+        settle();
+        ++builds;
+        QVERIFY(rig.history.jumpTo(0)); // plusieurs étapes d'un coup : une seule reconstruction
+        settle();
+        QCOMPARE(rig.studio.sceneBuildCount(), ++builds);
+    }
+
     void invalidAndUnchangedJumpsPreserveRevisionAndHistory() {
         Rig rig;
         rig.fixture();

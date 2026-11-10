@@ -120,7 +120,15 @@ VectorSpaceController::VectorSpaceController(StudioController& studio, QObject* 
     connect(&studio_, &StudioController::selectionChanged, this,
             &VectorSpaceController::layerChanged);
     connect(&studio_, &StudioController::changed, this, &VectorSpaceController::refresh);
+    pump_.setInterval(8);
+    connect(&pump_, &QTimer::timeout, this, [this] { tasks_.pump(); });
+    pump_.start();
     refresh();
+}
+
+VectorSpaceController::~VectorSpaceController() {
+    pump_.stop();
+    tasks_.cancelAll();
 }
 
 int VectorSpaceController::shapeCount() const {
@@ -164,6 +172,47 @@ std::vector<std::uint64_t> VectorSpaceController::selectedShapeIds() const {
     return out;
 }
 
+void VectorSpaceController::publishLayer(std::shared_ptr<const VectorLayer> layer,
+                                         std::vector<std::uint64_t> keys) {
+    layer_ = std::move(layer);
+    renderedVisualKeys_ = std::move(keys);
+    ++builds_;
+    if (canvas_) {
+        canvas_->setVectorLayer(std::shared_ptr<const OverlayImage>(layer_, &layer_->image()));
+    }
+}
+
+void VectorSpaceController::startAsyncBuild(std::vector<std::uint64_t> keys) {
+    tasks_.cancelAll();
+    const auto request = ++buildRequest_;
+    pending_ = true;
+    pendingVisualKeys_ = keys;
+    // Copie immuable des seules formes : le worker ne touche jamais au document vivant.
+    auto shapes = std::make_shared<const std::vector<document::VectorObject>>(
+        studio_.session().project().vector_objects);
+    tasks_.submit<std::shared_ptr<const VectorLayer>>(
+        "studio.vector-layer",
+        [shapes](const TaskContext& task) -> Result<std::shared_ptr<const VectorLayer>> {
+            if (task.cancelled()) {
+                return cancelled_error();
+            }
+            return VectorLayer::build(*shapes);
+        },
+        [this, request,
+         keys = std::move(keys)](Result<std::shared_ptr<const VectorLayer>>&& result) mutable {
+            if (request != buildRequest_) {
+                return; // un état plus récent a été demandé, ou l'état affiché est redevenu courant
+            }
+            pending_ = false;
+            if (!result) {
+                emit layerChanged(); // annulée : l'état affiché reste le dernier publié
+                return;
+            }
+            publishLayer(std::move(*result), std::move(keys));
+            emit layerChanged();
+        });
+}
+
 void VectorSpaceController::refresh() {
     const auto& session = studio_.session();
     bool changed = false;
@@ -176,18 +225,33 @@ void VectorSpaceController::refresh() {
     const bool mayChangeVectors =
         session.lastChangeAffectsEmbroidery() || !session.lastChangeAffectsSegmentation();
     std::vector<std::uint64_t> nextVisualKeys;
-    if (!layer_ || (newRevision && mayChangeVectors)) {
+    const bool haveBase = layer_ != nullptr || pending_;
+    const bool keysNeeded = !haveBase || (newRevision && mayChangeVectors);
+    if (keysNeeded) {
         nextVisualKeys = vectorVisualKeys(session.project());
-    }
-    const bool rebuildBase =
-        !layer_ || (newRevision && mayChangeVectors && nextVisualKeys != renderedVisualKeys_);
-    if (rebuildBase) {
-        layer_ = VectorLayer::build(session.project());
-        renderedVisualKeys_ = std::move(nextVisualKeys);
-        ++builds_;
-        changed = true;
-        if (canvas_) {
-            canvas_->setVectorLayer(std::shared_ptr<const OverlayImage>(layer_, &layer_->image()));
+        const bool differsFromRendered = !layer_ || nextVisualKeys != renderedVisualKeys_;
+        const bool alreadyBuilding = pending_ && nextVisualKeys == pendingVisualKeys_;
+        if (alreadyBuilding) {
+            // Ce même état est déjà en cours de rasterisation : ne pas relancer.
+        } else if (differsFromRendered) {
+            if (session.project().vector_objects.size() <= kSyncShapeLimit) {
+                // Petite scène : rasterisation synchrone (quelques ms), comme avant. Toute
+                // rasterisation asynchrone devenue inutile est abandonnée.
+                tasks_.cancelAll();
+                ++buildRequest_;
+                pending_ = false;
+                publishLayer(VectorLayer::build(session.project()), std::move(nextVisualKeys));
+            } else {
+                startAsyncBuild(std::move(nextVisualKeys));
+            }
+            changed = true;
+        } else if (pending_) {
+            // Le document est revenu à l'état déjà affiché (annulation) : la rasterisation en
+            // cours produirait un calque périmé, on l'abandonne.
+            tasks_.cancelAll();
+            ++buildRequest_;
+            pending_ = false;
+            changed = true;
         }
     }
     builtRevision_ = session.revision();

@@ -14,6 +14,15 @@ Rectangle {
     property string page: "plan"
     property var reductionPreview: ({})
     property int renameColorwayIndex: -1
+    property int movedThreadIndex: -1
+    Timer { id: threadMoveTimer; interval: 850; onTriggered: panel.movedThreadIndex = -1 }
+    function moveSelected(delta) {
+        const destination = current + delta
+        if (controller && controller.moveThread(current, destination)) {
+            movedThreadIndex = destination
+            threadMoveTimer.restart()
+        }
+    }
     property string currentId
     readonly property int current: entryList.findIndex(entry => entry.id === currentId)
     property string chartId: controller && controller.charts.length > 0 ? controller.charts[0].id : ""
@@ -195,6 +204,8 @@ Rectangle {
                     text: modelData.text
                     checkable: true
                     checked: panel.page === modelData.id
+                    font.bold: checked
+                    active: checked
                     onClicked: panel.page = modelData.id
                 }
             }
@@ -226,24 +237,61 @@ Rectangle {
                 Layout.fillWidth: true
                 spacing: 8
                 SectionLabel { text: qsTr("PLAN DE FILS") + "  ·  " + panel.entryList.length }
+            Text {
+                objectName: "threadEmptyState"
+                visible: panel.entryList.length === 0
+                text: qsTr("Aucun fil dans ce projet. Les fils apparaîtront ici après la numérisation.")
+                color: Theme.faint
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.smallSize
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
             Repeater {
                 model: panel.entryList
                 delegate: Rectangle {
                     id: row
                     required property var modelData
                     objectName: "threadRow" + modelData.index
+                    activeFocusOnTab: true
+                    Accessible.role: Accessible.ListItem
+                    Accessible.name: modelData.label
+                    Accessible.selected: panel.current === modelData.index
+                    Keys.onReturnPressed: panel.currentId = row.modelData.id
+                    Keys.onSpacePressed: panel.currentId = row.modelData.id
                     Layout.fillWidth: true
                     implicitHeight: 32
                     radius: Theme.radius
-                    color: panel.current === modelData.index ? Theme.accentSoft : (modelData.selected ? Theme.raised : "transparent")
+                    color: panel.current === modelData.index ? Theme.accentSoft : (modelData.selected ? Theme.raised : (row.activeFocus || threadRowMouse.containsMouse) ? Theme.hover : "transparent")
+                    border.width: panel.movedThreadIndex === modelData.index ? 2
+                                  : panel.current === modelData.index || row.activeFocus ? 1 : 0
+                    border.color: panel.movedThreadIndex === modelData.index ? Theme.success
+                                  : row.activeFocus ? Theme.info : Theme.accent
+                    Behavior on color { ColorAnimation { duration: Theme.animationMs } }
+                    Behavior on border.width { NumberAnimation { duration: Theme.feedbackFastMs } }
+                    Rectangle {
+                        width: 3
+                        anchors.left: parent.left
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
+                        radius: 1
+                        color: Theme.accent
+                        visible: panel.current === row.modelData.index
+                    }
                     opacity: modelData.visible ? 1 : 0.5
-                    MouseArea { anchors.fill: parent; onClicked: panel.currentId = row.modelData.id }
+                    Behavior on opacity { NumberAnimation { duration: Theme.feedbackFastMs } }
+                    MouseArea { id: threadRowMouse; anchors.fill: parent; hoverEnabled: true; onClicked: panel.currentId = row.modelData.id }
                     RowLayout {
                         anchors.fill: parent
                         anchors.leftMargin: 6
                         anchors.rightMargin: 6
                         spacing: 8
-                        Rectangle { implicitWidth: 18; implicitHeight: 18; radius: 3; color: row.modelData.color; border.color: Theme.border }
+                        Rectangle {
+                            implicitWidth: 18; implicitHeight: 18; radius: 3
+                            color: row.modelData.color
+                            border.color: Theme.border
+                            Behavior on color { ColorAnimation { duration: Theme.feedbackSlowMs } }
+                        }
                         Text { Layout.fillWidth: true; elide: Text.ElideRight; text: row.modelData.label; color: Theme.foreground; font.family: Theme.fontFamily; font.pixelSize: Theme.bodySize }
                         Text { text: qsTr("%1 obj.").arg(row.modelData.objectCount); color: Theme.faint; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize }
                     }
@@ -260,13 +308,15 @@ Rectangle {
                     objectName: "threadMoveUpButton"
                     text: qsTr("Monter")
                     enabled: panel.current > 0
-                    onClicked: panel.controller.moveThread(panel.current, panel.current - 1)
+                    disabledReason: qsTr("Sélectionnez un fil qui n'est pas déjà en première position.")
+                    onClicked: panel.moveSelected(-1)
                 }
                 StudioButton {
                     objectName: "threadMoveDownButton"
                     text: qsTr("Descendre")
                     enabled: panel.current >= 0 && panel.current < panel.entryList.length - 1
-                    onClicked: panel.controller.moveThread(panel.current, panel.current + 1)
+                    disabledReason: qsTr("Sélectionnez un fil qui n'est pas déjà en dernière position.")
+                    onClicked: panel.moveSelected(1)
                 }
                 StudioButton {
                     objectName: "threadToggleButton"

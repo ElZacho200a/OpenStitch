@@ -14,7 +14,10 @@ Item {
         active: typeof history !== "undefined" && history !== null
         sourceComponent: Item {
             Rectangle {
-                visible: hub.opened
+                visible: hub.opened || opacity > 0
+                enabled: hub.opened
+                opacity: hub.opened ? 1 : 0
+                Behavior on opacity { NumberAnimation { duration: Theme.feedbackFastMs } }
                 // Le bouton « Historique » vit dans la barre du haut (Main.qml) : ce volet
                 // s'ancre au canevas sans marges magiques qui chevauchaient les rails d'outils.
                 anchors.top: parent.top
@@ -47,6 +50,17 @@ Item {
                             currentIndex: history.currentIndex
                             spacing: 3
                             onCurrentIndexChanged: positionViewAtIndex(currentIndex, ListView.Contain)
+                            Text {
+                                anchors.centerIn: parent
+                                width: parent.width - 24
+                                visible: steps.count === 0
+                                text: qsTr("Aucune action dans l'historique. Les modifications apparaîtront ici.")
+                                wrapMode: Text.WordWrap
+                                horizontalAlignment: Text.AlignHCenter
+                                color: Theme.muted
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.smallSize
+                            }
                             delegate: Controls.ItemDelegate {
                                 required property var modelData
                                 width: steps.width
@@ -59,7 +73,8 @@ Item {
                                 focusPolicy: Qt.StrongFocus
                                 onClicked: history.jumpTo(modelData.index)
                                 background: Rectangle {
-                                    color: parent.highlighted ? Theme.accentSoft : parent.hovered ? Theme.raised : "transparent"
+                                    color: parent.highlighted ? Theme.accentSoft : parent.hovered ? Theme.hover : "transparent"
+                                    Behavior on color { ColorAnimation { duration: Theme.animationMs } }
                                     border.width: parent.activeFocus ? 1 : 0
                                     border.color: Theme.accent
                                     radius: Theme.radius

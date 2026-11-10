@@ -17,14 +17,27 @@ ColumnLayout {
     objectName: "param_" + fieldKey
     spacing: 3
 
-    function commit(result) { root.error = result; }
+    property bool justApplied: false
+    readonly property bool customized: root.f.isDefault === false
+    function commit(result) {
+        root.error = result;
+        if (result === "") {
+            justApplied = true;
+            appliedTimer.restart();
+        } else {
+            justApplied = false;
+            appliedTimer.stop();
+        }
+    }
+    Timer { id: appliedTimer; interval: 650; onTriggered: root.justApplied = false }
 
     RowLayout {
         Layout.fillWidth: true
         Text {
             Layout.fillWidth: true
             text: root.f.label + (root.f.unit ? "  (" + root.f.unit + ")" : "")
-            color: Theme.muted
+            color: root.justApplied ? Theme.success : root.customized ? Theme.accent : Theme.muted
+            Behavior on color { ColorAnimation { duration: Theme.feedbackSlowMs } }
             font.family: Theme.fontFamily
             font.pixelSize: Theme.smallSize
             elide: Text.ElideRight
@@ -39,6 +52,7 @@ ColumnLayout {
         StudioButton {
             objectName: "reset_" + root.fieldKey
             visible: root.f.isDefault === false
+            active: root.f.isDefault === false
             iconName: "undo"
             tooltip: qsTr("Réinitialiser (défaut : %1)").arg(root.f.defaultText)
             quiet: true
