@@ -15,6 +15,15 @@ ColumnLayout {
     property int smoothing: imageTools.segmentationDefaults.smoothing_radius_px
     readonly property var options: ({ max_colors: maxColors, min_region_px: minRegionPx,
                                       smoothing_radius_px: smoothing })
+    // The preview describes a specific parameter tuple. Invalidate/cancel it
+    // immediately when colours, island size or smoothing changes.
+    function invalidatePreview() {
+        if (imageTools.segPreviewActive || imageTools.busy)
+            imageTools.cancelSegmentationPreview()
+    }
+    onMaxColorsChanged: invalidatePreview()
+    onMinRegionPxChanged: invalidatePreview()
+    onSmoothingChanged: invalidatePreview()
 
     SectionLabel { text: qsTr("APERÇU DE LA SEGMENTATION") }
     Rectangle {
