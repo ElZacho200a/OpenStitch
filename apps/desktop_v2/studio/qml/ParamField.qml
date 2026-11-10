@@ -18,6 +18,7 @@ ColumnLayout {
     spacing: 3
 
     property bool justApplied: false
+    readonly property bool customized: root.f.isDefault === false
     function commit(result) {
         root.error = result;
         if (result === "") {
@@ -35,7 +36,7 @@ ColumnLayout {
         Text {
             Layout.fillWidth: true
             text: root.f.label + (root.f.unit ? "  (" + root.f.unit + ")" : "")
-            color: root.justApplied ? Theme.success : Theme.muted
+            color: root.justApplied ? Theme.success : root.customized ? Theme.accent : Theme.muted
             Behavior on color { ColorAnimation { duration: Theme.feedbackSlowMs } }
             font.family: Theme.fontFamily
             font.pixelSize: Theme.smallSize
