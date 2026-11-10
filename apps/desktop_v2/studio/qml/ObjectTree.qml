@@ -33,6 +33,15 @@ Item {
             readonly property bool isLayer: modelData.kind === "layer"
             readonly property bool isGroup: modelData.kind === "group"
             property bool renaming: false
+            activeFocusOnTab: true
+            Accessible.role: Accessible.ListItem
+            Accessible.name: modelData.label
+            Accessible.selected: isObject && modelData.selected
+            Keys.onReturnPressed: {
+                if (row.isObject) studio.selectObject(row.modelData.id)
+                else if (row.isLayer) { root.currentLayer = row.modelData.id; editor.selectByLayer(row.modelData.id) }
+                else if (row.isGroup) editor.selectGroup(row.modelData.id)
+            }
             width: view.width
             height: 30
 
@@ -40,8 +49,8 @@ Item {
                 anchors.fill: parent
                 color: row.isObject && row.modelData.selected ? Theme.accentSoft
                        : row.isLayer ? Theme.raised
-                       : area.containsMouse ? Theme.hover : "transparent"
-                border.width: row.isLayer && root.currentLayer === row.modelData.id ? 1 : 0
+                       : area.containsMouse || row.activeFocus ? Theme.hover : "transparent"
+                border.width: row.activeFocus || (row.isLayer && root.currentLayer === row.modelData.id) ? 1 : 0
                 border.color: Theme.accent
                 Behavior on color { ColorAnimation { duration: Theme.animationMs } }
                 Rectangle {
