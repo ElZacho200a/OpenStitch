@@ -165,6 +165,23 @@ class RankerTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "nonfinite"):
             ranker.fit([row], epochs=1)
 
+    def test_direct_fit_is_independent_of_sample_and_candidate_order(self):
+        rows = [sample(i) for i in range(8)]
+        for row in rows:
+            row["candidates"].append(candidate("third", "running", False))
+            row["candidates"][2]["features"]["travel_mm"] += 17.0
+        reordered = json.loads(json.dumps(list(reversed(rows))))
+        for row in reordered:
+            row["candidates"].reverse()
+        self.assertEqual(ranker.fit(rows, epochs=80),
+                         ranker.fit(reordered, epochs=80))
+
+    def test_direct_fit_rejects_duplicate_sample_ids(self):
+        rows = [sample(0), sample(1)]
+        rows[1]["sample_id"] = rows[0]["sample_id"]
+        with self.assertRaisesRegex(ValueError, "duplicate sample_id"):
+            ranker.fit(rows, epochs=1)
+
     def test_fit_rejects_nonfinite_and_boolean_hyperparameters(self):
         for kwargs in ({"epochs": True}, {"epochs": 1.5},
                        {"learning_rate": float("nan")},
