@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <future>
 #include <memory>
 #include <vector>
 
@@ -82,6 +83,28 @@ document::Project shapesProject() {
         shape.source_region = RegionId{id};
         shape.rgb = project.segmentation->find(RegionId{id})->rgb;
         shape.paths = *sets[id - 1];
+        project.vector_objects.push_back(std::move(shape));
+    }
+    return project;
+}
+
+// N carrés de 8 mm (pas 10 mm) sans segmentation : de quoi dépasser kSyncShapeLimit.
+document::Project manyShapesProject(int count) {
+    document::Project project;
+    project.finishing = document::SequenceFinishing::legacy();
+    project.object_ids.reset(1000);
+    for (int i = 0; i < count; ++i) {
+        document::VectorObject shape;
+        shape.id = project.object_ids.next();
+        shape.name = "Forme " + std::to_string(i);
+        shape.rgb = {static_cast<std::uint8_t>(40 + i % 200), 90, 160};
+        const int x0 = (i % 32) * 10000 - 150000;
+        const int y0 = (i / 32) * 10000 - 150000;
+        geometry::PathSet set;
+        for (const auto& [dx, dy] : {std::pair{0, 0}, {8000, 0}, {8000, 8000}, {0, 8000}}) {
+            set.outer.nodes.push_back({Vec2um{Micrometers{x0 + dx}, Micrometers{y0 + dy}}});
+        }
+        shape.paths.push_back(std::move(set));
         project.vector_objects.push_back(std::move(shape));
     }
     return project;
@@ -640,6 +663,77 @@ private slots:
             }
             qInfo("[perf-vector] sparse (2 formes, surface de 1000) build p50=%.2fms",
                   pct(builds, 0.5));
+        }
+    }
+
+    // Le calque rasterisé sur un autre fil est identique, octet pour octet, à celui du fil courant.
+    void layerBuildsIdenticallyOnAnotherThread() {
+        const auto project = manyShapesProject(200);
+        const auto here = VectorLayer::build(project);
+        const auto shapes =
+            std::make_shared<const std::vector<document::VectorObject>>(project.vector_objects);
+        const auto there =
+            std::async(std::launch::async, [shapes] { return VectorLayer::build(*shapes); }).get();
+        QVERIFY(here && there);
+        QCOMPARE(here->shapes().size(), there->shapes().size());
+        QVERIFY(here->image().image == there->image().image); // QImage::operator== : pixels
+        QCOMPARE(here->image().widthMm, there->image().widthMm);
+        QCOMPARE(here->image().x0, there->image().x0);
+    }
+
+    // Au-delà de kSyncShapeLimit la rasterisation quitte le fil d'interface ; une modification
+    // qui en suit une autre remplace la première : jamais de calque périmé publié après coup.
+    void largeDocumentsRasteriseOffTheGuiThreadAndDropStaleResults() {
+        Rig rig;
+        open(rig, false);
+        enterSpace(rig);
+        const int baseline = rig.stage.layerBuildCount();
+        QVERIFY(!rig.stage.layerPending());
+        rig.session.replaceProject(manyShapesProject(200), false);
+        rig.session.replaceProject(manyShapesProject(201), false);
+        QTRY_VERIFY_WITH_TIMEOUT(!rig.stage.layerPending(), 10'000);
+        QCOMPARE(rig.stage.shapeCount(), 201);
+        QCOMPARE(rig.stage.publishedShapeCount(), 201); // le dernier état demandé, pas le premier
+        QVERIFY(rig.stage.layerBuildCount() > baseline);
+        QVERIFY(rig.stage.layerBuildCount() <= baseline + 2);
+        // Retour à une petite scène : synchrone, sans calque en attente.
+        rig.session.replaceProject(manyShapesProject(3), false);
+        QVERIFY(!rig.stage.layerPending());
+        QCOMPARE(rig.stage.shapeCount(), 3);
+        QCOMPARE(rig.stage.publishedShapeCount(), 3);
+        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+    }
+
+    // Mesure : temps pendant lequel le fil d'interface est bloqué par le déclenchement d'une
+    // reconstruction (replaceProject -> refresh), puis délai jusqu'au calque publié.
+    void perfVectorRefreshBlocking() {
+        if (qEnvironmentVariableIntValue("OPENSTITCH_PERF") != 1) {
+            QSKIP("mesure désactivée : définir OPENSTITCH_PERF=1");
+        }
+        using Clock = std::chrono::steady_clock;
+        Rig rig;
+        open(rig, false);
+        enterSpace(rig);
+        for (const int count : {100, 140, 160, 500, 1000}) {
+            std::vector<double> blocked;
+            std::vector<double> total;
+            for (int run = 0; run < 5; ++run) {
+                // Un identifiant de couleur différent à chaque tour force une vraie reconstruction.
+                auto project = manyShapesProject(count);
+                project.vector_objects.front().rgb[0] = static_cast<std::uint8_t>(run * 7);
+                const auto start = Clock::now();
+                rig.session.replaceProject(std::move(project), false);
+                blocked.push_back(
+                    std::chrono::duration<double, std::milli>(Clock::now() - start).count());
+                QTRY_VERIFY_WITH_TIMEOUT(!rig.stage.layerPending(), 10'000);
+                total.push_back(
+                    std::chrono::duration<double, std::milli>(Clock::now() - start).count());
+            }
+            std::sort(blocked.begin(), blocked.end());
+            std::sort(total.begin(), total.end());
+            qInfo("[perf-vector-refresh] n=%d GUI bloque p50=%.2fms max=%.2fms | calque publie "
+                  "p50=%.2fms",
+                  count, blocked[2], blocked.back(), total[2]);
         }
     }
 

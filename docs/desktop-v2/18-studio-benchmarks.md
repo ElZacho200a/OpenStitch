@@ -268,6 +268,52 @@ sous PowerShell. Carrés de 8 mm au pas de 10 mm, 3 exécutions (écarts < 5 %),
 - **Non mesuré ni corrigé ici** : la fréquence réelle de ces reconstructions pendant un geste
   (le glisser d'un nœud passe-t-il par `refresh` à chaque pas ?), l'effet d'un `build` hors du fil
   d'interface, une re-rastérisation par zone sale, ni un projet réel à ~1 000 régions.
-  Les deux correctifs plausibles (publication asynchrone avec étiquette de révision ; re-rastérisation
-  locale) changent le contrat de `refresh()` et ses tests : à concevoir dans un lot séparé, avec
-  non-régression pixel-à-pixel et revue indépendante.
+  Le correctif « publication asynchrone » est décrit et mesuré ci-dessous ; la re-rastérisation par
+  zone sale n'est pas faite.
+
+### Reconstruction du calque vectoriel hors du fil d'interface
+
+`VectorSpaceController::refresh()` garde le chemin synchrone jusqu'à `kSyncShapeLimit` = 150 formes
+(≈ 8 ms, dans le budget d'une frame ; comportement et tests inchangés). **Au-delà**, la
+rasterisation part sur un `TaskManager` du contrôleur, sur une copie immuable de
+`Project::vector_objects` (`VectorLayer::build(const std::vector<VectorObject>&)`, le même code que
+`build(project)` : pixels identiques). Règles :
+
+- **L'ancien calque reste affiché** pendant la reconstruction (pas de clignotement) ;
+  `layerPending` (propriété QML) est vrai entre-temps. Le calque n'est publié (`publishLayer`,
+  compteur `layerBuildCount`, texture du canevas) qu'une fois terminé, sur le fil d'interface.
+- **Une seule reconstruction à la fois, résultats périmés ignorés** : chaque demande porte un
+  numéro (`buildRequest_`) ; un résultat dont le numéro n'est plus courant est jeté. Une modification
+  qui en suit une autre annule et remplace la précédente. Un document revenu à l'état déjà affiché
+  (annulation) abandonne la reconstruction en cours. Revenir sous 150 formes repasse en synchrone et
+  abandonne l'asynchrone.
+- **Clic pendant la reconstruction** : `pick` interroge l'ancien calque ; `selectShape` ignore déjà
+  un identifiant qui n'existe plus dans le document, donc aucune sélection fantôme.
+- **Statut de l'étape** (`stageDetail`, `shapeCount`) : il lit le document et non le calque, donc
+  il n'est pas retardé ; `publishedShapeCount()` donne le nombre de formes du calque réellement
+  affiché (utilisé par les tests).
+- Un résultat annulé ne relance pas de reconstruction (pas de boucle) ; le destructeur arrête la
+  pompe et annule les tâches.
+
+Mesure (`OPENSTITCH_PERF=1 test_desktop_v2_studio_space_vector perfVectorRefreshBlocking`, Release,
+3 exécutions, offscreen + rendu logiciel ; `replaceProject` d'un document complet) : temps pendant
+lequel le **fil d'interface est bloqué** par le déclenchement de la reconstruction.
+
+| Formes | Fil d'interface bloqué (p50) | Chemin |
+| ---: | ---: | --- |
+| 100 | ~6,1 ms | synchrone |
+| 140 | ~7,9 ms | synchrone |
+| 160 | ~1,4 ms | asynchrone |
+| 500 | ~1,7 ms | asynchrone |
+| 1 000 | ~2,2 ms | asynchrone |
+
+Avant : ~27 ms à 500 formes et ~52 ms à 1 000 formes (`build` seul, sur le fil d'interface). La
+latence jusqu'au calque publié n'est **pas** rapportée : `QTRY_VERIFY` sonde toutes les 50 ms, ce qui
+fausse le chiffre (~55 et ~105 ms observés) ; la rasterisation elle-même vaut ~52 ms à 1 000 formes
+et ne bloque plus l'interface. Tests : `layerBuildsIdenticallyOnAnotherThread` (pixels identiques
+entre un fil et un autre, 200 formes), `largeDocumentsRasteriseOffTheGuiThreadAndDropStaleResults`
+(deux remplacements successifs : seul le dernier état est publié ; retour synchrone sous 150).
+**Non vérifié** : un projet réel à ~1 000 régions, le rendu sur D3D11 / fenêtre native, l'effet sur le
+p95 d'interaction de l'application entière, et le comportement de mémoire (une copie des formes par
+reconstruction). La re-rastérisation par zone sale (qui réduirait aussi le coût de calcul) n'est pas
+traitée.

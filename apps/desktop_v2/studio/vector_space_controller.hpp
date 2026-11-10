@@ -9,6 +9,7 @@
 #include <QObject>
 #include <QPointer>
 #include <QString>
+#include <QTimer>
 #include <QVariantMap>
 #include <cstdint>
 #include <memory>
@@ -16,6 +17,7 @@
 
 #include "layers/vector_layer.hpp"
 #include "studio_controller.hpp"
+#include "task_manager.hpp"
 
 namespace openstitch::desktop_v2::studio {
 
@@ -25,15 +27,27 @@ class VectorSpaceController : public QObject {
     Q_OBJECT
     Q_PROPERTY(int shapeCount READ shapeCount NOTIFY layerChanged)
     Q_PROPERTY(int layerBuildCount READ layerBuildCount NOTIFY layerChanged)
+    // Vrai pendant qu'un calque est rasterisé sur un worker : l'ancien reste affiché.
+    Q_PROPERTY(bool layerPending READ layerPending NOTIFY layerChanged)
     Q_PROPERTY(QVariantMap selectedShape READ selectedShape NOTIFY layerChanged)
     Q_PROPERTY(QString stageState READ stageState NOTIFY layerChanged)
     Q_PROPERTY(QString stageDetail READ stageDetail NOTIFY layerChanged)
     Q_PROPERTY(QString message READ message NOTIFY messageChanged)
 public:
     explicit VectorSpaceController(StudioController& studio, QObject* parent = nullptr);
+    ~VectorSpaceController() override;
+
+    // Au-delà de ce nombre de formes visibles, la rasterisation (~50 µs par forme, mesurée dans
+    // docs/desktop-v2/18) quitte le fil d'interface ; en deçà elle reste synchrone (≈ 8 ms).
+    static constexpr std::size_t kSyncShapeLimit = 150;
 
     [[nodiscard]] int shapeCount() const;
     [[nodiscard]] int layerBuildCount() const { return builds_; }
+    [[nodiscard]] bool layerPending() const { return pending_; }
+    // Formes du calque réellement publié (peut retarder sur le document pendant `layerPending`).
+    [[nodiscard]] int publishedShapeCount() const {
+        return layer_ ? static_cast<int>(layer_->shapes().size()) : 0;
+    }
     [[nodiscard]] QVariantMap selectedShape() const;
     [[nodiscard]] QString stageState() const { return stageState_; }
     [[nodiscard]] QString stageDetail() const { return stageDetail_; }
@@ -66,6 +80,9 @@ signals:
 
 private:
     void refresh();
+    // Publie un calque terminé (fil d'interface seulement).
+    void publishLayer(std::shared_ptr<const VectorLayer> layer, std::vector<std::uint64_t> keys);
+    void startAsyncBuild(std::vector<std::uint64_t> keys);
     [[nodiscard]] std::vector<std::uint64_t> selectedShapeIds() const;
     void say(const QString& text);
 
@@ -77,6 +94,12 @@ private:
     // Visual-only fingerprints: a stitch parameter change must not repaint vector shapes.
     std::vector<std::uint64_t> renderedVisualKeys_;
     int builds_{0};
+    // Reconstruction asynchrone : une seule à la fois, les résultats périmés sont ignorés.
+    TaskManager tasks_;
+    QTimer pump_;
+    std::uint64_t buildRequest_{0};
+    bool pending_{false};
+    std::vector<std::uint64_t> pendingVisualKeys_;
     bool dirty_{false};
     QString dirtyReason_;
     QString stageState_{QStringLiteral("empty")};
