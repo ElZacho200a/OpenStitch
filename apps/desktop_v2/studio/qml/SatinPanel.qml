@@ -147,6 +147,13 @@ Rectangle {
                 tooltip: qsTr("Crée un guide de direction entre deux points du modèle (mm)")
                 onClicked: panel.controller.addGuide(panel.guidePoints(), false)
             }
+            StudioButton {
+                objectName: "addBreakLine"
+                text: qsTr("Ajouter la ligne de rupture")
+                enabled: panel.ready && panel.validGuidePoints()
+                tooltip: qsTr("Crée une ligne de rupture entre deux points du modèle (mm)")
+                onClicked: panel.controller.addGuide(panel.guidePoints(), true)
+            }
             SectionLabel { text: qsTr("GUIDES DE DIRECTION") }
             Text {
                 Layout.fillWidth: true
