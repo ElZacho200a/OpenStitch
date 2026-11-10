@@ -204,6 +204,10 @@ def metrics(rows: list[dict], model: dict | None) -> dict:
         fail("no labeled samples")
     correct = 0
     for row in rows:
+        # Direct Python callers must receive the same validation as JSONL/CLI.
+        # Otherwise a malformed preference or feature can silently inflate
+        # baseline accuracy or bypass the consent/provenance contract.
+        check_sample(row)
         if model is None:
             ordered = sorted(row["candidates"], key=lambda c: (-heuristic(c), c["id"]))
             best_id = ordered[0]["id"]
