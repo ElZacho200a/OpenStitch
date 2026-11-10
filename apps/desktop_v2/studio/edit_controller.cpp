@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "edit_controller.hpp"
+#include "change_gate.hpp"
 
 #include <QColor>
 #include <algorithm>
@@ -43,7 +44,14 @@ bool touches(const RectMm& a, const RectMm& b, double tolerance) {
 
 EditController::EditController(StudioController& studio, QObject* parent)
     : QObject(parent), studio_(studio) {
-    connect(&studio_, &StudioController::changed, this, &EditController::treeChanged);
+    gateStamp_ = documentStamp(studio_);
+    connect(&studio_, &StudioController::changed, this, [this] {
+        const auto stamp = documentStamp(studio_);
+        if (stamp != gateStamp_) { // l'arbre d'objets n'est reconstruit que s'il a changé
+            gateStamp_ = stamp;
+            emit treeChanged();
+        }
+    });
     connect(&studio_, &StudioController::sceneChanged, this, &EditController::treeChanged);
     connect(&studio_, &StudioController::documentReplaced, this, [this] {
         saved_.clear(); // les identifiants d'un autre document n'ont aucun sens ici

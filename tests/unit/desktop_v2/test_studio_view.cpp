@@ -101,6 +101,7 @@ private slots:
     void analysisClearsDensityRiskAndDiscardsProposal();
     void chartImportAndOwnedThreadAssignment();
     void displayFiltersByTypeColourAndSize();
+    void statusEventsDoNotReloadThreadsFiltersOrTree();
     void initTestCase();
     void mainQmlHostsEveryPanel();
 };
@@ -925,6 +926,37 @@ void StudioViewTest::displayFiltersByTypeColourAndSize() {
     QVERIFY(!rig.view.hideSmallerThan(0.0));
     QVERIFY(!rig.view.hideSmallerThan(-3.0));
     QVERIFY(!rig.view.hideSmallerThan(1.0e-9)); // aucune zone aussi petite
+}
+
+// Un événement de statut (survol, progression, message) émet StudioController::changed sans rien
+// changer au document : les listes de fils, les filtres et l'arbre d'objets ne sont PAS rediffusés
+// (sinon QML les recalcule à chaque événement). Un vrai changement les rediffuse.
+void StudioViewTest::statusEventsDoNotReloadThreadsFiltersOrTree() {
+    Rig rig;
+    EditController editor(rig.studio);
+    QSignalSpy threads(&rig.threads, &ThreadController::changed);
+    QSignalSpy view(&rig.view, &ViewController::changed);
+    QSignalSpy tree(&editor, &EditController::treeChanged);
+    for (int i = 0; i < 5; ++i) {
+        emit rig.studio.changed();
+    }
+    QCOMPARE(threads.count(), 0);
+    QCOMPARE(view.count(), 0);
+    QCOMPARE(tree.count(), 0);
+
+    const auto id = rig.session.project().embroidery_objects.front().id.value;
+    rig.studio.selectObject(QString::number(id)); // la sélection change vraiment
+    QTRY_VERIFY(threads.count() >= 1);
+    QVERIFY(view.count() >= 1);
+    QVERIFY(tree.count() >= 1);
+    threads.clear();
+    view.clear();
+    tree.clear();
+    QVERIFY(rig.view.setColourVisible(
+        rig.view.filterColours().first().toMap().value("id").toString(), false));
+    QTRY_VERIFY(threads.count() >= 1); // le document a changé
+    QVERIFY(view.count() >= 1);
+    QVERIFY(tree.count() >= 1);
 }
 
 QTEST_MAIN(StudioViewTest)

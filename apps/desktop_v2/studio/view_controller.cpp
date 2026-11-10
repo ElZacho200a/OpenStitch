@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "view_controller.hpp"
+#include "change_gate.hpp"
 
 #include "inspector_model.hpp"
 
@@ -71,7 +72,14 @@ ViewController::ViewController(StudioController& studio, std::filesystem::path c
         configFile_ = configDir / "studio-view.txt";
         load();
     }
-    connect(&studio_, &StudioController::changed, this, &ViewController::changed);
+    gateStamp_ = documentStamp(studio_);
+    connect(&studio_, &StudioController::changed, this, [this] {
+        const auto stamp = documentStamp(studio_);
+        if (stamp != gateStamp_) { // filtres et compteurs : pas de recalcul pour un statut
+            gateStamp_ = stamp;
+            emit changed();
+        }
+    });
     connect(&studio_, &StudioController::sceneChanged, this, &ViewController::onSceneChanged);
     pump_.setInterval(8);
     connect(&pump_, &QTimer::timeout, this, [this] { tasks_.pump(); });

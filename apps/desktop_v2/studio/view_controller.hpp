@@ -7,6 +7,7 @@
 #include <QString>
 #include <QTimer>
 #include <QVariantList>
+#include <cstdint>
 #include <filesystem>
 #include <map>
 #include <memory>
@@ -178,7 +179,8 @@ signals:
     void realisticRefreshRequested();
 
 private:
-    struct SimData; // effective sequence prefix data, built on a worker per scene
+    std::uint64_t gateStamp_{0}; // documentStamp() au dernier changed rediffusé
+    struct SimData;              // effective sequence prefix data, built on a worker per scene
     void say(const QString& text);
     void onSceneChanged();
     void rebuildSimData();

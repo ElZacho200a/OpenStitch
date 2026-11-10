@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "pull_controller.hpp"
+#include "change_gate.hpp"
 
 #include <QFile>
 #include <QSaveFile>
@@ -20,7 +21,14 @@ PullController::PullController(StudioController& studio, InspectorController* in
     pump_.setInterval(8);
     connect(&pump_, &QTimer::timeout, this, [this] { tasks_.pump(); });
     pump_.start();
-    connect(&studio_, &StudioController::changed, this, [this] { emit changed(); });
+    gateStamp_ = documentStamp(studio_);
+    connect(&studio_, &StudioController::changed, this, [this] {
+        const auto stamp = documentStamp(studio_);
+        if (stamp != gateStamp_) {
+            gateStamp_ = stamp;
+            emit changed();
+        }
+    });
     if (inspector_ != nullptr) {
         connect(inspector_, &QObject::destroyed, this, [this] { inspector_ = nullptr; });
     }

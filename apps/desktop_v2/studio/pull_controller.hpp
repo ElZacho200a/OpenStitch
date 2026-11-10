@@ -13,6 +13,7 @@
 #include <QTimer>
 #include <QVariantList>
 #include <QVariantMap>
+#include <cstdint>
 #include <optional>
 
 #include "inspector_controller.hpp"
@@ -88,6 +89,7 @@ signals:
     void messageChanged();
 
 private:
+    std::uint64_t gateStamp_{0}; // documentStamp() au dernier changed rediffusé
     void say(bool ok, const QString& text);
 
     StudioController& studio_;

@@ -117,6 +117,7 @@ signals:
     void eyedropperChanged();
 
 private:
+    std::uint64_t gateStamp_{0}; // documentStamp() au dernier changed rediffusé
     [[nodiscard]] std::vector<std::uint64_t> selectedIds() const;
     [[nodiscard]] bool selectIds(const std::vector<std::uint64_t>& ids, bool additive = false);
     [[nodiscard]] bool visibleObject(std::uint64_t id) const;
