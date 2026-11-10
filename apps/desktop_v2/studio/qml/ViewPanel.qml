@@ -229,8 +229,20 @@ Item {
                         }
                         RowLayout {
                             Layout.fillWidth: true
-                            StudioTextField { id: calibField; objectName: "calibrateField"; implicitWidth: 70; placeholderText: qsTr("mm réels") }
-                            StudioButton { objectName: "calibrateButton"; text: qsTr("Étalonner le 100 % sur 100 mm"); onClicked: view.calibrateZoom100(parseFloat(calibField.text), 100) }
+                            StudioTextField {
+                                id: calibField
+                                objectName: "calibrateField"
+                                implicitWidth: 70
+                                placeholderText: qsTr("mm réels")
+                                invalid: text.trim().length > 0 && !(hub.parseMm(text) >= 1)
+                                Accessible.name: qsTr("Longueur mesurée à l'écran en millimètres")
+                            }
+                            StudioButton {
+                                objectName: "calibrateButton"
+                                text: qsTr("Étalonner le 100 % sur 100 mm")
+                                enabled: hub.parseMm(calibField.text) >= 1
+                                onClicked: view.calibrateZoom100(hub.parseMm(calibField.text), 100)
+                            }
                         }
                         Text {
                             objectName: "viewMessage"
