@@ -575,6 +575,31 @@ void StudioDigitizeTest::mainQmlHostsDigitizePanels() {
     // and bound node indices, not partial parseFloat("0,5") == 0.
     QVERIFY(press(window, "satinPanelButton"));
     QVERIFY(named(window, "satinPanel")->isVisible());
+    // F23-01/F23-02: actual QML controls create undoable directional guides
+    // and break lines using millimetre coordinates (without any stub action).
+    auto* startX = named(window, "guideStartX");
+    auto* startY = named(window, "guideStartY");
+    auto* endX = named(window, "guideEndX");
+    auto* endY = named(window, "guideEndY");
+    auto* addGuideButton = named(window, "addDirectionGuide");
+    auto* addBreakButton = named(window, "addBreakLine");
+    QVERIFY(startX && startY && endX && endY && addGuideButton && addBreakButton);
+    QVERIFY(startX->setProperty("text", QStringLiteral("-10mm")));
+    QVERIFY(startY->setProperty("text", QStringLiteral("-5")));
+    QVERIFY(endX->setProperty("text", QStringLiteral("10")));
+    QVERIFY(endY->setProperty("text", QStringLiteral("5")));
+    QTRY_VERIFY(!addGuideButton->isEnabled());
+    QVERIFY(startX->setProperty("text", QStringLiteral("-10,0")));
+    QTRY_VERIFY(addGuideButton->isEnabled());
+    const auto guideDepth = session.undoNames().size();
+    QVERIFY(press(window, "addDirectionGuide"));
+    QCOMPARE(session.undoNames().size(), guideDepth + 1);
+    QTRY_VERIFY(satin.guideCount() >= 1);
+    QVERIFY(press(window, "addBreakLine"));
+    QCOMPARE(session.undoNames().size(), guideDepth + 2);
+    QTRY_VERIFY(satin.breakLineCount() >= 1);
+    QVERIFY(session.undo());
+    QVERIFY(session.undo());
     const auto rung = [](double x, double y0, double y1) {
         return QVariantMap{{"ax", x}, {"ay", y0}, {"bx", x}, {"by", y1}};
     };
