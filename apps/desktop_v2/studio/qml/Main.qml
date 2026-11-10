@@ -60,6 +60,8 @@ Window {
         when: typeof regionTools !== "undefined"
     }
     readonly property var spaceIds: ["image", "segmentation", "vector", "points"]
+    property string workspaceNotice: ""
+    Timer { id: workspaceNoticeTimer; interval: 1400; onTriggered: window.workspaceNotice = "" }
 
 
     function openProject() {
@@ -134,7 +136,13 @@ Window {
     }
     Connections {
         target: workspaceCtl
-        function onCurrentChanged() { window.persistSession() }
+        function onCurrentChanged() {
+            window.persistSession()
+            const labels = { image: qsTr("Image"), segmentation: qsTr("Segmentation"),
+                             vector: qsTr("Vecteurs"), points: qsTr("Points") }
+            window.workspaceNotice = qsTr("Espace actif : ") + (labels[workspaceCtl.current] || workspaceCtl.current)
+            workspaceNoticeTimer.restart()
+        }
         function onPanelsChanged() { window.persistSession() }
     }
     Component.onCompleted: {
@@ -488,7 +496,8 @@ Window {
                 spacing: 12
                 Text {
                     Layout.fillWidth: true
-                    text: studio.busy ? qsTr("Opération en cours…  ·  ") + studio.status : studio.status
+                    text: studio.busy ? qsTr("Opération en cours…  ·  ") + studio.status
+                                      : window.workspaceNotice.length > 0 ? window.workspaceNotice : studio.status
                     elide: Text.ElideRight
                     color: Theme.muted
                     font.family: Theme.fontFamily
