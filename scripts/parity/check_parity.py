@@ -30,7 +30,7 @@ def norm(text: str) -> str:
 
 def v2_sources() -> str:
     out = []
-    for pattern in ("*.cpp", "*.hpp"):
+    for pattern in ("*.cpp", "*.hpp", "*.qml", "*.js"):  # le Studio vit en QML : ses preuves comptent
         for p in sorted((ROOT / "apps" / "desktop_v2").rglob(pattern)):
             out.append(p.read_text(encoding="utf-8", errors="ignore"))
     return norm("\n".join(out))

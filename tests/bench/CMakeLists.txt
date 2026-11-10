@@ -41,12 +41,12 @@ if(TARGET openstitch_desktop_widgets)
         PRIVATE openstitch::desktop_widgets openstitch::project_io openstitch::warnings)
 endif()
 
-# Native-window comparison: Quick swap cadence versus the existing V2 raster canvas.
+# Native-window benchmark of the Quick canvas (swap cadence, real-project fixture generation).
 # Kept out of the default build/CTest: needs a visible, unobscured desktop for measurements.
-if(TARGET openstitch_studio_ui AND TARGET openstitch_desktop_v2_ui)
+if(TARGET openstitch_studio_ui)
     add_executable(openstitch-studio-bench EXCLUDE_FROM_ALL studio_bench.cpp)
     target_link_libraries(openstitch-studio-bench
-        PRIVATE openstitch::studio_ui openstitch::desktop_v2_ui openstitch::warnings)
+        PRIVATE openstitch::studio_ui openstitch::warnings)
     if(WIN32)
         target_link_libraries(openstitch-studio-bench PRIVATE psapi)
     endif()
