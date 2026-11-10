@@ -63,7 +63,14 @@ Item {
             Item {
                 id: drawer
                 objectName: "digitizeDrawer"
-                visible: hub.openPanel !== ""
+                readonly property bool opened: hub.openPanel !== ""
+                visible: opened || opacity > 0
+                enabled: opened
+                opacity: opened ? 1 : 0
+                scale: opened ? 1 : 0.98
+                transformOrigin: Item.Right
+                Behavior on opacity { NumberAnimation { duration: Theme.feedbackSlowMs; easing.type: Easing.OutCubic } }
+                Behavior on scale { NumberAnimation { duration: Theme.feedbackSlowMs; easing.type: Easing.OutCubic } }
                 anchors.top: parent.top
                 anchors.topMargin: hub.toolbarVisible ? 54 : 12
                 anchors.bottom: parent.bottom
