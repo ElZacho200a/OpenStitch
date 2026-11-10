@@ -400,6 +400,21 @@ private slots:
         // Régions : sélection, recoloration, fusion, suppression, régénération.
         panels->setProperty("tab", 1);
         QVERIFY(rig.named("regionStaleBanner"));
+        // F08-02: unlike the old fixed 60/true values, the palette preview
+        // follows the editable colour-distance and adjacency settings.
+        auto* palette = rig.named("regionTools");
+        auto* distance = rig.named("regionPaletteDistance");
+        auto* adjacent = rig.named("regionMergeAdjacent");
+        auto* preview = rig.named("regionPalettePreview");
+        QVERIFY(palette && distance && adjacent && preview);
+        QVERIFY(palette->setProperty("paletteDistance", 25));
+        QVERIFY(palette->setProperty("paletteMergeAdjacent", false));
+        QTRY_COMPARE(distance->property("value").toInt(), 25);
+        QTRY_VERIFY(!adjacent->property("checked").toBool());
+        const auto expectedPreview = rig.regions.previewReduction(
+            palette->property("paletteColors").toInt(), 25, false);
+        QTRY_COMPARE(preview->property("p").toMap().value("after").toInt(),
+                     expectedPreview.value("after").toInt());
         rig.regions.selectAtPixel(20, 20);
         QCOMPARE(rig.regions.selectedCount(), 1);
         rig.named("regionColorField")->setProperty("text", QStringLiteral("#00aa55"));
