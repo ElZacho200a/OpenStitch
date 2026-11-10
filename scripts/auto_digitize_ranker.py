@@ -222,6 +222,83 @@ def compare_candidates(model: dict, row: dict) -> dict:
     }
 
 
+def assess_candidates(model: dict, row: dict, *, min_margin: float = 0.1,
+                      min_coverage: float = 0.85,
+                      max_uncovered: float = 0.15,
+                      max_short_stitches: float = 0.2,
+                      max_overdensity: float = 0.2) -> dict:
+    """Conservative advisory decision: never writes embroidery or applies a model."""
+    check_sample(row, require_label=False)
+    for name, value in (("min_margin", min_margin), ("min_coverage", min_coverage),
+                        ("max_uncovered", max_uncovered),
+                        ("max_short_stitches", max_short_stitches),
+                        ("max_overdensity", max_overdensity)):
+        if type(value) not in (int, float) or not math.isfinite(value) or not 0 <= value <= 1:
+            fail("invalid assessment threshold: " + name)
+    accepted = []
+    rejected = []
+    for candidate in row["candidates"]:
+        f = candidate["features"]
+        reasons = []
+        if f["coverage_ratio"] < min_coverage:
+            reasons.append("insufficient_coverage")
+        if f["uncovered_ratio"] > max_uncovered:
+            reasons.append("excessive_uncovered_area")
+        if f["short_stitch_ratio"] > max_short_stitches:
+            reasons.append("excessive_short_stitches")
+        if f["overdensity_ratio"] > max_overdensity:
+            reasons.append("excessive_overdensity")
+        if reasons:
+            rejected.append({"id": candidate["id"], "reasons": reasons})
+        else:
+            accepted.append(candidate)
+    rejected.sort(key=lambda item: item["id"])
+    # Validate the model even if every candidate is rejected: no silent use
+    # of incompatible weights after an apparent safety fallback.
+    all_ranked = rank(model, row)
+    if not accepted:
+        return {"schema": "openstitch.ai.assessment/1", "decision": "abstain",
+                "reason": "no_admissible_candidate", "selected_id": None,
+                "margin": None, "rejected": rejected, "applied": False}
+    accepted_ids = {c["id"] for c in accepted}
+    ranked = [item for item in all_ranked if item["id"] in accepted_ids]
+    baseline = sorted(accepted, key=lambda c: (-heuristic(c), c["id"]))[0]["id"]
+    margin = ranked[0]["score"] - ranked[1]["score"] if len(ranked) > 1 else None
+    if margin is not None and not math.isfinite(margin):
+        fail("nonfinite ranking margin")
+    # A single admissible candidate needs no learned arbitration.
+    confident = len(ranked) > 1 and margin >= min_margin
+    return {"schema": "openstitch.ai.assessment/1",
+            "decision": "recommend" if confident else "fallback",
+            "reason": "sufficient_margin" if confident else
+                      ("single_admissible_candidate" if len(ranked) == 1 else "low_margin"),
+            "selected_id": ranked[0]["id"] if confident else baseline,
+            "model_choice": ranked[0]["id"], "heuristic_choice": baseline,
+            "margin": margin, "rejected": rejected, "applied": False}
+
+
+def ranking_metrics(rows: list[dict], model: dict | None, k: int = 2) -> dict:
+    """Top-k accuracy and mean reciprocal rank on labeled examples."""
+    if type(k) is not int or k < 1:
+        fail("k must be a positive integer")
+    hits = 0
+    reciprocal = 0.0
+    for row in rows:
+        check_sample(row)
+        if model is None:
+            ordered = sorted(row["candidates"], key=lambda c: (-heuristic(c), c["id"]))
+            ids = [c["id"] for c in ordered]
+        else:
+            ids = [c["id"] for c in rank(model, row)]
+        position = ids.index(row["preferred_id"]) + 1
+        hits += position <= k
+        reciprocal += 1.0 / position
+    if not rows:
+        fail("no labeled samples")
+    return {"samples": len(rows), "k": k, "top_k_accuracy": round(hits / len(rows), 6),
+            "mean_reciprocal_rank": round(reciprocal / len(rows), 6)}
+
+
 def dataset_digest(rows: list[dict]) -> str:
     canonical = "\n".join(json.dumps(r, sort_keys=True, separators=(",", ":"),
                                     ensure_ascii=False) for r in rows)
@@ -239,10 +316,13 @@ def train_model(rows: list[dict], epochs: int = 500) -> dict:
                           "heldout_motif_groups": len({r["motif_group"] for r in validation}),
                           "train_metrics": None, "heldout_metrics": None,
                           "baseline_heldout_metrics": metrics(validation, None),
+                          "heldout_ranking_metrics": None,
+                          "baseline_heldout_ranking_metrics": ranking_metrics(validation, None),
                           "synthetic_only": all(r["provenance"]["source_kind"] == "synthetic"
                                                 for r in rows)}}
     model["training"]["train_metrics"] = metrics(train, model)
     model["training"]["heldout_metrics"] = metrics(validation, model)
+    model["training"]["heldout_ranking_metrics"] = ranking_metrics(validation, model)
     return model
 
 
@@ -256,6 +336,10 @@ def main(argv=None) -> int:
             p.add_argument("model", type=Path, help="Output for train; input for evaluate")
         if command == "train":
             p.add_argument("--epochs", type=int, default=500)
+    p = sub.add_parser("assess")
+    p.add_argument("model", type=Path)
+    p.add_argument("sample", type=Path)
+    p.add_argument("--min-margin", type=float, default=0.1)
     p = sub.add_parser("compare")
     p.add_argument("model", type=Path)
     p.add_argument("sample", type=Path)
@@ -264,10 +348,12 @@ def main(argv=None) -> int:
     p.add_argument("sample", type=Path)
     args = parser.parse_args(argv)
     try:
-        if args.command in ("rank", "compare"):
+        if args.command in ("rank", "compare", "assess"):
             model = json.loads(args.model.read_text(encoding="utf-8"))
             sample = json.loads(args.sample.read_text(encoding="utf-8"))
-            output = (compare_candidates(model, sample) if args.command == "compare"
+            output = (assess_candidates(model, sample, min_margin=args.min_margin)
+                      if args.command == "assess" else
+                      compare_candidates(model, sample) if args.command == "compare"
                       else {"ranking": rank(model, sample)})
             print(json.dumps(output, indent=2))
         else:
@@ -285,6 +371,8 @@ def main(argv=None) -> int:
             else:
                 model = json.loads(args.model.read_text(encoding="utf-8"))
                 result = {"model": metrics(rows, model), "heuristic": metrics(rows, None),
+                          "model_ranking": ranking_metrics(rows, model),
+                          "heuristic_ranking": ranking_metrics(rows, None),
                           "warning": "Evaluate on independent unseen motifs; this command does not split."}
                 print(json.dumps(result, indent=2, sort_keys=True))
         return 0
