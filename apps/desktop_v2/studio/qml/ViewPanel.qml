@@ -19,6 +19,19 @@ Item {
                                                    && canvasItem !== null && canvasItem.activeFocus
     // "", "view", "threads", "analysis"
     property string openPanel: ""
+    // Strict millimetre parser: rejects partial input such as "2mm" and supports
+    // a comma decimal separator for French keyboard layouts.
+    function parseMm(text) {
+        const value = String(text).trim().replace(",", ".")
+        if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(value))
+            return NaN
+        const number = Number(value)
+        return isFinite(number) ? number : NaN
+    }
+    function validGridStep(text) {
+        const mm = parseMm(text)
+        return mm >= 0.5 && mm <= 500
+    }
     // Faux : l'espace hôte (« Points ») porte lui-même les boutons de cette barre et n'ouvre
     // qu'UN panneau latéral à la fois. Vrai : usage historique des autres espaces.
     property bool toolbarVisible: true
@@ -180,7 +193,20 @@ Item {
                         RowLayout {
                             Layout.fillWidth: true
                             Text { text: qsTr("Pas (mm)"); color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize }
-                            StudioTextField { id: stepField; objectName: "gridStepField"; implicitWidth: 70; text: view.gridStepMm; onEditingFinished: view.gridStepMm = parseFloat(text) }
+                            StudioTextField {
+                                id: stepField
+                                objectName: "gridStepField"
+                                implicitWidth: 70
+                                text: view.gridStepMm
+                                invalid: !hub.validGridStep(text)
+                                Accessible.name: qsTr("Pas de grille en millimètres")
+                                onEditingFinished: {
+                                    if (hub.validGridStep(text))
+                                        view.gridStepMm = hub.parseMm(text)
+                                    else
+                                        text = String(view.gridStepMm)
+                                }
+                            }
                             Text { text: qsTr("Guide (mm)"); color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize }
                             StudioTextField { id: guideField; objectName: "guideField"; implicitWidth: 70; text: "0" }
                         }
