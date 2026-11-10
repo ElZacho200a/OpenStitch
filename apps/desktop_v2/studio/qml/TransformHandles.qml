@@ -117,7 +117,19 @@ Item {
         Text {
             id: snapLabel
             anchors.centerIn: parent
-            text: qsTr("Accrochage actif")
+            text: {
+                if (!root.canvas || !root.canvas.guideLines) return ""
+                let vertical = false
+                let horizontal = false
+                for (const guide of root.canvas.guideLines) {
+                    if (Math.abs(guide.x1 - guide.x2) < 1) vertical = true
+                    if (Math.abs(guide.y1 - guide.y2) < 1) horizontal = true
+                }
+                return vertical && horizontal ? qsTr("Alignement horizontal et vertical")
+                     : vertical ? qsTr("Alignement vertical")
+                     : horizontal ? qsTr("Alignement horizontal")
+                     : qsTr("Accrochage actif")
+            }
             color: Theme.info
             font.family: Theme.fontFamily
             font.pixelSize: Theme.smallSize
