@@ -22,7 +22,8 @@ Controls.AbstractButton {
     hoverEnabled: true
     focusPolicy: Qt.StrongFocus
     Accessible.name: tooltip.length > 0 ? tooltip : text
-    Accessible.description: shortcutLabel.length > 0 ? qsTr("Raccourci : ") + shortcutLabel : ""
+    Accessible.description: !enabled && disabledReason.length > 0 ? disabledReason
+                            : shortcutLabel.length > 0 ? qsTr("Raccourci : ") + shortcutLabel : ""
 
     background: Rectangle {
         radius: Theme.radius
