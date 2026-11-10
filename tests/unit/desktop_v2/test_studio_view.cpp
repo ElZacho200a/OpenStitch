@@ -98,6 +98,7 @@ private slots:
     void hoopsAndMachine();
     void simulationPauseStartEndAndColourJumps();
     void guidesAddRemoveAndColour();
+    void analysisClearsDensityRiskAndDiscardsProposal();
     void initTestCase();
     void mainQmlHostsEveryPanel();
 };
@@ -761,6 +762,30 @@ void StudioViewTest::guidesAddRemoveAndColour() {
     QCOMPARE(changed.count(), 1);
     QVERIFY(rig.view.removeGuide(static_cast<int>(before)));
     QCOMPARE(rig.view.guides().size(), before);
+}
+
+// Effacer la carte de densité / de risque et rejeter une proposition d'ordre : l'état publié
+// repasse à « non prêt » avec son signal, sans toucher au document.
+void StudioViewTest::analysisClearsDensityRiskAndDiscardsProposal() {
+    Rig rig;
+    const auto depth = rig.session.undoNames().size();
+    rig.analysis.computeDensity();
+    QTRY_VERIFY_WITH_TIMEOUT(rig.analysis.densityReady(), 15'000);
+    QSignalSpy density(&rig.analysis, &AnalysisController::densityChanged);
+    rig.analysis.clearDensity();
+    QVERIFY(!rig.analysis.densityReady());
+    QCOMPARE(density.count(), 1);
+    rig.analysis.computeFabricRisk();
+    QTRY_VERIFY_WITH_TIMEOUT(rig.analysis.riskReady(), 15'000);
+    QSignalSpy risk(&rig.analysis, &AnalysisController::riskChanged);
+    rig.analysis.clearFabricRisk();
+    QVERIFY(!rig.analysis.riskReady());
+    QCOMPARE(risk.count(), 1);
+    rig.analysis.proposeOrder(0, false);
+    QTRY_VERIFY_WITH_TIMEOUT(rig.analysis.proposalReady(), 15'000);
+    rig.analysis.discardProposal();
+    QVERIFY(!rig.analysis.proposalReady());
+    QCOMPARE(rig.session.undoNames().size(), depth);
 }
 
 QTEST_MAIN(StudioViewTest)
