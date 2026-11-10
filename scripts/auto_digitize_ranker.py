@@ -118,6 +118,8 @@ def vector(candidate: dict) -> tuple[float, ...]:
 
 def score(model: dict, candidate: dict) -> float:
     check_candidate(candidate)
+    if not isinstance(model, dict):
+        fail("model must be a JSON object")
     if model.get("schema") != MODEL_SCHEMA or model.get("feature_names") != list(FEATURE_NAMES):
         fail("incompatible model schema/features")
     weights = model.get("weights")
