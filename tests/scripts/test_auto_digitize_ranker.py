@@ -110,6 +110,32 @@ class RankerTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "no labeled samples"):
             ranker.train_model([], epochs=1)
 
+    def test_paired_audit_groups_by_preferred_not_predicted_technique(self):
+        rows = [sample(i) for i in range(4)]
+        model = ranker.train_model([sample(i) for i in range(8)], epochs=30)
+        audit = ranker.paired_evaluation(rows, model)
+        self.assertEqual(audit["samples"], 4)
+        self.assertEqual(audit["motif_groups"], 4)
+        self.assertEqual(audit["model_only_correct"], 0)
+        self.assertEqual(audit["heuristic_only_correct"], 0)
+        self.assertEqual(audit["choice_disagreements"], 0)
+        self.assertEqual(set(audit["by_preferred_technique"]),
+                         {"auto_satin", "tatami"})
+        self.assertEqual(audit["by_preferred_technique"]["tatami"]["samples"], 2)
+        self.assertEqual(audit, ranker.paired_evaluation(list(reversed(rows)), model))
+
+    def test_paired_audit_exposes_model_errors(self):
+        rows = [sample(0), sample(1)]
+        model = ranker.train_model([sample(i) for i in range(8)], epochs=30)
+        model["weights"] = [0.0] * len(ranker.FEATURE_NAMES)
+        audit = ranker.paired_evaluation(rows, model)
+        self.assertEqual(audit["samples"], 2)
+        self.assertEqual(audit["heuristic_only_correct"], 2)
+        self.assertEqual(audit["model_only_correct"], 0)
+        self.assertEqual(audit["choice_disagreements"], 2)
+        with self.assertRaisesRegex(ValueError, "no labeled samples"):
+            ranker.paired_evaluation([], model)
+
     def test_training_deterministic_and_holdout(self):
         rows = [sample(i) for i in range(12)]
         one = ranker.train_model(rows, epochs=250)
