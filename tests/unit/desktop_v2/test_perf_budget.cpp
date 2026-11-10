@@ -184,3 +184,34 @@ TEST_CASE("perf: StudioSceneSnapshot pick au survol", "[.perf][pick]") {
         }
     }
 }
+
+// PERF-005 / PERF-011 : coût d'UNE reconstruction de scène complète (celle que déclenche toute
+// édition qui touche la broderie), par nombre d'objets. Hors fil d'interface en production : ce
+// chiffre dit combien de temps la géométrie reste périmée après chaque édition.
+TEST_CASE("perf: build_studio_scene par nombre d'objets", "[.perf][scene]") {
+    std::printf("\n%8s | %10s | %10s | %10s | %10s | %10s | %10s | %10s\n", "objets", "segments",
+                "total p50", "total max", "sequence", "segments", "sommets", "grille pick");
+    for (const int count : {1, 100, 500, 1000}) {
+        DocumentSession session;
+        auto created = project_ops::create_empty_project({});
+        REQUIRE(created.has_value());
+        session.replaceProject(std::move(*created), true);
+        REQUIRE(session.applyBatch(gridBatch(count), "Grille").committed);
+        const auto snapshot = session.snapshot();
+        std::vector<double> totals;
+        StudioSceneBuildTiming timing;
+        std::size_t segments = 0;
+        for (int run = 0; run < 5; ++run) {
+            const auto start = Clock::now();
+            const auto built = build_studio_scene(snapshot, 1, TaskContext{});
+            totals.push_back(msSince(start));
+            REQUIRE(built.has_value());
+            timing = (*built)->timing;
+            segments = (*built)->segments.size();
+        }
+        std::printf("%8d | %10zu | %8.1fms | %8.1fms | %8.1fms | %8.1fms | %8.1fms | %8.1fms\n",
+                    count, segments, percentile(totals, 0.5), percentile(totals, 1.0),
+                    timing.effectiveSequenceMs, timing.threadSegmentsMs, timing.verticesMs,
+                    timing.pickGridMs);
+    }
+}

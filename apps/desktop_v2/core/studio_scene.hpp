@@ -55,6 +55,7 @@ struct StudioPickGrid {
     double originX{0};
     double originY{0};
     double cellMm{2.0};
+    double invCellMm{0.5}; // 1 / cellMm : une multiplication par segment plutôt qu'une division
     int columns{0};
     int rows{0};
     std::size_t segmentCount{0};        // taille de `segments` au moment de la construction

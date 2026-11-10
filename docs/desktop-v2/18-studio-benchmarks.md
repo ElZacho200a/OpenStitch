@@ -317,3 +317,34 @@ entre un fil et un autre, 200 formes), `largeDocumentsRasteriseOffTheGuiThreadAn
 p95 d'interaction de l'application entière, et le comportement de mémoire (une copie des formes par
 reconstruction). La re-rastérisation par zone sale (qui réduirait aussi le coût de calcul) n'est pas
 traitée.
+
+## Reconstruction complète de la scène : `build_studio_scene` (PERF-004, PERF-005, PERF-011)
+
+Banc : `test_desktop_v2_core "[scene][.perf]"` (Release, MSVC, 3 exécutions, même machine non
+étalonnée). Projet de N rectangles de 8 mm (une couture par objet), `build_studio_scene` sur la
+copie immuable du projet ; 5 passes par taille, p50 rapporté. C'est le coût de **chaque** édition qui
+touche la broderie (`StudioController` relance toujours la scène entière), exécuté sur un worker.
+
+| Objets | Segments | Total p50 | Séquence | Segments | Sommets | Grille de `pick` |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 100 | 7 135 | ~2,5 ms | 1,5 ms | 0,1 ms | 0,3 ms | 0,6 ms |
+| 500 | 35 672 | ~9,3 ms | 4,7 ms | 0,6 ms | 1,5 ms | 2,1 ms |
+| 1 000 | 71 344 | ~17,5 ms | ~9 ms | 1,1 ms | 3,1 ms | 4,2 ms |
+
+- **Copie du projet (`snapshot`)** : 0,2 ms à 1 000 objets (banc `responsiveness with 1, 100, 500 and
+  1000 objects`, déjà présent). Le coût de PERF-004 est donc négligeable pour la copie elle-même ;
+  le nombre d'appels par interaction n'est pas instrumenté ici.
+- **Un cache de géométrie par objet (PERF-011) gagnerait au plus ~17 ms de latence de worker à
+  1 000 objets** (~9 ms à 500), et ce plafond n'est atteint que si la reconstruction devient
+  quasi gratuite : la séquence effective (~50 % du total) dépend de tous les objets. Le gain est
+  borné ; le coût de conception (invalidation par objet, ordre de couture, finitions, recouvrements)
+  est élevé et touche le déterminisme. **Non justifié sans trace d'un blocage visible.**
+- **Coût de la grille de `pick` (lot PERF-015)** : il s'ajoute à chaque reconstruction, ~4,2 ms à
+  1 000 objets (~24 % du total ; 5,4 ms avant la substitution des divisions par des
+  multiplications). C'est un échange assumé : il retire ~285 µs (100 000 segments) à chaque
+  mouvement de souris du survol, mais allonge de ~4 ms le délai avant que la nouvelle géométrie soit
+  prête. Piste non faite : construire la grille après publication de la scène.
+- **À vérifier, non mesuré** : `StudioController` fait `scene_.reset()` puis `sceneChanged` avant
+  chaque reconstruction (`studio_controller.cpp`) ; la couche de points disparaît donc le temps de
+  la reconstruction (≥ 17 ms à 1 000 objets, plus le délai de la pompe de 8 ms et le téléversement
+  GPU). Impact visuel réel (clignotement) non constaté : aucune capture ni mesure de fenêtre ici.

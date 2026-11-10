@@ -44,9 +44,13 @@ bool finiteSegment(const stitch_render::ThreadSegment& s) {
 }
 
 // Indice de cellule entier le long d'un axe, borné à [0, count - 1].
-int cellIndex(double value, double origin, double cell, int count) {
-    const double raw = std::floor((value - origin) / cell);
-    return static_cast<int>(std::clamp(raw, 0.0, static_cast<double>(count - 1)));
+int cellIndex(double value, double origin, double inverseCell, int count) {
+    const double raw = (value - origin) * inverseCell;
+    if (!(raw > 0.0)) {
+        return 0; // négatif, nul ou NaN : première cellule
+    }
+    const double last = static_cast<double>(count - 1);
+    return raw >= last ? count - 1 : static_cast<int>(raw); // troncature = floor pour raw > 0
 }
 
 } // namespace
@@ -88,15 +92,16 @@ std::shared_ptr<const StudioPickGrid> build_pick_grid(const std::vector<StudioSe
     grid->originX = minX;
     grid->originY = minY;
     grid->cellMm = cell;
+    grid->invCellMm = 1.0 / cell;
     grid->columns = static_cast<int>(cols);
     grid->rows = static_cast<int>(rows);
 
     const auto cellCount = static_cast<std::size_t>(cols * rows);
     const auto forEachCell = [&](const stitch_render::ThreadSegment& t, auto&& visit) {
-        const int c0 = cellIndex(std::min(t.ax, t.bx), minX, cell, grid->columns);
-        const int c1 = cellIndex(std::max(t.ax, t.bx), minX, cell, grid->columns);
-        const int r0 = cellIndex(std::min(t.ay, t.by), minY, cell, grid->rows);
-        const int r1 = cellIndex(std::max(t.ay, t.by), minY, cell, grid->rows);
+        const int c0 = cellIndex(std::min(t.ax, t.bx), minX, grid->invCellMm, grid->columns);
+        const int c1 = cellIndex(std::max(t.ax, t.bx), minX, grid->invCellMm, grid->columns);
+        const int r0 = cellIndex(std::min(t.ay, t.by), minY, grid->invCellMm, grid->rows);
+        const int r1 = cellIndex(std::max(t.ay, t.by), minY, grid->invCellMm, grid->rows);
         for (int r = r0; r <= r1; ++r) {
             for (int c = c0; c <= c1; ++c) {
                 visit(static_cast<std::size_t>(r) * static_cast<std::size_t>(grid->columns) +
@@ -162,10 +167,10 @@ std::optional<std::uint64_t> StudioSceneSnapshot::pick(double xMm, double yMm,
             yMm - reach > grid.originY + hj * grid.cellMm) {
             return std::nullopt;
         }
-        const int c0 = cellIndex(xMm - reach, grid.originX, grid.cellMm, grid.columns);
-        const int c1 = cellIndex(xMm + reach, grid.originX, grid.cellMm, grid.columns);
-        const int r0 = cellIndex(yMm - reach, grid.originY, grid.cellMm, grid.rows);
-        const int r1 = cellIndex(yMm + reach, grid.originY, grid.cellMm, grid.rows);
+        const int c0 = cellIndex(xMm - reach, grid.originX, grid.invCellMm, grid.columns);
+        const int c1 = cellIndex(xMm + reach, grid.originX, grid.invCellMm, grid.columns);
+        const int r0 = cellIndex(yMm - reach, grid.originY, grid.invCellMm, grid.rows);
+        const int r1 = cellIndex(yMm + reach, grid.originY, grid.invCellMm, grid.rows);
         const auto queryCells = static_cast<std::int64_t>(c1 - c0 + 1) * (r1 - r0 + 1);
         if (queryCells <= kMaxPickCellsPerQuery) {
             std::optional<std::uint32_t> best;
