@@ -34,7 +34,7 @@ Item {
         color: "transparent"
         border.color: Theme.accent
         border.width: 1
-        opacity: 0.8
+        opacity: 0.95
     }
 
     Rectangle {
@@ -84,7 +84,7 @@ Item {
             y: pts[index].y - 4.5
             color: index === 8 ? Theme.accent : Theme.foreground
             border.color: Theme.accent
-            border.width: 1
+            border.width: 1.5
         }
     }
 
