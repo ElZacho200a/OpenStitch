@@ -26,6 +26,7 @@ Controls.Switch {
         border.width: control.visualFocus ? 2 : 1
         border.color: control.visualFocus ? Theme.foreground : control.checked ? Theme.accent : Theme.muted
         opacity: control.enabled ? (control.down ? 0.8 : 1) : 0.5
+        Behavior on border.color { ColorAnimation { duration: Theme.feedbackFastMs } }
         Behavior on color { ColorAnimation { duration: Theme.animationMs } }
         Behavior on opacity { NumberAnimation { duration: Theme.animationMs } }
         Rectangle {
