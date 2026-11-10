@@ -182,6 +182,15 @@ sur les satins doit ainsi être identifiable. Ce rapport reste descriptif :
 les effectifs faibles, les données synthétiques et l'absence de tests sur
 tissu empêchent toute revendication de performance réelle.
 
+### Reproductibilité des jeux de candidats
+
+L'ordre de présentation des candidats JSON n'a aucune signification métier :
+les paires d'entraînement sont triées par identifiant avant accumulation des
+gradients, et l'empreinte SHA-256 du dataset trie les exemples par `sample_id`
+et les candidats par `id`. Permuter les candidats ou les lignes du dataset
+ne modifie donc ni les poids appris ni l'empreinte. Les métriques elles-mêmes
+restent inchangées et doivent être réellement mesurées.
+
 ## Intégration future : contrats et dépendances
 
 1. **Producteur de candidats (L1)** : intégrer un adaptateur C++/CLI de
