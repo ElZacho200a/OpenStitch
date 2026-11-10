@@ -633,6 +633,74 @@ private slots:
         rig.regions.invertSelection();
         QCOMPARE(rig.regions.selectedCount(), 0);
     }
+    // Fusion de la sélection : refusée avec une seule région, une étape d'annulation sinon.
+    void regionMergeSelectedNeedsTwoAndUndoes() {
+        Rig rig;
+        open(rig);
+        const auto regions = rig.regions.regions();
+        QVERIFY(regions.size() >= 3);
+        const auto before = regions.size();
+        rig.regions.selectRegion(regions[0].toMap().value("id").toDouble());
+        QVERIFY(!rig.regions.mergeSelected().isEmpty());
+        rig.regions.selectRegion(regions[1].toMap().value("id").toDouble(), QStringLiteral("add"));
+        QCOMPARE(rig.regions.selectedCount(), 2);
+        const auto depth = rig.session.undoNames().size();
+        QCOMPARE(rig.regions.mergeSelected(), QString());
+        QCOMPARE(rig.session.undoNames().size(), depth + 1);
+        QTRY_VERIFY(rig.regions.regions().size() < before);
+        rig.session.undo();
+        QTRY_COMPARE(rig.regions.regions().size(), before);
+    }
+
+    // Fusion d'une région source dans une cible choisie : la cible garde son identité.
+    void regionMergeSelectedIntoKeepsTheTarget() {
+        Rig rig;
+        open(rig);
+        const auto regions = rig.regions.regions();
+        QVERIFY(regions.size() >= 2);
+        const auto before = regions.size();
+        const double source = regions[0].toMap().value("id").toDouble();
+        const double target = regions[1].toMap().value("id").toDouble();
+        rig.regions.selectAll();
+        QVERIFY(!rig.regions.mergeSelectedInto(target).isEmpty()); // plusieurs sources : refus
+        rig.regions.selectRegion(source);
+        QCOMPARE(rig.regions.mergeSelectedInto(target), QString());
+        QTRY_COMPARE(rig.regions.regions().size(), before - 1);
+        bool targetKept = false;
+        for (const auto& region : rig.regions.regions()) {
+            targetKept = targetKept || region.toMap().value("id").toDouble() == target;
+        }
+        QVERIFY(targetKept);
+        rig.session.undo();
+        QTRY_COMPARE(rig.regions.regions().size(), before);
+    }
+
+    // Fusion dans la voisine : une région du quadrillage a toujours une voisine.
+    void regionMergeWithNeighbourUndoes() {
+        Rig rig;
+        open(rig);
+        const auto regions = rig.regions.regions();
+        QVERIFY(regions.size() >= 2);
+        const auto before = regions.size();
+        QCOMPARE(rig.regions.mergeWithNeighbour(regions[0].toMap().value("id").toDouble()),
+                 QString());
+        QTRY_COMPARE(rig.regions.regions().size(), before - 1);
+        rig.session.undo();
+        QTRY_COMPARE(rig.regions.regions().size(), before);
+    }
+
+    // Sélection des voisines : sans sélection rien ne change, sinon la sélection s'étend.
+    void regionSelectNeighboursExpandsTheSelection() {
+        Rig rig;
+        open(rig);
+        rig.regions.clearSelection();
+        rig.regions.selectNeighbours();
+        QCOMPARE(rig.regions.selectedCount(), 0);
+        rig.regions.selectAtPixel(20, 20);
+        QCOMPARE(rig.regions.selectedCount(), 1);
+        rig.regions.selectNeighbours();
+        QVERIFY(rig.regions.selectedCount() >= 2);
+    }
 };
 
 QTEST_MAIN(StudioSpaceSegmentationTest)
