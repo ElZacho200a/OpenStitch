@@ -38,7 +38,7 @@ class DeterminismGateTests(unittest.TestCase):
             Path(argv[3]).write_bytes(dst())
             return SimpleNamespace(
                 returncode=0,
-                stdout='[ INFO:0@0.196] global registry_parallel.impl.hpp:96 Enabled backends\\n{"stitches":4}\\n',
+                stdout='[ INFO:0@0.196] global registry_parallel.impl.hpp:96 Enabled backends\n{"stitches":4}\n',
             )
 
         report = verify(Path("fake-cli"), Path("fixture.png"), runner=fake)
