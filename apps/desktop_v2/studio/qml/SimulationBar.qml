@@ -20,9 +20,22 @@ Rectangle {
         anchors.margins: 8
         spacing: 4
 
-        RowLayout {
-            spacing: 2
-            StudioButton { objectName: "simPrevColour"; enabled: bar.controller.simPosition > 0; text: qsTr("⏮ Couleur"); quiet: true; tooltip: qsTr("Début de la couleur précédente"); onClicked: bar.controller.previousColour() }
+        Flickable {
+            id: transportScroll
+            objectName: "simulationTransportScroll"
+            Layout.fillWidth: true
+            Layout.preferredHeight: transportRow.implicitHeight
+            contentWidth: transportRow.implicitWidth
+            contentHeight: height
+            clip: true
+            flickableDirection: Flickable.HorizontalFlick
+            boundsBehavior: Flickable.StopAtBounds
+
+            RowLayout {
+                id: transportRow
+                width: Math.max(transportScroll.width, implicitWidth)
+                spacing: 2
+                StudioButton { objectName: "simPrevColour"; enabled: bar.controller.simPosition > 0; text: qsTr("⏮ Couleur"); quiet: true; tooltip: qsTr("Début de la couleur précédente"); onClicked: bar.controller.previousColour() }
             StudioButton { objectName: "simPrevObject"; enabled: bar.controller.simPosition > 0; text: qsTr("◀ Objet"); quiet: true; tooltip: qsTr("Début de l'objet précédent"); onClicked: bar.controller.previousObject() }
             StudioButton { objectName: "simPrevStitch"; enabled: bar.controller.simPosition > 0; text: qsTr("◀ Point"); quiet: true; tooltip: qsTr("Reculer d'un point"); onClicked: bar.controller.step(-1) }
             StudioButton {
@@ -49,6 +62,7 @@ Rectangle {
                 onActivated: bar.controller.simSpeed = model[currentIndex]
             }
             StudioButton { objectName: "simClose"; text: qsTr("Fermer"); quiet: true; onClicked: bar.controller.stopSimulation() }
+            }
         }
         RowLayout {
             spacing: 10
