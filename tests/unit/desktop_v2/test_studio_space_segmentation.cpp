@@ -382,7 +382,11 @@ private slots:
         auto* panels = rig.named("segmentationPanels");
         QVERIFY(panels);
         // Segmentation : réglages saisis, aperçu annulable, application en une étape.
-        rig.named("segmentationSection")->setProperty("maxColors", 3);
+        auto* segmentationSettings = rig.named("segmentationSection");
+        QVERIFY(segmentationSettings);
+        QVERIFY(segmentationSettings->setProperty("maxColors", 3));
+        QVERIFY(segmentationSettings->setProperty("minRegionPx", 25));
+        QVERIFY(segmentationSettings->setProperty("smoothing", 2));
         QVERIFY(rig.press("segPreviewButton"));
         QTRY_VERIFY_WITH_TIMEOUT(rig.images.segPreviewActive(), 20'000);
         QVERIFY(rig.press("segCancelButton"));
@@ -403,6 +407,13 @@ private slots:
         // F08-02: unlike the old fixed 60/true values, the palette preview
         // follows the editable colour-distance and adjacency settings.
         auto* palette = rig.named("regionTools");
+        // F08-01: the region editor inherits the *actual* segmentation values,
+        // not ImageController's default values. Reconfirm uses the frozen copy.
+        QVERIFY(palette);
+        const auto liveOptions = palette->property("segmentationOptions").toMap();
+        QCOMPARE(liveOptions.value("max_colors").toInt(), 3);
+        QCOMPARE(liveOptions.value("min_region_px").toInt(), 25);
+        QCOMPARE(liveOptions.value("smoothing_radius_px").toInt(), 2);
         auto* distance = rig.named("regionPaletteDistance");
         auto* adjacent = rig.named("regionMergeAdjacent");
         auto* preview = rig.named("regionPalettePreview");
@@ -441,6 +452,16 @@ private slots:
         panels->setProperty("tab", 2);
         QVERIFY(rig.press("aiProbeButton"));
         QTRY_VERIFY_WITH_TIMEOUT(!rig.images.aiBusy() && !rig.images.aiSummary().isEmpty(), 30'000);
+        // Request a re-segmentation and verify the exact user settings are
+        // captured for the confirmation path even if the UI changes afterward.
+        panels->setProperty("tab", 1);
+        QVERIFY(rig.press("regionResegment"));
+        const auto pending = palette->property("pendingOptions").toMap();
+        QCOMPARE(pending.value("max_colors").toInt(), 3);
+        QCOMPARE(pending.value("min_region_px").toInt(), 25);
+        QCOMPARE(pending.value("smoothing_radius_px").toInt(), 2);
+        if (rig.regions.busy())
+            rig.regions.cancelTask();
         QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
     }
 
