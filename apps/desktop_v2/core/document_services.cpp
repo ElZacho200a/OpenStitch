@@ -6,6 +6,7 @@
 #include <cmath>
 
 #include "openstitch/commands/calque_commands.hpp"
+#include "openstitch/commands/composite_command.hpp"
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/commands/stitch_preset_commands.hpp"
 #include "openstitch/geometry/offset.hpp"
@@ -209,6 +210,47 @@ geometry::Path flattenToPath(const geometry::Path& path) {
     return out;
 }
 } // namespace
+
+ServiceResult duplicateCalque(DocumentSession& session, std::uint64_t calqueId) {
+    const auto& project = session.project();
+    const auto layer = std::ranges::find_if(project.calques,
+                                            [&](const auto& c) { return c.id.value == calqueId; });
+    if (layer == project.calques.end()) {
+        return refuse("Calque inconnu.");
+    }
+    const ObjectId newLayer = session.allocateObjectId();
+    std::vector<document::VectorObject> vectors;
+    std::vector<document::EmbroideryObject> embroideries;
+    for (const auto& shape : project.vector_objects) {
+        if (shape.calque.value != calqueId) {
+            continue;
+        }
+        document::VectorObject copy = shape;
+        copy.id = session.allocateObjectId();
+        copy.name = shape.name + " (copie)";
+        copy.calque = newLayer;
+        for (const auto& emb : project.embroidery_objects) {
+            if (emb.source_vector == shape.id) {
+                document::EmbroideryObject twin = emb;
+                twin.id = session.allocateObjectId();
+                twin.source_vector = copy.id;
+                twin.name = emb.name + " (copie)";
+                embroideries.push_back(std::move(twin));
+            }
+        }
+        vectors.push_back(std::move(copy));
+    }
+    const std::string name = layer->name + " (copie)";
+    std::vector<std::unique_ptr<commands::ICommand>> steps;
+    steps.push_back(std::make_unique<commands::AddCalqueCommand>(newLayer, name));
+    if (!vectors.empty()) {
+        steps.push_back(std::make_unique<commands::AddObjectBatchCommand>(
+            std::move(vectors), std::move(embroideries), "Dupliquer le calque"));
+    }
+    session.execute(
+        std::make_unique<commands::CompositeCommand>("Dupliquer le calque", std::move(steps)));
+    return ok();
+}
 
 ServiceResult offsetShapes(DocumentSession& session, const std::vector<std::uint64_t>& objectIds,
                            double offsetMm) {

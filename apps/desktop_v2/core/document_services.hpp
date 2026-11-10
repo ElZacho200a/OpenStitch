@@ -48,6 +48,10 @@ ServiceResult moveObjectsToCalque(DocumentSession& session,
                                   const std::vector<std::uint64_t>& objectIds,
                                   std::uint64_t calqueId);
 
+// « Dupliquer la couche » (V1) : crée un calque « <nom> (copie) » au-dessus, avec une copie de
+// chaque forme du calque source et de ses objets de broderie, en UNE étape d'annulation.
+ServiceResult duplicateCalque(DocumentSession& session, std::uint64_t calqueId);
+
 // « Décaler la forme » (V1) : crée, pour chaque objet donné, une copie décalée de sa forme
 // (offset > 0 agrandit vers l'extérieur, < 0 rétrécit), avec son objet de broderie, en UNE étape
 // d'annulation. Les courbes sont aplaties avant le décalage (Clipper2). Refus : décalage nul,

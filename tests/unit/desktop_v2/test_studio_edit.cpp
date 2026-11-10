@@ -156,6 +156,7 @@ private slots:
     void initTestCase();
     void selectionCommandsOnRealObjects();
     void objectLockAndMoveToLayerAreUndoable();
+    void duplicatingALayerCopiesItsObjectsInOneStep();
     void rectangleSelectionByMouse();
     void savedSelectionsAreRecalled();
     void transformsAreOneUndoStepAndPersist();
@@ -266,6 +267,46 @@ void StudioEditTest::objectLockAndMoveToLayerAreUndoable() {
     QVERIFY(!rig.editor.setObjectLocked(QStringLiteral("not-an-id"), true));
     QCOMPARE(steps(rig), stable);
     QCOMPARE(shapeOf(rig.session.project(), kLone).calque.value, std::uint64_t{201});
+}
+
+// Dupliquer un calque : « <nom> (copie) » avec une copie de chaque forme et de chaque objet de
+// broderie, en une seule étape d'annulation ; calque inconnu refusé.
+void StudioEditTest::duplicatingALayerCopiesItsObjectsInOneStep() {
+    Rig rig;
+    open(rig);
+    const auto base = steps(rig);
+    const auto objectsBefore = rig.session.project().embroidery_objects.size();
+    const auto shapesBefore = rig.session.project().vector_objects.size();
+    const auto layersBefore = rig.editor.layers().size();
+    QVERIFY(!rig.editor.duplicateLayer(QStringLiteral("999999")));
+    QCOMPARE(steps(rig), base);
+
+    QVERIFY(rig.editor.duplicateLayer(QStringLiteral("201")));
+    QCOMPARE(steps(rig), base + 1);
+    QCOMPARE(rig.editor.layers().size(), layersBefore + 1);
+    QCOMPARE(rig.session.project().embroidery_objects.size(), objectsBefore + 3);
+    QCOMPARE(rig.session.project().vector_objects.size(), shapesBefore + 3);
+    std::uint64_t copyLayer = 0;
+    for (const auto& layer : rig.editor.layers()) {
+        const auto map = layer.toMap();
+        if (map.value(QStringLiteral("name")).toString() == QStringLiteral("Fond (copie)")) {
+            copyLayer = map.value(QStringLiteral("id")).toULongLong();
+        }
+    }
+    QVERIFY(copyLayer != 0);
+    int inCopy = 0;
+    for (const auto& shape : rig.session.project().vector_objects) {
+        inCopy += shape.calque.value == copyLayer ? 1 : 0;
+    }
+    QCOMPARE(inCopy, 3);
+    // La source est intacte.
+    QCOMPARE(shapeOf(rig.session.project(), kLone).calque.value, std::uint64_t{201});
+
+    QVERIFY(rig.session.undo());
+    QCOMPARE(steps(rig), base);
+    QCOMPARE(rig.editor.layers().size(), layersBefore);
+    QCOMPARE(rig.session.project().embroidery_objects.size(), objectsBefore);
+    QCOMPARE(rig.session.project().vector_objects.size(), shapesBefore);
 }
 
 void StudioEditTest::rectangleSelectionByMouse() {

@@ -662,6 +662,14 @@ bool EditController::addLayer(const QString& name) {
     return r.ok;
 }
 
+bool EditController::duplicateLayer(const QString& id) {
+    const auto value = parseId(id);
+    const auto r = value ? openstitch::desktop_v2::duplicateCalque(studio_.session(), *value)
+                         : ServiceResult{false, "Calque inconnu"};
+    say(r.ok ? QStringLiteral("Calque dupliqué") : QString::fromStdString(r.message));
+    return r.ok;
+}
+
 bool EditController::renameLayer(const QString& id, const QString& name) {
     const auto value = parseId(id);
     const auto r =

@@ -101,6 +101,7 @@ public:
     Q_INVOKABLE bool addLayer(const QString& name);
     Q_INVOKABLE bool renameLayer(const QString& id, const QString& name);
     Q_INVOKABLE bool removeLayer(const QString& id);
+    Q_INVOKABLE bool duplicateLayer(const QString& id);
     Q_INVOKABLE bool setLayerVisible(const QString& id, bool visible);
     Q_INVOKABLE bool setLayerLocked(const QString& id, bool locked);
     Q_INVOKABLE bool moveLayer(const QString& id, int direction);
