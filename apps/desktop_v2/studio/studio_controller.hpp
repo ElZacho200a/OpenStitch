@@ -29,6 +29,7 @@ class StudioController : public QObject {
     Q_PROPERTY(QString undoLabel READ undoLabel NOTIFY changed)
     Q_PROPERTY(QString redoLabel READ redoLabel NOTIFY changed)
     Q_PROPERTY(bool hasSelection READ hasSelection NOTIFY changed)
+    Q_PROPERTY(QString primarySelectionId READ primarySelectionId NOTIFY selectionChanged)
     Q_PROPERTY(QVariantMap selectionTool READ selectionTool CONSTANT)
     Q_PROPERTY(QVariantMap panTool READ panTool CONSTANT)
 public:
@@ -50,6 +51,12 @@ public:
     [[nodiscard]] QString undoLabel() const;
     [[nodiscard]] QString redoLabel() const;
     [[nodiscard]] bool hasSelection() const { return !session_.selection().targets().empty(); }
+    [[nodiscard]] QString primarySelectionId() const {
+        const auto primary = session_.selection().primary();
+        return primary && primary->kind == TargetKind::EmbroideryObject
+                   ? QString::number(primary->id)
+                   : QString{};
+    }
     Q_INVOKABLE void newProject();
     // Both return true when the project was written; the status line carries the reason otherwise.
     Q_INVOKABLE bool saveProject();
