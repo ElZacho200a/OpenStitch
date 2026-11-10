@@ -40,8 +40,9 @@ Item {
                     stageFeedback(qsTr("%1 : résultat à jour").arg(stage.label), "success")
                 else if (stage.state === "stale")
                     stageFeedback(qsTr("%1 : résultat obsolète").arg(stage.label), "warning")
-                else if (stage.state === "blocked")
-                    stageFeedback(qsTr("%1 : étape bloquée").arg(stage.label), "error")
+                else if (stage.state === "blocked" && stage.detail && stage.detail.length > 0
+                         && stage.detail.toLowerCase().indexOf("cours") < 0)
+                    stageFeedback(qsTr("%1 : %2").arg(stage.label).arg(stage.detail), "warning")
             }
         }
         lastStageStates = next
