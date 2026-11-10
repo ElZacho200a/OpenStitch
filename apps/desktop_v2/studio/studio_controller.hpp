@@ -39,6 +39,9 @@ public:
     [[nodiscard]] QString title() const { return title_; }
     [[nodiscard]] QString status() const { return status_; }
     [[nodiscard]] bool busy() const { return busy_; }
+    // Nombre de reconstructions complètes de la scène lancées depuis la création (PERF-005) :
+    // permet de prouver qu'une modification sans effet sur la broderie n'en déclenche aucune.
+    [[nodiscard]] int sceneBuildCount() const { return sceneBuilds_; }
     [[nodiscard]] QVariantList objects() const;
     [[nodiscard]] QString selectionInfo() const;
     [[nodiscard]] int commandCount() const;
@@ -89,6 +92,7 @@ private:
     QString status_{QStringLiteral("Ouvrez un projet .osp pour explorer sa broderie")};
     QString path_;
     bool busy_{false};
+    int sceneBuilds_{0};
     std::uint64_t request_{0};
     std::uint64_t lastNotifiedRevision_{0};
     QTimer pump_;
