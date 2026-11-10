@@ -38,6 +38,7 @@ class SegmentationSpaceController : public QObject {
     Q_PROPERTY(QString stageState READ stageState NOTIFY stageChanged)
     Q_PROPERTY(QString stageDetail READ stageDetail NOTIFY stageChanged)
     Q_PROPERTY(bool canSegment READ canSegment NOTIFY stageChanged)
+    Q_PROPERTY(bool busy READ busy NOTIFY stageChanged)
     Q_PROPERTY(bool canUpdateShapes READ canUpdateShapes NOTIFY stageChanged)
     Q_PROPERTY(QString confirmText READ confirmText NOTIFY confirmChanged)
     // Compteurs de reconstruction (diagnostic et tests : le pan/zoom n'en provoque aucune).
@@ -58,6 +59,7 @@ public:
     [[nodiscard]] QString stageState() const { return stageState_; }
     [[nodiscard]] QString stageDetail() const { return stageDetail_; }
     [[nodiscard]] bool canSegment() const;
+    [[nodiscard]] bool busy() const { return images_.busy() || regions_.busy(); }
     [[nodiscard]] bool canUpdateShapes() const;
     [[nodiscard]] QString confirmText() const { return confirmText_; }
     [[nodiscard]] int fillRebuilds() const { return fillRebuilds_; }
