@@ -166,6 +166,15 @@ class RankerTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "incompatible"):
             ranker.rank(model, row)
 
+    def test_non_object_model_payload_is_rejected(self):
+        row = sample()
+        for malformed in (None, [], "model", 42):
+            with self.subTest(malformed=malformed):
+                with self.assertRaisesRegex(ValueError, "model must be a JSON object"):
+                    ranker.rank(malformed, row)
+                with self.assertRaisesRegex(ValueError, "model must be a JSON object"):
+                    ranker.assess_candidates(malformed, row)
+
     def test_nonfinite_candidate_score_rejected(self):
         row = sample()
         model = ranker.train_model([sample(i) for i in range(6)], epochs=5)
