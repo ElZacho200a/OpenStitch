@@ -240,3 +240,34 @@ la grille sur un `.osp` réel (Tentabrode), le temps de frame de l'application e
 sur le p95 d'interaction bout en bout. `test_studio_scene.cpp` vérifie l'équivalence exacte avec le
 balayage sur 20 000 requêtes (tolérances 0 à 150 mm, requêtes hors scène, segments d'`objectId` 0,
 longs, diagonaux et de longueur nulle, grille périmée).
+
+## Formes vectorielles : `VectorLayer::pick` et `VectorLayer::build` (PERF-015, PERF-024)
+
+Banc : `OPENSTITCH_PERF=1 test_desktop_v2_studio_space_vector perfVectorLayer` (QTest, Release,
+`QT_QPA_PLATFORM=offscreen`). Il est désactivé sans la variable (QSKIP) et écrit ses lignes
+`[perf-vector]` via `qInfo` : avec `-o fichier,txt`, car la console de l'exécutable n'affiche rien
+sous PowerShell. Carrés de 8 mm au pas de 10 mm, 3 exécutions (écarts < 5 %), même machine non
+étalonnée que le tableau précédent.
+
+| Formes | `build` p50 | `pick` p50 / p95 |
+| ---: | ---: | ---: |
+| 1 | 0,08 ms | < 0,1 µs |
+| 100 | 5,4 ms | 0,3 µs / 0,3 µs |
+| 500 | ~26,7 ms | 1,3 µs / 1,5 µs |
+| 1 000 | ~52 ms | 2,2 µs / ~3 µs |
+
+- **`pick` : pas d'index spatial justifié.** Il rejette d'abord par boîte englobante et ne teste le
+  tracé exact que sur les boîtes touchées ; 3 µs à 1 000 formes est négligeable devant 16,7 ms. Piste
+  PERF-015 (volet formes) close sur mesure, sans changement de code.
+- **`build` : le coût est réel et linéaire.** Une expérience à 2 formes sur la même surface que
+  1 000 formes donne ~6,8 ms : l'allocation et le remplissage de l'image (jusqu'à ~4 000 × 4 000 px)
+  pèsent ~6,8 ms, le dessin antialiasé des formes (~45 µs par forme) le reste. Or
+  `VectorSpaceController::refresh()` appelle `build` **de façon synchrone**, donc sur le fil
+  d'interface, à chaque modification de formes (clés visuelles changées). À 500 formes cela fait
+  ~27 ms (~1,6 frame de 16,7 ms), à 1 000 formes ~52 ms (~3 frames) de blocage par validation d'édition.
+- **Non mesuré ni corrigé ici** : la fréquence réelle de ces reconstructions pendant un geste
+  (le glisser d'un nœud passe-t-il par `refresh` à chaque pas ?), l'effet d'un `build` hors du fil
+  d'interface, une re-rastérisation par zone sale, ni un projet réel à ~1 000 régions.
+  Les deux correctifs plausibles (publication asynchrone avec étiquette de révision ; re-rastérisation
+  locale) changent le contrat de `refresh()` et ses tests : à concevoir dans un lot séparé, avec
+  non-régression pixel-à-pixel et revue indépendante.

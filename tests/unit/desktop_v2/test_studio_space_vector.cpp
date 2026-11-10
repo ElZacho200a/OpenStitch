@@ -12,11 +12,15 @@
 #include <QQuickWindow>
 #include <QtTest/QtTest>
 
+#include <algorithm>
+#include <chrono>
 #include <memory>
+#include <vector>
 
 #include "action_controller.hpp"
 #include "edit_controller.hpp"
 #include "gpu_canvas.hpp"
+#include "layers/vector_layer.hpp"
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/commands/replace_project_command.hpp"
 #include "openstitch/project_io/project_io.hpp"
@@ -550,6 +554,93 @@ private slots:
             QSKIP("recette seulement");
         }
         QVERIFY(project_io::save_project(path.toStdWString(), shapesProject()).has_value());
+    }
+
+    // Mesure (PERF-024) : construction du calque vectoriel (rasterisation) et pick avec N formes.
+    // Désactivé par défaut (dépend de la machine) : OPENSTITCH_PERF=1 pour l'exécuter.
+    void perfVectorLayer() {
+        if (qEnvironmentVariableIntValue("OPENSTITCH_PERF") != 1) {
+            QSKIP("mesure désactivée : définir OPENSTITCH_PERF=1");
+        }
+        using Clock = std::chrono::steady_clock;
+        const auto ms = [](Clock::time_point t) {
+            return std::chrono::duration<double, std::milli>(Clock::now() - t).count();
+        };
+        const auto pct = [](std::vector<double> v, double p) {
+            std::sort(v.begin(), v.end());
+            return v[static_cast<std::size_t>(p * static_cast<double>(v.size() - 1))];
+        };
+        for (const int count : {1, 100, 500, 1000}) {
+            document::Project project;
+            project.finishing = document::SequenceFinishing::legacy();
+            project.object_ids.reset(1000);
+            const int perRow = 32;
+            for (int i = 0; i < count; ++i) {
+                document::VectorObject shape;
+                shape.id = project.object_ids.next();
+                shape.name = "Forme " + std::to_string(i);
+                shape.rgb = {static_cast<std::uint8_t>(40 + i % 200), 90, 160};
+                const int x0 = (i % perRow) * 10000 - 150000; // µm : carrés de 8 mm, pas 10 mm
+                const int y0 = (i / perRow) * 10000 - 150000;
+                geometry::PathSet set;
+                for (const auto& [dx, dy] : {std::pair{0, 0}, {8000, 0}, {8000, 8000}, {0, 8000}}) {
+                    set.outer.nodes.push_back({Vec2um{Micrometers{x0 + dx}, Micrometers{y0 + dy}}});
+                }
+                shape.paths.push_back(std::move(set));
+                project.vector_objects.push_back(std::move(shape));
+            }
+            std::vector<double> builds;
+            std::shared_ptr<const VectorLayer> layer;
+            for (int run = 0; run < 5; ++run) {
+                const auto t = Clock::now();
+                layer = VectorLayer::build(project);
+                builds.push_back(ms(t));
+            }
+            QVERIFY(layer);
+            QCOMPARE(static_cast<int>(layer->shapes().size()), count);
+            std::vector<double> picks;
+            std::uint32_t state = 4242;
+            for (int i = 0; i < 4000; ++i) {
+                state = state * 1664525U + 1013904223U;
+                const double x = static_cast<double>(state >> 8) / 16777216.0 * 320.0 - 160.0;
+                state = state * 1664525U + 1013904223U;
+                const double y = static_cast<double>(state >> 8) / 16777216.0 * 320.0 - 160.0;
+                const auto t = Clock::now();
+                const auto hit = layer->pick(x, y, 0.5);
+                picks.push_back(ms(t) * 1000.0);
+                Q_UNUSED(hit);
+            }
+            qInfo("[perf-vector] n=%d build p50=%.2fms max=%.2fms | pick p50=%.2fus p95=%.2fus "
+                  "p99=%.2fus",
+                  count, pct(builds, 0.5), pct(builds, 1.0), pct(picks, 0.5), pct(picks, 0.95),
+                  pct(picks, 0.99));
+        }
+        // Même surface que 1 000 formes mais 2 formes seulement : isole le coût de l'image.
+        {
+            document::Project sparse;
+            sparse.finishing = document::SequenceFinishing::legacy();
+            sparse.object_ids.reset(1000);
+            for (const auto& [ox, oy] : {std::pair{-150000, -150000}, {150000, 150000}}) {
+                document::VectorObject shape;
+                shape.id = sparse.object_ids.next();
+                shape.rgb = {40, 90, 160};
+                geometry::PathSet set;
+                for (const auto& [dx, dy] : {std::pair{0, 0}, {8000, 0}, {8000, 8000}, {0, 8000}}) {
+                    set.outer.nodes.push_back({Vec2um{Micrometers{ox + dx}, Micrometers{oy + dy}}});
+                }
+                shape.paths.push_back(std::move(set));
+                sparse.vector_objects.push_back(std::move(shape));
+            }
+            std::vector<double> builds;
+            for (int run = 0; run < 5; ++run) {
+                const auto t = Clock::now();
+                const auto layer = VectorLayer::build(sparse);
+                builds.push_back(ms(t));
+                QVERIFY(layer);
+            }
+            qInfo("[perf-vector] sparse (2 formes, surface de 1000) build p50=%.2fms",
+                  pct(builds, 0.5));
+        }
     }
 
     void emptyDocumentPublishesTheEmptyState() {
