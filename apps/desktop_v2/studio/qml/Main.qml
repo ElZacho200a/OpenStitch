@@ -514,6 +514,7 @@ Window {
             Layout.fillWidth: true
             Layout.fillHeight: true
             workspace: workspaceCtl
+            onStageFeedback: function(message, tone) { window.showFeedback(message, tone) }
 
             // L’historique du document survit au changement des quatre espaces.
             HistoryPanel { id: historyHub; anchors.fill: parent; z: 10 }
