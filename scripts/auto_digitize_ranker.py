@@ -251,6 +251,8 @@ def compare_candidates(model: dict, row: dict) -> dict:
 
 def dominates_quality(a: dict, b: dict, *, tolerance: float = 1e-9) -> bool:
     """Measured quality Pareto gate: all metrics no worse, one strictly better."""
+    if type(tolerance) not in (int, float) or not math.isfinite(tolerance) or tolerance < 0:
+        fail("Pareto tolerance must be a finite nonnegative number")
     check_candidate(a)
     check_candidate(b)
     high = ("coverage_ratio", "detail_retention_ratio", "angle_coherence_ratio")
