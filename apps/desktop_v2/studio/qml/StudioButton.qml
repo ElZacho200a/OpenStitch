@@ -8,7 +8,7 @@ Controls.AbstractButton {
     property string iconName: ""
     property real iconRotation: 0
     property string tooltip: ""
-    property string disabledReason: ""
+    property string disabledReason: qsTr("Action indisponible dans le contexte actuel")
     property string shortcutLabel: ""
     property bool emphasized: false
     property bool quiet: false
