@@ -297,9 +297,11 @@ def assess_candidates(model: dict, row: dict, *, min_margin: float = 0.1,
     if margin is not None and not math.isfinite(margin):
         fail("nonfinite ranking margin")
     # Synthetic-only training is useful for CI, never for autonomous decisions.
-    # Missing provenance is also treated conservatively.
+    # Mixed human/synthetic datasets and legacy models without human_only
+    # are also unverified: one human annotation cannot promote synthetic data.
     training = model.get("training")
-    human_validated = isinstance(training, dict) and training.get("synthetic_only") is False
+    human_validated = (isinstance(training, dict)
+                       and training.get("human_only") is True)
     # A single admissible candidate needs no learned arbitration.
     confident = human_validated and len(ranked) > 1 and margin >= min_margin and not dominators
     return {"schema": "openstitch.ai.assessment/1",
@@ -356,7 +358,9 @@ def train_model(rows: list[dict], epochs: int = 500) -> dict:
                           "heldout_ranking_metrics": None,
                           "baseline_heldout_ranking_metrics": ranking_metrics(validation, None),
                           "synthetic_only": all(r["provenance"]["source_kind"] == "synthetic"
-                                                for r in rows)}}
+                                                for r in rows),
+                          "human_only": all(r["provenance"]["source_kind"] == "human_confirmed"
+                                            for r in rows)}}
     model["training"]["train_metrics"] = metrics(train, model)
     model["training"]["heldout_metrics"] = metrics(validation, model)
     model["training"]["heldout_ranking_metrics"] = ranking_metrics(validation, model)
