@@ -165,6 +165,30 @@ class RankerTest(unittest.TestCase):
         self.assertEqual(result["selected_id"], result["heuristic_choice"])
         self.assertFalse(result["applied"])
 
+    def test_mixed_training_cannot_promote_synthetic_preferences(self):
+        rows = [sample(i, "human_confirmed" if i == 0 else "synthetic")
+                for i in range(8)]
+        model = ranker.train_model(rows, epochs=20)
+        self.assertFalse(model["training"]["synthetic_only"])
+        self.assertFalse(model["training"]["human_only"])
+        row = sample()
+        row["candidates"][1]["features"] = dict(row["candidates"][0]["features"])
+        result = ranker.assess_candidates(model, row, min_margin=0)
+        self.assertEqual(result["decision"], "fallback")
+        self.assertEqual(result["reason"], "synthetic_or_unverified_model")
+        self.assertFalse(result["applied"])
+
+    def test_legacy_model_without_human_only_is_unverified(self):
+        model = ranker.train_model([sample(i, "human_confirmed") for i in range(8)],
+                                   epochs=20)
+        self.assertTrue(model["training"]["human_only"])
+        del model["training"]["human_only"]
+        row = sample()
+        row["candidates"][1]["features"] = dict(row["candidates"][0]["features"])
+        result = ranker.assess_candidates(model, row, min_margin=0)
+        self.assertEqual(result["decision"], "fallback")
+        self.assertEqual(result["reason"], "synthetic_or_unverified_model")
+
     def test_quality_pareto_gate_blocks_dominated_model_choice(self):
         row = sample()
         # Make the inferior candidate pass the coarse safety thresholds.
