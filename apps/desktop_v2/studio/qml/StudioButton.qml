@@ -33,11 +33,14 @@ Controls.AbstractButton {
         border.width: button.activeFocus ? 2 : (!button.quiet && !button.emphasized ? 1 : 0)
         border.color: button.activeFocus ? Theme.accent : Theme.outline
         opacity: button.enabled ? (button.down ? 0.88 : 1) : 0.55
+        Behavior on border.color { ColorAnimation { duration: Theme.feedbackFastMs } }
         Behavior on opacity { NumberAnimation { duration: Theme.animationMs; easing.type: Easing.OutCubic } }
         Behavior on color { ColorAnimation { duration: Theme.animationMs; easing.type: Easing.OutCubic } }
     }
 
     contentItem: Item {
+        scale: button.enabled && button.down && !Theme.reducedMotion ? 0.97 : 1
+        Behavior on scale { NumberAnimation { duration: Theme.feedbackFastMs; easing.type: Easing.OutCubic } }
         implicitWidth: content.implicitWidth
         implicitHeight: content.implicitHeight
         Row {
