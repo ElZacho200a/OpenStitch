@@ -235,9 +235,12 @@ Rectangle {
                     Layout.fillWidth: true
                     implicitHeight: 32
                     radius: Theme.radius
-                    color: panel.current === modelData.index ? Theme.accentSoft : (modelData.selected ? Theme.raised : "transparent")
+                    color: panel.current === modelData.index ? Theme.accentSoft : (modelData.selected ? Theme.raised : threadRowMouse.containsMouse ? Theme.hover : "transparent")
+                    border.width: panel.current === modelData.index ? 1 : 0
+                    border.color: Theme.accent
+                    Behavior on color { ColorAnimation { duration: Theme.animationMs } }
                     opacity: modelData.visible ? 1 : 0.5
-                    MouseArea { anchors.fill: parent; onClicked: panel.currentId = row.modelData.id }
+                    MouseArea { id: threadRowMouse; anchors.fill: parent; hoverEnabled: true; onClicked: panel.currentId = row.modelData.id }
                     RowLayout {
                         anchors.fill: parent
                         anchors.leftMargin: 6
