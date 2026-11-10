@@ -99,6 +99,7 @@ private slots:
     void simulationPauseStartEndAndColourJumps();
     void guidesAddRemoveAndColour();
     void analysisClearsDensityRiskAndDiscardsProposal();
+    void chartImportAndOwnedThreadAssignment();
     void initTestCase();
     void mainQmlHostsEveryPanel();
 };
@@ -786,6 +787,46 @@ void StudioViewTest::analysisClearsDensityRiskAndDiscardsProposal() {
     rig.analysis.discardProposal();
     QVERIFY(!rig.analysis.proposalReady());
     QCOMPARE(rig.session.undoNames().size(), depth);
+}
+
+// Import d'un nuancier (refus d'une URL distante ou d'un fichier absent) et assignation d'un fil
+// possédé à un fil du projet : une étape d'annulation, refus hors de « Mes fils ».
+void StudioViewTest::chartImportAndOwnedThreadAssignment() {
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const auto cfg = std::filesystem::path(directory.path().toStdWString());
+    DocumentSession session;
+    StudioController studio(session);
+    session.replaceProject(fixture(), true);
+    ThreadController threads(studio, cfg);
+
+    QVERIFY(!threads.importChart(QUrl(QStringLiteral("https://example.org/chart.csv"))));
+    QVERIFY(
+        !threads.importChart(QUrl::fromLocalFile(directory.filePath(QStringLiteral("none.csv")))));
+    const QString csvPath = directory.filePath(QStringLiteral("mes_fils.csv"));
+    QFile csv(csvPath);
+    QVERIFY(csv.open(QIODevice::WriteOnly | QIODevice::Text));
+    csv.write("code,name,hex\n1001,Rouge vif,#C8102E\n1002,Bleu nuit,#0B1F4D\n");
+    csv.close();
+    const auto chartsBefore = threads.charts().size();
+    QSignalSpy changed(&threads, &ThreadController::chartsChanged);
+    QVERIFY(threads.importChart(QUrl::fromLocalFile(csvPath)));
+    QCOMPARE(threads.charts().size(), chartsBefore + 1);
+    QVERIFY(changed.count() >= 1);
+
+    const QString chart = threads.charts().first().toMap().value("id").toString();
+    const QString code =
+        threads.nearestToEntry(0, chart, 1).first().toMap().value("code").toString();
+    QVERIFY(!threads.assignOwnedThread(0, chart, code)); // pas dans Mes fils
+    QVERIFY(!threads.assignOwnedThread(-1, chart, code));
+    QVERIFY(!threads.assignOwnedThread(999, chart, code));
+    QVERIFY(threads.setOwnedThread(chart, code, true));
+    const auto depth = session.undoNames().size();
+    QVERIFY(threads.assignOwnedThread(0, chart, code));
+    QCOMPARE(session.undoNames().size(), depth + 1);
+    QVERIFY(session.project().embroidery_objects[0].thread.has_value());
+    QVERIFY(session.undo());
+    QVERIFY(!session.project().embroidery_objects[0].thread.has_value());
 }
 
 QTEST_MAIN(StudioViewTest)
