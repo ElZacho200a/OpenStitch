@@ -11,6 +11,14 @@ Rectangle {
     objectName: "satinPanel"
     property var controller
     readonly property bool ready: controller !== undefined && controller !== null
+    function parseRailCoordinate(value) {
+        const mm = String(value).trim().replace(",", ".")
+        if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(mm))
+            return NaN
+        const number = Number(mm)
+        return isFinite(number) ? number : NaN
+    }
+    function validRailCoordinate(value) { return isFinite(parseRailCoordinate(value)) }
     color: Theme.panel
     border.color: Theme.divider
     radius: Theme.radius
@@ -49,11 +57,38 @@ Rectangle {
             RowLayout {
                 enabled: panel.ready && panel.controller.isSatin
                 StudioComboBox { id: side; objectName: "satinSide"; model: ["A", "B"] }
-                StudioSpinBox { id: node; objectName: "satinNode"; from: 0; to: 999 }
-                StudioTextField { id: nx; objectName: "satinNodeX"; Layout.preferredWidth: 56; placeholderText: "x" }
-                StudioTextField { id: ny; objectName: "satinNodeY"; Layout.preferredWidth: 56; placeholderText: "y" }
-                StudioButton { objectName: "satinMoveNode"; text: qsTr("Déplacer")
-                    onClicked: panel.controller.moveRailNode(side.currentText, node.value, parseFloat(nx.text), parseFloat(ny.text)) }
+                StudioSpinBox {
+                    id: node
+                    objectName: "satinNode"
+                    from: 0
+                    to: panel.ready && panel.controller.isSatin
+                        ? Math.max(0, (side.currentText === "A" ? panel.controller.railNodesA
+                                                                  : panel.controller.railNodesB) - 1)
+                        : 0
+                }
+                StudioTextField {
+                    id: nx
+                    objectName: "satinNodeX"
+                    Layout.preferredWidth: 62
+                    placeholderText: qsTr("X (mm)")
+                    invalid: text.trim().length > 0 && !panel.validRailCoordinate(text)
+                }
+                StudioTextField {
+                    id: ny
+                    objectName: "satinNodeY"
+                    Layout.preferredWidth: 62
+                    placeholderText: qsTr("Y (mm)")
+                    invalid: text.trim().length > 0 && !panel.validRailCoordinate(text)
+                }
+                StudioButton {
+                    objectName: "satinMoveNode"
+                    text: qsTr("Déplacer")
+                    enabled: panel.ready && panel.controller.isSatin
+                             && panel.validRailCoordinate(nx.text)
+                             && panel.validRailCoordinate(ny.text)
+                    onClicked: panel.controller.moveRailNode(side.currentText, node.value,
+                        panel.parseRailCoordinate(nx.text), panel.parseRailCoordinate(ny.text))
+                }
             }
             SectionLabel { text: qsTr("GUIDES DE DIRECTION") }
             Text {
