@@ -43,12 +43,23 @@ Item {
                        : area.containsMouse ? Theme.hover : "transparent"
                 border.width: row.isLayer && root.currentLayer === row.modelData.id ? 1 : 0
                 border.color: Theme.accent
+                Behavior on color { ColorAnimation { duration: Theme.animationMs } }
+                Rectangle {
+                    width: 3
+                    anchors.left: parent.left
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    color: Theme.accent
+                    visible: row.isObject && row.modelData.selected
+                }
             }
 
             MouseArea {
                 id: area
                 anchors.fill: parent
                 hoverEnabled: true
+                cursorShape: row.isObject && row.modelData.locked ? Qt.ForbiddenCursor
+                             : root.dragActive ? Qt.ClosedHandCursor : Qt.PointingHandCursor
                 acceptedButtons: Qt.LeftButton
                 preventStealing: true // le défilement de la liste ne doit pas voler le glisser
                 onCanceled: root.dragActive = false
@@ -113,6 +124,7 @@ Item {
                     border.width: 1
                     border.color: Qt.alpha(Theme.faint, 0.4)
                     opacity: row.isObject && row.modelData.visible ? 1 : 0.4
+                    Behavior on opacity { NumberAnimation { duration: Theme.feedbackFastMs } }
                 }
                 Text {
                     Layout.fillWidth: true
