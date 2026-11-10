@@ -199,6 +199,43 @@ private slots:
         QVERIFY2(violations.isEmpty(), qPrintable(violations.join('\n')));
     }
 
+
+    // Guards for the shared, accessible feedback contract. Runtime loading of Main.qml is
+    // exercised by test_studio_shell; this test also works without a display server.
+    void interactionFeedbackContracts() {
+        const auto dir = QStringLiteral(OPENSTITCH_STUDIO_QML_DIR "/");
+        const auto theme = readFile(dir + QStringLiteral("Theme.qml"));
+        const auto main = readFile(dir + QStringLiteral("Main.qml"));
+        const auto host = readFile(dir + QStringLiteral("spaces/SpaceHost.qml"));
+        const auto handles = readFile(dir + QStringLiteral("TransformHandles.qml"));
+        const auto files = readFile(dir + QStringLiteral("FilePanel.qml"));
+        const auto action = readFile(dir + QStringLiteral("ActionPalette.qml"));
+
+        QVERIFY2(!theme.isEmpty() && !main.isEmpty() && !host.isEmpty(),
+                 "Required Studio QML sources are missing");
+        for (const auto& token : {"animationMs", "feedbackFastMs", "feedbackSlowMs"}) {
+            QVERIFY2(theme.contains(QString::fromLatin1(token) +
+                                    QStringLiteral(": reducedMotion ? 0 :")),
+                     token);
+        }
+        // A write failure must never display the saved state.
+        QVERIFY(main.contains(QStringLiteral("confirmSave(studio.saveProject())")));
+        QVERIFY(main.contains(
+            QStringLiteral("window.confirmSave(studio.saveProjectAs(selectedFile))")));
+        QVERIFY(main.contains(QStringLiteral("saveConfirmed = ok === true")));
+        QVERIFY(main.contains(QStringLiteral("function undoWithFeedback()")));
+        QVERIFY(main.contains(QStringLiteral("function redoWithFeedback()")));
+        QVERIFY(main.contains(QStringLiteral("onStageFeedback: function(message, tone)")));
+        QVERIFY(main.contains(QStringLiteral("studioFeedbackToast")));
+        QVERIFY(files.contains(QStringLiteral("readonly property bool notificationVisible")));
+        QVERIFY(host.contains(QStringLiteral("activeSpaceUnderline")));
+        QVERIFY(host.contains(QStringLiteral("previous[stage.id] !== stage.state")));
+        QVERIFY(host.contains(QStringLiteral("stage.state === \"upToDate\"")));
+        QVERIFY(handles.contains(QStringLiteral("root.snapping")));
+        QVERIFY(handles.contains(QStringLiteral("canvas.ghostRect.width / canvas.zoom")));
+        QVERIFY(action.contains(QStringLiteral("actionSearchFeedback")));
+    }
+
     void everyStudioComponentIsRegistered() {
         const auto qmldir = readFile(QStringLiteral(OPENSTITCH_STUDIO_QML_DIR "/qmldir"));
         for (const auto* name :
