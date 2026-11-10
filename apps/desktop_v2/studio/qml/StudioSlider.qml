@@ -33,9 +33,10 @@ Controls.Slider {
     handle: Rectangle {
         x: control.leftPadding + control.visualPosition * (control.availableWidth - width)
         y: control.topPadding + control.availableHeight / 2 - height / 2
-        implicitWidth: 16
-        implicitHeight: 16
-        radius: 8
+        implicitWidth: control.pressed ? 20 : control.hovered ? 18 : 16
+        implicitHeight: implicitWidth
+        radius: width / 2
+        Behavior on implicitWidth { NumberAnimation { duration: Theme.feedbackFastMs } }
         color: control.pressed ? Theme.accentPressed : Theme.accent
         border.width: control.visualFocus ? 3 : 1
         border.color: control.visualFocus ? Theme.foreground : Theme.accentPressed
