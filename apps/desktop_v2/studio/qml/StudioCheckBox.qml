@@ -30,6 +30,7 @@ Controls.CheckBox {
                      : control.visualFocus ? Theme.foreground
                      : control.checkState === Qt.Unchecked ? Theme.muted : Theme.accent
         opacity: control.enabled ? (control.down ? 0.8 : 1) : 0.5
+        Behavior on border.color { ColorAnimation { duration: Theme.feedbackFastMs } }
         Behavior on color { ColorAnimation { duration: Theme.animationMs } }
         Behavior on opacity { NumberAnimation { duration: Theme.animationMs } }
         // Tick drawn with two rotated bars (no glyph dependency, no shader).
