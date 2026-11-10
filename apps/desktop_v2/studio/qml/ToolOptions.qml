@@ -108,6 +108,17 @@ ColumnLayout {
         Mini { objectName: "smoothButton"; text: qsTr("Lisser"); enabled: parent.some; onClicked: panel.vec.smooth(0.15) }
         Mini { objectName: "fillHolesButton"; text: qsTr("Combler trous"); enabled: parent.some; onClicked: panel.vec.fillHoles(4) }
         Mini { objectName: "toCurvesButton"; text: qsTr("En courbes"); enabled: parent.some; onClicked: panel.vec.convertToCurves() }
+        StudioTextField {
+            id: offsetField
+            objectName: "offsetMmField"
+            implicitWidth: 52
+            text: "1.0"
+            enabled: parent.some
+            invalid: isNaN(parseFloat(text.replace(",", ".")))
+            Accessible.name: qsTr("Décalage en millimètres")
+        }
+        Mini { objectName: "offsetOutButton"; text: qsTr("Décaler +"); enabled: parent.some && !offsetField.invalid; onClicked: panel.vec.offsetShapes(Math.abs(parseFloat(offsetField.text.replace(",", ".")))) }
+        Mini { objectName: "offsetInButton"; text: qsTr("Décaler −"); enabled: parent.some && !offsetField.invalid; onClicked: panel.vec.offsetShapes(-Math.abs(parseFloat(offsetField.text.replace(",", ".")))) }
     }
     Text {
         objectName: "vectorMessage"

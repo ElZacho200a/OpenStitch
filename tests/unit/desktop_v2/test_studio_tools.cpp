@@ -163,6 +163,7 @@ private slots:
     void nodeDragFromSelectTool();
     void offscreenNodeHandlesDoNotFillQmlCanvas();
     void knifeAndBooleans();
+    void offsetShapesCreatesAGrownOrShrunkCopyInOneStep();
     void snappingIsConfigurable();
 };
 
@@ -625,6 +626,47 @@ void StudioToolsTest::nodeEditByMouse() {
     QVERIFY(live && disk);
     QVERIFY(live->paths.front().outer == disk->paths.front().outer);
     QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+}
+
+// « Décaler la forme » : une copie agrandie ou rétrécie, une seule étape d'annulation ; refus
+// d'un décalage nul, hors bornes, d'une sélection vide ou qui ferait disparaître la forme.
+void StudioToolsTest::offsetShapesCreatesAGrownOrShrunkCopyInOneStep() {
+    Rig rig;
+    open(rig);
+    const auto a = draw(rig, "draw.rectangle", {-10, -5}, {10, 5});
+    QVERIFY(a != 0);
+    QVERIFY(rig.window->findChild<QQuickItem*>(QStringLiteral("offsetOutButton")));
+    QVERIFY(rig.window->findChild<QQuickItem*>(QStringLiteral("offsetInButton")));
+    const auto baseSteps = steps(rig);
+    const auto baseObjects = objects(rig);
+    rig.session.selection().replace({Target{TargetKind::EmbroideryObject, a}});
+
+    QVERIFY(rig.vectors.offsetShapes(2.0));
+    QCOMPARE(steps(rig), baseSteps + 1);
+    QCOMPARE(objects(rig), baseObjects + 1);
+    const auto grown =
+        boundsOf(rig.session.project(), rig.session.project().embroidery_objects.back().id.value);
+    QVERIFY(std::abs((grown.x1 - grown.x0) - 24.0) < 0.3);
+    QVERIFY(std::abs((grown.y1 - grown.y0) - 14.0) < 0.3);
+    QVERIFY(rig.session.undo());
+    QCOMPARE(steps(rig), baseSteps);
+    QCOMPARE(objects(rig), baseObjects);
+
+    rig.session.selection().replace({Target{TargetKind::EmbroideryObject, a}});
+    QVERIFY(rig.vectors.offsetShapes(-2.0));
+    const auto shrunk =
+        boundsOf(rig.session.project(), rig.session.project().embroidery_objects.back().id.value);
+    QVERIFY(std::abs((shrunk.x1 - shrunk.x0) - 16.0) < 0.3);
+    QVERIFY(rig.session.undo());
+
+    rig.session.selection().replace({Target{TargetKind::EmbroideryObject, a}});
+    QVERIFY(!rig.vectors.offsetShapes(0.0));
+    QVERIFY(!rig.vectors.offsetShapes(100.0));
+    QVERIFY(!rig.vectors.offsetShapes(-20.0)); // la forme (10 mm de haut) disparaîtrait
+    rig.session.selection().clear();
+    QVERIFY(!rig.vectors.offsetShapes(1.0));
+    QCOMPARE(steps(rig), baseSteps);
+    QCOMPARE(objects(rig), baseObjects);
 }
 
 void StudioToolsTest::knifeAndBooleans() {

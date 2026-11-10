@@ -3,8 +3,13 @@
 
 #include <algorithm>
 
+#include <cmath>
+
 #include "openstitch/commands/calque_commands.hpp"
+#include "openstitch/commands/project_commands.hpp"
 #include "openstitch/commands/stitch_preset_commands.hpp"
+#include "openstitch/geometry/offset.hpp"
+#include "openstitch/geometry/polyline.hpp"
 
 namespace openstitch::desktop_v2 {
 
@@ -185,6 +190,76 @@ ServiceResult moveObjectsToCalque(DocumentSession& session,
     }
     session.execute(
         std::make_unique<commands::SetShapesCalqueCommand>(std::move(shapes), ObjectId{calqueId}));
+    return ok();
+}
+
+namespace {
+// Aplatit les courbes : Clipper2 travaille sur des polygones bruts (même tolérance que l'export
+// DXF).
+geometry::Path flattenToPath(const geometry::Path& path) {
+    constexpr Micrometers kFlattenTolerance{50};
+    const geometry::Polyline flat = geometry::flatten(path, kFlattenTolerance);
+    geometry::Path out;
+    out.closed = flat.closed;
+    out.nodes.reserve(flat.points.size());
+    for (const Vec2um& p : flat.points) {
+        out.nodes.push_back(
+            geometry::PathNode{p, geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    }
+    return out;
+}
+} // namespace
+
+ServiceResult offsetShapes(DocumentSession& session, const std::vector<std::uint64_t>& objectIds,
+                           double offsetMm) {
+    if (!std::isfinite(offsetMm) || offsetMm == 0.0 || std::abs(offsetMm) > 50.0) {
+        return refuse("Décalage invalide : entre -50 et 50 mm, non nul.");
+    }
+    // inset_path_set : delta > 0 = retrait intérieur, l'inverse de « positif agrandit ».
+    const Micrometers delta = to_micrometers(Millimeters{-offsetMm});
+    std::vector<document::VectorObject> vectors;
+    std::vector<document::EmbroideryObject> embroideries;
+    for (const auto id : objectIds) {
+        const auto* source = findObject(session.project(), id);
+        const auto* shape = source ? session.project().findObject(source->source_vector) : nullptr;
+        if (shape == nullptr) {
+            continue;
+        }
+        document::VectorObject result;
+        result.name = shape->name + " (décalé)";
+        result.rgb = shape->rgb;
+        result.calque = shape->calque;
+        for (const auto& set : shape->paths) {
+            geometry::PathSet flatSet;
+            flatSet.outer = flattenToPath(set.outer);
+            for (const auto& hole : set.holes) {
+                flatSet.holes.push_back(flattenToPath(hole));
+            }
+            const auto offset = geometry::inset_path_set(flatSet, delta);
+            if (!offset) {
+                return refuse("Décalage impossible : " + offset.error().message);
+            }
+            for (const auto& piece : *offset) {
+                result.paths.push_back(piece);
+            }
+        }
+        if (result.paths.empty()) {
+            continue; // la forme disparaît : rien à créer pour celle-ci
+        }
+        result.id = session.allocateObjectId();
+        document::EmbroideryObject copy = *source;
+        copy.id = session.allocateObjectId();
+        copy.name = result.name;
+        copy.source_vector = result.id;
+        vectors.push_back(std::move(result));
+        embroideries.push_back(std::move(copy));
+    }
+    if (vectors.empty()) {
+        return refuse(
+            "Rien à décaler : sélectionnez une forme, ou le décalage la fait disparaître.");
+    }
+    session.execute(std::make_unique<commands::AddObjectBatchCommand>(
+        std::move(vectors), std::move(embroideries), "Décaler la forme"));
     return ok();
 }
 

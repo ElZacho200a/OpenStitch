@@ -48,4 +48,11 @@ ServiceResult moveObjectsToCalque(DocumentSession& session,
                                   const std::vector<std::uint64_t>& objectIds,
                                   std::uint64_t calqueId);
 
+// « Décaler la forme » (V1) : crée, pour chaque objet donné, une copie décalée de sa forme
+// (offset > 0 agrandit vers l'extérieur, < 0 rétrécit), avec son objet de broderie, en UNE étape
+// d'annulation. Les courbes sont aplaties avant le décalage (Clipper2). Refus : décalage nul,
+// non fini ou hors de +-50 mm ; objet sans forme ; forme qui disparaît entièrement.
+ServiceResult offsetShapes(DocumentSession& session, const std::vector<std::uint64_t>& objectIds,
+                           double offsetMm);
+
 } // namespace openstitch::desktop_v2

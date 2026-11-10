@@ -34,6 +34,8 @@ public:
     Q_INVOKABLE bool smooth(double toleranceMm);
     Q_INVOKABLE bool fillHoles(double maxAreaMm2);
     Q_INVOKABLE bool convertToCurves();
+    // Copie décalée de chaque forme sélectionnée (mm > 0 agrandit, < 0 rétrécit), une étape.
+    Q_INVOKABLE bool offsetShapes(double offsetMm);
     Q_INVOKABLE bool smoothContours();
 
 signals:
