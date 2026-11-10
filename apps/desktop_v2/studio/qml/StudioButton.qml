@@ -34,6 +34,7 @@ Controls.AbstractButton {
         border.color: button.activeFocus ? Theme.accent : Theme.outline
         opacity: button.enabled ? (button.down ? 0.88 : 1) : 0.55
         Behavior on border.color { ColorAnimation { duration: Theme.feedbackFastMs } }
+        Behavior on border.width { NumberAnimation { duration: Theme.feedbackFastMs } }
         Behavior on opacity { NumberAnimation { duration: Theme.animationMs; easing.type: Easing.OutCubic } }
         Behavior on color { ColorAnimation { duration: Theme.animationMs; easing.type: Easing.OutCubic } }
     }
