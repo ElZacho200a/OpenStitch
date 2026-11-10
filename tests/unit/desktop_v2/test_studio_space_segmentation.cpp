@@ -461,7 +461,15 @@ private slots:
         QVERIFY(rig.session.undo());
         rig.regions.selectAtPixel(20, 20);
         QCOMPARE(rig.regions.selectedCount(), 1);
-        rig.named("regionColorField")->setProperty("text", QStringLiteral("#00aa55"));
+        // F08-02: colour picker is available and malformed hex never reaches
+        // the document mutation. A valid hex colour enables recolouring.
+        QVERIFY(rig.named("regionPickColor"));
+        auto* recolourField = rig.named("regionColorField");
+        QVERIFY(recolourField);
+        QVERIFY(recolourField->setProperty("text", QStringLiteral("#not-a-colour")));
+        QTRY_VERIFY(!rig.named("regionRecolor")->isEnabled());
+        QVERIFY(recolourField->property("invalid").toBool());
+        QVERIFY(recolourField->setProperty("text", QStringLiteral("#00aa55")));
         QTRY_VERIFY(rig.named("regionRecolor")->isEnabled());
         QVERIFY(rig.press("regionRecolor"));
         QVERIFY(rig.regions.message().contains(QStringLiteral("recolor")));
