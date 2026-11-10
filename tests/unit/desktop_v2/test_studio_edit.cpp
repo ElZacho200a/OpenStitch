@@ -155,6 +155,7 @@ private:
 private slots:
     void initTestCase();
     void selectionCommandsOnRealObjects();
+    void objectLockAndMoveToLayerAreUndoable();
     void rectangleSelectionByMouse();
     void savedSelectionsAreRecalled();
     void transformsAreOneUndoStepAndPersist();
@@ -235,6 +236,36 @@ void StudioEditTest::selectionCommandsOnRealObjects() {
     rig.editor.selectNone();
     QVERIFY(rig.session.selection().empty());
     QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+}
+
+// Verrouiller un objet et le déplacer vers un autre calque : une étape d'annulation chacun ;
+// objet ou calque inconnu refusé sans rien changer.
+void StudioEditTest::objectLockAndMoveToLayerAreUndoable() {
+    Rig rig;
+    open(rig);
+    const auto base = steps(rig);
+    const QString lone = QString::number(kLone);
+    QVERIFY(!rig.session.project().findEmbroidery(ObjectId{kLone})->locked);
+    QVERIFY(rig.editor.setObjectLocked(lone, true));
+    QVERIFY(rig.session.project().findEmbroidery(ObjectId{kLone})->locked);
+    QCOMPARE(steps(rig), base + 1);
+    QVERIFY(rig.session.undo());
+    QVERIFY(!rig.session.project().findEmbroidery(ObjectId{kLone})->locked);
+
+    QCOMPARE(shapeOf(rig.session.project(), kLone).calque.value, std::uint64_t{201});
+    const auto before = steps(rig);
+    QVERIFY(rig.editor.moveObjectToLayer(lone, QStringLiteral("202")));
+    QCOMPARE(shapeOf(rig.session.project(), kLone).calque.value, std::uint64_t{202});
+    QCOMPARE(steps(rig), before + 1);
+    QVERIFY(rig.session.undo());
+    QCOMPARE(shapeOf(rig.session.project(), kLone).calque.value, std::uint64_t{201});
+
+    const auto stable = steps(rig);
+    QVERIFY(!rig.editor.moveObjectToLayer(QStringLiteral("999999"), QStringLiteral("202")));
+    QVERIFY(!rig.editor.moveObjectToLayer(lone, QStringLiteral("not-a-layer")));
+    QVERIFY(!rig.editor.setObjectLocked(QStringLiteral("not-an-id"), true));
+    QCOMPARE(steps(rig), stable);
+    QCOMPARE(shapeOf(rig.session.project(), kLone).calque.value, std::uint64_t{201});
 }
 
 void StudioEditTest::rectangleSelectionByMouse() {
