@@ -419,7 +419,7 @@ Window {
                 }
                 Rectangle { implicitWidth: 1; implicitHeight: 14; color: Theme.border; Layout.leftMargin: 8; Layout.rightMargin: 8 }
                 Text {
-                    text: studio.dirty ? qsTr("Modifié") : qsTr("Enregistré")
+                    text: studio.dirty ? qsTr("Modifications non enregistrées") : qsTr("Aucune modification en attente")
                     color: Theme.muted
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.smallSize
