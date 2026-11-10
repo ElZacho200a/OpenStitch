@@ -211,6 +211,10 @@ Item {
                             showHistory: false
                         }
                     }
+                    ImageSizeSection {
+                        Layout.fillWidth: true
+                        space: root.space
+                    }
                     ImageOpStack {
                         Layout.fillWidth: true
                         space: root.space

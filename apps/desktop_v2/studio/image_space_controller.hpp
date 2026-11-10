@@ -28,6 +28,9 @@ class ImageSpaceController : public QObject {
     Q_PROPERTY(bool hasImage READ hasImage NOTIFY changed)
     Q_PROPERTY(double mmPerPx READ mmPerPx NOTIFY changed)
     Q_PROPERTY(int imageWidthPx READ imageWidthPx NOTIFY layerChanged)
+    Q_PROPERTY(double imageWidthMm READ imageWidthMm NOTIFY changed)
+    Q_PROPERTY(double imageHeightMm READ imageHeightMm NOTIFY changed)
+    Q_PROPERTY(bool canResize READ canResize NOTIFY changed)
     Q_PROPERTY(int imageHeightPx READ imageHeightPx NOTIFY layerChanged)
     Q_PROPERTY(int compareMode READ compareMode WRITE setCompareMode NOTIFY viewChanged)
     Q_PROPERTY(double curtain READ curtain WRITE setCurtain NOTIFY viewChanged)
@@ -58,6 +61,11 @@ public:
     void setCurtain(double fraction);
     [[nodiscard]] int layerRevision() const { return layerRevision_; }
     [[nodiscard]] QVariantList opStack() const;
+    [[nodiscard]] double imageWidthMm() const;
+    [[nodiscard]] double imageHeightMm() const;
+    // Vrai tant qu'aucun objet de broderie n'existe : l'échelle de l'image peut alors changer
+    // sans désaccord avec des objets déjà numérisés (ceux-ci se redimensionnent par la sélection).
+    [[nodiscard]] bool canResize() const;
     [[nodiscard]] bool cropActive() const { return cropActive_; }
     [[nodiscard]] double cropX() const { return cx_; }
     [[nodiscard]] double cropY() const { return cy_; }
@@ -79,6 +87,11 @@ public:
     Q_INVOKABLE QString removeOp(int index);
     Q_INVOKABLE QString moveOp(int index, int delta);
     // Recadrage au canevas : le cadre est en pixels de l'image de travail.
+    // Redimensionne l'image source (ratio conservé : les pixels ne changent pas, seule leur taille
+    // physique). Une étape d'annulation. Renvoie un message d'erreur, vide en cas de succès.
+    Q_INVOKABLE QString setImageWidthMm(double widthMm);
+    Q_INVOKABLE QString setImageHeightMm(double heightMm);
+    Q_INVOKABLE QString scaleImage(double percent);
     Q_INVOKABLE void beginCrop();
     Q_INVOKABLE void cancelCrop();
     Q_INVOKABLE void setCrop(double x, double y, double w, double h);

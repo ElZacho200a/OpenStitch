@@ -198,6 +198,11 @@ private slots:
         // The first space actually receives and displays the original pixels.
         auto* canvas = qobject_cast<GpuCanvas*>(named(window, QStringLiteral("imageCanvas")));
         QVERIFY(canvas);
+        // La taille de l'image se règle depuis le panneau de l'espace (largeur, hauteur, %).
+        QTRY_VERIFY_WITH_TIMEOUT(named(window, QStringLiteral("imageSizeSection")) != nullptr,
+                                 5'000);
+        QVERIFY(named(window, QStringLiteral("imageWidthMm")));
+        QVERIFY(named(window, QStringLiteral("imageHeightMm")));
         QTRY_VERIFY_WITH_TIMEOUT(canvas->sourceImage().data != nullptr, 15'000);
         QCOMPARE(canvas->sourceImage().data->after.width(), 160);
         QCOMPARE(canvas->sourceImage().data->after.height(), 120);
@@ -437,6 +442,66 @@ private slots:
         QCOMPARE(session.project().ops.size(), opsBase + 2);
         QVERIFY(!imageSpace.moveOp(static_cast<int>(opsBase), 1).isEmpty());
         QCOMPARE(session.project().ops.size(), opsBase + 2);
+    }
+
+    // Redimensionner l'image importée seule : ratio conservé, une étape d'annulation.
+    void resizingTheImportedImageIsUndoable() {
+        DocumentSession session;
+        StudioController studio(session);
+        ImageController images(studio);
+        ImageSpaceController imageSpace(studio, images);
+        QTemporaryDir dir;
+        auto project = digitizedProject(writeImage(dir.path()));
+        project.embroidery_objects.clear();
+        session.replaceProject(std::move(project), true);
+        QTRY_VERIFY_WITH_TIMEOUT(images.imageWidth() > 0, 20'000);
+        QVERIFY(imageSpace.canResize());
+        const double width = imageSpace.imageWidthMm();
+        const double height = imageSpace.imageHeightMm();
+        const double scale = session.project().mm_per_px.value;
+        const auto depth = session.undoNames().size();
+        QCOMPARE(imageSpace.setImageWidthMm(width * 2.0), QString());
+        QVERIFY(std::abs(imageSpace.imageWidthMm() - width * 2.0) < 1e-6);
+        QVERIFY(std::abs(imageSpace.imageHeightMm() - height * 2.0) < 1e-6);
+        QVERIFY(std::abs(session.project().mm_per_px.value - scale * 2.0) < 1e-9);
+        QCOMPARE(session.undoNames().size(), depth + 1);
+        QCOMPARE(imageSpace.scaleImage(50.0), QString());
+        QVERIFY(std::abs(imageSpace.imageWidthMm() - width) < 1e-6);
+        QCOMPARE(imageSpace.setImageHeightMm(height * 3.0), QString());
+        QVERIFY(std::abs(imageSpace.imageWidthMm() - width * 3.0) < 1e-6);
+        session.undo();
+        session.undo();
+        session.undo();
+        QVERIFY(std::abs(session.project().mm_per_px.value - scale) < 1e-12);
+        QVERIFY(std::abs(imageSpace.imageWidthMm() - width) < 1e-6);
+    }
+
+    // Une taille absurde est refusee sans rien changer ; avec des objets, le redimensionnement de
+    // l'image est refuse (ils se redimensionnent par la selection).
+    void resizingTheImageRefusesInvalidSizesAndExistingObjects() {
+        DocumentSession session;
+        StudioController studio(session);
+        ImageController images(studio);
+        ImageSpaceController imageSpace(studio, images);
+        QTemporaryDir dir;
+        auto project = digitizedProject(writeImage(dir.path()));
+        const bool hadObjects = !project.embroidery_objects.empty();
+        session.replaceProject(std::move(project), true);
+        QTRY_VERIFY_WITH_TIMEOUT(images.imageWidth() > 0, 20'000);
+        const double scale = session.project().mm_per_px.value;
+        if (hadObjects) {
+            QVERIFY(!imageSpace.canResize());
+            QVERIFY(!imageSpace.setImageWidthMm(100.0).isEmpty());
+            QCOMPARE(session.project().mm_per_px.value, scale);
+        }
+        auto cleared = session.project();
+        cleared.embroidery_objects.clear();
+        session.replaceProject(std::move(cleared), true);
+        QVERIFY(imageSpace.canResize());
+        QVERIFY(!imageSpace.setImageWidthMm(0.0).isEmpty());
+        QVERIFY(!imageSpace.scaleImage(1.0e9).isEmpty());
+        QVERIFY(!imageSpace.scaleImage(-5.0).isEmpty());
+        QCOMPARE(session.project().mm_per_px.value, scale);
     }
 };
 
