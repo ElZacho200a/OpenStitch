@@ -531,6 +531,103 @@ private slots:
         QTRY_VERIFY(window->findChild<QObject*>(QStringLiteral("segmentationSpace")));
         QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join('\n')));
     }
+
+private slots:
+    // regionMergeColorIntoUndo : selectionner 2 regions, appeler mergeColorInto(idSource, idCible)
+    // -> QString vide ; le nombre de regions diminue ; undo restaure.
+    void regionMergeColorIntoUndo() {
+        Rig rig;
+        open(rig);
+        const auto beforeCount = rig.regions.regions().size();
+        QVERIFY(beforeCount >= 2);
+        QVariantList allRegions = rig.regions.regions();
+        double sourceId = 0, targetId = 0;
+        for (const auto& r : allRegions) {
+            const QVariantMap m = r.toMap();
+            double id = m.value("id").toDouble();
+            if (sourceId == 0) {
+                sourceId = id;
+            } else if (targetId == 0) {
+                targetId = id;
+            }
+        }
+        QVERIFY(sourceId > 0 && targetId > 0);
+        QCOMPARE(rig.regions.mergeColorInto(sourceId, targetId), QString());
+        QTRY_COMPARE(rig.regions.regions().size(), beforeCount - 1);
+        QVERIFY(rig.session.undo());
+        QTRY_COMPARE(rig.regions.regions().size(), beforeCount);
+    }
+
+    // regionReducePaletteUndo : previewReduction(2, 60.0, true) renvoie "after" <= "before" ;
+    // reducePalette vide ; undo la retire.
+    void regionReducePaletteUndo() {
+        Rig rig;
+        open(rig);
+        const auto beforeDepth = rig.session.undoNames().size();
+        QVariantMap preview = rig.regions.previewReduction(2, 60.0, true);
+        QVERIFY(preview.value("after").toInt() <= preview.value("before").toInt());
+        QCOMPARE(rig.regions.reducePalette(2, 60.0, true), QString());
+        QCOMPARE(rig.session.undoNames().size(), beforeDepth + 1);
+        QVERIFY(rig.session.undo());
+        QCOMPARE(rig.session.undoNames().size(), beforeDepth);
+    }
+
+    // regionCleanIslandsUndo : cleanIslands(5) renvoie QString vide ou un message sans erreur ; si
+    // le projet change, undo restaure.
+    void regionCleanIslandsUndo() {
+        // Image de test sans petit îlot : message informatif, aucune étape d'annulation créée.
+        Rig rig;
+        open(rig);
+        const auto depth = rig.session.undoNames().size();
+        const QString msg = rig.regions.cleanIslands(5);
+        QVERIFY(msg.isEmpty() || msg.contains(QStringLiteral("rien")));
+        QCOMPARE(rig.session.undoNames().size(), depth);
+    }
+
+    // regionFillHolesUndo : même principe avec fillHoles(5).
+    void regionFillHolesUndo() {
+        Rig rig;
+        open(rig);
+        const auto depth = rig.session.undoNames().size();
+        const QString msg = rig.regions.fillHoles(5);
+        QVERIFY(msg.isEmpty() || msg.contains(QStringLiteral("Aucun")));
+        QCOMPARE(rig.session.undoNames().size(), depth);
+    }
+
+    // regionDeleteSelectedUndo : selectAtPixel(20,20) puis deleteSelected() vide ; un undo restaure
+    // le nombre d'objets embroidery_objects.
+    void regionDeleteSelectedUndo() {
+        Rig rig;
+        open(rig);
+        const auto beforeObjects = rig.session.project().embroidery_objects.size();
+        rig.regions.selectAtPixel(20, 20);
+        QTRY_COMPARE(rig.regions.selectedCount(), 1);
+        QCOMPARE(rig.regions.deleteSelected(), QString());
+        QVERIFY(rig.session.undoNames().size() > 0);
+        QVERIFY(rig.session.undo());
+        QCOMPARE(rig.session.project().embroidery_objects.size(), beforeObjects);
+    }
+
+    // regionPaintStrokeNeedsOneRegion : sans selection, paintStroke({}, false) renvoie un message
+    // NON vide (erreur "choisissez d'abord UNE region").
+    void regionPaintStrokeNeedsOneRegion() {
+        Rig rig;
+        open(rig);
+        const QString msg = rig.regions.paintStroke(QVariantList{}, false);
+        QVERIFY(!msg.isEmpty());
+        QVERIFY(msg.contains("choisissez"));
+    }
+
+    // regionSelectAllAndInvert : selectAll() puis invertSelection() ; apres inversion la selection
+    // est vide.
+    void regionSelectAllAndInvert() {
+        Rig rig;
+        open(rig);
+        rig.regions.selectAll();
+        QVERIFY(rig.regions.selectedCount() >= 2);
+        rig.regions.invertSelection();
+        QCOMPARE(rig.regions.selectedCount(), 0);
+    }
 };
 
 QTEST_MAIN(StudioSpaceSegmentationTest)
