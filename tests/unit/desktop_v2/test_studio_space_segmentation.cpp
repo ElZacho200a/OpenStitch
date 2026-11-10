@@ -389,6 +389,15 @@ private slots:
         QVERIFY(segmentationSettings->setProperty("smoothing", 2));
         QVERIFY(rig.press("segPreviewButton"));
         QTRY_VERIFY_WITH_TIMEOUT(rig.images.segPreviewActive(), 20'000);
+        // F08-01: editing segmentation colours invalidates a completed preview
+        // without mutating the project or leaving the old image on screen.
+        const auto priorPreviewRevision = rig.session.revision();
+        QVERIFY(segmentationSettings->setProperty("maxColors", 4));
+        QTRY_VERIFY(!rig.images.segPreviewActive());
+        QCOMPARE(rig.session.revision(), priorPreviewRevision);
+        QVERIFY(segmentationSettings->setProperty("maxColors", 3));
+        QVERIFY(rig.press("segPreviewButton"));
+        QTRY_VERIFY_WITH_TIMEOUT(rig.images.segPreviewActive(), 20'000);
         QVERIFY(rig.press("segCancelButton"));
         QVERIFY(!rig.images.segPreviewActive());
         QVERIFY(rig.press("segPreviewButton"));
