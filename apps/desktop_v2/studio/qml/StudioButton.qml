@@ -7,6 +7,7 @@ Controls.AbstractButton {
     id: button
     property string iconName: ""
     property string tooltip: ""
+    property string disabledReason: ""
     property string shortcutLabel: ""
     property bool emphasized: false
     property bool quiet: false
@@ -76,5 +77,13 @@ Controls.AbstractButton {
         }
     }
 
-    StudioToolTip { text: button.tooltip.length > 0 ? button.tooltip + (button.shortcutLabel.length > 0 ? "  ·  " + button.shortcutLabel : "") : "" }
+    HoverHandler { id: buttonHintHover; acceptedDevices: PointerDevice.Mouse }
+    StudioToolTip {
+        text: !button.enabled && button.disabledReason.length > 0 ? button.disabledReason
+              : button.tooltip.length > 0
+                ? button.tooltip + (button.shortcutLabel.length > 0 ? "  ·  " + button.shortcutLabel : "")
+                : ""
+        visible: (buttonHintHover.hovered || button.activeFocus) && text.length > 0
+        delay: button.activeFocus ? 0 : 600
+    }
 }
