@@ -17,9 +17,27 @@ ColumnLayout {
                                       smoothing_radius_px: smoothing })
     // The preview describes a specific parameter tuple. Invalidate/cancel it
     // immediately when colours, island size or smoothing changes.
+    // Aperçu en direct (comme en V1) : un changement de réglage relance l'aperçu après 350 ms, sans
+    // toucher au document. Désactivable pour les grosses images.
+    property bool liveEnabled: true
     function invalidatePreview() {
         if (imageTools.segPreviewActive || imageTools.busy)
             imageTools.cancelSegmentationPreview()
+        if (section.liveEnabled)
+            livePreview.restart()
+    }
+    Timer {
+        id: livePreview
+        objectName: "segLiveTimer"
+        interval: 350
+        onTriggered: {
+            if (!section.liveEnabled || !imageTools.hasImage)
+                return
+            if (imageTools.busy)
+                livePreview.restart() // attend la fin du calcul en cours
+            else
+                imageTools.previewSegmentation(section.options)
+        }
     }
     onMaxColorsChanged: invalidatePreview()
     onMinRegionPxChanged: invalidatePreview()
@@ -67,6 +85,13 @@ ColumnLayout {
         Text { text: qsTr("Lissage (px)"); color: Theme.foreground; font.pixelSize: Theme.bodySize; font.family: Theme.fontFamily; Layout.fillWidth: true }
         StudioSpinBox { objectName: "segSmoothing"; from: 0; to: 10; value: section.smoothing; editable: true
             onValueModified: section.smoothing = value }
+    }
+    StudioCheckBox {
+        objectName: "segLiveBox"
+        text: qsTr("Aperçu en direct")
+        checked: section.liveEnabled
+        onToggled: { section.liveEnabled = checked; if (checked) livePreview.restart() }
+        palette.windowText: Theme.foreground
     }
     RowLayout {
         Layout.fillWidth: true

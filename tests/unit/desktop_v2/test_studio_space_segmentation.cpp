@@ -389,6 +389,8 @@ private slots:
         // Segmentation : réglages saisis, aperçu annulable, application en une étape.
         auto* segmentationSettings = rig.named("segmentationSection");
         QVERIFY(segmentationSettings);
+        // Ce parcours teste l'aperçu explicite : l'aperçu en direct a son propre test.
+        QVERIFY(segmentationSettings->setProperty("liveEnabled", false));
         QVERIFY(segmentationSettings->setProperty("maxColors", 3));
         QVERIFY(segmentationSettings->setProperty("minRegionPx", 25));
         QVERIFY(segmentationSettings->setProperty("smoothing", 2));
@@ -733,6 +735,47 @@ private slots:
         QCOMPARE(rig.regions.brushRadius(), 1.0);
         rig.regions.stepBrushRadius(1000);
         QCOMPARE(rig.regions.brushRadius(), 200.0);
+    }
+    // Aperçu en direct (V1) : un changement de réglage relance l'aperçu tout seul, sans toucher au
+    // document ; la case le désactive.
+    void segmentationPreviewIsLiveWhenSettingsChange() {
+        Rig rig;
+        open(rig);
+        auto* settings = rig.named("segmentationSection");
+        QVERIFY(settings);
+        QVERIFY(settings->property("liveEnabled").toBool());
+        QVERIFY(rig.named("segLiveBox"));
+        const auto revision = rig.session.revision();
+        QVERIFY(settings->setProperty("maxColors", 3));
+        QTRY_VERIFY_WITH_TIMEOUT(rig.images.segPreviewActive(), 20'000);
+        QVERIFY(settings->setProperty("maxColors", 4)); // invalide puis relance
+        QTRY_VERIFY_WITH_TIMEOUT(rig.images.segPreviewActive(), 20'000);
+        QCOMPARE(rig.session.revision(), revision);
+        QVERIFY(rig.press("segLiveBox"));
+        QVERIFY(!settings->property("liveEnabled").toBool());
+        QVERIFY(settings->setProperty("maxColors", 5));
+        auto* timer = rig.window->findChild<QObject*>(QStringLiteral("segLiveTimer"));
+        QVERIFY(timer);
+        QVERIFY(!timer->property("running").toBool()); // plus d'aperçu automatique
+        QCOMPARE(rig.session.revision(), revision);
+    }
+
+    // Suppr dans l'espace Segmentation supprime les régions sélectionnées (une étape d'annulation),
+    // comme le bouton Supprimer.
+    void deleteKeyRemovesTheSelectedRegions() {
+        Rig rig;
+        open(rig);
+        const auto before = rig.regions.regions().size();
+        const auto depth = rig.session.undoNames().size();
+        rig.regions.selectAtPixel(20, 20);
+        QCOMPARE(rig.regions.selectedCount(), 1);
+        rig.window->requestActivate();
+        QTest::keyClick(rig.window, Qt::Key_Delete);
+        QTRY_COMPARE(rig.session.undoNames().size(), depth + 1);
+        QTRY_VERIFY(rig.regions.regions().size() < before);
+        QCOMPARE(rig.regions.selectedCount(), 0);
+        QVERIFY(rig.session.undo());
+        QTRY_COMPARE(rig.regions.regions().size(), before);
     }
 };
 
