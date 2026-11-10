@@ -15,6 +15,16 @@ Item {
     readonly property string liveInfo: canvas ? canvas.gestureInfo : ""
     readonly property bool resizing: liveInfo.indexOf("× ") === 0
     readonly property bool rotating: liveInfo.length > 0 && liveInfo.endsWith("°")
+    property bool selectionPulse: false
+    onHasBoxChanged: {
+        if (hasBox && !Theme.reducedMotion) {
+            selectionPulse = true
+            selectionPulseTimer.restart()
+        } else if (!hasBox) {
+            selectionPulse = false
+        }
+    }
+    Timer { id: selectionPulseTimer; interval: 160; onTriggered: root.selectionPulse = false }
 
     Rectangle {
         objectName: "marqueeRect"
@@ -50,8 +60,9 @@ Item {
         height: root.box.height
         color: "transparent"
         border.color: Theme.accent
-        border.width: 1
+        border.width: root.selectionPulse ? 2 : 1
         opacity: 0.95
+        Behavior on border.width { NumberAnimation { duration: Theme.feedbackFastMs } }
         Behavior on border.color { ColorAnimation { duration: Theme.feedbackFastMs } }
     }
 
@@ -164,7 +175,7 @@ Item {
                     return qsTr("%1 × %2 mm")
                            .arg((canvas.ghostRect.width / canvas.zoom).toFixed(1))
                            .arg((canvas.ghostRect.height / canvas.zoom).toFixed(1))
-                           + "  ·  " + root.liveInfo
+                           + "  ·  " + root.liveInfo + qsTr(" · proportions conservées")
                 return root.liveInfo
             }
             color: Theme.foreground
