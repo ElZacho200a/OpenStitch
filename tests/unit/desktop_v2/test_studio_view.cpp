@@ -540,6 +540,20 @@ void StudioViewTest::mainQmlHostsEveryPanel() {
     QVERIFY(press(window, "gridBox"));
     QVERIFY(view.gridVisible());
     QVERIFY(canvas->overlays()->grid);
+    // F38-02: invalid/partial spacing must never change the model. A French
+    // decimal comma is interpreted as a decimal separator, not a suffix.
+    auto* gridStep = named(window, "gridStepField");
+    QVERIFY(gridStep);
+    const double originalGrid = view.gridStepMm();
+    QVERIFY(gridStep->setProperty("text", QStringLiteral("2mm")));
+    QTRY_VERIFY(gridStep->property("invalid").toBool());
+    gridStep->forceActiveFocus();
+    QTest::keyClick(window, Qt::Key_Return);
+    QCOMPARE(view.gridStepMm(), originalGrid);
+    QVERIFY(gridStep->setProperty("text", QStringLiteral("2,5")));
+    gridStep->forceActiveFocus();
+    QTest::keyClick(window, Qt::Key_Return);
+    QTRY_COMPARE(view.gridStepMm(), 2.5);
     QVERIFY(press(window, "rulersBox"));
     QVERIFY(view.rulersVisible());
     QVERIFY(press(window, "addVGuideButton"));
@@ -547,6 +561,18 @@ void StudioViewTest::mainQmlHostsEveryPanel() {
     QCOMPARE(canvas->overlays()->guidesX.size(), std::size_t{1});
     QVERIFY(press(window, "zoom100Button"));
     QVERIFY(std::abs(canvas->zoom() - view.pixelsPerMmAt100()) < 1e-6);
+    // F38-04: a physical calibration is only actionable for a complete
+    // measured length, and accepts decimal comma input.
+    auto* calibration = named(window, "calibrateField");
+    auto* calibrationButton = named(window, "calibrateButton");
+    QVERIFY(calibration && calibrationButton);
+    QVERIFY(!calibrationButton->isEnabled());
+    QVERIFY(calibration->setProperty("text", QStringLiteral("20mm")));
+    QTRY_VERIFY(!calibrationButton->isEnabled());
+    QVERIFY(calibration->setProperty("text", QStringLiteral("100,0")));
+    QTRY_VERIFY(calibrationButton->isEnabled());
+    QVERIFY(press(window, "calibrateButton"));
+    QVERIFY(view.pixelsPerMmAt100() > 0);
 
     // Zoom rectangle through the real canvas gesture (one-shot rubber band).
     canvas->fitDesign();
