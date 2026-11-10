@@ -348,3 +348,16 @@ touche la broderie (`StudioController` relance toujours la scène entière), ex�
   chaque reconstruction (`studio_controller.cpp`) ; la couche de points disparaît donc le temps de
   la reconstruction (≥ 17 ms à 1 000 objets, plus le délai de la pompe de 8 ms et le téléversement
   GPU). Impact visuel réel (clignotement) non constaté : aucune capture ni mesure de fenêtre ici.
+
+### Reconstructions de scène par type de modification (PERF-005, PERF-021)
+
+`StudioController::sceneBuildCount()` compte les reconstructions complètes lancées. Le test
+`sceneRebuildsExactlyOncePerGeometryChange` (`test_studio_history.cpp`, projet de deux rectangles)
+établit : sélection d'objet et `markSaved` (même révision) → **0** reconstruction ; édition de
+broderie, annulation, rétablissement, saut de plusieurs étapes dans l'historique → **exactement 1**
+chacun. Donc l'annulation d'une édition de broderie ne refait pas la scène deux fois et un saut
+d'historique ne rejoue pas les étapes intermédiaires. **Non couvert** : une vraie mutation qui ne
+touche ni la broderie ni la segmentation, et les commandes d'image/segmentation (le contrôleur ne
+relance pas la scène pour elles, d'après `lastChangeAffectsEmbroidery()`, mais ce n'est pas testé
+ici) ; `rebuildScene` annule aussi toutes les tâches de son `TaskManager`, qui ne porte que
+l'ouverture de projet et la géométrie (PERF-012 : sans autre tâche à épargner dans ce contrôleur).
