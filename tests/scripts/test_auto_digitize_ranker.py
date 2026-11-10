@@ -106,6 +106,34 @@ class RankerTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "nonfinite"):
             ranker.train_model(rows, epochs=1)
 
+    def test_direct_fit_rejects_invalid_rows(self):
+        with self.assertRaisesRegex(ValueError, "no labeled samples"):
+            ranker.fit([])
+        row = sample()
+        row["provenance"]["source_kind"] = "human_confirmed"
+        row["provenance"]["opt_in"] = False
+        with self.assertRaisesRegex(ValueError, "opt_in"):
+            ranker.fit([row], epochs=1)
+        row = sample()
+        row["candidates"][0]["features"]["travel_mm"] = float("nan")
+        with self.assertRaisesRegex(ValueError, "nonfinite"):
+            ranker.fit([row], epochs=1)
+
+    def test_fit_rejects_nonfinite_and_boolean_hyperparameters(self):
+        for kwargs in ({"epochs": True}, {"epochs": 1.5},
+                       {"learning_rate": float("nan")},
+                       {"learning_rate": float("inf")},
+                       {"l2": float("nan")}, {"l2": True}):
+            with self.subTest(kwargs=kwargs):
+                with self.assertRaisesRegex(ValueError, "hyperparameters"):
+                    ranker.fit([sample()], **kwargs)
+
+    def test_metrics_empty_dataset_has_controlled_error(self):
+        with self.assertRaisesRegex(ValueError, "no labeled samples"):
+            ranker.metrics([], None)
+        with self.assertRaisesRegex(ValueError, "no labeled samples"):
+            ranker.metrics([], {"schema": ranker.MODEL_SCHEMA})
+
     def test_direct_training_rejects_empty_dataset(self):
         with self.assertRaisesRegex(ValueError, "no labeled samples"):
             ranker.train_model([], epochs=1)
