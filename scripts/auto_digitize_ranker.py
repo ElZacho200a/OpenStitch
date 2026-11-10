@@ -155,8 +155,16 @@ def split_by_motif(rows: list[dict], ratio: float = 0.8, salt: str = "openstitch
 
 def fit(rows: list[dict], *, epochs: int = 500, learning_rate: float = 0.3,
         l2: float = 0.002) -> list[float]:
-    if not (1 <= epochs <= 10000 and 0 < learning_rate <= 1 and 0 <= l2 <= 1):
+    if (type(epochs) is not int or not 1 <= epochs <= 10000
+            or type(learning_rate) not in (int, float)
+            or not math.isfinite(learning_rate) or not 0 < learning_rate <= 1
+            or type(l2) not in (int, float) or not math.isfinite(l2)
+            or not 0 <= l2 <= 1):
         fail("invalid training hyperparameters")
+    if not rows:
+        fail("no labeled samples")
+    for row in rows:
+        check_sample(row)
     pairs = []
     for row in rows:
         winning = next(c for c in row["candidates"] if c["id"] == row["preferred_id"])
@@ -192,6 +200,8 @@ def heuristic(candidate: dict) -> float:
 
 
 def metrics(rows: list[dict], model: dict | None) -> dict:
+    if not rows:
+        fail("no labeled samples")
     correct = 0
     for row in rows:
         if model is None:
