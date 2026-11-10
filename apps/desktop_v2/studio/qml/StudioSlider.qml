@@ -40,5 +40,6 @@ Controls.Slider {
         border.width: control.visualFocus ? 3 : 1
         border.color: control.visualFocus ? Theme.foreground : Theme.accentPressed
         opacity: control.enabled ? 1 : 0.5
+        Behavior on color { ColorAnimation { duration: Theme.animationMs } }
     }
 }
