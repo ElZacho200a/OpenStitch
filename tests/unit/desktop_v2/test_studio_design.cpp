@@ -227,6 +227,9 @@ private slots:
         QVERIFY(main.contains(QStringLiteral("function redoWithFeedback()")));
         QVERIFY(main.contains(QStringLiteral("onStageFeedback: function(message, tone)")));
         QVERIFY(main.contains(QStringLiteral("studioFeedbackToast")));
+        QVERIFY(main.contains(QStringLiteral("onDiagnosticsChanged()")));
+        QVERIFY(main.contains(QStringLiteral("geometryBuildCount")));
+        QVERIFY(main.contains(QStringLiteral("lastPreviewBuildCount")));
         QVERIFY(files.contains(QStringLiteral("readonly property bool notificationVisible")));
         QVERIFY(host.contains(QStringLiteral("activeSpaceUnderline")));
         QVERIFY(host.contains(QStringLiteral("previous[stage.id] !== stage.state")));
