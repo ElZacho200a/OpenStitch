@@ -115,6 +115,18 @@ Controls.Popup {
             }
             Keys.onDownPressed: results.forceActiveFocus()
         }
+        Text {
+            objectName: "actionSearchFeedback"
+            Layout.fillWidth: true
+            visible: palette.currentId === "" && search.text.length > 0
+            text: results.count === 0 ? qsTr("Aucune action trouvée")
+                                      : qsTr("%1 action(s) trouvée(s)").arg(results.count)
+            color: results.count === 0 ? Theme.warning : Theme.faint
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.smallSize
+            Accessible.role: Accessible.StaticText
+            Accessible.name: text
+        }
 
         ListView {
             id: results
@@ -124,6 +136,10 @@ Controls.Popup {
             Layout.fillHeight: true
             clip: true
             model: actions.searchAll("")
+            Keys.onReturnPressed: {
+                if (results.count > 0 && results.currentIndex >= 0)
+                    palette.choose(results.model[results.currentIndex])
+            }
             section.property: "group"
             section.delegate: Text {
                 text: section
@@ -137,8 +153,10 @@ Controls.Popup {
                 width: ListView.view.width
                 height: 30
                 radius: 3
-                color: hit.containsMouse ? Theme.hover : "transparent"
-                opacity: modelData.enabled ? 1 : 0.45
+                color: ListView.isCurrentItem && results.activeFocus ? Theme.accentSoft
+                       : hit.containsMouse ? Theme.hover : "transparent"
+                opacity: modelData.enabled ? 1 : 0.55
+                Behavior on color { ColorAnimation { duration: Theme.feedbackFastMs } }
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
                     anchors.left: parent.left

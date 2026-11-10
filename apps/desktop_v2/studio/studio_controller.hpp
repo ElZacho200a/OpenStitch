@@ -29,6 +29,7 @@ class StudioController : public QObject {
     Q_PROPERTY(QString undoLabel READ undoLabel NOTIFY changed)
     Q_PROPERTY(QString redoLabel READ redoLabel NOTIFY changed)
     Q_PROPERTY(bool hasSelection READ hasSelection NOTIFY changed)
+    Q_PROPERTY(QString primarySelectionId READ primarySelectionId NOTIFY selectionChanged)
     Q_PROPERTY(QVariantMap selectionTool READ selectionTool CONSTANT)
     Q_PROPERTY(QVariantMap panTool READ panTool CONSTANT)
 public:
@@ -39,6 +40,9 @@ public:
     [[nodiscard]] QString title() const { return title_; }
     [[nodiscard]] QString status() const { return status_; }
     [[nodiscard]] bool busy() const { return busy_; }
+    // Nombre de reconstructions complètes de la scène lancées depuis la création (PERF-005) :
+    // permet de prouver qu'une modification sans effet sur la broderie n'en déclenche aucune.
+    [[nodiscard]] int sceneBuildCount() const { return sceneBuilds_; }
     [[nodiscard]] QVariantList objects() const;
     [[nodiscard]] QString selectionInfo() const;
     [[nodiscard]] int commandCount() const;
@@ -50,6 +54,12 @@ public:
     [[nodiscard]] QString undoLabel() const;
     [[nodiscard]] QString redoLabel() const;
     [[nodiscard]] bool hasSelection() const { return !session_.selection().targets().empty(); }
+    [[nodiscard]] QString primarySelectionId() const {
+        const auto primary = session_.selection().primary();
+        return primary && primary->kind == TargetKind::EmbroideryObject
+                   ? QString::number(primary->id)
+                   : QString{};
+    }
     Q_INVOKABLE void newProject();
     // Both return true when the project was written; the status line carries the reason otherwise.
     Q_INVOKABLE bool saveProject();
@@ -89,6 +99,7 @@ private:
     QString status_{QStringLiteral("Ouvrez un projet .osp pour explorer sa broderie")};
     QString path_;
     bool busy_{false};
+    int sceneBuilds_{0};
     std::uint64_t request_{0};
     std::uint64_t lastNotifiedRevision_{0};
     QTimer pump_;

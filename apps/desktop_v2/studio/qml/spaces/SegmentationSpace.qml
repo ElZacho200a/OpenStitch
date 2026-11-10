@@ -90,6 +90,50 @@ Item {
             focus: true
         }
 
+        // Reflect actual image / region processing activity, not an estimated percentage.
+        Rectangle {
+            objectName: "segmentationBusyBadge"
+            anchors.top: parent.top
+            anchors.right: parent.right
+            anchors.margins: 16
+            visible: root.seg !== null && root.seg.busy
+            enabled: false
+            width: busyRow.implicitWidth + 22
+            height: 32
+            color: Theme.surface
+            border.color: Theme.info
+            radius: Theme.radius
+            Row {
+                id: busyRow
+                anchors.centerIn: parent
+                spacing: 8
+                Rectangle {
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: Theme.reducedMotion
+                    width: 10
+                    height: 10
+                    radius: 5
+                    color: Theme.info
+                }
+                Controls.BusyIndicator {
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: !Theme.reducedMotion
+                    running: root.seg !== null && root.seg.busy && !Theme.reducedMotion
+                    width: 16
+                    height: 16
+                }
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: qsTr("Segmentation en cours…")
+                    color: Theme.foreground
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.smallSize
+                }
+            }
+            Accessible.role: Accessible.StaticText
+            Accessible.name: qsTr("Segmentation en cours")
+        }
+
         // Clic : sélection de la région sous le curseur (Ctrl = multi-sélection) ; pinceau / gomme
         // des régions quand l'outil de RegionController l'est. Les autres boutons (déplacement,
         // molette) restent au canevas.

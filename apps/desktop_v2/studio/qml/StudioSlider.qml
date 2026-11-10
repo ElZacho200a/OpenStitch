@@ -33,12 +33,35 @@ Controls.Slider {
     handle: Rectangle {
         x: control.leftPadding + control.visualPosition * (control.availableWidth - width)
         y: control.topPadding + control.availableHeight / 2 - height / 2
-        implicitWidth: 16
-        implicitHeight: 16
-        radius: 8
+        implicitWidth: control.pressed ? 20 : control.hovered ? 18 : 16
+        implicitHeight: implicitWidth
+        radius: width / 2
+        Behavior on implicitWidth { NumberAnimation { duration: Theme.feedbackFastMs } }
         color: control.pressed ? Theme.accentPressed : Theme.accent
         border.width: control.visualFocus ? 3 : 1
         border.color: control.visualFocus ? Theme.foreground : Theme.accentPressed
         opacity: control.enabled ? 1 : 0.5
+        Behavior on color { ColorAnimation { duration: Theme.animationMs } }
+        Rectangle {
+            objectName: "sliderValueBubble"
+            visible: control.pressed
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.bottom: parent.top
+            anchors.bottomMargin: 7
+            width: sliderValue.implicitWidth + 12
+            height: sliderValue.implicitHeight + 6
+            radius: 4
+            color: Theme.surface
+            border.color: Theme.accent
+            Text {
+                id: sliderValue
+                anchors.centerIn: parent
+                text: Number(control.value).toLocaleString(Qt.locale(), 'f',
+                                                             control.stepSize >= 1 ? 0 : 2)
+                color: Theme.foreground
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.smallSize
+            }
+        }
     }
 }

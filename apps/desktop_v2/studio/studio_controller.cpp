@@ -204,6 +204,7 @@ bool StudioController::moveSelection(double dxMm, double dyMm) {
 
 void StudioController::rebuildScene() {
     tasks_.cancelAll();
+    ++sceneBuilds_;
     const auto request = ++request_;
     const auto revision = session_.revision();
     auto snapshot = session_.snapshot();

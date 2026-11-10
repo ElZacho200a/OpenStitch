@@ -34,6 +34,11 @@ struct VectorShape {
 class VectorLayer {
 public:
     [[nodiscard]] static std::shared_ptr<const VectorLayer> build(const document::Project& project);
+    // Même construction à partir des seules formes : permet de la lancer sur un worker avec une
+    // copie immuable de `Project::vector_objects`, sans copier tout le projet. Résultat identique à
+    // `build(project)` pixel pour pixel (c'est le même code).
+    [[nodiscard]] static std::shared_ptr<const VectorLayer>
+    build(const std::vector<document::VectorObject>& shapes);
     [[nodiscard]] const std::vector<VectorShape>& shapes() const { return shapes_; }
     [[nodiscard]] const OverlayImage& image() const { return image_; }
     // Forme la plus haute sous le point (mm scène), tolérance en mm ; ignore les formes

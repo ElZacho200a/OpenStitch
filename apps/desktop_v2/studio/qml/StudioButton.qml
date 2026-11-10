@@ -6,7 +6,9 @@ import "."
 Controls.AbstractButton {
     id: button
     property string iconName: ""
+    property real iconRotation: 0
     property string tooltip: ""
+    property string disabledReason: qsTr("Action indisponible dans le contexte actuel")
     property string shortcutLabel: ""
     property bool emphasized: false
     property bool quiet: false
@@ -21,7 +23,8 @@ Controls.AbstractButton {
     hoverEnabled: true
     focusPolicy: Qt.StrongFocus
     Accessible.name: tooltip.length > 0 ? tooltip : text
-    Accessible.description: shortcutLabel.length > 0 ? qsTr("Raccourci : ") + shortcutLabel : ""
+    Accessible.description: !enabled && disabledReason.length > 0 ? disabledReason
+                            : shortcutLabel.length > 0 ? qsTr("Raccourci : ") + shortcutLabel : ""
 
     background: Rectangle {
         radius: Theme.radius
@@ -30,13 +33,18 @@ Controls.AbstractButton {
                : button.down ? Theme.raised
                : button.hovered ? Theme.hover
                : button.quiet ? "transparent" : Theme.raised
-        border.width: button.activeFocus || (!button.quiet && !button.emphasized) ? 1 : 0
+        border.width: button.activeFocus ? 2 : (!button.quiet && !button.emphasized ? 1 : 0)
         border.color: button.activeFocus ? Theme.accent : Theme.outline
-        opacity: button.enabled ? 1 : 0.55
+        opacity: button.enabled ? (button.down ? 0.88 : 1) : 0.55
+        Behavior on border.color { ColorAnimation { duration: Theme.feedbackFastMs } }
+        Behavior on border.width { NumberAnimation { duration: Theme.feedbackFastMs } }
+        Behavior on opacity { NumberAnimation { duration: Theme.animationMs; easing.type: Easing.OutCubic } }
         Behavior on color { ColorAnimation { duration: Theme.animationMs; easing.type: Easing.OutCubic } }
     }
 
     contentItem: Item {
+        scale: button.enabled && button.down && !Theme.reducedMotion ? 0.97 : 1
+        Behavior on scale { NumberAnimation { duration: Theme.feedbackFastMs; easing.type: Easing.OutCubic } }
         implicitWidth: content.implicitWidth
         implicitHeight: content.implicitHeight
         Row {
@@ -45,6 +53,8 @@ Controls.AbstractButton {
             anchors.centerIn: parent
             StudioIcon {
                 name: button.iconName
+                rotation: button.iconRotation
+                Behavior on rotation { NumberAnimation { duration: Theme.feedbackSlowMs } }
                 color: button.contentColor
                 visible: name.length > 0
                 anchors.verticalCenter: parent.verticalCenter
@@ -57,7 +67,7 @@ Controls.AbstractButton {
                 color: button.contentColor
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.bodySize
-                font.weight: button.emphasized ? Font.DemiBold : Font.Normal
+                font.weight: button.emphasized || button.active || button.checked ? Font.DemiBold : Font.Normal
                 anchors.verticalCenter: parent.verticalCenter
             }
             Text {
@@ -71,5 +81,13 @@ Controls.AbstractButton {
         }
     }
 
-    StudioToolTip { text: button.tooltip.length > 0 ? button.tooltip + (button.shortcutLabel.length > 0 ? "  ·  " + button.shortcutLabel : "") : "" }
+    HoverHandler { id: buttonHintHover; acceptedDevices: PointerDevice.Mouse }
+    StudioToolTip {
+        text: !button.enabled && button.disabledReason.length > 0 ? button.disabledReason
+              : button.tooltip.length > 0
+                ? button.tooltip + (button.shortcutLabel.length > 0 ? "  ·  " + button.shortcutLabel : "")
+                : ""
+        visible: (buttonHintHover.hovered || button.activeFocus) && text.length > 0
+        delay: button.activeFocus ? 0 : 600
+    }
 }
