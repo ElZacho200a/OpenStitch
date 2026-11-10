@@ -52,6 +52,7 @@ ColumnLayout {
         StudioButton {
             objectName: "reset_" + root.fieldKey
             visible: root.f.isDefault === false
+            active: root.f.isDefault === false
             iconName: "undo"
             tooltip: qsTr("Réinitialiser (défaut : %1)").arg(root.f.defaultText)
             quiet: true
