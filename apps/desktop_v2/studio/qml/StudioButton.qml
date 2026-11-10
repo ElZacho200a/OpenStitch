@@ -62,7 +62,7 @@ Controls.AbstractButton {
                 color: button.contentColor
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.bodySize
-                font.weight: button.emphasized ? Font.DemiBold : Font.Normal
+                font.weight: button.emphasized || button.active || button.checked ? Font.DemiBold : Font.Normal
                 anchors.verticalCenter: parent.verticalCenter
             }
             Text {
