@@ -16,6 +16,8 @@ ColumnLayout {
     property int islandPx: 12
     property int holePx: 12
     property int paletteColors: 8
+    property int paletteDistance: 60
+    property bool paletteMergeAdjacent: true
     property var strokePoints: []
 
     Connections {
@@ -193,13 +195,33 @@ ColumnLayout {
         Layout.fillWidth: true
         Text { text: qsTr("Palette ≤"); color: Theme.foreground; font.pixelSize: Theme.bodySize; font.family: Theme.fontFamily }
         StudioSpinBox { objectName: "regionPaletteColors"; from: 1; to: 64; value: section.paletteColors; editable: true; onValueModified: section.paletteColors = value }
-        StudioButton { objectName: "regionReducePalette"; text: qsTr("Réduire"); enabled: regionTools.hasSegmentation
-            onClicked: regionTools.reducePalette(section.paletteColors, 60, true) }
+        StudioButton { objectName: "regionReducePalette"; text: qsTr("Réduire"); enabled: regionTools.hasSegmentation && !regionTools.busy
+            onClicked: regionTools.reducePalette(section.paletteColors, section.paletteDistance, section.paletteMergeAdjacent) }
+    }
+    RowLayout {
+        Layout.fillWidth: true
+        Text { text: qsTr("Distance couleurs"); color: Theme.foreground; font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily }
+        StudioSpinBox {
+            id: paletteDistanceControl
+            objectName: "regionPaletteDistance"
+            from: 0; to: 255; stepSize: 5
+            value: section.paletteDistance
+            editable: true
+            onValueModified: section.paletteDistance = value
+            Accessible.name: qsTr("Distance maximale de fusion des couleurs")
+        }
+        StudioCheckBox {
+            objectName: "regionMergeAdjacent"
+            text: qsTr("Voisines")
+            checked: section.paletteMergeAdjacent
+            onToggled: section.paletteMergeAdjacent = checked
+            Accessible.name: qsTr("Fusionner les régions de couleur voisines")
+        }
     }
     Text {
         objectName: "regionPalettePreview"
         Layout.fillWidth: true
-        readonly property var p: (regionTools.regions, regionTools.hasSegmentation) ? regionTools.previewReduction(section.paletteColors, 60, true) : ({ before: 0, after: 0 })
+        readonly property var p: (regionTools.regions, regionTools.hasSegmentation) ? regionTools.previewReduction(section.paletteColors, section.paletteDistance, section.paletteMergeAdjacent) : ({ before: 0, after: 0 })
         text: qsTr("Palette : %1 → %2 couleurs").arg(p.before).arg(p.after)
         color: Theme.muted; font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily
     }
