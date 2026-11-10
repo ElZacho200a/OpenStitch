@@ -26,6 +26,8 @@ ColumnLayout {
             tooltip: modelData.label
             shortcutLabel: modelData.shortcut
             active: rail.toolCtl && rail.toolCtl.activeTool === modelData.id
+            emphasized: false
+            Accessible.description: active ? qsTr("Outil actif") : modelData.label
             onClicked: rail.toolCtl.activeTool = active ? "select" : modelData.id
         }
     }
