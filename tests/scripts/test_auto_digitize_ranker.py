@@ -165,6 +165,36 @@ class RankerTest(unittest.TestCase):
         self.assertEqual(result["selected_id"], result["heuristic_choice"])
         self.assertFalse(result["applied"])
 
+    def test_quality_pareto_gate_blocks_dominated_model_choice(self):
+        row = sample()
+        # Make the inferior candidate pass the coarse safety thresholds.
+        row["candidates"][1]["features"] = dict(candidate("good", "tatami", True)["features"])
+        for key in ("coverage_ratio", "detail_retention_ratio", "angle_coherence_ratio"):
+            row["candidates"][1]["features"][key] -= 0.01
+        row["candidates"][1]["features"]["travel_mm"] += 1
+        self.assertTrue(ranker.dominates_quality(row["candidates"][0], row["candidates"][1]))
+        model = ranker.train_model([sample(i, "human_confirmed") for i in range(8)],
+                                   epochs=10)
+        model["weights"] = [0.0] * len(ranker.FEATURE_NAMES)
+        # Artificially prefer the worse candidate by technique.
+        technique = row["candidates"][1]["technique"]
+        model["weights"][ranker.FEATURE_NAMES.index("technique:" + technique)] = 100.0
+        result = ranker.assess_candidates(model, row, min_margin=0.1)
+        self.assertEqual(result["model_choice"], "rejected")
+        self.assertEqual(result["decision"], "fallback")
+        self.assertEqual(result["reason"], "pareto_dominated")
+        self.assertEqual(result["dominated_by"], ["approved"])
+        self.assertEqual(result["selected_id"], "approved")
+        self.assertFalse(result["applied"])
+
+    def test_quality_pareto_does_not_reject_tradeoff(self):
+        good = candidate("good", "tatami", True)
+        tradeoff = candidate("tradeoff", "auto_satin", True)
+        tradeoff["features"]["travel_mm"] = 5.0
+        tradeoff["features"]["coverage_ratio"] = 0.90
+        self.assertFalse(ranker.dominates_quality(good, tradeoff))
+        self.assertFalse(ranker.dominates_quality(tradeoff, good))
+
     def test_assessment_rejects_invalid_threshold(self):
         model = ranker.train_model([sample(i) for i in range(8)], epochs=50)
         for value in (float("nan"), -1, 2, True):
