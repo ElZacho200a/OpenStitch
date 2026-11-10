@@ -56,12 +56,13 @@ ColumnLayout {
         }
     }
 
+    SectionLabel { text: qsTr("PINCEAU DE DÉFORMATION"); visible: panel.toolCtl && panel.toolCtl.activeTool === "warp-brush" }
     SectionLabel { text: qsTr("ACCROCHAGE") }
     ColumnLayout {
         visible: panel.toolCtl && panel.toolCtl.activeTool === "warp-brush"
         Layout.fillWidth: true
-        Text { text: qsTr("Rayon du pinceau (mm)"); color: Theme.muted }
-        Controls.SpinBox {
+        Text { text: qsTr("Rayon du pinceau (mm)"); color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize }
+        StudioSpinBox {
             objectName: "warpRadius"
             from: 5; to: 600; stepSize: 5
             value: panel.toolCtl ? Math.round(panel.toolCtl.warp.radiusMm * 10) : 50
@@ -71,8 +72,8 @@ ColumnLayout {
             Accessible.name: qsTr("Rayon du pinceau en millimètres")
             onValueModified: panel.toolCtl.warp.radiusMm = value / 10
         }
-        Text { text: qsTr("Intensité (%)"); color: Theme.muted }
-        Controls.SpinBox {
+        Text { text: qsTr("Intensité (%)"); color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize }
+        StudioSpinBox {
             objectName: "warpStrength"
             from: 5; to: 100; value: panel.toolCtl ? Math.round(panel.toolCtl.warp.strength * 100) : 60
             editable: true
