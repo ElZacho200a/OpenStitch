@@ -68,24 +68,6 @@ target_compile_definitions(test_desktop_v2_core
             OPENSTITCH_LEGACY_TOOLS_HEADER="${PROJECT_SOURCE_DIR}/apps/desktop/tools.hpp")
 catch_discover_tests(test_desktop_v2_core)
 
-# Tests Qt (QTest, headless) de l'interface Desktop V2.
-if(TARGET openstitch::desktop_v2_ui)
-    find_package(Qt6 COMPONENTS Test QUIET)
-    if(Qt6Test_FOUND)
-        set(CMAKE_AUTOMOC ON)
-        add_executable(test_desktop_v2_shell test_shell_window.cpp)
-        target_link_libraries(test_desktop_v2_shell
-            PRIVATE openstitch::desktop_v2_ui Qt6::Test openstitch::warnings)
-        target_compile_definitions(test_desktop_v2_shell
-            PRIVATE OPENSTITCH_FIXTURES_DIR="${PROJECT_SOURCE_DIR}/tests/fixtures"
-                    OPENSTITCH_FONTS_DIR="${PROJECT_SOURCE_DIR}/resources/fonts")
-        add_test(NAME test_desktop_v2_shell COMMAND test_desktop_v2_shell -o -,txt)
-        set_tests_properties(test_desktop_v2_shell PROPERTIES
-            ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
-            ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
-    endif()
-endif()
-
 # Qt Quick integration uses the real QML shell and the explicit CPU fallback in CI.
 if(TARGET openstitch::studio_ui)
     find_package(Qt6 COMPONENTS Test QUIET)

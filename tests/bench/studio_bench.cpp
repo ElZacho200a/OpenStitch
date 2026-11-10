@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Native-window benchmark, deliberately not a CTest or an offscreen FPS assertion.
-#include <QApplication>
 #include <QDateTime>
 #include <QEventLoop>
 #include <QFile>
+#include <QGuiApplication>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -32,7 +32,6 @@
 #include "gpu_canvas.hpp"
 #include "openstitch/project_io/project_io.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
-#include "preview_canvas.hpp"
 #include "preview_service.hpp"
 #include "realistic_scene.hpp"
 #include "studio_scene.hpp"
@@ -125,21 +124,8 @@ QJsonObject distribution(const std::vector<double>& values) {
             {"samples", raw}};
 }
 
-class PaintedCanvas : public PreviewCanvas {
-public:
-    std::function<void(Time)> painted;
-
-protected:
-    void paintEvent(QPaintEvent* event) override {
-        PreviewCanvas::paintEvent(event);
-        if (painted) {
-            painted(Clock::now());
-        }
-    }
-};
-
 struct Options {
-    QString backend{"quick"};
+    QString backend{"quick"}; // seul backend depuis la suppression de V2 Widgets
     QString project;
     QString output;
     QString scene{"all"};
@@ -232,7 +218,6 @@ QJsonObject run(const Options& options, const QString& name,
     });
     timeout.start(std::max(30000, (options.frames + options.warmup) * 1000));
     std::unique_ptr<QQuickWindow> quick;
-    std::unique_ptr<PaintedCanvas> widgets;
     QMetaObject::Connection swapConnection;
     studio::GpuCanvas* gpu = nullptr;
     std::atomic<bool> pending{false};
@@ -271,10 +256,6 @@ QJsonObject run(const Options& options, const QString& name,
         if (quick) {
             quick->hide();
             quick.reset();
-        }
-        if (widgets) {
-            widgets->painted = {};
-            widgets->hide();
         }
     });
     if (options.backend == "quick") {
@@ -321,43 +302,8 @@ QJsonObject run(const Options& options, const QString& name,
         result["preview_raster_ms"] = QJsonValue::Null;
         result["cached_image_bytes"] = QJsonValue::Null;
     } else {
-        const auto rasterStart = Clock::now();
-        const auto preview = render_preview(project, 1, 3.0, TaskContext{});
-        if (!preview) {
-            throw std::runtime_error(preview.error().message);
-        }
-        const QImage image = QImage::fromData(preview->png.data(), int(preview->png.size()), "PNG");
-        if (image.isNull()) {
-            throw std::runtime_error("Cannot decode Widgets preview");
-        }
-        result["preview_raster_ms"] = ms(rasterStart, Clock::now());
-        result["cached_image_bytes"] = double(image.sizeInBytes());
-        widgets = std::make_unique<PaintedCanvas>();
-        widgets->setWindowTitle("OpenStitch V2 Widgets — benchmark");
-        widgets->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-        widgets->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-        widgets->resize(1280, 800);
-        widgets->painted = [&](Time finished) {
-            if (pending.exchange(false)) {
-                complete(finished);
-            }
-        };
-        requestFrame = [&] {
-            requestedAt = Clock::now();
-            pending.store(true);
-            const double sign = (completed / 30) % 2 == 0 ? 1.0 : -1.0;
-            const QPointF centre = widgets->mapToScene(QPoint(640, 400));
-            const double scale = widgets->zoom();
-            widgets->zoomBy(completed % 2 == 0 ? 1.002 : 1.0 / 1.002);
-            widgets->centreOnPx(centre - QPointF(sign * 2.0 / scale, sign * 0.5 / scale));
-            widgets->viewport()->update();
-        };
-        installedAt = Clock::now();
-        pending.store(true);
-        widgets->setImage(image);
-        widgets->show();
-        widgets->fitAll();
-        result["completion_signal"] = "PreviewCanvas::paintEvent returned (CPU paint only)";
+        throw std::runtime_error(
+            "Seul le backend quick existe : l'interface V2 Widgets est supprimee");
     }
     loop.exec();
     if (timedOut || intervals.empty()) {
@@ -367,15 +313,12 @@ QJsonObject run(const Options& options, const QString& name,
     if (quick && quick->rendererInterface()->graphicsApi() == QSGRendererInterface::Null) {
         throw std::runtime_error("The null RHI backend cannot measure a displayed canvas");
     }
-    QScreen* actualScreen = quick ? quick->screen() : widgets->screen();
+    QScreen* actualScreen = quick->screen();
     result["window_screen"] = actualScreen ? actualScreen->name() : QString();
     result["window_screen_refresh_hz"] =
         actualScreen ? QJsonValue(actualScreen->refreshRate()) : QJsonValue(QJsonValue::Null);
-    result["window_device_pixel_ratio"] =
-        quick ? quick->effectiveDevicePixelRatio() : widgets->devicePixelRatioF();
-    result["viewport_logical_px"] =
-        quick ? QJsonArray{gpu->width(), gpu->height()}
-              : QJsonArray{widgets->viewport()->width(), widgets->viewport()->height()};
+    result["window_device_pixel_ratio"] = quick->effectiveDevicePixelRatio();
+    result["viewport_logical_px"] = QJsonArray{gpu->width(), gpu->height()};
     double elapsed = 0;
     for (double value : intervals) {
         elapsed += value;
@@ -386,7 +329,7 @@ QJsonObject run(const Options& options, const QString& name,
     result["frame_interval_ms"] = distribution(intervals);
     result["local_interaction_to_completion_ms"] = distribution(latencies);
     result["install_to_first_completion_ms"] = firstFrameMs;
-    result["backend"] = gpu ? gpu->backendName() : QString("Widgets raster/QPainter");
+    result["backend"] = gpu->backendName();
     result["software_backend"] = quick ? QJsonValue(quick->rendererInterface()->graphicsApi() ==
                                                     QSGRendererInterface::Software)
                                        : QJsonValue(true);
@@ -413,7 +356,7 @@ QJsonObject run(const Options& options, const QString& name,
 } // namespace
 
 int main(int argc, char** argv) {
-    QApplication app(argc, argv);
+    QGuiApplication app(argc, argv);
     app.setQuitOnLastWindowClosed(false);
     Options options;
     const auto args = app.arguments();
@@ -440,10 +383,9 @@ int main(int argc, char** argv) {
         } else if (!arg.startsWith('-') && options.project.isEmpty()) {
             options.project = arg;
         } else {
-            std::fprintf(stderr,
-                         "Usage: openstitch-studio-bench [project.osp] --backend quick|widgets "
-                         "[--scene all|1000|10000|50000|100000|real] [--frames 240] "
-                         "[--warmup 30] [--json results.json]\n");
+            std::fprintf(stderr, "Usage: openstitch-studio-bench [project.osp] --backend quick "
+                                 "[--scene all|1000|10000|50000|100000|real] [--frames 240] "
+                                 "[--warmup 30] [--json results.json]\n");
             return 2;
         }
     }
@@ -474,8 +416,8 @@ int main(int argc, char** argv) {
                      digitized->width_mm, digitized->height_mm, options.heightMm);
         return 0;
     }
-    if ((options.backend != "quick" && options.backend != "widgets") || options.frames < 2 ||
-        options.warmup < 0 || options.scene.isEmpty() ||
+    if (options.backend != "quick" || options.frames < 2 || options.warmup < 0 ||
+        options.scene.isEmpty() ||
         (!QStringList{"all", "real", "1000", "10000", "50000", "100000"}.contains(options.scene))) {
         std::fprintf(stderr, "Invalid benchmark options\n");
         return 2;
@@ -490,17 +432,17 @@ int main(int argc, char** argv) {
                      "Run on a native visible window; offscreen cadence is not screen FPS\n");
         return 2;
     }
-    QJsonObject report{{"schema", 1},
-                       {"utc", QDateTime::currentDateTimeUtc().toString(Qt::ISODate)},
-                       {"qt", qVersion()},
-                       {"os", QSysInfo::prettyProductName()},
-                       {"cpu_architecture", QSysInfo::currentCpuArchitecture()},
-                       {"qpa_platform", QGuiApplication::platformName()},
-                       {"viewport_logical_px", QJsonArray{1280, 800}},
-                       {"project", options.project},
-                       {"note",
-                        "Quick swap cadence and Widgets CPU paint cadence are different completion "
-                        "boundaries; neither measures physical input-to-photon latency."}};
+    QJsonObject report{
+        {"schema", 1},
+        {"utc", QDateTime::currentDateTimeUtc().toString(Qt::ISODate)},
+        {"qt", qVersion()},
+        {"os", QSysInfo::prettyProductName()},
+        {"cpu_architecture", QSysInfo::currentCpuArchitecture()},
+        {"qpa_platform", QGuiApplication::platformName()},
+        {"viewport_logical_px", QJsonArray{1280, 800}},
+        {"project", options.project},
+        {"note", "Quick frameSwapped is the completion boundary; it does not measure physical "
+                 "input-to-photon latency."}};
 #ifdef NDEBUG
     report["configuration"] = "Release";
 #else

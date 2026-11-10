@@ -8,7 +8,7 @@
 #include <QFileInfo>
 #include <QGuiApplication>
 
-#include "../ui/live_server.hpp"
+#include "../live/live_server.hpp"
 
 namespace openstitch::desktop_v2::studio {
 

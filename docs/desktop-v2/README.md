@@ -1,5 +1,15 @@
 # OpenStitch Desktop V2
 
+> **2026-11-10 — l'interface V2 Widgets est supprimée** (`apps/desktop_v2/ui/`, cible
+> `openstitch_v2`, bibliothèque `openstitch_desktop_v2_ui`, test `test_desktop_v2_shell`, étape de
+> captures V2 de la CI). Décision du propriétaire du dépôt. Le Studio (`openstitch_v2_studio`,
+> exécutable `openstitch.exe`) est le seul desktop V2 ; le cœur Qt-free `apps/desktop_v2/core/` est
+> conservé, ainsi que `live_server` (déplacé dans `apps/desktop_v2/live/`). **Ce qui n'existait que
+> dans V2 Widgets n'est plus disponible** : récupérable dans l'historique git avant cette
+> suppression ; la parité Studio reste un travail ouvert (Notion, roadmap de parité). Les chapitres
+> ci-dessous décrivent l'état avant suppression quand ils parlent de `openstitch_v2` ou de
+> « Widgets ». Le banc `openstitch-studio-bench` ne mesure plus que le Studio (Quick).
+
 Espace documentaire de la refonte du desktop. **Source de vérité de l'avancement : [`07-journal.md`](07-journal.md)**
 (état réel, pas les intentions). À chaque reprise de session : lire le journal, `git log`, les PR ouvertes
 (`gh pr list`), puis la matrice de parité.

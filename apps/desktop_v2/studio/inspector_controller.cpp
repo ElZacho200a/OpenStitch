@@ -178,10 +178,7 @@ void InspectorController::bump() {
 
 QVariantMap InspectorController::field(const QString& key) const {
     const auto s = selection();
-    if (s.ids.empty() || s.typeMixed) {
-        return {};
-    }
-    for (const auto& spec : allParamSpecs(s.typeId)) {
+    for (const auto& spec : specsOf(s)) {
         if (u8(spec.key) == key) {
             return fieldMap(s, spec);
         }
@@ -200,7 +197,49 @@ InspectorController::Selection InspectorController::selection() const {
     out.ids = state.ids;
     out.typeMixed = state.count > 0 && state.typeId.mixed;
     out.typeId = out.typeMixed || state.count == 0 ? std::string{} : state.typeId.value;
+    for (const auto id : out.ids) {
+        const auto* object = findObject(session_.project(), id);
+        if (object == nullptr) {
+            continue;
+        }
+        const std::string type(stitchTypeId(*object));
+        auto it = std::ranges::find_if(out.groups, [&](const auto& g) { return g.first == type; });
+        if (it == out.groups.end()) {
+            out.groups.emplace_back(type, std::vector<std::uint64_t>{});
+            it = out.groups.end() - 1;
+        }
+        it->second.push_back(id);
+    }
     return out;
+}
+
+std::vector<ParamSpec> InspectorController::specsOf(const Selection& s) const {
+    if (s.ids.empty()) {
+        return {};
+    }
+    if (!s.typeMixed) {
+        return allParamSpecs(s.typeId);
+    }
+    std::vector<ParamSpec> common;
+    for (auto spec : allParamSpecs(s.groups.front().first)) {
+        if (spec.kind == ParamKind::Point || spec.kind == ParamKind::List) {
+            continue; // authored with their own editors, on one type at a time
+        }
+        bool shared = true;
+        for (std::size_t i = 1; i < s.groups.size() && shared; ++i) {
+            const auto other = specOf(s.groups[i].first, spec.key);
+            shared = other && other->kind == spec.kind && other->options == spec.options;
+            if (shared) {
+                spec.min = std::max(spec.min, other->min);
+                spec.max = std::min(spec.max, other->max);
+                shared = spec.min <= spec.max;
+            }
+        }
+        if (shared) {
+            common.push_back(spec);
+        }
+    }
+    return common;
 }
 
 int InspectorController::count() const {
@@ -240,6 +279,7 @@ QVariantMap InspectorController::fieldMap(const Selection& s, const ParamSpec& s
     double value = 0.0;
     bool first = true;
     bool anySet = false;
+    bool allDefault = true;
     double pointX = 0.0;
     double pointY = 0.0;
     for (const auto id : s.ids) {
@@ -247,6 +287,10 @@ QVariantMap InspectorController::fieldMap(const Selection& s, const ParamSpec& s
         const auto v = object ? readParam(*object, spec.key) : std::nullopt;
         if (!v) {
             continue;
+        }
+        if (const auto own = defaultOf(stitchTypeId(*object), spec.key);
+            own && std::abs(*v - *own) > kEps) {
+            allDefault = false;
         }
         const bool set = paramIsSet(*object, spec.key);
         if (set && !anySet) {
@@ -263,11 +307,12 @@ QVariantMap InspectorController::fieldMap(const Selection& s, const ParamSpec& s
             mixed = true;
         }
     }
-    const auto def = defaultOf(s.typeId, spec.key).value_or(value);
+    const auto def =
+        defaultOf(s.groups.empty() ? s.typeId : s.groups.front().first, spec.key).value_or(value);
     const bool optionalKind = spec.kind == ParamKind::Point ||
                               spec.kind == ParamKind::OptionalNumber ||
                               spec.kind == ParamKind::List;
-    const bool atDefault = optionalKind ? !anySet : !mixed && std::abs(value - def) <= kEps;
+    const bool atDefault = optionalKind ? !anySet : allDefault;
     QVariantList choices;
     if (spec.kind == ParamKind::Choice) {
         int index = 0;
@@ -305,11 +350,8 @@ QVariantMap InspectorController::fieldMap(const Selection& s, const ParamSpec& s
 
 std::vector<ParamSpec> InspectorController::visibleSpecs(const Selection& s) const {
     std::vector<ParamSpec> out;
-    if (s.ids.empty() || s.typeMixed) {
-        return out;
-    }
     const std::string needle = query_.toStdString();
-    for (const auto& spec : allParamSpecs(s.typeId)) {
+    for (const auto& spec : specsOf(s)) {
         // A search looks through every level; without search the level toggle decides.
         const auto level = paramLevel(spec);
         const bool byLevel = level == ParamLevel::Essential ||
@@ -356,25 +398,25 @@ QVariantList InspectorController::sections() const {
 
 int InspectorController::totalFieldCount() const {
     const auto s = selection();
-    return s.ids.empty() || s.typeMixed ? 0 : static_cast<int>(allParamSpecs(s.typeId).size());
+    return static_cast<int>(specsOf(s).size());
 }
 
 int InspectorController::hiddenAdvancedCount() const {
     const auto s = selection();
-    if (s.ids.empty() || s.typeMixed || showAdvanced_ || showExpert_ || !query_.isEmpty()) {
+    if (s.ids.empty() || showAdvanced_ || showExpert_ || !query_.isEmpty()) {
         return 0;
     }
-    const auto specs = allParamSpecs(s.typeId);
+    const auto specs = specsOf(s);
     return static_cast<int>(std::ranges::count_if(
         specs, [](const auto& spec) { return paramLevel(spec) == ParamLevel::Advanced; }));
 }
 
 int InspectorController::hiddenExpertCount() const {
     const auto s = selection();
-    if (s.ids.empty() || s.typeMixed || showExpert_ || !query_.isEmpty()) {
+    if (s.ids.empty() || showExpert_ || !query_.isEmpty()) {
         return 0;
     }
-    const auto specs = allParamSpecs(s.typeId);
+    const auto specs = specsOf(s);
     return static_cast<int>(std::ranges::count_if(
         specs, [](const auto& spec) { return paramLevel(spec) == ParamLevel::Expert; }));
 }
@@ -441,13 +483,9 @@ QString InspectorController::applyPairs(const Selection& s,
     if (s.ids.empty()) {
         return QStringLiteral("Sélectionnez au moins un objet.");
     }
-    if (s.typeMixed) {
-        return QStringLiteral(
-            "La sélection mélange plusieurs types de points : convertissez-la d'abord.");
-    }
     std::vector<std::string> batches;
+    const auto specs = specsOf(s);
     for (const auto& [key, value] : pairs) {
-        const auto specs = allParamSpecs(s.typeId);
         const auto it = std::ranges::find_if(specs, [&](const auto& sp) { return sp.key == key; });
         if (it == specs.end()) {
             return u8("Réglage inconnu pour ce type de points : " + key);
@@ -469,11 +507,13 @@ QString InspectorController::applyPairs(const Selection& s,
         if (it->kind == ParamKind::Point || it->kind == ParamKind::List) {
             return name + QStringLiteral(" : ce réglage se modifie par son propre éditeur.");
         }
-        const auto json = batchSetParam(s.ids, s.typeId, key, value);
-        if (json.empty()) {
-            return name + QStringLiteral(" : valeur refusée.");
+        for (const auto& [type, ids] : s.groups) {
+            const auto json = batchSetParam(ids, type, key, value);
+            if (json.empty()) {
+                return name + QStringLiteral(" : valeur refusée.");
+            }
+            batches.push_back(json);
         }
-        batches.push_back(json);
     }
     return commitBatches(s, batches, label, mergeKey);
 }
@@ -517,7 +557,7 @@ QString InspectorController::commitBatches(const Selection& s,
 
 QString InspectorController::setParam(const QString& key, double value) {
     const auto s = selection();
-    const auto specs = allParamSpecs(s.typeId);
+    const auto specs = specsOf(s);
     const auto it =
         std::ranges::find_if(specs, [&](const auto& sp) { return sp.key == key.toStdString(); });
     const QString label = it == specs.end() ? key : u8(it->label);
@@ -528,7 +568,7 @@ QString InspectorController::setParam(const QString& key, double value) {
 
 QString InspectorController::setParamText(const QString& key, const QString& text) {
     const auto s = selection();
-    const auto specs = allParamSpecs(s.typeId);
+    const auto specs = specsOf(s);
     const auto it =
         std::ranges::find_if(specs, [&](const auto& sp) { return sp.key == key.toStdString(); });
     QString cleaned = text.trimmed();
@@ -567,55 +607,72 @@ QString InspectorController::setPoint(const QString& key, double xMm, double yMm
 
 QString InspectorController::clearParam(const QString& key) {
     const auto s = selection();
-    if (s.ids.empty() || s.typeMixed) {
-        return finish(QStringLiteral("Sélectionnez des objets d'un même type de points."));
+    if (s.ids.empty()) {
+        return finish(QStringLiteral("Sélectionnez au moins un objet."));
     }
-    const auto spec = specOf(s.typeId, key.toStdString());
-    if (!spec) {
+    const auto specs = specsOf(s);
+    const auto spec =
+        std::ranges::find_if(specs, [&](const auto& sp) { return sp.key == key.toStdString(); });
+    if (spec == specs.end()) {
         return finish(QStringLiteral("Réglage inconnu pour ce type de points."));
     }
-    const auto json = batchClearParam(s.ids, s.typeId, key.toStdString());
-    if (json.empty()) {
-        return finish(QStringLiteral("Ce réglage ne s'efface pas."));
+    std::vector<std::string> batches;
+    for (const auto& [type, ids] : s.groups) {
+        const auto json = batchClearParam(ids, type, key.toStdString());
+        if (json.empty()) {
+            return finish(QStringLiteral("Ce réglage ne s'efface pas."));
+        }
+        batches.push_back(json);
     }
     const QString label = u8(spec->label);
-    return finish(commitBatches(s, {json}, QStringLiteral("Effacer : ") + label, {}),
+    return finish(commitBatches(s, batches, QStringLiteral("Effacer : ") + label, {}),
                   label + QStringLiteral(" effacé"));
 }
 
 QString InspectorController::resetParam(const QString& key) {
     const auto s = selection();
-    const auto spec = specOf(s.typeId, key.toStdString());
-    if (spec && !isScalarKind(spec->kind) && spec->kind != ParamKind::OptionalNumber) {
-        return clearParam(key); // a point / a list goes back to « absent » / empty
-    }
-    if (spec && spec->kind == ParamKind::OptionalNumber) {
-        return clearParam(key);
-    }
-    const auto def = defaultOf(s.typeId, key.toStdString());
-    if (!def) {
-        return finish(QStringLiteral("Aucune valeur par défaut pour ce réglage."));
+    const auto specs = specsOf(s);
+    const auto found =
+        std::ranges::find_if(specs, [&](const auto& sp) { return sp.key == key.toStdString(); });
+    const ParamSpec* spec = found == specs.end() ? nullptr : &*found;
+    if (spec && !isScalarKind(spec->kind)) {
+        return clearParam(key); // a point / a list / an optional goes back to « absent »
     }
     const QString label = spec ? u8(spec->label) : key;
-    return finish(applyPairs(s, {{key.toStdString(), *def}},
-                             QStringLiteral("Réinitialiser : ") + label, key.toStdString()),
-                  label + QStringLiteral(" réinitialisé"));
+    // Each type goes back to ITS OWN default (they can differ between types).
+    std::vector<std::string> batches;
+    for (const auto& [type, ids] : s.groups) {
+        const auto def = defaultOf(type, key.toStdString());
+        if (!def) {
+            return finish(QStringLiteral("Aucune valeur par défaut pour ce réglage."));
+        }
+        const auto json = batchSetParam(ids, type, key.toStdString(), *def);
+        if (json.empty()) {
+            return finish(label + QStringLiteral(" : valeur refusée."));
+        }
+        batches.push_back(json);
+    }
+    return finish(
+        commitBatches(s, batches, QStringLiteral("Réinitialiser : ") + label, key.toStdString()),
+        label + QStringLiteral(" réinitialisé"));
 }
 
 QString InspectorController::resetAll() {
     const auto s = selection();
-    if (s.ids.empty() || s.typeMixed) {
-        return finish(QStringLiteral("Sélectionnez des objets d'un même type de points."));
+    if (s.ids.empty()) {
+        return finish(QStringLiteral("Sélectionnez au moins un objet."));
     }
     std::vector<std::string> batches;
-    for (const auto& spec : allParamSpecs(s.typeId)) {
-        if (isScalarKind(spec.kind)) {
-            if (const auto def = defaultOf(s.typeId, spec.key)) {
-                batches.push_back(batchSetParam(s.ids, s.typeId, spec.key, *def));
+    for (const auto& spec : specsOf(s)) {
+        for (const auto& [type, ids] : s.groups) {
+            if (isScalarKind(spec.kind)) {
+                if (const auto def = defaultOf(type, spec.key)) {
+                    batches.push_back(batchSetParam(ids, type, spec.key, *def));
+                }
+            } else if (spec.kind != ParamKind::List) {
+                // Guides, break lines and rungs are authored on the canvas: never wiped.
+                batches.push_back(batchClearParam(ids, type, spec.key));
             }
-        } else if (spec.kind != ParamKind::List) {
-            // Guides, break lines and rungs are authored on the canvas: never wiped by a reset.
-            batches.push_back(batchClearParam(s.ids, s.typeId, spec.key));
         }
     }
     std::erase_if(batches, [](const std::string& b) { return b.empty(); });
