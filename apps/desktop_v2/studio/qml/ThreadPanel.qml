@@ -251,6 +251,7 @@ Rectangle {
                     border.color: Theme.accent
                     Behavior on color { ColorAnimation { duration: Theme.animationMs } }
                     opacity: modelData.visible ? 1 : 0.5
+                    Behavior on opacity { NumberAnimation { duration: Theme.feedbackFastMs } }
                     MouseArea { id: threadRowMouse; anchors.fill: parent; hoverEnabled: true; onClicked: panel.currentId = row.modelData.id }
                     RowLayout {
                         anchors.fill: parent
