@@ -12,6 +12,7 @@
 #include <QQuickStyle>
 #include <QQuickWindow>
 #include <QTemporaryDir>
+#include <QWheelEvent>
 #include <QtTest/QtTest>
 
 #include <algorithm>
@@ -207,6 +208,28 @@ private slots:
         QCOMPARE(canvas->sourceImage().data->after.width(), 160);
         QCOMPARE(canvas->sourceImage().data->after.height(), 120);
         QVERIFY(named(window, QStringLiteral("imageSidePanel"))->isVisible());
+
+        // Molette sur la largeur (comme les champs numériques de V1) : +1 mm par cran, une seule
+        // étape d'annulation après la rafale (validation différée).
+        {
+            auto* widthField = named(window, QStringLiteral("imageWidthMm"));
+            const double widthBefore = imageSpace.imageWidthMm();
+            QTRY_COMPARE(widthField->property("text").toString(),
+                         QString::number(widthBefore, 'f', 1));
+            const auto depth = session.undoNames().size();
+            const QPointF scene =
+                widthField->mapToScene(QPointF(widthField->width() / 2, widthField->height() / 2));
+            for (int notch = 0; notch < 3; ++notch) {
+                QWheelEvent wheel(scene, window->mapToGlobal(scene), QPoint(), QPoint(0, 120),
+                                  Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+                QCoreApplication::sendEvent(window, &wheel);
+            }
+            QTRY_VERIFY_WITH_TIMEOUT(
+                std::abs(imageSpace.imageWidthMm() - (widthBefore + 3.0)) < 0.1, 5'000);
+            QCOMPARE(session.undoNames().size(), depth + 1);
+            QVERIFY(session.undo()); // la taille d'origine revient d'un coup
+            QVERIFY(std::abs(imageSpace.imageWidthMm() - widthBefore) < 1e-6);
+        }
 
         // Visiting Segmentation does not compute it. Only the explicit action does.
         workspace->setCurrent(QStringLiteral("segmentation"));

@@ -34,7 +34,7 @@ ColumnLayout {
         }
         StudioButton {
             objectName: "layerDuplicateButton"
-            text: qsTr("Dupliquer")
+            text: qsTr("Dupl.")
             implicitHeight: 28
             enabled: panel.layerId.length > 0
             tooltip: qsTr("Dupliquer le calque et ses objets")

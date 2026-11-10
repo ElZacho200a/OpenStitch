@@ -207,6 +207,9 @@ Item {
                             StudioTextField {
                                 id: stepField
                                 objectName: "gridStepField"
+                                wheelStep: 0.5
+                                wheelMin: 0.5
+                                wheelMax: 100
                                 implicitWidth: 70
                                 text: view.gridStepMm
                                 invalid: !hub.validGridStep(text)
@@ -222,6 +225,7 @@ Item {
                             StudioTextField {
                                 id: guideField
                                 objectName: "guideField"
+                                wheelStep: 1
                                 implicitWidth: 70
                                 text: "0"
                                 invalid: !hub.validGuidePosition(text)

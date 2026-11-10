@@ -203,6 +203,10 @@ Item {
                 ColumnLayout {
                     width: Math.max(0, sidePanel.width - 28)
                     spacing: 10
+                    ImageSizeSection {
+                        Layout.fillWidth: true
+                        space: root.space
+                    }
                     Loader {
                         Layout.fillWidth: true
                         active: root.prepReady
@@ -210,10 +214,6 @@ Item {
                             showThumbnails: false
                             showHistory: false
                         }
-                    }
-                    ImageSizeSection {
-                        Layout.fillWidth: true
-                        space: root.space
                     }
                     ImageOpStack {
                         Layout.fillWidth: true

@@ -29,6 +29,9 @@ ColumnLayout {
         StudioTextField {
             id: widthField
             objectName: "imageWidthMm"
+            wheelStep: 1
+            wheelMin: 1
+            wheelMax: 5000
             Layout.fillWidth: true
             enabled: sizeSection.space && sizeSection.space.canResize
             text: sizeSection.space ? sizeSection.space.imageWidthMm.toFixed(1) : ""
@@ -39,6 +42,9 @@ ColumnLayout {
         StudioTextField {
             id: heightField
             objectName: "imageHeightMm"
+            wheelStep: 1
+            wheelMin: 1
+            wheelMax: 5000
             Layout.fillWidth: true
             enabled: sizeSection.space && sizeSection.space.canResize
             text: sizeSection.space ? sizeSection.space.imageHeightMm.toFixed(1) : ""

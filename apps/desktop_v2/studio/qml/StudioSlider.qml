@@ -9,6 +9,7 @@ Controls.Slider {
     implicitHeight: 24
     implicitWidth: 120
     hoverEnabled: true
+    wheelEnabled: true // la molette règle la valeur par pas (stepSize)
     focusPolicy: Qt.StrongFocus
     Accessible.role: Accessible.Slider
 

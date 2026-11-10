@@ -111,6 +111,9 @@ ColumnLayout {
         StudioTextField {
             id: offsetField
             objectName: "offsetMmField"
+            wheelStep: 0.5
+            wheelMin: 0.1
+            wheelMax: 50
             implicitWidth: 52
             text: "1.0"
             enabled: parent.some
