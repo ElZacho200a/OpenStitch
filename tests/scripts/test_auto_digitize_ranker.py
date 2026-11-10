@@ -120,6 +120,17 @@ class RankerTest(unittest.TestCase):
         self.assertFalse({r["motif_group"] for r in a} & {r["motif_group"] for r in b})
         self.assertEqual(len(a) + len(b), 12)
 
+    def test_split_rejects_invalid_ratio_and_salt_directly(self):
+        rows = [sample(i) for i in range(4)]
+        for ratio in (float("nan"), float("inf"), -0.1, 0, 1, True, "0.8"):
+            with self.subTest(ratio=ratio):
+                with self.assertRaisesRegex(ValueError, "train ratio"):
+                    ranker.split_by_motif(rows, ratio=ratio)
+        for salt in (None, 42, False):
+            with self.subTest(salt=salt):
+                with self.assertRaisesRegex(ValueError, "split salt"):
+                    ranker.split_by_motif(rows, salt=salt)
+
     def test_split_refuses_single_group(self):
         with self.assertRaisesRegex(ValueError, "two distinct"):
             ranker.split_by_motif([sample()])
