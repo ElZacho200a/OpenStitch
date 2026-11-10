@@ -96,6 +96,8 @@ private slots:
     void colorFilmReductionAndFabricAreUndoable();
     void diagnosticsDensityRiskAndOptimisation();
     void hoopsAndMachine();
+    void simulationPauseStartEndAndColourJumps();
+    void guidesAddRemoveAndColour();
     void initTestCase();
     void mainQmlHostsEveryPanel();
 };
@@ -719,6 +721,46 @@ void StudioViewTest::mainQmlHostsEveryPanel() {
     QVERIFY(!view.simActive());
 
     QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join('\n')));
+}
+
+// pause / début / fin / couleur suivante et précédente : la lecture s'arrête et la position suit.
+void StudioViewTest::simulationPauseStartEndAndColourJumps() {
+    Rig rig;
+    rig.view.startSimulation();
+    rig.view.play();
+    QVERIFY(rig.view.playing());
+    rig.view.pause();
+    QVERIFY(!rig.view.playing());
+    rig.view.toEnd();
+    QCOMPARE(rig.view.simPosition(), rig.view.simTotal());
+    rig.view.toStart();
+    QCOMPARE(rig.view.simPosition(), 0);
+    QVERIFY(!rig.view.playing());
+    rig.view.nextColour();
+    const int afterNext = rig.view.simPosition();
+    QVERIFY(afterNext > 0);
+    QVERIFY(!rig.view.playing());
+    rig.view.previousColour();
+    QVERIFY(rig.view.simPosition() < afterNext);
+    QVERIFY(rig.view.simPosition() >= 0);
+}
+
+// Repères : ajout, suppression par index (index invalide refusé), couleur (signal d'affichage).
+void StudioViewTest::guidesAddRemoveAndColour() {
+    Rig rig;
+    const auto before = rig.view.guides().size();
+    QVERIFY(rig.view.addGuide(true, 10.0));
+    QCOMPARE(rig.view.guides().size(), before + 1);
+    QVERIFY(!rig.view.removeGuide(99));
+    QVERIFY(!rig.view.removeGuide(-1));
+    QCOMPARE(rig.view.guides().size(), before + 1);
+    QSignalSpy changed(&rig.view, &ViewController::displayChanged);
+    rig.view.setGuideColor(QColor(QStringLiteral("#ff0000")));
+    QCOMPARE(changed.count(), 1);
+    rig.view.setGuideColor(QColor(QStringLiteral("#ff0000"))); // même couleur : aucun signal
+    QCOMPARE(changed.count(), 1);
+    QVERIFY(rig.view.removeGuide(static_cast<int>(before)));
+    QCOMPARE(rig.view.guides().size(), before);
 }
 
 QTEST_MAIN(StudioViewTest)
