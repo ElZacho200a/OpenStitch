@@ -701,6 +701,39 @@ private slots:
         rig.regions.selectNeighbours();
         QVERIFY(rig.regions.selectedCount() >= 2);
     }
+    // Parcours des régions (suivante / précédente, avec bouclage) et pas du rayon du pinceau.
+    void regionStepAndBrushRadiusSteps() {
+        Rig rig;
+        open(rig);
+        const auto regions = rig.regions.regions();
+        const int n = static_cast<int>(regions.size());
+        QVERIFY(n >= 2);
+        auto idAt = [&](int i) { return regions[i].toMap().value("id").toDouble(); };
+        rig.regions.clearSelection();
+        QVERIFY(rig.regions.selectNextRegion()); // sans sélection : la première
+        QCOMPARE(rig.regions.selectedCount(), 1);
+        QVERIFY(rig.regions.selectNextRegion());
+        rig.regions.selectRegion(idAt(n - 1));
+        QVERIFY(rig.regions.selectNextRegion());     // bouclage vers la première
+        QVERIFY(rig.regions.selectPreviousRegion()); // bouclage vers la dernière
+        QCOMPARE(rig.regions.selectedCount(), 1);
+        rig.regions.clearSelection();
+        QVERIFY(rig.regions.selectPreviousRegion()); // sans sélection : la dernière
+        QCOMPARE(rig.regions.selectedCount(), 1);
+        // Boutons de l'espace : mêmes actions.
+        QVERIFY(rig.press("regionNext"));
+        QCOMPARE(rig.regions.selectedCount(), 1);
+
+        const double radius = rig.regions.brushRadius();
+        rig.regions.stepBrushRadius(1);
+        QCOMPARE(rig.regions.brushRadius(), radius + 1.0);
+        rig.regions.stepBrushRadius(-2);
+        QCOMPARE(rig.regions.brushRadius(), radius - 1.0);
+        rig.regions.stepBrushRadius(-1000);
+        QCOMPARE(rig.regions.brushRadius(), 1.0);
+        rig.regions.stepBrushRadius(1000);
+        QCOMPARE(rig.regions.brushRadius(), 200.0);
+    }
 };
 
 QTEST_MAIN(StudioSpaceSegmentationTest)

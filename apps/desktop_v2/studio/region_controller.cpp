@@ -275,6 +275,39 @@ void RegionController::selectNeighbours() {
     emit selectionChanged();
 }
 
+bool RegionController::stepRegion(int direction) {
+    const int count = static_cast<int>(regions_.size());
+    if (count == 0) {
+        return false;
+    }
+    int index =
+        direction > 0 ? -1 : count; // pas de sélection unique : on part du début / de la fin
+    if (selected_.size() == 1) {
+        for (int i = 0; i < count; ++i) {
+            if (idOf(regions_[i].toMap().value(QStringLiteral("id")).toDouble()) ==
+                selected_.front()) {
+                index = i;
+                break;
+            }
+        }
+    }
+    const int next = ((index + direction) % count + count) % count;
+    selectRegion(regions_[next].toMap().value(QStringLiteral("id")).toDouble());
+    return true;
+}
+
+bool RegionController::selectNextRegion() {
+    return stepRegion(1);
+}
+
+bool RegionController::selectPreviousRegion() {
+    return stepRegion(-1);
+}
+
+void RegionController::stepBrushRadius(int steps) {
+    setBrushRadius(brushRadius_ + steps);
+}
+
 void RegionController::invertSelection() {
     selected_ = invertRegionSet(studio_.session().project(), selected_);
     emit selectionChanged();

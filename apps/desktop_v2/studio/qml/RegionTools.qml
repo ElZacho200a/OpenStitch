@@ -133,6 +133,37 @@ ColumnLayout {
     }
 
     SectionLabel { text: qsTr("RÉGIONS (%1)").arg(regionTools.regions.length) }
+    RowLayout {
+        Layout.fillWidth: true
+        StudioButton {
+            objectName: "regionPrevious"
+            text: qsTr("◀ Précédente")
+            tooltip: qsTr("Sélectionner la région précédente de la liste")
+            enabled: regionTools.regions.length > 0
+            onClicked: regionTools.selectPreviousRegion()
+        }
+        StudioButton {
+            objectName: "regionNext"
+            text: qsTr("Suivante ▶")
+            tooltip: qsTr("Sélectionner la région suivante de la liste")
+            enabled: regionTools.regions.length > 0
+            onClicked: regionTools.selectNextRegion()
+        }
+        StudioButton {
+            objectName: "brushSmaller"
+            text: "−"
+            tooltip: qsTr("Pinceau : rayon plus petit")
+            visible: regionTools.tool !== "select"
+            onClicked: regionTools.stepBrushRadius(-1)
+        }
+        StudioButton {
+            objectName: "brushLarger"
+            text: "+"
+            tooltip: qsTr("Pinceau : rayon plus grand")
+            visible: regionTools.tool !== "select"
+            onClicked: regionTools.stepBrushRadius(1)
+        }
+    }
     Rectangle {
         Layout.fillWidth: true
         Layout.preferredHeight: 110
