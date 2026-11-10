@@ -25,6 +25,18 @@ Item {
         }
     }
     Timer { id: selectionPulseTimer; interval: 160; onTriggered: root.selectionPulse = false }
+    Connections {
+        target: root.canvas ? root.canvas.controller : null
+        ignoreUnknownSignals: true
+        function onSelectionChanged() {
+            if (root.hasBox && !Theme.reducedMotion) {
+                root.selectionPulse = true
+                selectionPulseTimer.restart()
+            } else {
+                root.selectionPulse = false
+            }
+        }
+    }
 
     Rectangle {
         objectName: "marqueeRect"
