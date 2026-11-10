@@ -338,6 +338,50 @@ def ranking_metrics(rows: list[dict], model: dict | None, k: int = 2) -> dict:
             "mean_reciprocal_rank": round(reciprocal / len(rows), 6)}
 
 
+def paired_evaluation(rows: list[dict], model: dict) -> dict:
+    """Paired holdout audit: compare learned and heuristic choices on identical objects.
+
+    Groups by the human-preferred technique, not by the predicted technique;
+    this avoids making errors disappear from a technique's denominator.
+    """
+    if not rows:
+        fail("no labeled samples")
+    buckets = {}
+    wins = losses = ties = disagreements = 0
+    for row in rows:
+        check_sample(row)
+        preferred = next(c for c in row["candidates"] if c["id"] == row["preferred_id"])
+        technique = preferred["technique"]
+        model_choice = rank(model, row)[0]["id"]
+        heuristic_choice = sorted(row["candidates"],
+                                  key=lambda c: (-heuristic(c), c["id"]))[0]["id"]
+        model_hit = model_choice == row["preferred_id"]
+        heuristic_hit = heuristic_choice == row["preferred_id"]
+        bucket = buckets.setdefault(technique, {"samples": 0, "model_correct": 0,
+                                                 "heuristic_correct": 0})
+        bucket["samples"] += 1
+        bucket["model_correct"] += int(model_hit)
+        bucket["heuristic_correct"] += int(heuristic_hit)
+        disagreements += int(model_choice != heuristic_choice)
+        wins += int(model_hit and not heuristic_hit)
+        losses += int(heuristic_hit and not model_hit)
+        ties += int(model_hit == heuristic_hit)
+    by_technique = {}
+    for technique in sorted(buckets):
+        b = buckets[technique]
+        count = b["samples"]
+        by_technique[technique] = {
+            "samples": count,
+            "model_top1": round(b["model_correct"] / count, 6),
+            "heuristic_top1": round(b["heuristic_correct"] / count, 6),
+        }
+    return {"samples": len(rows), "motif_groups": len({r["motif_group"] for r in rows}),
+            "model_only_correct": wins, "heuristic_only_correct": losses,
+            "both_correct_or_both_wrong": ties, "choice_disagreements": disagreements,
+            "by_preferred_technique": by_technique,
+            "warning": "Descriptive paired audit only; not statistical or textile validation."}
+
+
 def dataset_digest(rows: list[dict]) -> str:
     canonical = "\n".join(json.dumps(r, sort_keys=True, separators=(",", ":"),
                                     ensure_ascii=False) for r in rows)
@@ -373,6 +417,7 @@ def train_model(rows: list[dict], epochs: int = 500) -> dict:
     model["training"]["train_metrics"] = metrics(train, model)
     model["training"]["heldout_metrics"] = metrics(validation, model)
     model["training"]["heldout_ranking_metrics"] = ranking_metrics(validation, model)
+    model["training"]["heldout_paired_audit"] = paired_evaluation(validation, model)
     return model
 
 
@@ -423,6 +468,7 @@ def main(argv=None) -> int:
                 result = {"model": metrics(rows, model), "heuristic": metrics(rows, None),
                           "model_ranking": ranking_metrics(rows, model),
                           "heuristic_ranking": ranking_metrics(rows, None),
+                          "paired_audit": paired_evaluation(rows, model),
                           "warning": "Evaluate on independent unseen motifs; this command does not split."}
                 print(json.dumps(result, indent=2, sort_keys=True))
         return 0
