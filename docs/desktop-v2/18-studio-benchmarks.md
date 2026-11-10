@@ -364,11 +364,11 @@ l'ouverture de projet et la géométrie (PERF-012 : sans autre tâche à épargn
 
 ## 10 novembre 2026 — Fin du sondage `TaskManager::pump()` par minuteur (PERF-STUDIO, lot « 60 fps »)
 
-**Constat (code de `feat/studio-parity-f26-…`)** : 11 contrôleurs Studio (`StudioController`,
+**Constat (code de `feat/studio-parity-f26-…`)** : 9 contrôleurs Studio sur `main` (`StudioController`,
 `FileController`, `ImageController`, `RegionController`, `ViewController`, `AnalysisController`,
-`FixController`, `PullController`, `VectorSpaceController`, `BucketTool`, `WarpTool`) gardaient
+`FixController`, `PullController`, `VectorSpaceController` ; `BucketTool` et `WarpTool` sur la branche de parité) gardaient
 chacun un `QTimer` de 8 ou 16 ms allumé en permanence pour appeler `tasks_.pump()` : environ
-1 100 réveils/s du fil d'interface au repos, sans tâche en cours.
+1 000 réveils/s du fil d'interface au repos, sans tâche en cours.
 
 **Correctif** : `TaskManager::setCompletionNotifier` (appelé depuis le fil de travail, hors verrou)
 et `studio/task_pump.hpp::attachTaskPump`, qui poste un seul événement coalescé ; `pump()` tourne
