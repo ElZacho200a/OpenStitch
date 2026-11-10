@@ -14,6 +14,15 @@ Rectangle {
     property string page: "plan"
     property var reductionPreview: ({})
     property int renameColorwayIndex: -1
+    property int movedThreadIndex: -1
+    Timer { id: threadMoveTimer; interval: 850; onTriggered: panel.movedThreadIndex = -1 }
+    function moveSelected(delta) {
+        const destination = current + delta
+        if (controller && controller.moveThread(current, destination)) {
+            movedThreadIndex = destination
+            threadMoveTimer.restart()
+        }
+    }
     property string currentId
     readonly property int current: entryList.findIndex(entry => entry.id === currentId)
     property string chartId: controller && controller.charts.length > 0 ? controller.charts[0].id : ""
@@ -254,8 +263,10 @@ Rectangle {
                     implicitHeight: 32
                     radius: Theme.radius
                     color: panel.current === modelData.index ? Theme.accentSoft : (modelData.selected ? Theme.raised : (row.activeFocus || threadRowMouse.containsMouse) ? Theme.hover : "transparent")
-                    border.width: panel.current === modelData.index || row.activeFocus ? 1 : 0
-                    border.color: row.activeFocus ? Theme.info : Theme.accent
+                    border.width: panel.movedThreadIndex === modelData.index ? 2
+                                  : panel.current === modelData.index || row.activeFocus ? 1 : 0
+                    border.color: panel.movedThreadIndex === modelData.index ? Theme.success
+                                  : row.activeFocus ? Theme.info : Theme.accent
                     Behavior on color { ColorAnimation { duration: Theme.animationMs } }
                     Behavior on border.width { NumberAnimation { duration: Theme.feedbackFastMs } }
                     Rectangle {
@@ -297,13 +308,15 @@ Rectangle {
                     objectName: "threadMoveUpButton"
                     text: qsTr("Monter")
                     enabled: panel.current > 0
-                    onClicked: panel.controller.moveThread(panel.current, panel.current - 1)
+                    disabledReason: qsTr("Sélectionnez un fil qui n'est pas déjà en première position.")
+                    onClicked: panel.moveSelected(-1)
                 }
                 StudioButton {
                     objectName: "threadMoveDownButton"
                     text: qsTr("Descendre")
                     enabled: panel.current >= 0 && panel.current < panel.entryList.length - 1
-                    onClicked: panel.controller.moveThread(panel.current, panel.current + 1)
+                    disabledReason: qsTr("Sélectionnez un fil qui n'est pas déjà en dernière position.")
+                    onClicked: panel.moveSelected(1)
                 }
                 StudioButton {
                     objectName: "threadToggleButton"
