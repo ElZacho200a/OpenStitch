@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "view_controller.hpp"
 
+#include "inspector_model.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <fstream>
@@ -210,6 +212,83 @@ bool ViewController::showOnlyColour(const QString& hex) {
 bool ViewController::showOnlyType(const QString& typeId) {
     const auto result = desktop_v2::showOnlyType(studio_.session(), typeId.toStdString());
     say(result.ok ? QStringLiteral("Seuls les points « %1 » sont affichés").arg(typeId)
+                  : QString::fromStdString(result.message));
+    return result.ok;
+}
+
+namespace {
+QVariantMap groupMap(const FilterGroup& g, const QString& label) {
+    return {{QStringLiteral("id"), QString::fromStdString(g.key)},
+            {QStringLiteral("label"), label},
+            {QStringLiteral("total"), g.total},
+            {QStringLiteral("visible"), g.visible},
+            {QStringLiteral("checked"), g.visible > 0},
+            {QStringLiteral("partial"), g.visible > 0 && g.visible < g.total}};
+}
+
+QString typeLabelOf(const std::string& typeId) {
+    const std::string settable = settableIdOf(typeId);
+    for (const auto& t : settableStitchTypes()) {
+        if (t.id == settable) {
+            return QString::fromUtf8(t.label.data(), static_cast<qsizetype>(t.label.size()));
+        }
+    }
+    return typeId == "satin" ? QStringLiteral("Satin (colonnes)") : QString::fromStdString(typeId);
+}
+} // namespace
+
+QVariantList ViewController::filterTypes() const {
+    QVariantList out;
+    for (const auto& g : typeGroups(studio_.session().project())) {
+        out.push_back(groupMap(g, typeLabelOf(g.key)));
+    }
+    return out;
+}
+
+QVariantList ViewController::filterColours() const {
+    QVariantList out;
+    for (const auto& g : colourGroups(studio_.session().project())) {
+        out.push_back(groupMap(g, QString::fromStdString(g.key)));
+    }
+    return out;
+}
+
+bool ViewController::setTypeVisible(const QString& typeId, bool visible) {
+    const auto result =
+        desktop_v2::setTypeVisible(studio_.session(), typeId.toStdString(), visible);
+    say(result.ok ? (visible ? QStringLiteral("Type de points affiché")
+                             : QStringLiteral("Type de points masqué"))
+                  : QString::fromStdString(result.message));
+    return result.ok;
+}
+
+bool ViewController::setColourVisible(const QString& hex, bool visible) {
+    const QColor colour(hex);
+    if (!colour.isValid()) {
+        say(QStringLiteral("Couleur invalide : %1").arg(hex));
+        return false;
+    }
+    const auto result = desktop_v2::setColourVisible(studio_.session(),
+                                                     {static_cast<std::uint8_t>(colour.red()),
+                                                      static_cast<std::uint8_t>(colour.green()),
+                                                      static_cast<std::uint8_t>(colour.blue())},
+                                                     visible);
+    say(result.ok
+            ? (visible ? QStringLiteral("Couleur affichée") : QStringLiteral("Couleur masquée"))
+            : QString::fromStdString(result.message));
+    return result.ok;
+}
+
+bool ViewController::setAllColours(const QString& mode) {
+    const auto result = desktop_v2::setAllColours(studio_.session(), mode.toStdString());
+    say(result.ok ? QStringLiteral("Couleurs mises à jour")
+                  : QString::fromStdString(result.message));
+    return result.ok;
+}
+
+bool ViewController::hideSmallerThan(double minAreaMm2) {
+    const auto result = desktop_v2::hideSmallerThan(studio_.session(), minAreaMm2);
+    say(result.ok ? QStringLiteral("Petites zones masquées")
                   : QString::fromStdString(result.message));
     return result.ok;
 }

@@ -11,6 +11,7 @@
 #include <filesystem>
 
 #include "digitize_pipeline.hpp"
+#include "display_filters.hpp"
 #include "fix_controller.hpp"
 #include "openstitch/commands/finishing_commands.hpp"
 #include "studio_controller.hpp"
@@ -204,6 +205,23 @@ private slots:
             }
         }
         QVERIFY(curved);
+    }
+    // Taille minimale des zones (V1) sur de vraies régions : les petites zones sont masquées en
+    // une étape d'annulation, les plus grandes restent ; un seuil sans effet est refusé.
+    void hidingSmallZonesKeepsTheLargeOnes() {
+        Rig rig;
+        rig.load();
+        const auto objects = rig.session.project().embroidery_objects.size();
+        QVERIFY(!hideSmallerThan(rig.session, 1.0e-9).ok);
+        const auto depth = rig.session.undoNames().size();
+        QVERIFY(hideSmallerThan(rig.session, 25.0).ok);
+        QCOMPARE(rig.session.undoNames().size(), depth + 1);
+        const auto hidden = hiddenObjectCount(rig.session.project());
+        QVERIFY(hidden > 0);
+        QVERIFY(hidden < objects);                       // les grandes zones restent visibles
+        QVERIFY(!hideSmallerThan(rig.session, 25.0).ok); // déjà masquées : rien à faire
+        QVERIFY(rig.session.undo());
+        QCOMPARE(hiddenObjectCount(rig.session.project()), std::size_t{0});
     }
 };
 

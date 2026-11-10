@@ -179,6 +179,100 @@ Item {
                                 }
                             }
                         }
+                        // Filtres de la V1 : types de points, couleurs de fil (Toutes / Aucune / Inverser) et
+                        // taille minimale des zones. Chaque action = UNE étape d'annulation ; l'état affiché
+                        // vient des objets eux-mêmes (aucun état parallèle).
+                        Text {
+                            objectName: "filterIndicator"
+                            Layout.fillWidth: true
+                            visible: view.hiddenCount > 0
+                            text: qsTr("%1 objet(s) masqué(s) par un filtre").arg(view.hiddenCount)
+                            color: Theme.warning
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.smallSize
+                            wrapMode: Text.WordWrap
+                        }
+                        Text { text: qsTr("Types de points"); color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize }
+                        Flow {
+                            objectName: "filterTypesFlow"
+                            Layout.fillWidth: true
+                            spacing: 2
+                            Repeater {
+                                model: view.filterTypes
+                                delegate: StudioCheckBox {
+                                    required property var modelData
+                                    objectName: "filterType_" + modelData.id
+                                    text: modelData.label + " (" + modelData.visible + "/" + modelData.total + ")"
+                                    checked: modelData.checked
+                                    tristate: false
+                                    opacity: modelData.partial ? 0.7 : 1
+                                    onToggled: view.setTypeVisible(modelData.id, checked)
+                                    palette.windowText: Theme.foreground
+                                }
+                            }
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 4
+                            Text { text: qsTr("Couleurs de fil"); color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize; Layout.fillWidth: true }
+                            StudioButton { objectName: "coloursAllButton"; text: qsTr("Toutes"); quiet: true; onClicked: view.setAllColours("all") }
+                            StudioButton { objectName: "coloursNoneButton"; text: qsTr("Aucune"); quiet: true; onClicked: view.setAllColours("none") }
+                            StudioButton { objectName: "coloursInvertButton"; text: qsTr("Inverser"); quiet: true; onClicked: view.setAllColours("invert") }
+                        }
+                        Flow {
+                            objectName: "filterColoursFlow"
+                            Layout.fillWidth: true
+                            spacing: 2
+                            Repeater {
+                                model: view.filterColours
+                                delegate: Row {
+                                    id: colourRow
+                                    required property var modelData
+                                    spacing: 2
+                                    Rectangle {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: 16
+                                        height: 16
+                                        radius: 3
+                                        color: colourRow.modelData.id
+                                        border.width: 1
+                                        border.color: Theme.outline
+                                    }
+                                    StudioCheckBox {
+                                        objectName: "filterColour_" + colourRow.modelData.id
+                                        text: colourRow.modelData.visible + "/" + colourRow.modelData.total
+                                        checked: colourRow.modelData.checked
+                                        opacity: colourRow.modelData.partial ? 0.7 : 1
+                                        onToggled: view.setColourVisible(colourRow.modelData.id, checked)
+                                        palette.windowText: Theme.foreground
+                                        Accessible.name: qsTr("Couleur %1").arg(colourRow.modelData.id)
+                                    }
+                                }
+                            }
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 6
+                            Text { text: qsTr("Taille min. des zones (mm²)"); color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize }
+                            StudioTextField {
+                                id: minAreaField
+                                objectName: "minAreaField"
+                                implicitWidth: 60
+                                text: "4.0"
+                                wheelStep: 0.5
+                                wheelMin: 0.1
+                                wheelMax: 10000
+                                invalid: isNaN(parseFloat(text.replace(",", "."))) || parseFloat(text.replace(",", ".")) <= 0
+                                Accessible.name: qsTr("Taille minimale des zones en mm²")
+                            }
+                            StudioButton {
+                                objectName: "hideSmallButton"
+                                text: qsTr("Masquer les petites")
+                                enabled: !minAreaField.invalid
+                                tooltip: qsTr("Masque les zones plus petites que cette taille")
+                                onClicked: view.hideSmallerThan(parseFloat(minAreaField.text.replace(",", ".")))
+                            }
+                        }
                         Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Theme.divider }
                         SectionLabel { text: qsTr("RENDU RÉALISTE") }
                         RealisticToggle { objectName: "realisticPanelToggle"; Layout.fillWidth: true }

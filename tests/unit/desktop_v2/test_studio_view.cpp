@@ -100,6 +100,7 @@ private slots:
     void guidesAddRemoveAndColour();
     void analysisClearsDensityRiskAndDiscardsProposal();
     void chartImportAndOwnedThreadAssignment();
+    void displayFiltersByTypeColourAndSize();
     void initTestCase();
     void mainQmlHostsEveryPanel();
 };
@@ -541,6 +542,16 @@ void StudioViewTest::mainQmlHostsEveryPanel() {
     QTRY_VERIFY(named(window, "showAllButton")->isEnabled());
     QVERIFY(press(window, "showAllButton"));
     QCOMPARE(view.hiddenCount(), 0);
+    QVERIFY(named(window, "filterTypesFlow"));
+    QVERIFY(named(window, "filterColoursFlow"));
+    QVERIFY(named(window, "coloursAllButton") && named(window, "coloursNoneButton") &&
+            named(window, "coloursInvertButton"));
+    QVERIFY(named(window, "minAreaField") && named(window, "hideSmallButton"));
+    QVERIFY(press(window, "coloursNoneButton"));
+    QCOMPARE(view.hiddenCount(), static_cast<int>(session.project().embroidery_objects.size()));
+    QTRY_VERIFY(named(window, "filterIndicator")->isVisible());
+    QVERIFY(press(window, "coloursAllButton"));
+    QCOMPARE(view.hiddenCount(), 0);
     QVERIFY(press(window, "gridBox"));
     QVERIFY(view.gridVisible());
     QVERIFY(canvas->overlays()->grid);
@@ -838,6 +849,61 @@ void StudioViewTest::chartImportAndOwnedThreadAssignment() {
     QVERIFY(session.project().embroidery_objects[0].thread.has_value());
     QVERIFY(session.undo());
     QVERIFY(!session.project().embroidery_objects[0].thread.has_value());
+}
+
+// Filtres d'affichage riches (V1) : types de points, couleurs de fil (Toutes / Aucune / Inverser)
+// et taille minimale des zones ; chaque action est une étape d'annulation et l'état vient des
+// objets.
+void StudioViewTest::displayFiltersByTypeColourAndSize() {
+    Rig rig;
+    const auto total = static_cast<int>(rig.session.project().embroidery_objects.size());
+    QVERIFY(total >= 2);
+    const auto types = rig.view.filterTypes();
+    const auto colours = rig.view.filterColours();
+    QVERIFY(!types.isEmpty() && !colours.isEmpty());
+    int typeSum = 0;
+    for (const auto& t : types) {
+        typeSum += t.toMap().value("total").toInt();
+    }
+    int colourSum = 0;
+    for (const auto& c : colours) {
+        colourSum += c.toMap().value("total").toInt();
+    }
+    QCOMPARE(typeSum, total);
+    QCOMPARE(colourSum, total);
+    QCOMPARE(rig.view.hiddenCount(), 0);
+
+    const auto depth = rig.session.undoNames().size();
+    const QString hex = colours.first().toMap().value("id").toString();
+    const int colourTotal = colours.first().toMap().value("total").toInt();
+    QVERIFY(rig.view.setColourVisible(hex, false));
+    QCOMPARE(rig.session.undoNames().size(), depth + 1);
+    QCOMPARE(rig.view.hiddenCount(), colourTotal);
+    QVERIFY(!rig.view.filterColours().first().toMap().value("checked").toBool());
+    QVERIFY(!rig.view.setColourVisible(hex, false)); // déjà masquée : refus lisible
+    QVERIFY(!rig.view.setColourVisible(QStringLiteral("pas-une-couleur"), false));
+    QVERIFY(rig.view.setColourVisible(hex, true));
+    QCOMPARE(rig.view.hiddenCount(), 0);
+
+    const QString typeId = types.first().toMap().value("id").toString();
+    const int typeTotal = types.first().toMap().value("total").toInt();
+    QVERIFY(rig.view.setTypeVisible(typeId, false));
+    QCOMPARE(rig.view.hiddenCount(), typeTotal);
+    QVERIFY(rig.session.undo());
+    QCOMPARE(rig.view.hiddenCount(), 0);
+    QVERIFY(!rig.view.setTypeVisible(QStringLiteral("type-inconnu"), false));
+
+    QVERIFY(rig.view.setAllColours(QStringLiteral("none")));
+    QCOMPARE(rig.view.hiddenCount(), total);
+    QVERIFY(!rig.view.setAllColours(QStringLiteral("none")));
+    QVERIFY(rig.view.setAllColours(QStringLiteral("invert")));
+    QCOMPARE(rig.view.hiddenCount(), 0);
+    QVERIFY(!rig.view.setAllColours(QStringLiteral("all")));
+    QVERIFY(!rig.view.setAllColours(QStringLiteral("n-importe-quoi")));
+
+    QVERIFY(!rig.view.hideSmallerThan(0.0));
+    QVERIFY(!rig.view.hideSmallerThan(-3.0));
+    QVERIFY(!rig.view.hideSmallerThan(1.0e-9)); // aucune zone aussi petite
 }
 
 QTEST_MAIN(StudioViewTest)
