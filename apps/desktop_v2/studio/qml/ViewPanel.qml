@@ -32,6 +32,10 @@ Item {
         const mm = parseMm(text)
         return mm >= 0.5 && mm <= 500
     }
+    function validGuidePosition(text) {
+        const mm = parseMm(text)
+        return mm >= -5000 && mm <= 5000
+    }
     // Faux : l'espace hôte (« Points ») porte lui-même les boutons de cette barre et n'ouvre
     // qu'UN panneau latéral à la fois. Vrai : usage historique des autres espaces.
     property bool toolbarVisible: true
@@ -208,13 +212,20 @@ Item {
                                 }
                             }
                             Text { text: qsTr("Guide (mm)"); color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize }
-                            StudioTextField { id: guideField; objectName: "guideField"; implicitWidth: 70; text: "0" }
+                            StudioTextField {
+                                id: guideField
+                                objectName: "guideField"
+                                implicitWidth: 70
+                                text: "0"
+                                invalid: !hub.validGuidePosition(text)
+                                Accessible.name: qsTr("Position du guide en millimètres")
+                            }
                         }
                         Flow {
                             Layout.fillWidth: true
                             spacing: 4
-                            StudioButton { objectName: "addVGuideButton"; text: qsTr("Guide vertical"); onClicked: view.addGuide(true, parseFloat(guideField.text)) }
-                            StudioButton { objectName: "addHGuideButton"; text: qsTr("Guide horizontal"); onClicked: view.addGuide(false, parseFloat(guideField.text)) }
+                            StudioButton { objectName: "addVGuideButton"; text: qsTr("Guide vertical"); enabled: hub.validGuidePosition(guideField.text); onClicked: view.addGuide(true, hub.parseMm(guideField.text)) }
+                            StudioButton { objectName: "addHGuideButton"; text: qsTr("Guide horizontal"); enabled: hub.validGuidePosition(guideField.text); onClicked: view.addGuide(false, hub.parseMm(guideField.text)) }
                             StudioButton { objectName: "clearGuidesButton"; text: qsTr("Effacer les guides"); enabled: view.guides.length > 0; onClicked: view.clearGuides() }
                         }
                         Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Theme.divider }
