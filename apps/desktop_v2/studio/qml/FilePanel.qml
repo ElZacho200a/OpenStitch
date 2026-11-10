@@ -14,6 +14,7 @@ Item {
     signal quitApproved()
     signal imageImported()
     objectName: "filePanel"
+    readonly property bool notificationVisible: toast.visible
     anchors.fill: parent
 
     readonly property var ctl: (typeof files !== "undefined") ? files : null
@@ -473,7 +474,10 @@ Item {
         objectName: "fileToast"
         z: 50
         property bool shown: false
-        visible: panel.ctl ? (shown || panel.ctl.busy) : false
+        readonly property bool activeToast: panel.ctl ? (shown || panel.ctl.busy) : false
+        visible: activeToast || opacity > 0
+        opacity: activeToast ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: Theme.feedbackFastMs } }
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 56
@@ -505,7 +509,11 @@ Item {
         Connections {
             target: panel.ctl
             ignoreUnknownSignals: true
-            function onMessageChanged() { toastTimer.restart(); toast.shown = true }
+            function onMessageChanged() {
+                toast.shown = panel.ctl.message.length > 0
+                if (toast.shown) toastTimer.restart()
+                else toastTimer.stop()
+            }
         }
         Timer {
             id: toastTimer

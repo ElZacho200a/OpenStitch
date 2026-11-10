@@ -213,6 +213,11 @@ private slots:
         Rig rig;
         open(rig);
         auto* canvas = rig.canvas();
+        // A completed operation must not leave a misleading processing badge.
+        QVERIFY(!rig.space.busy());
+        auto* processing = rig.named("segmentationBusyBadge");
+        QVERIFY(processing);
+        QVERIFY(!processing->isVisible());
         QVERIFY(canvas->layers().value("regions").toBool());
         QVERIFY(!canvas->layers().value("stitches").toBool());
         const auto layer = canvas->regionLayer();

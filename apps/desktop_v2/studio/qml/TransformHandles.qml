@@ -11,6 +11,32 @@ Item {
     readonly property rect box: canvas ? canvas.selectionRect : Qt.rect(0, 0, 0, 0)
     readonly property bool hasBox: box.width > 0 || box.height > 0
     enabled: false
+    readonly property bool snapping: canvas && canvas.guideLines.length > 0
+    readonly property string liveInfo: canvas ? canvas.gestureInfo : ""
+    readonly property bool resizing: liveInfo.indexOf("× ") === 0
+    readonly property bool rotating: liveInfo.length > 0 && liveInfo.endsWith("°")
+    property bool selectionPulse: false
+    onHasBoxChanged: {
+        if (hasBox && !Theme.reducedMotion) {
+            selectionPulse = true
+            selectionPulseTimer.restart()
+        } else if (!hasBox) {
+            selectionPulse = false
+        }
+    }
+    Timer { id: selectionPulseTimer; interval: 160; onTriggered: root.selectionPulse = false }
+    Connections {
+        target: root.canvas ? root.canvas.controller : null
+        ignoreUnknownSignals: true
+        function onSelectionChanged() {
+            if (root.hasBox && !Theme.reducedMotion) {
+                root.selectionPulse = true
+                selectionPulseTimer.restart()
+            } else {
+                root.selectionPulse = false
+            }
+        }
+    }
 
     Rectangle {
         objectName: "marqueeRect"
@@ -24,6 +50,19 @@ Item {
         border.width: 1
     }
 
+    // Hit-tested preselection from GpuCanvas: never modifies actual selection.
+    Rectangle {
+        objectName: "hoverPreselectionRect"
+        visible: canvas && canvas.hoverRect.width > 0 && canvas.hoverRect.height > 0
+        x: canvas ? canvas.hoverRect.x : 0
+        y: canvas ? canvas.hoverRect.y : 0
+        width: canvas ? canvas.hoverRect.width : 0
+        height: canvas ? canvas.hoverRect.height : 0
+        color: Qt.alpha(Theme.info, 0.06)
+        border.width: 1
+        border.color: Theme.info
+    }
+
     Rectangle {
         objectName: "selectionBoxRect"
         visible: root.hasBox
@@ -33,8 +72,10 @@ Item {
         height: root.box.height
         color: "transparent"
         border.color: Theme.accent
-        border.width: 1
-        opacity: 0.8
+        border.width: root.selectionPulse ? 2 : 1
+        opacity: 0.95
+        Behavior on border.width { NumberAnimation { duration: Theme.feedbackFastMs } }
+        Behavior on border.color { ColorAnimation { duration: Theme.feedbackFastMs } }
     }
 
     Rectangle {
@@ -58,7 +99,56 @@ Item {
             width: Math.max(1, Math.abs(modelData.x2 - modelData.x1))
             height: Math.max(1, Math.abs(modelData.y2 - modelData.y1))
             color: Theme.info
+            opacity: root.snapping ? 1 : 0.85
         }
+    }
+
+    // Visible only while the engine exposes real snap guides during a move.
+    Rectangle {
+        objectName: "snapFeedbackBadge"
+        visible: root.snapping
+        x: canvas ? Math.min(canvas.width - width - 6, Math.max(6, canvas.ghostRect.x)) : 0
+        // Leave room beneath for the separate transformation measurement badge.
+        y: canvas ? Math.max(6, canvas.ghostRect.y - 68) : 0
+        width: snapLabel.implicitWidth + 18
+        height: snapLabel.implicitHeight + 8
+        radius: Theme.radius
+        color: Theme.surface
+        border.color: Theme.info
+        Text {
+            id: snapLabel
+            anchors.centerIn: parent
+            text: {
+                if (!root.canvas || !root.canvas.guideLines) return ""
+                let vertical = false
+                let horizontal = false
+                for (const guide of root.canvas.guideLines) {
+                    if (Math.abs(guide.x1 - guide.x2) < 1) vertical = true
+                    if (Math.abs(guide.y1 - guide.y2) < 1) horizontal = true
+                }
+                return vertical && horizontal ? qsTr("Alignement horizontal et vertical")
+                     : vertical ? qsTr("Alignement vertical")
+                     : horizontal ? qsTr("Alignement horizontal")
+                     : qsTr("Accrochage actif")
+            }
+            color: Theme.info
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.smallSize
+        }
+    }
+
+    // Rotation centre is derived from the actual selected bounds.
+    Rectangle {
+        objectName: "rotationPivot"
+        visible: root.rotating && root.hasBox
+        x: root.box.x + root.box.width / 2 - width / 2
+        y: root.box.y + root.box.height / 2 - height / 2
+        width: 12
+        height: 12
+        radius: 6
+        color: Theme.surface
+        border.color: Theme.accent
+        border.width: 2
     }
 
     // 8 poignées (NO N NE E SE S SO O) puis la poignée de rotation, au-dessus de la boîte.
@@ -77,14 +167,18 @@ Item {
                 Qt.point(root.box.x, root.box.y + root.box.height),
                 Qt.point(root.box.x, cy), Qt.point(cx, root.box.y - 26)]
             objectName: "handle" + index
-            width: 9
-            height: 9
-            radius: index === 8 ? 5 : 1
-            x: pts[index].x - 4.5
-            y: pts[index].y - 4.5
-            color: index === 8 ? Theme.accent : Theme.foreground
+            width: (root.resizing && index !== 8) || (root.rotating && index === 8) ? 11 : 9
+            height: width
+            radius: index === 8 ? width / 2 : 1
+            x: pts[index].x - width / 2
+            y: pts[index].y - height / 2
+            color: index === 8 || (root.resizing && index !== 8) ? Theme.accent : Theme.foreground
+            opacity: root.rotating && index !== 8 ? 0.65 : 1
+            Behavior on width { NumberAnimation { duration: Theme.feedbackFastMs } }
+            Behavior on opacity { NumberAnimation { duration: Theme.feedbackFastMs } }
             border.color: Theme.accent
-            border.width: 1
+            border.width: 1.5
+            Behavior on color { ColorAnimation { duration: Theme.feedbackFastMs } }
         }
     }
 
@@ -100,7 +194,15 @@ Item {
         Text {
             id: infoText
             anchors.centerIn: parent
-            text: canvas ? canvas.gestureInfo : ""
+            text: {
+                if (!canvas) return ""
+                if (root.resizing && canvas.zoom > 0 && canvas.ghostRect.width > 0)
+                    return qsTr("%1 × %2 mm")
+                           .arg((canvas.ghostRect.width / canvas.zoom).toFixed(1))
+                           .arg((canvas.ghostRect.height / canvas.zoom).toFixed(1))
+                           + "  ·  " + root.liveInfo + qsTr(" · proportions conservées")
+                return root.liveInfo
+            }
             color: Theme.foreground
             font.pixelSize: Theme.smallSize
         }

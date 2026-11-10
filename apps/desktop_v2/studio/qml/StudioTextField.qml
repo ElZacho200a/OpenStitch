@@ -35,5 +35,7 @@ Controls.TextField {
                      : control.hovered && control.enabled ? Theme.muted
                      : Theme.outline
         opacity: control.enabled ? 1 : 0.7
+        Behavior on border.color { ColorAnimation { duration: Theme.animationMs } }
+        Behavior on border.width { NumberAnimation { duration: Theme.feedbackFastMs } }
     }
 }

@@ -60,6 +60,63 @@ Window {
         when: typeof regionTools !== "undefined"
     }
     readonly property var spaceIds: ["image", "segmentation", "vector", "points"]
+    property string workspaceNotice: ""
+    property string feedbackText: ""
+    property string feedbackTone: "info"
+    property bool saveConfirmed: false
+    property int lastPreviewBuildCount: 0
+    onCanvasChanged: lastPreviewBuildCount = canvas ? canvas.geometryBuildCount : 0
+    // The renderer reports actual creation of new geometry; no synthetic progress.
+    Connections {
+        target: window.canvas
+        ignoreUnknownSignals: true
+        function onDiagnosticsChanged() {
+            if (!window.canvas) return
+            const count = window.canvas.geometryBuildCount
+            if (count > window.lastPreviewBuildCount && count > 0) {
+                window.lastPreviewBuildCount = count
+                window.showFeedback(qsTr("Aperçu actualisé"), "info")
+            }
+        }
+    }
+    Timer { id: feedbackTimer; interval: 2600; onTriggered: window.feedbackText = "" }
+    Timer { id: saveConfirmTimer; interval: 1800; onTriggered: window.saveConfirmed = false }
+
+    // One transient notification, coalesced instead of stacking repeated messages.
+    function showFeedback(message, tone) {
+        if (!message || message.length === 0) return
+        // Low-priority rendering notices never suppress a save success or an error.
+        if (tone === "info" && feedbackText.length > 0 &&
+            (feedbackTone === "success" || feedbackTone === "error")) return
+        feedbackText = message
+        feedbackTone = tone || "info"
+        feedbackTimer.restart()
+    }
+    // Only the controller's actual successful return may trigger "saved".
+    function confirmSave(ok) {
+        saveConfirmed = ok === true
+        if (saveConfirmed) saveConfirmTimer.restart()
+        else saveConfirmTimer.stop()
+        showFeedback(saveConfirmed ? qsTr("Projet enregistré") : studio.status,
+                     saveConfirmed ? "success" : "error")
+    }
+    function undoWithFeedback() {
+        if (!studio.canUndo) return
+        const label = studio.undoLabel
+        studio.undo()
+        showFeedback(qsTr("Annulé : %1").arg(label), "info")
+    }
+    function redoWithFeedback() {
+        if (!studio.canRedo) return
+        const label = studio.redoLabel
+        studio.redo()
+        showFeedback(qsTr("Rétabli : %1").arg(label), "info")
+    }
+    function duplicateWithFeedback() {
+        if (editor.duplicate(5))
+            showFeedback(qsTr("Sélection dupliquée"), "success")
+    }
+    Timer { id: workspaceNoticeTimer; interval: 1400; onTriggered: window.workspaceNotice = "" }
 
 
     function openProject() {
@@ -77,7 +134,7 @@ Window {
 
     function saveProject() {
         if (studio.hasPath())
-            studio.saveProject()
+            confirmSave(studio.saveProject())
         else
             saveDialog.open()
     }
@@ -88,7 +145,7 @@ Window {
         fileMode: FileDialog.SaveFile
         defaultSuffix: "osp"
         nameFilters: [qsTr("Projet OpenStitch (*.osp)")]
-        onAccepted: studio.saveProjectAs(selectedFile)
+        onAccepted: window.confirmSave(studio.saveProjectAs(selectedFile))
     }
 
     property bool closeApproved: false
@@ -96,7 +153,10 @@ Window {
         id: filePanel
         // A raster import is an image-only operation: enter the first workspace
         // after the project has been successfully adopted.
-        onImageImported: workspaceCtl.setCurrent("image")
+        onImageImported: {
+            workspaceCtl.setCurrent("image")
+            window.showFeedback(qsTr("Image importée"), "success")
+        }
         onQuitApproved: {
             window.closeApproved = true
             window.close()
@@ -122,6 +182,17 @@ Window {
     Binding { target: Theme; property: "densityScale"; value: window.hasPrefs ? prefs.densityScale : 1.0 }
     Binding { target: Theme; property: "reducedMotion"; value: window.hasPrefs ? prefs.reducedMotion : false }
 
+    // Invalidate the transient saved check as soon as the actual document becomes dirty.
+    Connections {
+        target: studio
+        function onChanged() {
+            if (studio.dirty && window.saveConfirmed) {
+                window.saveConfirmed = false
+                saveConfirmTimer.stop()
+            }
+        }
+    }
+
     // Session restore: workspace and panels now, zoom once a document has been framed; the file
     // itself is reopened by the application at launch (main.cpp).
     function persistSession() {
@@ -134,7 +205,13 @@ Window {
     }
     Connections {
         target: workspaceCtl
-        function onCurrentChanged() { window.persistSession() }
+        function onCurrentChanged() {
+            window.persistSession()
+            const labels = { image: qsTr("Image"), segmentation: qsTr("Segmentation"),
+                             vector: qsTr("Vecteurs"), points: qsTr("Points") }
+            window.workspaceNotice = qsTr("Espace actif : ") + (labels[workspaceCtl.current] || workspaceCtl.current)
+            workspaceNoticeTimer.restart()
+        }
         function onPanelsChanged() { window.persistSession() }
     }
     Component.onCompleted: {
@@ -175,9 +252,9 @@ Window {
         case "cmd.file.save-as": saveDialog.open(); break
         case "cmd.file.import-image": filePanel.importImageDialog(); break
         case "cmd.file.import-machine": filePanel.importMachineDialog(); break
-        case "cmd.edit.undo": studio.undo(); break
-        case "cmd.edit.redo": studio.redo(); break
-        case "cmd.edit.duplicate": editor.duplicate(5); break
+        case "cmd.edit.undo": undoWithFeedback(); break
+        case "cmd.edit.redo": redoWithFeedback(); break
+        case "cmd.edit.duplicate": duplicateWithFeedback(); break
         case "cmd.edit.delete": deleteSelection(); break
         case "cmd.edit.group": editor.group(""); break
         case "cmd.edit.ungroup": editor.ungroup(); break
@@ -246,9 +323,9 @@ Window {
     Shortcut { sequence: "Ctrl+N"; enabled: !studio.busy; onActivated: filePanel.requestNew() }
     Shortcut { sequence: "Ctrl+S"; enabled: !studio.busy; onActivated: window.saveProject() }
     Shortcut { sequence: "Ctrl+Shift+S"; enabled: !studio.busy; onActivated: saveDialog.open() }
-    Shortcut { sequence: "Ctrl+Z"; enabled: studio.canUndo; onActivated: studio.undo() }
-    Shortcut { sequence: "Ctrl+Y"; enabled: studio.canRedo; onActivated: studio.redo() }
-    Shortcut { sequence: "Ctrl+Shift+Z"; enabled: studio.canRedo; onActivated: studio.redo() }
+    Shortcut { sequence: "Ctrl+Z"; enabled: studio.canUndo; onActivated: window.undoWithFeedback() }
+    Shortcut { sequence: "Ctrl+Y"; enabled: studio.canRedo; onActivated: window.redoWithFeedback() }
+    Shortcut { sequence: "Ctrl+Shift+Z"; enabled: studio.canRedo; onActivated: window.redoWithFeedback() }
     // Arrow keys nudge the selection by 1 mm (Shift: 5 mm); Y is up in model space.
     Shortcut { sequence: "Left"; enabled: studio.hasSelection && !window.keyboardOwnedByControl; onActivated: studio.moveSelection(-1, 0) }
     Shortcut { sequence: "Right"; enabled: studio.hasSelection && !window.keyboardOwnedByControl; onActivated: studio.moveSelection(1, 0) }
@@ -280,7 +357,7 @@ Window {
                  (studio.hasSelection || (toolController !== null && toolController.selectedNodeCount > 0))
         onActivated: window.deleteSelection()
     }
-    Shortcut { sequence: "Ctrl+D"; enabled: studio.hasSelection; onActivated: editor.duplicate(5) }
+    Shortcut { sequence: "Ctrl+D"; enabled: studio.hasSelection; onActivated: window.duplicateWithFeedback() }
     Shortcut { sequence: "Ctrl+G"; enabled: editor.selectedCount > 1; onActivated: editor.group("") }
     Shortcut { sequence: "Ctrl+Shift+G"; enabled: studio.hasSelection; onActivated: editor.ungroup() }
     Shortcut { sequence: "Ctrl+R"; enabled: studio.hasSelection; onActivated: editor.rotate90(true) }
@@ -340,7 +417,7 @@ Window {
                     shortcutLabel: "Ctrl+Z"
                     showShortcutLabel: window.width >= 1400
                     enabled: studio.canUndo
-                    onClicked: studio.undo()
+                    onClicked: window.undoWithFeedback()
                 }
 
                 StudioButton {
@@ -351,13 +428,14 @@ Window {
                     shortcutLabel: "Ctrl+Y"
                     showShortcutLabel: window.width >= 1400
                     enabled: studio.canRedo
-                    onClicked: studio.redo()
+                    onClicked: window.redoWithFeedback()
                 }
 
                 StudioButton {
                     objectName: "historyToggle"
                     text: qsTr("Historique")
-                    iconName: "undo"
+                    iconName: "chevron"
+                    iconRotation: historyHub.opened ? 90 : 0
                     visible: historyHub.available
                     active: historyHub.opened
                     tooltip: qsTr("Afficher les étapes du document")
@@ -375,8 +453,8 @@ Window {
 
                 StudioButton {
                     objectName: "saveProjectButton"
-                    text: qsTr("Enregistrer")
-                    iconName: "save"
+                    text: window.saveConfirmed ? qsTr("Enregistré") : qsTr("Enregistrer")
+                    iconName: window.saveConfirmed ? "check" : "save"
                     tooltip: qsTr("Enregistrer le projet (Ctrl+Maj+S : sous…)")
                     shortcutLabel: "Ctrl+S"
                     showShortcutLabel: window.width >= 1400
@@ -419,8 +497,8 @@ Window {
                 }
                 Rectangle { implicitWidth: 1; implicitHeight: 14; color: Theme.border; Layout.leftMargin: 8; Layout.rightMargin: 8 }
                 Text {
-                    text: studio.dirty ? qsTr("Modifié") : qsTr("Enregistré")
-                    color: Theme.muted
+                    text: studio.dirty ? qsTr("● Modifications non enregistrées") : qsTr("Aucune modification en attente")
+                    color: studio.dirty ? Theme.warning : Theme.muted
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.smallSize
                 }
@@ -470,6 +548,7 @@ Window {
             Layout.fillWidth: true
             Layout.fillHeight: true
             workspace: workspaceCtl
+            onStageFeedback: function(message, tone) { window.showFeedback(message, tone) }
 
             // L’historique du document survit au changement des quatre espaces.
             HistoryPanel { id: historyHub; anchors.fill: parent; z: 10 }
@@ -488,13 +567,32 @@ Window {
                 spacing: 12
                 Text {
                     Layout.fillWidth: true
-                    text: studio.status
+                    text: studio.busy ? qsTr("Opération en cours…  ·  ") + studio.status
+                                      : window.workspaceNotice.length > 0 ? window.workspaceNotice : studio.status
                     elide: Text.ElideRight
                     color: Theme.muted
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.smallSize
                     Accessible.role: Accessible.StaticText
                     Accessible.name: text
+                }
+                Rectangle {
+                    objectName: "studioReducedMotionBusy"
+                    visible: studio.busy && Theme.reducedMotion
+                    implicitWidth: 10
+                    implicitHeight: 10
+                    radius: 5
+                    color: Theme.info
+                    Accessible.role: Accessible.StaticText
+                    Accessible.name: qsTr("Opération en cours")
+                }
+                Controls.BusyIndicator {
+                    objectName: "studioBusyIndicator"
+                    visible: studio.busy
+                    running: visible && !Theme.reducedMotion
+                    implicitWidth: 18
+                    implicitHeight: 18
+                    Accessible.name: qsTr("Opération en cours")
                 }
                 Text {
                     text: studio.commandCount.toLocaleString(Qt.locale(), "f", 0) + qsTr(" commandes")
@@ -528,4 +626,37 @@ Window {
             }
         }
     }
+    // Non-modal feedback: does not capture mouse events or keyboard input.
+    Rectangle {
+        id: feedbackToast
+        objectName: "studioFeedbackToast"
+        z: 100
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.rightMargin: 20
+        // The FilePanel already owns a centred task toast; never overlap it.
+        anchors.bottomMargin: filePanel.notificationVisible ? 108 : 48
+        visible: window.feedbackText.length > 0
+        enabled: false
+        implicitWidth: Math.min(440, Math.max(160, feedbackLabel.implicitWidth + 28))
+        implicitHeight: feedbackLabel.implicitHeight + 20
+        radius: Theme.radius
+        color: Theme.panel
+        border.width: 1
+        border.color: window.feedbackTone === "error" ? Theme.error
+                      : window.feedbackTone === "success" ? Theme.success : Theme.info
+        Accessible.role: Accessible.AlertMessage
+        Accessible.name: window.feedbackText
+        Text {
+            id: feedbackLabel
+            anchors.centerIn: parent
+            width: Math.min(408, implicitWidth)
+            text: window.feedbackText
+            color: Theme.foreground
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.smallSize
+            wrapMode: Text.WordWrap
+        }
+    }
+
 }

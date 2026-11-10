@@ -50,4 +50,6 @@ QtObject {
     readonly property int rowHeight: Math.round(42 * densityScale)
     readonly property int radius: 8
     readonly property int animationMs: reducedMotion ? 0 : 150
+    readonly property int feedbackFastMs: reducedMotion ? 0 : 90
+    readonly property int feedbackSlowMs: reducedMotion ? 0 : 200
 }

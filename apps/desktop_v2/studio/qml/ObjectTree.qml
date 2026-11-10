@@ -30,9 +30,20 @@ Item {
             required property var modelData
             required property int index
             readonly property bool isObject: modelData.kind === "object"
+            readonly property bool primarySelected: isObject && modelData.selected
+                                                    && studio.primarySelectionId === modelData.id
             readonly property bool isLayer: modelData.kind === "layer"
             readonly property bool isGroup: modelData.kind === "group"
             property bool renaming: false
+            activeFocusOnTab: true
+            Accessible.role: Accessible.ListItem
+            Accessible.name: modelData.label
+            Accessible.selected: isObject && modelData.selected
+            Keys.onReturnPressed: {
+                if (row.isObject) studio.selectObject(row.modelData.id)
+                else if (row.isLayer) { root.currentLayer = row.modelData.id; editor.selectByLayer(row.modelData.id) }
+                else if (row.isGroup) editor.selectGroup(row.modelData.id)
+            }
             width: view.width
             height: 30
 
@@ -40,15 +51,26 @@ Item {
                 anchors.fill: parent
                 color: row.isObject && row.modelData.selected ? Theme.accentSoft
                        : row.isLayer ? Theme.raised
-                       : area.containsMouse ? Theme.hover : "transparent"
-                border.width: row.isLayer && root.currentLayer === row.modelData.id ? 1 : 0
+                       : area.containsMouse || row.activeFocus ? Theme.hover : "transparent"
+                border.width: row.activeFocus || (row.isLayer && root.currentLayer === row.modelData.id) ? 1 : 0
                 border.color: Theme.accent
+                Behavior on color { ColorAnimation { duration: Theme.animationMs } }
+                Rectangle {
+                    width: row.primarySelected ? 4 : 2
+                    anchors.left: parent.left
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    color: row.primarySelected ? Theme.accent : Theme.info
+                    visible: row.isObject && row.modelData.selected
+                }
             }
 
             MouseArea {
                 id: area
                 anchors.fill: parent
                 hoverEnabled: true
+                cursorShape: row.isObject && row.modelData.locked ? Qt.ForbiddenCursor
+                             : root.dragActive ? Qt.ClosedHandCursor : Qt.PointingHandCursor
                 acceptedButtons: Qt.LeftButton
                 preventStealing: true // le défilement de la liste ne doit pas voler le glisser
                 onCanceled: root.dragActive = false
@@ -113,6 +135,7 @@ Item {
                     border.width: 1
                     border.color: Qt.alpha(Theme.faint, 0.4)
                     opacity: row.isObject && row.modelData.visible ? 1 : 0.4
+                    Behavior on opacity { NumberAnimation { duration: Theme.feedbackFastMs } }
                 }
                 Text {
                     Layout.fillWidth: true

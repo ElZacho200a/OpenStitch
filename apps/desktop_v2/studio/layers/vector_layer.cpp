@@ -48,9 +48,14 @@ void appendPath(QPainterPath& out, const geometry::Path& path, std::vector<QPoin
 } // namespace
 
 std::shared_ptr<const VectorLayer> VectorLayer::build(const document::Project& project) {
+    return build(project.vector_objects);
+}
+
+std::shared_ptr<const VectorLayer>
+VectorLayer::build(const std::vector<document::VectorObject>& shapes) {
     auto layer = std::make_shared<VectorLayer>();
     QRectF all;
-    for (const auto& object : project.vector_objects) {
+    for (const auto& object : shapes) {
         if (!object.visible) {
             continue;
         }

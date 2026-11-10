@@ -28,6 +28,7 @@ class GpuCanvas : public QQuickItem {
     // repères d'accrochage {x1,y1,x2,y2}. Peu d'éléments QML, jamais un par point.
     Q_PROPERTY(QRectF marquee READ marquee NOTIFY overlayChanged)
     Q_PROPERTY(QRectF selectionRect READ selectionRect NOTIFY overlayChanged)
+    Q_PROPERTY(QRectF hoverRect READ hoverRect NOTIFY overlayChanged)
     Q_PROPERTY(QRectF ghostRect READ ghostRect NOTIFY overlayChanged)
     Q_PROPERTY(QVariantList guideLines READ guideLines NOTIFY overlayChanged)
     Q_PROPERTY(QString gestureInfo READ gestureInfo NOTIFY overlayChanged)
@@ -66,6 +67,7 @@ public:
     void setEditor(EditController* editor);
     [[nodiscard]] QRectF marquee() const { return marquee_; }
     [[nodiscard]] QRectF selectionRect() const;
+    [[nodiscard]] QRectF hoverRect() const;
     [[nodiscard]] QRectF ghostRect() const { return ghost_; }
     [[nodiscard]] QVariantList guideLines() const { return guides_; }
     [[nodiscard]] QString gestureInfo() const;
@@ -164,6 +166,7 @@ protected:
     void keyReleaseEvent(QKeyEvent* event) override;
     void focusOutEvent(QFocusEvent* event) override;
     void hoverMoveEvent(QHoverEvent* event) override;
+    void hoverLeaveEvent(QHoverEvent* event) override;
 
 private:
     enum class Gesture { None, Pan, Marquee, Move, Handle, ZoomRect, Tool, Digitize };
@@ -177,6 +180,8 @@ private:
     StudioController* controller_{nullptr};
     std::shared_ptr<const StudioSceneSnapshot> scene_;
     std::vector<Target> selection_;
+    // Pure presentation hover; never mutates DocumentSession or the stitch model.
+    std::optional<std::uint64_t> hoveredObjectId_;
     std::uint64_t selectionRevision_{0};
     std::shared_ptr<const CanvasOverlays> overlays_;
     std::uint64_t overlayRevision_{0};
