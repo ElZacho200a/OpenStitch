@@ -121,6 +121,7 @@ ColumnLayout {
             required property var modelData
             required property int index
             readonly property var source: panel.sourceOf(modelData.id)
+            readonly property bool primarySelected: modelData.selected && studio.primarySelectionId === modelData.id
             width: objectList.width
             height: Theme.rowHeight
             leftPadding: 18
@@ -136,11 +137,11 @@ ColumnLayout {
                 color: objectRow.modelData.selected ? Theme.accentSoft
                        : objectRow.hovered ? Theme.raised : "transparent"
                 Rectangle {
-                    width: 2
+                    width: objectRow.primarySelected ? 4 : 2
                     anchors.left: parent.left
                     anchors.top: parent.top
                     anchors.bottom: parent.bottom
-                    color: Theme.accent
+                    color: objectRow.primarySelected ? Theme.accent : Theme.info
                     visible: objectRow.modelData.selected
                 }
                 border.width: objectRow.activeFocus ? 1 : 0
