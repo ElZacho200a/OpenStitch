@@ -136,6 +136,20 @@ class RankerTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "no labeled samples"):
             ranker.paired_evaluation([], model)
 
+    def test_training_ignores_candidate_presentation_order(self):
+        rows = [sample(i) for i in range(12)]
+        for row in rows:
+            row["candidates"].append(candidate("third", "running", False))
+            row["candidates"][2]["features"]["travel_mm"] += 17.0
+        reordered = json.loads(json.dumps(rows))
+        for row in reordered:
+            row["candidates"].reverse()
+        original = ranker.train_model(rows, epochs=80)
+        reversed_candidates = ranker.train_model(reordered, epochs=80)
+        self.assertEqual(original, reversed_candidates)
+        self.assertEqual(original["training"]["dataset_sha256"],
+                         reversed_candidates["training"]["dataset_sha256"])
+
     def test_training_deterministic_and_holdout(self):
         rows = [sample(i) for i in range(12)]
         one = ranker.train_model(rows, epochs=250)
