@@ -157,6 +157,15 @@ l'entraînement et de l'évaluation. Les seuils sont des **valeurs de
 recherche**, pas des limites textiles validées. Le résultat est uniquement
 consultatif : `applied: false`, sans mutation OSP/DST.
 
+Un garde-fou supplémentaire rejette toute recommandation du modèle
+**strictement dominée au sens de Pareto** par un autre candidat admissible :
+couverture, détails et cohérence d'angle au moins aussi bons, et points
+courts, surdensité, découvert, trajets, coupes et points au plus aussi
+coûteux, avec au moins une amélioration stricte. Un compromis réel entre
+deux métriques n'est pas rejeté. En cas de domination, le choix consultatif
+revient à la baseline heuristique, avec `reason: pareto_dominated` et
+`dominated_by`. Cette règle ne remplace pas un essai textile.
+
 Les métriques de couverture et de brodabilité doivent être **mesurées** sur
 des candidats générés par le moteur C++ ; elles ne sont pas produites par ce
 script. Aucun gain de retouche n'est démontré à ce stade.
