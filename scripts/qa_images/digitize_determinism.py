@@ -22,6 +22,10 @@ def parse_cli_json(stdout: str) -> dict:
     lines = stdout.splitlines()
     for i, line in enumerate(lines):
         if line.lstrip().startswith("{"):
+            # Only known OpenCV startup diagnostics may precede the JSON.
+            # Unrelated stdout is a CLI protocol violation, not ignorable noise.
+            if any(not previous.lstrip().startswith(("[ INFO:", "[ WARN:", "[ ERROR:", "[ DEBUG:")) for previous in lines[:i]):
+                raise ValueError("Unexpected stdout before CLI JSON")
             value = json.loads("\n".join(lines[i:]))
             if not isinstance(value, dict):
                 raise ValueError("CLI JSON must be an object")
