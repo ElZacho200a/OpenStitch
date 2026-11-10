@@ -24,6 +24,29 @@ Item {
                                   : internal.loadedId === "points" ? pointsLoader.item : null
     readonly property var canvas: space ? space.canvas : null
     readonly property string loadedId: internal.loadedId
+    signal stageFeedback(string message, string tone)
+    property var lastStageStates: ({})
+
+    // Only publish completion when a real workspace stage state changes.
+    function updateStageFeedback() {
+        const previous = lastStageStates
+        const next = ({})
+        const spaces = workspace.spaces
+        for (let i = 0; i < spaces.length; ++i) {
+            const stage = spaces[i]
+            next[stage.id] = stage.state
+            if (previous[stage.id] !== undefined && previous[stage.id] !== stage.state) {
+                if (stage.state === "upToDate")
+                    stageFeedback(qsTr("%1 : résultat à jour").arg(stage.label), "success")
+                else if (stage.state === "stale")
+                    stageFeedback(qsTr("%1 : résultat obsolète").arg(stage.label), "warning")
+                else if (stage.state === "blocked" && stage.detail && stage.detail.length > 0
+                         && stage.detail.toLowerCase().indexOf("cours") < 0)
+                    stageFeedback(qsTr("%1 : %2").arg(stage.label).arg(stage.detail), "warning")
+            }
+        }
+        lastStageStates = next
+    }
 
     readonly property var sources: ({
         "image": "ImageSpace.qml",
@@ -96,8 +119,12 @@ Item {
     Connections {
         target: host.workspace
         function onCurrentChanged() { host.switchTo(host.workspace.current) }
+        function onSpacesChanged() { host.updateStageFeedback() }
     }
-    Component.onCompleted: switchTo(workspace.current)
+    Component.onCompleted: {
+        updateStageFeedback()
+        switchTo(workspace.current)
+    }
 
     Shortcut { sequence: "Ctrl+1"; onActivated: host.workspace.setCurrent("image") }
     Shortcut { sequence: "Ctrl+2"; onActivated: host.workspace.setCurrent("segmentation") }
@@ -115,11 +142,13 @@ Item {
             Layout.preferredHeight: 40
             color: Theme.surface
             RowLayout {
+                id: tabsRow
                 anchors.fill: parent
                 anchors.leftMargin: 18
                 anchors.rightMargin: 18
                 spacing: 3
                 Repeater {
+                    id: tabsRepeater
                     // Modèle = nombre d'espaces : les onglets ne sont pas recréés quand un état change.
                     model: 4
                     delegate: Controls.AbstractButton {
@@ -137,10 +166,13 @@ Item {
                         Accessible.description: modelData.detail + ". " + qsTr("Raccourci ") + modelData.shortcut
                         onClicked: host.workspace.setCurrent(modelData.id)
                         background: Rectangle {
-                            color: tab.current ? Theme.accentSoft : tab.hovered ? Theme.raised : "transparent"
+                            color: tab.current ? Theme.accentSoft : tab.down ? Theme.hover
+                                   : tab.hovered ? Theme.raised : "transparent"
                             radius: Theme.radius
-                            border.width: tab.activeFocus ? 1 : 0
+                            border.width: tab.activeFocus ? 2 : 0
                             border.color: Theme.accent
+                            Behavior on color { ColorAnimation { duration: Theme.animationMs } }
+                            Behavior on border.width { NumberAnimation { duration: Theme.feedbackFastMs } }
                         }
                         contentItem: Row {
                             spacing: 8
@@ -155,6 +187,8 @@ Item {
                                 color: badgeState === "empty" ? "transparent" : host.stateColor(badgeState)
                                 border.width: 2
                                 border.color: host.stateColor(badgeState)
+                                Behavior on color { ColorAnimation { duration: Theme.feedbackSlowMs } }
+                                Behavior on border.color { ColorAnimation { duration: Theme.feedbackSlowMs } }
                             }
                             Text {
                                 anchors.verticalCenter: parent.verticalCenter
@@ -181,6 +215,21 @@ Item {
                     font.pixelSize: Theme.captionSize
                     font.letterSpacing: 1.1
                 }
+            }
+            // Single underline moves between tabs, including Ctrl+1..4 navigation.
+            Rectangle {
+                objectName: "activeSpaceUnderline"
+                z: 2
+                anchors.bottom: parent.bottom
+                anchors.bottomMargin: 2
+                height: 3
+                radius: height / 2
+                color: Theme.accent
+                readonly property var currentTab: tabsRepeater.itemAt(host.workspace.currentIndex)
+                x: currentTab ? tabsRow.x + currentTab.x + 6 : 18
+                width: currentTab ? Math.max(12, currentTab.width - 12) : 0
+                Behavior on x { NumberAnimation { duration: Theme.feedbackSlowMs; easing.type: Easing.InOutCubic } }
+                Behavior on width { NumberAnimation { duration: Theme.feedbackSlowMs; easing.type: Easing.InOutCubic } }
             }
         }
 

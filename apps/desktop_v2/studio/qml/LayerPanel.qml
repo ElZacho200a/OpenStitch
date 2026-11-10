@@ -44,6 +44,7 @@ ColumnLayout {
             text: qsTr("Supprimer")
             implicitHeight: 28
             enabled: editor.layers.length > 1 && panel.layerId.length > 0
+            disabledReason: qsTr("Le dernier calque du document ne peut pas être supprimé.")
             onClicked: { editor.removeLayer(panel.layerId); objectTree.currentLayer = "" }
         }
         StudioButton {

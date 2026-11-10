@@ -160,6 +160,20 @@ Item {
                 font.pixelSize: Theme.smallSize
             }
 
+            Text {
+                objectName: "inspectorSearchEmpty"
+                Layout.fillWidth: true
+                visible: root.ctl && root.ctl.query.trim().length > 0
+                         && root.layoutModel.length === 0 && root.ctl.totalFieldCount > 0
+                text: qsTr("Aucun réglage ne correspond à cette recherche.")
+                color: Theme.warning
+                wrapMode: Text.WordWrap
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.smallSize
+                Accessible.role: Accessible.StaticText
+                Accessible.name: text
+            }
+
             Repeater {
                 model: root.layoutModel
                 delegate: ParamSection {
