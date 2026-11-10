@@ -111,6 +111,24 @@ QRectF GpuCanvas::selectionRect() const {
     return QRectF(QPointF(a.x, a.y), QPointF(b.x, b.y)).normalized();
 }
 
+QRectF GpuCanvas::hoverRect() const {
+    if (!scene_ || !hoveredObjectId_ || !layers_.stitches) {
+        return {};
+    }
+    // Selected objects already have their own outline and handles.
+    if (std::ranges::find(selection_,
+                          Target{TargetKind::EmbroideryObject, *hoveredObjectId_}) != selection_.end()) {
+        return {};
+    }
+    const auto bounds = scene_->boundsOf(*hoveredObjectId_);
+    if (!bounds) {
+        return {};
+    }
+    const auto a = camera_.worldToScreen({bounds->x0, bounds->y0});
+    const auto b = camera_.worldToScreen({bounds->x1, bounds->y1});
+    return QRectF(QPointF(a.x, a.y), QPointF(b.x, b.y)).normalized();
+}
+
 QPointF GpuCanvas::handlePoint(int handle, const QRectF& box) const {
     const double cx = box.center().x();
     const double cy = box.center().y();
@@ -330,6 +348,8 @@ void GpuCanvas::setScene(std::shared_ptr<const StudioSceneSnapshot> scene) {
         return;
     }
     scene_ = std::move(scene);
+    hoveredObjectId_.reset();
+    emit overlayChanged();
     if (fitPending_ && scene_) {
         fitDesign();
     }
@@ -342,6 +362,7 @@ void GpuCanvas::setSelection(std::vector<Target> selection) {
     }
     selection_ = std::move(selection);
     ++selectionRevision_;
+    if (hoveredObjectId_) emit overlayChanged();
     update();
 }
 
@@ -350,6 +371,10 @@ void GpuCanvas::setPanMode(bool value) {
         return;
     }
     panMode_ = value;
+    if (value && hoveredObjectId_) {
+        hoveredObjectId_.reset();
+        emit overlayChanged();
+    }
     setCursor(value ? Qt::OpenHandCursor : Qt::ArrowCursor);
     emit panModeChanged();
 }
@@ -972,14 +997,25 @@ void GpuCanvas::mouseDoubleClickEvent(QMouseEvent* event) {
 }
 
 void GpuCanvas::hoverMoveEvent(QHoverEvent* event) {
+    // Preselection is UI-only; the scene's spatial index answers the hit test.
+    // Emit only when the hovered object changes, never for every pointer pixel.
+    const auto setHover = [this](std::optional<std::uint64_t> id) {
+        if (hoveredObjectId_ != id) {
+            hoveredObjectId_ = id;
+            emit overlayChanged();
+        }
+    };
     if (gesture_ != Gesture::None || panMode_ || spaceDown_) {
+        setHover(std::nullopt);
         return;
     }
     if (digitize_ && digitize_->capturesMouse()) {
+        setHover(std::nullopt);
         setCursor(Qt::CrossCursor);
         return;
     }
     if (tools_ && tools_->capturesMouse()) {
+        setHover(std::nullopt);
         setCursor(Qt::CrossCursor);
         if (tools_->busy()) {
             const auto p = camera_.screenToWorld({event->position().x(), event->position().y()});
@@ -988,11 +1024,30 @@ void GpuCanvas::hoverMoveEvent(QHoverEvent* event) {
         return;
     }
     static constexpr Qt::CursorShape shapes[] = {
-        Qt::SizeFDiagCursor, Qt::SizeVerCursor,   Qt::SizeBDiagCursor,
-        Qt::SizeHorCursor,   Qt::SizeFDiagCursor, Qt::SizeVerCursor,
-        Qt::SizeBDiagCursor, Qt::SizeHorCursor,   Qt::PointingHandCursor};
+        Qt::SizeFDiagCursor, Qt::SizeVerCursor, Qt::SizeBDiagCursor,
+        Qt::SizeHorCursor, Qt::SizeFDiagCursor, Qt::SizeVerCursor,
+        Qt::SizeBDiagCursor, Qt::SizeHorCursor, Qt::PointingHandCursor};
     const int handle = editor_ ? handleAt(event->position()) : -1;
-    setCursor(handle >= 0 ? shapes[handle] : Qt::ArrowCursor);
+    if (handle >= 0) {
+        setHover(std::nullopt);
+        setCursor(shapes[handle]);
+        return;
+    }
+    std::optional<std::uint64_t> hovered;
+    if (scene_ && layers_.stitches && !zoomRectMode_) {
+        const auto p = camera_.screenToWorld({event->position().x(), event->position().y()});
+        hovered = scene_->pick(p.x, p.y, 5.0 / camera_.scale());
+    }
+    setHover(hovered);
+    setCursor(hovered ? Qt::PointingHandCursor : Qt::ArrowCursor);
+}
+
+void GpuCanvas::hoverLeaveEvent(QHoverEvent* event) {
+    if (hoveredObjectId_) {
+        hoveredObjectId_.reset();
+        emit overlayChanged();
+    }
+    QQuickItem::hoverLeaveEvent(event);
 }
 
 void GpuCanvas::keyPressEvent(QKeyEvent* event) {
