@@ -30,9 +30,10 @@ Controls.AbstractButton {
                : button.down ? Theme.raised
                : button.hovered ? Theme.hover
                : button.quiet ? "transparent" : Theme.raised
-        border.width: button.activeFocus || (!button.quiet && !button.emphasized) ? 1 : 0
+        border.width: button.activeFocus ? 2 : (!button.quiet && !button.emphasized ? 1 : 0)
         border.color: button.activeFocus ? Theme.accent : Theme.outline
-        opacity: button.enabled ? 1 : 0.55
+        opacity: button.enabled ? (button.down ? 0.88 : 1) : 0.55
+        Behavior on opacity { NumberAnimation { duration: Theme.animationMs; easing.type: Easing.OutCubic } }
         Behavior on color { ColorAnimation { duration: Theme.animationMs; easing.type: Easing.OutCubic } }
     }
 
