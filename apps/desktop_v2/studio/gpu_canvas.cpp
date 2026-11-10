@@ -1026,9 +1026,9 @@ void GpuCanvas::hoverMoveEvent(QHoverEvent* event) {
         return;
     }
     static constexpr Qt::CursorShape shapes[] = {
-        Qt::SizeFDiagCursor, Qt::SizeVerCursor, Qt::SizeBDiagCursor,
-        Qt::SizeHorCursor, Qt::SizeFDiagCursor, Qt::SizeVerCursor,
-        Qt::SizeBDiagCursor, Qt::SizeHorCursor, Qt::PointingHandCursor};
+        Qt::SizeFDiagCursor, Qt::SizeVerCursor,   Qt::SizeBDiagCursor,
+        Qt::SizeHorCursor,   Qt::SizeFDiagCursor, Qt::SizeVerCursor,
+        Qt::SizeBDiagCursor, Qt::SizeHorCursor,   Qt::PointingHandCursor};
     const int handle = editor_ ? handleAt(event->position()) : -1;
     if (handle >= 0) {
         setHover(std::nullopt);

@@ -199,7 +199,6 @@ private slots:
         QVERIFY2(violations.isEmpty(), qPrintable(violations.join('\n')));
     }
 
-
     // Guards for the shared, accessible feedback contract. Runtime loading of Main.qml is
     // exercised by test_studio_shell; this test also works without a display server.
     void interactionFeedbackContracts() {
@@ -242,10 +241,10 @@ private slots:
         QVERIFY(segmentationQml.contains(QStringLiteral("root.seg.busy")));
         QVERIFY(segmentationQml.contains(QStringLiteral("Theme.reducedMotion")));
         const auto header = readFile(dir + QStringLiteral("../segmentation_space_controller.hpp"));
-        QVERIFY(header.contains(QStringLiteral("Q_PROPERTY(bool busy READ busy NOTIFY stageChanged)")));
+        QVERIFY(
+            header.contains(QStringLiteral("Q_PROPERTY(bool busy READ busy NOTIFY stageChanged)")));
         QVERIFY(header.contains(QStringLiteral("images_.busy() || regions_.busy()")));
         QVERIFY(!host.contains(QStringLiteral("étape bloquée")));
-
     }
 
     void everyStudioComponentIsRegistered() {
