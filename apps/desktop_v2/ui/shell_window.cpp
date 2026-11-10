@@ -2661,8 +2661,15 @@ void ShellWindow::clearGuides() {
 void ShellWindow::setGuideColor(const QColor& color) {
     if (color.isValid()) {
         guideColor_ = color;
+        emit guideColorChanged();
         updateGuides();
     }
+}
+
+void ShellWindow::setGridStepMm(double mm) {
+    gridSpacingMm_ = std::fabs(mm);
+    updateGrid();
+    updateGuides();
 }
 
 void ShellWindow::zoomIn() {
