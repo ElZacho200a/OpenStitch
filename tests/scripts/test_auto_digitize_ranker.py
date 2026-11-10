@@ -376,6 +376,23 @@ class RankerTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "threshold"):
                 ranker.assess_candidates(model, sample(), min_margin=value)
 
+    def test_direct_baseline_metrics_rejects_invalid_labeled_samples(self):
+        # The heuristic path must not bypass the validation performed by rank().
+        invalid_label = sample()
+        invalid_label["preferred_id"] = "missing-candidate"
+        with self.assertRaisesRegex(ValueError, "preferred_id"):
+            ranker.metrics([invalid_label], None)
+
+        invalid_consent = sample(kind="human_confirmed")
+        invalid_consent["provenance"]["opt_in"] = False
+        with self.assertRaisesRegex(ValueError, "opt_in"):
+            ranker.metrics([invalid_consent], None)
+
+        invalid_features = sample()
+        invalid_features["candidates"][0]["features"]["travel_mm"] = float("nan")
+        with self.assertRaisesRegex(ValueError, "nonfinite"):
+            ranker.metrics([invalid_features], None)
+
     def test_ranking_metrics_are_bounded_and_deterministic(self):
         rows = [sample(i) for i in range(8)]
         model = ranker.train_model(rows, epochs=50)
