@@ -385,9 +385,15 @@ def paired_evaluation(rows: list[dict], model: dict) -> dict:
 
 
 def dataset_digest(rows: list[dict]) -> str:
-    canonical = "\n".join(json.dumps(r, sort_keys=True, separators=(",", ":"),
-                                    ensure_ascii=False) for r in rows)
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    # The sample/candidate list order is not part of the training data identity.
+    # Normalize both levels without mutating caller-owned dictionaries.
+    canonical_rows = []
+    for row in sorted(rows, key=lambda r: r["sample_id"]):
+        normalized = dict(row)
+        normalized["candidates"] = sorted(row["candidates"], key=lambda c: c["id"])
+        canonical_rows.append(json.dumps(normalized, sort_keys=True,
+                                         separators=(",", ":"), ensure_ascii=False))
+    return hashlib.sha256("\n".join(canonical_rows).encode("utf-8")).hexdigest()
 
 
 def train_model(rows: list[dict], epochs: int = 500) -> dict:
