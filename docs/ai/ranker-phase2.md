@@ -123,6 +123,24 @@ par sous-ensemble, taux `top1_accuracy` de validation et baseline de
 règles simples. La validation initiale est un **holdout interne**, à compléter
 par une **évaluation externe sur de nouveaux motifs** et des tests textiles.
 
+## Comparaison expérimentale de candidats
+
+Après avoir entraîné un modèle, fournir un exemple JSON contenant **plusieurs
+candidats du même objet** et leurs métriques **réellement mesurées** :
+
+~~~bash
+python3 scripts/auto_digitize_ranker.py compare ./local_model.json ./query.json
+~~~
+
+Le résultat `openstitch.ai.candidate-comparison/1` indique
+`model_choice`, `heuristic_choice`, `agree`, les deux scores par
+candidat et `applied: false`. Les scores ne sont pas des probabilités.
+**Ce lot n'invoque pas encore le moteur C++ et ne produit pas les mesures** :
+le producteur C++ doit encore exposer des alternatives et les métriques
+effectives (couverture, détails, points, trajets et coupes) sans valeur
+synthétique. Ne pas utiliser une décision du modèle pour modifier un OSP/DST
+avant l'intégration et les garde-fous de brodabilité.
+
 ## Intégration future : contrats et dépendances
 
 1. **Producteur de candidats (L1)** : intégrer un adaptateur C++/CLI de
