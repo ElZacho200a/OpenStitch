@@ -244,12 +244,18 @@ Rectangle {
                     id: row
                     required property var modelData
                     objectName: "threadRow" + modelData.index
+                    activeFocusOnTab: true
+                    Accessible.role: Accessible.ListItem
+                    Accessible.name: modelData.label
+                    Accessible.selected: panel.current === modelData.index
+                    Keys.onReturnPressed: panel.currentId = row.modelData.id
+                    Keys.onSpacePressed: panel.currentId = row.modelData.id
                     Layout.fillWidth: true
                     implicitHeight: 32
                     radius: Theme.radius
-                    color: panel.current === modelData.index ? Theme.accentSoft : (modelData.selected ? Theme.raised : threadRowMouse.containsMouse ? Theme.hover : "transparent")
-                    border.width: panel.current === modelData.index ? 1 : 0
-                    border.color: Theme.accent
+                    color: panel.current === modelData.index ? Theme.accentSoft : (modelData.selected ? Theme.raised : (row.activeFocus || threadRowMouse.containsMouse) ? Theme.hover : "transparent")
+                    border.width: panel.current === modelData.index || row.activeFocus ? 1 : 0
+                    border.color: row.activeFocus ? Theme.info : Theme.accent
                     Behavior on color { ColorAnimation { duration: Theme.animationMs } }
                     Behavior on border.width { NumberAnimation { duration: Theme.feedbackFastMs } }
                     Rectangle {
