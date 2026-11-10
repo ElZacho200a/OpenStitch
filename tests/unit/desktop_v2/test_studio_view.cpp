@@ -102,6 +102,7 @@ private slots:
     void chartImportAndOwnedThreadAssignment();
     void displayFiltersByTypeColourAndSize();
     void statusEventsDoNotReloadThreadsFiltersOrTree();
+    void statisticsAndFidelityOfTheEmbroidery();
     void initTestCase();
     void mainQmlHostsEveryPanel();
 };
@@ -957,6 +958,38 @@ void StudioViewTest::statusEventsDoNotReloadThreadsFiltersOrTree() {
     QTRY_VERIFY(threads.count() >= 1); // le document a changé
     QVERIFY(view.count() >= 1);
     QVERIFY(tree.count() >= 1);
+}
+
+// Statistiques de broderie (V1) : chiffres de la séquence effective ; fidélité à l'image : mesure
+// asynchrone, déclarée périmée dès que le motif change, effaçable.
+void StudioViewTest::statisticsAndFidelityOfTheEmbroidery() {
+    Rig rig;
+    const auto stats = rig.analysis.statistics();
+    QVERIFY(stats.value("ready").toBool());
+    QVERIFY(stats.value("stitches").toULongLong() > 0);
+    QVERIFY(stats.value("widthMm").toDouble() > 0.0);
+    QVERIFY(stats.value("threadM").toDouble() > 0.0);
+    QVERIFY(stats.value("text").toString().contains(QStringLiteral("Points :")));
+    QVERIFY(stats.value("text").toString().contains(QStringLiteral("Fil cousu estimé")));
+
+    QVERIFY(!rig.analysis.fidelityReady());
+    rig.analysis.measureFidelity();
+    QTRY_VERIFY_WITH_TIMEOUT(rig.analysis.fidelityReady() || !rig.analysis.lastOk(), 30'000);
+    if (rig.analysis.lastOk()) {
+        QVERIFY(!rig.analysis.fidelityText().isEmpty());
+        QVERIFY(!rig.analysis.fidelityStale());
+        const auto id = rig.session.project().embroidery_objects.front().id.value;
+        QVERIFY(rig.view.setColourVisible(
+            QColor(rig.session.project().embroidery_objects.front().rgb[0],
+                   rig.session.project().embroidery_objects.front().rgb[1],
+                   rig.session.project().embroidery_objects.front().rgb[2])
+                .name(),
+            false));
+        Q_UNUSED(id);
+        QTRY_VERIFY(rig.analysis.fidelityStale());
+        rig.analysis.clearFidelity();
+        QVERIFY(!rig.analysis.fidelityReady());
+    }
 }
 
 QTEST_MAIN(StudioViewTest)

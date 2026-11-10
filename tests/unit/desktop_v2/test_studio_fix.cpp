@@ -10,12 +10,15 @@
 
 #include <filesystem>
 
+#include "analysis_controller.hpp"
 #include "digitize_pipeline.hpp"
 #include "display_filters.hpp"
 #include "fix_controller.hpp"
 #include "openstitch/commands/finishing_commands.hpp"
 #include "studio_controller.hpp"
 #include "vector_space_controller.hpp"
+#include "view_controller.hpp"
+#include <QTemporaryDir>
 
 using namespace openstitch;
 using namespace openstitch::desktop_v2;
@@ -222,6 +225,22 @@ private slots:
         QVERIFY(!hideSmallerThan(rig.session, 25.0).ok); // déjà masquées : rien à faire
         QVERIFY(rig.session.undo());
         QCOMPARE(hiddenObjectCount(rig.session.project()), std::size_t{0});
+    }
+    // Fidélité à l'image sur une vraie image numérisée : la mesure aboutit, avec son texte et sa
+    // carte d'erreurs.
+    void fidelityToTheSourceImageIsMeasured() {
+        Rig rig;
+        rig.load();
+        QTemporaryDir dir;
+        const std::filesystem::path cfg(dir.path().toStdWString());
+        ViewController view(rig.studio, cfg);
+        AnalysisController analysis(rig.studio, view, cfg);
+        analysis.measureFidelity();
+        QTRY_VERIFY_WITH_TIMEOUT(analysis.fidelityReady() || !analysis.lastOk(), 90'000);
+        QVERIFY2(analysis.fidelityReady(), qPrintable(analysis.message()));
+        QVERIFY(!analysis.fidelityText().isEmpty());
+        QVERIFY(analysis.fidelityMapUrl().startsWith(QStringLiteral("data:image/png;base64,")));
+        QVERIFY(!analysis.fidelityStale());
     }
 };
 
