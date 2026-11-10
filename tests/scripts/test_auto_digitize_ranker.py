@@ -126,6 +126,49 @@ class RankerTest(unittest.TestCase):
         self.assertEqual({c["id"] for c in result["ranking"]},
                          {"approved", "rejected"})
 
+    def test_assessment_safety_gates_reject_unsafe_candidates(self):
+        row = sample()
+        row["candidates"][0]["features"]["coverage_ratio"] = 0.1
+        model = ranker.train_model([sample(i) for i in range(8)], epochs=50)
+        result = ranker.assess_candidates(model, row)
+        self.assertEqual(result["decision"], "fallback")
+        self.assertEqual(result["reason"], "single_admissible_candidate")
+        self.assertEqual(result["rejected"][0]["id"], "approved")
+        self.assertFalse(result["applied"])
+
+    def test_assessment_abstains_when_all_candidates_unsafe(self):
+        row = sample()
+        for candidate in row["candidates"]:
+            candidate["features"]["coverage_ratio"] = 0.1
+        model = ranker.train_model([sample(i) for i in range(8)], epochs=50)
+        result = ranker.assess_candidates(model, row)
+        self.assertEqual(result["decision"], "abstain")
+        self.assertIsNone(result["selected_id"])
+
+    def test_assessment_low_margin_uses_baseline(self):
+        row = sample()
+        model = ranker.train_model([sample(i) for i in range(8)], epochs=50)
+        result = ranker.assess_candidates(model, row, min_margin=1.0)
+        self.assertEqual(result["decision"], "fallback")
+        self.assertEqual(result["selected_id"], result["heuristic_choice"])
+        self.assertEqual(result["reason"], "single_admissible_candidate")
+
+    def test_assessment_rejects_invalid_threshold(self):
+        model = ranker.train_model([sample(i) for i in range(8)], epochs=50)
+        for value in (float("nan"), -1, 2, True):
+            with self.assertRaisesRegex(ValueError, "threshold"):
+                ranker.assess_candidates(model, sample(), min_margin=value)
+
+    def test_ranking_metrics_are_bounded_and_deterministic(self):
+        rows = [sample(i) for i in range(8)]
+        model = ranker.train_model(rows, epochs=50)
+        first = ranker.ranking_metrics(rows, model)
+        self.assertEqual(first, ranker.ranking_metrics(list(reversed(rows)), model))
+        self.assertEqual(first["top_k_accuracy"], 1.0)
+        self.assertEqual(first["mean_reciprocal_rank"], 1.0)
+        with self.assertRaisesRegex(ValueError, "positive"):
+            ranker.ranking_metrics(rows, model, k=0)
+
     def test_cli_validate_train_rank_and_no_overwrite(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
