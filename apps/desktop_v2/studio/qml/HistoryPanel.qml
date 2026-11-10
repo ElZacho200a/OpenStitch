@@ -59,7 +59,8 @@ Item {
                                 focusPolicy: Qt.StrongFocus
                                 onClicked: history.jumpTo(modelData.index)
                                 background: Rectangle {
-                                    color: parent.highlighted ? Theme.accentSoft : parent.hovered ? Theme.raised : "transparent"
+                                    color: parent.highlighted ? Theme.accentSoft : parent.hovered ? Theme.hover : "transparent"
+                    Behavior on color { ColorAnimation { duration: Theme.animationMs } }
                                     border.width: parent.activeFocus ? 1 : 0
                                     border.color: Theme.accent
                                     radius: Theme.radius
