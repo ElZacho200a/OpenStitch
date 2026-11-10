@@ -390,6 +390,14 @@ class RankerTest(unittest.TestCase):
         self.assertEqual(result["selected_id"], winner["id"])
         self.assertFalse(result["applied"])
 
+    def test_quality_pareto_rejects_invalid_tolerance(self):
+        better = candidate("better", "tatami", True)
+        worse = candidate("worse", "auto_satin", True)
+        for tolerance in (float("nan"), float("inf"), -0.1, True, "0.01"):
+            with self.subTest(tolerance=tolerance):
+                with self.assertRaisesRegex(ValueError, "tolerance"):
+                    ranker.dominates_quality(better, worse, tolerance=tolerance)
+
     def test_quality_pareto_does_not_reject_tradeoff(self):
         good = candidate("good", "tatami", True)
         tradeoff = candidate("tradeoff", "auto_satin", True)
