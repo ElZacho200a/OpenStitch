@@ -105,8 +105,13 @@ private:
         std::vector<std::uint64_t> ids;
         std::string typeId; // common type id ("" when mixed or empty)
         bool typeMixed{false};
+        // Objects grouped by stitch type (one group when the type is common, several when mixed).
+        std::vector<std::pair<std::string, std::vector<std::uint64_t>>> groups;
     };
     [[nodiscard]] Selection selection() const;
+    // Settings of the selection: the type's own table, or - for mixed types - the scalar
+    // settings every type has in common (same key, kind and options; range intersected).
+    [[nodiscard]] std::vector<ParamSpec> specsOf(const Selection& selection) const;
     [[nodiscard]] QVariantMap fieldMap(const Selection& selection, const ParamSpec& spec) const;
     [[nodiscard]] std::vector<ParamSpec> visibleSpecs(const Selection& selection) const;
     QString applyPairs(const Selection& selection,

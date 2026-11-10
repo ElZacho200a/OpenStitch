@@ -9,6 +9,7 @@
 #include <QTemporaryDir>
 #include <QtTest/QtTest>
 
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <memory>
@@ -369,11 +370,40 @@ void StudioInspectorTest::mixedValuesAndMultiEdit() {
     QVERIFY(session.undo());
     QVERIFY(std::abs(*readParam(object(session, a), "row_spacing_mm") - 0.5) < 1e-6);
     QVERIFY(std::abs(*readParam(object(session, b), "row_spacing_mm") - 0.7) > 0.05); // original
-    // A selection mixing types shows no fields and refuses an edit.
-    QVERIFY(session.applyBatch(batchSetStitchType({b}, "running"), "Type").committed);
+    // A selection mixing types exposes ONLY the settings every type has in common, and an edit
+    // reaches each object through its own type, in one undo step.
+    QVERIFY(session.applyBatch(batchSetStitchType({b}, "directional"), "Type").committed);
     QVERIFY(inspector.typeMixed());
-    QCOMPARE(inspector.fields().size(), 0);
-    QVERIFY(!inspector.setParam(QStringLiteral("row_spacing_mm"), 0.4).isEmpty());
+    QVERIFY(inspector.fields().size() > 0);
+    // A tatami-only setting is hidden; the shared ones stay.
+    std::string tatamiOnly;
+    for (const auto& spec : allParamSpecs("tatami")) {
+        const auto other = allParamSpecs("directional");
+        if (spec.kind != ParamKind::Point && spec.kind != ParamKind::List &&
+            std::ranges::none_of(other, [&](const auto& o) { return o.key == spec.key; })) {
+            tatamiOnly = std::string(spec.key);
+            break;
+        }
+    }
+    QVERIFY(!tatamiOnly.empty());
+    QVERIFY(fieldOf(inspector, QString::fromStdString(tatamiOnly)).isEmpty());
+    QVERIFY(!fieldOf(inspector, QStringLiteral("pull_compensation_mm")).isEmpty());
+    const auto mixedDepth = session.undoNames().size();
+    QVERIFY(inspector.setParam(QStringLiteral("pull_compensation_mm"), 0.3).isEmpty());
+    QCOMPARE(session.undoNames().size(), mixedDepth + 1);
+    QVERIFY(std::abs(*readParam(object(session, a), "pull_compensation_mm") - 0.3) < 1e-6);
+    QVERIFY(std::abs(*readParam(object(session, b), "pull_compensation_mm") - 0.3) < 1e-6);
+    QVERIFY(!fieldOf(inspector, QStringLiteral("pull_compensation_mm"))
+                 .value(QStringLiteral("mixed"))
+                 .toBool());
+    // Reset sends each type back to its own default.
+    QVERIFY(inspector.resetParam(QStringLiteral("pull_compensation_mm")).isEmpty());
+    QVERIFY(fieldOf(inspector, QStringLiteral("pull_compensation_mm"))
+                .value(QStringLiteral("isDefault"))
+                .toBool());
+    QVERIFY(inspector.resetAll().isEmpty());
+    // A setting only one type has is still refused.
+    QVERIFY(!inspector.setParam(QString::fromStdString(tatamiOnly), 0.4).isEmpty());
 }
 
 void StudioInspectorTest::resetToDefaults() {
