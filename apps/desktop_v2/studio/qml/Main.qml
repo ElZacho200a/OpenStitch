@@ -94,6 +94,10 @@ Window {
         studio.redo()
         showFeedback(qsTr("Rétabli : %1").arg(label), "info")
     }
+    function duplicateWithFeedback() {
+        if (editor.duplicate(5))
+            showFeedback(qsTr("Sélection dupliquée"), "success")
+    }
     Timer { id: workspaceNoticeTimer; interval: 1400; onTriggered: window.workspaceNotice = "" }
 
 
@@ -221,7 +225,7 @@ Window {
         case "cmd.file.import-machine": filePanel.importMachineDialog(); break
         case "cmd.edit.undo": undoWithFeedback(); break
         case "cmd.edit.redo": redoWithFeedback(); break
-        case "cmd.edit.duplicate": editor.duplicate(5); break
+        case "cmd.edit.duplicate": duplicateWithFeedback(); break
         case "cmd.edit.delete": deleteSelection(); break
         case "cmd.edit.group": editor.group(""); break
         case "cmd.edit.ungroup": editor.ungroup(); break
@@ -324,7 +328,7 @@ Window {
                  (studio.hasSelection || (toolController !== null && toolController.selectedNodeCount > 0))
         onActivated: window.deleteSelection()
     }
-    Shortcut { sequence: "Ctrl+D"; enabled: studio.hasSelection; onActivated: editor.duplicate(5) }
+    Shortcut { sequence: "Ctrl+D"; enabled: studio.hasSelection; onActivated: window.duplicateWithFeedback() }
     Shortcut { sequence: "Ctrl+G"; enabled: editor.selectedCount > 1; onActivated: editor.group("") }
     Shortcut { sequence: "Ctrl+Shift+G"; enabled: studio.hasSelection; onActivated: editor.ungroup() }
     Shortcut { sequence: "Ctrl+R"; enabled: studio.hasSelection; onActivated: editor.rotate90(true) }
