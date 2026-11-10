@@ -255,17 +255,15 @@ void StudioImageTest::imageSpaceDrivesThePrepJourney() {
     // F07-04: changing a slider after a completed preview invalidates the
     // old snapshot. It must never silently remain visible for new parameters.
     QVERIFY(prep->setProperty("currentIndex", 0));
-    QVERIFY(QMetaObject::invokeMethod(
-        prep, "setValue", Qt::DirectConnection,
-        Q_ARG(QVariant, QVariant(QStringLiteral("brightness"))),
-        Q_ARG(QVariant, QVariant(12.0))));
+    QVERIFY(QMetaObject::invokeMethod(prep, "setValue", Qt::DirectConnection,
+                                      Q_ARG(QVariant, QVariant(QStringLiteral("brightness"))),
+                                      Q_ARG(QVariant, QVariant(12.0))));
     QVERIFY(press(window, "prepPreviewButton"));
     QTRY_VERIFY_WITH_TIMEOUT(images.prepPreviewActive(), 20'000);
     const auto beforeParameterChange = session.project().ops.size();
-    QVERIFY(QMetaObject::invokeMethod(
-        prep, "setValue", Qt::DirectConnection,
-        Q_ARG(QVariant, QVariant(QStringLiteral("brightness"))),
-        Q_ARG(QVariant, QVariant(22.0))));
+    QVERIFY(QMetaObject::invokeMethod(prep, "setValue", Qt::DirectConnection,
+                                      Q_ARG(QVariant, QVariant(QStringLiteral("brightness"))),
+                                      Q_ARG(QVariant, QVariant(22.0))));
     QTRY_VERIFY(!images.prepPreviewActive());
     QCOMPARE(session.project().ops.size(), beforeParameterChange);
 

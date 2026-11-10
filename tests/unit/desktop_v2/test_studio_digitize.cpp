@@ -603,8 +603,7 @@ void StudioDigitizeTest::mainQmlHostsDigitizePanels() {
     const auto rung = [](double x, double y0, double y1) {
         return QVariantMap{{"ax", x}, {"ay", y0}, {"bx", x}, {"by", y1}};
     };
-    const auto satinId = satin.createFromRungs(
-        {rung(-10, 0, 4), rung(0, 1, 5), rung(10, 0, 4)});
+    const auto satinId = satin.createFromRungs({rung(-10, 0, 4), rung(0, 1, 5), rung(10, 0, 4)});
     QVERIFY(!satinId.isEmpty());
     studio.selectObject(satinId);
     QTRY_VERIFY(satin.isSatin());

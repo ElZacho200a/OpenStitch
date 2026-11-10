@@ -431,8 +431,8 @@ private slots:
         QVERIFY(palette->setProperty("paletteMergeAdjacent", false));
         QTRY_COMPARE(distance->property("value").toInt(), 25);
         QTRY_VERIFY(!adjacent->property("checked").toBool());
-        const auto expectedPreview = rig.regions.previewReduction(
-            palette->property("paletteColors").toInt(), 25, false);
+        const auto expectedPreview =
+            rig.regions.previewReduction(palette->property("paletteColors").toInt(), 25, false);
         QTRY_COMPARE(preview->property("p").toMap().value("after").toInt(),
                      expectedPreview.value("after").toInt());
         rig.regions.selectAtPixel(20, 20);
@@ -452,10 +452,9 @@ private slots:
         const auto beforeTargetMerge = rig.session.undoNames().size();
         QVERIFY(rig.press("regionChooseMergeTarget"));
         QTRY_VERIFY(palette->property("choosingMergeTarget").toBool());
-        QVERIFY(QMetaObject::invokeMethod(
-            palette, "tappedRegion", Qt::DirectConnection,
-            Q_ARG(QVariant, QVariant(destinationId)),
-            Q_ARG(QVariant, QVariant(false))));
+        QVERIFY(QMetaObject::invokeMethod(palette, "tappedRegion", Qt::DirectConnection,
+                                          Q_ARG(QVariant, QVariant(destinationId)),
+                                          Q_ARG(QVariant, QVariant(false))));
         QCOMPARE(rig.session.undoNames().size(), beforeTargetMerge + 1);
         QTRY_VERIFY(!palette->property("choosingMergeTarget").toBool());
         QVERIFY(rig.session.undo());
