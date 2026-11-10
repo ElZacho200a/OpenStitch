@@ -65,6 +65,7 @@ def verify(cli: Path, image: Path, *, runner=subprocess.run, timeout: int = 120)
             if len(data) <= 512 or (len(data) - 512) % 3 != 0 or not data.startswith(b"LA:"):
                 failures.append(f"pass-{index}:invalid-dst-envelope")
                 break
+            report = None  # Do not reuse a previous pass's diagnostics on parse failure.
             try:
                 report = parse_cli_json(completed.stdout)
                 n = report["stitches"]
@@ -72,7 +73,7 @@ def verify(cli: Path, image: Path, *, runner=subprocess.run, timeout: int = 120)
                     raise ValueError("stitches must be a nonnegative JSON integer")
             except (ValueError, TypeError, KeyError, json.JSONDecodeError):
                 # Preserve bounded, non-sensitive CLI contract evidence in CI logs.
-                observed = locals().get("report")
+                observed = report
                 if isinstance(observed, dict):
                     value = observed.get("stitches", "<missing>")
                     detail = {"pass": index, "type": type(value).__name__,
