@@ -345,6 +345,15 @@ def dataset_digest(rows: list[dict]) -> str:
 
 
 def train_model(rows: list[dict], epochs: int = 500) -> dict:
+    """Validate even in-process callers, not just the JSONL CLI boundary."""
+    if not rows:
+        fail("no labeled samples")
+    seen = set()
+    for row in rows:
+        check_sample(row)
+        if row["sample_id"] in seen:
+            fail("duplicate sample_id")
+        seen.add(row["sample_id"])
     rows = sorted(rows, key=lambda row: row["sample_id"])
     train, validation = split_by_motif(rows)
     model = {"schema": MODEL_SCHEMA, "feature_names": list(FEATURE_NAMES),
