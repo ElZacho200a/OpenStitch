@@ -346,6 +346,19 @@ QString RegionController::mergeSelected() {
                   QStringLiteral("Régions fusionnées."));
 }
 
+QString RegionController::mergeSelectedInto(double target) {
+    if (selected_.size() != 1) {
+        const auto text = QStringLiteral("Sélectionnez une seule région source.");
+        setMessage(text, true);
+        return text;
+    }
+    // The target keeps its region ID and colour; the source is absorbed in
+    // one undoable document command, rather than merging into an arbitrary
+    // first neighbour.
+    return report(mergeRegionInto(studio_.session(), idOf(target), selected_.front()),
+                  QStringLiteral("Région fusionnée dans la région cible."));
+}
+
 QString RegionController::mergeWithNeighbour(double id) {
     const auto region = idOf(id);
     const auto neighbours = neighbourRegions(studio_.session().project(), region);
