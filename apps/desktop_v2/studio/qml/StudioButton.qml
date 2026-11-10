@@ -6,6 +6,7 @@ import "."
 Controls.AbstractButton {
     id: button
     property string iconName: ""
+    property real iconRotation: 0
     property string tooltip: ""
     property string disabledReason: ""
     property string shortcutLabel: ""
@@ -52,6 +53,8 @@ Controls.AbstractButton {
             anchors.centerIn: parent
             StudioIcon {
                 name: button.iconName
+                rotation: button.iconRotation
+                Behavior on rotation { NumberAnimation { duration: Theme.feedbackSlowMs } }
                 color: button.contentColor
                 visible: name.length > 0
                 anchors.verticalCenter: parent.verticalCenter
