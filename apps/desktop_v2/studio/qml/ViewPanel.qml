@@ -235,6 +235,41 @@ Item {
                             StudioButton { objectName: "addHGuideButton"; text: qsTr("Guide horizontal"); enabled: hub.validGuidePosition(guideField.text); onClicked: view.addGuide(false, hub.parseMm(guideField.text)) }
                             StudioButton { objectName: "clearGuidesButton"; text: qsTr("Effacer les guides"); enabled: view.guides.length > 0; onClicked: view.clearGuides() }
                         }
+                        Flow {
+                            Layout.fillWidth: true
+                            spacing: 4
+                            visible: view.guides.length > 0
+                            Repeater {
+                                model: view.guides
+                                delegate: StudioButton {
+                                    required property var modelData
+                                    required property int index
+                                    objectName: "removeGuide_" + index
+                                    quiet: true
+                                    text: (modelData.vertical ? qsTr("V ") : qsTr("H ")) + modelData.positionMm.toFixed(1) + qsTr(" mm  ✕")
+                                    tooltip: qsTr("Supprimer ce guide")
+                                    onClicked: view.removeGuide(index)
+                                }
+                            }
+                        }
+                        Flow {
+                            Layout.fillWidth: true
+                            spacing: 4
+                            Text { text: qsTr("Couleur des guides"); color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize }
+                            Repeater {
+                                model: [ { name: qsTr("Cyan"), color: "#00bcd4" }, { name: qsTr("Rouge"), color: "#e53935" },
+                                         { name: qsTr("Vert"), color: "#43a047" }, { name: qsTr("Magenta"), color: "#d81b60" } ]
+                                delegate: StudioButton {
+                                    required property var modelData
+                                    required property int index
+                                    objectName: "guideColor_" + index
+                                    quiet: true
+                                    text: modelData.name
+                                    tooltip: qsTr("Colorer les guides en %1").arg(modelData.name.toLowerCase())
+                                    onClicked: view.setGuideColor(modelData.color)
+                                }
+                            }
+                        }
                         Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Theme.divider }
                         SectionLabel { text: qsTr("ZOOM") }
                         Flow {

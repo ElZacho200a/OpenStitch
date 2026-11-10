@@ -576,6 +576,17 @@ void StudioViewTest::mainQmlHostsEveryPanel() {
     QVERIFY(press(window, "addVGuideButton"));
     QCOMPARE(view.guides().size(), 2);
     QCOMPARE(canvas->overlays()->guidesX.size(), std::size_t{2});
+    // Supprimer un guide depuis la liste, puis colorer les guides.
+    QTRY_VERIFY(named(window, "removeGuide_1") != nullptr);
+    QVERIFY(press(window, "removeGuide_1"));
+    QCOMPARE(view.guides().size(), 1);
+    QTRY_COMPARE(canvas->overlays()->guidesX.size(), std::size_t{1});
+    QSignalSpy guideColourChanged(&view, &ViewController::displayChanged);
+    QVERIFY(press(window, "guideColor_1"));
+    QCOMPARE(guideColourChanged.count(), 1);
+    QVERIFY(press(window, "addVGuideButton")); // le test suivant attend deux guides
+    QCOMPARE(view.guides().size(), 2);
+    QTRY_COMPARE(canvas->overlays()->guidesX.size(), std::size_t{2});
     QVERIFY(press(window, "zoom100Button"));
     QVERIFY(std::abs(canvas->zoom() - view.pixelsPerMmAt100()) < 1e-6);
     // F38-04: a physical calibration is only actionable for a complete
