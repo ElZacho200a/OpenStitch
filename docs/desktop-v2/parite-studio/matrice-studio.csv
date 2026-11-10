@@ -32,7 +32,7 @@ f942b9ce,action,Carte de densité,main_window_density.cpp,fait,Carte de densité
 26ac8a5a,action,Centrer la vue sur le problème,main_window_analysis.cpp,absent,,FUNCTIONAL_UNTESTED,,AnalysisController::centerOnFinding,AnalysisPanel.qml
 8e1363c4,action,Coloris et tissu,main_window_colorways.cpp,absent,,ABSENT,,,
 133ffb33,action,Compagnon IA,main_window_help_menu.cpp,fait,Compagnon IA,TESTED,StudioCompanionTest::companionPanelAndDialogsOpenFromQml,ActionController::runCommand(cmd.companion.open),CompanionPanel.qml
-5517fa2b,action,Contour autour de la sélection,main_window_vector_edit.cpp,absent,,ABSENT,,,
+5517fa2b,action,Contour autour de la sélection,main_window_vector_edit.cpp,absent,,TESTED,StudioToolsTest::outlineAroundTheSelectionIsARingInOneStep,VectorController::outlineShapes,ToolOptions.qml outlineButton
 b4f352c6,action,Convertir en appliqué,main_window_applique.cpp,partiel,applique,TESTED,StudioDigitize2Test::appliqueConvertAndCut,AppliqueController::convert,AppliquePanel.qml appliqueConvert
 eb7dd01d,action,Convertir en courbes,main_window_vector_tools.cpp,absent,,ABSENT,,,
 84f88da1,action,Convertir en remplissage concentrique,main_window_context_menu.cpp,fait,contour_fill,SERVICE_ONLY,,,
@@ -47,12 +47,12 @@ c97c7aae,action,Créer un remplissage tatami,main_window.cpp,partiel,settableSti
 67fc3ea3,action,Créer un satin automatique,main_window.cpp,fait,satin.auto,TESTED,StudioDigitizeTest::autoSatinThroughTheActionPalette,ActionController::run(satin.auto),ActionPalette.qml
 1e5cd1fe,action,Diagnostic des défauts connus,main_window_analysis.cpp,partiel,run_diagnostics,TESTED,StudioViewTest::mainQmlHostsEveryPanel,AnalysisController::runDiagnostics,AnalysisPanel.qml
 9ba57c94,action,Dupliquer,main_window_context_menu.cpp,fait,Dupliquer,TESTED,StudioEditTest::shortcutsReachTheEditor,EditController::duplicate,Main.qml Ctrl+D / CanvasContextMenu / EditBar
-42245f06,action,Dupliquer la couche,document_panel.cpp,absent,,ABSENT,,,
+42245f06,action,Dupliquer la couche,document_panel.cpp,absent,,TESTED,StudioEditTest::duplicatingALayerCopiesItsObjectsInOneStep,EditController::duplicateLayer,LayerPanel.qml layerDuplicateButton
 54f0a20a,action,Dupliquer la forme,main_window.cpp,fait,edit.duplicate,SERVICE_ONLY,,,
 b8d50ff8,action,Déboguer : afficher toutes les données,main_window_context_menu.cpp,absent,,ABSENT,,,
 522356b3,action,Décalage entre couleurs,main_window_analysis.cpp,absent,,TESTED,StudioRegistrationTest::compensatedExportDiffersFromTheDocumentAndNeverTouchesIt + staleRegistrationRefusesTheExport + panelOffersCompensationAndExport. Estimation non calibree: aucune recette sur piece-test physique,PullController::predictRegistration,PullPanel.qml pullRegistration / pullRegistrationCompensate
-3e57366b,action,Décaler,main_window_context_menu.cpp,absent,,ABSENT,,,
-d44d8b2a,action,Décaler la forme,main_window.cpp,absent,,ABSENT,,,
+3e57366b,action,Décaler,main_window_context_menu.cpp,absent,,TESTED,StudioToolsTest::offsetShapesCreatesAGrownOrShrunkCopyInOneStep,VectorController::offsetShapes,ToolOptions.qml offsetOutButton/offsetInButton
+d44d8b2a,action,Décaler la forme,main_window.cpp,absent,,TESTED,StudioToolsTest::offsetShapesCreatesAGrownOrShrunkCopyInOneStep,VectorController::offsetShapes,ToolOptions.qml offsetOutButton/offsetInButton
 a6809735,action,Déformation prévue du tissu,main_window_analysis.cpp,fait,Déformation prévue du tissu,FUNCTIONAL_UNTESTED,,AnalysisController::computeFabricRisk,ViewPanel.qml / GpuCanvas overlay image
 eab12005,action,Déplacer la sélection ici,calque_panel.cpp,absent,,FUNCTIONAL_UNTESTED,StudioEditTest::layersTreeAndObjectEditing (controleur seul),EditController::moveSelectionToLayer,LayerPanel layerMoveHereButton / ObjectTree glisser-deposer
 694f85ac,action,Effacer les guides,main_window_view_display.cpp,fait,Effacer les guides,FUNCTIONAL_UNTESTED,StudioViewTest::gridGuidesAndLayersPersist,ViewController::clearGuides,ViewPanel.qml / GpuCanvas overlay guides
@@ -125,7 +125,7 @@ a4c1ad2b,action,Quitter,main_window.cpp,fait,Quitter,FUNCTIONAL_UNTESTED,StudioF
 35393cc9,action,Recadrer l'image (glisser un cadre),main_window.cpp,partiel,Recadrer,TESTED,StudioSpaceImageTest::imageSpaceJourneyOnRealMainQml (cadre a poignees sur le canevas puis cropApply en une etape annulable),ImageSpaceController::applyCrop,CropOverlay.qml
 b4dc4f3a,action,Rechercher une commande,main_window.cpp,absent,,ABSENT,,,
 b2f5a579,action,Recolorer,main_window_regions.cpp,fait,Recolorer,TESTED,StudioImageTest::preparePanelDrivesTheWholeJourney (regionRecolor via QML),RegionController::recolorSelected,RegionTools.qml
-d39e212d,action,Recolorer la sélection,main_window.cpp,absent,,ABSENT,,,
+d39e212d,action,Recolorer la sélection,main_window.cpp,absent,,TESTED,StudioInspectorTest::colourOfTheSelectionIncludingMixedTypes,InspectorController::setColour,Inspector.qml inspectorColourButton
 b5106cf2,action,Remplissage tatami,main_window.cpp,partiel,settableStitchTypes,SERVICE_ONLY,,,
 8b3e385a,action,Renommer,calque_panel.cpp,fait,Renommer,FUNCTIONAL_UNTESTED,StudioEditTest::layersTreeAndObjectEditing (controleur seul),EditController::renameLayer/renameObject,ObjectTree double-clic / LayerPanel
 a0622ecf,action,Restaurer la disposition précédente,main_window_ux.cpp,absent,,ABSENT,,,
@@ -150,7 +150,7 @@ de43aedf,action,Segmenter l'image,main_window.cpp,fait,Segmenter l'image,FUNCTIO
 16449d1d,action,Supprimer ce point,main_window_directional.cpp,absent,,ABSENT,,,
 6623e722,action,Supprimer la sélection,main_window.cpp,fait,Supprimer la sélection,TESTED,StudioEditTest::shortcutsReachTheEditor,EditController::deleteSelection,Main.qml Suppr / EditBar deleteButton
 d6e27fc4,action,Supprimer le calque,calque_panel.cpp,absent,,FUNCTIONAL_UNTESTED,StudioEditTest::layersTreeAndObjectEditing (controleur seul),EditController::removeLayer,LayerPanel layerRemoveButton
-980fefff,action,Supprimer le guide,main_window_satin_auto.cpp,absent,,ABSENT,,,
+980fefff,action,Supprimer le guide,main_window_satin_auto.cpp,absent,,TESTED,StudioViewTest::mainQmlHostsEveryPanel (removeGuide_N),ViewController::removeGuide,ViewPanel.qml removeGuide_N
 69e76bc8,action,Supprimer le guide satin sélectionné,main_window.cpp,absent,,ABSENT,,,
 5a001324,action,Supprimer le nœud,main_window_render.cpp,fait,deleteSelected,TESTED,StudioToolsTest::nodeEditByMouse,ToolController::deleteSelectedNodes,ToolOptions nodeDeleteButton + touche Suppr du canevas
 cc56cc1b,action,Supprimer le texte,main_window_lettering.cpp,absent,,FUNCTIONAL_UNTESTED,,ActionController::run(text.remove),ActionPalette.qml
@@ -208,7 +208,7 @@ fe930327,bouton,Comparer les méthodes,main_window_satin_auto.cpp,absent,,ABSENT
 1b524844,bouton,Corriger tout ce qui est sûr,main_window_analysis.cpp,absent,,FUNCTIONAL_UNTESTED,"Core: test_fix_service (finitions fusionnees en une commande, revert exact); Studio: StudioFixTest::staleFixPlanIsRefused. Pas de bout en bout sur un constat reel",FixController::applyAllSafe,FixPanel.qml
 12510a3a,bouton,Couleur,colorway_dialog.cpp,fait,Couleur,FUNCTIONAL_UNTESTED,StudioViewTest::threadPlanColorwaysAndSewingOrder,ThreadController::recolorThread,ThreadPanel.qml
 f84eae7b,bouton,Couleur : %1 (cliquer pour changer),properties_panel.cpp,absent,,ABSENT,,,
-f893cf14,bouton,Couleur de cette couche,properties_panel.cpp,absent,,ABSENT,,,
+f893cf14,bouton,Couleur de cette couche,properties_panel.cpp,absent,,TESTED,StudioInspectorTest::colourOfTheSelectionIncludingMixedTypes,InspectorController::setColour,Inspector.qml inspectorColourButton
 fdbcceb1,bouton,Couleurs libres → fil le plus proche,thread_panel.cpp,absent,,FUNCTIONAL_UNTESTED,,ThreadController::snapFreeColours,ThreadPanel.qml
 6dfe2a2f,bouton,Créer le satin de bordure,properties_panel.cpp,absent,,ABSENT,,,
 786a853b,bouton,Enregistrer ce cadre,main_window_files.cpp,fait,hoops.txt,TESTED,StudioFilesTest::hoopMachineAndUserHoops,FileController::saveCurrentHoopAs,FilePanel.qml hoopDialog
@@ -346,7 +346,7 @@ d06da014,dialogue,Aperçu avant impression - fiche de production,production_dial
 4c7db5cd,dialogue,Combler les vides du bloc,main_window_shapes.cpp,absent,,ABSENT,,,
 b2820172,dialogue,Compagnon IA,companion_dock.cpp,fait,Compagnon IA,TESTED,StudioCompanionTest::companionApproveIsOneUndoStep,CompanionController::send/approve/undoLast,CompanionPanel.qml companionProposal
 7d4ca866,dialogue,Comparer les méthodes de satin,main_window_satin_auto.cpp,absent,,ABSENT,,,
-dcaa0480,dialogue,Contour autour de la sélection,main_window_vector_edit.cpp,absent,,ABSENT,,,
+dcaa0480,dialogue,Contour autour de la sélection,main_window_vector_edit.cpp,absent,,TESTED,StudioToolsTest::outlineAroundTheSelectionIsARingInOneStep,VectorController::outlineShapes,ToolOptions.qml outlineButton
 60c07a7c,dialogue,Données de débogage — objet %1,main_window_debug.cpp,absent,,ABSENT,,,
 c7e19585,dialogue,Exporter l'image,export_image_dialog.cpp,fait,Exporter l'image,UI_PARTIAL,,FileController::exportImage,résolution fixe 6 px/mm sans dialogue d'options
 775bc85b,dialogue,Exporter une broderie machine,machine_export_dialog.cpp,fait,Exporter pour la machine,FUNCTIONAL_UNTESTED,StudioFilesTest::exportOptionsAreOneUndoStepAndRefusedWhenInvalid,FileController::exportMachine/setExportOptions,FilePanel.qml exportDialog
