@@ -552,6 +552,27 @@ void StudioViewTest::mainQmlHostsEveryPanel() {
     QTRY_VERIFY(named(window, "filterIndicator")->isVisible());
     QVERIFY(press(window, "coloursAllButton"));
     QCOMPARE(view.hiddenCount(), 0);
+    // Réglages détaillés du rendu réaliste (V1) : curseurs, tissu, armure, qualité.
+    QVERIFY(named(window, "renderAdvancedBox"));
+    QVERIFY(press(window, "renderAdvancedBox"));
+    auto* sheen = named(window, "renderParam_sheen");
+    QVERIFY(sheen);
+    QTRY_VERIFY(sheen->isVisible());
+    QVERIFY(std::abs(sheen->property("value").toDouble() -
+                     analysis.renderSettings().value("sheen").toDouble()) < 1e-6);
+    QVERIFY(analysis.setRenderSetting(QStringLiteral("sheen"), QStringLiteral("0.9")));
+    QTRY_VERIFY(std::abs(sheen->property("value").toDouble() - 0.9) < 1e-6);
+    QVERIFY(named(window, "renderParam_px_per_mm") && named(window, "renderParam_thread_mm") &&
+            named(window, "renderParam_relief") && named(window, "renderParam_twist") &&
+            named(window, "renderParam_shadow") && named(window, "renderParam_fabric_relief"));
+    QVERIFY(named(window, "renderFabricButton") && named(window, "renderFabricSwatch"));
+    const bool weave = analysis.renderSettings().value("fabricWeave").toBool();
+    QVERIFY(press(window, "renderWeaveBox"));
+    QCOMPARE(analysis.renderSettings().value("fabricWeave").toBool(), !weave);
+    QVERIFY(press(window, "renderQualityBox"));
+    QCOMPARE(analysis.renderSettings().value("preset").toString().isEmpty() ||
+                 !analysis.renderSettings().value("highQuality").toBool(),
+             true);
     QVERIFY(press(window, "gridBox"));
     QVERIFY(view.gridVisible());
     QVERIFY(canvas->overlays()->grid);
