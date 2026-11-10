@@ -92,6 +92,8 @@ private slots:
     void simulationPrefixMatchesReferenceAtEveryPosition();
     void metadataBatchDoesNotRebuildStitches();
     void threadPlanColorwaysAndSewingOrder();
+    void stockInventoryAndAtomicClosestThreadAssignment();
+    void colorFilmReductionAndFabricAreUndoable();
     void diagnosticsDensityRiskAndOptimisation();
     void hoopsAndMachine();
     void initTestCase();
@@ -304,6 +306,91 @@ void StudioViewTest::threadPlanColorwaysAndSewingOrder() {
     QVERIFY(QFileInfo::exists(out.filePath(QStringLiteral("threads.csv"))));
 }
 
+void StudioViewTest::stockInventoryAndAtomicClosestThreadAssignment() {
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const auto cfg = std::filesystem::path(directory.path().toStdWString());
+    DocumentSession session;
+    StudioController studio(session);
+    session.replaceProject(fixture(), true);
+    ThreadController threads(studio, cfg);
+    const QString chart = threads.charts().first().toMap().value("id").toString();
+    const auto nearest = threads.nearestToEntry(0, chart, 1);
+    QVERIFY(!nearest.isEmpty());
+    const QString code = nearest.first().toMap().value("code").toString();
+    QVERIFY(threads.setOwnedThread(chart, code, true));
+    QVERIFY(threads.ownsThread(chart, code));
+    QVERIFY(!threads.setOwnedThread(chart, code, true)); // no duplicate
+    const QString personalRef = QStringLiteral("MY-01");
+    const QString personalName = QStringLiteral("Raspberry");
+    const QString personalColor = QStringLiteral("#b41141");
+    QVERIFY(threads.addPersonalThread(personalRef, personalName, personalColor));
+    QCOMPARE(threads.stockCount(), 2);
+    threads.setLimitToStock(true);
+    QVERIFY(threads.limitToStock());
+    const auto closest = threads.nearestToEntry(0, chart, 1);
+    QCOMPARE(closest.first().toMap().value("code").toString(), QStringLiteral("MY-01"));
+
+    const auto beforeUndo = session.undoNames().size();
+    QCOMPARE(threads.snapFreeColours(chart), 2);
+    QCOMPARE(session.undoNames().size(), beforeUndo + 1);
+    QVERIFY(session.project().embroidery_objects[0].thread.has_value());
+    QVERIFY(session.project().embroidery_objects[1].thread.has_value());
+    QVERIFY(session.undo());
+    QVERIFY(!session.project().embroidery_objects[0].thread.has_value());
+    QVERIFY(!session.project().embroidery_objects[1].thread.has_value());
+
+    // Stock is a user preference, not stored inside Project or the undo history.
+    ThreadController reloaded(studio, cfg);
+    QCOMPARE(reloaded.stockCount(), 2);
+    QVERIFY(reloaded.limitToStock());
+    QCOMPARE(reloaded.ownedThreads().size(), 2);
+    QVERIFY(reloaded.removeOwnedThread(QStringLiteral("personal"), QStringLiteral("MY-01")));
+    QCOMPARE(reloaded.stockCount(), 1);
+    QVERIFY(reloaded.setOwnedThread(chart, code, false));
+    QCOMPARE(reloaded.stockCount(), 0);
+    QCOMPARE(threads.stockCount(), 2); // each instance caches its own preferences
+}
+
+void StudioViewTest::colorFilmReductionAndFabricAreUndoable() {
+    Rig rig;
+    auto blocks = rig.threads.colorFilm();
+    QCOMPARE(blocks.size(), 2);
+    QCOMPARE(rig.threads.filmChanges(), 1);
+    QVERIFY(rig.threads.selectFilmBlock(0));
+    QCOMPARE(rig.session.selection().targets().size(), std::size_t{1});
+    const auto oldFirst = rig.session.project().embroidery_objects.front().id;
+    QVERIFY(rig.threads.moveFilmBlock(0, 1));
+    QCOMPARE(rig.session.project().embroidery_objects.front().id, ObjectId{secondId});
+    QVERIFY(rig.session.undo());
+    QCOMPARE(rig.session.project().embroidery_objects.front().id, oldFirst);
+    rig.wait();
+
+    const auto preview = rig.threads.previewReduction(1);
+    QCOMPARE(preview.value("before").toInt(), 2);
+    QCOMPARE(preview.value("after").toInt(), 1);
+    QCOMPARE(preview.value("affected").toInt(), 1);
+    const auto before = rig.session.undoNames().size();
+    QVERIFY(rig.threads.applyReduction());
+    QCOMPARE(rig.session.undoNames().size(), before + 1);
+    QVERIFY(!rig.threads.applyReduction()); // a preview can only be accepted once
+    QVERIFY(rig.session.undo());
+    QCOMPARE(rig.threads.threadCount(), 2);
+
+    const auto original = rig.threads.fabric();
+    QCOMPARE(original.value("color").value<QColor>(), QColor(Qt::white));
+    QVERIFY(!rig.threads.setFabric(QStringLiteral("bad"), {}, {}, {}, 0, 1));
+    const QString navy = QStringLiteral("#112233");
+    const QString linen = QStringLiteral("Lin");
+    const QString woven = QStringLiteral("woven");
+    const QString stabilizer = QStringLiteral("cut-away");
+    QVERIFY(rig.threads.setFabric(navy, linen, woven, stabilizer, 30, 1.25));
+    QCOMPARE(rig.threads.fabric().value("name").toString(), QStringLiteral("Lin"));
+    QCOMPARE(rig.session.project().fabric.material, std::string("woven"));
+    QVERIFY(rig.session.undo());
+    QCOMPARE(rig.threads.fabric().value("color").value<QColor>(), QColor(Qt::white));
+}
+
 void StudioViewTest::diagnosticsDensityRiskAndOptimisation() {
     Rig rig;
     rig.analysis.runDiagnostics();
@@ -474,34 +561,52 @@ void StudioViewTest::mainQmlHostsEveryPanel() {
     QVERIFY(canvas->zoom() > fitted);
     QVERIFY(!canvas->zoomRectMode());
 
-    // Panel "Fils".
+    // Panel "Fils": all V1 features are now accessible through focused tabs.
     QVERIFY(press(window, "threadsPanelButton"));
     QCOMPARE(hub->property("openPanel").toString(), QStringLiteral("threads"));
-    // THR-003: fictional manufacturer charts must not be presented as production palettes.
+    auto* threadPanel = named(window, "threadPanel");
+    QVERIFY(threadPanel);
+    QVERIFY(press(window, "threadTab_catalog"));
     auto* demoWarning = named(window, "demoChartWarning");
     QVERIFY(demoWarning);
     QTRY_VERIFY(demoWarning->isVisible());
     QVERIFY(demoWarning->property("text").toString().contains(QStringLiteral("fictifs")));
-    QTRY_VERIFY(named(window, "threadRow0") != nullptr);
-    // Even in a narrow side drawer, wrapping controls must contribute their
-    // actual height and remain inside the panel instead of being clipped.
-    auto* threadPanel = named(window, "threadPanel");
-    QVERIFY(threadPanel);
-    for (const char* flowName : {"threadActionsFlow", "threadChartActionsFlow",
-                                 "threadSearchActionsFlow", "threadColorwayActionsFlow"}) {
+    for (const char* flowName : {"threadChartActionsFlow", "threadSearchActionsFlow"}) {
         auto* flow = named(window, flowName);
         QVERIFY2(flow, flowName);
         QTRY_VERIFY(flow->height() >= flow->childrenRect().height() - 1.0);
     }
-    for (const char* buttonName : {"threadRecolorButton", "nearestButton", "colorwayAddButton"}) {
-        auto* button = named(window, buttonName);
-        QVERIFY2(button, buttonName);
-        const double x = button->mapToItem(threadPanel, QPointF(0, 0)).x();
-        QVERIFY2(x >= -1 && x + button->width() <= threadPanel->width() + 1, buttonName);
-    }
+    QVERIFY(named(window, "nearestButton"));
+
+    QVERIFY(press(window, "threadTab_plan"));
+    QTRY_VERIFY(named(window, "threadRow0") != nullptr);
+    auto* projectActions = named(window, "threadActionsFlow");
+    QVERIFY(projectActions);
+    QTRY_VERIFY(projectActions->height() >= projectActions->childrenRect().height() - 1.0);
+    QVERIFY(named(window, "threadReductionPreview"));
+
+    QVERIFY(press(window, "threadTab_stock"));
+    QVERIFY(named(window, "threadPersonalAdd"));
+    QVERIFY(named(window, "threadLimitToStock"));
+
+    QVERIFY(press(window, "threadTab_film"));
+    QVERIFY(named(window, "filmSelect0"));
+    QVERIFY(named(window, "filmGroupByColor"));
+
+    QVERIFY(press(window, "threadTab_colorways"));
+    auto* ways = named(window, "threadColorwayActionsFlow");
+    QVERIFY(ways);
+    QTRY_VERIFY(ways->height() >= ways->childrenRect().height() - 1.0);
     named(window, "colorwayNameField")->setProperty("text", QStringLiteral("Printemps"));
     QVERIFY(press(window, "colorwayAddButton"));
     QVERIFY(!threads.colorways().isEmpty());
+    QVERIFY(named(window, "colorwayRename0"));
+
+    QVERIFY(press(window, "threadTab_fabric"));
+    QVERIFY(named(window, "threadFabricApply"));
+    QVERIFY(named(window, "threadFabricColor"));
+
+    QVERIFY(press(window, "threadTab_order"));
     QVERIFY(press(window, "orderDown0"));
     QCOMPARE(threads.sewingOrder().first().toMap().value("id").toString(),
              QString::number(secondId));
