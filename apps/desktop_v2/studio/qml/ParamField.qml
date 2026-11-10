@@ -17,14 +17,26 @@ ColumnLayout {
     objectName: "param_" + fieldKey
     spacing: 3
 
-    function commit(result) { root.error = result; }
+    property bool justApplied: false
+    function commit(result) {
+        root.error = result;
+        if (result === "") {
+            justApplied = true;
+            appliedTimer.restart();
+        } else {
+            justApplied = false;
+            appliedTimer.stop();
+        }
+    }
+    Timer { id: appliedTimer; interval: 650; onTriggered: root.justApplied = false }
 
     RowLayout {
         Layout.fillWidth: true
         Text {
             Layout.fillWidth: true
             text: root.f.label + (root.f.unit ? "  (" + root.f.unit + ")" : "")
-            color: Theme.muted
+            color: root.justApplied ? Theme.success : Theme.muted
+            Behavior on color { ColorAnimation { duration: Theme.feedbackSlowMs } }
             font.family: Theme.fontFamily
             font.pixelSize: Theme.smallSize
             elide: Text.ElideRight
