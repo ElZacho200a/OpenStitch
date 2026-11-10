@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "inspector_controller.hpp"
 
+#include <QColor>
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <optional>
 
@@ -189,6 +191,47 @@ QVariantMap InspectorController::field(const QString& key) const {
 InspectorController::~InspectorController() {
     session_.unsubscribe(documentToken_);
     session_.selection().unsubscribe(selectionToken_);
+}
+
+QString InspectorController::colour() const {
+    const auto s = selection();
+    std::optional<std::array<std::uint8_t, 3>> common;
+    for (const auto id : s.ids) {
+        const auto* object = findObject(session_.project(), id);
+        if (object == nullptr) {
+            continue;
+        }
+        if (!common) {
+            common = object->rgb;
+        } else if (*common != object->rgb) {
+            return {};
+        }
+    }
+    return common ? QColor((*common)[0], (*common)[1], (*common)[2]).name() : QString();
+}
+
+bool InspectorController::colourMixed() const {
+    const auto s = selection();
+    return s.ids.size() > 1 && colour().isEmpty();
+}
+
+QString InspectorController::setColour(const QString& hex) {
+    const QColor parsed(hex);
+    if (!parsed.isValid()) {
+        return finish(QStringLiteral("Couleur invalide : %1").arg(hex), {});
+    }
+    const auto s = selection();
+    if (s.ids.empty()) {
+        return finish(QStringLiteral("Sélectionnez au moins un objet."), {});
+    }
+    const auto batch = batchSetColor(s.ids, {static_cast<std::uint8_t>(parsed.red()),
+                                             static_cast<std::uint8_t>(parsed.green()),
+                                             static_cast<std::uint8_t>(parsed.blue())});
+    const auto result = session_.applyBatch(batch, "Changer la couleur");
+    if (!result.committed) {
+        return finish(QStringLiteral("Changement de couleur refusé."), {});
+    }
+    return finish({}, QStringLiteral("Couleur modifiée."));
 }
 
 InspectorController::Selection InspectorController::selection() const {

@@ -2,6 +2,7 @@
 import QtQuick
 import QtQuick.Controls as Controls
 import QtQuick.Layouts
+import QtQuick.Dialogs
 import "."
 
 // Contextual inspector driven by the engine's parameter table (param_spec). No business logic
@@ -114,6 +115,53 @@ Item {
                     implicitHeight: 28
                     onClicked: root.ctl.resetAll()
                 }
+            }
+
+            // Couleur de toute la sélection (types de points différents compris).
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                Rectangle {
+                    objectName: "inspectorColourSwatch"
+                    implicitWidth: 24
+                    implicitHeight: 24
+                    radius: 5
+                    border.width: 1
+                    border.color: Theme.outline
+                    color: root.ctl && root.ctl.colour !== "" ? root.ctl.colour : Theme.raised
+                    Text {
+                        anchors.centerIn: parent
+                        visible: root.ctl && root.ctl.colourMixed
+                        text: "≠"
+                        color: Theme.foreground
+                        font.pixelSize: Theme.smallSize
+                    }
+                }
+                Text {
+                    objectName: "inspectorColourLabel"
+                    Layout.fillWidth: true
+                    text: !root.ctl ? "" : root.ctl.colourMixed ? qsTr("Couleurs différentes") : root.ctl.colour
+                    color: Theme.foreground
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.smallSize
+                    elide: Text.ElideRight
+                }
+                StudioButton {
+                    objectName: "inspectorColourButton"
+                    text: qsTr("Couleur…")
+                    tooltip: qsTr("Changer la couleur de la sélection")
+                    onClicked: {
+                        if (root.ctl.colour !== "")
+                            colourDialog.selectedColor = root.ctl.colour
+                        colourDialog.open()
+                    }
+                }
+            }
+            ColorDialog {
+                id: colourDialog
+                objectName: "inspectorColourDialog"
+                title: qsTr("Couleur de la sélection")
+                onAccepted: root.ctl.setColour(selectedColor.toString())
             }
 
             StudioSwitch {
