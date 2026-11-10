@@ -116,8 +116,8 @@ QRectF GpuCanvas::hoverRect() const {
         return {};
     }
     // Selected objects already have their own outline and handles.
-    if (std::ranges::find(selection_,
-                          Target{TargetKind::EmbroideryObject, *hoveredObjectId_}) != selection_.end()) {
+    if (std::ranges::find(selection_, Target{TargetKind::EmbroideryObject, *hoveredObjectId_}) !=
+        selection_.end()) {
         return {};
     }
     const auto bounds = scene_->boundsOf(*hoveredObjectId_);
@@ -362,7 +362,9 @@ void GpuCanvas::setSelection(std::vector<Target> selection) {
     }
     selection_ = std::move(selection);
     ++selectionRevision_;
-    if (hoveredObjectId_) emit overlayChanged();
+    if (hoveredObjectId_) {
+        emit overlayChanged();
+    }
     update();
 }
 
