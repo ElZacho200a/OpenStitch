@@ -42,5 +42,26 @@ Controls.Slider {
         border.color: control.visualFocus ? Theme.foreground : Theme.accentPressed
         opacity: control.enabled ? 1 : 0.5
         Behavior on color { ColorAnimation { duration: Theme.animationMs } }
+        Rectangle {
+            objectName: "sliderValueBubble"
+            visible: control.pressed
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.bottom: parent.top
+            anchors.bottomMargin: 7
+            width: sliderValue.implicitWidth + 12
+            height: sliderValue.implicitHeight + 6
+            radius: 4
+            color: Theme.surface
+            border.color: Theme.accent
+            Text {
+                id: sliderValue
+                anchors.centerIn: parent
+                text: Number(control.value).toLocaleString(Qt.locale(), 'f',
+                                                             control.stepSize >= 1 ? 0 : 2)
+                color: Theme.foreground
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.smallSize
+            }
+        }
     }
 }
