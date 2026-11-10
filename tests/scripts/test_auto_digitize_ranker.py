@@ -133,7 +133,7 @@ class RankerTest(unittest.TestCase):
         model = ranker.train_model([sample(i) for i in range(8)], epochs=50)
         result = ranker.assess_candidates(model, row)
         self.assertEqual(result["decision"], "fallback")
-        self.assertEqual(result["reason"], "single_admissible_candidate")
+        self.assertEqual(result["reason"], "synthetic_or_unverified_model")
         self.assertEqual(result["rejected"][0]["id"], "approved")
         self.assertFalse(result["applied"])
 
@@ -153,7 +153,17 @@ class RankerTest(unittest.TestCase):
         result = ranker.assess_candidates(model, row, min_margin=1.0)
         self.assertEqual(result["decision"], "fallback")
         self.assertEqual(result["selected_id"], result["heuristic_choice"])
-        self.assertEqual(result["reason"], "low_margin")
+        self.assertEqual(result["reason"], "synthetic_or_unverified_model")
+
+    def test_synthetic_only_model_never_recommends_even_with_large_margin(self):
+        model = ranker.train_model([sample(i) for i in range(8)], epochs=50)
+        row = sample()
+        row["candidates"][1]["features"] = dict(candidate("safe", "tatami", True)["features"])
+        result = ranker.assess_candidates(model, row, min_margin=0)
+        self.assertEqual(result["decision"], "fallback")
+        self.assertEqual(result["reason"], "synthetic_or_unverified_model")
+        self.assertEqual(result["selected_id"], result["heuristic_choice"])
+        self.assertFalse(result["applied"])
 
     def test_assessment_rejects_invalid_threshold(self):
         model = ranker.train_model([sample(i) for i in range(8)], epochs=50)
