@@ -559,6 +559,19 @@ void StudioViewTest::mainQmlHostsEveryPanel() {
     QVERIFY(press(window, "addVGuideButton"));
     QCOMPARE(view.guides().size(), 1);
     QCOMPARE(canvas->overlays()->guidesX.size(), std::size_t{1});
+    // F38-02: malformed guide coordinates cannot enter the document's view
+    // state; decimal comma coordinates are passed with their fractional part.
+    auto* guideCoordinate = named(window, "guideField");
+    auto* addVertical = named(window, "addVGuideButton");
+    QVERIFY(guideCoordinate && addVertical);
+    QVERIFY(guideCoordinate->setProperty("text", QStringLiteral("12,5mm")));
+    QTRY_VERIFY(!addVertical->isEnabled());
+    QCOMPARE(view.guides().size(), 1);
+    QVERIFY(guideCoordinate->setProperty("text", QStringLiteral("12,5")));
+    QTRY_VERIFY(addVertical->isEnabled());
+    QVERIFY(press(window, "addVGuideButton"));
+    QCOMPARE(view.guides().size(), 2);
+    QCOMPARE(canvas->overlays()->guidesX.size(), std::size_t{2});
     QVERIFY(press(window, "zoom100Button"));
     QVERIFY(std::abs(canvas->zoom() - view.pixelsPerMmAt100()) < 1e-6);
     // F38-04: a physical calibration is only actionable for a complete
