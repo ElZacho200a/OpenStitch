@@ -240,6 +240,10 @@ int ImageController::regionCount() const {
     return seg ? static_cast<int>(seg->region_count()) : 0;
 }
 
+double ImageController::mmPerPx() const {
+    return studio_.session().project().mm_per_px.value;
+}
+
 int ImageController::colorCount() const {
     const auto& seg = studio_.session().project().segmentation;
     if (!seg) {

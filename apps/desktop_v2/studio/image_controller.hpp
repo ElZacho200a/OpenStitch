@@ -52,6 +52,8 @@ class ImageController : public QObject {
     Q_OBJECT
     Q_PROPERTY(bool hasImage READ hasImage NOTIFY changed)
     Q_PROPERTY(int imageWidth READ imageWidth NOTIFY changed)
+    // Taille physique d'un pixel de travail (mm) : place l'aperçu de segmentation sur le canevas.
+    Q_PROPERTY(double mmPerPx READ mmPerPx NOTIFY changed)
     Q_PROPERTY(int imageHeight READ imageHeight NOTIFY changed)
     Q_PROPERTY(QStringList ops READ ops NOTIFY changed)
     Q_PROPERTY(int imageRevision READ imageRevision NOTIFY imagesChanged)
@@ -83,6 +85,7 @@ public:
 
     [[nodiscard]] bool hasImage() const;
     [[nodiscard]] int imageWidth() const { return width_; }
+    [[nodiscard]] double mmPerPx() const;
     [[nodiscard]] int imageHeight() const { return height_; }
     [[nodiscard]] QStringList ops() const { return ops_; }
     [[nodiscard]] int imageRevision() const { return imageRevision_; }

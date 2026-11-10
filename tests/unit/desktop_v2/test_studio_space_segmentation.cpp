@@ -751,6 +751,22 @@ private slots:
         QVERIFY(settings->setProperty("maxColors", 4)); // invalide puis relance
         QTRY_VERIFY_WITH_TIMEOUT(rig.images.segPreviewActive(), 20'000);
         QCOMPARE(rig.session.revision(), revision);
+        // L'aperçu est posé SUR le canevas, à l'échelle de la caméra ; les régions du projet sont
+        // masquées pendant ce temps.
+        auto* overlay = rig.named("segmentationLivePreview");
+        QVERIFY(overlay);
+        QTRY_VERIFY_WITH_TIMEOUT(overlay->isVisible(), 5'000);
+        const auto view = rig.canvas()->viewState();
+        const double expectedWidth =
+            rig.images.imageWidth() * rig.images.mmPerPx() * view.value("zoom").toDouble();
+        QVERIFY(std::abs(overlay->width() - expectedWidth) < 1.0);
+        auto* space = rig.named("segmentationSpace");
+        QVERIFY(space);
+        QVERIFY(!space->property("canvasLayers").toMap().value("regions").toBool());
+        QVERIFY(rig.press("segCancelButton"));
+        QTRY_VERIFY(!rig.images.segPreviewActive());
+        QTRY_VERIFY(space->property("canvasLayers").toMap().value("regions").toBool());
+        QVERIFY(!overlay->isVisible());
         QVERIFY(rig.press("segLiveBox"));
         QVERIFY(!settings->property("liveEnabled").toBool());
         QVERIFY(settings->setProperty("maxColors", 5));
