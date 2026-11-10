@@ -187,6 +187,24 @@ class RankerTest(unittest.TestCase):
         self.assertEqual(result["selected_id"], "approved")
         self.assertFalse(result["applied"])
 
+    def test_heuristic_fallback_cannot_choose_pareto_dominated_candidate(self):
+        row = sample()
+        winner, inferior = row["candidates"]
+        # Both satisfy coarse safety thresholds; inferior is strictly worse
+        # on one metric and equal on all the others.
+        inferior["features"] = dict(winner["features"])
+        inferior["features"]["stitch_count"] += 1
+        self.assertTrue(ranker.dominates_quality(winner, inferior))
+        # Deliberately make the heuristic score favor the inferior candidate
+        # through a tiny difference ignored by the Pareto tolerance.
+        inferior["features"]["coverage_ratio"] += 5e-10
+        self.assertTrue(ranker.dominates_quality(winner, inferior))
+        model = ranker.train_model([sample(i) for i in range(8)], epochs=5)
+        result = ranker.assess_candidates(model, row)
+        self.assertEqual(result["decision"], "fallback")
+        self.assertEqual(result["selected_id"], winner["id"])
+        self.assertFalse(result["applied"])
+
     def test_quality_pareto_does_not_reject_tradeoff(self):
         good = candidate("good", "tatami", True)
         tradeoff = candidate("tradeoff", "auto_satin", True)
