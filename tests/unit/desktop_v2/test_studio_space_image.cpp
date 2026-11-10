@@ -503,6 +503,38 @@ private slots:
         QVERIFY(!imageSpace.scaleImage(-5.0).isEmpty());
         QCOMPARE(session.project().mm_per_px.value, scale);
     }
+    // Cadre de recadrage : bornes de l'image, annulation du cadre, application = une étape
+    // d'annulation qui change la taille de l'image de travail.
+    void cropFrameIsBoundedCancelledAndApplied() {
+        DocumentSession session;
+        StudioController studio(session);
+        ImageController images(studio);
+        ImageSpaceController imageSpace(studio, images);
+        QTemporaryDir dir;
+        session.replaceProject(digitizedProject(writeImage(dir.path())), true);
+        QTRY_VERIFY_WITH_TIMEOUT(images.imageWidth() > 0, 20'000);
+        const int width = images.imageWidth();
+        const auto ops = session.project().ops.size();
+        QVERIFY(!imageSpace.cropActive());
+        QVERIFY(!imageSpace.applyCrop().isEmpty()); // pas de cadre : refus lisible
+        imageSpace.beginCrop();
+        QVERIFY(imageSpace.cropActive());
+        QVERIFY(imageSpace.cropW() > 0 && imageSpace.cropW() < width);
+        imageSpace.setCrop(-5.0, -5.0, 1.0e6, 1.0e6); // borné à l'image
+        QCOMPARE(imageSpace.cropX(), 0.0);
+        QCOMPARE(imageSpace.cropW(), static_cast<double>(width));
+        imageSpace.cancelCrop();
+        QVERIFY(!imageSpace.cropActive());
+        QCOMPARE(session.project().ops.size(), ops);
+        imageSpace.beginCrop();
+        imageSpace.setCrop(10.0, 10.0, 50.0, 40.0);
+        QCOMPARE(imageSpace.applyCrop(), QString());
+        QVERIFY(!imageSpace.cropActive());
+        QCOMPARE(session.project().ops.size(), ops + 1);
+        QTRY_COMPARE(images.imageWidth(), 50);
+        QVERIFY(session.undo());
+        QTRY_COMPARE(images.imageWidth(), width);
+    }
 };
 
 QTEST_MAIN(StudioSpaceImageTest)
