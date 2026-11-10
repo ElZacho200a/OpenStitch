@@ -165,8 +165,15 @@ def fit(rows: list[dict], *, epochs: int = 500, learning_rate: float = 0.3,
         fail("invalid training hyperparameters")
     if not rows:
         fail("no labeled samples")
+    seen = set()
     for row in rows:
         check_sample(row)
+        if row["sample_id"] in seen:
+            fail("duplicate sample_id")
+        seen.add(row["sample_id"])
+    # Direct fit() callers must be independent of JSONL presentation order,
+    # just like train_model(). Reject duplicate IDs before canonical sorting.
+    rows = sorted(rows, key=lambda row: row["sample_id"])
     pairs = []
     for row in rows:
         winning = next(c for c in row["candidates"] if c["id"] == row["preferred_id"])
