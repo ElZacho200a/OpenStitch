@@ -383,10 +383,9 @@ endif()
 if(TARGET openstitch::studio_ui AND Qt6Test_FOUND)
     add_executable(test_desktop_v2_studio_warp_bucket test_studio_warp_bucket.cpp)
     target_link_libraries(test_desktop_v2_studio_warp_bucket PRIVATE openstitch::studio_ui Qt6::Test openstitch::warnings)
-    file(GLOB cx03_qml "${PROJECT_SOURCE_DIR}/apps/desktop_v2/studio/qml/*.qml")
     qt_add_resources(test_desktop_v2_studio_warp_bucket studio_warp_bucket_qml PREFIX "/studio"
-        BASE "${PROJECT_SOURCE_DIR}/apps/desktop_v2/studio" FILES ${cx03_qml}
-        "${PROJECT_SOURCE_DIR}/apps/desktop_v2/studio/qml/qmldir")
+        BASE "${studio_test_qml_root}" FILES ${studio_all_qml}
+        "${studio_test_qml_root}/qml/qmldir")
     add_test(NAME test_desktop_v2_studio_warp_bucket COMMAND test_desktop_v2_studio_warp_bucket -o -,txt)
     get_filename_component(cx03_imports "${Qt6_DIR}/../../../qml" ABSOLUTE)
     set_tests_properties(test_desktop_v2_studio_warp_bucket PROPERTIES

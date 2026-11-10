@@ -7,6 +7,7 @@
 #include "openstitch/project_ops/factory.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
 #include "tool_controller.hpp"
+#include "workspace_controller.hpp"
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
@@ -78,6 +79,8 @@ struct Rig {
         window->show();
         if (!QTest::qWaitForWindowExposed(window))
             return false;
+        if (auto* workspace = window->findChild<WorkspaceController*>())
+            workspace->setCurrent(QStringLiteral("vector")); // le rail d'outils vit dans cet espace
         canvas = window->findChild<GpuCanvas*>("studioCanvas");
         tools.setSnapVertices(false);
         if (!canvas || !settle())
