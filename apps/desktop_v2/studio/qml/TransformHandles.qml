@@ -28,6 +28,19 @@ Item {
         border.width: 1
     }
 
+    // Hit-tested preselection from GpuCanvas: never modifies actual selection.
+    Rectangle {
+        objectName: "hoverPreselectionRect"
+        visible: canvas && canvas.hoverRect.width > 0 && canvas.hoverRect.height > 0
+        x: canvas ? canvas.hoverRect.x : 0
+        y: canvas ? canvas.hoverRect.y : 0
+        width: canvas ? canvas.hoverRect.width : 0
+        height: canvas ? canvas.hoverRect.height : 0
+        color: Qt.alpha(Theme.info, 0.06)
+        border.width: 1
+        border.color: Theme.info
+    }
+
     Rectangle {
         objectName: "selectionBoxRect"
         visible: root.hasBox
