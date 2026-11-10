@@ -164,6 +164,17 @@ Window {
     Binding { target: Theme; property: "densityScale"; value: window.hasPrefs ? prefs.densityScale : 1.0 }
     Binding { target: Theme; property: "reducedMotion"; value: window.hasPrefs ? prefs.reducedMotion : false }
 
+    // Invalidate the transient saved check as soon as the actual document becomes dirty.
+    Connections {
+        target: studio
+        function onChanged() {
+            if (studio.dirty && window.saveConfirmed) {
+                window.saveConfirmed = false
+                saveConfirmTimer.stop()
+            }
+        }
+    }
+
     // Session restore: workspace and panels now, zoom once a document has been framed; the file
     // itself is reopened by the application at launch (main.cpp).
     function persistSession() {
