@@ -227,6 +227,16 @@ Rectangle {
                 Layout.fillWidth: true
                 spacing: 8
                 SectionLabel { text: qsTr("PLAN DE FILS") + "  ·  " + panel.entryList.length }
+            Text {
+                objectName: "threadEmptyState"
+                visible: panel.entryList.length === 0
+                text: qsTr("Aucun fil dans ce projet. Les fils apparaîtront ici après la numérisation.")
+                color: Theme.faint
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.smallSize
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
             Repeater {
                 model: panel.entryList
                 delegate: Rectangle {
