@@ -148,6 +148,24 @@ private slots:
         QVERIFY(apply);
         QTRY_VERIFY(apply->isEnabled());
     }
+    // Rejeter un plan de corrections ou un aperçu de réduction : l'état publié repasse à « non
+    // prêt » sans toucher au document.
+    void discardingAPlanOrAReductionLeavesTheDocumentUntouched() {
+        Rig rig;
+        rig.load();
+        const auto depth = rig.session.undoNames().size();
+        rig.fix.analyze();
+        QTRY_VERIFY_WITH_TIMEOUT(rig.fix.planReady(), 30000);
+        QSignalSpy plans(&rig.fix, &FixController::plansChanged);
+        rig.fix.discardPlan();
+        QVERIFY(!rig.fix.planReady());
+        QCOMPARE(plans.count(), 1);
+        rig.fix.previewReduction(2);
+        QTRY_VERIFY_WITH_TIMEOUT(rig.fix.reductionReady(), 30000);
+        rig.fix.discardReduction();
+        QVERIFY(!rig.fix.reductionReady());
+        QCOMPARE(rig.session.undoNames().size(), depth);
+    }
 };
 
 QTEST_MAIN(StudioFixTest)
