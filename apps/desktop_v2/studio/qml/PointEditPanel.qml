@@ -11,6 +11,16 @@ Rectangle {
     objectName: "pointEditPanel"
     property var controller
     readonly property bool ready: controller !== undefined && controller !== null
+    // The UI accepts French decimal commas, but never passes an incomplete/invalid value
+    // to PointEditController. parseFloat("0,5") is 0 and parseFloat("1mm") is 1.
+    function parseOffset(value) {
+        const normalized = String(value).trim().replace(",", ".")
+        if (!/^[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)$/.test(normalized))
+            return NaN
+        const number = Number(normalized)
+        return isFinite(number) ? number : NaN
+    }
+    function validOffset(value) { return isFinite(parseOffset(value)) }
     color: Theme.panel
     border.color: Theme.divider
     radius: Theme.radius
@@ -60,10 +70,33 @@ Rectangle {
             }
             SectionLabel { text: qsTr("DÉPLACER LA SÉLECTION (mm)") }
             RowLayout {
-                StudioTextField { id: dx; objectName: "pointMoveDx"; text: "0.5"; Layout.preferredWidth: 70; inputMethodHints: Qt.ImhFormattedNumbersOnly }
-                StudioTextField { id: dy; objectName: "pointMoveDy"; text: "0"; Layout.preferredWidth: 70; inputMethodHints: Qt.ImhFormattedNumbersOnly }
-                StudioButton { objectName: "pointMove"; text: qsTr("Déplacer"); enabled: panel.ready && panel.controller.selectedCount > 0
-                    onClicked: panel.controller.moveSelected(parseFloat(dx.text), parseFloat(dy.text)) }
+                StudioTextField {
+                    id: dx
+                    objectName: "pointMoveDx"
+                    text: "0.5"
+                    placeholderText: qsTr("ΔX (mm)")
+                    invalid: !panel.validOffset(text)
+                    Layout.preferredWidth: 85
+                    inputMethodHints: Qt.ImhFormattedNumbersOnly
+                }
+                StudioTextField {
+                    id: dy
+                    objectName: "pointMoveDy"
+                    text: "0"
+                    placeholderText: qsTr("ΔY (mm)")
+                    invalid: !panel.validOffset(text)
+                    Layout.preferredWidth: 85
+                    inputMethodHints: Qt.ImhFormattedNumbersOnly
+                }
+                StudioButton {
+                    objectName: "pointMove"
+                    text: qsTr("Déplacer")
+                    enabled: panel.ready && panel.controller.selectedCount > 0
+                             && panel.validOffset(dx.text) && panel.validOffset(dy.text)
+                             && (panel.parseOffset(dx.text) !== 0 || panel.parseOffset(dy.text) !== 0)
+                    onClicked: panel.controller.moveSelected(panel.parseOffset(dx.text),
+                                                             panel.parseOffset(dy.text))
+                }
             }
             Text {
                 objectName: "pointEditMessage"
