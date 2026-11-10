@@ -13,6 +13,10 @@ Item {
     property var canvasItem
     // Les espaces restent en mémoire : leurs Shortcut doivent être désactivés hors écran.
     property bool active: true
+    // Single-letter canvas shortcuts must never hijack typing in inspector/search fields.
+    // Multi-key commands (simulation, realistic view) remain window-wide.
+    readonly property bool canvasShortcutsEnabled: active && canvasItem !== undefined
+                                                   && canvasItem !== null && canvasItem.activeFocus
     // "", "view", "threads", "analysis"
     property string openPanel: ""
     // Faux : l'espace hôte (« Points ») porte lui-même les boutons de cette barre et n'ouvre
@@ -45,10 +49,10 @@ Item {
             Connections { target: hub.canvasItem; function onViewChanged() { inner.refreshTicks() } }
             Connections { target: view; function onDisplayChanged() { inner.refreshTicks() } }
 
-            Shortcut { sequence: "G"; enabled: hub.active; onActivated: view.gridVisible = !view.gridVisible }
-            Shortcut { sequence: "Z"; enabled: hub.active; onActivated: view.zoomRectangle() }
-            Shortcut { sequence: "1"; enabled: hub.active; onActivated: view.zoomActualSize() }
-            Shortcut { sequence: "Shift+F"; enabled: hub.active; onActivated: view.zoomSelection() }
+            Shortcut { sequence: "G"; enabled: hub.canvasShortcutsEnabled; onActivated: view.gridVisible = !view.gridVisible }
+            Shortcut { sequence: "Z"; enabled: hub.canvasShortcutsEnabled; onActivated: view.zoomRectangle() }
+            Shortcut { sequence: "1"; enabled: hub.canvasShortcutsEnabled; onActivated: view.zoomActualSize() }
+            Shortcut { sequence: "Shift+F"; enabled: hub.canvasShortcutsEnabled; onActivated: view.zoomSelection() }
             Shortcut { sequence: "Alt+Left"; enabled: hub.active; onActivated: view.zoomPreviousView() }
             Shortcut { sequence: "Ctrl+L"; enabled: hub.active; onActivated: view.simActive ? view.stopSimulation() : view.startSimulation() }
             Shortcut { sequence: "Ctrl+Shift+T"; enabled: hub.active; onActivated: view.toggleRealistic() }
