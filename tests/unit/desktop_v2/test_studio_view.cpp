@@ -696,12 +696,24 @@ void StudioViewTest::mainQmlHostsEveryPanel() {
     QVERIFY(press(window, "simulationButton"));
     QVERIFY(view.simActive());
     QTRY_VERIFY(named(window, "simNextStitch") != nullptr);
+    // F29-02: transport remains reachable on narrow canvases, and buttons
+    // communicate the true bounds of the stitch sequence.
+    auto* simBar = named(window, "simulationBar");
+    auto* scroll = named(window, "simulationTransportScroll");
+    QVERIFY(simBar && scroll);
+    QVERIFY(simBar->setProperty("width", 420.0));
+    QTRY_VERIFY(scroll->property("contentWidth").toDouble() > scroll->width());
+    QTRY_VERIFY(!named(window, "simPrevStitch")->isEnabled());
     QVERIFY(press(window, "simNextStitch"));
     QCOMPARE(view.simPosition(), 1);
     QVERIFY(press(window, "simPlayButton"));
     QVERIFY(view.playing());
     view.advance(600'000);
     QCOMPARE(view.simPosition(), view.simTotal());
+    QTRY_VERIFY(!named(window, "simNextStitch")->isEnabled());
+    QTRY_VERIFY(!named(window, "simToEnd")->isEnabled());
+    view.setSimPosition(0);
+    QTRY_VERIFY(named(window, "simToEnd")->isEnabled());
     QVERIFY(press(window, "simToEnd"));
     QVERIFY(press(window, "simClose"));
     QVERIFY(!view.simActive());
