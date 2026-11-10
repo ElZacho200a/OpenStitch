@@ -122,7 +122,6 @@ private:
     StudioController& studio_;
     ImageController& images_;
     DocumentSession::Token token_{};
-    QTimer pump_;
     QTimer refreshTimer_;
     bool stepRegion(int direction);
     QVariantList regions_;

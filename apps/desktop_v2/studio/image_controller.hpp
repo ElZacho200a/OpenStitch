@@ -147,7 +147,6 @@ private:
     StudioController& studio_;
     std::shared_ptr<PrepareImages> images_{std::make_shared<PrepareImages>()};
     DocumentSession::Token token_{};
-    QTimer pump_;
     QTimer refreshTimer_;
     int width_{0};
     int height_{0};

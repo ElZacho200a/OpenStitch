@@ -107,7 +107,6 @@ private:
     int sceneBuilds_{0};
     std::uint64_t request_{0};
     std::uint64_t lastNotifiedRevision_{0};
-    QTimer pump_;
     // Destroyed before the session, the timer and this adapter's other data.
     TaskManager tasks_;
 };

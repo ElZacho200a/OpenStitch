@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "studio_controller.hpp"
 
+#include "task_pump.hpp"
+
 #include <QElapsedTimer>
 
 #include "perf_log.hpp"
@@ -48,16 +50,13 @@ StudioController::StudioController(DocumentSession& session, QObject* parent)
         emit selectionChanged();
         emit changed();
     });
-    pump_.setInterval(8);
-    connect(&pump_, &QTimer::timeout, this, [this] { tasks_.pump(); });
-    pump_.start();
+    attachTaskPump(tasks_, this);
     if (!session_.project().embroidery_objects.empty() || session_.project().imported_design) {
         rebuildScene();
     }
 }
 
 StudioController::~StudioController() {
-    pump_.stop();
     session_.unsubscribe(documentToken_);
     session_.selection().unsubscribe(selectionToken_);
     tasks_.cancelAll();

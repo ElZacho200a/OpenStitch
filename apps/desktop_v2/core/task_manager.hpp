@@ -75,6 +75,12 @@ public:
     // Livre les complétions en attente sur le fil appelant ; retourne leur nombre.
     std::size_t pump();
 
+    // Appelé depuis le fil de travail dès qu'une complétion est prête à être livrée par `pump()`.
+    // Permet à l'interface de planifier `pump()` à la demande plutôt que de sonder par minuteur
+    // (un minuteur de 8 ms par contrôleur réveillait le fil d'interface ~1000 fois par seconde
+    // au repos). Le rappel doit être court et ne rien toucher d'autre que poster un événement.
+    void setCompletionNotifier(std::function<void()> notifier);
+
     [[nodiscard]] std::vector<TaskInfo> running() const;
     [[nodiscard]] std::vector<TaskInfo> history() const; // dernières tâches terminées (50 max)
     [[nodiscard]] bool idle() const;                     // plus rien en cours NI à livrer
@@ -85,12 +91,14 @@ private:
     TaskId enqueue(std::string label, std::function<std::optional<Error>(const TaskContext&)> work,
                    std::function<void()> deliver);
     void finish(TaskId id, std::optional<Error> error);
+    bool finishLocked(TaskId id, std::optional<Error> error);
 
     mutable std::mutex mutex_;
     std::condition_variable cv_;
     std::map<TaskId, std::shared_ptr<Entry>> tasks_;
     std::deque<std::pair<TaskInfo, std::function<void()>>> finished_;
     std::deque<TaskInfo> history_;
+    std::shared_ptr<const std::function<void()>> notifier_;
     TaskId nextId_{1};
 };
 

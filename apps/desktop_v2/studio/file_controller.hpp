@@ -167,7 +167,6 @@ private:
     std::unique_ptr<AutosaveStore> autosave_;
     std::vector<UserHoop> userHoops_;
     QTimer autosaveTimer_;
-    QTimer pump_;
     QString message_;
     bool messageIsError_{false};
     bool busy_{false};

@@ -44,7 +44,6 @@ private:
     bool finishing_{false};
     std::vector<WarpTouch> touches_;
     std::vector<geometry::PathSet> preview_;
-    QTimer timer_;
     TaskManager tasks_;
 };
 } // namespace openstitch::desktop_v2::studio

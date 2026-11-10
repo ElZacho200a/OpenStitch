@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "warp_tool.hpp"
+
+#include "task_pump.hpp"
 #include <cmath>
 
 namespace openstitch::desktop_v2::studio {
@@ -12,12 +14,9 @@ std::optional<Vec2um> position(PointMm p) {
 }
 } // namespace
 WarpTool::WarpTool(StudioController& studio, QObject* parent) : QObject(parent), studio_(studio) {
-    timer_.setInterval(8);
-    connect(&timer_, &QTimer::timeout, this, [this] { tasks_.pump(); });
-    timer_.start();
+    attachTaskPump(tasks_, this);
 }
 WarpTool::~WarpTool() {
-    timer_.stop();
     tasks_.cancelAll();
 }
 void WarpTool::setRadiusMm(double value) {

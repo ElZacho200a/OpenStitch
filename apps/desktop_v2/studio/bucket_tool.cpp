@@ -1,15 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "bucket_tool.hpp"
+
+#include "task_pump.hpp"
 #include <cmath>
 namespace openstitch::desktop_v2::studio {
 BucketTool::BucketTool(StudioController& studio, QObject* parent)
     : QObject(parent), studio_(studio) {
-    timer_.setInterval(8);
-    connect(&timer_, &QTimer::timeout, this, [this] { tasks_.pump(); });
-    timer_.start();
+    attachTaskPump(tasks_, this);
 }
 BucketTool::~BucketTool() {
-    timer_.stop();
     tasks_.cancelAll();
 }
 bool BucketTool::begin(PointMm point) {

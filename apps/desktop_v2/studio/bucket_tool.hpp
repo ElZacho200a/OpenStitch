@@ -30,7 +30,6 @@ private:
     bool active_{false};
     bool finishing_{false};
     std::vector<geometry::PathSet> preview_;
-    QTimer timer_;
     TaskManager tasks_;
 };
 } // namespace openstitch::desktop_v2::studio

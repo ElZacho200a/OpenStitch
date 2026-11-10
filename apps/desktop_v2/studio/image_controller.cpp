@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "image_controller.hpp"
 
+#include "task_pump.hpp"
+
 #include <set>
 
 #include <algorithm>
@@ -202,9 +204,7 @@ QImage PrepareImageProvider::requestImage(const QString& id, QSize* size,
 
 ImageController::ImageController(StudioController& studio, QObject* parent)
     : QObject(parent), studio_(studio) {
-    pump_.setInterval(16);
-    connect(&pump_, &QTimer::timeout, this, [this] { tasks_.pump(); });
-    pump_.start();
+    attachTaskPump(tasks_, this);
     refreshTimer_.setSingleShot(true);
     refreshTimer_.setInterval(0);
     connect(&refreshTimer_, &QTimer::timeout, this, [this] { refreshNow(); });
@@ -222,7 +222,6 @@ ImageController::ImageController(StudioController& studio, QObject* parent)
 }
 
 ImageController::~ImageController() {
-    pump_.stop();
     tasks_.cancelAll();
     studio_.session().unsubscribe(token_);
 }
