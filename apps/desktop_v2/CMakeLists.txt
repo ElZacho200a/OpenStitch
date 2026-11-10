@@ -86,11 +86,11 @@ if(NOT TARGET Qt6::Network)
 endif()
 set(CMAKE_AUTOMOC ON)
 add_library(openstitch_desktop_v2_live STATIC
-    ui/live_server.cpp
-    ui/live_server.hpp
+    live/live_server.cpp
+    live/live_server.hpp
 )
 add_library(openstitch::desktop_v2_live ALIAS openstitch_desktop_v2_live)
-target_include_directories(openstitch_desktop_v2_live PUBLIC ui)
+target_include_directories(openstitch_desktop_v2_live PUBLIC live)
 target_link_libraries(openstitch_desktop_v2_live
     PUBLIC Qt6::Network openstitch::mcp
     PRIVATE openstitch::warnings)
@@ -98,75 +98,3 @@ target_link_libraries(openstitch_desktop_v2_live
 if(OPENSTITCH_BUILD_STUDIO)
     add_subdirectory(studio)
 endif()
-find_package(Qt6 COMPONENTS Widgets QUIET)
-if(NOT TARGET Qt6::Widgets)
-    return()
-endif()
-
-add_library(openstitch_desktop_v2_ui STATIC
-    ui/shell_window.cpp
-    ui/shell_window.hpp
-    ui/feedback_cue.cpp
-    ui/feedback_cue.hpp
-    ui/floating_action_bar.cpp
-    ui/floating_action_bar.hpp
-    ui/spool_rail_widget.cpp
-    ui/spool_rail_widget.hpp
-    ui/scrub_filter.cpp
-    ui/scrub_filter.hpp
-    ui/radial_menu_widget.cpp
-    ui/radial_menu_widget.hpp
-    ui/studio_theme.cpp
-    ui/studio_theme.hpp
-    ui/preview_canvas.cpp
-    ui/tool_icon.cpp
-    ui/tool_icon.hpp
-    ui/inspector_panel.cpp
-    ui/calque_panel.cpp
-    ui/calque_panel.hpp
-    ui/thread_panel.cpp
-    ui/analysis_overlays.cpp
-    ui/analysis_overlays.hpp
-    ui/node_edit_controller.cpp
-    ui/node_edit_controller.hpp
-    ui/region_panel.cpp
-    ui/render_quality_dialog.cpp
-    ui/render_quality_dialog.hpp
-    ui/region_panel.hpp
-    ui/region_edit_controller.cpp
-    ui/region_edit_controller.hpp
-    ui/import_dialog.cpp
-    ui/import_dialog.hpp
-    ui/optimize_panel.cpp
-    ui/optimize_panel.hpp
-    ui/export_options_dialog.cpp
-    ui/export_options_dialog.hpp
-    ui/thread_palette_dialog.cpp
-    ui/thread_palette_dialog.hpp
-    ui/calibration_dialog.cpp
-    ui/calibration_dialog.hpp
-    ui/chat_panel.cpp
-    ui/chat_panel.hpp
-    ui/companion_panel.cpp
-    ui/companion_panel.hpp
-    ui/thread_panel.hpp
-    ui/welcome_page.cpp
-    ui/welcome_page.hpp
-    ui/action_dialog.cpp
-    ui/action_dialog.hpp
-    ui/command_palette.cpp
-    ui/diagnostics_panel.cpp
-    ui/diagnostics_panel.hpp
-    ui/command_palette.hpp
-    ui/inspector_panel.hpp
-    ui/preview_canvas.hpp
-)
-add_library(openstitch::desktop_v2_ui ALIAS openstitch_desktop_v2_ui)
-target_include_directories(openstitch_desktop_v2_ui PUBLIC ui)
-target_link_libraries(openstitch_desktop_v2_ui
-    PUBLIC Qt6::Widgets Qt6::Network openstitch::desktop_v2_core openstitch::project_io
-           openstitch::agent openstitch::companion_backends
-    PRIVATE openstitch::desktop_v2_live openstitch::warnings)
-
-add_executable(openstitch_v2 WIN32 ui/main.cpp)
-target_link_libraries(openstitch_v2 PRIVATE openstitch::desktop_v2_ui openstitch::warnings)
