@@ -138,6 +138,12 @@ void StudioShellTest::realProjectSelectionAndViewInteractions() {
     QVERIFY(dstBefore.has_value());
     const auto builds = canvas->geometryBuildCount();
     const auto firstPoint = canvas->camera().worldToScreen({0, -10});
+    // Hover is a presentation-only hit test. It must not create a selection or undo step.
+    QCOMPARE(canvas->hoverRect(), QRectF{});
+    QTest::mouseMove(window, windowPoint(*canvas, firstPoint));
+    QTRY_VERIFY_WITH_TIMEOUT(canvas->hoverRect().width() > 0, 3000);
+    QVERIFY(session.selection().empty());
+    QVERIFY(!session.canUndo());
     QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, windowPoint(*canvas, firstPoint));
     QTRY_VERIFY(session.selection().contains({TargetKind::EmbroideryObject, firstId}));
     QTRY_VERIFY(controller.objects().front().toMap().value(QStringLiteral("selected")).toBool());
