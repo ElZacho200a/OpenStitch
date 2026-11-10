@@ -5,6 +5,14 @@ on:
     branches: [main]
   pull_request:
 
+# Un nouveau push sur une PR rend obsolètes les runs précédents de cette PR : ils sont annulés
+# (sinon chaque commit lance un build Windows complet, la file des runners s'allonge de plusieurs
+# heures et les runs utiles attendent derrière des commits périmés). Les pushes sur main ont un
+# groupe unique par commit : jamais annulés ni écrasés, la release de main reste inchangée.
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('ci-pr-{0}', github.event.pull_request.number) || format('ci-push-{0}', github.sha) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
 
