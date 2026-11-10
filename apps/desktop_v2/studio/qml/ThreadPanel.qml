@@ -195,6 +195,7 @@ Rectangle {
                     text: modelData.text
                     checkable: true
                     checked: panel.page === modelData.id
+                    font.bold: checked
                     onClicked: panel.page = modelData.id
                 }
             }
