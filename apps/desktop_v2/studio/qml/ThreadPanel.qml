@@ -196,6 +196,7 @@ Rectangle {
                     checkable: true
                     checked: panel.page === modelData.id
                     font.bold: checked
+                    active: checked
                     onClicked: panel.page = modelData.id
                 }
             }
@@ -250,6 +251,16 @@ Rectangle {
                     border.width: panel.current === modelData.index ? 1 : 0
                     border.color: Theme.accent
                     Behavior on color { ColorAnimation { duration: Theme.animationMs } }
+                    Behavior on border.width { NumberAnimation { duration: Theme.feedbackFastMs } }
+                    Rectangle {
+                        width: 3
+                        anchors.left: parent.left
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
+                        radius: 1
+                        color: Theme.accent
+                        visible: panel.current === row.modelData.index
+                    }
                     opacity: modelData.visible ? 1 : 0.5
                     Behavior on opacity { NumberAnimation { duration: Theme.feedbackFastMs } }
                     MouseArea { id: threadRowMouse; anchors.fill: parent; hoverEnabled: true; onClicked: panel.currentId = row.modelData.id }
@@ -258,7 +269,12 @@ Rectangle {
                         anchors.leftMargin: 6
                         anchors.rightMargin: 6
                         spacing: 8
-                        Rectangle { implicitWidth: 18; implicitHeight: 18; radius: 3; color: row.modelData.color; border.color: Theme.border }
+                        Rectangle {
+                            implicitWidth: 18; implicitHeight: 18; radius: 3
+                            color: row.modelData.color
+                            border.color: Theme.border
+                            Behavior on color { ColorAnimation { duration: Theme.feedbackSlowMs } }
+                        }
                         Text { Layout.fillWidth: true; elide: Text.ElideRight; text: row.modelData.label; color: Theme.foreground; font.family: Theme.fontFamily; font.pixelSize: Theme.bodySize }
                         Text { text: qsTr("%1 obj.").arg(row.modelData.objectCount); color: Theme.faint; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize }
                     }
