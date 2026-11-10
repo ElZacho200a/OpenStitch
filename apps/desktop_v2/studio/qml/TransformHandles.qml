@@ -35,6 +35,7 @@ Item {
         border.color: Theme.accent
         border.width: 1
         opacity: 0.95
+        Behavior on border.color { ColorAnimation { duration: Theme.feedbackFastMs } }
     }
 
     Rectangle {
@@ -58,6 +59,7 @@ Item {
             width: Math.max(1, Math.abs(modelData.x2 - modelData.x1))
             height: Math.max(1, Math.abs(modelData.y2 - modelData.y1))
             color: Theme.info
+            opacity: 0.85
         }
     }
 
@@ -85,6 +87,7 @@ Item {
             color: index === 8 ? Theme.accent : Theme.foreground
             border.color: Theme.accent
             border.width: 1.5
+            Behavior on color { ColorAnimation { duration: Theme.feedbackFastMs } }
         }
     }
 
