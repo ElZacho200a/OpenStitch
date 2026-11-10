@@ -525,6 +525,41 @@ void StudioDigitizeTest::mainQmlHostsDigitizePanels() {
     QVERIFY(press(window, "pointDiscard"));
     QTRY_COMPARE(pointEdit.state(), QStringLiteral("clean"));
 
+    // F26-02: the real QML form must reject malformed distances, accept French
+    // decimal commas as 0.5 mm (not parseFloat's erroneous 0 mm), and preserve undo.
+    auto* dxField = named(window, "pointMoveDx");
+    auto* dyField = named(window, "pointMoveDy");
+    auto* moveButton = named(window, "pointMove");
+    QVERIFY(dxField && dyField && moveButton);
+    const auto pointList = pointEdit.pointsIn(-1000, -1000, 1000, 1000, 0);
+    int firstMovable = -1;
+    for (const auto& item : pointList) {
+        const auto point = item.toMap();
+        if (point.value(QStringLiteral("movable")).toBool()) {
+            firstMovable = point.value(QStringLiteral("index")).toInt();
+            break;
+        }
+    }
+    QVERIFY(firstMovable >= 0);
+    QVERIFY(pointEdit.selectPoint(firstMovable, false));
+    const auto beforeMove = sequenceOf(session);
+    const auto beforeMoveDepth = session.undoNames().size();
+
+    QVERIFY(dxField->setProperty("text", QStringLiteral("0,5mm")));
+    QTRY_VERIFY(!moveButton->isEnabled());
+    QVERIFY(dxField->property("invalid").toBool());
+    QCOMPARE(session.undoNames().size(), beforeMoveDepth);
+    QVERIFY(dxField->setProperty("text", QStringLiteral("")));
+    QTRY_VERIFY(!moveButton->isEnabled());
+    QVERIFY(dxField->setProperty("text", QStringLiteral("0,5")));
+    QVERIFY(dyField->setProperty("text", QStringLiteral("0")));
+    QTRY_VERIFY(moveButton->isEnabled());
+    QVERIFY(press(window, "pointMove"));
+    QCOMPARE(session.undoNames().size(), beforeMoveDepth + 1);
+    QVERIFY(sequenceOf(session).commands != beforeMove.commands);
+    QVERIFY(session.undo());
+    QVERIFY(sequenceOf(session).commands == beforeMove.commands);
+
     // Fade panel.
     QVERIFY(press(window, "fadePanelButton"));
     QTRY_VERIFY(fade.canCreate());
