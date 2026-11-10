@@ -141,7 +141,7 @@ Item {
             Text {
                 Layout.fillWidth: true
                 visible: root.ctl && root.ctl.typeMixed
-                text: qsTr("La sélection mélange plusieurs types de points : choisissez un type pour les convertir, puis réglez-les ensemble.")
+                text: qsTr("Types différents : seuls les réglages communs à tous les types sont affichés ; ils s'appliquent à chaque objet. Choisissez un type pour les convertir et accéder à tous leurs réglages.")
                 color: Theme.faint
                 wrapMode: Text.WordWrap
                 font.family: Theme.fontFamily
@@ -150,8 +150,10 @@ Item {
             Text {
                 Layout.fillWidth: true
                 objectName: "noParams"
-                visible: root.ctl && !root.ctl.typeMixed && root.ctl.totalFieldCount === 0
-                text: qsTr("Ce type de points n'expose pas encore de réglages dans l'inspecteur.")
+                visible: root.ctl && root.ctl.totalFieldCount === 0
+                text: root.ctl && root.ctl.typeMixed
+                      ? qsTr("Ces types de points n'ont aucun réglage en commun : convertissez-les en un même type.")
+                      : qsTr("Ce type de points n'expose pas encore de réglages dans l'inspecteur.")
                 color: Theme.faint
                 wrapMode: Text.WordWrap
                 font.family: Theme.fontFamily
