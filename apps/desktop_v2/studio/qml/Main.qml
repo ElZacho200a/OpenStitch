@@ -488,13 +488,21 @@ Window {
                 spacing: 12
                 Text {
                     Layout.fillWidth: true
-                    text: studio.status
+                    text: studio.busy ? qsTr("Opération en cours…  ·  ") + studio.status : studio.status
                     elide: Text.ElideRight
                     color: Theme.muted
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.smallSize
                     Accessible.role: Accessible.StaticText
                     Accessible.name: text
+                }
+                Controls.BusyIndicator {
+                    objectName: "studioBusyIndicator"
+                    visible: studio.busy
+                    running: visible && !Theme.reducedMotion
+                    implicitWidth: 18
+                    implicitHeight: 18
+                    Accessible.name: qsTr("Opération en cours")
                 }
                 Text {
                     text: studio.commandCount.toLocaleString(Qt.locale(), "f", 0) + qsTr(" commandes")
