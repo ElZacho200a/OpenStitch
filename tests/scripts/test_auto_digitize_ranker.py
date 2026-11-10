@@ -89,6 +89,27 @@ class RankerTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "two distinct"):
             ranker.split_by_motif([sample()])
 
+    def test_direct_training_rejects_duplicate_ids(self):
+        rows = [sample(i) for i in range(8)]
+        rows[1]["sample_id"] = rows[0]["sample_id"]
+        with self.assertRaisesRegex(ValueError, "duplicate sample_id"):
+            ranker.train_model(rows, epochs=1)
+
+    def test_direct_training_rejects_unconsented_or_invalid_rows(self):
+        rows = [sample(i) for i in range(8)]
+        rows[0]["provenance"]["source_kind"] = "human_confirmed"
+        rows[0]["provenance"]["opt_in"] = False
+        with self.assertRaisesRegex(ValueError, "opt_in"):
+            ranker.train_model(rows, epochs=1)
+        rows[0]["provenance"]["opt_in"] = True
+        rows[0]["candidates"][0]["features"]["travel_mm"] = float("nan")
+        with self.assertRaisesRegex(ValueError, "nonfinite"):
+            ranker.train_model(rows, epochs=1)
+
+    def test_direct_training_rejects_empty_dataset(self):
+        with self.assertRaisesRegex(ValueError, "no labeled samples"):
+            ranker.train_model([], epochs=1)
+
     def test_training_deterministic_and_holdout(self):
         rows = [sample(i) for i in range(12)]
         one = ranker.train_model(rows, epochs=250)
