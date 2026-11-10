@@ -13,6 +13,15 @@ ColumnLayout {
 
     property string confirmText: ""
     property bool pendingResegment: false
+    // Sourced from the active SegmentationSection in Studio, not hardcoded defaults.
+    property var segmentationOptions: imageTools.segmentationDefaults
+    property var pendingOptions: ({})
+    function requestRegeneration(resegment) {
+        pendingResegment = resegment
+        // Freeze the chosen settings while the overwrite confirmation is shown.
+        pendingOptions = Object.assign({}, segmentationOptions)
+        regionTools.regenerate(resegment, false, pendingOptions)
+    }
     property int islandPx: 12
     property int holePx: 12
     property int paletteColors: 8
@@ -234,13 +243,13 @@ ColumnLayout {
             text: qsTr("Régénérer les objets")
             emphasized: regionTools.stale
             enabled: regionTools.hasSegmentation && !regionTools.busy
-            onClicked: { section.pendingResegment = false; regionTools.regenerate(false, false, imageTools.segmentationDefaults) }
+            onClicked: section.requestRegeneration(false)
         }
         StudioButton {
             objectName: "regionResegment"
             text: qsTr("Re-segmenter")
             enabled: imageTools.hasImage && !regionTools.busy
-            onClicked: { section.pendingResegment = true; regionTools.regenerate(true, false, imageTools.segmentationDefaults) }
+            onClicked: section.requestRegeneration(true)
         }
         StudioButton {
             objectName: "regionCancelTask"
@@ -274,7 +283,7 @@ ColumnLayout {
                     emphasized: true
                     onClicked: {
                         section.confirmText = ""
-                        regionTools.regenerate(section.pendingResegment, true, imageTools.segmentationDefaults)
+                        regionTools.regenerate(section.pendingResegment, true, section.pendingOptions)
                     }
                 }
                 StudioButton {
