@@ -17,6 +17,18 @@ import sys
 import tempfile
 
 
+def parse_cli_json(stdout: str) -> dict:
+    """Accept a single JSON object after optional OpenCV startup log lines."""
+    lines = stdout.splitlines()
+    for i, line in enumerate(lines):
+        if line.lstrip().startswith("{"):
+            value = json.loads("\n".join(lines[i:]))
+            if not isinstance(value, dict):
+                raise ValueError("CLI JSON must be an object")
+            return value
+    raise ValueError("CLI JSON object missing")
+
+
 def verify(cli: Path, image: Path, *, runner=subprocess.run, timeout: int = 120) -> dict:
     """Return a machine-readable report. Failures are never treated as success."""
     digests: list[str] = []
@@ -50,7 +62,7 @@ def verify(cli: Path, image: Path, *, runner=subprocess.run, timeout: int = 120)
                 failures.append(f"pass-{index}:invalid-dst-envelope")
                 break
             try:
-                report = json.loads(completed.stdout)
+                report = parse_cli_json(completed.stdout)
                 n = report["stitches"]
                 if type(n) is not int or n < 0:
                     raise ValueError("stitches must be a nonnegative JSON integer")
