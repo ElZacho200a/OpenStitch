@@ -121,6 +121,7 @@ ColumnLayout {
             Accessible.name: qsTr("Décalage en millimètres")
         }
         Mini { objectName: "offsetOutButton"; text: qsTr("Décaler +"); enabled: parent.some && !offsetField.invalid; onClicked: panel.vec.offsetShapes(Math.abs(parseFloat(offsetField.text.replace(",", ".")))) }
+        Mini { objectName: "outlineButton"; text: qsTr("Contour"); enabled: parent.some && !offsetField.invalid; onClicked: panel.vec.outlineShapes(Math.abs(parseFloat(offsetField.text.replace(",", ".")))) }
         Mini { objectName: "offsetInButton"; text: qsTr("Décaler −"); enabled: parent.some && !offsetField.invalid; onClicked: panel.vec.offsetShapes(-Math.abs(parseFloat(offsetField.text.replace(",", ".")))) }
     }
     Text {

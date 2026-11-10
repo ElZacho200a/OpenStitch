@@ -252,8 +252,10 @@ ServiceResult duplicateCalque(DocumentSession& session, std::uint64_t calqueId) 
     return ok();
 }
 
-ServiceResult offsetShapes(DocumentSession& session, const std::vector<std::uint64_t>& objectIds,
-                           double offsetMm) {
+namespace {
+ServiceResult makeOffsetCopies(DocumentSession& session,
+                               const std::vector<std::uint64_t>& objectIds, double offsetMm,
+                               bool ring) {
     if (!std::isfinite(offsetMm) || offsetMm == 0.0 || std::abs(offsetMm) > 50.0) {
         return refuse("Décalage invalide : entre -50 et 50 mm, non nul.");
     }
@@ -268,7 +270,7 @@ ServiceResult offsetShapes(DocumentSession& session, const std::vector<std::uint
             continue;
         }
         document::VectorObject result;
-        result.name = shape->name + " (décalé)";
+        result.name = shape->name + (ring ? " (contour)" : " (décalé)");
         result.rgb = shape->rgb;
         result.calque = shape->calque;
         for (const auto& set : shape->paths) {
@@ -281,8 +283,12 @@ ServiceResult offsetShapes(DocumentSession& session, const std::vector<std::uint
             if (!offset) {
                 return refuse("Décalage impossible : " + offset.error().message);
             }
-            for (const auto& piece : *offset) {
-                result.paths.push_back(piece);
+            for (auto piece : *offset) {
+                if (ring) {
+                    piece.holes.clear(); // l'anneau n'a pour trou que la forme d'origine
+                    piece.holes.push_back(flattenToPath(set.outer));
+                }
+                result.paths.push_back(std::move(piece));
             }
         }
         if (result.paths.empty()) {
@@ -301,8 +307,23 @@ ServiceResult offsetShapes(DocumentSession& session, const std::vector<std::uint
             "Rien à décaler : sélectionnez une forme, ou le décalage la fait disparaître.");
     }
     session.execute(std::make_unique<commands::AddObjectBatchCommand>(
-        std::move(vectors), std::move(embroideries), "Décaler la forme"));
+        std::move(vectors), std::move(embroideries),
+        ring ? "Contour autour de la sélection" : "Décaler la forme"));
     return ok();
+}
+} // namespace
+
+ServiceResult offsetShapes(DocumentSession& session, const std::vector<std::uint64_t>& objectIds,
+                           double offsetMm) {
+    return makeOffsetCopies(session, objectIds, offsetMm, false);
+}
+
+ServiceResult outlineShapes(DocumentSession& session, const std::vector<std::uint64_t>& objectIds,
+                            double widthMm) {
+    if (!(widthMm > 0.0)) {
+        return refuse("Largeur du contour invalide : plus de 0 et au plus 50 mm.");
+    }
+    return makeOffsetCopies(session, objectIds, widthMm, true);
 }
 
 } // namespace openstitch::desktop_v2

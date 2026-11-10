@@ -124,6 +124,13 @@ bool VectorController::offsetShapes(double offsetMm) {
     return result.ok;
 }
 
+bool VectorController::outlineShapes(double widthMm) {
+    const auto result = openstitch::desktop_v2::outlineShapes(studio_.session(), ids(), widthMm);
+    say(result.ok ? QStringLiteral("Contour créé autour de la sélection.")
+                  : QString::fromStdString(result.message));
+    return result.ok;
+}
+
 bool VectorController::simplify(double toleranceMm) {
     const auto selected = ids();
     if (selected.empty() || !(toleranceMm > 0.0)) {

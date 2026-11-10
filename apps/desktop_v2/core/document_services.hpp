@@ -52,6 +52,12 @@ ServiceResult moveObjectsToCalque(DocumentSession& session,
 // chaque forme du calque source et de ses objets de broderie, en UNE étape d'annulation.
 ServiceResult duplicateCalque(DocumentSession& session, std::uint64_t calqueId);
 
+// « Contour autour de la sélection » (V1) : crée, pour chaque objet donné, un anneau de largeur
+// `widthMm` (> 0, <= 50) autour de sa forme (la forme d'origine en devient le trou), avec son
+// objet de broderie, en UNE étape d'annulation.
+ServiceResult outlineShapes(DocumentSession& session, const std::vector<std::uint64_t>& objectIds,
+                            double widthMm);
+
 // « Décaler la forme » (V1) : crée, pour chaque objet donné, une copie décalée de sa forme
 // (offset > 0 agrandit vers l'extérieur, < 0 rétrécit), avec son objet de broderie, en UNE étape
 // d'annulation. Les courbes sont aplaties avant le décalage (Clipper2). Refus : décalage nul,

@@ -164,6 +164,7 @@ private slots:
     void offscreenNodeHandlesDoNotFillQmlCanvas();
     void knifeAndBooleans();
     void offsetShapesCreatesAGrownOrShrunkCopyInOneStep();
+    void outlineAroundTheSelectionIsARingInOneStep();
     void snappingIsConfigurable();
 };
 
@@ -667,6 +668,39 @@ void StudioToolsTest::offsetShapesCreatesAGrownOrShrunkCopyInOneStep() {
     QVERIFY(!rig.vectors.offsetShapes(1.0));
     QCOMPARE(steps(rig), baseSteps);
     QCOMPARE(objects(rig), baseObjects);
+}
+
+// « Contour autour de la sélection » : un anneau (la forme d'origine en trou) plus large de la
+// largeur demandée, une seule étape d'annulation ; largeur nulle / négative / hors bornes refusée.
+void StudioToolsTest::outlineAroundTheSelectionIsARingInOneStep() {
+    Rig rig;
+    open(rig);
+    const auto a = draw(rig, "draw.rectangle", {-10, -5}, {10, 5});
+    QVERIFY(a != 0);
+    QVERIFY(rig.window->findChild<QQuickItem*>(QStringLiteral("outlineButton")));
+    const auto baseSteps = steps(rig);
+    const auto baseObjects = objects(rig);
+    rig.session.selection().replace({Target{TargetKind::EmbroideryObject, a}});
+    QVERIFY(rig.vectors.outlineShapes(2.0));
+    QCOMPARE(steps(rig), baseSteps + 1);
+    QCOMPARE(objects(rig), baseObjects + 1);
+    const auto ring =
+        boundsOf(rig.session.project(), rig.session.project().embroidery_objects.back().id.value);
+    QVERIFY(std::abs((ring.x1 - ring.x0) - 24.0) < 0.3);
+    const auto& shape = rig.session.project().vector_objects.back();
+    QVERIFY(!shape.paths.empty());
+    QCOMPARE(shape.paths.front().holes.size(), std::size_t{1});
+    QVERIFY(rig.session.undo());
+    QCOMPARE(steps(rig), baseSteps);
+    QCOMPARE(objects(rig), baseObjects);
+
+    rig.session.selection().replace({Target{TargetKind::EmbroideryObject, a}});
+    QVERIFY(!rig.vectors.outlineShapes(0.0));
+    QVERIFY(!rig.vectors.outlineShapes(-2.0));
+    QVERIFY(!rig.vectors.outlineShapes(100.0));
+    rig.session.selection().clear();
+    QVERIFY(!rig.vectors.outlineShapes(2.0));
+    QCOMPARE(steps(rig), baseSteps);
 }
 
 void StudioToolsTest::knifeAndBooleans() {
