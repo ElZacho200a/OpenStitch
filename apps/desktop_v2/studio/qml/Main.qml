@@ -64,12 +64,30 @@ Window {
     property string feedbackText: ""
     property string feedbackTone: "info"
     property bool saveConfirmed: false
+    property int lastPreviewBuildCount: 0
+    onCanvasChanged: lastPreviewBuildCount = canvas ? canvas.geometryBuildCount : 0
+    // The renderer reports actual creation of new geometry; no synthetic progress.
+    Connections {
+        target: window.canvas
+        ignoreUnknownSignals: true
+        function onDiagnosticsChanged() {
+            if (!window.canvas) return
+            const count = window.canvas.geometryBuildCount
+            if (count > window.lastPreviewBuildCount && count > 0) {
+                window.lastPreviewBuildCount = count
+                window.showFeedback(qsTr("Aperçu actualisé"), "info")
+            }
+        }
+    }
     Timer { id: feedbackTimer; interval: 2600; onTriggered: window.feedbackText = "" }
     Timer { id: saveConfirmTimer; interval: 1800; onTriggered: window.saveConfirmed = false }
 
     // One transient notification, coalesced instead of stacking repeated messages.
     function showFeedback(message, tone) {
         if (!message || message.length === 0) return
+        // Low-priority rendering notices never suppress a save success or an error.
+        if (tone === "info" && feedbackText.length > 0 &&
+            (feedbackTone === "success" || feedbackTone === "error")) return
         feedbackText = message
         feedbackTone = tone || "info"
         feedbackTimer.restart()
