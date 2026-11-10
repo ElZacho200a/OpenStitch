@@ -30,6 +30,8 @@ Item {
             required property var modelData
             required property int index
             readonly property bool isObject: modelData.kind === "object"
+            readonly property bool primarySelected: isObject && modelData.selected
+                                                    && studio.primarySelectionId === modelData.id
             readonly property bool isLayer: modelData.kind === "layer"
             readonly property bool isGroup: modelData.kind === "group"
             property bool renaming: false
@@ -54,11 +56,11 @@ Item {
                 border.color: Theme.accent
                 Behavior on color { ColorAnimation { duration: Theme.animationMs } }
                 Rectangle {
-                    width: 3
+                    width: row.primarySelected ? 4 : 2
                     anchors.left: parent.left
                     anchors.top: parent.top
                     anchors.bottom: parent.bottom
-                    color: Theme.accent
+                    color: row.primarySelected ? Theme.accent : Theme.info
                     visible: row.isObject && row.modelData.selected
                 }
             }
