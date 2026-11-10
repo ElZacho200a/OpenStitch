@@ -199,6 +199,29 @@ def metrics(rows: list[dict], model: dict | None) -> dict:
     return {"samples": len(rows), "top1_accuracy": round(correct / len(rows), 6)}
 
 
+def compare_candidates(model: dict, row: dict) -> dict:
+    """Compare measured alternatives; never apply a choice to OSP/DST."""
+    check_sample(row, require_label=False)
+    ranked = rank(model, row)
+    baseline = sorted(row["candidates"], key=lambda c: (-heuristic(c), c["id"]))
+    by_id = {c["id"]: c for c in row["candidates"]}
+    return {
+        "schema": "openstitch.ai.candidate-comparison/1",
+        "sample_id": row["sample_id"],
+        "semantic_id": row["semantic_id"],
+        "model_choice": ranked[0]["id"],
+        "heuristic_choice": baseline[0]["id"],
+        "agree": ranked[0]["id"] == baseline[0]["id"],
+        "ranking": [
+            {"id": item["id"], "technique": by_id[item["id"]]["technique"],
+             "score": item["score"],
+             "heuristic_score": heuristic(by_id[item["id"]])}
+            for item in ranked
+        ],
+        "applied": False,
+    }
+
+
 def dataset_digest(rows: list[dict]) -> str:
     canonical = "\n".join(json.dumps(r, sort_keys=True, separators=(",", ":"),
                                     ensure_ascii=False) for r in rows)
@@ -233,15 +256,20 @@ def main(argv=None) -> int:
             p.add_argument("model", type=Path, help="Output for train; input for evaluate")
         if command == "train":
             p.add_argument("--epochs", type=int, default=500)
+    p = sub.add_parser("compare")
+    p.add_argument("model", type=Path)
+    p.add_argument("sample", type=Path)
     p = sub.add_parser("rank")
     p.add_argument("model", type=Path)
     p.add_argument("sample", type=Path)
     args = parser.parse_args(argv)
     try:
-        if args.command == "rank":
+        if args.command in ("rank", "compare"):
             model = json.loads(args.model.read_text(encoding="utf-8"))
             sample = json.loads(args.sample.read_text(encoding="utf-8"))
-            print(json.dumps({"ranking": rank(model, sample)}, indent=2))
+            output = (compare_candidates(model, sample) if args.command == "compare"
+                      else {"ranking": rank(model, sample)})
+            print(json.dumps(output, indent=2))
         else:
             rows = load_jsonl(args.samples)
             if args.command == "validate":
