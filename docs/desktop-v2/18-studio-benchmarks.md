@@ -209,3 +209,34 @@ pendant les gestes. Le protocole de repli est décrit dans [l'architecture](17-s
 
 Références : [QQuickWindow::frameSwapped](https://doc.qt.io/qt-6.8/qquickwindow.html#frameSwapped),
 [rétention des géométries du renderer Qt Quick](https://doc.qt.io/qt-6.8/qtquick-visualcanvas-scenegraph-renderer.html).
+
+## Survol et clic : `StudioSceneSnapshot::pick` (PERF-015, volet scène de points)
+
+`pick` est appelé à chaque mouvement de souris par le survol (`GpuCanvas::hoverMoveEvent`), au
+clic et par les outils. Il parcourait tous les segments à l'envers : coût **linéaire**, sur le fil
+d'interface. Le snapshot porte désormais une grille uniforme immuable (`StudioPickGrid`, format
+CSR, cellules de 2 mm, plafond de 4 M de cellules) construite sur le worker par
+`build_studio_scene`. Chaque cellule liste les segments par indice croissant ; `pick` prend le plus
+grand indice qui touche le point, donc **le même objet que le balayage** (dernier segment cousu,
+`objectId` 0 ignoré, segments non finis ignorés). Garde-fous : grille absente, périmée (taille de
+`segments` différente) ou requête de plus de 4 096 cellules → repli sur le balayage ; scène
+pathologique (> 32 entrées par segment) → pas de grille.
+
+Mesure : `test_desktop_v2_core "[pick]"`, Release, MSVC, scène synthétique en serpentin (pas de
+0,5 mm, 1 000 segments par objet), tolérance 0,3 mm, 2 000 requêtes pseudo-aléatoires fixes par
+taille, 3 exécutions (écarts < 5 %). Machine de développement non étalonnée : ces chiffres ne
+valent que pour comparer avant/après sur la même machine ; pas de GPU, pas de fenêtre.
+
+| Segments | balayage p50 / p95 | grille p50 / p95 | construction (worker) |
+| ---: | ---: | ---: | ---: |
+| 10 000 | 14 µs / 28 µs | 0,1 µs / 0,6 µs | 0,75 ms |
+| 100 000 | 144 µs / 283 µs | 0,4 µs / 1,0 µs | 7,3 ms |
+| 500 000 | 720 µs / 1 410 µs | 0,5 µs / 1,3 µs | 36 ms |
+
+Lecture honnête : à 100 000 segments le balayage coûtait ~1,7 % d'une frame de 16,7 ms, et ~8,5 %
+à 500 000. Ce n'était pas un gel, mais une marge consommée par un mouvement de souris sans rapport
+avec la charge de travail ; la grille la rend négligeable. **Non mesuré** : le coût mémoire exact de
+la grille sur un `.osp` réel (Tentabrode), le temps de frame de l'application entière, et l'effet
+sur le p95 d'interaction bout en bout. `test_studio_scene.cpp` vérifie l'équivalence exacte avec le
+balayage sur 20 000 requêtes (tolérances 0 à 150 mm, requêtes hors scène, segments d'`objectId` 0,
+longs, diagonaux et de longueur nulle, grille périmée).

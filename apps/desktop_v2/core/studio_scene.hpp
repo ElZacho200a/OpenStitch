@@ -44,7 +44,26 @@ struct StudioSceneBuildTiming {
     double effectiveSequenceMs{0};
     double threadSegmentsMs{0};
     double verticesMs{0};
+    double pickGridMs{0};
 };
+
+// Grille uniforme (format CSR) des segments, pour que le survol et le clic ne parcourent plus toute
+// la scène. Immuable, construite sur le worker avec le snapshot. Chaque cellule liste, par indice
+// croissant, les segments dont la boîte englobante la touche : `pick` retrouve ainsi exactement
+// le même objet que le balayage linéaire (le dernier segment cousu gagne).
+struct StudioPickGrid {
+    double originX{0};
+    double originY{0};
+    double cellMm{2.0};
+    int columns{0};
+    int rows{0};
+    std::size_t segmentCount{0};        // taille de `segments` au moment de la construction
+    std::vector<std::uint32_t> offsets; // columns * rows + 1
+    std::vector<std::uint32_t> items;
+};
+
+[[nodiscard]] std::shared_ptr<const StudioPickGrid>
+build_pick_grid(const std::vector<StudioSegment>& segments);
 
 struct StudioSceneSnapshot {
     StudioSceneBuildTiming timing;
@@ -59,6 +78,8 @@ struct StudioSceneSnapshot {
     std::vector<StudioSegment> segments;
     std::vector<StudioVertex> vertices;
     std::map<std::uint64_t, stitch_render::RectMm> objectBounds;
+    // Optionnel : absent (ou périmé si sa taille diffère de `segments`), `pick` balaie tout.
+    std::shared_ptr<const StudioPickGrid> pickGrid;
 
     [[nodiscard]] std::optional<std::uint64_t> pick(double xMm, double yMm,
                                                     double toleranceMm) const;
