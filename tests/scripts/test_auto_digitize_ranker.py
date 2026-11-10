@@ -131,6 +131,23 @@ class RankerTest(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "split salt"):
                     ranker.split_by_motif(rows, salt=salt)
 
+    def test_direct_split_rejects_unconsented_or_malformed_rows(self):
+        rows = [sample(i) for i in range(4)]
+        rows[0]["provenance"]["source_kind"] = "human_confirmed"
+        rows[0]["provenance"]["opt_in"] = False
+        with self.assertRaisesRegex(ValueError, "opt_in"):
+            ranker.split_by_motif(rows)
+        rows[0]["provenance"]["opt_in"] = True
+        rows[0]["candidates"][0]["features"]["travel_mm"] = float("nan")
+        with self.assertRaisesRegex(ValueError, "nonfinite"):
+            ranker.split_by_motif(rows)
+
+    def test_direct_split_rejects_duplicate_sample_ids(self):
+        rows = [sample(i) for i in range(4)]
+        rows[1]["sample_id"] = rows[0]["sample_id"]
+        with self.assertRaisesRegex(ValueError, "duplicate sample_id"):
+            ranker.split_by_motif(rows)
+
     def test_split_refuses_single_group(self):
         with self.assertRaisesRegex(ValueError, "two distinct"):
             ranker.split_by_motif([sample()])
