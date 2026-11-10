@@ -222,6 +222,26 @@ def compare_candidates(model: dict, row: dict) -> dict:
     }
 
 
+def dominates_quality(a: dict, b: dict, *, tolerance: float = 1e-9) -> bool:
+    """Measured quality Pareto gate: all metrics no worse, one strictly better."""
+    check_candidate(a)
+    check_candidate(b)
+    high = ("coverage_ratio", "detail_retention_ratio", "angle_coherence_ratio")
+    low = ("short_stitch_ratio", "overdensity_ratio", "uncovered_ratio",
+           "travel_mm", "trim_count", "stitch_count")
+    af, bf = a["features"], b["features"]
+    better = False
+    for key in high:
+        if af[key] + tolerance < bf[key]:
+            return False
+        better |= af[key] > bf[key] + tolerance
+    for key in low:
+        if af[key] > bf[key] + tolerance:
+            return False
+        better |= af[key] + tolerance < bf[key]
+    return better
+
+
 def assess_candidates(model: dict, row: dict, *, min_margin: float = 0.1,
                       min_coverage: float = 0.85,
                       max_uncovered: float = 0.15,
@@ -263,6 +283,10 @@ def assess_candidates(model: dict, row: dict, *, min_margin: float = 0.1,
     accepted_ids = {c["id"] for c in accepted}
     ranked = [item for item in all_ranked if item["id"] in accepted_ids]
     baseline = sorted(accepted, key=lambda c: (-heuristic(c), c["id"]))[0]["id"]
+    selected_candidate = next(c for c in accepted if c["id"] == ranked[0]["id"])
+    dominators = sorted(c["id"] for c in accepted
+                        if c["id"] != selected_candidate["id"]
+                        and dominates_quality(c, selected_candidate))
     margin = ranked[0]["score"] - ranked[1]["score"] if len(ranked) > 1 else None
     if margin is not None and not math.isfinite(margin):
         fail("nonfinite ranking margin")
@@ -271,15 +295,17 @@ def assess_candidates(model: dict, row: dict, *, min_margin: float = 0.1,
     training = model.get("training")
     human_validated = isinstance(training, dict) and training.get("synthetic_only") is False
     # A single admissible candidate needs no learned arbitration.
-    confident = human_validated and len(ranked) > 1 and margin >= min_margin
+    confident = human_validated and len(ranked) > 1 and margin >= min_margin and not dominators
     return {"schema": "openstitch.ai.assessment/1",
             "decision": "recommend" if confident else "fallback",
             "reason": "sufficient_margin" if confident else
                       ("synthetic_or_unverified_model" if not human_validated else
+                       "pareto_dominated" if dominators else
                        "single_admissible_candidate" if len(ranked) == 1 else "low_margin"),
             "selected_id": ranked[0]["id"] if confident else baseline,
             "model_choice": ranked[0]["id"], "heuristic_choice": baseline,
-            "margin": margin, "rejected": rejected, "applied": False}
+            "margin": margin, "dominated_by": dominators,
+            "rejected": rejected, "applied": False}
 
 
 def ranking_metrics(rows: list[dict], model: dict | None, k: int = 2) -> dict:
