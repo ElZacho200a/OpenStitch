@@ -602,6 +602,21 @@ void StudioViewTest::mainQmlHostsEveryPanel() {
     QVERIFY(!threads.colorways().isEmpty());
     QVERIFY(named(window, "colorwayRename0"));
 
+    // F37-02: a single-key View shortcut must not steal letters while the user
+    // edits a text field; once the canvas regains focus the same shortcut works.
+    auto* textEntry = named(window, "colorwayNameField");
+    auto* pointsCanvas = named(window, "studioCanvas");
+    QVERIFY(textEntry && pointsCanvas);
+    textEntry->forceActiveFocus();
+    QTRY_VERIFY(textEntry->hasActiveFocus());
+    const bool gridInitiallyVisible = view.gridVisible();
+    QTest::keyClick(window, Qt::Key_G);
+    QCOMPARE(view.gridVisible(), gridInitiallyVisible);
+    pointsCanvas->forceActiveFocus();
+    QTRY_VERIFY(pointsCanvas->hasActiveFocus());
+    QTest::keyClick(window, Qt::Key_G);
+    QTRY_COMPARE(view.gridVisible(), !gridInitiallyVisible);
+
     QVERIFY(press(window, "threadTab_fabric"));
     QVERIFY(named(window, "threadFabricApply"));
     QVERIFY(named(window, "threadFabricColor"));
