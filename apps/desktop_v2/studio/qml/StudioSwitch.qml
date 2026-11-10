@@ -25,7 +25,9 @@ Controls.Switch {
         color: control.checked ? Theme.accent : Theme.raised
         border.width: control.visualFocus ? 2 : 1
         border.color: control.visualFocus ? Theme.foreground : control.checked ? Theme.accent : Theme.muted
-        opacity: control.enabled ? 1 : 0.5
+        opacity: control.enabled ? (control.down ? 0.8 : 1) : 0.5
+        Behavior on color { ColorAnimation { duration: Theme.animationMs } }
+        Behavior on opacity { NumberAnimation { duration: Theme.animationMs } }
         Rectangle {
             x: control.checked ? parent.width - width - 3 : 3
             anchors.verticalCenter: parent.verticalCenter
