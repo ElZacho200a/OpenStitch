@@ -234,6 +234,15 @@ private slots:
         QVERIFY(handles.contains(QStringLiteral("root.snapping")));
         QVERIFY(handles.contains(QStringLiteral("canvas.ghostRect.width / canvas.zoom")));
         QVERIFY(action.contains(QStringLiteral("actionSearchFeedback")));
+        const auto segmentationQml = readFile(dir + QStringLiteral("spaces/SegmentationSpace.qml"));
+        QVERIFY(segmentationQml.contains(QStringLiteral("segmentationBusyBadge")));
+        QVERIFY(segmentationQml.contains(QStringLiteral("root.seg.busy")));
+        QVERIFY(segmentationQml.contains(QStringLiteral("Theme.reducedMotion")));
+        const auto header = readFile(dir + QStringLiteral("../segmentation_space_controller.hpp"));
+        QVERIFY(header.contains(QStringLiteral("Q_PROPERTY(bool busy READ busy NOTIFY stageChanged)")));
+        QVERIFY(header.contains(QStringLiteral("images_.busy() || regions_.busy()")));
+        QVERIFY(!host.contains(QStringLiteral("étape bloquée")));
+
     }
 
     void everyStudioComponentIsRegistered() {
