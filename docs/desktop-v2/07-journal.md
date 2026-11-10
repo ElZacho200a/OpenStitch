@@ -607,3 +607,10 @@ encore le desktop principal.
   `apps/desktop`. Le banc reste nécessaire à la CI pour générer le projet réel (`--generate-project`).
 - Preuve : voir la PR de suppression (build complet de toutes les cibles, tests). La parité
   fonctionnelle du Studio n'est pas démontrée par cette suppression.
+- **Régression de parité assumée** : le garde-fou `check_v1_parity` a échoué parce que 117 preuves
+  citées dans `parite-v1/correspondances.csv` vivaient dans le code supprimé. 19 existent dans le QML/JS
+  du Studio (le garde-fou scanne désormais aussi `*.qml` et `*.js`) ; **98 lignes (62 « fait », 36
+  « partiel ») n'ont plus de preuve** et passent à « absent », avec la preuve perdue dans la note.
+  Le plafond d'absents (`plafond-absent.txt`) passe de 150 à **248** : c'est la première fois qu'il
+  monte, à cause de cette suppression et pas d'une fonction perdue par accident. Parité mesurée :
+  fait 161, partiel 24, absent 248, exclu 11 (sur 444 fonctions V1).
