@@ -127,7 +127,7 @@ class RankerTest(unittest.TestCase):
     def test_paired_audit_exposes_model_errors(self):
         rows = [sample(0), sample(1)]
         model = ranker.train_model([sample(i) for i in range(8)], epochs=30)
-        model["weights"] = [0.0] * len(ranker.FEATURE_NAMES)
+        model["weights"] = [-1.0] + [0.0] * (len(ranker.FEATURE_NAMES) - 1)
         audit = ranker.paired_evaluation(rows, model)
         self.assertEqual(audit["samples"], 2)
         self.assertEqual(audit["heuristic_only_correct"], 2)
