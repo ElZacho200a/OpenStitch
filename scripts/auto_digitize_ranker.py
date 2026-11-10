@@ -159,7 +159,9 @@ def fit(rows: list[dict], *, epochs: int = 500, learning_rate: float = 0.3,
     for row in rows:
         winning = next(c for c in row["candidates"] if c["id"] == row["preferred_id"])
         good = vector(winning)
-        for other in row["candidates"]:
+        # Candidate order in JSON is presentation-only. Canonicalize pair order
+        # so floating-point gradient accumulation is reproducible across exports.
+        for other in sorted(row["candidates"], key=lambda c: c["id"]):
             if other["id"] != row["preferred_id"]:
                 bad = vector(other)
                 pairs.append(tuple(g - b for g, b in zip(good, bad)))
