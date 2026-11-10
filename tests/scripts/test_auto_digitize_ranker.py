@@ -112,6 +112,20 @@ class RankerTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "nonfinite candidate score"):
             ranker.rank(model, row)
 
+    def test_comparison_reports_both_choices_without_mutation(self):
+        row = sample()
+        before = json.dumps(row, sort_keys=True)
+        model = ranker.train_model([sample(i) for i in range(8)], epochs=100)
+        result = ranker.compare_candidates(model, row)
+        self.assertEqual(result["schema"], "openstitch.ai.candidate-comparison/1")
+        self.assertEqual(result["model_choice"], "approved")
+        self.assertEqual(result["heuristic_choice"], "approved")
+        self.assertTrue(result["agree"])
+        self.assertFalse(result["applied"])
+        self.assertEqual(json.dumps(row, sort_keys=True), before)
+        self.assertEqual({c["id"] for c in result["ranking"]},
+                         {"approved", "rejected"})
+
     def test_cli_validate_train_rank_and_no_overwrite(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
