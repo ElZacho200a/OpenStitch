@@ -455,6 +455,10 @@ def main(argv=None) -> int:
     p.add_argument("model", type=Path)
     p.add_argument("sample", type=Path)
     p.add_argument("--min-margin", type=float, default=0.1)
+    p.add_argument("--min-coverage", type=float, default=0.85)
+    p.add_argument("--max-uncovered", type=float, default=0.15)
+    p.add_argument("--max-short-stitches", type=float, default=0.2)
+    p.add_argument("--max-overdensity", type=float, default=0.2)
     p = sub.add_parser("compare")
     p.add_argument("model", type=Path)
     p.add_argument("sample", type=Path)
@@ -466,7 +470,11 @@ def main(argv=None) -> int:
         if args.command in ("rank", "compare", "assess"):
             model = json.loads(args.model.read_text(encoding="utf-8"))
             sample = json.loads(args.sample.read_text(encoding="utf-8"))
-            output = (assess_candidates(model, sample, min_margin=args.min_margin)
+            output = (assess_candidates(model, sample, min_margin=args.min_margin,
+                                         min_coverage=args.min_coverage,
+                                         max_uncovered=args.max_uncovered,
+                                         max_short_stitches=args.max_short_stitches,
+                                         max_overdensity=args.max_overdensity)
                       if args.command == "assess" else
                       compare_candidates(model, sample) if args.command == "compare"
                       else {"ranking": rank(model, sample)})
