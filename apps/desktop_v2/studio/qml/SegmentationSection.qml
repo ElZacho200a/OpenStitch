@@ -65,7 +65,7 @@ ColumnLayout {
         objectName: "segmentationInfo"
         Layout.fillWidth: true
         text: imageTools.segPreviewActive ? imageTools.segPreviewInfo
-              : imageTools.hasSegmentation ? qsTr("Segmentation du projet : %1 régions").arg(imageTools.regionCount)
+              : imageTools.hasSegmentation ? qsTr("Segmentation du projet : %1 régions, %2 couleurs").arg(imageTools.regionCount).arg(imageTools.colorCount)
               : qsTr("Pas encore de segmentation.")
         color: Theme.muted; font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily
         wrapMode: Text.WordWrap

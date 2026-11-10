@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "image_controller.hpp"
 
+#include <set>
+
 #include <algorithm>
 #include <cmath>
 
@@ -236,6 +238,21 @@ bool ImageController::hasSegmentation() const {
 int ImageController::regionCount() const {
     const auto& seg = studio_.session().project().segmentation;
     return seg ? static_cast<int>(seg->region_count()) : 0;
+}
+
+int ImageController::colorCount() const {
+    const auto& seg = studio_.session().project().segmentation;
+    if (!seg) {
+        return 0;
+    }
+    std::set<std::uint32_t> colours;
+    for (const auto& slot : seg->region_slots) {
+        if (slot) {
+            colours.insert((static_cast<std::uint32_t>(slot->rgb[0]) << 16) |
+                           (static_cast<std::uint32_t>(slot->rgb[1]) << 8) | slot->rgb[2]);
+        }
+    }
+    return static_cast<int>(colours.size());
 }
 
 QVariantList ImageController::prepCatalog() const {
@@ -486,8 +503,17 @@ void ImageController::previewSegmentation(const QVariantMap& optionsMap) {
                 QImage(r->rgba.data(), r->width, r->height, r->width * 4, QImage::Format_RGBA8888)
                     .copy());
             segPreview_ = true;
-            segInfo_ = QStringLiteral("%1 régions, la plus petite %2 px (%3 s)")
+            std::set<std::uint32_t> previewColours;
+            for (std::size_t i = 0; i + 3 < r->rgba.size(); i += 4) {
+                if (r->rgba[i + 3] != 0) {
+                    previewColours.insert((static_cast<std::uint32_t>(r->rgba[i]) << 16) |
+                                          (static_cast<std::uint32_t>(r->rgba[i + 1]) << 8) |
+                                          r->rgba[i + 2]);
+                }
+            }
+            segInfo_ = QStringLiteral("%1 régions, %2 couleurs, la plus petite %3 px (%4 s)")
                            .arg(r->regions)
+                           .arg(previewColours.size())
                            .arg(r->smallestRegionPx)
                            .arg(r->seconds, 0, 'f', 2);
             ++imageRevision_;

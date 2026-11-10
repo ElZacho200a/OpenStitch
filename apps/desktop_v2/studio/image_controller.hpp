@@ -64,6 +64,8 @@ class ImageController : public QObject {
     Q_PROPERTY(QString segPreviewInfo READ segPreviewInfo NOTIFY previewChanged)
     Q_PROPERTY(bool hasSegmentation READ hasSegmentation NOTIFY changed)
     Q_PROPERTY(int regionCount READ regionCount NOTIFY changed)
+    // Nombre de couleurs DISTINCTES de la segmentation du projet (<= « couleurs maximum »).
+    Q_PROPERTY(int colorCount READ colorCount NOTIFY changed)
     Q_PROPERTY(QVariantList prepCatalog READ prepCatalog CONSTANT)
     Q_PROPERTY(QVariantMap segmentationDefaults READ segmentationDefaults CONSTANT)
     Q_PROPERTY(QVariantList aiBackends READ aiBackends NOTIFY aiChanged)
@@ -93,6 +95,7 @@ public:
     [[nodiscard]] QString segPreviewInfo() const { return segInfo_; }
     [[nodiscard]] bool hasSegmentation() const;
     [[nodiscard]] int regionCount() const;
+    [[nodiscard]] int colorCount() const;
     [[nodiscard]] QVariantList prepCatalog() const;
     [[nodiscard]] QVariantMap segmentationDefaults() const;
     [[nodiscard]] QVariantList aiBackends() const { return ai_; }

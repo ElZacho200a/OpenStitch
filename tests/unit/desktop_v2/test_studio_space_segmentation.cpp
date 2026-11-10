@@ -777,6 +777,27 @@ private slots:
         QVERIFY(rig.session.undo());
         QTRY_COMPARE(rig.regions.regions().size(), before);
     }
+    // Le nombre de couleurs distinctes de la segmentation ne dépasse jamais « Couleurs maximum »
+    // et il est affiché (aperçu et projet).
+    void segmentationColourCountRespectsTheMaximumAndIsShown() {
+        Rig rig;
+        open(rig);
+        for (const int maximum : {2, 3}) {
+            QSignalSpy applied(&rig.images, &ImageController::segmentationApplied);
+            rig.images.applySegmentation({{QStringLiteral("max_colors"), maximum},
+                                          {QStringLiteral("min_region_px"), 16},
+                                          {QStringLiteral("smoothing_radius_px"), 1}});
+            QTRY_VERIFY_WITH_TIMEOUT(applied.count() >= 1, 30'000);
+            QVERIFY(rig.images.colorCount() >= 1);
+            QVERIFY2(rig.images.colorCount() <= maximum,
+                     qPrintable(QStringLiteral("%1 couleurs pour un maximum de %2")
+                                    .arg(rig.images.colorCount())
+                                    .arg(maximum)));
+        }
+        rig.images.previewSegmentation({{QStringLiteral("max_colors"), 3}});
+        QTRY_VERIFY_WITH_TIMEOUT(rig.images.segPreviewActive(), 20'000);
+        QVERIFY(rig.images.segPreviewInfo().contains(QStringLiteral("couleurs")));
+    }
 };
 
 QTEST_MAIN(StudioSpaceSegmentationTest)
