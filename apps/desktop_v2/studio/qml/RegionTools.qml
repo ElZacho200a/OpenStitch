@@ -2,6 +2,7 @@
 import QtQuick
 import QtQuick.Controls as Controls
 import QtQuick.Layouts
+import QtQuick.Dialogs
 import "."
 
 // Édition des régions de la segmentation : sélection, recoloration, fusion, suppression,
@@ -33,6 +34,9 @@ ColumnLayout {
     }
     property int islandPx: 12
     property int holePx: 12
+    function validHexColour(value) {
+        return /^#[0-9a-fA-F]{6}$/.test(String(value).trim())
+    }
     property int paletteColors: 8
     property int paletteDistance: 60
     property bool paletteMergeAdjacent: true
@@ -174,6 +178,12 @@ ColumnLayout {
     }
 
     SectionLabel { text: qsTr("RETOUCHES") }
+    ColorDialog {
+        id: regionColourPicker
+        objectName: "regionColorDialog"
+        title: qsTr("Couleur de la région")
+        onAccepted: colorField.text = selectedColor.toString()
+    }
     RowLayout {
         Layout.fillWidth: true
         StudioTextField {
@@ -182,12 +192,24 @@ ColumnLayout {
             Layout.fillWidth: true
             placeholderText: "#rrggbb"
             text: "#cc3344" // lint-ok: default thread colour (document data)
+            invalid: !section.validHexColour(text)
+            Accessible.name: qsTr("Couleur hexadécimale de la région")
+        }
+        StudioButton {
+            objectName: "regionPickColor"
+            text: qsTr("Palette…")
+            tooltip: qsTr("Choisir visuellement la couleur d'une région")
+            onClicked: {
+                if (section.validHexColour(colorField.text))
+                    regionColourPicker.selectedColor = colorField.text
+                regionColourPicker.open()
+            }
         }
         StudioButton {
             objectName: "regionRecolor"
             text: qsTr("Recolorer")
-            enabled: regionTools.selectedCount > 0
-            onClicked: regionTools.recolorSelected(colorField.text)
+            enabled: regionTools.selectedCount > 0 && section.validHexColour(colorField.text)
+            onClicked: regionTools.recolorSelected(colorField.text.trim())
         }
     }
     Flow {
