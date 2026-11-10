@@ -36,7 +36,8 @@ Controls.ComboBox {
             verticalAlignment: Text.AlignVCenter
         }
         background: Rectangle {
-            color: item.highlighted ? Theme.accent : "transparent"
+            color: item.highlighted ? Theme.accent : item.hovered ? Theme.hover : "transparent"
+            Behavior on color { ColorAnimation { duration: Theme.animationMs } }
         }
     }
 
@@ -74,6 +75,8 @@ Controls.ComboBox {
                      : control.hovered ? Theme.muted
                      : Theme.outline
         opacity: control.enabled ? 1 : 0.7
+        Behavior on color { ColorAnimation { duration: Theme.animationMs } }
+        Behavior on border.color { ColorAnimation { duration: Theme.animationMs } }
     }
 
     popup: Controls.Popup {
