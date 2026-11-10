@@ -144,6 +144,14 @@ def split_by_motif(rows: list[dict], ratio: float = 0.8, salt: str = "openstitch
         fail("train ratio must be a finite number in (0,1)")
     if not isinstance(salt, str):
         fail("split salt must be a string")
+    # Public Python callers must not bypass JSONL validation or silently
+    # split duplicate sample IDs across train and held-out sets.
+    seen = set()
+    for row in rows:
+        check_sample(row)
+        if row["sample_id"] in seen:
+            fail("duplicate sample_id")
+        seen.add(row["sample_id"])
     groups = sorted({r["motif_group"] for r in rows},
                     key=lambda x: (hashlib.sha256((salt + ":" + x).encode()).hexdigest(), x))
     if len(groups) < 2:
