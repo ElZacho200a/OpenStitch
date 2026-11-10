@@ -105,6 +105,13 @@ class RankerTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "incompatible"):
             ranker.rank(model, row)
 
+    def test_nonfinite_candidate_score_rejected(self):
+        row = sample()
+        model = ranker.train_model([sample(i) for i in range(6)], epochs=5)
+        model["weights"] = [1e308] * len(ranker.FEATURE_NAMES)
+        with self.assertRaisesRegex(ValueError, "nonfinite candidate score"):
+            ranker.rank(model, row)
+
     def test_cli_validate_train_rank_and_no_overwrite(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
