@@ -145,6 +145,8 @@ ColumnLayout {
                 }
                 border.width: objectRow.activeFocus ? 1 : 0
                 border.color: Theme.accent
+                Behavior on color { ColorAnimation { duration: Theme.animationMs } }
+                Behavior on border.width { NumberAnimation { duration: Theme.feedbackFastMs } }
             }
 
             contentItem: RowLayout {
@@ -157,6 +159,7 @@ ColumnLayout {
                     border.width: 1
                     border.color: Qt.alpha(Theme.faint, 0.4)
                     opacity: objectRow.modelData.visible ? 1 : 0.4
+                    Behavior on opacity { NumberAnimation { duration: Theme.feedbackFastMs } }
                 }
                 ColumnLayout {
                     Layout.fillWidth: true
@@ -196,17 +199,27 @@ ColumnLayout {
             StudioToolTip { delay: 700; text: modelData.label + "\n" + modelData.id }
         }
 
-        Text {
+        ColumnLayout {
             anchors.centerIn: parent
-            width: parent.width - 36
+            width: Math.min(260, parent.width - 36)
             visible: objectList.count === 0
-            text: studio.commandCount > 0 ? qsTr("Aucun objet source\ndans ce projet.")
-                                          : qsTr("Les objets du projet\napparaîtront ici.")
-            color: Theme.faint
-            horizontalAlignment: Text.AlignHCenter
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.bodySize
-            lineHeight: 1.4
+            spacing: 12
+            Text {
+                Layout.fillWidth: true
+                text: studio.commandCount > 0 ? qsTr("Aucun objet de broderie pour le moment.")
+                                              : qsTr("Les objets numérisés apparaîtront ici.")
+                color: Theme.muted
+                horizontalAlignment: Text.AlignHCenter
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.bodySize
+                wrapMode: Text.WordWrap
+            }
+            StudioButton {
+                Layout.alignment: Qt.AlignHCenter
+                text: qsTr("Voir les formes vectorielles")
+                tooltip: qsTr("Passer à l'espace Vecteurs sans générer de points")
+                onClicked: panel.workspace.setCurrent("vector")
+            }
         }
     }
 
