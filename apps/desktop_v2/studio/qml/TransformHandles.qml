@@ -108,7 +108,8 @@ Item {
         objectName: "snapFeedbackBadge"
         visible: root.snapping
         x: canvas ? Math.min(canvas.width - width - 6, Math.max(6, canvas.ghostRect.x)) : 0
-        y: canvas ? Math.max(6, canvas.ghostRect.y - 46) : 0
+        // Leave room beneath for the separate transformation measurement badge.
+        y: canvas ? Math.max(6, canvas.ghostRect.y - 68) : 0
         width: snapLabel.implicitWidth + 18
         height: snapLabel.implicitHeight + 8
         radius: Theme.radius
