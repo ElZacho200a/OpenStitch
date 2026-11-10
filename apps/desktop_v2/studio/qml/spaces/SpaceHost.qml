@@ -24,6 +24,28 @@ Item {
                                   : internal.loadedId === "points" ? pointsLoader.item : null
     readonly property var canvas: space ? space.canvas : null
     readonly property string loadedId: internal.loadedId
+    signal stageFeedback(string message, string tone)
+    property var lastStageStates: ({})
+
+    // Only publish completion when a real workspace stage state changes.
+    function updateStageFeedback() {
+        const previous = lastStageStates
+        const next = ({})
+        const spaces = workspace.spaces
+        for (let i = 0; i < spaces.length; ++i) {
+            const stage = spaces[i]
+            next[stage.id] = stage.state
+            if (previous[stage.id] !== undefined && previous[stage.id] !== stage.state) {
+                if (stage.state === "upToDate")
+                    stageFeedback(qsTr("%1 : résultat à jour").arg(stage.label), "success")
+                else if (stage.state === "stale")
+                    stageFeedback(qsTr("%1 : résultat obsolète").arg(stage.label), "warning")
+                else if (stage.state === "blocked")
+                    stageFeedback(qsTr("%1 : étape bloquée").arg(stage.label), "error")
+            }
+        }
+        lastStageStates = next
+    }
 
     readonly property var sources: ({
         "image": "ImageSpace.qml",
@@ -96,8 +118,12 @@ Item {
     Connections {
         target: host.workspace
         function onCurrentChanged() { host.switchTo(host.workspace.current) }
+        function onSpacesChanged() { host.updateStageFeedback() }
     }
-    Component.onCompleted: switchTo(workspace.current)
+    Component.onCompleted: {
+        updateStageFeedback()
+        switchTo(workspace.current)
+    }
 
     Shortcut { sequence: "Ctrl+1"; onActivated: host.workspace.setCurrent("image") }
     Shortcut { sequence: "Ctrl+2"; onActivated: host.workspace.setCurrent("segmentation") }
