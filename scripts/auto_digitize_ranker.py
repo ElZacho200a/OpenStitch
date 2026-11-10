@@ -140,8 +140,10 @@ def rank(model: dict, row: dict) -> list[dict]:
 
 
 def split_by_motif(rows: list[dict], ratio: float = 0.8, salt: str = "openstitch-v1"):
-    if not (0 < ratio < 1):
-        fail("train ratio must be in (0,1)")
+    if type(ratio) not in (int, float) or not math.isfinite(ratio) or not (0 < ratio < 1):
+        fail("train ratio must be a finite number in (0,1)")
+    if not isinstance(salt, str):
+        fail("split salt must be a string")
     groups = sorted({r["motif_group"] for r in rows},
                     key=lambda x: (hashlib.sha256((salt + ":" + x).encode()).hexdigest(), x))
     if len(groups) < 2:
