@@ -170,6 +170,18 @@ Les métriques de couverture et de brodabilité doivent être **mesurées** sur
 des candidats générés par le moteur C++ ; elles ne sont pas produites par ce
 script. Aucun gain de retouche n'est démontré à ce stade.
 
+## Audit apparié par technique (évaluation)
+
+`evaluate` et le holdout de `train` incluent désormais `paired_audit` /
+`heldout_paired_audit` : nombres de cas gagnés uniquement par le modèle,
+uniquement par la baseline, désaccords de choix, et exactitude top-1
+**par technique préférée par l'annotateur** (et non technique prédite).
+Les mêmes exemples servent aux deux classements, sans répartition
+aléatoire supplémentaire. Un modèle qui progresse globalement mais régresse
+sur les satins doit ainsi être identifiable. Ce rapport reste descriptif :
+les effectifs faibles, les données synthétiques et l'absence de tests sur
+tissu empêchent toute revendication de performance réelle.
+
 ## Intégration future : contrats et dépendances
 
 1. **Producteur de candidats (L1)** : intégrer un adaptateur C++/CLI de
