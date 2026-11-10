@@ -15,6 +15,8 @@ Item {
         sourceComponent: Item {
             Rectangle {
                 visible: hub.opened
+                opacity: hub.opened ? 1 : 0
+                Behavior on opacity { NumberAnimation { duration: Theme.feedbackFastMs } }
                 // Le bouton « Historique » vit dans la barre du haut (Main.qml) : ce volet
                 // s'ancre au canevas sans marges magiques qui chevauchaient les rails d'outils.
                 anchors.top: parent.top
@@ -60,7 +62,7 @@ Item {
                                 onClicked: history.jumpTo(modelData.index)
                                 background: Rectangle {
                                     color: parent.highlighted ? Theme.accentSoft : parent.hovered ? Theme.hover : "transparent"
-                    Behavior on color { ColorAnimation { duration: Theme.animationMs } }
+                                    Behavior on color { ColorAnimation { duration: Theme.animationMs } }
                                     border.width: parent.activeFocus ? 1 : 0
                                     border.color: Theme.accent
                                     radius: Theme.radius
