@@ -199,11 +199,10 @@ OpStatus create_objects(OpContext& ctx, const SemanticRegion& region,
                 continue;
             }
             if (!st.ok) {
-                return OpStatus::failure(st.error.code,
-                                         region.semantic_id +
-                                             " : auto_satin refusé : " + st.error.message,
-                                         "essayez une autre stratégie (auto_satin_strategy : "
-                                         "skeleton | parallel_sweep | medial_axis | guided_satin) ou tatami");
+                return OpStatus::failure(
+                    st.error.code, region.semantic_id + " : auto_satin refusé : " + st.error.message,
+                    "essayez une autre stratégie (auto_satin_strategy : "
+                    "skeleton | parallel_sweep | medial_axis | guided_satin) ou tatami");
             }
         }
     }
