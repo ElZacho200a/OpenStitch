@@ -55,6 +55,8 @@ def png_size(path: Path) -> tuple[int, int]:
         f.seek(33)  # IHDR deja valide, y compris son CRC.
         seen_idat = False
         seen_plte = False
+        seen_trns = False
+        palette_entries = 0
         after_idat = False
         while True:
             chunk_header = f.read(8)
@@ -75,11 +77,23 @@ def png_size(path: Path) -> tuple[int, int]:
             if kind == b'PLTE':
                 # PNG requires the palette before IDAT and at most once.
                 # Grayscale images forbid PLTE; indexed images require it.
-                if (color_type in (0, 4) or seen_plte or seen_idat
+                if (color_type in (0, 4) or seen_plte or seen_trns or seen_idat
                         or length == 0 or length > 768 or length % 3
                         or (color_type == 3 and length // 3 > (1 << bit_depth))):
                     raise ValueError('palette PLTE invalide')
                 seen_plte = True
+                palette_entries = length // 3
+            if kind == b'tRNS':
+                # Transparency must precede IDAT, occur only once and match
+                # the PNG color type. Indexed transparency refers to PLTE.
+                if (seen_trns or seen_idat
+                        or (color_type == 0 and length != 2)
+                        or (color_type == 2 and length != 6)
+                        or (color_type == 3 and
+                            (not seen_plte or not 1 <= length <= palette_entries))
+                        or color_type in (4, 6)):
+                    raise ValueError('transparence tRNS invalide')
+                seen_trns = True
             if kind == b'IDAT':
                 if color_type == 3 and not seen_plte:
                     raise ValueError('palette PLTE requise avant IDAT')
