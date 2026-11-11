@@ -428,7 +428,8 @@ void StudioDigitizeTest::guidedAutoSatinGuideStaysAutoSatin() {
     rig.addRect();
     rig.select(rig.id);
     QCOMPARE(rig.actions.run(QStringLiteral("satin.auto"),
-                             {{"spacing_mm", "0.4"}, {"strategy", "guided_satin"}}), QString());
+                             {{"spacing_mm", "0.4"}, {"strategy", "guided_satin"}}),
+             QString());
     rig.select(rig.id);
     const auto* before = rig.session.project().findEmbroidery(ObjectId{rig.id});
     QVERIFY(before != nullptr);
