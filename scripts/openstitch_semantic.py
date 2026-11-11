@@ -37,31 +37,36 @@ def png_size(path: Path) -> tuple[int, int]:
 
 
 def cycles(edges: dict[str, set[str]]) -> list[list[str]]:
-    """Retourne une preuve de cycle, triee et deterministe, si presente."""
+    """Retourne une preuve de cycle deterministe sans recursion Python.
+
+    Un manifeste peut contenir plus de regions que la limite de recursion.
+    Chaque frame conserve l'iterateur des voisins tries pour reproduire
+    l'ordre de parcours DFS et le diagnostic de la version recursive.
+    """
     state: dict[str, int] = {}
-    stack: list[str] = []
-    found: list[list[str]] = []
+    path: list[str] = []
 
-    def visit(node: str) -> None:
-        if found:
-            return
-        if state.get(node) == 1:
-            found.append(stack[stack.index(node):] + [node])
-            return
-        if state.get(node) == 2:
-            return
-        state[node] = 1
-        stack.append(node)
-        for child in sorted(edges.get(node, set())):
-            visit(child)
-        stack.pop()
-        state[node] = 2
-
-    for node in sorted(edges):
-        visit(node)
-        if found:
-            break
-    return found
+    for root in sorted(edges):
+        if state.get(root):
+            continue
+        state[root] = 1
+        path.append(root)
+        frames = [iter(sorted(edges.get(root, set())))]
+        while frames:
+            try:
+                child = next(frames[-1])
+            except StopIteration:
+                state[path.pop()] = 2
+                frames.pop()
+                continue
+            if state.get(child) == 1:
+                return [path[path.index(child):] + [child]]
+            if state.get(child) == 2:
+                continue
+            state[child] = 1
+            path.append(child)
+            frames.append(iter(sorted(edges.get(child, set()))))
+    return []
 
 
 def validate(manifest: dict, base: Path, *, skip_files: bool = False) -> dict:
