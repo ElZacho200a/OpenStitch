@@ -210,6 +210,7 @@ class SemanticValidationTest(unittest.TestCase):
         indexed_pixels = chunk(b'IDAT', zlib.compress(b'\x00\x00' * 3))
         gray_pixels = chunk(b'IDAT', zlib.compress(b'\x00\x00\x00' * 3))
         rgb_pixels = chunk(b'IDAT', zlib.compress(b'\x00' * 7 * 3))
+        rgb16_pixels = chunk(b'IDAT', zlib.compress(b'\x00' * 13 * 3))
         iend = chunk(b'IEND', b'')
         indexed_transparency = chunk(b'tRNS', b'\x00\xff')
         gray_transparency = chunk(b'tRNS', b'\x00\x00')
@@ -219,6 +220,12 @@ class SemanticValidationTest(unittest.TestCase):
             'indexed': indexed_prefix + indexed_transparency + indexed_pixels + iend,
             'grayscale': sig + ihdr(8, 0) + gray_transparency + gray_pixels + iend,
             'rgb': sig + ihdr(8, 2) + rgb_transparency + rgb_pixels + iend,
+            'gray_1bit_max': (sig + ihdr(1, 0) + chunk(b'tRNS', b'\x00\x01') +
+                              indexed_pixels + iend),
+            'rgb_8bit_max': (sig + ihdr(8, 2) + chunk(b'tRNS', b'\x00\xff' * 3) +
+                              rgb_pixels + iend),
+            'rgb_16bit_max': (sig + ihdr(16, 2) + chunk(b'tRNS', b'\xff\xff' * 3) +
+                               rgb16_pixels + iend),
         }
         for name, contents in valid.items():
             with self.subTest(valid=name):
@@ -244,6 +251,20 @@ class SemanticValidationTest(unittest.TestCase):
                                   chunk(b'IDAT', zlib.compress(b'\x00' * 9 * 3)) + iend),
             'plte_after_trns': (sig + ihdr(8, 2) + rgb_transparency +
                                 palette + rgb_pixels + iend),
+            'gray_1bit_out_of_range': (sig + ihdr(1, 0) +
+                                       chunk(b'tRNS', b'\x00\x02') + indexed_pixels + iend),
+            'gray_2bit_out_of_range': (sig + ihdr(2, 0) +
+                                       chunk(b'tRNS', b'\x00\x04') + indexed_pixels + iend),
+            'gray_4bit_out_of_range': (sig + ihdr(4, 0) +
+                                       chunk(b'tRNS', b'\x00\x10') + indexed_pixels + iend),
+            'gray_8bit_out_of_range': (sig + ihdr(8, 0) +
+                                       chunk(b'tRNS', b'\x01\x00') + gray_pixels + iend),
+            'rgb_8bit_red_out_of_range': (sig + ihdr(8, 2) +
+                                           chunk(b'tRNS', b'\x01\x00\x00\x00\x00\x00') +
+                                           rgb_pixels + iend),
+            'rgb_8bit_blue_out_of_range': (sig + ihdr(8, 2) +
+                                            chunk(b'tRNS', b'\x00\x00\x00\x00\x01\x00') +
+                                            rgb_pixels + iend),
         }
         for name, contents in invalid.items():
             with self.subTest(invalid=name):
