@@ -161,8 +161,9 @@ ServiceResult addDirectionGuide(DocumentSession& session, std::uint64_t objectId
                            Micrometers{pts[1].y.value - pts[0].y.value}};
         document::AutoSatinGuide guide;
         guide.anchor = pts.front();
-        guide.angle = Angle{std::atan2(static_cast<double>(delta.y.value),
-                                       static_cast<double>(delta.x.value))};
+        const double dy = static_cast<double>(delta.y.value);
+        const double dx = static_cast<double>(delta.x.value);
+        guide.angle = Angle{std::atan2(dy, dx)};
         guide.absolute = true;
         guide.path = std::move(pts);
         params.guides.push_back(std::move(guide));
