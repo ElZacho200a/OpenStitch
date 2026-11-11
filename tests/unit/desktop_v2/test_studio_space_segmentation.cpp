@@ -331,6 +331,45 @@ private slots:
         QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
     }
 
+    // A fast drag may report only press and release. The last in-image brush dab must
+    // still be applied, with exactly one undo step (and no downstream regeneration).
+    void regionMapBrushIncludesReleasePixelWithoutMove() {
+        Rig rig;
+        open(rig);
+        QVERIFY(rig.press("segmentationTab_1"));
+        auto* map = rig.named("regionMapArea");
+        auto* image = rig.named("regionMapImage");
+        QVERIFY(map && image);
+        QTRY_VERIFY_WITH_TIMEOUT(image->property("paintedWidth").toDouble() > 0.0, 5'000);
+        const auto& seg = *rig.session.project().segmentation;
+        const double w = image->property("paintedWidth").toDouble();
+        const double h = image->property("paintedHeight").toDouble();
+        const double left = (image->width() - w) / 2.0;
+        const double top = (image->height() - h) / 2.0;
+        const auto scenePixel = [&](int x, int y) {
+            const QPointF local(left + w * (x + 0.5) / seg.width,
+                                top + h * (y + 0.5) / seg.height);
+            return map->mapToScene(image->mapToItem(map, local)).toPoint();
+        };
+
+        const auto chosen = regionAtPixel(rig.session.project(), 20, 20).value();
+        const auto other = regionAtPixel(rig.session.project(), 130, 30).value();
+        QVERIFY(chosen != other);
+        rig.regions.selectAtPixel(20, 20);
+        rig.regions.setTool(QStringLiteral("brush"));
+        rig.regions.setBrushRadius(3.0);
+        const auto depth = rig.session.undoNames().size();
+        const auto scene = rig.studio.scene();
+        QTest::mousePress(rig.window, Qt::LeftButton, Qt::NoModifier, scenePixel(100, 30));
+        QTest::mouseRelease(rig.window, Qt::LeftButton, Qt::NoModifier, scenePixel(130, 30));
+        QCOMPARE(regionAtPixel(rig.session.project(), 130, 30).value(), chosen);
+        QCOMPARE(rig.session.undoNames().size(), depth + 1);
+        QVERIFY(rig.studio.scene() == scene); // Segmentation edits do not regenerate stitches.
+        QVERIFY(rig.session.undo());
+        QCOMPARE(regionAtPixel(rig.session.project(), 130, 30).value(), other);
+        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\\n')));
+    }
+
     // --- sélection au clic ----------------------------------------------------------------
     void clickSelectsRegionsAndSyncsTheList() {
         Rig rig;
