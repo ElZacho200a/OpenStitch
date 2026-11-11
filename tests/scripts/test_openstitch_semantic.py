@@ -55,6 +55,22 @@ class SemanticValidationTest(unittest.TestCase):
                      region('mur', family='architecture', role='pierre', over=['lierre.feuille1']))
         self.assertTrue(mod.validate(d, self.folder)['ok'])
 
+    def test_source_dimensions_bounded_with_skip_files(self):
+        # The manifest must not bypass the same pixel limits as PNG masks.
+        doc = document()
+        doc['source_image'] = {'width_px': 100_000, 'height_px': 1_000}
+        self.assertTrue(mod.validate(doc, self.folder, skip_files=True)['ok'])
+        for width, height in ((100_001, 1), (1, 100_001), (10_001, 10_000)):
+            with self.subTest(width=width, height=height):
+                doc['source_image'] = {'width_px': width, 'height_px': height}
+                self.assertIn('E_SOURCE', self.errors(doc, skip_files=True))
+
+    def test_source_dimensions_bounded_without_skip_files(self):
+        # Source validation also applies when the scene has no mask to read.
+        doc = document()
+        doc['source_image'] = {'width_px': 10_000, 'height_px': 10_001}
+        self.assertIn('E_SOURCE', self.errors(doc))
+
     def test_duplicate_id(self):
         self.assertIn('E_DUPLICATE', self.errors(document(region('a'), region('a'))))
 
