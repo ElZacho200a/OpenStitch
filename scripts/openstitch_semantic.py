@@ -54,6 +54,7 @@ def png_size(path: Path) -> tuple[int, int]:
     with path.open('rb') as f:
         f.seek(33)  # IHDR deja valide, y compris son CRC.
         seen_idat = False
+        seen_plte = False
         after_idat = False
         while True:
             chunk_header = f.read(8)
@@ -64,7 +65,24 @@ def png_size(path: Path) -> tuple[int, int]:
                 raise ValueError('type de chunk PNG invalide')
             if kind == b'IHDR':
                 raise ValueError('IHDR duplique')
+            # Unknown critical chunks cannot be ignored: their semantics may
+            # change how the image is interpreted. Ancillary chunks are safe
+            # to skip after validating their CRC.
+            if kind[0] & 0x20 == 0 and kind not in (b'PLTE', b'IDAT', b'IEND'):
+                raise ValueError('chunk PNG critique inconnu')
+            if kind[2] & 0x20:
+                raise ValueError('bit reserve du type de chunk PNG invalide')
+            if kind == b'PLTE':
+                # PNG requires the palette before IDAT and at most once.
+                # Grayscale images forbid PLTE; indexed images require it.
+                if (color_type in (0, 4) or seen_plte or seen_idat
+                        or length == 0 or length > 768 or length % 3
+                        or (color_type == 3 and length // 3 > (1 << bit_depth))):
+                    raise ValueError('palette PLTE invalide')
+                seen_plte = True
             if kind == b'IDAT':
+                if color_type == 3 and not seen_plte:
+                    raise ValueError('palette PLTE requise avant IDAT')
                 if after_idat:
                     raise ValueError('chunks IDAT non contigus')
                 seen_idat = True
