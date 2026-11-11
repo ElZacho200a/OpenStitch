@@ -379,3 +379,23 @@ sur le fil du contrôleur quand une tâche se termine. Livraison inchangée (mê
 Studio shell/files/view/image/fix/warp_bucket/space_vector/space_segmentation vertes (Debug,
 offscreen). **Non mesuré** : gain de fps de l'application entière (Release, fenêtre native,
 projet réel), CI GitHub. Le test n'a pas été vérifié en rouge sur l'ancien code.
+
+### Frames de la vraie fenêtre Studio (sonde `--frame-stats`, 10-11 novembre 2026)
+
+Release MSVC, D3D11 (Qt RHI), fenêtre native 1440x900, 8 s, une exécution par projet (machine de
+développement non étalonnée, pas de mesure CPU/GPU, pas de répétition : indicatif, pas un seuil).
+Scénario `pan` : panoramique + léger zoom à chaque frame (~60 Hz) ; scénario `idle` : rien.
+
+| Projet | fps moyen | intervalle médian / p99 / max (ms) | frames > 20 ms | rendu CPU p95 (ms) |
+|---|---|---|---|---|
+| Jupiter.osp (pan) | 59,9 | 16,7 / 18,3 / 19,9 | 0 | 2,2 |
+| BrodeSouslesMer.osp (pan) | 59,8 | 16,6 / 21,4 / 31,7 | 13 | 4,0 |
+| Test_240mm_…contour_optimise.osp (pan) | 61,5 | 16,0 / 21,0 / 297,8 | 7 | 2,7 |
+| Jupiter.osp (idle) | n/a | 10 frames en 8 s, aucune occupée | 1 | 1,6 |
+
+Lecture : en mouvement continu le plafond vsync (60 Hz) est tenu en moyenne ; le p99 dépasse
+16,7 ms sur deux projets et BrodeSouslesMer perd 13 frames sur 479 (> 20 ms). Le maximum de
+297,8 ms du dernier projet est un accroc isolé (probablement la première frame) non élucidé. Le
+fil d'interface ne reste jamais bloqué > 16 ms (retard du minuteur témoin p95 ≤ 10 ms).
+**Non mesuré** : interactions (sélection, édition, changement d'espace), simulation, rendu réaliste,
+broderie.osp (la sonde ne produit aucune mesure : cause non élucidée), 120/144 Hz, mode logiciel.
