@@ -135,19 +135,27 @@ def validate(manifest: dict, base: Path, *, skip_files: bool = False) -> dict:
         if mask is not None:
             if not isinstance(mask, str) or not mask:
                 fail('E_MASK', f'{where}.mask_path', 'chemin relatif non vide requis')
-            elif not skip_files:
-                target = (base / mask).resolve()
-                if not target.is_relative_to(base.resolve()):
+            else:
+                # --skip-files skips file reads, never path containment checks.
+                # Resolve symlinks before checking containment to avoid escapes.
+                try:
+                    target = (base / mask).resolve()
+                    contained = target.is_relative_to(base.resolve())
+                except (OSError, ValueError):
+                    contained = False
+                    target = None
+                if not contained:
                     fail('E_PATH', f'{where}.mask_path', 'masque en dehors du dossier du manifeste')
-                elif not target.is_file():
-                    fail('E_MISSING_MASK', f'{where}.mask_path', 'fichier introuvable')
-                else:
-                    try:
-                        dims = png_size(target)
-                        if expected and dims != expected:
-                            fail('E_MASK_SIZE', f'{where}.mask_path', f'{dims} != dimensions source {expected}')
-                    except (OSError, ValueError) as exc:
-                        fail('E_MASK_PNG', f'{where}.mask_path', str(exc))
+                elif not skip_files:
+                    if not target.is_file():
+                        fail('E_MISSING_MASK', f'{where}.mask_path', 'fichier introuvable')
+                    else:
+                        try:
+                            dims = png_size(target)
+                            if expected and dims != expected:
+                                fail('E_MASK_SIZE', f'{where}.mask_path', f'{dims} != dimensions source {expected}')
+                        except (OSError, ValueError) as exc:
+                            fail('E_MASK_PNG', f'{where}.mask_path', str(exc))
     hierarchy: dict[str, set[str]] = {sid: set() for sid in indexed}
     occlusions: dict[str, set[str]] = {sid: set() for sid in indexed}
     for sid, item in indexed.items():
