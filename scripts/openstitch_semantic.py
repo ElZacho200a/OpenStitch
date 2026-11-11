@@ -11,6 +11,7 @@ import json
 import re
 import struct
 import sys
+import zlib
 from collections import Counter
 from pathlib import Path, PureWindowsPath
 
@@ -25,16 +26,30 @@ LEVELS = {'family', 'instance', 'component', 'technical'}
 
 
 def png_size(path: Path) -> tuple[int, int]:
+    """Lire les dimensions d'un PNG sans decoder les pixels.
+
+    Verifie l'integrite de l'IHDR, pas l'ensemble des chunks ni le contenu IDAT.
+    """
     with path.open('rb') as f:
-        header = f.read(24)
-    if (len(header) != 24 or header[:8] != b'\x89PNG\r\n\x1a\n'
+        header = f.read(33)  # signature (8) + length (4) + IHDR (17) + CRC (4)
+    if (len(header) != 33 or header[:8] != b'\x89PNG\r\n\x1a\n'
             or header[12:16] != b'IHDR'):
-        raise ValueError('masque non PNG ou IHDR absent')
+        raise ValueError('masque non PNG ou IHDR tronque/absent')
+    if struct.unpack('>I', header[8:12])[0] != 13:
+        raise ValueError('longueur IHDR invalide')
+    actual_crc = zlib.crc32(header[12:29]) & 0xffffffff
+    if actual_crc != struct.unpack('>I', header[29:33])[0]:
+        raise ValueError('CRC IHDR invalide')
     width, height = struct.unpack('>II', header[16:24])
     if width == 0 or height == 0 or width > 100000 or height > 100000:
         raise ValueError('dimensions PNG invalides')
+    bit_depth, color_type, compression, filtering, interlace = header[24:29]
+    valid_depths = {0: (1, 2, 4, 8, 16), 2: (8, 16), 3: (1, 2, 4, 8),
+                    4: (8, 16), 6: (8, 16)}
+    if (bit_depth not in valid_depths.get(color_type, ()) or compression != 0
+            or filtering != 0 or interlace not in (0, 1)):
+        raise ValueError('parametres IHDR invalides')
     return width, height
-
 
 def cycles(edges: dict[str, set[str]]) -> list[list[str]]:
     """Retourne une preuve de cycle deterministe sans recursion Python.
