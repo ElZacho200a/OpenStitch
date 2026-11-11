@@ -58,6 +58,60 @@ int directionGuideCount(const document::Project& project, std::uint64_t objectId
     return dir != nullptr ? static_cast<int>(dir->guides.size()) : -1;
 }
 
+std::vector<std::vector<PointMm>>
+autoSatinGuidePaths(const document::Project& project, std::uint64_t objectId) {
+    std::vector<std::vector<PointMm>> out;
+    const auto* obj = project.findEmbroidery(ObjectId{objectId});
+    const auto* satin = obj ? std::get_if<document::AutoSatinParams>(&obj->params) : nullptr;
+    if (!satin) {
+        return out;
+    }
+    for (const auto& guide : satin->guides) {
+        std::vector<PointMm> path;
+        for (const Vec2um p : guide.path) {
+            path.push_back({to_millimeters(p.x).value, to_millimeters(p.y).value});
+        }
+        if (path.size() >= 2) {
+            out.push_back(std::move(path));
+        }
+    }
+    return out;
+}
+
+ServiceResult moveAutoSatinGuideNode(DocumentSession& session, std::uint64_t objectId,
+                                     std::size_t guideIndex, std::size_t nodeIndex, PointMm to) {
+    const auto* obj = session.project().findEmbroidery(ObjectId{objectId});
+    const auto* satin = obj ? std::get_if<document::AutoSatinParams>(&obj->params) : nullptr;
+    if (!satin || guideIndex >= satin->guides.size()) {
+        return {false, "Sélectionnez un guide de satin valide."};
+    }
+    if (!std::isfinite(to.x) || !std::isfinite(to.y) ||
+        std::fabs(to.x) > kMaxCoordMm || std::fabs(to.y) > kMaxCoordMm) {
+        return {false, "Position du guide hors limites."};
+    }
+    auto params = *satin;
+    auto& guide = params.guides[guideIndex];
+    if (guide.path.size() < 2 || nodeIndex >= guide.path.size()) {
+        return {false, "Nœud de guide inconnu."};
+    }
+    const Vec2um point = toUm(to);
+    if ((nodeIndex > 0 && guide.path[nodeIndex - 1] == point) ||
+        (nodeIndex + 1 < guide.path.size() && guide.path[nodeIndex + 1] == point)) {
+        return {false, "Deux nœuds voisins ne peuvent pas être confondus."};
+    }
+    if (guide.path[nodeIndex] == point) {
+        return {true, {}};
+    }
+    guide.path[nodeIndex] = point;
+    guide.anchor = guide.path.front();
+    const auto dx = static_cast<double>(guide.path[1].x.value) - guide.path[0].x.value;
+    const auto dy = static_cast<double>(guide.path[1].y.value) - guide.path[0].y.value;
+    guide.angle = Angle{std::atan2(dy, dx)};
+    session.execute(std::make_unique<commands::EditAutoSatinCommand>(
+        ObjectId{objectId}, std::move(params), "Déplacer un nœud de guide satin"));
+    return {true, {}};
+}
+
 int breakLineCount(const document::Project& project, std::uint64_t objectId) {
     const auto* dir = directionalOf(project, objectId);
     return dir != nullptr ? static_cast<int>(dir->break_lines.size()) : -1;
