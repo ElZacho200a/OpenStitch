@@ -247,19 +247,75 @@ int main(int argc, char** argv) {
                                              parser.value(QStringLiteral("frame-scenario")),
                                              parser.value(QStringLiteral("frame-seconds")).toInt());
         // Départ après la scène de points ET quelques frames d'installation (QML + GPU).
-        QObject::connect(&controller, &StudioController::loadFinished, &app, [&](bool success) {
-            if (!success) {
-                app.exit(3);
-                return;
-            }
-            QTimer::singleShot(1500, &app, [&] {
-                auto* canvas = window->findChild<GpuCanvas*>(QStringLiteral("studioCanvas"));
-                probe->start(canvas ? canvas : window->findChild<GpuCanvas*>());
+        auto armed = std::make_shared<bool>(false);
+        QObject::connect(
+            &controller, &StudioController::loadFinished, &app, [&, armed](bool success) {
+                if (!success) {
+                    app.exit(3);
+                    return;
+                }
+                // loadFinished revient a chaque reconstruction de scene : n'armer la sonde qu'une
+                // fois.
+                if (*armed) {
+                    return;
+                }
+                *armed = true;
+                QTimer::singleShot(1500, &app, [&] {
+                    auto* canvas = window->findChild<GpuCanvas*>(QStringLiteral("studioCanvas"));
+                    if (parser.value(QStringLiteral("frame-scenario")) ==
+                        QStringLiteral("interact")) {
+                        auto* workspace = window->findChild<WorkspaceController*>();
+                        QObject::connect(&controller, &StudioController::sceneChanged, probe.get(),
+                                         [&] {
+                                             if (controller.scene()) {
+                                                 probe->noteSceneReady();
+                                             }
+                                         });
+                        const auto& objects = session.project().embroidery_objects;
+                        const auto firstId =
+                            objects.empty() ? QString() : QString::number(objects.front().id.value);
+                        const auto lastId =
+                            objects.empty() ? QString() : QString::number(objects.back().id.value);
+                        probe->addStep(
+                            "select_first", [&, firstId] { controller.selectObject(firstId); },
+                            400);
+                        probe->addStep(
+                            "select_last", [&, lastId] { controller.selectObject(lastId); }, 400);
+                        probe->addStep("select_all", [&] { editor.selectAll(); }, 600);
+                        probe->addStep(
+                            "clear_selection", [&] { controller.clearSelection(); }, 400);
+                        for (const char* space : {"segmentation", "vector", "image", "points"}) {
+                            probe->addStep(
+                                QStringLiteral("open_space_%1").arg(space),
+                                [workspace, space] {
+                                    if (workspace) {
+                                        workspace->setCurrent(QString::fromLatin1(space));
+                                    }
+                                },
+                                1500);
+                        }
+                        probe->addStep(
+                            "select_for_edit", [&, firstId] { controller.selectObject(firstId); },
+                            300);
+                        probe->addStep(
+                            "move_object_1mm", [&] { controller.moveSelection(1.0, 0.0); }, 4000);
+                        probe->addStep("undo_move", [&] { controller.undo(); }, 4000);
+                        probe->addStep("redo_move", [&] { controller.redo(); }, 4000);
+                        probe->addStep("simulation_play", [&] { view.play(); }, 3000);
+                        probe->addStep("simulation_pause", [&] { view.pause(); }, 500);
+                        probe->addStep("toggle_realistic", [&] { view.toggleRealistic(); }, 3000);
+                        probe->addStep(
+                            "toggle_realistic_off", [&] { view.toggleRealistic(); }, 1500);
+                    }
+                    probe->start(canvas ? canvas : window->findChild<GpuCanvas*>());
+                });
             });
-        });
         // Projet sans objet de broderie (image/segmentation seulement) : aucune scène de points
         // n'est construite et loadFinished n'arrive jamais. On mesure alors après 8 s.
         QTimer::singleShot(8000, &app, [&] {
+            if (parser.value(QStringLiteral("frame-scenario")) == QStringLiteral("interact")) {
+                return; // les etapes ne sont enregistrees qu'apres une scene de points
+            }
             auto* canvas = window->findChild<GpuCanvas*>(QStringLiteral("studioCanvas"));
             probe->start(canvas ? canvas : window->findChild<GpuCanvas*>());
         });

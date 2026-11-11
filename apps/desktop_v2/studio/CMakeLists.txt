@@ -46,6 +46,9 @@ add_library(openstitch_studio_ui STATIC
     segmentation_space_controller.cpp segmentation_space_controller.hpp
     layers/region_layer.cpp layers/region_layer.hpp)
 add_library(openstitch::studio_ui ALIAS openstitch_studio_ui)
+if(WIN32)
+    target_link_libraries(openstitch_studio_ui PRIVATE dbghelp)
+endif()
 target_include_directories(openstitch_studio_ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(openstitch_studio_ui PUBLIC openstitch::desktop_v2_core
     openstitch::ai_segmentation openstitch::companion_backends

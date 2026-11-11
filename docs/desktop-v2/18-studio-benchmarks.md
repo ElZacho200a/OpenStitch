@@ -399,3 +399,39 @@ Lecture : en mouvement continu le plafond vsync (60 Hz) est tenu en moyenne ; le
 fil d'interface ne reste jamais bloqué > 16 ms (retard du minuteur témoin p95 ≤ 10 ms).
 **Non mesuré** : interactions (sélection, édition, changement d'espace), simulation, rendu réaliste,
 broderie.osp (la sonde ne produit aucune mesure : cause non élucidée), 120/144 Hz, mode logiciel.
+
+### Interactions de la vraie fenêtre : gel après déplacement/annulation (11 novembre 2026)
+
+Scénario `--frame-scenario interact` (sonde `--frame-stats`), Jupiter.osp (66 objets, 16 600 segments),
+Release D3D11, une exécution par état (machine non étalonnée). Chaque action est suivie d'une fenêtre
+d'observation ; « gel » = plus grand retard du minuteur témoin du fil d'interface dans la fenêtre.
+
+**Constat avant correctif.** Déplacer un objet de 1 mm, annuler ou rétablir : scène prête en ~2,9 s alors
+que le worker la calcule en ~150 ms (`OPENSTITCH_PERF_LOG` : `effectiveSequenceMs` ≈ 140 ms, `wallMs`
+≈ 2 900 ms). Le fil d'interface gelait 2,7 à 3,3 s (lecture de la simulation : 3,2 s).
+
+**Cause (échantillonnage de pile du fil d'interface, `OPENSTITCH_FRAME_SAMPLER=1`).** Tous les échantillons
+de blocage passaient par `GpuCanvas::toolOverlay` : `ToolOverlay.qml` lisait `var items = gpu.toolOverlay`
+puis parcourait `items[i]`. Une `QVariantList` lue via une propriété devient une séquence QML liée à la
+propriété, qui la relit (donc la reconstruit entièrement) à chaque accès : coût quadratique à chaque
+repaint. Un `QVariant` ne change rien (même séquence liée) ; une méthode `Q_INVOKABLE` renvoie une copie.
+
+**Correctif.** `GpuCanvas::toolOverlayList()` et `handlesOverlayList()` (`Q_INVOKABLE`), utilisées par
+`ToolOverlay.qml` et `HandlesOverlay.qml`. Les propriétés `toolOverlay`/`handlesOverlay` et les accesseurs
+C++ restent inchangés.
+
+| Action | gel avant (ms) | gel après (ms) | scène prête avant → après (ms) |
+|---|---|---|---|
+| déplacer 1 mm | 2 785 | 165 | 2 969 → 317 |
+| annuler | 3 289 | 117 | 2 792 → 207 |
+| rétablir | 3 221 | 130 | 2 900 → 213 |
+| lecture de la simulation | 3 218 | 14 | n/a |
+
+Gel maximal du scénario : 3 289 → 792 ms. Les frames présentées baissent (2 118 → 912) parce que le
+rendu ne tourne plus en continu : c'est de l'inactivité, pas une régression.
+
+**Reste (non corrigé).** Première ouverture des espaces Segmentation/Vecteurs/Image : 345-794 ms de gel
+sur le fil d'interface ; sélection : 40-135 ms ; première frame après ouverture de l'espace Points :
+~1,2 s sans frame. `guideLines` n'a pas été modifié (même type de propriété, usage QML plus léger).
+**Non mesuré** : autres projets, mode logiciel, 120/144 Hz ; tests Studio Debug verts (tools, digitize2,
+shell, space_vector, edit), CI GitHub non vérifiée.

@@ -74,6 +74,12 @@ public:
     [[nodiscard]] ToolController* tools() const { return tools_; }
     void setTools(ToolController* tools);
     [[nodiscard]] QVariantList toolOverlay() const;
+    // Pour QML : une METHODE renvoie une copie. Lue via une propriete, une QVariantList devient une
+    // sequence liee a la propriete qui la relit (la reconstruit) a chaque items[i] / items.length :
+    // cout quadratique (gel d'environ 3 s apres un deplacement sur 66 objets, mesure par
+    // echantillonnage).
+    Q_INVOKABLE QVariantList toolOverlayList() const { return toolOverlay(); }
+    Q_INVOKABLE QVariantList handlesOverlayList() const { return handlesOverlay(); }
     [[nodiscard]] DigitizeGestures* digitize() const { return digitize_; }
     void setDigitize(DigitizeGestures* digitize);
     [[nodiscard]] QVariantList handlesOverlay() const;

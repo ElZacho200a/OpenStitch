@@ -24,7 +24,7 @@ Canvas {
         var ctx = getContext("2d")
         ctx.reset()
         if (!gpu || !gpu.digitize) return
-        var items = gpu.handlesOverlay
+        var items = gpu.handlesOverlayList()
         for (var i = 0; i < items.length; ++i) {
             var it = items[i], p = it.pts, k, j
             ctx.beginPath()

@@ -23,7 +23,7 @@ Canvas {
         var ctx = getContext("2d")
         ctx.reset()
         if (!gpu || !gpu.tools) return
-        var items = gpu.toolOverlay
+        var items = gpu.toolOverlayList()
         for (var i = 0; i < items.length; ++i) {
             var it = items[i], p = it.pts
             ctx.beginPath()
