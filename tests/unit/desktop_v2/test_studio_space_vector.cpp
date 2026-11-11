@@ -415,6 +415,31 @@ private slots:
         QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
     }
 
+    // Revenir à un état déjà rasterisé (annuler, rétablir) republie l'image conservée : aucun
+    // nouveau calcul, et les pixels sont ceux de l'état d'origine.
+    void returningToAnAlreadyRenderedStateReusesTheCachedRaster() {
+        Rig rig;
+        open(rig);
+        enterSpace(rig);
+        const auto originalRaster = rig.canvas->vectorImage();
+        QCOMPARE(rig.stage.layerCacheHits(), 0);
+
+        const auto original = rig.session.snapshot();
+        auto recolored = std::make_shared<document::Project>(*original);
+        recolored->vector_objects.front().rgb = {10, 190, 40};
+        rig.session.execute(std::make_unique<commands::ReplaceProjectCommand>("Recolorer une forme",
+                                                                              original, recolored));
+        QVERIFY(rig.canvas->vectorImage() != originalRaster);
+        QCOMPARE(rig.stage.layerCacheHits(), 0); // premier passage : calcul réel
+
+        QVERIFY(rig.session.undo()); // retour à l'état d'origine : servi depuis le cache
+        QCOMPARE(rig.stage.layerCacheHits(), 1);
+        QVERIFY(rig.canvas->vectorImage() == originalRaster);
+        QVERIFY(rig.session.redo()); // retour à l'état recoloré : servi depuis le cache
+        QCOMPARE(rig.stage.layerCacheHits(), 2);
+        QVERIFY(rig.canvas->vectorImage() != originalRaster);
+    }
+
     void stitchParameterChangesDoNotRerasterizeVectors() {
         Rig rig;
         open(rig);
@@ -555,6 +580,46 @@ private slots:
         // Une seule étape d'annulation pour tout le lot.
         QVERIFY(rig.session.undo());
         QCOMPARE(steps(rig), undoBefore);
+    }
+
+    // Précision de la vectorisation (V1) : tolérance en mm bornée, courbes de Bézier avec écart
+    // maximal en px ; les réglages sont visibles dans le panneau de l'espace.
+    void vectorizationPrecisionIsAdjustableFromThePanel() {
+        Rig rig;
+        open(rig);
+        enterSpace(rig);
+        QSignalSpy options(&rig.stage, &VectorSpaceController::optionsChanged);
+        QCOMPARE(rig.stage.precisionMm(), 0.2);
+        QVERIFY(!rig.stage.curves());
+        rig.stage.setPrecisionMm(0.05);
+        QCOMPARE(rig.stage.precisionMm(), 0.05);
+        rig.stage.setPrecisionMm(0.05); // inchangé : aucun signal
+        QCOMPARE(options.count(), 1);
+        rig.stage.setPrecisionMm(99.0);
+        QCOMPARE(rig.stage.precisionMm(), 2.0);
+        rig.stage.setPrecisionMm(0.0);
+        QCOMPARE(rig.stage.precisionMm(), 0.02);
+        rig.stage.setPrecisionMm(0.2);
+
+        auto* slider = deepItem(rig.window->contentItem(), QStringLiteral("vectorPrecisionSlider"));
+        auto* box = deepItem(rig.window->contentItem(), QStringLiteral("vectorCurvesBox"));
+        QVERIFY(slider && box);
+        QTRY_VERIFY_WITH_TIMEOUT(slider->isVisible(), 3'000);
+        QVERIFY(QMetaObject::invokeMethod(box, "click"));
+        QVERIFY(rig.stage.curves());
+        auto* curveSlider =
+            deepItem(rig.window->contentItem(), QStringLiteral("vectorCurveToleranceSlider"));
+        QVERIFY(curveSlider);
+        QTRY_VERIFY_WITH_TIMEOUT(curveSlider->isVisible(), 3'000);
+        QTRY_VERIFY_WITH_TIMEOUT(!slider->isVisible(), 3'000);
+        rig.stage.setCurveTolerancePx(100.0);
+        QCOMPARE(rig.stage.curveTolerancePx(), 10.0);
+        rig.stage.setCurveTolerancePx(0.0);
+        QCOMPARE(rig.stage.curveTolerancePx(), 0.5);
+        // Le plan de mise à jour utilise les réglages : le document n'est pas modifié.
+        const auto depth = steps(rig);
+        (void)rig.stage.updatePlan();
+        QCOMPARE(steps(rig), depth);
     }
 
     void convertToEmbroideryIsOneUndoStep() {

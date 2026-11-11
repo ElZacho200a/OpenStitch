@@ -153,6 +153,8 @@ private slots:
     void refusalsNeverCorrectSilently();
     void burstOfEditsIsOneUndoStep();
     void mixedValuesAndMultiEdit();
+    void rowSpacingIsSharedBetweenTatamiAndSatin();
+    void colourOfTheSelectionIncludingMixedTypes();
     void resetToDefaults();
     void stitchTypeConversion();
     void searchAndLevels();
@@ -404,6 +406,93 @@ void StudioInspectorTest::mixedValuesAndMultiEdit() {
     QVERIFY(inspector.resetAll().isEmpty());
     // A setting only one type has is still refused.
     QVERIFY(!inspector.setParam(QString::fromStdString(tatamiOnly), 0.4).isEmpty());
+}
+
+// Couleur de la sélection : commune ou « différentes », changée d'un coup pour des types de points
+// différents (une étape d'annulation), refus d'une couleur invalide ou d'une sélection vide.
+void StudioInspectorTest::colourOfTheSelectionIncludingMixedTypes() {
+    DocumentSession session;
+    auto created = project_ops::create_empty_project({});
+    session.replaceProject(std::move(*created), true);
+    const auto a = addRect(session, 0, 0);
+    const auto b = addRect(session, 40, 0);
+    StudioController studio(session);
+    InspectorController inspector(studio);
+    select(session, {});
+    QVERIFY(!inspector.setColour(QStringLiteral("#ff0000")).isEmpty()); // rien de sélectionné
+    QVERIFY(session.applyBatch(batchSetStitchType({b}, "directional"), "Type").committed);
+    select(session, {a, b});
+    QVERIFY(inspector.typeMixed());
+    const auto depth = session.undoNames().size();
+    QVERIFY(!inspector.setColour(QStringLiteral("pas-une-couleur")).isEmpty());
+    QCOMPARE(session.undoNames().size(), depth);
+
+    QVERIFY(inspector.setColour(QStringLiteral("#ff0000")).isEmpty());
+    QCOMPARE(session.undoNames().size(), depth + 1);
+    QCOMPARE(object(session, a).rgb, (std::array<std::uint8_t, 3>{255, 0, 0}));
+    QCOMPARE(object(session, b).rgb, (std::array<std::uint8_t, 3>{255, 0, 0}));
+    QCOMPARE(inspector.colour(), QStringLiteral("#ff0000"));
+    QVERIFY(!inspector.colourMixed());
+
+    QVERIFY(inspector.setColour(QStringLiteral("#00ff00")).isEmpty());
+    select(session, {a});
+    QVERIFY(inspector.setColour(QStringLiteral("#0000ff")).isEmpty());
+    select(session, {a, b});
+    QVERIFY(inspector.colour().isEmpty());
+    QVERIFY(inspector.colourMixed());
+    QVERIFY(session.undo());
+    QVERIFY(!inspector.colourMixed());
+    QCOMPARE(inspector.colour(), QStringLiteral("#00ff00"));
+}
+
+// Tatami et satin partagent l'écart entre rangées (clés différentes : `row_spacing_mm`,
+// `spacing_mm`, `density_mm`) et les réglages de tirage : dans une sélection mixte ils forment UN
+// réglage commun, lu et écrit sous la clé de chaque type, en une étape d'annulation.
+void StudioInspectorTest::rowSpacingIsSharedBetweenTatamiAndSatin() {
+    DocumentSession session;
+    auto created = project_ops::create_empty_project({});
+    session.replaceProject(std::move(*created), true);
+    const auto a = addRect(session, 0, 0);
+    const auto b = addRect(session, 40, 0);
+    StudioController studio(session);
+    InspectorController inspector(studio);
+    QVERIFY(session.applyBatch(batchSetStitchType({b}, "auto_satin"), "Type").committed);
+    select(session, {a, b});
+    QVERIFY(inspector.typeMixed());
+    const auto spacing = fieldOf(inspector, QStringLiteral("row_spacing_mm"));
+    QVERIFY2(!spacing.isEmpty(), "l'écart entre rangées doit être commun au tatami et au satin");
+    QVERIFY(!fieldOf(inspector, QStringLiteral("pull_compensation_mm")).isEmpty());
+    QVERIFY(!fieldOf(inspector, QStringLiteral("pull_mode")).isEmpty());
+    QVERIFY(!fieldOf(inspector, QStringLiteral("underlay_edge")).isEmpty());
+    // Les clés propres à un seul type ne sont pas proposées.
+    QVERIFY(fieldOf(inspector, QStringLiteral("spacing_mm")).isEmpty());
+
+    const auto depth = session.undoNames().size();
+    QVERIFY(inspector.setParam(QStringLiteral("row_spacing_mm"), 0.8).isEmpty());
+    QCOMPARE(session.undoNames().size(), depth + 1);
+    QVERIFY(std::abs(*readParam(object(session, a), "row_spacing_mm") - 0.8) < 1e-6);
+    QVERIFY(std::abs(*readParam(object(session, b), "spacing_mm") - 0.8) < 1e-6);
+    QVERIFY(!fieldOf(inspector, QStringLiteral("row_spacing_mm"))
+                 .value(QStringLiteral("mixed"))
+                 .toBool());
+    // Une valeur hors de la plage commune est refusée sans rien changer.
+    QVERIFY(!inspector.setParam(QStringLiteral("row_spacing_mm"), 9.0).isEmpty());
+    QVERIFY(std::abs(*readParam(object(session, b), "spacing_mm") - 0.8) < 1e-6);
+
+    // Valeurs différentes : « — » ; la remise à zéro renvoie chaque type à son propre défaut.
+    QVERIFY(session.undo());
+    select(session, {a});
+    QVERIFY(inspector.setParam(QStringLiteral("row_spacing_mm"), 0.3).isEmpty());
+    select(session, {a, b});
+    QVERIFY(fieldOf(inspector, QStringLiteral("row_spacing_mm"))
+                .value(QStringLiteral("mixed"))
+                .toBool());
+    QVERIFY(inspector.resetParam(QStringLiteral("row_spacing_mm")).isEmpty());
+    QVERIFY(fieldOf(inspector, QStringLiteral("row_spacing_mm"))
+                .value(QStringLiteral("isDefault"))
+                .toBool());
+    QVERIFY(session.undo());
+    QVERIFY(inspector.resetAll().isEmpty());
 }
 
 void StudioInspectorTest::resetToDefaults() {

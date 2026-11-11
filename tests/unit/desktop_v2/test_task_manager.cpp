@@ -127,3 +127,24 @@ TEST_CASE("destroying the manager cancels and joins running tasks", "[desktop_v2
     }
     CHECK(sawStop);
 }
+
+TEST_CASE("completion notifier fires once per finished task and not before",
+          "[desktop_v2][tasks]") {
+    TaskManager tm;
+    std::atomic<int> notified{0};
+    tm.setCompletionNotifier([&] { ++notified; });
+    CHECK(notified == 0); // aucun reveil sans tache
+    int delivered = 0;
+    tm.submit<int>(
+        "calcul", [](const TaskContext&) -> Result<int> { return 1; },
+        [&](Result<int>&&) { ++delivered; });
+    while (notified == 0) {
+        std::this_thread::yield();
+    }
+    CHECK(tm.pump() == 1); // la completion annoncee est bien livrable
+    CHECK(delivered == 1);
+    tm.setCompletionNotifier({});
+    tm.submit<int>("calcul2", [](const TaskContext&) -> Result<int> { return 2; }, nullptr);
+    tm.waitIdle();
+    CHECK(notified == 1); // notifieur retire : plus d'appel
+}

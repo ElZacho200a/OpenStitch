@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <QAbstractEventDispatcher>
 #include <QFile>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
@@ -73,6 +74,7 @@ private slots:
     void controllerDisconnectionClearsTheCanvas();
     void openMoveUndoSaveReopenJourney();
     void actionCatalogIsFullyReachable();
+    void idleControllerDoesNotWakeTheEventLoop();
 };
 
 void StudioShellTest::initTestCase() {
@@ -372,6 +374,30 @@ void StudioShellTest::actionCatalogIsFullyReachable() {
     QVERIFY(!actions.lastOk());
     controller.undo();
     QVERIFY(session.project().canvas == before);
+}
+
+void StudioShellTest::idleControllerDoesNotWakeTheEventLoop() {
+    // Avant : un QTimer de 8 ms par contrôleur sondait TaskManager::pump() en permanence
+    // (>1 000 réveils/s au repos). Désormais la livraison est notifiée par la fin de tâche.
+    // QTest::qWait réveille lui-même la boucle : on compare à une base mesurée sans contrôleur.
+    const auto countWakeups = [] {
+        int wakeups = 0;
+        const auto connection =
+            QObject::connect(QAbstractEventDispatcher::instance(), &QAbstractEventDispatcher::awake,
+                             [&wakeups] { ++wakeups; });
+        QTest::qWait(300);
+        QObject::disconnect(connection);
+        return wakeups;
+    };
+    const int baseline = countWakeups();
+    DocumentSession session;
+    StudioController controller(session);
+    QTest::qWait(50); // laisse passer les événements d'initialisation
+    const int withController = countWakeups();
+    // Un sondage à 8 ms ajoutait ~37 réveils sur 300 ms pour ce seul contrôleur.
+    QVERIFY2(withController <= baseline + 5,
+             qPrintable(
+                 QStringLiteral("base %1, avec contrôleur %2").arg(baseline).arg(withController)));
 }
 
 QTEST_MAIN(StudioShellTest)

@@ -12,6 +12,7 @@
 #include <QQuickStyle>
 #include <QQuickWindow>
 #include <QTemporaryDir>
+#include <QWheelEvent>
 #include <QtTest/QtTest>
 
 #include <algorithm>
@@ -198,10 +199,60 @@ private slots:
         // The first space actually receives and displays the original pixels.
         auto* canvas = qobject_cast<GpuCanvas*>(named(window, QStringLiteral("imageCanvas")));
         QVERIFY(canvas);
+        // La taille de l'image se règle depuis le panneau de l'espace (largeur, hauteur, %).
+        QTRY_VERIFY_WITH_TIMEOUT(named(window, QStringLiteral("imageSizeSection")) != nullptr,
+                                 5'000);
+        QVERIFY(named(window, QStringLiteral("imageWidthMm")));
+        QVERIFY(named(window, QStringLiteral("imageHeightMm")));
         QTRY_VERIFY_WITH_TIMEOUT(canvas->sourceImage().data != nullptr, 15'000);
         QCOMPARE(canvas->sourceImage().data->after.width(), 160);
         QCOMPARE(canvas->sourceImage().data->after.height(), 120);
         QVERIFY(named(window, QStringLiteral("imageSidePanel"))->isVisible());
+
+        // Molette sur la largeur (comme les champs numériques de V1) : +1 mm par cran, une seule
+        // étape d'annulation après la rafale (validation différée).
+        {
+            // Fenêtre basse : le panneau déborde et son défilement doit rester immobile pendant la
+            // molette sur le champ (la molette règle la valeur, elle ne fait pas défiler).
+            const auto originalSize = window->size();
+            window->resize(1440, 480);
+            QTRY_COMPARE(window->height(), 480);
+            auto* sidePanel = named(window, QStringLiteral("imageSidePanel"));
+            QQuickItem* scroller = nullptr;
+            QTRY_VERIFY_WITH_TIMEOUT(
+                [&] {
+                    for (auto* item : sidePanel->findChildren<QQuickItem*>()) {
+                        const auto content = item->property("contentHeight");
+                        if (content.isValid() && content.toDouble() > item->height() + 10.0) {
+                            scroller = item;
+                            return true;
+                        }
+                    }
+                    return false;
+                }(),
+                5'000);
+            const double scrollBefore = scroller->property("contentY").toDouble();
+            auto* widthField = named(window, QStringLiteral("imageWidthMm"));
+            const double widthBefore = imageSpace.imageWidthMm();
+            QTRY_COMPARE(widthField->property("text").toString(),
+                         QString::number(widthBefore, 'f', 1));
+            const auto depth = session.undoNames().size();
+            const QPointF scene =
+                widthField->mapToScene(QPointF(widthField->width() / 2, widthField->height() / 2));
+            for (int notch = 0; notch < 3; ++notch) {
+                QWheelEvent wheel(scene, window->mapToGlobal(scene), QPoint(), QPoint(0, 120),
+                                  Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+                QCoreApplication::sendEvent(window, &wheel);
+            }
+            QTRY_VERIFY_WITH_TIMEOUT(
+                std::abs(imageSpace.imageWidthMm() - (widthBefore + 3.0)) < 0.1, 5'000);
+            QCOMPARE(session.undoNames().size(), depth + 1);
+            QCOMPARE(scroller->property("contentY").toDouble(), scrollBefore);
+            QVERIFY(session.undo()); // la taille d'origine revient d'un coup
+            QVERIFY(std::abs(imageSpace.imageWidthMm() - widthBefore) < 1e-6);
+            window->resize(originalSize);
+            QTRY_COMPARE(window->size(), originalSize);
+        }
 
         // Visiting Segmentation does not compute it. Only the explicit action does.
         workspace->setCurrent(QStringLiteral("segmentation"));
@@ -437,6 +488,98 @@ private slots:
         QCOMPARE(session.project().ops.size(), opsBase + 2);
         QVERIFY(!imageSpace.moveOp(static_cast<int>(opsBase), 1).isEmpty());
         QCOMPARE(session.project().ops.size(), opsBase + 2);
+    }
+
+    // Redimensionner l'image importée seule : ratio conservé, une étape d'annulation.
+    void resizingTheImportedImageIsUndoable() {
+        DocumentSession session;
+        StudioController studio(session);
+        ImageController images(studio);
+        ImageSpaceController imageSpace(studio, images);
+        QTemporaryDir dir;
+        auto project = digitizedProject(writeImage(dir.path()));
+        project.embroidery_objects.clear();
+        session.replaceProject(std::move(project), true);
+        QTRY_VERIFY_WITH_TIMEOUT(images.imageWidth() > 0, 20'000);
+        QVERIFY(imageSpace.canResize());
+        const double width = imageSpace.imageWidthMm();
+        const double height = imageSpace.imageHeightMm();
+        const double scale = session.project().mm_per_px.value;
+        const auto depth = session.undoNames().size();
+        QCOMPARE(imageSpace.setImageWidthMm(width * 2.0), QString());
+        QVERIFY(std::abs(imageSpace.imageWidthMm() - width * 2.0) < 1e-6);
+        QVERIFY(std::abs(imageSpace.imageHeightMm() - height * 2.0) < 1e-6);
+        QVERIFY(std::abs(session.project().mm_per_px.value - scale * 2.0) < 1e-9);
+        QCOMPARE(session.undoNames().size(), depth + 1);
+        QCOMPARE(imageSpace.scaleImage(50.0), QString());
+        QVERIFY(std::abs(imageSpace.imageWidthMm() - width) < 1e-6);
+        QCOMPARE(imageSpace.setImageHeightMm(height * 3.0), QString());
+        QVERIFY(std::abs(imageSpace.imageWidthMm() - width * 3.0) < 1e-6);
+        session.undo();
+        session.undo();
+        session.undo();
+        QVERIFY(std::abs(session.project().mm_per_px.value - scale) < 1e-12);
+        QVERIFY(std::abs(imageSpace.imageWidthMm() - width) < 1e-6);
+    }
+
+    // Une taille absurde est refusee sans rien changer ; avec des objets, le redimensionnement de
+    // l'image est refuse (ils se redimensionnent par la selection).
+    void resizingTheImageRefusesInvalidSizesAndExistingObjects() {
+        DocumentSession session;
+        StudioController studio(session);
+        ImageController images(studio);
+        ImageSpaceController imageSpace(studio, images);
+        QTemporaryDir dir;
+        auto project = digitizedProject(writeImage(dir.path()));
+        const bool hadObjects = !project.embroidery_objects.empty();
+        session.replaceProject(std::move(project), true);
+        QTRY_VERIFY_WITH_TIMEOUT(images.imageWidth() > 0, 20'000);
+        const double scale = session.project().mm_per_px.value;
+        if (hadObjects) {
+            QVERIFY(!imageSpace.canResize());
+            QVERIFY(!imageSpace.setImageWidthMm(100.0).isEmpty());
+            QCOMPARE(session.project().mm_per_px.value, scale);
+        }
+        auto cleared = session.project();
+        cleared.embroidery_objects.clear();
+        session.replaceProject(std::move(cleared), true);
+        QVERIFY(imageSpace.canResize());
+        QVERIFY(!imageSpace.setImageWidthMm(0.0).isEmpty());
+        QVERIFY(!imageSpace.scaleImage(1.0e9).isEmpty());
+        QVERIFY(!imageSpace.scaleImage(-5.0).isEmpty());
+        QCOMPARE(session.project().mm_per_px.value, scale);
+    }
+    // Cadre de recadrage : bornes de l'image, annulation du cadre, application = une étape
+    // d'annulation qui change la taille de l'image de travail.
+    void cropFrameIsBoundedCancelledAndApplied() {
+        DocumentSession session;
+        StudioController studio(session);
+        ImageController images(studio);
+        ImageSpaceController imageSpace(studio, images);
+        QTemporaryDir dir;
+        session.replaceProject(digitizedProject(writeImage(dir.path())), true);
+        QTRY_VERIFY_WITH_TIMEOUT(images.imageWidth() > 0, 20'000);
+        const int width = images.imageWidth();
+        const auto ops = session.project().ops.size();
+        QVERIFY(!imageSpace.cropActive());
+        QVERIFY(!imageSpace.applyCrop().isEmpty()); // pas de cadre : refus lisible
+        imageSpace.beginCrop();
+        QVERIFY(imageSpace.cropActive());
+        QVERIFY(imageSpace.cropW() > 0 && imageSpace.cropW() < width);
+        imageSpace.setCrop(-5.0, -5.0, 1.0e6, 1.0e6); // borné à l'image
+        QCOMPARE(imageSpace.cropX(), 0.0);
+        QCOMPARE(imageSpace.cropW(), static_cast<double>(width));
+        imageSpace.cancelCrop();
+        QVERIFY(!imageSpace.cropActive());
+        QCOMPARE(session.project().ops.size(), ops);
+        imageSpace.beginCrop();
+        imageSpace.setCrop(10.0, 10.0, 50.0, 40.0);
+        QCOMPARE(imageSpace.applyCrop(), QString());
+        QVERIFY(!imageSpace.cropActive());
+        QCOMPARE(session.project().ops.size(), ops + 1);
+        QTRY_COMPARE(images.imageWidth(), 50);
+        QVERIFY(session.undo());
+        QTRY_COMPARE(images.imageWidth(), width);
     }
 };
 

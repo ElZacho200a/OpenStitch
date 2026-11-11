@@ -116,6 +116,40 @@ ColumnLayout {
             }
         }
     }
+    // Rotation autour d'un centre choisi (mm modèle, Y vers le haut) : l'angle est celui du champ ∠°.
+    Flow {
+        objectName: "editPivotFlow"
+        Layout.fillWidth: true
+        Layout.preferredHeight: childrenRect.height
+        visible: bar.hasBox
+        spacing: 4
+        RowLayout {
+            spacing: 3
+            Text { text: qsTr("Centre X"); color: Theme.faint; font.pixelSize: Theme.smallSize }
+            Num { id: pivotX; objectName: "pivotX"; text: bar.hasBox ? editor.selectionCentreMm().x.toFixed(2) : "" }
+        }
+        RowLayout {
+            spacing: 3
+            Text { text: "Y"; color: Theme.faint; font.pixelSize: Theme.smallSize }
+            Num { id: pivotY; objectName: "pivotY"; text: bar.hasBox ? editor.selectionCentreMm().y.toFixed(2) : "" }
+        }
+        Mini {
+            objectName: "pivotCentreButton"
+            text: qsTr("Centre de la sélection")
+            onClicked: {
+                const centre = editor.selectionCentreMm()
+                pivotX.text = centre.x.toFixed(2)
+                pivotY.text = centre.y.toFixed(2)
+            }
+        }
+        Mini {
+            objectName: "pivotApply"
+            text: qsTr("Pivoter autour")
+            tooltip: qsTr("Pivoter de l'angle ∠° autour de ce centre")
+            enabled: bar.some
+            onClicked: editor.rotateAround(parseFloat(angleField.text) || 0, parseFloat(pivotX.text), parseFloat(pivotY.text))
+        }
+    }
     Text {
         Layout.fillWidth: true
         visible: editor.message.length > 0

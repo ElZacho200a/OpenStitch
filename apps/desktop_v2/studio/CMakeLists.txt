@@ -7,13 +7,14 @@ endif()
 
 set(CMAKE_AUTOMOC ON)
 add_library(openstitch_studio_ui STATIC
-    studio_controller.cpp studio_controller.hpp
+    studio_controller.cpp perf_log.cpp studio_controller.hpp
     history_controller.cpp history_controller.hpp
     action_controller.cpp action_controller.hpp
     edit_controller.cpp edit_controller.hpp
     file_controller.cpp file_controller.hpp
     inspector_controller.cpp inspector_controller.hpp
     gpu_canvas.cpp gpu_canvas.hpp
+    frame_probe.cpp frame_probe.hpp
     canvas_renderer.cpp canvas_renderer.hpp
     realistic_scene.cpp realistic_scene.hpp
     thread_textures.cpp thread_textures.hpp
@@ -26,6 +27,8 @@ add_library(openstitch_studio_ui STATIC
     fade_controller.cpp fade_controller.hpp
     point_edit_controller.cpp point_edit_controller.hpp
     tool_controller.cpp tool_controller.hpp
+    warp_tool.cpp warp_tool.hpp
+    bucket_tool.cpp bucket_tool.hpp
     vector_controller.cpp vector_controller.hpp
     workspace_controller.cpp workspace_controller.hpp
     vector_space_controller.cpp vector_space_controller.hpp
@@ -67,7 +70,7 @@ set(studio_qml_files
 list(APPEND studio_qml_files qml/spaces/vector/VectorShapePanel.qml)
 # Les sous-composants d'un espace (qml/spaces/<x>/...) s'ajoutent ICI, une ligne par fichier.
 list(APPEND studio_qml_files qml/spaces/image/ImageOpStack.qml qml/spaces/image/CompareCurtain.qml
-    qml/spaces/image/CropOverlay.qml)
+    qml/spaces/image/CropOverlay.qml qml/spaces/image/ImageSizeSection.qml)
 list(APPEND studio_qml_files qml/spaces/segmentation/SegmentationPanels.qml qml/spaces/segmentation/RegionLayerControls.qml)
 list(APPEND studio_qml_files
     qml/spaces/points/PointsToolRail.qml qml/spaces/points/PointsPanelBar.qml

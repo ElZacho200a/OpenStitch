@@ -5,6 +5,7 @@
 #include <QString>
 #include <QUrl>
 #include <QVariantList>
+#include <cstdint>
 #include <filesystem>
 #include <optional>
 
@@ -110,6 +111,7 @@ signals:
     void stockChanged();
 
 private:
+    std::uint64_t gateStamp_{0}; // documentStamp() au dernier changed rediffusé
     bool report(const ServiceResult& result, const QString& success);
     [[nodiscard]] bool persistStock(const thread_palette::ThreadStock& stock);
     [[nodiscard]] bool persistStockSetting(bool limit);

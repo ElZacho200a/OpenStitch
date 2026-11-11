@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "edit_controller.hpp"
+#include "change_gate.hpp"
 
 #include <QColor>
 #include <algorithm>
@@ -43,7 +44,14 @@ bool touches(const RectMm& a, const RectMm& b, double tolerance) {
 
 EditController::EditController(StudioController& studio, QObject* parent)
     : QObject(parent), studio_(studio) {
-    connect(&studio_, &StudioController::changed, this, &EditController::treeChanged);
+    gateStamp_ = documentStamp(studio_);
+    connect(&studio_, &StudioController::changed, this, [this] {
+        const auto stamp = documentStamp(studio_);
+        if (stamp != gateStamp_) { // l'arbre d'objets n'est reconstruit que s'il a changé
+            gateStamp_ = stamp;
+            emit treeChanged();
+        }
+    });
     connect(&studio_, &StudioController::sceneChanged, this, &EditController::treeChanged);
     connect(&studio_, &StudioController::documentReplaced, this, [this] {
         saved_.clear(); // les identifiants d'un autre document n'ont aucun sens ici
@@ -438,6 +446,25 @@ bool EditController::rotate(double degrees) {
                       QStringLiteral("Pivoter"), {});
 }
 
+bool EditController::rotateAround(double degrees, double pivotXmm, double pivotYmm) {
+    if (!std::isfinite(degrees) || !std::isfinite(pivotXmm) || !std::isfinite(pivotYmm)) {
+        return refuse(QStringLiteral("Pivoter : angle ou centre invalide"));
+    }
+    if (std::abs(degrees) > 360.0) {
+        return refuse(QStringLiteral("Pivoter : angle entre -360 et 360 degrés"));
+    }
+    if (selectedIds().empty()) {
+        return refuse(QStringLiteral("Pivoter : sélection vide"));
+    }
+    return applyBatch(batchRotate(selectedIds(), degrees, {pivotXmm, pivotYmm}),
+                      QStringLiteral("Pivoter autour d'un centre"), {});
+}
+
+QVariantMap EditController::selectionCentreMm() const {
+    const auto centre = selectionCentreModel();
+    return {{QStringLiteral("x"), centre.x}, {QStringLiteral("y"), centre.y}};
+}
+
 bool EditController::rotate90(bool clockwise) {
     return applyBatch(batchRotate(selectedIds(), clockwise ? -90.0 : 90.0, selectionCentreModel()),
                       QStringLiteral("Pivoter de 90°"), {});
@@ -659,6 +686,14 @@ QString idText(std::uint64_t id) {
 bool EditController::addLayer(const QString& name) {
     const auto r = openstitch::desktop_v2::addCalque(studio_.session(), name.toStdString());
     say(r.ok ? QStringLiteral("Calque créé") : QString::fromStdString(r.message));
+    return r.ok;
+}
+
+bool EditController::duplicateLayer(const QString& id) {
+    const auto value = parseId(id);
+    const auto r = value ? openstitch::desktop_v2::duplicateCalque(studio_.session(), *value)
+                         : ServiceResult{false, "Calque inconnu"};
+    say(r.ok ? QStringLiteral("Calque dupliqué") : QString::fromStdString(r.message));
     return r.ok;
 }
 

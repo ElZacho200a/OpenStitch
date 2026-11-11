@@ -40,6 +40,63 @@ ColumnLayout {
         wrapMode: Text.WordWrap
     }
 
+    // Précision de la vectorisation (V1) : appliquée à la prochaine mise à jour des formes.
+    SectionLabel { text: qsTr("PRÉCISION") }
+    RowLayout {
+        Layout.fillWidth: true
+        visible: panel.stage && !panel.stage.curves
+        Text {
+            text: qsTr("Tolérance (mm)")
+            color: Theme.foreground; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize
+        }
+        StudioSlider {
+            objectName: "vectorPrecisionSlider"
+            Layout.fillWidth: true
+            from: 0.05; to: 1.0; stepSize: 0.05
+            value: panel.stage ? panel.stage.precisionMm : 0.2
+            Accessible.name: qsTr("Tolérance de simplification en millimètres")
+            onMoved: panel.stage.precisionMm = value
+        }
+        Text {
+            objectName: "vectorPrecisionValue"
+            text: panel.stage ? panel.stage.precisionMm.toFixed(2) : ""
+            color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize
+        }
+    }
+    StudioCheckBox {
+        objectName: "vectorCurvesBox"
+        text: qsTr("Courbes de Bézier (moins de nœuds)")
+        checked: panel.stage ? panel.stage.curves : false
+        onToggled: panel.stage.curves = checked
+        palette.windowText: Theme.foreground
+    }
+    RowLayout {
+        Layout.fillWidth: true
+        visible: panel.stage && panel.stage.curves
+        Text {
+            text: qsTr("Écart max. (px)")
+            color: Theme.foreground; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize
+        }
+        StudioSlider {
+            objectName: "vectorCurveToleranceSlider"
+            Layout.fillWidth: true
+            from: 0.5; to: 5.0; stepSize: 0.5
+            value: panel.stage ? panel.stage.curveTolerancePx : 1.5
+            Accessible.name: qsTr("Écart maximal des courbes en pixels")
+            onMoved: panel.stage.curveTolerancePx = value
+        }
+        Text {
+            text: panel.stage ? panel.stage.curveTolerancePx.toFixed(1) : ""
+            color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize
+        }
+    }
+    Text {
+        Layout.fillWidth: true
+        text: qsTr("S'applique à « Mettre à jour depuis la segmentation ».")
+        color: Theme.faint; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize
+        wrapMode: Text.WordWrap
+    }
+
     StudioButton {
         objectName: "vectorUpdateButton"
         Layout.fillWidth: true

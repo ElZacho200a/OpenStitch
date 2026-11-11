@@ -11,6 +11,7 @@ Controls.SpinBox {
     implicitHeight: Math.max(28, Math.round(Theme.controlHeight * 0.75))
     implicitWidth: 110
     hoverEnabled: true
+    wheelEnabled: true // la molette change la valeur, comme les champs numériques de V1
     focusPolicy: Qt.StrongFocus
     font.family: Theme.fontFamily
     font.pixelSize: Theme.smallSize

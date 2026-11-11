@@ -28,6 +28,12 @@ ColumnLayout {
         imageTools.clearPrepPreview()
     }
     function setValue(key, value) {
+        if (values[key] === value)
+            return
+        // The preview is a snapshot of the old parameters. Changing a slider
+        // invalidates it immediately (and cancels a still-running preview),
+        // so the user never applies settings while inspecting a stale image.
+        imageTools.clearPrepPreview()
         var v = Object.assign({}, values)
         v[key] = value
         values = v

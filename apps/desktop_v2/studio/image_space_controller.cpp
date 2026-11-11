@@ -11,6 +11,7 @@
 #include "image_controller.hpp"
 #include "image_prep.hpp"
 #include "openstitch/commands/command.hpp"
+#include "openstitch/document/project.hpp"
 #include "studio_controller.hpp"
 
 namespace openstitch::desktop_v2::studio {
@@ -43,6 +44,23 @@ std::optional<std::pair<int, int>> dimensionsAfter(const std::vector<image::Imag
     }
     return std::pair{w, h};
 }
+
+// Change l'échelle physique de l'image source (mm par pixel). Les pixels, la segmentation et les
+// traitements ne bougent pas ; son propre inverse par revert().
+class SetMmPerPxCommand final : public commands::ICommand {
+public:
+    explicit SetMmPerPxCommand(double mmPerPx) : next_(mmPerPx) {}
+    void apply(document::Project& project) override {
+        previous_ = project.mm_per_px.value;
+        project.mm_per_px.value = next_;
+    }
+    void revert(document::Project& project) override { project.mm_per_px.value = previous_; }
+    [[nodiscard]] std::string name() const override { return "Redimensionner l'image"; }
+
+private:
+    double next_;
+    double previous_{0.0};
+};
 
 // Retire l'opération `index` de la pile. Invalide la segmentation (l'image de travail change) et
 // la restaure à l'annulation, comme AppendImageOpCommand.
@@ -121,6 +139,70 @@ bool ImageSpaceController::hasImage() const {
 
 double ImageSpaceController::mmPerPx() const {
     return studio_.session().project().mm_per_px.value;
+}
+
+double ImageSpaceController::imageWidthMm() const {
+    return images_.imageWidth() * mmPerPx();
+}
+
+double ImageSpaceController::imageHeightMm() const {
+    return images_.imageHeight() * mmPerPx();
+}
+
+bool ImageSpaceController::canResize() const {
+    const auto& project = studio_.session().project();
+    return project.hasImage() && project.embroidery_objects.empty();
+}
+
+QString ImageSpaceController::scaleImage(double percent) {
+    if (!hasImage() || images_.imageWidth() <= 0) {
+        const auto text = tr("Importez d'abord une image.");
+        setMessage(text);
+        return text;
+    }
+    if (!canResize()) {
+        const auto text = tr("Des objets existent déjà : redimensionnez-les par la sélection.");
+        setMessage(text);
+        return text;
+    }
+    const double next = mmPerPx() * percent / 100.0;
+    const double width = images_.imageWidth() * next;
+    const double height = images_.imageHeight() * next;
+    constexpr double kMinMm = 1.0;
+    constexpr double kMaxMm = 5000.0;
+    if (!(percent > 0.0) || std::min(width, height) < kMinMm || std::max(width, height) > kMaxMm) {
+        const auto text = tr("Taille refusée : entre %1 et %2 mm.").arg(kMinMm).arg(kMaxMm);
+        setMessage(text);
+        return text;
+    }
+    if (std::abs(next - mmPerPx()) < 1e-12) {
+        return {};
+    }
+    studio_.session().execute(std::make_unique<SetMmPerPxCommand>(next));
+    publishLayer();
+    emit changed();
+    setMessage(tr("Image redimensionnée à %1 × %2 mm (Ctrl+Z pour annuler).")
+                   .arg(width, 0, 'f', 1)
+                   .arg(height, 0, 'f', 1));
+    return {};
+}
+
+QString ImageSpaceController::setImageWidthMm(double widthMm) {
+    if (images_.imageWidth() <= 0 || !(widthMm > 0.0)) {
+        const auto text = tr("Largeur invalide.");
+        setMessage(text);
+        return text;
+    }
+    return scaleImage(widthMm / imageWidthMm() * 100.0);
+}
+
+QString ImageSpaceController::setImageHeightMm(double heightMm) {
+    if (images_.imageHeight() <= 0 || !(heightMm > 0.0)) {
+        const auto text = tr("Hauteur invalide.");
+        setMessage(text);
+        return text;
+    }
+    return scaleImage(heightMm / imageHeightMm() * 100.0);
 }
 
 int ImageSpaceController::imageWidthPx() const {
@@ -291,6 +373,7 @@ void ImageSpaceController::refresh() {
     }
     observedRevision_ = revision;
     trackSegmentation();
+    publishLayer(); // une annulation d'échelle change mm/pixel sans signal d'image
     emit changed();
 }
 

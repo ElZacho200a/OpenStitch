@@ -525,6 +525,41 @@ void StudioDigitizeTest::mainQmlHostsDigitizePanels() {
     QVERIFY(press(window, "pointDiscard"));
     QTRY_COMPARE(pointEdit.state(), QStringLiteral("clean"));
 
+    // F26-02: the real QML form must reject malformed distances, accept French
+    // decimal commas as 0.5 mm (not parseFloat's erroneous 0 mm), and preserve undo.
+    auto* dxField = named(window, "pointMoveDx");
+    auto* dyField = named(window, "pointMoveDy");
+    auto* moveButton = named(window, "pointMove");
+    QVERIFY(dxField && dyField && moveButton);
+    const auto pointList = pointEdit.pointsIn(-1000, -1000, 1000, 1000, 0);
+    int firstMovable = -1;
+    for (const auto& item : pointList) {
+        const auto point = item.toMap();
+        if (point.value(QStringLiteral("movable")).toBool()) {
+            firstMovable = point.value(QStringLiteral("index")).toInt();
+            break;
+        }
+    }
+    QVERIFY(firstMovable >= 0);
+    QVERIFY(pointEdit.selectPoint(firstMovable, false));
+    const auto beforeMove = sequenceOf(session);
+    const auto beforeMoveDepth = session.undoNames().size();
+
+    QVERIFY(dxField->setProperty("text", QStringLiteral("0,5mm")));
+    QTRY_VERIFY(!moveButton->isEnabled());
+    QVERIFY(dxField->property("invalid").toBool());
+    QCOMPARE(session.undoNames().size(), beforeMoveDepth);
+    QVERIFY(dxField->setProperty("text", QStringLiteral("")));
+    QTRY_VERIFY(!moveButton->isEnabled());
+    QVERIFY(dxField->setProperty("text", QStringLiteral("0,5")));
+    QVERIFY(dyField->setProperty("text", QStringLiteral("0")));
+    QTRY_VERIFY(moveButton->isEnabled());
+    QVERIFY(press(window, "pointMove"));
+    QCOMPARE(session.undoNames().size(), beforeMoveDepth + 1);
+    QVERIFY(sequenceOf(session).commands != beforeMove.commands);
+    QVERIFY(session.undo());
+    QVERIFY(sequenceOf(session).commands == beforeMove.commands);
+
     // Fade panel.
     QVERIFY(press(window, "fadePanelButton"));
     QTRY_VERIFY(fade.canCreate());
@@ -536,9 +571,58 @@ void StudioDigitizeTest::mainQmlHostsDigitizePanels() {
     QVERIFY(press(window, "fadeRemove"));
     QTRY_VERIFY(!fade.hasFade());
 
-    // Satin panel.
+    // Satin panel: F19-02, numeric rail moves use full validated values
+    // and bound node indices, not partial parseFloat("0,5") == 0.
     QVERIFY(press(window, "satinPanelButton"));
     QVERIFY(named(window, "satinPanel")->isVisible());
+    // F23-01/F23-02: actual QML controls create undoable directional guides
+    // and break lines using millimetre coordinates (without any stub action).
+    auto* startX = named(window, "guideStartX");
+    auto* startY = named(window, "guideStartY");
+    auto* endX = named(window, "guideEndX");
+    auto* endY = named(window, "guideEndY");
+    auto* addGuideButton = named(window, "addDirectionGuide");
+    auto* addBreakButton = named(window, "addBreakLine");
+    QVERIFY(startX && startY && endX && endY && addGuideButton && addBreakButton);
+    QVERIFY(startX->setProperty("text", QStringLiteral("-10mm")));
+    QVERIFY(startY->setProperty("text", QStringLiteral("-5")));
+    QVERIFY(endX->setProperty("text", QStringLiteral("10")));
+    QVERIFY(endY->setProperty("text", QStringLiteral("5")));
+    QTRY_VERIFY(!addGuideButton->isEnabled());
+    QVERIFY(startX->setProperty("text", QStringLiteral("-10,0")));
+    QTRY_VERIFY(addGuideButton->isEnabled());
+    const auto guideDepth = session.undoNames().size();
+    QVERIFY(press(window, "addDirectionGuide"));
+    QCOMPARE(session.undoNames().size(), guideDepth + 1);
+    QTRY_VERIFY(satin.guideCount() >= 1);
+    QVERIFY(press(window, "addBreakLine"));
+    QCOMPARE(session.undoNames().size(), guideDepth + 2);
+    QTRY_VERIFY(satin.breakLineCount() >= 1);
+    QVERIFY(session.undo());
+    QVERIFY(session.undo());
+    const auto rung = [](double x, double y0, double y1) {
+        return QVariantMap{{"ax", x}, {"ay", y0}, {"bx", x}, {"by", y1}};
+    };
+    const auto satinId = satin.createFromRungs({rung(-10, 0, 4), rung(0, 1, 5), rung(10, 0, 4)});
+    QVERIFY(!satinId.isEmpty());
+    studio.selectObject(satinId);
+    QTRY_VERIFY(satin.isSatin());
+    auto* xField = named(window, "satinNodeX");
+    auto* yField = named(window, "satinNodeY");
+    auto* railNode = named(window, "satinNode");
+    auto* moveRail = named(window, "satinMoveNode");
+    QVERIFY(xField && yField && railNode && moveRail);
+    QTRY_COMPARE(railNode->property("to").toInt(), 2);
+    QVERIFY(xField->setProperty("text", QStringLiteral("0,5mm")));
+    QVERIFY(yField->setProperty("text", QStringLiteral("1,5")));
+    QTRY_VERIFY(!moveRail->isEnabled());
+    QVERIFY(xField->property("invalid").toBool());
+    QVERIFY(xField->setProperty("text", QStringLiteral("0,5")));
+    QTRY_VERIFY(moveRail->isEnabled());
+    const auto railDepth = session.undoNames().size();
+    QVERIFY(press(window, "satinMoveNode"));
+    QCOMPARE(session.undoNames().size(), railDepth + 1);
+    QVERIFY(session.undo());
     QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join('\n')));
 }
 

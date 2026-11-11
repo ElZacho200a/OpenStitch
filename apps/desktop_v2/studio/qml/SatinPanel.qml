@@ -11,6 +11,27 @@ Rectangle {
     objectName: "satinPanel"
     property var controller
     readonly property bool ready: controller !== undefined && controller !== null
+    function parseRailCoordinate(value) {
+        const mm = String(value).trim().replace(",", ".")
+        if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(mm))
+            return NaN
+        const number = Number(mm)
+        return isFinite(number) ? number : NaN
+    }
+    function validRailCoordinate(value) { return isFinite(parseRailCoordinate(value)) }
+    function validGuidePoints() {
+        if (!validRailCoordinate(guideX0.text) || !validRailCoordinate(guideY0.text)
+                || !validRailCoordinate(guideX1.text) || !validRailCoordinate(guideY1.text))
+            return false
+        return parseRailCoordinate(guideX0.text) !== parseRailCoordinate(guideX1.text)
+            || parseRailCoordinate(guideY0.text) !== parseRailCoordinate(guideY1.text)
+    }
+    function guidePoints() {
+        return [
+            { x: parseRailCoordinate(guideX0.text), y: parseRailCoordinate(guideY0.text) },
+            { x: parseRailCoordinate(guideX1.text), y: parseRailCoordinate(guideY1.text) }
+        ]
+    }
     color: Theme.panel
     border.color: Theme.divider
     radius: Theme.radius
@@ -49,11 +70,89 @@ Rectangle {
             RowLayout {
                 enabled: panel.ready && panel.controller.isSatin
                 StudioComboBox { id: side; objectName: "satinSide"; model: ["A", "B"] }
-                StudioSpinBox { id: node; objectName: "satinNode"; from: 0; to: 999 }
-                StudioTextField { id: nx; objectName: "satinNodeX"; Layout.preferredWidth: 56; placeholderText: "x" }
-                StudioTextField { id: ny; objectName: "satinNodeY"; Layout.preferredWidth: 56; placeholderText: "y" }
-                StudioButton { objectName: "satinMoveNode"; text: qsTr("Déplacer")
-                    onClicked: panel.controller.moveRailNode(side.currentText, node.value, parseFloat(nx.text), parseFloat(ny.text)) }
+                StudioSpinBox {
+                    id: node
+                    objectName: "satinNode"
+                    from: 0
+                    to: panel.ready && panel.controller.isSatin
+                        ? Math.max(0, (side.currentText === "A" ? panel.controller.railNodesA
+                                                                  : panel.controller.railNodesB) - 1)
+                        : 0
+                }
+                StudioTextField {
+                    id: nx
+                    objectName: "satinNodeX"
+                    Layout.preferredWidth: 62
+                    placeholderText: qsTr("X (mm)")
+                    invalid: text.trim().length > 0 && !panel.validRailCoordinate(text)
+                }
+                StudioTextField {
+                    id: ny
+                    objectName: "satinNodeY"
+                    Layout.preferredWidth: 62
+                    placeholderText: qsTr("Y (mm)")
+                    invalid: text.trim().length > 0 && !panel.validRailCoordinate(text)
+                }
+                StudioButton {
+                    objectName: "satinMoveNode"
+                    text: qsTr("Déplacer")
+                    enabled: panel.ready && panel.controller.isSatin
+                             && panel.validRailCoordinate(nx.text)
+                             && panel.validRailCoordinate(ny.text)
+                    onClicked: panel.controller.moveRailNode(side.currentText, node.value,
+                        panel.parseRailCoordinate(nx.text), panel.parseRailCoordinate(ny.text))
+                }
+            }
+            SectionLabel { text: qsTr("TRACER UN GUIDE (mm)") }
+            RowLayout {
+                Layout.fillWidth: true
+                StudioLabel { text: qsTr("Début") }
+                StudioTextField {
+                    id: guideX0
+                    objectName: "guideStartX"
+                    Layout.fillWidth: true
+                    placeholderText: qsTr("X0")
+                    invalid: text.length > 0 && !panel.validRailCoordinate(text)
+                }
+                StudioTextField {
+                    id: guideY0
+                    objectName: "guideStartY"
+                    Layout.fillWidth: true
+                    placeholderText: qsTr("Y0")
+                    invalid: text.length > 0 && !panel.validRailCoordinate(text)
+                }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                StudioLabel { text: qsTr("Fin") }
+                StudioTextField {
+                    id: guideX1
+                    objectName: "guideEndX"
+                    Layout.fillWidth: true
+                    placeholderText: qsTr("X1")
+                    invalid: text.length > 0 && !panel.validRailCoordinate(text)
+                }
+                StudioTextField {
+                    id: guideY1
+                    objectName: "guideEndY"
+                    Layout.fillWidth: true
+                    placeholderText: qsTr("Y1")
+                    invalid: text.length > 0 && !panel.validRailCoordinate(text)
+                }
+            }
+            StudioButton {
+                objectName: "addDirectionGuide"
+                text: qsTr("Ajouter le guide")
+                enabled: panel.ready && panel.validGuidePoints()
+                tooltip: qsTr("Crée un guide de direction entre deux points du modèle (mm)")
+                onClicked: panel.controller.addGuide(panel.guidePoints(), false)
+            }
+            StudioButton {
+                objectName: "addBreakLine"
+                text: qsTr("Ajouter la ligne de rupture")
+                enabled: panel.ready && panel.validGuidePoints()
+                tooltip: qsTr("Crée une ligne de rupture entre deux points du modèle (mm)")
+                onClicked: panel.controller.addGuide(panel.guidePoints(), true)
             }
             SectionLabel { text: qsTr("GUIDES DE DIRECTION") }
             Text {

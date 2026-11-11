@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "thread_controller.hpp"
+#include "change_gate.hpp"
 
 #include <QColor>
 #include <QDir>
@@ -45,7 +46,14 @@ std::filesystem::path pathOf(const QUrl& url) {
 ThreadController::ThreadController(StudioController& studio, std::filesystem::path configDir,
                                    QObject* parent)
     : QObject(parent), studio_(studio) {
-    connect(&studio_, &StudioController::changed, this, &ThreadController::changed);
+    gateStamp_ = documentStamp(studio_);
+    connect(&studio_, &StudioController::changed, this, [this] {
+        const auto stamp = documentStamp(studio_);
+        if (stamp != gateStamp_) { // pas de recalcul des listes de fils pour un simple statut
+            gateStamp_ = stamp;
+            emit changed();
+        }
+    });
     if (!configDir.empty()) {
         chartDir_ = configDir / "charts";
         stockPath_ = configDir / "my_threads.json";

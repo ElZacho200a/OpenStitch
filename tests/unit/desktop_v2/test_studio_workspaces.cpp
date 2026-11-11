@@ -327,6 +327,26 @@ private slots:
         QCOMPARE(spaceMap(rig, "points").value("state").toString(), QStringLiteral("empty"));
         QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
     }
+    // Index d'un espace (id inconnu : -1) et vue publiée : enregistrée avec le nombre
+    // d'objets sélectionnés, effacée une seule fois.
+    void spaceIndexAndSavedViewRoundTrip() {
+        WorkspaceController workspace;
+        QVERIFY(workspace.indexOf(QStringLiteral("image")) >= 0);
+        QVERIFY(workspace.indexOf(QStringLiteral("segmentation")) >
+                workspace.indexOf(QStringLiteral("image")));
+        QCOMPARE(workspace.indexOf(QStringLiteral("no-such-space")), -1);
+        QVERIFY(workspace.view().isEmpty());
+        QSignalSpy changed(&workspace, &WorkspaceController::viewChanged);
+        workspace.saveView({{QStringLiteral("zoom"), 2.5}});
+        QCOMPARE(changed.count(), 1);
+        QCOMPARE(workspace.view().value(QStringLiteral("zoom")).toDouble(), 2.5);
+        QCOMPARE(workspace.view().value(QStringLiteral("selectionCount")).toInt(), 0);
+        workspace.clearView();
+        QVERIFY(workspace.view().isEmpty());
+        QCOMPARE(changed.count(), 2);
+        workspace.clearView(); // déjà vide : aucun signal
+        QCOMPARE(changed.count(), 2);
+    }
 };
 
 QTEST_MAIN(StudioWorkspacesTest)

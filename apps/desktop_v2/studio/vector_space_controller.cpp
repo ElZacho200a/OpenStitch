@@ -1,6 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "vector_space_controller.hpp"
 
+#include "task_pump.hpp"
+
+#include "perf_log.hpp"
+
+#include <QElapsedTimer>
+#include <algorithm>
+#include <cmath>
+
 #include <algorithm>
 
 #include "gpu_canvas.hpp"
@@ -31,7 +39,8 @@ struct Fresh {
     int orphan{0};
 };
 
-Fresh revectorize(const document::Project& project) {
+Fresh revectorize(const document::Project& project, double simplifyMm, bool curves,
+                  double curveTolerancePx) {
     Fresh out;
     if (!project.segmentation) {
         return out;
@@ -42,8 +51,13 @@ Fresh revectorize(const document::Project& project) {
             ids.push_back(slot->id);
         }
     }
-    const vectorization::VectorizeOptions options{.mm_per_px = project.mm_per_px,
-                                                  .detail_mask = &project.detail_mask};
+    const vectorization::VectorizeOptions options{
+        .mm_per_px = project.mm_per_px,
+        .simplify_tolerance = to_micrometers(Millimeters{simplifyMm}),
+        .curve_tolerance = curves ? Micrometers{static_cast<std::int32_t>(std::lround(
+                                        curveTolerancePx * project.mm_per_px.value * 1000.0))}
+                                  : Micrometers{0},
+        .detail_mask = &project.detail_mask};
     const auto results = vectorization::vectorize_regions(*project.segmentation, ids, options);
     for (std::size_t i = 0; i < ids.size(); ++i) {
         if (!results[i]) {
@@ -120,14 +134,11 @@ VectorSpaceController::VectorSpaceController(StudioController& studio, QObject* 
     connect(&studio_, &StudioController::selectionChanged, this,
             &VectorSpaceController::layerChanged);
     connect(&studio_, &StudioController::changed, this, &VectorSpaceController::refresh);
-    pump_.setInterval(8);
-    connect(&pump_, &QTimer::timeout, this, [this] { tasks_.pump(); });
-    pump_.start();
+    attachTaskPump(tasks_, this);
     refresh();
 }
 
 VectorSpaceController::~VectorSpaceController() {
-    pump_.stop();
     tasks_.cancelAll();
 }
 
@@ -172,8 +183,51 @@ std::vector<std::uint64_t> VectorSpaceController::selectedShapeIds() const {
     return out;
 }
 
+namespace {
+constexpr std::size_t kLayerCacheEntries = 4;
+constexpr qint64 kLayerCacheBytes = 96LL * 1024 * 1024; // plafond de mémoire des images conservées
+} // namespace
+
+std::shared_ptr<const VectorLayer>
+VectorSpaceController::cachedLayer(const std::vector<std::uint64_t>& keys) {
+    const auto it =
+        std::ranges::find_if(layerCache_, [&](const CachedLayer& e) { return e.keys == keys; });
+    if (it == layerCache_.end()) {
+        return nullptr;
+    }
+    std::rotate(layerCache_.begin(), it, it + 1); // le plus récemment utilisé en tête
+    return layerCache_.front().layer;
+}
+
+void VectorSpaceController::rememberLayer(const std::vector<std::uint64_t>& keys,
+                                          const std::shared_ptr<const VectorLayer>& layer) {
+    if (!layer) {
+        return;
+    }
+    std::erase_if(layerCache_, [&](const CachedLayer& e) { return e.keys == keys; });
+    layerCache_.insert(layerCache_.begin(), CachedLayer{keys, layer});
+    qint64 bytes = 0;
+    std::size_t kept = 0;
+    for (const auto& entry : layerCache_) {
+        bytes += entry.layer->image().image.sizeInBytes();
+        if (kept >= kLayerCacheEntries || (kept > 0 && bytes > kLayerCacheBytes)) {
+            break;
+        }
+        ++kept;
+    }
+    layerCache_.resize(std::max<std::size_t>(kept, 1));
+}
+
 void VectorSpaceController::publishLayer(std::shared_ptr<const VectorLayer> layer,
                                          std::vector<std::uint64_t> keys) {
+    rememberLayer(keys, layer);
+    if (perfLogEnabled()) {
+        perfLog(QStringLiteral("vector.layer"),
+                {{QStringLiteral("shapes"),
+                  static_cast<qulonglong>(studio_.session().project().vector_objects.size())},
+                 {QStringLiteral("builds"), builds_ + 1},
+                 {QStringLiteral("cacheHits"), cacheHits_}});
+    }
     layer_ = std::move(layer);
     renderedVisualKeys_ = std::move(keys);
     ++builds_;
@@ -234,7 +288,14 @@ void VectorSpaceController::refresh() {
         if (alreadyBuilding) {
             // Ce même état est déjà en cours de rasterisation : ne pas relancer.
         } else if (differsFromRendered) {
-            if (session.project().vector_objects.size() <= kSyncShapeLimit) {
+            if (const auto known = cachedLayer(nextVisualKeys)) {
+                // État déjà rasterisé (masquer puis ré-afficher, annuler) : republié tel quel.
+                tasks_.cancelAll();
+                ++buildRequest_;
+                pending_ = false;
+                ++cacheHits_;
+                publishLayer(known, std::move(nextVisualKeys));
+            } else if (session.project().vector_objects.size() <= kSyncShapeLimit) {
                 // Petite scène : rasterisation synchrone (quelques ms), comme avant. Toute
                 // rasterisation asynchrone devenue inutile est abandonnée.
                 tasks_.cancelAll();
@@ -405,8 +466,32 @@ bool VectorSpaceController::selectOriginRegion() {
     return true;
 }
 
+void VectorSpaceController::setPrecisionMm(double mm) {
+    const double clamped = std::clamp(mm, 0.02, 2.0);
+    if (clamped != precisionMm_) {
+        precisionMm_ = clamped;
+        emit optionsChanged();
+    }
+}
+
+void VectorSpaceController::setCurves(bool on) {
+    if (on != curves_) {
+        curves_ = on;
+        emit optionsChanged();
+    }
+}
+
+void VectorSpaceController::setCurveTolerancePx(double px) {
+    const double clamped = std::clamp(px, 0.5, 10.0);
+    if (clamped != curveTolerancePx_) {
+        curveTolerancePx_ = clamped;
+        emit optionsChanged();
+    }
+}
+
 QVariantMap VectorSpaceController::updatePlan() const {
-    const auto fresh = revectorize(studio_.session().project());
+    const auto fresh =
+        revectorize(studio_.session().project(), precisionMm_, curves_, curveTolerancePx_);
     return {{QStringLiteral("replace"), static_cast<int>(fresh.replace.size())},
             {QStringLiteral("add"), static_cast<int>(fresh.add.size())},
             {QStringLiteral("keep"), fresh.keep},
@@ -419,7 +504,7 @@ bool VectorSpaceController::updateFromSegmentation() {
         say(tr("Aucune segmentation : rien à vectoriser."));
         return false;
     }
-    auto fresh = revectorize(session.project());
+    auto fresh = revectorize(session.project(), precisionMm_, curves_, curveTolerancePx_);
     if (fresh.replace.empty() && fresh.add.empty()) {
         say(tr("Les formes suivent déjà la segmentation."));
         return false;

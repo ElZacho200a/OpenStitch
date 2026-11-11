@@ -9,6 +9,7 @@
 #include <QQuickStyle>
 #include <QQuickWindow>
 #include <QSettings>
+#include <QSignalSpy>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QTest>
@@ -190,6 +191,7 @@ private slots:
     void init() { QSettings().clear(); }
     void canvasRegainsKeyboardFocusAfterClick();
     void paletteListsCommandsWithoutAccentsAndStates();
+    void forgetSessionClearsAndPersists();
     void paletteCommandsRunThroughTheWindowDispatcher();
     void preferencesPersistAndRestore();
     void helpIsGeneratedFromDefinitions();
@@ -418,6 +420,23 @@ void StudioCompanionTest::paletteCommandsRunThroughTheWindowDispatcher() {
     QVERIFY(prefsDialog);
     QTRY_VERIFY(prefsDialog->property("visible").toBool());
     QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+}
+
+// « Oublier la session » : l'état mémorisé disparaît, le signal part, et le choix persiste.
+void StudioCompanionTest::forgetSessionClearsAndPersists() {
+    QTemporaryDir dir;
+    const std::filesystem::path path(dir.path().toStdWString());
+    {
+        PreferencesController prefs(path);
+        prefs.rememberSession({{QStringLiteral("file"), QStringLiteral("C:/x/a.osp")}});
+        QVERIFY(!prefs.session().isEmpty());
+        QSignalSpy changed(&prefs, &PreferencesController::sessionChanged);
+        prefs.forgetSession();
+        QVERIFY(prefs.session().isEmpty());
+        QCOMPARE(changed.count(), 1);
+    }
+    PreferencesController again(path);
+    QVERIFY(again.session().isEmpty());
 }
 
 void StudioCompanionTest::preferencesPersistAndRestore() {

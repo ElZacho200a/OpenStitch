@@ -12,6 +12,7 @@
 #include <QFileInfo>
 #include <QStandardPaths>
 #include <filesystem>
+#include <memory>
 
 #include "action_controller.hpp"
 #include "analysis_controller.hpp"
@@ -22,6 +23,7 @@
 #include "fade_controller.hpp"
 #include "file_controller.hpp"
 #include "fix_controller.hpp"
+#include "frame_probe.hpp"
 #include "gpu_canvas.hpp"
 #include "help_controller.hpp"
 #include "history_controller.hpp"
@@ -75,6 +77,15 @@ int main(int argc, char** argv) {
              "virgules : vue, fils, analyse, satin, fondu, points, tirage, applique, corriger, "
              "inspecteur ; un seul panneau à la fois par groupe, le dernier gagne)"),
          QStringLiteral("liste")});
+    parser.addOption(
+        {QStringLiteral("frame-stats"),
+         QStringLiteral("Mesure les frames de la vraie fenêtre, écrit ce JSON, quitte"),
+         QStringLiteral("json")});
+    parser.addOption({QStringLiteral("frame-scenario"),
+                      QStringLiteral("Scénario de mesure : idle (défaut) ou pan"),
+                      QStringLiteral("scenario"), QStringLiteral("idle")});
+    parser.addOption({QStringLiteral("frame-seconds"), QStringLiteral("Durée de la mesure (s)"),
+                      QStringLiteral("s"), QStringLiteral("8")});
     parser.process(app);
     {
         // Default font of every Qt control (Theme.fontFamily / Theme.bodySize): a control that is
@@ -229,6 +240,30 @@ int main(int argc, char** argv) {
         if (!last.isEmpty() && QFileInfo::exists(last)) {
             files.openPath(last);
         }
+    }
+    std::unique_ptr<FrameProbe> probe;
+    if (parser.isSet(QStringLiteral("frame-stats"))) {
+        probe = std::make_unique<FrameProbe>(*window, parser.value(QStringLiteral("frame-stats")),
+                                             parser.value(QStringLiteral("frame-scenario")),
+                                             parser.value(QStringLiteral("frame-seconds")).toInt());
+        // Départ après la scène de points ET quelques frames d'installation (QML + GPU).
+        QObject::connect(&controller, &StudioController::loadFinished, &app, [&](bool success) {
+            if (!success) {
+                app.exit(3);
+                return;
+            }
+            QTimer::singleShot(1500, &app, [&] {
+                auto* canvas = window->findChild<GpuCanvas*>(QStringLiteral("studioCanvas"));
+                probe->start(canvas ? canvas : window->findChild<GpuCanvas*>());
+            });
+        });
+        // Projet sans objet de broderie (image/segmentation seulement) : aucune scène de points
+        // n'est construite et loadFinished n'arrive jamais. On mesure alors après 8 s.
+        QTimer::singleShot(8000, &app, [&] {
+            auto* canvas = window->findChild<GpuCanvas*>(QStringLiteral("studioCanvas"));
+            probe->start(canvas ? canvas : window->findChild<GpuCanvas*>());
+        });
+        QTimer::singleShot(120'000, &app, [&app] { app.exit(5); });
     }
     QTimer capture;
     bool capturePrimed = false;
