@@ -31,7 +31,7 @@ Ne réintroduit pas d'auto-satin : seul le squelette est lu.
 1. Forme branchée : un guide par branche significative, principal d'abord, maximum 8 (tranché 2026-10).
 2. Guides existants : remplacés, y compris le guide par défaut de la conversion tatami (tranché 2026-10).
 3. Disponibilité : tatami **et** directionnel. Sur tatami, conversion puis remplacement ; sur directionnel, remplacement (l'option « Ajouter » est reportée).
-4. Cercle ou quasi rond : refus propre avec le diagnostic stable `round_shape` ; pas de guides radiaux (le remplissage radial existe déjà).
+4. Cercle ou quasi rond : refus propre avec le diagnostic stable `E_ROUND_SHAPE` (erreur codée) ; pas de guides radiaux (le remplissage radial existe déjà).
 
 ## Déterminisme et invariants
 
@@ -39,9 +39,9 @@ Ne réintroduit pas d'auto-satin : seul le squelette est lu.
 - Coordonnées en `Micrometers`/`Vec2um` uniquement.
 - Aucun point de guide hors de la région (test d'appartenance après lissage ; point hors région → arête écartée).
 
-## Tests cœur (Catch2, `tests/unit/stitch_generation/test_directional_guides.cpp`)
+## Tests cœur (Catch2, `tests/unit/stitch/test_directional_guides.cpp`)
 
-Rectangle long → un guide central droit ; courbe simple → guide dans l'axe ; T/Y → un guide par branche, ordre documenté ; cercle → `round_shape`, aucun guide ; aucun guide hors région ; deux exécutions identiques.
+Rectangle long → un guide central droit ; courbe simple → guide dans l'axe ; T/Y → un guide par branche, ordre documenté ; cercle → `E_ROUND_SHAPE` (erreur codée), aucun guide ; aucun guide hors région ; deux exécutions identiques.
 
 ## Livraison
 
