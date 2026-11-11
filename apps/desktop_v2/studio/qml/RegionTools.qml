@@ -130,9 +130,12 @@ ColumnLayout {
                     }
                 }
             }
-            onReleased: {
+            onReleased: function(mouse) {
+                // A release can arrive outside the painted image without a preceding
+                // positionChanged event (e.g. a fast drag). Never commit that stroke.
+                const releasePixel = mapImage.pixelAt(mouse.x, mouse.y)
                 if (regionTools.tool !== "select" && section.strokeStartedInside &&
-                        section.strokePoints.length > 0)
+                        section.strokePoints.length > 0 && releasePixel !== null)
                     regionTools.paintStroke(section.strokePoints, regionTools.tool === "erase")
                 section.strokeStartedInside = false
                 section.strokePoints = []
