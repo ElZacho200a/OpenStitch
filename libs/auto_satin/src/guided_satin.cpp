@@ -31,7 +31,9 @@ Vec2um to_um(P2 p) {
             {static_cast<std::int32_t>(std::lround(p.y))}};
 }
 
-double cross(P2 a, P2 b) { return a.x * b.y - a.y * b.x; }
+double cross(P2 a, P2 b) {
+    return a.x * b.y - a.y * b.x;
+}
 
 bool crosses(P2 a, P2 b, P2 c, P2 d) {
     // Proper intersection only: shared boundary endpoints are not crossings.
@@ -108,8 +110,7 @@ std::vector<Station> stations(const Path& path, double spacing) {
         const double t = std::clamp((s - lengths[segment - 1]) / span, 0.0, 1.0);
         const P2 tangent = (path[segment] - path[segment - 1]) * (1.0 / span);
         // A local chord is normal to the user-controlled centreline.
-        out.push_back({path[segment - 1] + (path[segment] - path[segment - 1]) * t,
-                       tangent});
+        out.push_back({path[segment - 1] + (path[segment] - path[segment - 1]) * t, tangent});
     }
     return out;
 }
@@ -117,7 +118,7 @@ std::vector<Station> stations(const Path& path, double spacing) {
 } // namespace
 
 Result<SkeletonSatinResult> generate_guided_satin(const geometry::PathSet& curved,
-                                                   const SkeletonSatinParameters& params) {
+                                                  const SkeletonSatinParameters& params) {
     const geometry::PathSet region = geometry::flatten_to_polygon(curved, Micrometers{50});
     const auto polygons = detail::region_polys(region);
     SkeletonSatinResult result;
@@ -138,8 +139,8 @@ Result<SkeletonSatinResult> generate_guided_satin(const geometry::PathSet& curve
     }
     if (guidePaths.empty()) {
         guidePaths.push_back(automatic_axis(region, polygons));
-        diagnostics.messages.push_back(
-            "satin guidé : axe initial automatique ; tracez un guide courbe pour piloter les points");
+        diagnostics.messages.push_back("satin guidé : axe initial automatique ; tracez un guide "
+                                       "courbe pour piloter les points");
     }
 
     const double spacing = std::max(50.0, static_cast<double>(params.spacing.value));
