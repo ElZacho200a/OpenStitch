@@ -202,18 +202,18 @@ class SemanticValidationTest(unittest.TestCase):
             return (struct.pack('>I', len(data)) + payload +
                     struct.pack('>I', zlib.crc32(payload) & 0xffffffff))
 
-        sig = b'\\x89PNG\\r\\n\\x1a\\n'
+        sig = b'\x89PNG\r\n\x1a\n'
         def ihdr(depth, color):
             return chunk(b'IHDR', struct.pack('>IIBBBBB', 2, 3, depth, color, 0, 0, 0))
 
-        palette = chunk(b'PLTE', b'\\x00\\x00\\x00\\xff\\xff\\xff')
-        indexed_pixels = chunk(b'IDAT', zlib.compress(b'\\x00\\x00' * 3))
-        gray_pixels = chunk(b'IDAT', zlib.compress(b'\\x00\\x00\\x00' * 3))
-        rgb_pixels = chunk(b'IDAT', zlib.compress(b'\\x00' * 7 * 3))
+        palette = chunk(b'PLTE', b'\x00\x00\x00\xff\xff\xff')
+        indexed_pixels = chunk(b'IDAT', zlib.compress(b'\x00\x00' * 3))
+        gray_pixels = chunk(b'IDAT', zlib.compress(b'\x00\x00\x00' * 3))
+        rgb_pixels = chunk(b'IDAT', zlib.compress(b'\x00' * 7 * 3))
         iend = chunk(b'IEND', b'')
-        indexed_transparency = chunk(b'tRNS', b'\\x00\\xff')
-        gray_transparency = chunk(b'tRNS', b'\\x00\\x00')
-        rgb_transparency = chunk(b'tRNS', b'\\x00\\x00' * 3)
+        indexed_transparency = chunk(b'tRNS', b'\x00\xff')
+        gray_transparency = chunk(b'tRNS', b'\x00\x00')
+        rgb_transparency = chunk(b'tRNS', b'\x00\x00' * 3)
         indexed_prefix = sig + ihdr(1, 3) + palette
         valid = {
             'indexed': indexed_prefix + indexed_transparency + indexed_pixels + iend,
@@ -232,16 +232,16 @@ class SemanticValidationTest(unittest.TestCase):
                            indexed_transparency + iend),
             'indexed_without_plte': (sig + ihdr(1, 3) + indexed_transparency +
                                      indexed_pixels + iend),
-            'indexed_too_long': (indexed_prefix + chunk(b'tRNS', b'\\x00' * 3) +
+            'indexed_too_long': (indexed_prefix + chunk(b'tRNS', b'\x00' * 3) +
                                  indexed_pixels + iend),
             'indexed_empty': (indexed_prefix + chunk(b'tRNS', b'') +
                               indexed_pixels + iend),
-            'grayscale_bad_length': (sig + ihdr(8, 0) + chunk(b'tRNS', b'\\x00') +
+            'grayscale_bad_length': (sig + ihdr(8, 0) + chunk(b'tRNS', b'\x00') +
                                      gray_pixels + iend),
-            'rgb_bad_length': (sig + ihdr(8, 2) + chunk(b'tRNS', b'\\x00' * 4) +
+            'rgb_bad_length': (sig + ihdr(8, 2) + chunk(b'tRNS', b'\x00' * 4) +
                                rgb_pixels + iend),
             'rgba_forbids_trns': (sig + ihdr(8, 6) + gray_transparency +
-                                  chunk(b'IDAT', zlib.compress(b'\\x00' * 9 * 3)) + iend),
+                                  chunk(b'IDAT', zlib.compress(b'\x00' * 9 * 3)) + iend),
             'plte_after_trns': (sig + ihdr(8, 2) + rgb_transparency +
                                 palette + rgb_pixels + iend),
         }
