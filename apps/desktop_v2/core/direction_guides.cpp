@@ -58,8 +58,8 @@ int directionGuideCount(const document::Project& project, std::uint64_t objectId
     return dir != nullptr ? static_cast<int>(dir->guides.size()) : -1;
 }
 
-std::vector<std::vector<PointMm>>
-autoSatinGuidePaths(const document::Project& project, std::uint64_t objectId) {
+std::vector<std::vector<PointMm>> autoSatinGuidePaths(const document::Project& project,
+                                                      std::uint64_t objectId) {
     std::vector<std::vector<PointMm>> out;
     const auto* obj = project.findEmbroidery(ObjectId{objectId});
     const auto* satin = obj ? std::get_if<document::AutoSatinParams>(&obj->params) : nullptr;
@@ -84,8 +84,8 @@ ServiceResult moveAutoSatinGuideNode(DocumentSession& session, std::uint64_t obj
     if (!satin || guideIndex >= satin->guides.size()) {
         return {false, "Sélectionnez un guide de satin valide."};
     }
-    if (!std::isfinite(to.x) || !std::isfinite(to.y) ||
-        std::fabs(to.x) > kMaxCoordMm || std::fabs(to.y) > kMaxCoordMm) {
+    if (!std::isfinite(to.x) || !std::isfinite(to.y) || std::fabs(to.x) > kMaxCoordMm ||
+        std::fabs(to.y) > kMaxCoordMm) {
         return {false, "Position du guide hors limites."};
     }
     auto params = *satin;
@@ -150,7 +150,8 @@ ServiceResult addDirectionGuide(DocumentSession& session, std::uint64_t objectId
     // satin strategies retain their existing interpretation of curved guides.
     if (const auto* satin = std::get_if<document::AutoSatinParams>(&emb->params)) {
         if (isBreak) {
-            return {false, "Une ligne de rupture n'est pas prise en charge par le satin automatique."};
+            return {false,
+                    "Une ligne de rupture n'est pas prise en charge par le satin automatique."};
         }
         if (satin->guides.size() >= 64) {
             return {false, "64 guides au maximum pour un satin automatique."};
@@ -161,7 +162,7 @@ ServiceResult addDirectionGuide(DocumentSession& session, std::uint64_t objectId
         document::AutoSatinGuide guide;
         guide.anchor = pts.front();
         guide.angle = Angle{std::atan2(static_cast<double>(delta.y.value),
-                                      static_cast<double>(delta.x.value))};
+                                       static_cast<double>(delta.x.value))};
         guide.absolute = true;
         guide.path = std::move(pts);
         params.guides.push_back(std::move(guide));
