@@ -124,7 +124,7 @@ class SemanticValidationTest(unittest.TestCase):
         idat_end = 33 + 12 + idat_length
         damaged_idat = bytearray(good)
         damaged_idat[41] ^= 1  # Change the payload without updating its CRC.
-        ancillary = chunk(b'tEXt', b'Comment\\x00ok')
+        ancillary = chunk(b'tEXt', b'Comment\x00ok')
         # Ancillary chunks after IDAT are legal and must remain accepted.
         self.folder.joinpath('mask.png').write_bytes(
             good[:idat_end] + ancillary + good[idat_end:])
