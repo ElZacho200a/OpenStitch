@@ -248,8 +248,7 @@ private slots:
     }
 
     void activeStudioButtonStateIsAccessible() {
-        const auto button = readFile(QStringLiteral(OPENSTITCH_STUDIO_QML_DIR
-                                                    "/StudioButton.qml"));
+        const auto button = readFile(QStringLiteral(OPENSTITCH_STUDIO_QML_DIR "/StudioButton.qml"));
         QVERIFY2(!button.isEmpty(), "StudioButton.qml is missing");
         QVERIFY2(button.contains(
                      QStringLiteral("Accessible.checked: button.checked || button.active")),
