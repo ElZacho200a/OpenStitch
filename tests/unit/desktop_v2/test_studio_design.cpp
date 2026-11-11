@@ -247,6 +247,13 @@ private slots:
         QVERIFY(!host.contains(QStringLiteral("étape bloquée")));
     }
 
+    void activeStudioButtonStateIsAccessible() {
+        const auto button = readFile(QStringLiteral(OPENSTITCH_STUDIO_QML_DIR "/StudioButton.qml"));
+        QVERIFY2(!button.isEmpty(), "StudioButton.qml is missing");
+        const auto state = QStringLiteral("Accessible.checked: button.checked || button.active");
+        QVERIFY(button.contains(state));
+    }
+
     void everyStudioComponentIsRegistered() {
         const auto qmldir = readFile(QStringLiteral(OPENSTITCH_STUDIO_QML_DIR "/qmldir"));
         for (const auto* name :
