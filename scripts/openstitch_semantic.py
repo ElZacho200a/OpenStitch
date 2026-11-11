@@ -23,6 +23,8 @@ PRIORITIES = {'protected', 'important', 'secondary', 'optional'}
 INTENTS = {None, 'unstitched', 'tatami', 'auto_satin', 'running', 'directional', 'satin'}
 DECISIONS = {'keep', 'merge', 'remove', 'review'}
 LEVELS = {'family', 'instance', 'component', 'technical'}
+# Prevent downstream mask consumers from allocating enormous pixel buffers.
+MAX_MASK_PIXELS = 100_000_000
 
 
 def png_size(path: Path) -> tuple[int, int]:
@@ -41,7 +43,8 @@ def png_size(path: Path) -> tuple[int, int]:
     if actual_crc != struct.unpack('>I', header[29:33])[0]:
         raise ValueError('CRC IHDR invalide')
     width, height = struct.unpack('>II', header[16:24])
-    if width == 0 or height == 0 or width > 100000 or height > 100000:
+    if (width == 0 or height == 0 or width > 100000 or height > 100000
+            or width * height > MAX_MASK_PIXELS):
         raise ValueError('dimensions PNG invalides')
     bit_depth, color_type, compression, filtering, interlace = header[24:29]
     valid_depths = {0: (1, 2, 4, 8, 16), 2: (8, 16), 3: (1, 2, 4, 8),
@@ -54,6 +57,7 @@ def png_size(path: Path) -> tuple[int, int]:
     with path.open('rb') as f:
         f.seek(33)  # IHDR deja valide, y compris son CRC.
         seen_idat = False
+        seen_idat_data = False
         seen_plte = False
         seen_trns = False
         palette_entries = 0
@@ -100,9 +104,12 @@ def png_size(path: Path) -> tuple[int, int]:
                 if after_idat:
                     raise ValueError('chunks IDAT non contigus')
                 seen_idat = True
+                seen_idat_data |= length > 0
             elif seen_idat:
                 after_idat = True
-            if kind == b'IEND' and (length != 0 or not seen_idat):
+            # At least one IDAT byte is required for the zlib image stream;
+            # zero-length IDAT chunks alone cannot encode a PNG image.
+            if kind == b'IEND' and (length != 0 or not seen_idat_data):
                 raise ValueError('IEND invalide ou IDAT absent')
             crc = zlib.crc32(kind)
             remaining = length
