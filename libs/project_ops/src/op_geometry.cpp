@@ -992,7 +992,7 @@ OpStatus op_auto_satin(OpContext& ctx) {
                                 : std::nullopt;
         if (!parsed) {
             return usage("argument « strategy » : « skeleton », « parallel_sweep » ou "
-                         "« medial_axis » attendu");
+                         "« medial_axis » ou « guided_satin » attendu");
         }
         request.strategy = *parsed;
     }
@@ -1198,9 +1198,9 @@ void register_geometry_ops(std::vector<OpSpec>& out) {
          {"compact_axis", "boolean", "", "forme compacte : axe synthétique au lieu d'un refus",
           false, ""},
          {"strategy", "string", "",
-          "méthode : parallel_sweep (balayage parallèle, défaut), skeleton ou medial_axis "
-          "(axe médian vectoriel)",
-          false, "skeleton | parallel_sweep | medial_axis"},
+           "méthode : parallel_sweep (balayage parallèle, défaut), skeleton, medial_axis "
+          "(axe médian vectoriel) ou guided_satin (guide courbe)"
+          false, "skeleton | parallel_sweep | medial_axis | guided_satin"},
          {"sweep_angle_deg", "number", "°",
           "balayage parallèle : angle des traversées (défaut : automatique)", false,
           "[-360 ; 360]"},
