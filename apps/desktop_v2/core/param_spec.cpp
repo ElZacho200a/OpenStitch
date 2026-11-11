@@ -31,7 +31,7 @@ constexpr std::string_view kSplit =
 constexpr std::string_view kCorner = "none|Aucun;miter|Onglet;overlap|Chevauchement;cut|Coupe";
 constexpr std::string_view kJagged = "none|Aucun;side_a|Côté A;side_b|Côté B;both|Les deux côtés";
 constexpr std::string_view kStrategy =
-    "skeleton|Squelette;parallel_sweep|Balayage parallèle;medial_axis|Axe médian";
+    "skeleton|Squelette;parallel_sweep|Balayage parallèle;medial_axis|Axe médian;guided_satin|Satin guidé";
 constexpr std::string_view kBlanketStyle = "blanket|Boutonnière;zigzag|Zigzag";
 constexpr std::string_view kBlanketSide = "left|Gauche;right|Droite;center|Centré";
 constexpr std::string_view kMotif =
@@ -191,7 +191,7 @@ std::vector<ParamSpec> completeTable() {
     appendSatinCommon(t, "satin", false);
     add({"satin", "rungs", "Barreaux", K::List, 0, 2000, 1, ""});
     appendSatinCommon(t, "auto_satin", true);
-    add({"auto_satin", "strategy", "Méthode de calcul", K::Choice, 0, 2, 1, "", kStrategy});
+    add({"auto_satin", "strategy", "Méthode de calcul", K::Choice, 0, 3, 1, "", kStrategy});
     add({"auto_satin", "spacing_mm", "Écart entre traversées", K::Number, 0.1, 2.0, 0.05, "mm"});
     add({"auto_satin", "split_threshold_mm", "Seuil de fractionnement", K::Number, 1.0, 20.0, 0.5,
          "mm"});
