@@ -39,7 +39,7 @@ DigitizeGestures::DigitizeGestures(StudioController& studio, PointEditController
         }
     });
     connect(&satin_, &SatinController::changed, this, [this] {
-        if (mode_ == QLatin1String("satin")) {
+        if (mode_ == QLatin1String("satin") || mode_ == QLatin1String("guide")) {
             rebuildStatic();
         }
     });
@@ -85,7 +85,8 @@ QString DigitizeGestures::hint() const {
                   "insérer un nœud ; Maj+clic sur un barreau : le retirer.");
     }
     if (mode_ == QLatin1String("guide")) {
-        return tr("Tracez un guide de direction à main levée sur le remplissage.");
+        return tr("Tracez un guide sur le remplissage ; sur le satin guidé, glissez ses nœuds "
+                  "pour remodeler la ligne centrale.");
     }
     if (mode_ == QLatin1String("break")) {
         return tr("Tracez une ligne de rupture à travers le remplissage.");
@@ -108,6 +109,17 @@ std::vector<DigitizeGestures::Grip> DigitizeGestures::grips() const {
     std::vector<Grip> out;
     const auto id = satinId();
     if (id == 0) {
+        return out;
+    }
+    if (mode_ == QLatin1String("guide")) {
+        const auto paths = satin_.autoSatinGuidePaths();
+        for (int guide = 0; guide < paths.size(); ++guide) {
+            const auto points = paths[guide].toList();
+            for (int node = 0; node < points.size(); ++node) {
+                out.push_back({Grip::Type::GuideNode, guide, node,
+                               mapPoint(points[node].toMap())});
+            }
+        }
         return out;
     }
     const auto& project = studio_.session().project();
@@ -276,6 +288,14 @@ bool DigitizeGestures::press(double x, double y, double pxPerMm, Qt::KeyboardMod
             note(tr("Sélectionnez un remplissage."), false);
             return false;
         }
+        if (mode_ == QLatin1String("guide")) {
+            grip_ = gripAt(anchor_);
+            if (grip_ && grip_->type == Grip::Type::GuideNode) {
+                drag_ = Drag::GuideNode;
+                rebuildDynamic();
+                return true;
+            }
+        }
         stroke_.push_back(anchor_);
         drag_ = Drag::Stroke;
     } else if (mode_ == QLatin1String("rungs")) {
@@ -371,6 +391,12 @@ void DigitizeGestures::release(double x, double y, Qt::KeyboardModifiers mods) {
                 ok = satin_.moveRung(grip->index, a.x, a.y, b.x, b.y);
                 note(satin_.message(), ok);
             }
+        }
+        break;
+    case Drag::GuideNode:
+        if (travelled && grip) {
+            ok = satin_.moveAutoSatinGuidePoint(grip->side, grip->index, current.x, current.y);
+            note(satin_.message(), ok);
         }
         break;
     case Drag::Stroke:
@@ -480,6 +506,21 @@ void DigitizeGestures::rebuildStatic() {
             }
             static_.push_back(std::move(handles));
         }
+    } else if (mode_ == QLatin1String("guide")) {
+        const auto paths = satin_.autoSatinGuidePaths();
+        HandleItem handles{HandleItem::Kind::Handle, {}};
+        for (const auto& raw : paths) {
+            HandleItem line{HandleItem::Kind::Line, {}};
+            for (const auto& rawPoint : raw.toList()) {
+                const auto p = mapPoint(rawPoint.toMap());
+                line.points.push_back(toScene(p));
+                handles.points.push_back(toScene(p));
+            }
+            if (line.points.size() >= 2) {
+                static_.push_back(std::move(line));
+            }
+        }
+        static_.push_back(std::move(handles));
     } else if (mode_ == QLatin1String("satin") && satin_.isSatin()) {
         const auto id = satinId();
         const auto& project = studio_.session().project();
@@ -526,7 +567,8 @@ void DigitizeGestures::rebuildDynamic() {
             {HandleItem::Kind::Ghost,
              {toScene(fadeHandlePos(fadePreview_, 0)), toScene(fadeHandlePos(fadePreview_, 1))}});
         dynamic_.push_back({HandleItem::Kind::Active, {toScene(current_)}});
-    } else if ((drag_ == Drag::RailNode || drag_ == Drag::RungEnd) && grip_) {
+    } else if ((drag_ == Drag::RailNode || drag_ == Drag::RungEnd ||
+                drag_ == Drag::GuideNode) && grip_) {
         dynamic_.push_back({HandleItem::Kind::Active, {toScene(current_)}});
         dynamic_.push_back({HandleItem::Kind::Ghost, {toScene(grip_->pos), toScene(current_)}});
     } else if (drag_ == Drag::Stroke) {
