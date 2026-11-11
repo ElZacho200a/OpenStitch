@@ -260,6 +260,116 @@ private slots:
         QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
     }
 
+    // The region thumbnail is letterboxed inside its panel. A click on the empty margin must
+    // never turn into an out-of-bounds brush stroke, while a click on the painted image must
+    // still select the corresponding full-resolution region.
+    void regionMapRejectsLetterboxBrushClicks() {
+        Rig rig;
+        open(rig);
+        QVERIFY(rig.press("segmentationTab_1"));
+        auto* map = rig.named("regionMapArea");
+        auto* image = rig.named("regionMapImage");
+        QVERIFY(map);
+        QVERIFY(image);
+        QTRY_VERIFY_WITH_TIMEOUT(image->property("paintedWidth").toDouble() > 0.0, 5'000);
+        const double paintedW = image->property("paintedWidth").toDouble();
+        const double paintedH = image->property("paintedHeight").toDouble();
+        const double left = (image->width() - paintedW) / 2.0;
+        const double top = (image->height() - paintedH) / 2.0;
+        QVERIFY2(left > 8.0, "Expected horizontal letterboxing in the region thumbnail");
+
+        const auto onMap = [&](double imageX, double imageY) {
+            return image->mapToItem(map, QPointF(imageX, imageY));
+        };
+        const auto click = [&](const QPointF& local) {
+            QTest::mouseClick(rig.window, Qt::LeftButton, Qt::NoModifier,
+                              map->mapToScene(local).toPoint());
+        };
+
+        // The image-to-map coordinate transform must include the image's 2 px margins.
+        rig.regions.clearSelection();
+        click(onMap(left + paintedW * 0.25, top + paintedH * 0.25));
+        QTRY_COMPARE(rig.regions.selectedCount(), 1);
+        QCOMPARE(static_cast<std::uint64_t>(rig.regions.selected().at(0).toDouble()),
+                 regionAtPixel(rig.session.project(), 40, 30).value());
+
+        // Even with a large brush, clicking the empty letterbox must not mutate the document.
+        rig.regions.setTool(QStringLiteral("brush"));
+        rig.regions.setBrushRadius(200.0);
+        const auto revision = rig.session.revision();
+        const auto undoDepth = rig.session.undoNames().size();
+        click(onMap(1.0, top + paintedH * 0.5));
+        QTest::qWait(100);
+        QCOMPARE(rig.session.revision(), revision);
+        QCOMPARE(rig.session.undoNames().size(), undoDepth);
+
+        // Starting in the empty margin and dragging into the painted image must not
+        // initiate a stroke. Likewise, leaving the painted image cancels a stroke
+        // instead of connecting points across the letterbox on re-entry.
+        const QPoint blank = map->mapToScene(onMap(1.0, top + paintedH * 0.5)).toPoint();
+        const QPoint inside =
+            map->mapToScene(onMap(left + paintedW * 0.25, top + paintedH * 0.5)).toPoint();
+        QTest::mousePress(rig.window, Qt::LeftButton, Qt::NoModifier, blank);
+        QTest::mouseMove(rig.window, inside);
+        QTest::mouseRelease(rig.window, Qt::LeftButton, Qt::NoModifier, inside);
+        QCOMPARE(rig.session.revision(), revision);
+        QCOMPARE(rig.session.undoNames().size(), undoDepth);
+
+        QTest::mousePress(rig.window, Qt::LeftButton, Qt::NoModifier, inside);
+        QTest::mouseMove(rig.window, blank);
+        QTest::mouseMove(rig.window, inside);
+        QTest::mouseRelease(rig.window, Qt::LeftButton, Qt::NoModifier, inside);
+        QCOMPARE(rig.session.revision(), revision);
+        QCOMPARE(rig.session.undoNames().size(), undoDepth);
+
+        // Qt may deliver a release in the letterbox without a final move event.
+        // This must cancel rather than commit the in-bounds portion of the stroke.
+        QTest::mousePress(rig.window, Qt::LeftButton, Qt::NoModifier, inside);
+        QTest::mouseRelease(rig.window, Qt::LeftButton, Qt::NoModifier, blank);
+        QCOMPARE(rig.session.revision(), revision);
+        QCOMPARE(rig.session.undoNames().size(), undoDepth);
+        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+    }
+
+    // A fast drag may report only press and release. The last in-image brush dab must
+    // still be applied, with exactly one undo step (and no downstream regeneration).
+    void regionMapBrushIncludesReleasePixelWithoutMove() {
+        Rig rig;
+        open(rig);
+        QVERIFY(rig.press("segmentationTab_1"));
+        auto* map = rig.named("regionMapArea");
+        auto* image = rig.named("regionMapImage");
+        QVERIFY(map && image);
+        QTRY_VERIFY_WITH_TIMEOUT(image->property("paintedWidth").toDouble() > 0.0, 5'000);
+        const auto& seg = *rig.session.project().segmentation;
+        const double w = image->property("paintedWidth").toDouble();
+        const double h = image->property("paintedHeight").toDouble();
+        const double left = (image->width() - w) / 2.0;
+        const double top = (image->height() - h) / 2.0;
+        const auto scenePixel = [&](int x, int y) {
+            const QPointF local(left + w * (x + 0.5) / seg.width,
+                                top + h * (y + 0.5) / seg.height);
+            return map->mapToScene(image->mapToItem(map, local)).toPoint();
+        };
+
+        const auto chosen = regionAtPixel(rig.session.project(), 20, 20).value();
+        const auto other = regionAtPixel(rig.session.project(), 130, 30).value();
+        QVERIFY(chosen != other);
+        rig.regions.selectAtPixel(20, 20);
+        rig.regions.setTool(QStringLiteral("brush"));
+        rig.regions.setBrushRadius(3.0);
+        const auto depth = rig.session.undoNames().size();
+        const auto scene = rig.studio.scene();
+        QTest::mousePress(rig.window, Qt::LeftButton, Qt::NoModifier, scenePixel(100, 30));
+        QTest::mouseRelease(rig.window, Qt::LeftButton, Qt::NoModifier, scenePixel(130, 30));
+        QCOMPARE(regionAtPixel(rig.session.project(), 130, 30).value(), chosen);
+        QCOMPARE(rig.session.undoNames().size(), depth + 1);
+        QVERIFY(rig.studio.scene() == scene); // Segmentation edits do not regenerate stitches.
+        QVERIFY(rig.session.undo());
+        QCOMPARE(regionAtPixel(rig.session.project(), 130, 30).value(), other);
+        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\\n')));
+    }
+
     // --- sélection au clic ----------------------------------------------------------------
     void clickSelectsRegionsAndSyncsTheList() {
         Rig rig;
