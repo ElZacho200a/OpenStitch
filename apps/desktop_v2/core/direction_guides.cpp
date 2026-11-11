@@ -71,9 +71,8 @@ autoSatinGuidePaths(const document::Project& project, std::uint64_t objectId) {
         for (const Vec2um p : guide.path) {
             path.push_back({to_millimeters(p.x).value, to_millimeters(p.y).value});
         }
-        if (path.size() >= 2) {
-            out.push_back(std::move(path));
-        }
+        // Preserve indices even for legacy single-angle guides with no path.
+        out.push_back(std::move(path));
     }
     return out;
 }
@@ -142,6 +141,9 @@ ServiceResult addDirectionGuide(DocumentSession& session, std::uint64_t objectId
     if (pts.size() < 2) {
         return {false, std::string("Il faut au moins deux points distincts pour tracer une ") +
                            what + "."};
+    }
+    if (pts.size() > 1024) {
+        return {false, "Un guide doit contenir au plus 1024 points."};
     }
     // An auto-satin guide must NOT convert the object to directional fill. For
     // the Guided strategy, the curve is the editable central line. Other auto
