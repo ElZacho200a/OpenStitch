@@ -65,6 +65,33 @@ class SemanticValidationTest(unittest.TestCase):
     def test_path_escape(self):
         self.assertIn('E_PATH', self.errors(document(region('a', mask_path='../outside.png'))))
 
+    def test_skip_files_still_rejects_path_escape(self):
+        self.assertIn('E_PATH', self.errors(
+            document(region('a', mask_path='../outside.png')), skip_files=True))
+        # Missing in-folder files are allowed only when file checks are skipped.
+        self.assertNotIn('E_MISSING_MASK', self.errors(
+            document(region('a', mask_path='absent.png')), skip_files=True))
+
+    def test_skip_files_rejects_symlink_escape(self):
+        outside = self.folder.parent / (self.folder.name + '-outside.png')
+        outside.write_bytes(b'not a png')
+        self.addCleanup(outside.unlink)
+        link = self.folder / 'linked.png'
+        try:
+            link.symlink_to(outside)
+        except (OSError, NotImplementedError):
+            self.skipTest('symlinks unavailable')
+        for skip in (False, True):
+            with self.subTest(skip_files=skip):
+                self.assertIn('E_PATH', self.errors(
+                    document(region('a', mask_path='linked.png')), skip_files=skip))
+
+    def test_malformed_mask_path_is_validation_error(self):
+        for skip in (False, True):
+            with self.subTest(skip_files=skip):
+                self.assertIn('E_PATH', self.errors(
+                    document(region('a', mask_path='bad\\x00name.png')), skip_files=skip))
+
     def test_manifest_schema_and_required_mask(self):
         self.assertIn('E_SCHEMA', self.errors({'schema': 'wrong', **{k: v for k,v in document().items() if k != 'schema'}}))
         self.assertIn('E_MASK', self.errors(document(region('a', mask_path=None))))
