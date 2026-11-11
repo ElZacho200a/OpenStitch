@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "studio_controller.hpp"
 
+#include <QElapsedTimer>
+
+#include "perf_log.hpp"
+
 #include <QColor>
 #include <QFileInfo>
 #include <algorithm>
@@ -212,6 +216,8 @@ void StudioController::rebuildScene() {
     const auto request = ++request_;
     const auto revision = session_.revision();
     auto snapshot = session_.snapshot();
+    const auto wall = std::make_shared<QElapsedTimer>();
+    wall->start();
     busy_ = true;
     status_ = QStringLiteral("Préparation des segments…");
     emit changed();
@@ -220,7 +226,7 @@ void StudioController::rebuildScene() {
         [snapshot, revision](const TaskContext& task) {
             return build_studio_scene(snapshot, revision, task);
         },
-        [this, request](Result<std::shared_ptr<const StudioSceneSnapshot>>&& result) {
+        [this, request, wall](Result<std::shared_ptr<const StudioSceneSnapshot>>&& result) {
             // Un changement de segmentation entre-temps ne rend PAS cette géométrie
             // périmée. Seule une mutation des points relance et remplace la requête.
             if (request != request_) {
@@ -237,6 +243,20 @@ void StudioController::rebuildScene() {
                 return;
             }
             scene_ = std::move(*result);
+            if (perfLogEnabled()) {
+                const auto& t = scene_->timing;
+                perfLog(
+                    QStringLiteral("scene.rebuild"),
+                    {{QStringLiteral("wallMs"), static_cast<double>(wall->elapsed())},
+                     {QStringLiteral("objects"),
+                      static_cast<qulonglong>(session_.project().embroidery_objects.size())},
+                     {QStringLiteral("segments"), static_cast<qulonglong>(scene_->segments.size())},
+                     {QStringLiteral("effectiveSequenceMs"), t.effectiveSequenceMs},
+                     {QStringLiteral("threadSegmentsMs"), t.threadSegmentsMs},
+                     {QStringLiteral("verticesMs"), t.verticesMs},
+                     {QStringLiteral("pickGridMs"), t.pickGridMs},
+                     {QStringLiteral("builds"), sceneBuilds_}});
+            }
             status_ =
                 QStringLiteral("%1 segments · coordonnées en mm").arg(scene_->segments.size());
             emit sceneChanged();

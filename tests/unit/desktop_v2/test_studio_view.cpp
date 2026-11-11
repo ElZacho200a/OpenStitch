@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <QFileInfo>
 #include <QGuiApplication>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQmlError>
@@ -103,6 +106,7 @@ private slots:
     void displayFiltersByTypeColourAndSize();
     void statusEventsDoNotReloadThreadsFiltersOrTree();
     void statisticsAndFidelityOfTheEmbroidery();
+    void perfLogRecordsSceneRebuildsOnlyWhenEnabled();
     void initTestCase();
     void mainQmlHostsEveryPanel();
 };
@@ -994,6 +998,48 @@ void StudioViewTest::statisticsAndFidelityOfTheEmbroidery() {
         rig.analysis.clearFidelity();
         QVERIFY(!rig.analysis.fidelityReady());
     }
+}
+
+// Journal de performance : désactivé par défaut (aucun fichier), activé par OPENSTITCH_PERF_LOG ;
+// il consigne la durée réelle de chaque reconstruction de scène avec sa ventilation.
+void StudioViewTest::perfLogRecordsSceneRebuildsOnlyWhenEnabled() {
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString path = directory.filePath(QStringLiteral("perf.jsonl"));
+    qunsetenv("OPENSTITCH_PERF_LOG");
+    {
+        Rig rig; // chargement du projet : une reconstruction de scène
+        QVERIFY(!QFileInfo::exists(path));
+    }
+    qputenv("OPENSTITCH_PERF_LOG", path.toUtf8());
+    {
+        Rig rig;
+        const auto id = rig.session.project().embroidery_objects.front().id.value;
+        QVERIFY(rig.view.setColourVisible(
+            QColor(rig.session.project().embroidery_objects.front().rgb[0],
+                   rig.session.project().embroidery_objects.front().rgb[1],
+                   rig.session.project().embroidery_objects.front().rgb[2])
+                .name(),
+            false));
+        Q_UNUSED(id);
+        QTRY_VERIFY_WITH_TIMEOUT(!rig.studio.busy() && !rig.studio.sceneStale(), 15'000);
+    }
+    qunsetenv("OPENSTITCH_PERF_LOG");
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    int rebuilds = 0;
+    while (!file.atEnd()) {
+        const auto doc = QJsonDocument::fromJson(file.readLine());
+        QVERIFY(doc.isObject());
+        const auto object = doc.object();
+        if (object.value("event").toString() == QStringLiteral("scene.rebuild")) {
+            ++rebuilds;
+            QVERIFY(object.value("wallMs").toDouble() >= 0.0);
+            QVERIFY(object.value("objects").toDouble() > 0.0);
+            QVERIFY(object.contains("effectiveSequenceMs") && object.contains("verticesMs"));
+        }
+    }
+    QVERIFY2(rebuilds >= 2, "chargement + masquage = au moins deux reconstructions");
 }
 
 QTEST_MAIN(StudioViewTest)

@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "vector_space_controller.hpp"
 
+#include "perf_log.hpp"
+
+#include <QElapsedTimer>
 #include <algorithm>
 #include <cmath>
 
@@ -219,6 +222,13 @@ void VectorSpaceController::rememberLayer(const std::vector<std::uint64_t>& keys
 void VectorSpaceController::publishLayer(std::shared_ptr<const VectorLayer> layer,
                                          std::vector<std::uint64_t> keys) {
     rememberLayer(keys, layer);
+    if (perfLogEnabled()) {
+        perfLog(QStringLiteral("vector.layer"),
+                {{QStringLiteral("shapes"),
+                  static_cast<qulonglong>(studio_.session().project().vector_objects.size())},
+                 {QStringLiteral("builds"), builds_ + 1},
+                 {QStringLiteral("cacheHits"), cacheHits_}});
+    }
     layer_ = std::move(layer);
     renderedVisualKeys_ = std::move(keys);
     ++builds_;
