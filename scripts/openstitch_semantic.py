@@ -25,6 +25,7 @@ DECISIONS = {'keep', 'merge', 'remove', 'review'}
 LEVELS = {'family', 'instance', 'component', 'technical'}
 # Prevent downstream mask consumers from allocating enormous pixel buffers.
 MAX_MASK_PIXELS = 100_000_000
+MAX_MASK_DIMENSION = 100_000
 
 
 def png_size(path: Path) -> tuple[int, int]:
@@ -43,7 +44,7 @@ def png_size(path: Path) -> tuple[int, int]:
     if actual_crc != struct.unpack('>I', header[29:33])[0]:
         raise ValueError('CRC IHDR invalide')
     width, height = struct.unpack('>II', header[16:24])
-    if (width == 0 or height == 0 or width > 100000 or height > 100000
+    if (width == 0 or height == 0 or width > MAX_MASK_DIMENSION or height > MAX_MASK_DIMENSION
             or width * height > MAX_MASK_PIXELS):
         raise ValueError('dimensions PNG invalides')
     bit_depth, color_type, compression, filtering, interlace = header[24:29]
@@ -188,8 +189,11 @@ def validate(manifest: dict, base: Path, *, skip_files: bool = False) -> dict:
         fail('E_SOURCE', 'source_image', 'objet source_image requis')
     else:
         w, h = source.get('width_px'), source.get('height_px')
-        if type(w) is not int or type(h) is not int or w <= 0 or h <= 0:
-            fail('E_SOURCE', 'source_image', 'dimensions width_px/height_px > 0 requises')
+        if (type(w) is not int or type(h) is not int or w <= 0 or h <= 0
+                or w > MAX_MASK_DIMENSION or h > MAX_MASK_DIMENSION
+                or w * h > MAX_MASK_PIXELS):
+            fail('E_SOURCE', 'source_image',
+                 'dimensions positives, <= 100000 par axe et <= 100000000 pixels requises')
         else:
             expected = (w, h)
     design = manifest.get('design')
