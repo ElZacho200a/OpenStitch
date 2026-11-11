@@ -302,6 +302,25 @@ private slots:
         QTest::qWait(100);
         QCOMPARE(rig.session.revision(), revision);
         QCOMPARE(rig.session.undoNames().size(), undoDepth);
+
+        // Starting in the empty margin and dragging into the painted image must not
+        // initiate a stroke. Likewise, leaving the painted image cancels a stroke
+        // instead of connecting points across the letterbox on re-entry.
+        const QPoint blank = map->mapToScene(onMap(1.0, top + paintedH * 0.5)).toPoint();
+        const QPoint inside =
+            map->mapToScene(onMap(left + paintedW * 0.25, top + paintedH * 0.5)).toPoint();
+        QTest::mousePress(rig.window, Qt::LeftButton, Qt::NoModifier, blank);
+        QTest::mouseMove(rig.window, inside);
+        QTest::mouseRelease(rig.window, Qt::LeftButton, Qt::NoModifier, inside);
+        QCOMPARE(rig.session.revision(), revision);
+        QCOMPARE(rig.session.undoNames().size(), undoDepth);
+
+        QTest::mousePress(rig.window, Qt::LeftButton, Qt::NoModifier, inside);
+        QTest::mouseMove(rig.window, blank);
+        QTest::mouseMove(rig.window, inside);
+        QTest::mouseRelease(rig.window, Qt::LeftButton, Qt::NoModifier, inside);
+        QCOMPARE(rig.session.revision(), revision);
+        QCOMPARE(rig.session.undoNames().size(), undoDepth);
         QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
     }
 
