@@ -125,8 +125,11 @@ struct SatinAttempt {
     bool compactAxis;
 };
 constexpr std::array<SatinAttempt, 5> kSatinAttempts{
-    {{"skeleton", false}, {"parallel_sweep", false}, {"medial_axis", false},
-      {"guided_satin", false}, {"skeleton", true}}};
+    {{"skeleton", false},
+     {"parallel_sweep", false},
+     {"medial_axis", false},
+     {"guided_satin", false},
+     {"skeleton", true}}};
 } // namespace
 
 std::size_t satinAttemptCount() {
