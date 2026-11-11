@@ -210,6 +210,39 @@ class SemanticValidationTest(unittest.TestCase):
                 self.assertNotIn('E_MASK_PNG', self.errors(
                     document(region('a')), skip_files=True))
 
+    def test_png_idat_zlib_header_rules(self):
+        # PNG IDAT must start with a zlib/deflate header, even when split
+        # between consecutive IDAT chunks. Pixel payloads are not decoded.
+        def chunk(kind, data):
+            payload = kind + data
+            return (struct.pack('>I', len(data)) + payload +
+                    struct.pack('>I', zlib.crc32(payload) & 0xffffffff))
+
+        original = png_bytes(2, 3)
+        length = struct.unpack('>I', original[33:37])[0]
+        compressed = original[41:41 + length]
+        prefix, suffix = original[:33], original[45 + length:]
+        path = self.folder / 'mask.png'
+
+        # The two zlib bytes can cross IDAT boundaries, including empty ones.
+        split = (prefix + chunk(b'IDAT', compressed[:1]) +
+                 chunk(b'IDAT', b'') + chunk(b'IDAT', compressed[1:]) + suffix)
+        path.write_bytes(split)
+        self.assertNotIn('E_MASK_PNG', self.errors(document(region('a'))))
+
+        bad_headers = {
+            'wrong_compression_method': b'\\x77\\x9c' + compressed[2:],
+            'invalid_header_checksum': b'\\x78\\x00' + compressed[2:],
+            'preset_dictionary_forbidden': b'\\x78\\x20' + compressed[2:],
+            'truncated_zlib_header': b'\\x78',
+        }
+        for name, payload in bad_headers.items():
+            with self.subTest(case=name):
+                path.write_bytes(prefix + chunk(b'IDAT', payload) + suffix)
+                self.assertIn('E_MASK_PNG', self.errors(document(region('a'))))
+                self.assertNotIn('E_MASK_PNG', self.errors(
+                    document(region('a')), skip_files=True))
+
     def test_png_pixel_budget_rejects_extreme_dimensions(self):
         # Rewrite only IHDR: avoid allocating a 100-million-pixel fixture.
         # png_size validates metadata/chunks, not decompressed pixel rows.
