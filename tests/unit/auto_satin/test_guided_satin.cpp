@@ -54,7 +54,8 @@ TEST_CASE("guided satin: available as a fourth independent strategy", "[guided_s
     }
 }
 
-TEST_CASE("guided satin: user curve changes crossings and remains deterministic", "[guided_satin]") {
+TEST_CASE("guided satin: user curve changes crossings and remains deterministic",
+          "[guided_satin]") {
     const auto region = as::make_shape("rectangle");
     REQUIRE(region.has_value());
     std::int32_t xmin = INT32_MAX, xmax = INT32_MIN, ymin = INT32_MAX, ymax = INT32_MIN;
