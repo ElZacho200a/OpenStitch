@@ -15,9 +15,9 @@
 namespace openstitch::desktop {
 
 // Ordre = valeurs de `document::AutoSatinStrategy` (l'indice d'un QComboBox est la valeur).
-inline constexpr std::array<document::AutoSatinStrategy, 3> kAutoSatinStrategies = {
+inline constexpr std::array<document::AutoSatinStrategy, 4> kAutoSatinStrategies = {
     document::AutoSatinStrategy::Skeleton, document::AutoSatinStrategy::ParallelSweep,
-    document::AutoSatinStrategy::MedialAxis};
+    document::AutoSatinStrategy::MedialAxis, document::AutoSatinStrategy::Guided};
 
 [[nodiscard]] inline QString autoSatinStrategyLabel(document::AutoSatinStrategy strategy) {
     switch (strategy) {
@@ -27,6 +27,8 @@ inline constexpr std::array<document::AutoSatinStrategy, 3> kAutoSatinStrategies
         return QCoreApplication::translate("AutoSatinStrategy", "Balayage parallèle");
     case document::AutoSatinStrategy::MedialAxis:
         return QCoreApplication::translate("AutoSatinStrategy", "Axe médian vectoriel");
+    case document::AutoSatinStrategy::Guided:
+        return QCoreApplication::translate("AutoSatinStrategy", "Satin guidé");
     }
     return {};
 }
@@ -51,6 +53,12 @@ inline constexpr std::array<document::AutoSatinStrategy, 3> kAutoSatinStrategies
             "Même moteur de traversées que le squelette, mais l'axe est calculé sur le contour "
             "vectoriel (diagramme de Voronoï) : pas de discrétisation par pixels. Refuse un "
             "contour qui se coupe lui-même.");
+    case document::AutoSatinStrategy::Guided:
+        return QCoreApplication::translate(
+            "AutoSatinStrategy",
+            "Turning satin piloté par une ligne centrale dessinée dans le canevas. "
+            "Les traversées suivent la normale du tracé ; un axe initial automatique "
+            "est proposé tant qu'aucun guide courbe n'est présent.");
     }
     return {};
 }
