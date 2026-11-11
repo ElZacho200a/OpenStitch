@@ -6,6 +6,7 @@
 // les effacer. Un tatami (ou tout autre remplissage) est converti en directionnel au premier tracé,
 // dans la MÊME étape d'annulation. Sans Qt.
 
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
