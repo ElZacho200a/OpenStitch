@@ -441,7 +441,7 @@ void StudioDigitizeTest::guidedAutoSatinGuideStaysAutoSatin() {
     QVERIFY(after != nullptr);
     const auto* satin = std::get_if<document::AutoSatinParams>(&after->params);
     QVERIFY(satin != nullptr); // no accidental conversion to directional fill
-    QCOMPARE(satin->strategy, document::AutoSatinStrategy::Guided);
+    QVERIFY(satin->strategy == document::AutoSatinStrategy::Guided);
     QCOMPARE(satin->guides.size(), std::size_t{1});
     QCOMPARE(satin->guides.front().path.size(), std::size_t{3});
     QVERIFY(rig.satin.clearGuides(false));
