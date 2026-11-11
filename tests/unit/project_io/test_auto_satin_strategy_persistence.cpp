@@ -103,7 +103,7 @@ TEST_CASE("auto-satin : le fichier reste en v6 tant que la methode est le squele
 TEST_CASE("auto-satin : une autre methode ecrit le schema v7") {
     for (const auto strategy :
          {document::AutoSatinStrategy::ParallelSweep, document::AutoSatinStrategy::MedialAxis,
-           document::AutoSatinStrategy::Guided}) {
+          document::AutoSatinStrategy::Guided}) {
         document::AutoSatinParams p;
         p.strategy = strategy;
         const auto path = unique_path("openstitch_strategy_v7_");
