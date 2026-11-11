@@ -256,7 +256,8 @@ const EnumTable<document::AutoSatinStrategy>& auto_satin_strategy_table() {
     static const EnumTable<document::AutoSatinStrategy> t{
         {"skeleton", document::AutoSatinStrategy::Skeleton},
         {"parallel_sweep", document::AutoSatinStrategy::ParallelSweep},
-        {"medial_axis", document::AutoSatinStrategy::MedialAxis}};
+        {"medial_axis", document::AutoSatinStrategy::MedialAxis},
+        {"guided_satin", document::AutoSatinStrategy::Guided}};
     return t;
 }
 const EnumTable<optimization::OrderStrategy>& strategy_table() {
