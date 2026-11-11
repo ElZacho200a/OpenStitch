@@ -31,7 +31,8 @@ constexpr std::string_view kSplit =
 constexpr std::string_view kCorner = "none|Aucun;miter|Onglet;overlap|Chevauchement;cut|Coupe";
 constexpr std::string_view kJagged = "none|Aucun;side_a|Côté A;side_b|Côté B;both|Les deux côtés";
 constexpr std::string_view kStrategy =
-    "skeleton|Squelette;parallel_sweep|Balayage parallèle;medial_axis|Axe médian;guided_satin|Satin guidé";
+    "skeleton|Squelette;parallel_sweep|Balayage parallèle;medial_axis|Axe médian;"
+    "guided_satin|Satin guidé";
 constexpr std::string_view kBlanketStyle = "blanket|Boutonnière;zigzag|Zigzag";
 constexpr std::string_view kBlanketSide = "left|Gauche;right|Droite;center|Centré";
 constexpr std::string_view kMotif =
