@@ -139,6 +139,9 @@ def validate(manifest: dict, base: Path, *, skip_files: bool = False) -> dict:
                 # --skip-files skips file reads, never path containment checks.
                 # Resolve symlinks before checking containment to avoid escapes.
                 try:
+                    # Paths must be relative even when an absolute path is inside base.
+                    if Path(mask).is_absolute():
+                        raise ValueError('absolute mask path')
                     target = (base / mask).resolve()
                     contained = target.is_relative_to(base.resolve())
                 except (OSError, ValueError):
