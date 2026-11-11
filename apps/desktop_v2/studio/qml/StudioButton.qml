@@ -23,6 +23,8 @@ Controls.AbstractButton {
     hoverEnabled: true
     focusPolicy: Qt.StrongFocus
     Accessible.name: tooltip.length > 0 ? tooltip : text
+    // The visual `active` state must also be available to assistive technology.
+    Accessible.checked: button.checked || button.active
     Accessible.description: !enabled && disabledReason.length > 0 ? disabledReason
                             : shortcutLabel.length > 0 ? qsTr("Raccourci : ") + shortcutLabel : ""
 
