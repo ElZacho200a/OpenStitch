@@ -1,6 +1,8 @@
 """Tests du manifeste : IDs, cycles, superpositions, PNG et chemins."""
 import importlib.util
 import json
+import struct
+import zlib
 import tempfile
 import unittest
 from pathlib import Path
@@ -9,6 +11,19 @@ SCRIPT = Path(__file__).resolve().parents[2] / 'scripts/openstitch_semantic.py'
 spec = importlib.util.spec_from_file_location('openstitch_semantic', SCRIPT)
 mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mod)
+
+
+def png_bytes(width, height):
+    """Petit PNG RGBA valide pour les tests d'en-tete."""
+    def chunk(kind, data):
+        payload = kind + data
+        return (struct.pack('>I', len(data)) + payload +
+                struct.pack('>I', zlib.crc32(payload) & 0xffffffff))
+
+    ihdr = struct.pack('>IIBBBBB', width, height, 8, 6, 0, 0, 0)
+    pixels = (b'\x00' + b'\x00\x00\x00\x00' * width) * height
+    return (b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', ihdr) +
+            chunk(b'IDAT', zlib.compress(pixels)) + chunk(b'IEND', b''))
 
 
 def region(sid, **kwargs):
@@ -28,8 +43,7 @@ class SemanticValidationTest(unittest.TestCase):
         self.work = tempfile.TemporaryDirectory()
         self.addCleanup(self.work.cleanup)
         self.folder = Path(self.work.name)
-        self.folder.joinpath('mask.png').write_bytes(b'\x89PNG\r\n\x1a\n' +
-            (13).to_bytes(4, 'big') + b'IHDR' + (2).to_bytes(4, 'big') + (3).to_bytes(4, 'big'))
+        self.folder.joinpath('mask.png').write_bytes(png_bytes(2, 3))
 
     def errors(self, doc, skip_files=False):
         result = mod.validate(doc, self.folder, skip_files=skip_files)
@@ -74,9 +88,29 @@ class SemanticValidationTest(unittest.TestCase):
 
     def test_missing_mask_and_wrong_size(self):
         self.assertIn('E_MISSING_MASK', self.errors(document(region('a', mask_path='absent.png'))))
-        self.folder.joinpath('mask.png').write_bytes(b'\x89PNG\r\n\x1a\n' +
-            (13).to_bytes(4, 'big') + b'IHDR' + (10).to_bytes(4, 'big') + (3).to_bytes(4, 'big'))
+        self.folder.joinpath('mask.png').write_bytes(png_bytes(10, 3))
         self.assertIn('E_MASK_SIZE', self.errors(document(region('a'))))
+
+    def test_png_ihdr_integrity_is_checked(self):
+        good = png_bytes(2, 3)
+        self.assertNotIn('E_MASK_PNG', self.errors(document(region('a'))))
+        bad_parameters = bytearray(good)
+        bad_parameters[26] = 1  # PNG n'autorise que compression=0.
+        bad_parameters[29:33] = struct.pack(
+            '>I', zlib.crc32(bad_parameters[12:29]) & 0xffffffff)
+        cases = {
+            'truncated_ihdr': good[:30],
+            'wrong_ihdr_length': good[:8] + struct.pack('>I', 12) + good[12:],
+            'bad_ihdr_crc': good[:29] + b'\x00\x00\x00\x00' + good[33:],
+            'invalid_ihdr_parameters': bytes(bad_parameters),
+        }
+        for name, contents in cases.items():
+            with self.subTest(case=name):
+                self.folder.joinpath('mask.png').write_bytes(contents)
+                self.assertIn('E_MASK_PNG', self.errors(document(region('a'))))
+                # --skip-files ne lit pas les octets du masque.
+                self.assertNotIn('E_MASK_PNG', self.errors(
+                    document(region('a')), skip_files=True))
 
     def test_path_escape(self):
         self.assertIn('E_PATH', self.errors(document(region('a', mask_path='../outside.png'))))
