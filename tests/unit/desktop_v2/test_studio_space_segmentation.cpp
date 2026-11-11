@@ -347,8 +347,7 @@ private slots:
         const double left = (image->width() - w) / 2.0;
         const double top = (image->height() - h) / 2.0;
         const auto scenePixel = [&](int x, int y) {
-            const QPointF local(left + w * (x + 0.5) / seg.width,
-                                top + h * (y + 0.5) / seg.height);
+            const QPointF local(left + w * (x + 0.5) / seg.width, top + h * (y + 0.5) / seg.height);
             return map->mapToScene(image->mapToItem(map, local)).toPoint();
         };
 

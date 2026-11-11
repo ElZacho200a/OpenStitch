@@ -70,10 +70,9 @@ public:
     // l'ordre. Une tentative de modifier un preset intégré reste sans effet.
     [[nodiscard]] bool update(std::string_view name,
                               const project_ops::DigitizeSettings& settings) {
-        const auto it = std::find_if(presets_.begin(), presets_.end(),
-                                     [name](const AutodigitizePreset& entry) {
-                                         return entry.name == name;
-                                     });
+        const auto it =
+            std::find_if(presets_.begin(), presets_.end(),
+                         [name](const AutodigitizePreset& entry) { return entry.name == name; });
         if (it == presets_.end() || it->builtIn) {
             return false;
         }
