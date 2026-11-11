@@ -194,6 +194,39 @@ class SemanticValidationTest(unittest.TestCase):
                 self.assertNotIn('E_MASK_PNG', self.errors(
                     document(region('a')), skip_files=True))
 
+    def test_png_pixel_budget_rejects_extreme_dimensions(self):
+        # Rewrite only IHDR: avoid allocating a 100-million-pixel fixture.
+        # png_size validates metadata/chunks, not decompressed pixel rows.
+        original = png_bytes(2, 3)
+
+        def with_dimensions(width, height):
+            data = bytearray(original)
+            data[16:24] = struct.pack('>II', width, height)
+            data[29:33] = struct.pack('>I', zlib.crc32(data[12:29]) & 0xffffffff)
+            return data
+
+        path = self.folder / 'mask.png'
+        path.write_bytes(with_dimensions(10000, 10000))
+        self.assertEqual(mod.png_size(path), (10000, 10000))
+        path.write_bytes(with_dimensions(10001, 10000))
+        self.assertIn('E_MASK_PNG', self.errors(document(region('a'))))
+        self.assertNotIn('E_MASK_PNG', self.errors(
+            document(region('a')), skip_files=True))
+
+    def test_png_idat_must_have_some_payload(self):
+        original = png_bytes(2, 3)
+        empty_idat = (struct.pack('>I', 0) + b'IDAT' +
+                      struct.pack('>I', zlib.crc32(b'IDAT') & 0xffffffff))
+        path = self.folder / 'mask.png'
+        # A sequence containing only empty IDAT chunks is not an image stream.
+        path.write_bytes(original[:33] + empty_idat + empty_idat + original[-12:])
+        self.assertIn('E_MASK_PNG', self.errors(document(region('a'))))
+        self.assertNotIn('E_MASK_PNG', self.errors(
+            document(region('a')), skip_files=True))
+        # Empty IDAT chunks are permitted alongside nonempty IDAT data.
+        path.write_bytes(original[:33] + empty_idat + original[33:])
+        self.assertNotIn('E_MASK_PNG', self.errors(document(region('a'))))
+
     def test_png_transparency_chunk_rules(self):
         # tRNS is optional, but its length, placement and palette references
         # must be validated even though IDAT pixels are not decoded here.
