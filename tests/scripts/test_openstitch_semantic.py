@@ -115,6 +115,24 @@ class SemanticValidationTest(unittest.TestCase):
                 self.assertIn('E_PATH', self.errors(
                     document(region('a', mask_path=absolute)), skip_files=skip))
 
+    def test_windows_mask_paths_are_rejected_on_all_hosts(self):
+        # A manifest must mean the same thing on Linux and Windows.
+        bad_paths = (
+            'C:/temp/mask.png',   # Windows absolute path
+            'C:mask.png',        # Windows drive-relative path
+            '..\\\\outside.png',   # Windows-style parent traversal
+            '\\\\server\\share\\mask.png',  # UNC path
+            'subdir\\mask.png',  # Ambiguous path separator
+        )
+        for mask in bad_paths:
+            for skip in (False, True):
+                with self.subTest(mask=mask, skip_files=skip):
+                    self.assertIn('E_PATH', self.errors(
+                        document(region('a', mask_path=mask)), skip_files=skip))
+        # Portable forward-slash relative paths are still accepted in skip mode.
+        self.assertNotIn('E_PATH', self.errors(
+            document(region('a', mask_path='subdir/mask.png')), skip_files=True))
+
     def test_manifest_schema_and_required_mask(self):
         self.assertIn('E_SCHEMA', self.errors({'schema': 'wrong', **{k: v for k,v in document().items() if k != 'schema'}}))
         self.assertIn('E_MASK', self.errors(document(region('a', mask_path=None))))
