@@ -12,7 +12,7 @@ import re
 import struct
 import sys
 from collections import Counter
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 SCHEMA = 'openstitch.semantic/1'
 RESULT_SCHEMA = 'openstitch.semantic-validation/1'
@@ -145,8 +145,11 @@ def validate(manifest: dict, base: Path, *, skip_files: bool = False) -> dict:
                 # Resolve symlinks before checking containment to avoid escapes.
                 try:
                     # Paths must be relative even when an absolute path is inside base.
-                    if Path(mask).is_absolute():
-                        raise ValueError('absolute mask path')
+                    # Portable manifests use forward slashes only. Reject Windows
+                    # drives, UNC paths and backslash traversal on every host OS.
+                    if (Path(mask).is_absolute() or PureWindowsPath(mask).drive
+                            or '\\' in mask):
+                        raise ValueError('non-portable or absolute mask path')
                     target = (base / mask).resolve()
                     contained = target.is_relative_to(base.resolve())
                 except (OSError, ValueError):
