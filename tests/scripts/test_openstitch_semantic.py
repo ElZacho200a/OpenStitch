@@ -90,7 +90,14 @@ class SemanticValidationTest(unittest.TestCase):
         for skip in (False, True):
             with self.subTest(skip_files=skip):
                 self.assertIn('E_PATH', self.errors(
-                    document(region('a', mask_path='bad\\x00name.png')), skip_files=skip))
+                    document(region('a', mask_path='bad\x00name.png')), skip_files=skip))
+
+    def test_absolute_mask_path_is_rejected_even_inside_manifest(self):
+        absolute = str(self.folder / 'mask.png')
+        for skip in (False, True):
+            with self.subTest(skip_files=skip):
+                self.assertIn('E_PATH', self.errors(
+                    document(region('a', mask_path=absolute)), skip_files=skip))
 
     def test_manifest_schema_and_required_mask(self):
         self.assertIn('E_SCHEMA', self.errors({'schema': 'wrong', **{k: v for k,v in document().items() if k != 'schema'}}))
