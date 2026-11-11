@@ -135,6 +135,9 @@ TEST_CASE("studio preserves sewing order thread colours and full 64 bit object i
     CHECK(scene.pick(0, -5, 0.2) == secondId); // the later overlapping object wins
     CHECK_FALSE(scene.pick(0, 20, 0.2));
     CHECK_FALSE(scene.pick(0, -5, -1));
+    REQUIRE(scene.pickGrid); // construit avec le snapshot, sur le worker
+    CHECK(scene.pickGrid->segmentCount == scene.segments.size());
+    CHECK(scene.timing.pickGridMs >= 0.0);
     CHECK(scene.boundsOf(firstId).has_value());
     CHECK_FALSE(scene.boundsOf(123));
     for (std::size_t i = 0; i < scene.segments.size(); ++i) {
@@ -310,4 +313,68 @@ TEST_CASE("studio rejects missing projects and honours cancellation during geome
     const auto alreadyCancelled = build_studio_scene(project, 1, task);
     REQUIRE_FALSE(alreadyCancelled.has_value());
     CHECK(alreadyCancelled.error().category == ErrorCategory::Cancelled);
+}
+
+TEST_CASE("studio pick grid returns exactly what the linear scan returns", "[studio][pick]") {
+    StudioSceneSnapshot linear;
+    linear.threadWidthMm = 0.22;
+    std::uint32_t state = 987654321;
+    const auto next = [&state] {
+        state = state * 1664525U + 1013904223U;
+        return static_cast<double>(state >> 8) / static_cast<double>(1U << 24);
+    };
+    for (int i = 0; i < 6000; ++i) {
+        const auto ax = static_cast<float>(next() * 120.0 - 60.0);
+        const auto ay = static_cast<float>(next() * 90.0 - 45.0);
+        // Segments courts, longs et diagonaux ; quelques-uns de longueur nulle.
+        const double span = (i % 7 == 0) ? 40.0 : 3.0;
+        const auto bx = (i % 11 == 0) ? ax : static_cast<float>(ax + (next() - 0.5) * span);
+        const auto by = (i % 11 == 0) ? ay : static_cast<float>(ay + (next() - 0.5) * span);
+        // Chevauchements (identifiants repris) et quelques segments sans identité (0).
+        const std::uint64_t id = (i % 13 == 0) ? 0 : 1 + static_cast<std::uint64_t>(next() * 40);
+        linear.segments.push_back({{ax, ay, bx, by, {1, 2, 3}}, id});
+    }
+    auto indexed = linear;
+    indexed.pickGrid = build_pick_grid(indexed.segments);
+    REQUIRE(indexed.pickGrid);
+
+    std::size_t hits = 0;
+    for (int i = 0; i < 20000; ++i) {
+        const double x = next() * 200.0 - 100.0; // déborde de la scène des deux côtés
+        const double y = next() * 160.0 - 80.0;
+        static constexpr double tolerances[] = {0.0, 0.05, 0.5, 5.0, 60.0, 150.0};
+        const double tolerance = tolerances[i % 6]; // 150 mm dépasse le plafond de cellules
+        const auto expected = linear.pick(x, y, tolerance);
+        CHECK(indexed.pick(x, y, tolerance) == expected);
+        hits += expected ? 1 : 0;
+    }
+    CHECK(hits > 1000); // le test n'est pas vacueux : il y a des touches ET des manques
+
+    // Invalides : mêmes refus que le balayage.
+    CHECK_FALSE(indexed.pick(std::numeric_limits<double>::quiet_NaN(), 0, 1));
+    CHECK_FALSE(indexed.pick(0, 0, -1));
+
+    // Grille périmée (segments ajoutés après coup) : on retombe sur le balayage, résultat exact.
+    auto stale = indexed;
+    stale.segments.push_back({{500, 500, 501, 500, {1, 2, 3}}, 99});
+    CHECK(stale.pick(500.5, 500, 0.1) == std::optional<std::uint64_t>(99));
+}
+
+TEST_CASE("studio pick grid copes with empty and unselectable scenes", "[studio][pick]") {
+    StudioSceneSnapshot empty;
+    empty.pickGrid = build_pick_grid(empty.segments);
+    REQUIRE(empty.pickGrid);
+    CHECK_FALSE(empty.pick(0, 0, 10));
+
+    StudioSceneSnapshot anonymous;
+    anonymous.segments.push_back({{0, 0, 1, 0, {1, 2, 3}}, 0});
+    anonymous.pickGrid = build_pick_grid(anonymous.segments);
+    CHECK_FALSE(anonymous.pick(0.5, 0, 1)); // objectId 0 n'est jamais sélectionnable
+
+    StudioSceneSnapshot nonFinite;
+    nonFinite.segments.push_back(
+        {{std::numeric_limits<float>::quiet_NaN(), 0, 1, 0, {1, 2, 3}}, 7});
+    nonFinite.segments.push_back({{0, 0, 1, 0, {1, 2, 3}}, 8});
+    nonFinite.pickGrid = build_pick_grid(nonFinite.segments);
+    CHECK(nonFinite.pick(0.5, 0, 0.1) == std::optional<std::uint64_t>(8));
 }
