@@ -116,8 +116,7 @@ std::vector<DigitizeGestures::Grip> DigitizeGestures::grips() const {
         for (int guide = 0; guide < paths.size(); ++guide) {
             const auto points = paths[guide].toList();
             for (int node = 0; node < points.size(); ++node) {
-                out.push_back({Grip::Type::GuideNode, guide, node,
-                               mapPoint(points[node].toMap())});
+                out.push_back({Grip::Type::GuideNode, guide, node, mapPoint(points[node].toMap())});
             }
         }
         return out;
@@ -567,8 +566,8 @@ void DigitizeGestures::rebuildDynamic() {
             {HandleItem::Kind::Ghost,
              {toScene(fadeHandlePos(fadePreview_, 0)), toScene(fadeHandlePos(fadePreview_, 1))}});
         dynamic_.push_back({HandleItem::Kind::Active, {toScene(current_)}});
-    } else if ((drag_ == Drag::RailNode || drag_ == Drag::RungEnd ||
-                drag_ == Drag::GuideNode) && grip_) {
+    } else if ((drag_ == Drag::RailNode || drag_ == Drag::RungEnd || drag_ == Drag::GuideNode) &&
+               grip_) {
         dynamic_.push_back({HandleItem::Kind::Active, {toScene(current_)}});
         dynamic_.push_back({HandleItem::Kind::Ghost, {toScene(grip_->pos), toScene(current_)}});
     } else if (drag_ == Drag::Stroke) {
