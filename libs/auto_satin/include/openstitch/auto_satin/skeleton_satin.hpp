@@ -51,6 +51,7 @@ enum class SatinStrategy {
     Skeleton,      // Zhang-Suen, axes, traversées orientées (moteur actuel)
     ParallelSweep, // balayage parallèle : droites à angle constant, bandes continues
     MedialAxis,    // axe médian vectoriel (Voronoï des segments du contour)
+    Guided,        // ligne centrale pilotée par un guide courbe
 };
 
 struct SkeletonSatinParameters {
