@@ -28,7 +28,7 @@ LEVELS = {'family', 'instance', 'component', 'technical'}
 def png_size(path: Path) -> tuple[int, int]:
     """Lire les dimensions d'un PNG sans decoder les pixels.
 
-    Verifie l'integrite de l'IHDR, pas l'ensemble des chunks ni le contenu IDAT.
+    Verifie l'IHDR et la structure/CRC des chunks, sans decoder IDAT.
     """
     with path.open('rb') as f:
         header = f.read(33)  # signature (8) + length (4) + IHDR (17) + CRC (4)
@@ -49,6 +49,44 @@ def png_size(path: Path) -> tuple[int, int]:
     if (bit_depth not in valid_depths.get(color_type, ()) or compression != 0
             or filtering != 0 or interlace not in (0, 1)):
         raise ValueError('parametres IHDR invalides')
+    # Inspecter les chunks sans charger ni decomprimer les pixels en memoire.
+    # Un IHDR correct seul n'est pas une preuve que le masque est un PNG entier.
+    with path.open('rb') as f:
+        f.seek(33)  # IHDR deja valide, y compris son CRC.
+        seen_idat = False
+        after_idat = False
+        while True:
+            chunk_header = f.read(8)
+            if len(chunk_header) != 8:
+                raise ValueError('chunk PNG tronque ou IEND absent')
+            length, kind = struct.unpack('>I4s', chunk_header)
+            if not all(65 <= b <= 90 or 97 <= b <= 122 for b in kind):
+                raise ValueError('type de chunk PNG invalide')
+            if kind == b'IHDR':
+                raise ValueError('IHDR duplique')
+            if kind == b'IDAT':
+                if after_idat:
+                    raise ValueError('chunks IDAT non contigus')
+                seen_idat = True
+            elif seen_idat:
+                after_idat = True
+            if kind == b'IEND' and (length != 0 or not seen_idat):
+                raise ValueError('IEND invalide ou IDAT absent')
+            crc = zlib.crc32(kind)
+            remaining = length
+            while remaining:
+                block = f.read(min(65536, remaining))
+                if not block:
+                    raise ValueError('donnees de chunk PNG tronquees')
+                crc = zlib.crc32(block, crc)
+                remaining -= len(block)
+            stored_crc = f.read(4)
+            if len(stored_crc) != 4 or crc & 0xffffffff != struct.unpack('>I', stored_crc)[0]:
+                raise ValueError('CRC de chunk PNG invalide ou tronque')
+            if kind == b'IEND':
+                if f.read(1):
+                    raise ValueError('octets apres IEND')
+                break
     return width, height
 
 def cycles(edges: dict[str, set[str]]) -> list[list[str]]:
