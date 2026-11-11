@@ -194,6 +194,64 @@ class SemanticValidationTest(unittest.TestCase):
                 self.assertNotIn('E_MASK_PNG', self.errors(
                     document(region('a')), skip_files=True))
 
+    def test_png_transparency_chunk_rules(self):
+        # tRNS is optional, but its length, placement and palette references
+        # must be validated even though IDAT pixels are not decoded here.
+        def chunk(kind, data):
+            payload = kind + data
+            return (struct.pack('>I', len(data)) + payload +
+                    struct.pack('>I', zlib.crc32(payload) & 0xffffffff))
+
+        sig = b'\\x89PNG\\r\\n\\x1a\\n'
+        def ihdr(depth, color):
+            return chunk(b'IHDR', struct.pack('>IIBBBBB', 2, 3, depth, color, 0, 0, 0))
+
+        palette = chunk(b'PLTE', b'\\x00\\x00\\x00\\xff\\xff\\xff')
+        indexed_pixels = chunk(b'IDAT', zlib.compress(b'\\x00\\x00' * 3))
+        gray_pixels = chunk(b'IDAT', zlib.compress(b'\\x00\\x00\\x00' * 3))
+        rgb_pixels = chunk(b'IDAT', zlib.compress(b'\\x00' * 7 * 3))
+        iend = chunk(b'IEND', b'')
+        indexed_transparency = chunk(b'tRNS', b'\\x00\\xff')
+        gray_transparency = chunk(b'tRNS', b'\\x00\\x00')
+        rgb_transparency = chunk(b'tRNS', b'\\x00\\x00' * 3)
+        indexed_prefix = sig + ihdr(1, 3) + palette
+        valid = {
+            'indexed': indexed_prefix + indexed_transparency + indexed_pixels + iend,
+            'grayscale': sig + ihdr(8, 0) + gray_transparency + gray_pixels + iend,
+            'rgb': sig + ihdr(8, 2) + rgb_transparency + rgb_pixels + iend,
+        }
+        for name, contents in valid.items():
+            with self.subTest(valid=name):
+                self.folder.joinpath('mask.png').write_bytes(contents)
+                self.assertNotIn('E_MASK_PNG', self.errors(document(region('a'))))
+
+        invalid = {
+            'duplicate': (indexed_prefix + indexed_transparency +
+                          indexed_transparency + indexed_pixels + iend),
+            'after_idat': (indexed_prefix + indexed_pixels +
+                           indexed_transparency + iend),
+            'indexed_without_plte': (sig + ihdr(1, 3) + indexed_transparency +
+                                     indexed_pixels + iend),
+            'indexed_too_long': (indexed_prefix + chunk(b'tRNS', b'\\x00' * 3) +
+                                 indexed_pixels + iend),
+            'indexed_empty': (indexed_prefix + chunk(b'tRNS', b'') +
+                              indexed_pixels + iend),
+            'grayscale_bad_length': (sig + ihdr(8, 0) + chunk(b'tRNS', b'\\x00') +
+                                     gray_pixels + iend),
+            'rgb_bad_length': (sig + ihdr(8, 2) + chunk(b'tRNS', b'\\x00' * 4) +
+                               rgb_pixels + iend),
+            'rgba_forbids_trns': (sig + ihdr(8, 6) + gray_transparency +
+                                  chunk(b'IDAT', zlib.compress(b'\\x00' * 9 * 3)) + iend),
+            'plte_after_trns': (sig + ihdr(8, 2) + rgb_transparency +
+                                palette + rgb_pixels + iend),
+        }
+        for name, contents in invalid.items():
+            with self.subTest(invalid=name):
+                self.folder.joinpath('mask.png').write_bytes(contents)
+                self.assertIn('E_MASK_PNG', self.errors(document(region('a'))))
+                self.assertNotIn('E_MASK_PNG', self.errors(
+                    document(region('a')), skip_files=True))
+
     def test_path_escape(self):
         self.assertIn('E_PATH', self.errors(document(region('a', mask_path='../outside.png'))))
 
