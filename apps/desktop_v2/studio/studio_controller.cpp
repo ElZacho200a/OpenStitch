@@ -31,9 +31,13 @@ StudioController::StudioController(DocumentSession& session, QObject* parent)
         }
         if (kind == ChangeKind::Replaced) {
             emit documentReplaced();
+            // Un AUTRE document ne doit jamais montrer la géométrie de l'ancien.
+            scene_.reset();
+            emit sceneChanged();
         }
-        scene_.reset();
-        emit sceneChanged();
+        // Édition du même document : l'ancienne géométrie reste affichée jusqu'à l'arrivée de la
+        // nouvelle (quelques dizaines de ms) au lieu de disparaître puis d'être recréée : plus de
+        // clignotement, et les listes liées (fils, film) ne se vident plus entre-temps.
         rebuildScene();
     });
     selectionToken_ = session_.selection().subscribe([this](const SelectionModel&) {

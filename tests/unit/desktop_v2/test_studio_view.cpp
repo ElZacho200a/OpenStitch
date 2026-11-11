@@ -268,9 +268,13 @@ void StudioViewTest::metadataBatchDoesNotRebuildStitches() {
     const auto hidden = rig.session.applyBatch(hide, "Hide");
     QVERIFY(hidden.committed);
     QVERIFY(rig.session.lastChangeAffectsEmbroidery());
+    // L'ancienne géométrie reste affichée (périmée) jusqu'à l'arrivée de la nouvelle : pas de
+    // disparition ni de recréation entre-temps.
+    QVERIFY(rig.studio.scene() == initial);
+    QVERIFY(rig.studio.sceneStale());
+    QTRY_VERIFY_WITH_TIMEOUT(!rig.studio.busy() && rig.studio.scene() != initial, 15'000);
+    QVERIFY(!rig.studio.sceneStale());
     QVERIFY(scenes.count() > 0);
-    QTRY_VERIFY_WITH_TIMEOUT(!rig.studio.busy() && rig.studio.scene(), 15'000);
-    QVERIFY(rig.studio.scene() != initial);
 }
 
 void StudioViewTest::threadPlanColorwaysAndSewingOrder() {

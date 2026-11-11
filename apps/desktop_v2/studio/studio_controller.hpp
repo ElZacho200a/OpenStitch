@@ -37,6 +37,11 @@ public:
     ~StudioController() override;
     [[nodiscard]] DocumentSession& session() const { return session_; }
     [[nodiscard]] const std::shared_ptr<const StudioSceneSnapshot>& scene() const { return scene_; }
+    // Vrai pendant qu'une reconstruction est en cours : la scène affichée date d'avant la dernière
+    // édition (elle est conservée plutôt qu'effacée).
+    [[nodiscard]] bool sceneStale() const {
+        return scene_ && scene_->revision != session_.revision();
+    }
     [[nodiscard]] QString title() const { return title_; }
     [[nodiscard]] QString status() const { return status_; }
     [[nodiscard]] bool busy() const { return busy_; }
