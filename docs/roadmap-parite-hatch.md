@@ -1139,6 +1139,7 @@ plus.
   significative (principal + branches, max 8) ; (2) guides existants = remplacés,
   y compris le guide par défaut issu de la conversion tatami. Voir
   `docs/source/directional-fill.md` § Interface.
+- Plan (2026-11-12, en PR) : `specs/plans/hp-sti-018a-directional-guides.md` ; décisions (3) tatami et directionnel, (4) cercle refusé avec le diagnostic `round_shape`. Aucun code ; statut inchangé.
 
 ### HP-STI-019 — Broderie à main levée (freehand) [P2] — ☐ À faire
 - Hatch : dessiner directement un point de contour, triple, satin à la souris
