@@ -14,6 +14,7 @@ add_library(openstitch_studio_ui STATIC
     file_controller.cpp file_controller.hpp
     inspector_controller.cpp inspector_controller.hpp
     gpu_canvas.cpp gpu_canvas.hpp
+    frame_probe.cpp frame_probe.hpp
     canvas_renderer.cpp canvas_renderer.hpp
     realistic_scene.cpp realistic_scene.hpp
     thread_textures.cpp thread_textures.hpp
