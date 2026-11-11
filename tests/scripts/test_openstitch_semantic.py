@@ -231,10 +231,10 @@ class SemanticValidationTest(unittest.TestCase):
         self.assertNotIn('E_MASK_PNG', self.errors(document(region('a'))))
 
         bad_headers = {
-            'wrong_compression_method': b'\\x77\\x9c' + compressed[2:],
-            'invalid_header_checksum': b'\\x78\\x00' + compressed[2:],
-            'preset_dictionary_forbidden': b'\\x78\\x20' + compressed[2:],
-            'truncated_zlib_header': b'\\x78',
+            'wrong_compression_method': b'\x77\x9c' + compressed[2:],
+            'invalid_header_checksum': b'\x78\x00' + compressed[2:],
+            'preset_dictionary_forbidden': b'\x78\x20' + compressed[2:],
+            'truncated_zlib_header': b'\x78',
         }
         for name, payload in bad_headers.items():
             with self.subTest(case=name):
