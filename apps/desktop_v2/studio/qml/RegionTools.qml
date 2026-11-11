@@ -135,8 +135,15 @@ ColumnLayout {
                 // positionChanged event (e.g. a fast drag). Never commit that stroke.
                 const releasePixel = mapImage.pixelAt(mouse.x, mouse.y)
                 if (regionTools.tool !== "select" && section.strokeStartedInside &&
-                        section.strokePoints.length > 0 && releasePixel !== null)
+                        section.strokePoints.length > 0 && releasePixel !== null) {
+                    // A quick release may arrive without a final positionChanged event.
+                    // Include the release pixel so the last brush dab is not lost.
+                    const pts = section.strokePoints
+                    const last = pts[pts.length - 1]
+                    if (last.x !== releasePixel.x || last.y !== releasePixel.y)
+                        section.strokePoints = pts.concat([releasePixel])
                     regionTools.paintStroke(section.strokePoints, regionTools.tool === "erase")
+                }
                 section.strokeStartedInside = false
                 section.strokePoints = []
             }
