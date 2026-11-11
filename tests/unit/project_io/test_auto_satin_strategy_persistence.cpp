@@ -56,7 +56,7 @@ Result<document::Project> load_json(int version, const std::string& paramsJson,
 TEST_CASE("auto-satin : la methode et l'angle de balayage font l'aller-retour") {
     for (const auto strategy :
          {document::AutoSatinStrategy::Skeleton, document::AutoSatinStrategy::ParallelSweep,
-          document::AutoSatinStrategy::MedialAxis}) {
+          document::AutoSatinStrategy::MedialAxis, document::AutoSatinStrategy::Guided}) {
         document::AutoSatinParams p;
         p.strategy = strategy;
         p.sweep_angle = Angle{0.7};
