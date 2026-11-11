@@ -142,6 +142,21 @@ ServiceResult addDirectionGuide(DocumentSession& session, std::uint64_t objectId
 
 ServiceResult clearDirectionGuides(DocumentSession& session, std::uint64_t objectId,
                                    bool breakLines) {
+    if (const auto* obj = session.project().findEmbroidery(ObjectId{objectId})) {
+        if (const auto* satin = std::get_if<document::AutoSatinParams>(&obj->params)) {
+            if (breakLines) {
+                return {false, "Ce satin ne contient pas de lignes de rupture."};
+            }
+            if (satin->guides.empty()) {
+                return {false, "Aucun guide de satin à effacer."};
+            }
+            auto params = *satin;
+            params.guides.clear();
+            session.execute(std::make_unique<commands::EditAutoSatinCommand>(
+                ObjectId{objectId}, std::move(params), "Effacer les guides de satin"));
+            return {true, {}};
+        }
+    }
     const auto* dir = directionalOf(session.project(), objectId);
     if (dir == nullptr) {
         return {false, "Cet objet n'est pas un remplissage directionnel."};
