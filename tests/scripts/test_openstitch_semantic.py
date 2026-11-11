@@ -53,6 +53,22 @@ class SemanticValidationTest(unittest.TestCase):
     def test_occlusion_cycle(self):
         self.assertIn('E_OCCLUSION_CYCLE', self.errors(document(region('a', under=['b']), region('b', under=['a']))))
 
+    def test_deep_parent_hierarchy_does_not_exceed_recursion_limit(self):
+        # A long valid hierarchy used to raise RecursionError in cycles().
+        count = 1500
+        nodes = [region(f'n{i:04}', parent_id=f'n{i + 1:04}' if i + 1 < count else None)
+                 for i in range(count)]
+        result = mod.validate(document(*nodes), self.folder, skip_files=True)
+        self.assertTrue(result['ok'], result['errors'])
+
+    def test_deep_parent_cycle_reports_validation_error(self):
+        count = 1500
+        nodes = [region(f'n{i:04}', parent_id=f'n{i + 1:04}' if i + 1 < count else 'n0000')
+                 for i in range(count)]
+        result = mod.validate(document(*nodes), self.folder, skip_files=True)
+        self.assertFalse(result['ok'])
+        self.assertIn('E_PARENT_CYCLE', [error['code'] for error in result['errors']])
+
     def test_foreign_reference(self):
         self.assertIn('E_REFERENCE', self.errors(document(region('a', over=['missing']))))
 
