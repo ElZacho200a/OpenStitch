@@ -41,6 +41,9 @@ ColumnLayout {
     property int paletteDistance: 60
     property bool paletteMergeAdjacent: true
     property var strokePoints: []
+    // A brush gesture is valid only if it begins inside the painted image and never
+    // crosses the letterbox. Otherwise a later in-bounds move could paint unexpectedly.
+    property bool strokeStartedInside: false
 
     Connections {
         target: regionTools
@@ -100,17 +103,25 @@ ColumnLayout {
             onPressed: function(mouse) {
                 const p = mapImage.pixelAt(mouse.x, mouse.y)
                 if (regionTools.tool === "select") {
+                    section.strokeStartedInside = false
                     if (p)
                         regionTools.selectAtPixel(p.x, p.y, (mouse.modifiers & Qt.ControlModifier) !== 0)
                     else if (!(mouse.modifiers & Qt.ControlModifier))
                         regionTools.clearSelection()
                 } else {
+                    section.strokeStartedInside = p !== null
                     section.strokePoints = p ? [p] : []
                 }
             }
             onPositionChanged: function(mouse) {
-                if (regionTools.tool !== "select" && pressed) {
+                if (regionTools.tool !== "select" && pressed && section.strokeStartedInside) {
                     const p = mapImage.pixelAt(mouse.x, mouse.y)
+                    if (!p) {
+                        // Cancel the entire gesture rather than bridging an empty margin.
+                        section.strokeStartedInside = false
+                        section.strokePoints = []
+                        return
+                    }
                     if (p) {
                         const pts = section.strokePoints
                         if (pts.length === 0 || pts[pts.length - 1].x !== p.x ||
@@ -120,11 +131,16 @@ ColumnLayout {
                 }
             }
             onReleased: {
-                if (regionTools.tool !== "select" && section.strokePoints.length > 0)
+                if (regionTools.tool !== "select" && section.strokeStartedInside &&
+                        section.strokePoints.length > 0)
                     regionTools.paintStroke(section.strokePoints, regionTools.tool === "erase")
+                section.strokeStartedInside = false
                 section.strokePoints = []
             }
-            onCanceled: section.strokePoints = []
+            onCanceled: {
+                section.strokeStartedInside = false
+                section.strokePoints = []
+            }
         }
     }
     RowLayout {
