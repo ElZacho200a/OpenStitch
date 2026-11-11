@@ -106,15 +106,26 @@ def png_size(path: Path) -> tuple[int, int]:
                 raise ValueError('IEND invalide ou IDAT absent')
             crc = zlib.crc32(kind)
             remaining = length
+            transparency_data = b''
             while remaining:
                 block = f.read(min(65536, remaining))
                 if not block:
                     raise ValueError('donnees de chunk PNG tronquees')
                 crc = zlib.crc32(block, crc)
+                if kind == b'tRNS':
+                    # tRNS is bounded (<= 256 bytes for indexed PNG).
+                    transparency_data += block
                 remaining -= len(block)
             stored_crc = f.read(4)
             if len(stored_crc) != 4 or crc & 0xffffffff != struct.unpack('>I', stored_crc)[0]:
                 raise ValueError('CRC de chunk PNG invalide ou tronque')
+            if kind == b'tRNS' and color_type in (0, 2):
+                # The 16-bit tRNS fields contain native-depth samples. Values
+                # outside the IHDR bit depth are not valid transparency keys.
+                sample_format = '>H' if color_type == 0 else '>HHH'
+                samples = struct.unpack(sample_format, transparency_data)
+                if any(sample >= (1 << bit_depth) for sample in samples):
+                    raise ValueError('echantillon tRNS hors profondeur PNG')
             if kind == b'IEND':
                 if f.read(1):
                     raise ValueError('octets apres IEND')
