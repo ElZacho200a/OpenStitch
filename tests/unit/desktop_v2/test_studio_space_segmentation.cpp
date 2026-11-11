@@ -182,8 +182,7 @@ private:
         ctx->setContextProperty(QStringLiteral("regionTools"), &rig.regions);
         ctx->setContextProperty(QStringLiteral("segmentationSpace"), &rig.space);
         rig.engine.load(QUrl(QStringLiteral("qrc:/studio/qml/Main.qml")));
-        QVERIFY2(!rig.engine.rootObjects().isEmpty(), qPrintable(rig.warnings.join(QStringLiteral("
-"))));
+        QVERIFY2(!rig.engine.rootObjects().isEmpty(), qPrintable(rig.warnings.join('\n')));
         rig.window = qobject_cast<QQuickWindow*>(rig.engine.rootObjects().front());
         QVERIFY(rig.window);
         rig.workspace = rig.window->findChild<WorkspaceController*>();
@@ -258,8 +257,7 @@ private slots:
         // Contours : une reconstruction du remplissage.
         rig.space.setContours(false);
         QTRY_COMPARE(rig.space.fillRebuilds(), fill + 1);
-        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join(QStringLiteral("
-"))));
+        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
     }
 
     // The region thumbnail is letterboxed inside its panel. A click on the empty margin must
@@ -330,8 +328,7 @@ private slots:
         QTest::mouseRelease(rig.window, Qt::LeftButton, Qt::NoModifier, blank);
         QCOMPARE(rig.session.revision(), revision);
         QCOMPARE(rig.session.undoNames().size(), undoDepth);
-        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join(QStringLiteral("
-"))));
+        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
     }
 
     // A fast drag may report only press and release. The last in-image brush dab must
@@ -369,7 +366,7 @@ private slots:
         QVERIFY(rig.studio.scene() == scene); // Segmentation edits do not regenerate stitches.
         QVERIFY(rig.session.undo());
         QCOMPARE(regionAtPixel(rig.session.project(), 130, 30).value(), other);
-        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join(QStringLiteral("\n"))));
+        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\\n')));
     }
 
     // --- sélection au clic ----------------------------------------------------------------
@@ -411,8 +408,7 @@ private slots:
         rig.regions.selectRegion(first);
         QTRY_VERIFY(!rig.canvas()->regionLayer()->highlight.isNull());
         QCOMPARE(rig.space.selectedCount(), 1);
-        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join(QStringLiteral("
-"))));
+        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
     }
 
     void selectionAndRecolorDoNotRegenerateStitches() {
@@ -443,8 +439,7 @@ private slots:
         QVERIFY(rig.session.redo());
         QVERIFY(rig.studio.scene() == scene);
         QCOMPARE(geometry.count(), 0);
-        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join(QStringLiteral("
-"))));
+        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
     }
 
     // --- état publié et mise à jour de l'aval ----------------------------------------------
@@ -491,8 +486,7 @@ private slots:
         // Quitter l'espace : la publication est retirée (le calcul de base reprend).
         rig.workspace->setCurrent(QStringLiteral("points"));
         QTRY_VERIFY(rig.stage().value("actionLabel").toString().isEmpty());
-        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join(QStringLiteral("
-"))));
+        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
     }
 
     // --- parcours repris de l'ancien préparateur, par les panneaux de l'espace -------------
@@ -624,8 +618,7 @@ private slots:
         QCOMPARE(pending.value("smoothing_radius_px").toInt(), 2);
         if (rig.regions.busy())
             rig.regions.cancelTask();
-        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join(QStringLiteral("
-"))));
+        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
     }
 
     // Sans contrôleurs d'espace ni d'image (hôte minimal) : l'espace s'ouvre sans erreur.
@@ -646,15 +639,13 @@ private slots:
         engine.rootContext()->setContextProperty(QStringLiteral("actions"), &actions);
         engine.rootContext()->setContextProperty(QStringLiteral("editor"), &editor);
         engine.load(QUrl(QStringLiteral("qrc:/studio/qml/Main.qml")));
-        QVERIFY2(!engine.rootObjects().isEmpty(), qPrintable(warnings.join(QStringLiteral("
-"))));
+        QVERIFY2(!engine.rootObjects().isEmpty(), qPrintable(warnings.join('\n')));
         auto* window = qobject_cast<QQuickWindow*>(engine.rootObjects().front());
         auto* workspace = window->findChild<WorkspaceController*>();
         QVERIFY(workspace);
         workspace->setCurrent(QStringLiteral("segmentation"));
         QTRY_VERIFY(window->findChild<QObject*>(QStringLiteral("segmentationSpace")));
-        QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join(QStringLiteral("
-"))));
+        QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join('\n')));
     }
 
 private slots:
