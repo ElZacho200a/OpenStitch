@@ -243,10 +243,10 @@ bool SatinController::moveAutoSatinGuidePoint(int guide, int node, double xMm, d
     if (id_ == 0 || guide < 0 || node < 0) {
         return refuse(QStringLiteral("Sélectionnez un nœud de guide satin."));
     }
-    return report(desktop_v2::moveAutoSatinGuideNode(
-                      studio_.session(), id_, static_cast<std::size_t>(guide),
-                      static_cast<std::size_t>(node), PointMm{xMm, yMm}),
-                  QStringLiteral("Nœud du guide satin déplacé."));
+    return report(
+        desktop_v2::moveAutoSatinGuideNode(studio_.session(), id_, static_cast<std::size_t>(guide),
+                                           static_cast<std::size_t>(node), PointMm{xMm, yMm}),
+        QStringLiteral("Nœud du guide satin déplacé."));
 }
 
 bool SatinController::clearGuides(bool breakLines) {
