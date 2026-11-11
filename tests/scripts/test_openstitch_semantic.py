@@ -112,6 +112,42 @@ class SemanticValidationTest(unittest.TestCase):
                 self.assertNotIn('E_MASK_PNG', self.errors(
                     document(region('a')), skip_files=True))
 
+    def test_png_chunk_structure_and_crc_are_checked(self):
+        good = png_bytes(2, 3)
+
+        def chunk(kind, data):
+            payload = kind + data
+            return (struct.pack('>I', len(data)) + payload +
+                    struct.pack('>I', zlib.crc32(payload) & 0xffffffff))
+
+        idat_length = struct.unpack('>I', good[33:37])[0]
+        idat_end = 33 + 12 + idat_length
+        damaged_idat = bytearray(good)
+        damaged_idat[41] ^= 1  # Change the payload without updating its CRC.
+        ancillary = chunk(b'tEXt', b'Comment\\x00ok')
+        # Ancillary chunks after IDAT are legal and must remain accepted.
+        self.folder.joinpath('mask.png').write_bytes(
+            good[:idat_end] + ancillary + good[idat_end:])
+        self.assertNotIn('E_MASK_PNG', self.errors(document(region('a'))))
+
+        cases = {
+            'header_only': good[:33],
+            'missing_idat': good[:33] + good[idat_end:],
+            'truncated_idat': good[:43],
+            'missing_iend': good[:idat_end],
+            'bad_idat_crc': bytes(damaged_idat),
+            'trailing_bytes': good + b'junk',
+            'duplicate_ihdr': good[:33] + good[8:33] + good[33:],
+            'noncontiguous_idat': (good[:idat_end] + ancillary +
+                                  chunk(b'IDAT', b'') + good[idat_end:]),
+        }
+        for name, contents in cases.items():
+            with self.subTest(case=name):
+                self.folder.joinpath('mask.png').write_bytes(contents)
+                self.assertIn('E_MASK_PNG', self.errors(document(region('a'))))
+                self.assertNotIn('E_MASK_PNG', self.errors(
+                    document(region('a')), skip_files=True))
+
     def test_path_escape(self):
         self.assertIn('E_PATH', self.errors(document(region('a', mask_path='../outside.png'))))
 
