@@ -302,7 +302,7 @@ private slots:
         QTest::qWait(100);
         QCOMPARE(rig.session.revision(), revision);
         QCOMPARE(rig.session.undoNames().size(), undoDepth);
-        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\\n')));
+        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
     }
 
     // --- sélection au clic ----------------------------------------------------------------
