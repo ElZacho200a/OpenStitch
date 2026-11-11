@@ -321,6 +321,13 @@ private slots:
         QTest::mouseRelease(rig.window, Qt::LeftButton, Qt::NoModifier, inside);
         QCOMPARE(rig.session.revision(), revision);
         QCOMPARE(rig.session.undoNames().size(), undoDepth);
+
+        // Qt may deliver a release in the letterbox without a final move event.
+        // This must cancel rather than commit the in-bounds portion of the stroke.
+        QTest::mousePress(rig.window, Qt::LeftButton, Qt::NoModifier, inside);
+        QTest::mouseRelease(rig.window, Qt::LeftButton, Qt::NoModifier, blank);
+        QCOMPARE(rig.session.revision(), revision);
+        QCOMPARE(rig.session.undoNames().size(), undoDepth);
         QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
     }
 
