@@ -49,6 +49,11 @@ std::optional<document::DirectionalFillParams> paramsFor(const document::Project
 } // namespace
 
 int directionGuideCount(const document::Project& project, std::uint64_t objectId) {
+    if (const auto* obj = project.findEmbroidery(ObjectId{objectId})) {
+        if (const auto* satin = std::get_if<document::AutoSatinParams>(&obj->params)) {
+            return static_cast<int>(satin->guides.size());
+        }
+    }
     const auto* dir = directionalOf(project, objectId);
     return dir != nullptr ? static_cast<int>(dir->guides.size()) : -1;
 }
@@ -83,6 +88,30 @@ ServiceResult addDirectionGuide(DocumentSession& session, std::uint64_t objectId
     if (pts.size() < 2) {
         return {false, std::string("Il faut au moins deux points distincts pour tracer une ") +
                            what + "."};
+    }
+    // An auto-satin guide must NOT convert the object to directional fill. For
+    // the Guided strategy, the curve is the editable central line. Other auto
+    // satin strategies retain their existing interpretation of curved guides.
+    if (const auto* satin = std::get_if<document::AutoSatinParams>(&emb->params)) {
+        if (isBreak) {
+            return {false, "Une ligne de rupture n'est pas prise en charge par le satin automatique."};
+        }
+        if (satin->guides.size() >= 64) {
+            return {false, "64 guides au maximum pour un satin automatique."};
+        }
+        auto params = *satin;
+        const Vec2um delta{Micrometers{pts[1].x.value - pts[0].x.value},
+                           Micrometers{pts[1].y.value - pts[0].y.value}};
+        document::AutoSatinGuide guide;
+        guide.anchor = pts.front();
+        guide.angle = Angle{std::atan2(static_cast<double>(delta.y.value),
+                                      static_cast<double>(delta.x.value))};
+        guide.absolute = true;
+        guide.path = std::move(pts);
+        params.guides.push_back(std::move(guide));
+        session.execute(std::make_unique<commands::EditAutoSatinCommand>(
+            ObjectId{objectId}, std::move(params), "Tracer un guide de satin"));
+        return {true, {}};
     }
     auto params = paramsFor(session.project(), *emb);
     if (!params) {
