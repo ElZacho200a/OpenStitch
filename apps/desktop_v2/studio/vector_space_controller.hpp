@@ -33,6 +33,8 @@ class VectorSpaceController : public QObject {
     Q_PROPERTY(double curveTolerancePx READ curveTolerancePx WRITE setCurveTolerancePx NOTIFY
                    optionsChanged)
     Q_PROPERTY(int layerBuildCount READ layerBuildCount NOTIFY layerChanged)
+    // Publications servies depuis le cache de calques déjà rasterisés (aucun calcul).
+    Q_PROPERTY(int layerCacheHits READ layerCacheHits NOTIFY layerChanged)
     // Vrai pendant qu'un calque est rasterisé sur un worker : l'ancien reste affiché.
     Q_PROPERTY(bool layerPending READ layerPending NOTIFY layerChanged)
     Q_PROPERTY(QVariantMap selectedShape READ selectedShape NOTIFY layerChanged)
@@ -49,6 +51,7 @@ public:
 
     [[nodiscard]] int shapeCount() const;
     [[nodiscard]] int layerBuildCount() const { return builds_; }
+    [[nodiscard]] int layerCacheHits() const { return cacheHits_; }
     [[nodiscard]] bool layerPending() const { return pending_; }
     // Formes du calque réellement publié (peut retarder sur le document pendant `layerPending`).
     [[nodiscard]] int publishedShapeCount() const {
@@ -111,6 +114,18 @@ private:
     std::uint64_t statusRevision_{0};
     // Visual-only fingerprints: a stitch parameter change must not repaint vector shapes.
     std::vector<std::uint64_t> renderedVisualKeys_;
+    // Calques déjà rasterisés, du plus récent au plus ancien (clés visuelles exactes) : revenir à
+    // un état déjà vu (masquer puis ré-afficher, annuler) republie l'image sans la recalculer.
+    struct CachedLayer {
+        std::vector<std::uint64_t> keys;
+        std::shared_ptr<const VectorLayer> layer;
+    };
+    std::vector<CachedLayer> layerCache_;
+    int cacheHits_{0};
+    [[nodiscard]] std::shared_ptr<const VectorLayer>
+    cachedLayer(const std::vector<std::uint64_t>& keys);
+    void rememberLayer(const std::vector<std::uint64_t>& keys,
+                       const std::shared_ptr<const VectorLayer>& layer);
     int builds_{0};
     // Reconstruction asynchrone : une seule à la fois, les résultats périmés sont ignorés.
     TaskManager tasks_;

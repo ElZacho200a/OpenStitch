@@ -181,8 +181,44 @@ std::vector<std::uint64_t> VectorSpaceController::selectedShapeIds() const {
     return out;
 }
 
+namespace {
+constexpr std::size_t kLayerCacheEntries = 4;
+constexpr qint64 kLayerCacheBytes = 96LL * 1024 * 1024; // plafond de mémoire des images conservées
+} // namespace
+
+std::shared_ptr<const VectorLayer>
+VectorSpaceController::cachedLayer(const std::vector<std::uint64_t>& keys) {
+    const auto it =
+        std::ranges::find_if(layerCache_, [&](const CachedLayer& e) { return e.keys == keys; });
+    if (it == layerCache_.end()) {
+        return nullptr;
+    }
+    std::rotate(layerCache_.begin(), it, it + 1); // le plus récemment utilisé en tête
+    return layerCache_.front().layer;
+}
+
+void VectorSpaceController::rememberLayer(const std::vector<std::uint64_t>& keys,
+                                          const std::shared_ptr<const VectorLayer>& layer) {
+    if (!layer) {
+        return;
+    }
+    std::erase_if(layerCache_, [&](const CachedLayer& e) { return e.keys == keys; });
+    layerCache_.insert(layerCache_.begin(), CachedLayer{keys, layer});
+    qint64 bytes = 0;
+    std::size_t kept = 0;
+    for (const auto& entry : layerCache_) {
+        bytes += entry.layer->image().image.sizeInBytes();
+        if (kept >= kLayerCacheEntries || (kept > 0 && bytes > kLayerCacheBytes)) {
+            break;
+        }
+        ++kept;
+    }
+    layerCache_.resize(std::max<std::size_t>(kept, 1));
+}
+
 void VectorSpaceController::publishLayer(std::shared_ptr<const VectorLayer> layer,
                                          std::vector<std::uint64_t> keys) {
+    rememberLayer(keys, layer);
     layer_ = std::move(layer);
     renderedVisualKeys_ = std::move(keys);
     ++builds_;
@@ -243,7 +279,14 @@ void VectorSpaceController::refresh() {
         if (alreadyBuilding) {
             // Ce même état est déjà en cours de rasterisation : ne pas relancer.
         } else if (differsFromRendered) {
-            if (session.project().vector_objects.size() <= kSyncShapeLimit) {
+            if (const auto known = cachedLayer(nextVisualKeys)) {
+                // État déjà rasterisé (masquer puis ré-afficher, annuler) : republié tel quel.
+                tasks_.cancelAll();
+                ++buildRequest_;
+                pending_ = false;
+                ++cacheHits_;
+                publishLayer(known, std::move(nextVisualKeys));
+            } else if (session.project().vector_objects.size() <= kSyncShapeLimit) {
                 // Petite scène : rasterisation synchrone (quelques ms), comme avant. Toute
                 // rasterisation asynchrone devenue inutile est abandonnée.
                 tasks_.cancelAll();
