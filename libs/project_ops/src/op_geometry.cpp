@@ -1199,7 +1199,7 @@ void register_geometry_ops(std::vector<OpSpec>& out) {
           false, ""},
          {"strategy", "string", "",
            "méthode : parallel_sweep (balayage parallèle, défaut), skeleton, medial_axis "
-          "(axe médian vectoriel) ou guided_satin (guide courbe)"
+          "(axe médian vectoriel) ou guided_satin (guide courbe)",
           false, "skeleton | parallel_sweep | medial_axis | guided_satin"},
          {"sweep_angle_deg", "number", "°",
           "balayage parallèle : angle des traversées (défaut : automatique)", false,
