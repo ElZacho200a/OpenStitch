@@ -59,6 +59,7 @@ def png_size(path: Path) -> tuple[int, int]:
         f.seek(33)  # IHDR deja valide, y compris son CRC.
         seen_idat = False
         seen_idat_data = False
+        idat_header = bytearray()  # first two zlib bytes, even across IDAT chunks
         seen_plte = False
         seen_trns = False
         palette_entries = 0
@@ -123,6 +124,8 @@ def png_size(path: Path) -> tuple[int, int]:
                 if kind == b'tRNS':
                     # tRNS is bounded (<= 256 bytes for indexed PNG).
                     transparency_data += block
+                if kind == b'IDAT' and len(idat_header) < 2:
+                    idat_header.extend(block[:2 - len(idat_header)])
                 remaining -= len(block)
             stored_crc = f.read(4)
             if len(stored_crc) != 4 or crc & 0xffffffff != struct.unpack('>I', stored_crc)[0]:
@@ -135,6 +138,14 @@ def png_size(path: Path) -> tuple[int, int]:
                 if any(sample >= (1 << bit_depth) for sample in samples):
                     raise ValueError('echantillon tRNS hors profondeur PNG')
             if kind == b'IEND':
+                # PNG mandates a zlib/deflate stream without preset dictionary.
+                # Check its two-byte header without decompressing pixel data.
+                if len(idat_header) != 2:
+                    raise ValueError('en-tete zlib IDAT tronque')
+                cmf, flg = idat_header
+                if ((cmf & 0x0f) != 8 or (cmf >> 4) > 7
+                        or ((cmf << 8) | flg) % 31 != 0 or flg & 0x20):
+                    raise ValueError('en-tete zlib IDAT invalide')
                 if f.read(1):
                     raise ValueError('octets apres IEND')
                 break
