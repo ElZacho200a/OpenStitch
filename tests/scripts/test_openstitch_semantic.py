@@ -148,6 +148,52 @@ class SemanticValidationTest(unittest.TestCase):
                 self.assertNotIn('E_MASK_PNG', self.errors(
                     document(region('a')), skip_files=True))
 
+    def test_png_critical_chunks_and_palette_rules(self):
+        # Build complete PNG fixtures; validation deliberately does not decode IDAT.
+        def chunk(kind, data):
+            payload = kind + data
+            return (struct.pack('>I', len(data)) + payload +
+                    struct.pack('>I', zlib.crc32(payload) & 0xffffffff))
+
+        sig = b'\x89PNG\r\n\x1a\n'
+        ihdr = lambda depth, color: chunk(
+            b'IHDR', struct.pack('>IIBBBBB', 2, 3, depth, color, 0, 0, 0))
+        palette = chunk(b'PLTE', b'\x00\x00\x00\xff\xff\xff')
+        indexed_idat = chunk(b'IDAT', zlib.compress(b'\x00\x00' * 3))
+        iend = chunk(b'IEND', b'')
+        indexed = sig + ihdr(1, 3) + palette + indexed_idat + iend
+        self.folder.joinpath('mask.png').write_bytes(indexed)
+        self.assertNotIn('E_MASK_PNG', self.errors(document(region('a'))))
+
+        rgba = png_bytes(2, 3)
+        idat_length = struct.unpack('>I', rgba[33:37])[0]
+        idat_end = 33 + 12 + idat_length
+        cases = {
+            'unknown_critical': rgba[:33] + chunk(b'ABCD', b'') + rgba[33:],
+            'reserved_bit': rgba[:33] + chunk(b'tExt', b'') + rgba[33:],
+            'indexed_missing_palette': sig + ihdr(1, 3) + indexed_idat + iend,
+            'indexed_too_many_entries': (sig + ihdr(1, 3) +
+                                         chunk(b'PLTE', b'\x00' * 9) +
+                                         indexed_idat + iend),
+            'indexed_bad_palette_length': (sig + ihdr(1, 3) +
+                                           chunk(b'PLTE', b'\x00' * 4) +
+                                           indexed_idat + iend),
+            'indexed_duplicate_palette': (sig + ihdr(1, 3) + palette + palette +
+                                          indexed_idat + iend),
+            'grayscale_palette': (sig + ihdr(8, 0) + palette +
+                                  indexed_idat + iend),
+            'palette_after_idat': rgba[:idat_end] + palette + rgba[idat_end:],
+            'empty_palette': rgba[:33] + chunk(b'PLTE', b'') + rgba[33:],
+            'oversized_palette': (rgba[:33] + chunk(b'PLTE', b'\x00' * 771) +
+                                  rgba[33:]),
+        }
+        for name, contents in cases.items():
+            with self.subTest(case=name):
+                self.folder.joinpath('mask.png').write_bytes(contents)
+                self.assertIn('E_MASK_PNG', self.errors(document(region('a'))))
+                self.assertNotIn('E_MASK_PNG', self.errors(
+                    document(region('a')), skip_files=True))
+
     def test_path_escape(self):
         self.assertIn('E_PATH', self.errors(document(region('a', mask_path='../outside.png'))))
 
