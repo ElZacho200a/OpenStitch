@@ -4,6 +4,7 @@ add_library(openstitch_stitch_generation
     src/running_stitch.cpp
     src/tatami.cpp
     src/directional_fill.cpp
+    src/directional_guides.cpp
     src/color_blend.cpp
     src/satin.cpp
     src/satin_guides.cpp
