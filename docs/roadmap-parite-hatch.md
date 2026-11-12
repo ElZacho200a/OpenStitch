@@ -1141,7 +1141,7 @@ plus.
   significative (principal + branches, max 8) ; (2) guides existants = remplacés,
   y compris le guide par défaut issu de la conversion tatami. Voir
   `docs/source/directional-fill.md` § Interface.
-- Plan (2026-11-12, en PR) : `specs/plans/hp-sti-018a-directional-guides.md` ; décisions (3) tatami et directionnel, (4) cercle refusé avec le diagnostic `round_shape`. Aucun code ; statut inchangé.
+- Constat (2026-11-12, agent) : le cœur existe déjà sur `main` : `directional_guides_from_region` (`libs/stitch_generation/.../directional_fill.hpp`, commit `0a8c495`, tests dans `test_directional_fill.cpp`), appelé par l'op `project_ops` (`op_params.cpp`) et par le bureau V1 (`apps/desktop/main_window_directional.cpp`). Reste : câblage Studio (`apps/desktop_v2`, une seule `ICommand` annulable, remplacement des guides) ; aucun appel côté `desktop_v2` constaté. Statut inchangé (☐) tant que Studio n'expose pas l'action ; une première tentative de doublon (même nom, signature différente) a été retirée : violation ODR détectée sous Linux.
 
 ### HP-STI-019 — Broderie à main levée (freehand) [P2] — ☐ À faire
 - Hatch : dessiner directement un point de contour, triple, satin à la souris
