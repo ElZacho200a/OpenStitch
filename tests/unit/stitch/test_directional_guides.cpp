@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <string>
 #include <vector>
 
 #include "openstitch/stitch_generation/directional_guides.hpp"
@@ -27,6 +28,13 @@ geometry::PathSet polygon(const std::vector<Vec2um>& pts) {
     return set;
 }
 
+std::string describe(const Result<DirectionalGuideResult>& r) {
+    if (r.has_value()) {
+        return "ok";
+    }
+    return r.error().code + " | " + r.error().message + " | " + r.error().detail;
+}
+
 geometry::PathSet disc(double radiusMm) {
     std::vector<Vec2um> pts;
     for (int i = 0; i < 64; ++i) {
@@ -41,8 +49,7 @@ geometry::PathSet disc(double radiusMm) {
 TEST_CASE("directional guides: long rectangle gives one central guide", "[directional_guides]") {
     const auto region = polygon({um(0, 0), um(40, 0), um(40, 6), um(0, 6)});
     const auto r = directional_guides_from_region(region);
-    INFO(r.has_value() ? "ok"
-                       : r.error().code + " | " + r.error().message + " | " + r.error().detail);
+    INFO(describe(r));
     REQUIRE(r.has_value());
     REQUIRE_FALSE(r->guides.empty());
     const auto& g = r->guides.front();
@@ -63,8 +70,7 @@ TEST_CASE("directional guides: every guide point stays inside the region", "[dir
     const auto region = polygon(
         {um(0, 0), um(30, 0), um(30, 5), um(18, 5), um(18, 25), um(12, 25), um(12, 5), um(0, 5)});
     const auto r = directional_guides_from_region(region);
-    INFO(r.has_value() ? "ok"
-                       : r.error().code + " | " + r.error().message + " | " + r.error().detail);
+    INFO(describe(r));
     REQUIRE(r.has_value());
     REQUIRE(r->guides.size() <= 8);
     for (const auto& g : r->guides) {
@@ -92,8 +98,7 @@ TEST_CASE("directional guides: max_guides caps the result", "[directional_guides
     DirectionalGuideOptions options;
     options.max_guides = 1;
     const auto r = directional_guides_from_region(region, options);
-    INFO(r.has_value() ? "ok"
-                       : r.error().code + " | " + r.error().message + " | " + r.error().detail);
+    INFO(describe(r));
     REQUIRE(r.has_value());
     REQUIRE(r->guides.size() == 1);
 }
@@ -102,6 +107,6 @@ TEST_CASE("directional guides: a round shape is refused with a stable code",
           "[directional_guides]") {
     const auto r = directional_guides_from_region(disc(5.0));
     REQUIRE_FALSE(r.has_value());
-    INFO(r.error().code + " | " + r.error().message + " | " + r.error().detail);
+    INFO(describe(r));
     REQUIRE(r.error().code == "E_ROUND_SHAPE");
 }
