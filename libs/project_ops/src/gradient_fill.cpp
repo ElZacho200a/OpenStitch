@@ -396,6 +396,33 @@ multicolor_layers(const document::EmbroideryObject& base,
     if (n < 2 || n > 8) {
         return std::nullopt;
     }
+    if (const auto* satin = std::get_if<document::SatinParams>(&base.params)) {
+        if (satin->rail_a.nodes.size() < 2 || satin->rail_b.nodes.size() < 2) {
+            return std::nullopt;
+        }
+        std::vector<document::EmbroideryObject> layers;
+        layers.reserve(n);
+        for (std::size_t i = 0; i < n; ++i) {
+            auto next = base;
+            auto params = *satin;
+            if (i != 0) {
+                params.center_underlay = false;
+                params.underlay_edge = false;
+                params.underlay_zigzag = false;
+                params.underlay_mode = document::UnderlayMode::Manual;
+            }
+            next.params = std::move(params);
+            next.rgb = spec.colors[i];
+            next.thread.reset();
+            next.color_blend.reset();
+            next.multi_blend.reset();
+            next.overrides.clear();
+            next.edited_fingerprint = 0;
+            next.edited_point_count = 0;
+            layers.push_back(std::move(next));
+        }
+        return layers;
+    }
     auto templateGradient = spec.gradient;
     templateGradient.density_stops.clear();
     auto pair =
@@ -487,15 +514,19 @@ describe_multicolor_gradient_fill(const document::Project& project, ObjectId lay
         return std::nullopt;
     }
     const auto* first = project.findEmbroidery(group->layers.front());
-    const auto* params =
-        first != nullptr ? std::get_if<document::DirectionalFillParams>(&first->params) : nullptr;
-    if (params == nullptr || !params->density_gradient) {
+    if (first == nullptr) {
+        return std::nullopt;
+    }
+    const auto* params = std::get_if<document::DirectionalFillParams>(&first->params);
+    if (!first->is_satin() && (params == nullptr || !params->density_gradient)) {
         return std::nullopt;
     }
     MultiGradientFillSpec spec;
     spec.complementary = group->complementary;
-    spec.gradient = *params->density_gradient;
-    spec.gradient.density_stops.clear(); // chaque membre a son propre profil
+    if (params != nullptr && params->density_gradient) {
+        spec.gradient = *params->density_gradient;
+        spec.gradient.density_stops.clear(); // chaque membre a son propre profil
+    }
     for (const auto id : group->layers) {
         const auto* member = project.findEmbroidery(id);
         if (member == nullptr) {
@@ -510,12 +541,16 @@ Result<std::unique_ptr<commands::ICommand>>
 make_create_multicolor_gradient_fill_command(document::Project& project, ObjectId fill,
                                              const MultiGradientFillSpec& spec) {
     const auto* base = project.findEmbroidery(fill);
-    if (base == nullptr || base->color_blend || base->multi_blend || !validate_multicolor(spec)) {
+    if (base == nullptr || base->color_blend || base->multi_blend ||
+        !(base->is_tatami() || base->is_directional() || base->is_satin()) ||
+        !validate_multicolor(spec)) {
         return fail(ErrorCategory::OperationImpossible,
                     "Choisissez un remplissage unique et entre 2 et 8 fils distincts.");
     }
-    if (const auto why = gradient_incompatibility(project, fill); !why.empty()) {
-        return fail(ErrorCategory::OperationImpossible, why);
+    if (!base->is_satin()) {
+        if (const auto why = gradient_incompatibility(project, fill); !why.empty()) {
+            return fail(ErrorCategory::OperationImpossible, why);
+        }
     }
     const auto* source = project.findObject(base->source_vector);
     if (source == nullptr) {
