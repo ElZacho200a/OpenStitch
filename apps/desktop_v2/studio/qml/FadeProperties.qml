@@ -20,6 +20,12 @@ Item {
     readonly property bool distinctColor: ready && colorValid
                                           && colorField.text.trim().toLowerCase() !== controller.background.toString().toLowerCase()
     property bool advancedOpen: false
+    property int selectedTexture: 0
+    readonly property var textures: [
+        { id: 0, label: qsTr("Lisse") },
+        { id: 1, label: qsTr("Bords irréguliers") },
+        { id: 2, label: qsTr("Tramé") }
+    ]
     implicitHeight: fields.implicitHeight + 22
 
     function numberFromInput(value) {
@@ -45,8 +51,10 @@ Item {
         if (hasFade) {
             colorField.text = controller.foreground.toString()
             complementary.checked = controller.complementary
+            selectedTexture = controller.texture
         } else if (!colorValid || colorField.text.trim().toLowerCase() === controller.background.toString().toLowerCase()) {
             colorField.text = "#c81e1e"
+            selectedTexture = 0
             if (colorField.text === controller.background.toString().toLowerCase())
                 colorField.text = "#2468a0"
         }
@@ -198,6 +206,45 @@ Item {
                 font.pixelSize: Theme.smallSize
                 wrapMode: Text.WordWrap
             }
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("Aspect de la transition")
+                color: Theme.foreground
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.smallSize
+            }
+            Flow {
+                Layout.fillWidth: true
+                spacing: 4
+                Repeater {
+                    model: root.textures
+                    delegate: StudioButton {
+                        required property var modelData
+                        objectName: root.prefix + "Texture" + modelData.id
+                        text: modelData.label
+                        checkable: true
+                        checked: root.selectedTexture === modelData.id
+                        enabled: root.ready && (root.hasFade || root.canCreate)
+                        onClicked: {
+                            root.selectedTexture = modelData.id
+                            if (root.hasFade)
+                                root.controller.setTexture(modelData.id)
+                        }
+                    }
+                }
+            }
+            Text {
+                Layout.fillWidth: true
+                text: root.selectedTexture === 1
+                      ? qsTr("Les limites de couleur s'imbriquent de façon irrégulière, sans bruit aléatoire.")
+                      : root.selectedTexture === 2
+                        ? qsTr("Un tramage de petites cellules répartit les fils. À contrôler dans la simulation.")
+                        : qsTr("Transition régulière de densité entre les fils.")
+                color: Theme.faint
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.captionSize
+                wrapMode: Text.WordWrap
+            }
             StudioCheckBox {
                 id: complementary
                 objectName: root.prefix + "Complementary"
@@ -225,7 +272,9 @@ Item {
                     visible: !root.hasFade
                     enabled: root.canCreate && root.distinctColor
                     Layout.fillWidth: true
-                    onClicked: root.controller.create(colorField.text.trim(), complementary.checked)
+                    onClicked: root.controller.createWithTexture(
+                                   colorField.text.trim(), complementary.checked,
+                                   root.selectedTexture)
                 }
                 StudioButton {
                     objectName: root.prefix + "Edit"
