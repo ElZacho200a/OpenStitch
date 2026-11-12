@@ -456,17 +456,16 @@ std::vector<ObjectId> reordered_blend_ids(const document::Project& project,
     std::vector<ObjectId> result;
     result.reserve(project.embroidery_objects.size() + newIds.size());
     for (const auto& object : project.embroidery_objects) {
-        if (std::find(oldIds.begin(), oldIds.end(), object.id) != oldIds.end()) {
+        if (object.id == oldIds.front()) {
+            // Garder le remplissage de base, puis placer tous les fils du
+            // groupe dans l'ordre exact de couture.
+            result.insert(result.end(), newIds.begin(), newIds.end());
             continue;
         }
-        result.push_back(object.id);
-        if (object.id == oldIds.front()) {
-            // Toutes les couches réellement conservées et nouvellement
-            // ajoutées sont recousues contiguës, dans l'ordre de leur indice.
-            for (std::size_t i = 1; i < newIds.size(); ++i) {
-                result.push_back(newIds[i]);
-            }
+        if (std::find(oldIds.begin() + 1, oldIds.end(), object.id) != oldIds.end()) {
+            continue; // couche ancienne déjà insérée à côté de la base
         }
+        result.push_back(object.id);
     }
     return result;
 }
