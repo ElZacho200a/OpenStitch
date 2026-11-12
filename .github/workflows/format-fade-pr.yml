@@ -1,0 +1,33 @@
+name: Temporary clang-format OpenStitch fade branch
+on:
+  push:
+    branches:
+      - feat/studio-fade-ux-camaieu-foundation-20261112
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/studio-fade-ux-camaieu-foundation-20261112
+          persist-credentials: true
+      - name: Install matching formatter
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y clang-format-18
+      - name: Format C++ files to the repository rules
+        run: git ls-files '*.cpp' '*.hpp' | xargs clang-format-18 -i
+      - name: Commit formatting updates to feature branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- '*.cpp' '*.hpp'
+          if ! git diff --cached --quiet; then
+            git commit -m "style: apply clang-format 18 to fade branch"
+            git push origin HEAD:feat/studio-fade-ux-camaieu-foundation-20261112
+          fi
