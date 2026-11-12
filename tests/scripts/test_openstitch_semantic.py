@@ -1,6 +1,8 @@
 """Tests du manifeste : IDs, cycles, superpositions, PNG et chemins."""
 import importlib.util
 import json
+import struct
+import zlib
 import tempfile
 import unittest
 from pathlib import Path
@@ -9,6 +11,19 @@ SCRIPT = Path(__file__).resolve().parents[2] / 'scripts/openstitch_semantic.py'
 spec = importlib.util.spec_from_file_location('openstitch_semantic', SCRIPT)
 mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mod)
+
+
+def png_bytes(width, height):
+    """Petit PNG RGBA valide pour les tests d'en-tete."""
+    def chunk(kind, data):
+        payload = kind + data
+        return (struct.pack('>I', len(data)) + payload +
+                struct.pack('>I', zlib.crc32(payload) & 0xffffffff))
+
+    ihdr = struct.pack('>IIBBBBB', width, height, 8, 6, 0, 0, 0)
+    pixels = (b'\x00' + b'\x00\x00\x00\x00' * width) * height
+    return (b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', ihdr) +
+            chunk(b'IDAT', zlib.compress(pixels)) + chunk(b'IEND', b''))
 
 
 def region(sid, **kwargs):
@@ -28,8 +43,7 @@ class SemanticValidationTest(unittest.TestCase):
         self.work = tempfile.TemporaryDirectory()
         self.addCleanup(self.work.cleanup)
         self.folder = Path(self.work.name)
-        self.folder.joinpath('mask.png').write_bytes(b'\x89PNG\r\n\x1a\n' +
-            (13).to_bytes(4, 'big') + b'IHDR' + (2).to_bytes(4, 'big') + (3).to_bytes(4, 'big'))
+        self.folder.joinpath('mask.png').write_bytes(png_bytes(2, 3))
 
     def errors(self, doc, skip_files=False):
         result = mod.validate(doc, self.folder, skip_files=skip_files)
@@ -40,6 +54,22 @@ class SemanticValidationTest(unittest.TestCase):
                      region('lierre.feuille1', parent_id='lierre', under=['mur']),
                      region('mur', family='architecture', role='pierre', over=['lierre.feuille1']))
         self.assertTrue(mod.validate(d, self.folder)['ok'])
+
+    def test_source_dimensions_bounded_with_skip_files(self):
+        # The manifest must not bypass the same pixel limits as PNG masks.
+        doc = document()
+        doc['source_image'] = {'width_px': 100_000, 'height_px': 1_000}
+        self.assertTrue(mod.validate(doc, self.folder, skip_files=True)['ok'])
+        for width, height in ((100_001, 1), (1, 100_001), (10_001, 10_000)):
+            with self.subTest(width=width, height=height):
+                doc['source_image'] = {'width_px': width, 'height_px': height}
+                self.assertIn('E_SOURCE', self.errors(doc, skip_files=True))
+
+    def test_source_dimensions_bounded_without_skip_files(self):
+        # Source validation also applies when the scene has no mask to read.
+        doc = document()
+        doc['source_image'] = {'width_px': 10_000, 'height_px': 10_001}
+        self.assertIn('E_SOURCE', self.errors(doc))
 
     def test_duplicate_id(self):
         self.assertIn('E_DUPLICATE', self.errors(document(region('a'), region('a'))))
@@ -53,17 +83,332 @@ class SemanticValidationTest(unittest.TestCase):
     def test_occlusion_cycle(self):
         self.assertIn('E_OCCLUSION_CYCLE', self.errors(document(region('a', under=['b']), region('b', under=['a']))))
 
+    def test_deep_parent_hierarchy_does_not_exceed_recursion_limit(self):
+        # A long valid hierarchy used to raise RecursionError in cycles().
+        count = 1500
+        nodes = [region(f'n{i:04}', parent_id=f'n{i + 1:04}' if i + 1 < count else None)
+                 for i in range(count)]
+        result = mod.validate(document(*nodes), self.folder, skip_files=True)
+        self.assertTrue(result['ok'], result['errors'])
+
+    def test_deep_parent_cycle_reports_validation_error(self):
+        count = 1500
+        nodes = [region(f'n{i:04}', parent_id=f'n{i + 1:04}' if i + 1 < count else 'n0000')
+                 for i in range(count)]
+        result = mod.validate(document(*nodes), self.folder, skip_files=True)
+        self.assertFalse(result['ok'])
+        self.assertIn('E_PARENT_CYCLE', [error['code'] for error in result['errors']])
+
     def test_foreign_reference(self):
         self.assertIn('E_REFERENCE', self.errors(document(region('a', over=['missing']))))
 
     def test_missing_mask_and_wrong_size(self):
         self.assertIn('E_MISSING_MASK', self.errors(document(region('a', mask_path='absent.png'))))
-        self.folder.joinpath('mask.png').write_bytes(b'\x89PNG\r\n\x1a\n' +
-            (13).to_bytes(4, 'big') + b'IHDR' + (10).to_bytes(4, 'big') + (3).to_bytes(4, 'big'))
+        self.folder.joinpath('mask.png').write_bytes(png_bytes(10, 3))
         self.assertIn('E_MASK_SIZE', self.errors(document(region('a'))))
+
+    def test_png_ihdr_integrity_is_checked(self):
+        good = png_bytes(2, 3)
+        self.assertNotIn('E_MASK_PNG', self.errors(document(region('a'))))
+        bad_parameters = bytearray(good)
+        bad_parameters[26] = 1  # PNG n'autorise que compression=0.
+        bad_parameters[29:33] = struct.pack(
+            '>I', zlib.crc32(bad_parameters[12:29]) & 0xffffffff)
+        cases = {
+            'truncated_ihdr': good[:30],
+            'wrong_ihdr_length': good[:8] + struct.pack('>I', 12) + good[12:],
+            'bad_ihdr_crc': good[:29] + b'\x00\x00\x00\x00' + good[33:],
+            'invalid_ihdr_parameters': bytes(bad_parameters),
+        }
+        for name, contents in cases.items():
+            with self.subTest(case=name):
+                self.folder.joinpath('mask.png').write_bytes(contents)
+                self.assertIn('E_MASK_PNG', self.errors(document(region('a'))))
+                # --skip-files ne lit pas les octets du masque.
+                self.assertNotIn('E_MASK_PNG', self.errors(
+                    document(region('a')), skip_files=True))
+
+    def test_png_chunk_structure_and_crc_are_checked(self):
+        good = png_bytes(2, 3)
+
+        def chunk(kind, data):
+            payload = kind + data
+            return (struct.pack('>I', len(data)) + payload +
+                    struct.pack('>I', zlib.crc32(payload) & 0xffffffff))
+
+        idat_length = struct.unpack('>I', good[33:37])[0]
+        idat_end = 33 + 12 + idat_length
+        damaged_idat = bytearray(good)
+        damaged_idat[41] ^= 1  # Change the payload without updating its CRC.
+        ancillary = chunk(b'tEXt', b'Comment\x00ok')
+        # Ancillary chunks after IDAT are legal and must remain accepted.
+        self.folder.joinpath('mask.png').write_bytes(
+            good[:idat_end] + ancillary + good[idat_end:])
+        self.assertNotIn('E_MASK_PNG', self.errors(document(region('a'))))
+
+        cases = {
+            'header_only': good[:33],
+            'missing_idat': good[:33] + good[idat_end:],
+            'truncated_idat': good[:43],
+            'missing_iend': good[:idat_end],
+            'bad_idat_crc': bytes(damaged_idat),
+            'trailing_bytes': good + b'junk',
+            'duplicate_ihdr': good[:33] + good[8:33] + good[33:],
+            'noncontiguous_idat': (good[:idat_end] + ancillary +
+                                  chunk(b'IDAT', b'') + good[idat_end:]),
+        }
+        for name, contents in cases.items():
+            with self.subTest(case=name):
+                self.folder.joinpath('mask.png').write_bytes(contents)
+                self.assertIn('E_MASK_PNG', self.errors(document(region('a'))))
+                self.assertNotIn('E_MASK_PNG', self.errors(
+                    document(region('a')), skip_files=True))
+
+    def test_png_critical_chunks_and_palette_rules(self):
+        # Build complete PNG fixtures; validation deliberately does not decode IDAT.
+        def chunk(kind, data):
+            payload = kind + data
+            return (struct.pack('>I', len(data)) + payload +
+                    struct.pack('>I', zlib.crc32(payload) & 0xffffffff))
+
+        sig = b'\x89PNG\r\n\x1a\n'
+        ihdr = lambda depth, color: chunk(
+            b'IHDR', struct.pack('>IIBBBBB', 2, 3, depth, color, 0, 0, 0))
+        palette = chunk(b'PLTE', b'\x00\x00\x00\xff\xff\xff')
+        indexed_idat = chunk(b'IDAT', zlib.compress(b'\x00\x00' * 3))
+        iend = chunk(b'IEND', b'')
+        indexed = sig + ihdr(1, 3) + palette + indexed_idat + iend
+        self.folder.joinpath('mask.png').write_bytes(indexed)
+        self.assertNotIn('E_MASK_PNG', self.errors(document(region('a'))))
+
+        rgba = png_bytes(2, 3)
+        idat_length = struct.unpack('>I', rgba[33:37])[0]
+        idat_end = 33 + 12 + idat_length
+        cases = {
+            'unknown_critical': rgba[:33] + chunk(b'ABCD', b'') + rgba[33:],
+            'reserved_bit': rgba[:33] + chunk(b'tExt', b'') + rgba[33:],
+            'indexed_missing_palette': sig + ihdr(1, 3) + indexed_idat + iend,
+            'indexed_too_many_entries': (sig + ihdr(1, 3) +
+                                         chunk(b'PLTE', b'\x00' * 9) +
+                                         indexed_idat + iend),
+            'indexed_bad_palette_length': (sig + ihdr(1, 3) +
+                                           chunk(b'PLTE', b'\x00' * 4) +
+                                           indexed_idat + iend),
+            'indexed_duplicate_palette': (sig + ihdr(1, 3) + palette + palette +
+                                          indexed_idat + iend),
+            'grayscale_palette': (sig + ihdr(8, 0) + palette +
+                                  indexed_idat + iend),
+            'palette_after_idat': rgba[:idat_end] + palette + rgba[idat_end:],
+            'empty_palette': rgba[:33] + chunk(b'PLTE', b'') + rgba[33:],
+            'oversized_palette': (rgba[:33] + chunk(b'PLTE', b'\x00' * 771) +
+                                  rgba[33:]),
+        }
+        for name, contents in cases.items():
+            with self.subTest(case=name):
+                self.folder.joinpath('mask.png').write_bytes(contents)
+                self.assertIn('E_MASK_PNG', self.errors(document(region('a'))))
+                self.assertNotIn('E_MASK_PNG', self.errors(
+                    document(region('a')), skip_files=True))
+
+    def test_png_idat_zlib_header_rules(self):
+        # PNG IDAT must start with a zlib/deflate header, even when split
+        # between consecutive IDAT chunks. Pixel payloads are not decoded.
+        def chunk(kind, data):
+            payload = kind + data
+            return (struct.pack('>I', len(data)) + payload +
+                    struct.pack('>I', zlib.crc32(payload) & 0xffffffff))
+
+        original = png_bytes(2, 3)
+        length = struct.unpack('>I', original[33:37])[0]
+        compressed = original[41:41 + length]
+        prefix, suffix = original[:33], original[45 + length:]
+        path = self.folder / 'mask.png'
+
+        # The two zlib bytes can cross IDAT boundaries, including empty ones.
+        split = (prefix + chunk(b'IDAT', compressed[:1]) +
+                 chunk(b'IDAT', b'') + chunk(b'IDAT', compressed[1:]) + suffix)
+        path.write_bytes(split)
+        self.assertNotIn('E_MASK_PNG', self.errors(document(region('a'))))
+
+        bad_headers = {
+            'wrong_compression_method': b'\x77\x9c' + compressed[2:],
+            'invalid_header_checksum': b'\x78\x00' + compressed[2:],
+            'preset_dictionary_forbidden': b'\x78\x20' + compressed[2:],
+            'truncated_zlib_header': b'\x78',
+        }
+        for name, payload in bad_headers.items():
+            with self.subTest(case=name):
+                path.write_bytes(prefix + chunk(b'IDAT', payload) + suffix)
+                self.assertIn('E_MASK_PNG', self.errors(document(region('a'))))
+                self.assertNotIn('E_MASK_PNG', self.errors(
+                    document(region('a')), skip_files=True))
+
+    def test_png_pixel_budget_rejects_extreme_dimensions(self):
+        # Rewrite only IHDR: avoid allocating a 100-million-pixel fixture.
+        # png_size validates metadata/chunks, not decompressed pixel rows.
+        original = png_bytes(2, 3)
+
+        def with_dimensions(width, height):
+            data = bytearray(original)
+            data[16:24] = struct.pack('>II', width, height)
+            data[29:33] = struct.pack('>I', zlib.crc32(data[12:29]) & 0xffffffff)
+            return data
+
+        path = self.folder / 'mask.png'
+        path.write_bytes(with_dimensions(10000, 10000))
+        self.assertEqual(mod.png_size(path), (10000, 10000))
+        path.write_bytes(with_dimensions(10001, 10000))
+        self.assertIn('E_MASK_PNG', self.errors(document(region('a'))))
+        self.assertNotIn('E_MASK_PNG', self.errors(
+            document(region('a')), skip_files=True))
+
+    def test_png_idat_must_have_some_payload(self):
+        original = png_bytes(2, 3)
+        empty_idat = (struct.pack('>I', 0) + b'IDAT' +
+                      struct.pack('>I', zlib.crc32(b'IDAT') & 0xffffffff))
+        path = self.folder / 'mask.png'
+        # A sequence containing only empty IDAT chunks is not an image stream.
+        path.write_bytes(original[:33] + empty_idat + empty_idat + original[-12:])
+        self.assertIn('E_MASK_PNG', self.errors(document(region('a'))))
+        self.assertNotIn('E_MASK_PNG', self.errors(
+            document(region('a')), skip_files=True))
+        # Empty IDAT chunks are permitted alongside nonempty IDAT data.
+        path.write_bytes(original[:33] + empty_idat + original[33:])
+        self.assertNotIn('E_MASK_PNG', self.errors(document(region('a'))))
+
+    def test_png_transparency_chunk_rules(self):
+        # tRNS is optional, but its length, placement and palette references
+        # must be validated even though IDAT pixels are not decoded here.
+        def chunk(kind, data):
+            payload = kind + data
+            return (struct.pack('>I', len(data)) + payload +
+                    struct.pack('>I', zlib.crc32(payload) & 0xffffffff))
+
+        sig = b'\x89PNG\r\n\x1a\n'
+        def ihdr(depth, color):
+            return chunk(b'IHDR', struct.pack('>IIBBBBB', 2, 3, depth, color, 0, 0, 0))
+
+        palette = chunk(b'PLTE', b'\x00\x00\x00\xff\xff\xff')
+        indexed_pixels = chunk(b'IDAT', zlib.compress(b'\x00\x00' * 3))
+        gray_pixels = chunk(b'IDAT', zlib.compress(b'\x00\x00\x00' * 3))
+        rgb_pixels = chunk(b'IDAT', zlib.compress(b'\x00' * 7 * 3))
+        rgb16_pixels = chunk(b'IDAT', zlib.compress(b'\x00' * 13 * 3))
+        iend = chunk(b'IEND', b'')
+        indexed_transparency = chunk(b'tRNS', b'\x00\xff')
+        gray_transparency = chunk(b'tRNS', b'\x00\x00')
+        rgb_transparency = chunk(b'tRNS', b'\x00\x00' * 3)
+        indexed_prefix = sig + ihdr(1, 3) + palette
+        valid = {
+            'indexed': indexed_prefix + indexed_transparency + indexed_pixels + iend,
+            'grayscale': sig + ihdr(8, 0) + gray_transparency + gray_pixels + iend,
+            'rgb': sig + ihdr(8, 2) + rgb_transparency + rgb_pixels + iend,
+            'gray_1bit_max': (sig + ihdr(1, 0) + chunk(b'tRNS', b'\x00\x01') +
+                              indexed_pixels + iend),
+            'rgb_8bit_max': (sig + ihdr(8, 2) + chunk(b'tRNS', b'\x00\xff' * 3) +
+                              rgb_pixels + iend),
+            'rgb_16bit_max': (sig + ihdr(16, 2) + chunk(b'tRNS', b'\xff\xff' * 3) +
+                               rgb16_pixels + iend),
+        }
+        for name, contents in valid.items():
+            with self.subTest(valid=name):
+                self.folder.joinpath('mask.png').write_bytes(contents)
+                self.assertNotIn('E_MASK_PNG', self.errors(document(region('a'))))
+
+        invalid = {
+            'duplicate': (indexed_prefix + indexed_transparency +
+                          indexed_transparency + indexed_pixels + iend),
+            'after_idat': (indexed_prefix + indexed_pixels +
+                           indexed_transparency + iend),
+            'indexed_without_plte': (sig + ihdr(1, 3) + indexed_transparency +
+                                     indexed_pixels + iend),
+            'indexed_too_long': (indexed_prefix + chunk(b'tRNS', b'\x00' * 3) +
+                                 indexed_pixels + iend),
+            'indexed_empty': (indexed_prefix + chunk(b'tRNS', b'') +
+                              indexed_pixels + iend),
+            'grayscale_bad_length': (sig + ihdr(8, 0) + chunk(b'tRNS', b'\x00') +
+                                     gray_pixels + iend),
+            'rgb_bad_length': (sig + ihdr(8, 2) + chunk(b'tRNS', b'\x00' * 4) +
+                               rgb_pixels + iend),
+            'rgba_forbids_trns': (sig + ihdr(8, 6) + gray_transparency +
+                                  chunk(b'IDAT', zlib.compress(b'\x00' * 9 * 3)) + iend),
+            'plte_after_trns': (sig + ihdr(8, 2) + rgb_transparency +
+                                palette + rgb_pixels + iend),
+            'gray_1bit_out_of_range': (sig + ihdr(1, 0) +
+                                       chunk(b'tRNS', b'\x00\x02') + indexed_pixels + iend),
+            'gray_2bit_out_of_range': (sig + ihdr(2, 0) +
+                                       chunk(b'tRNS', b'\x00\x04') + indexed_pixels + iend),
+            'gray_4bit_out_of_range': (sig + ihdr(4, 0) +
+                                       chunk(b'tRNS', b'\x00\x10') + indexed_pixels + iend),
+            'gray_8bit_out_of_range': (sig + ihdr(8, 0) +
+                                       chunk(b'tRNS', b'\x01\x00') + gray_pixels + iend),
+            'rgb_8bit_red_out_of_range': (sig + ihdr(8, 2) +
+                                           chunk(b'tRNS', b'\x01\x00\x00\x00\x00\x00') +
+                                           rgb_pixels + iend),
+            'rgb_8bit_blue_out_of_range': (sig + ihdr(8, 2) +
+                                            chunk(b'tRNS', b'\x00\x00\x00\x00\x01\x00') +
+                                            rgb_pixels + iend),
+        }
+        for name, contents in invalid.items():
+            with self.subTest(invalid=name):
+                self.folder.joinpath('mask.png').write_bytes(contents)
+                self.assertIn('E_MASK_PNG', self.errors(document(region('a'))))
+                self.assertNotIn('E_MASK_PNG', self.errors(
+                    document(region('a')), skip_files=True))
 
     def test_path_escape(self):
         self.assertIn('E_PATH', self.errors(document(region('a', mask_path='../outside.png'))))
+
+    def test_skip_files_still_rejects_path_escape(self):
+        self.assertIn('E_PATH', self.errors(
+            document(region('a', mask_path='../outside.png')), skip_files=True))
+        # Missing in-folder files are allowed only when file checks are skipped.
+        self.assertNotIn('E_MISSING_MASK', self.errors(
+            document(region('a', mask_path='absent.png')), skip_files=True))
+
+    def test_skip_files_rejects_symlink_escape(self):
+        outside = self.folder.parent / (self.folder.name + '-outside.png')
+        outside.write_bytes(b'not a png')
+        self.addCleanup(outside.unlink)
+        link = self.folder / 'linked.png'
+        try:
+            link.symlink_to(outside)
+        except (OSError, NotImplementedError):
+            self.skipTest('symlinks unavailable')
+        for skip in (False, True):
+            with self.subTest(skip_files=skip):
+                self.assertIn('E_PATH', self.errors(
+                    document(region('a', mask_path='linked.png')), skip_files=skip))
+
+    def test_malformed_mask_path_is_validation_error(self):
+        for skip in (False, True):
+            with self.subTest(skip_files=skip):
+                self.assertIn('E_PATH', self.errors(
+                    document(region('a', mask_path='bad\x00name.png')), skip_files=skip))
+
+    def test_absolute_mask_path_is_rejected_even_inside_manifest(self):
+        absolute = str(self.folder / 'mask.png')
+        for skip in (False, True):
+            with self.subTest(skip_files=skip):
+                self.assertIn('E_PATH', self.errors(
+                    document(region('a', mask_path=absolute)), skip_files=skip))
+
+    def test_windows_mask_paths_are_rejected_on_all_hosts(self):
+        # A manifest must mean the same thing on Linux and Windows.
+        bad_paths = (
+            'C:/temp/mask.png',   # Windows absolute path
+            'C:mask.png',        # Windows drive-relative path
+            '..\\\\outside.png',   # Windows-style parent traversal
+            '\\\\server\\share\\mask.png',  # UNC path
+            'subdir\\mask.png',  # Ambiguous path separator
+        )
+        for mask in bad_paths:
+            for skip in (False, True):
+                with self.subTest(mask=mask, skip_files=skip):
+                    self.assertIn('E_PATH', self.errors(
+                        document(region('a', mask_path=mask)), skip_files=skip))
+        # Portable forward-slash relative paths are still accepted in skip mode.
+        self.assertNotIn('E_PATH', self.errors(
+            document(region('a', mask_path='subdir/mask.png')), skip_files=True))
 
     def test_manifest_schema_and_required_mask(self):
         self.assertIn('E_SCHEMA', self.errors({'schema': 'wrong', **{k: v for k,v in document().items() if k != 'schema'}}))

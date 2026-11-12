@@ -41,6 +41,9 @@ ColumnLayout {
     property int paletteDistance: 60
     property bool paletteMergeAdjacent: true
     property var strokePoints: []
+    // A brush gesture is valid only if it begins inside the painted image and never
+    // crosses the letterbox. Otherwise a later in-bounds move could paint unexpectedly.
+    property bool strokeStartedInside: false
 
     Connections {
         target: regionTools
@@ -71,42 +74,82 @@ ColumnLayout {
             fillMode: Image.PreserveAspectFit
             cache: false
             source: regionTools.hasSegmentation ? "image://prepare/regions?rev=" + regionTools.mapRevision : ""
-            // Pixel de l'image de travail sous un point de la zone.
+            // The ScrollView's MouseArea and the image have different origins (2 px margins).
+            // Reject letterboxed clicks instead of feeding out-of-image coordinates to the
+            // region brush. Convert only the painted image rectangle to source pixels.
             function pixelAt(px, py) {
-                // La miniature est bornée à 512 px : les clics restent exprimés
-                // dans les coordonnées de la vraie segmentation.
-                var ox = (width - paintedWidth) / 2
-                var oy = (height - paintedHeight) / 2
+                const p = mapImage.mapFromItem(mapArea, px, py)
+                const w = paintedWidth
+                const h = paintedHeight
+                const sourceW = regionTools.mapWidth
+                const sourceH = regionTools.mapHeight
+                if (w <= 0 || h <= 0 || sourceW <= 0 || sourceH <= 0)
+                    return null
+                const ox = (width - w) / 2
+                const oy = (height - h) / 2
+                if (p.x < ox || p.y < oy || p.x >= ox + w || p.y >= oy + h)
+                    return null
                 return {
-                    x: Math.floor((px - ox) / Math.max(1, paintedWidth) * regionTools.mapWidth),
-                    y: Math.floor((py - oy) / Math.max(1, paintedHeight) * regionTools.mapHeight)
+                    x: Math.min(sourceW - 1, Math.floor((p.x - ox) / w * sourceW)),
+                    y: Math.min(sourceH - 1, Math.floor((p.y - oy) / h * sourceH))
                 }
             }
         }
         MouseArea {
+            id: mapArea
             objectName: "regionMapArea"
             anchors.fill: parent
             enabled: regionTools.hasSegmentation
             onPressed: function(mouse) {
-                var p = mapImage.pixelAt(mouse.x, mouse.y)
+                const p = mapImage.pixelAt(mouse.x, mouse.y)
                 if (regionTools.tool === "select") {
-                    regionTools.selectAtPixel(p.x, p.y, (mouse.modifiers & Qt.ControlModifier) !== 0)
+                    section.strokeStartedInside = false
+                    if (p)
+                        regionTools.selectAtPixel(p.x, p.y, (mouse.modifiers & Qt.ControlModifier) !== 0)
+                    else if (!(mouse.modifiers & Qt.ControlModifier))
+                        regionTools.clearSelection()
                 } else {
-                    section.strokePoints = [p]
+                    section.strokeStartedInside = p !== null
+                    section.strokePoints = p ? [p] : []
                 }
             }
             onPositionChanged: function(mouse) {
-                if (regionTools.tool !== "select" && pressed) {
-                    var pts = section.strokePoints
-                    pts.push(mapImage.pixelAt(mouse.x, mouse.y))
-                    section.strokePoints = pts
+                if (regionTools.tool !== "select" && pressed && section.strokeStartedInside) {
+                    const p = mapImage.pixelAt(mouse.x, mouse.y)
+                    if (!p) {
+                        // Cancel the entire gesture rather than bridging an empty margin.
+                        section.strokeStartedInside = false
+                        section.strokePoints = []
+                        return
+                    }
+                    if (p) {
+                        const pts = section.strokePoints
+                        if (pts.length === 0 || pts[pts.length - 1].x !== p.x ||
+                                pts[pts.length - 1].y !== p.y)
+                            section.strokePoints = pts.concat([p])
+                    }
                 }
             }
-            onReleased: {
-                if (regionTools.tool !== "select" && section.strokePoints.length > 0) {
+            onReleased: function(mouse) {
+                // A release can arrive outside the painted image without a preceding
+                // positionChanged event (e.g. a fast drag). Never commit that stroke.
+                const releasePixel = mapImage.pixelAt(mouse.x, mouse.y)
+                if (regionTools.tool !== "select" && section.strokeStartedInside &&
+                        section.strokePoints.length > 0 && releasePixel !== null) {
+                    // A quick release may arrive without a final positionChanged event.
+                    // Include the release pixel so the last brush dab is not lost.
+                    const pts = section.strokePoints
+                    const last = pts[pts.length - 1]
+                    if (last.x !== releasePixel.x || last.y !== releasePixel.y)
+                        section.strokePoints = pts.concat([releasePixel])
                     regionTools.paintStroke(section.strokePoints, regionTools.tool === "erase")
-                    section.strokePoints = []
                 }
+                section.strokeStartedInside = false
+                section.strokePoints = []
+            }
+            onCanceled: {
+                section.strokeStartedInside = false
+                section.strokePoints = []
             }
         }
     }

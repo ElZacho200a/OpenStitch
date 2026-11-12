@@ -36,4 +36,13 @@ if(Python3_Interpreter_FOUND)
                 "${CMAKE_SOURCE_DIR}/scripts/qa_images/image_corpus.py"
                 --cli "$<TARGET_FILE:openstitch-cli>")
     set_tests_properties(qa_image_corpus_unit cli_qa_image_corpus PROPERTIES TIMEOUT 60)
+    # E16: deux numérisations réelles du même PNG ; compare SHA-256 du DST
+    # (même nom de sortie dans deux répertoires isolés) et compte de points.
+    add_test(NAME cli_qa_digitize_determinism
+        COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_SOURCE_DIR}/scripts/qa_images/digitize_determinism.py"
+                --cli "$<TARGET_FILE:openstitch-cli>"
+                --image "${CMAKE_SOURCE_DIR}/tests/fixtures/cli/logo_small.png")
+    set_tests_properties(cli_qa_digitize_determinism PROPERTIES TIMEOUT 260)
+
 endif()
