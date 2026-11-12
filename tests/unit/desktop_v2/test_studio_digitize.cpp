@@ -105,6 +105,7 @@ private slots:
     void satinColumnJourney();
     void directionGuidesJourney();
     void autoSatinThroughTheActionPalette();
+    void guidedAutoSatinGuideStaysAutoSatin();
     void textLetteringJourney();
     void mainQmlHostsDigitizePanels();
 };
@@ -411,7 +412,7 @@ void StudioDigitizeTest::autoSatinThroughTheActionPalette() {
     const auto depth = rig.steps();
     QVERIFY(!rig.actions.run(QStringLiteral("satin.auto"), {{"spacing_mm", "9"}}).isEmpty());
     QCOMPARE(rig.steps(), depth); // out of range: refused, nothing changed
-    for (const char* strategy : {"skeleton", "parallel_sweep", "medial_axis"}) {
+    for (const char* strategy : {"skeleton", "parallel_sweep", "medial_axis", "guided_satin"}) {
         QCOMPARE(rig.actions.run(QStringLiteral("satin.auto"),
                                  {{"spacing_mm", "0.35"}, {"strategy", strategy}}),
                  QString());
@@ -420,6 +421,43 @@ void StudioDigitizeTest::autoSatinThroughTheActionPalette() {
         QVERIFY(rig.session.undo());
         QVERIFY(sequenceOf(rig.session).commands == base.commands);
     }
+}
+
+void StudioDigitizeTest::guidedAutoSatinGuideStaysAutoSatin() {
+    Rig rig;
+    rig.addRect();
+    rig.select(rig.id);
+    QCOMPARE(rig.actions.run(QStringLiteral("satin.auto"),
+                             {{"spacing_mm", "0.4"}, {"strategy", "guided_satin"}}),
+             QString());
+    rig.select(rig.id);
+    const auto* before = rig.session.project().findEmbroidery(ObjectId{rig.id});
+    QVERIFY(before != nullptr);
+    QVERIFY(std::holds_alternative<document::AutoSatinParams>(before->params));
+    const auto depth = rig.steps();
+    const auto point = [](double x, double y) { return QVariantMap{{"x", x}, {"y", y}}; };
+    QVERIFY(rig.satin.addGuide({point(-10, 0), point(0, 1), point(10, 0)}, false));
+    QCOMPARE(rig.steps(), depth + 1);
+    const auto* after = rig.session.project().findEmbroidery(ObjectId{rig.id});
+    QVERIFY(after != nullptr);
+    const auto* satin = std::get_if<document::AutoSatinParams>(&after->params);
+    QVERIFY(satin != nullptr); // no accidental conversion to directional fill
+    QVERIFY(satin->strategy == document::AutoSatinStrategy::Guided);
+    QCOMPARE(satin->guides.size(), std::size_t{1});
+    QCOMPARE(satin->guides.front().path.size(), std::size_t{3});
+    QVERIFY(rig.satin.clearGuides(false));
+    const auto* cleared = rig.session.project().findEmbroidery(ObjectId{rig.id});
+    QVERIFY(cleared != nullptr);
+    const auto* params = std::get_if<document::AutoSatinParams>(&cleared->params);
+    QVERIFY(params != nullptr);
+    QVERIFY(params->guides.empty());
+    QVERIFY(rig.session.undo());
+    QVERIFY(rig.session.undo());
+    const auto* restored = rig.session.project().findEmbroidery(ObjectId{rig.id});
+    QVERIFY(restored != nullptr);
+    const auto* restoredParams = std::get_if<document::AutoSatinParams>(&restored->params);
+    QVERIFY(restoredParams != nullptr);
+    QVERIFY(restoredParams->guides.empty());
 }
 
 void StudioDigitizeTest::textLetteringJourney() {

@@ -321,6 +321,7 @@ enum class AutoSatinStrategy : std::uint8_t {
     Skeleton = 0,      // squelette raster Zhang-Suen (moteur historique)
     ParallelSweep = 1, // balayage parallèle à angle constant
     MedialAxis = 2,    // axe médian vectoriel (Voronoï des segments du contour)
+    Guided = 3,        // ligne centrale dessinée et traversées normales (satin guidé)
 };
 
 // Identifiant stable (fichier `.osp`, CLI, API programmatique) et lecture inverse. `nullopt` pour
@@ -333,6 +334,8 @@ enum class AutoSatinStrategy : std::uint8_t {
         return "parallel_sweep";
     case AutoSatinStrategy::MedialAxis:
         return "medial_axis";
+    case AutoSatinStrategy::Guided:
+        return "guided_satin";
     }
     return "skeleton";
 }
@@ -340,7 +343,7 @@ enum class AutoSatinStrategy : std::uint8_t {
 [[nodiscard]] constexpr std::optional<AutoSatinStrategy>
 parse_auto_satin_strategy(std::string_view id) {
     for (const auto s : {AutoSatinStrategy::Skeleton, AutoSatinStrategy::ParallelSweep,
-                         AutoSatinStrategy::MedialAxis}) {
+                         AutoSatinStrategy::MedialAxis, AutoSatinStrategy::Guided}) {
         if (id == auto_satin_strategy_id(s)) {
             return s;
         }

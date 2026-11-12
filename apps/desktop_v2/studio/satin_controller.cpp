@@ -224,6 +224,31 @@ bool SatinController::addGuide(const QVariantList& points, bool isBreak) {
                           : QStringLiteral("Guide de direction tracé."));
 }
 
+QVariantList SatinController::autoSatinGuidePaths() const {
+    QVariantList result;
+    if (id_ == 0) {
+        return result;
+    }
+    for (const auto& path : desktop_v2::autoSatinGuidePaths(studio_.session().project(), id_)) {
+        QVariantList nodes;
+        for (const auto& p : path) {
+            nodes.push_back(QVariantMap{{QStringLiteral("x"), p.x}, {QStringLiteral("y"), p.y}});
+        }
+        result.push_back(QVariant(nodes));
+    }
+    return result;
+}
+
+bool SatinController::moveAutoSatinGuidePoint(int guide, int node, double xMm, double yMm) {
+    if (id_ == 0 || guide < 0 || node < 0) {
+        return refuse(QStringLiteral("Sélectionnez un nœud de guide satin."));
+    }
+    return report(
+        desktop_v2::moveAutoSatinGuideNode(studio_.session(), id_, static_cast<std::size_t>(guide),
+                                           static_cast<std::size_t>(node), PointMm{xMm, yMm}),
+        QStringLiteral("Nœud du guide satin déplacé."));
+}
+
 bool SatinController::clearGuides(bool breakLines) {
     if (id_ == 0) {
         return refuse(QStringLiteral("Sélectionnez un remplissage."));
