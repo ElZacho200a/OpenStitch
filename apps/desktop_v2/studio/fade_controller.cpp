@@ -133,18 +133,42 @@ FadeSettings settingsOf(const QColor& c, bool complementary) {
 } // namespace
 
 bool FadeController::create(const QColor& foreground, bool complementary) {
+    return createWithTexture(foreground, complementary, 0);
+}
+
+bool FadeController::createWithTexture(const QColor& foreground, bool complementary, int texture) {
     if (id_ == 0) {
         return refuse(QStringLiteral("Sélectionnez un seul remplissage."));
     }
-    return report(createFade(studio_.session(), id_, settingsOf(foreground, complementary)),
+    auto settings = settingsOf(foreground, complementary);
+    settings.texture = texture;
+    return report(createFade(studio_.session(), id_, settings),
                   QStringLiteral("Fondu créé."));
+}
+
+bool FadeController::setTexture(int texture) {
+    if (id_ == 0 || !settings_) {
+        return refuse(QStringLiteral("Sélectionnez un fondu."));
+    }
+    if (texture < 0 || texture > 2) {
+        return refuse(QStringLiteral("Technique de fondu inconnue."));
+    }
+    if (settings_->texture == texture) {
+        return true; // aucun calcul ni historique inutile
+    }
+    auto settings = *settings_;
+    settings.texture = texture;
+    return report(editFade(studio_.session(), id_, settings),
+                  QStringLiteral("Technique de fondu modifiée."));
 }
 
 bool FadeController::edit(const QColor& foreground, bool complementary) {
     if (id_ == 0) {
         return refuse(QStringLiteral("Sélectionnez un fondu."));
     }
-    return report(editFade(studio_.session(), id_, settingsOf(foreground, complementary)),
+    auto settings = settingsOf(foreground, complementary);
+    if (settings_) settings.texture = settings_->texture;
+    return report(editFade(studio_.session(), id_, settings),
                   QStringLiteral("Fondu modifié."));
 }
 
