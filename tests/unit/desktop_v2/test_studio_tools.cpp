@@ -839,6 +839,21 @@ void StudioToolsTest::usageLogRecordsToolsAndActions() {
     QVERIFY(text.contains(
         QStringLiteral("\"k\":\"action\",\"id\":\"no.such.action\",\"d\":\"refused\"")));
     QVERIFY(text.contains(QStringLiteral("\"k\":\"click\",\"id\":\"gesture_satin\"")));
+
+    // The Preferences switch: off writes the DISABLED marker and stops recording; on removes it.
+    usage.setEnabled(false);
+    QVERIFY(!usage.enabled());
+    QVERIFY(QFile::exists(dir.filePath(QStringLiteral("DISABLED"))));
+    usage.click(QStringLiteral("after_off"));
+    usage.setEnabled(true);
+    QVERIFY(usage.enabled());
+    QVERIFY(!QFile::exists(dir.filePath(QStringLiteral("DISABLED"))));
+    usage.click(QStringLiteral("after_on"));
+    QFile again(QString::fromStdString(log.currentFile().string()));
+    QVERIFY(again.open(QIODevice::ReadOnly));
+    const auto later = QString::fromUtf8(again.readAll());
+    QVERIFY(!later.contains(QStringLiteral("after_off")));
+    QVERIFY(later.contains(QStringLiteral("after_on")));
 }
 
 QTEST_MAIN(StudioToolsTest)

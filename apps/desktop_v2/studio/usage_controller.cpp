@@ -9,7 +9,22 @@
 
 namespace openstitch::desktop_v2::studio {
 
-UsageController::UsageController(UsageLog& log, QObject* parent) : QObject(parent), log_(log) {}
+UsageController::UsageController(UsageLog& log, QObject* parent) : QObject(parent), log_(log) {
+    lockedByEnvironment_ = usageLogDisabledByEnvironment([](std::string_view key) {
+        return QString::fromLocal8Bit(qgetenv(std::string(key).c_str())).toStdString();
+    });
+}
+
+void UsageController::setEnabled(bool on) {
+    if (on == log_.enabled() || (on && lockedByEnvironment_)) {
+        return;
+    }
+    if (!usageLogSetMarker(log_.dir(), on)) {
+        return;
+    }
+    log_.setEnabled(on);
+    emit enabledChanged();
+}
 
 QString UsageController::folder() const {
     return QString::fromStdString(log_.currentFile().parent_path().generic_string());

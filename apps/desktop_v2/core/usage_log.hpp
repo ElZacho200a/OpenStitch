@@ -15,6 +15,7 @@
 // Désactivation : variable OPENSTITCH_USAGE_LOG=0, ou fichier vide `DISABLED` dans le dossier.
 // Dossier alternatif (équipe, disque partagé) : OPENSTITCH_USAGE_DIR.
 
+#include <atomic>
 #include <chrono>
 #include <filesystem>
 #include <functional>
@@ -41,7 +42,10 @@ public:
     // (une erreur d'écriture est ignorée : le journal ne doit jamais gêner le travail).
     void record(std::string_view kind, std::string_view id, std::string_view detail = {});
 
-    [[nodiscard]] bool enabled() const { return enabled_; }
+    [[nodiscard]] bool enabled() const { return enabled_.load(); }
+    // Active ou coupe l'enregistrement à chaud (interrupteur des Préférences).
+    void setEnabled(bool on) { enabled_.store(on); }
+    [[nodiscard]] const std::filesystem::path& dir() const { return options_.dir; }
     [[nodiscard]] const std::string& sessionId() const { return sessionId_; }
     // Fichier du mois courant (même si le journal est désactivé : utile aux tests et au rapport).
     [[nodiscard]] std::filesystem::path currentFile() const;
@@ -55,7 +59,7 @@ private:
 
     UsageLogOptions options_;
     std::string sessionId_;
-    bool enabled_{true};
+    std::atomic<bool> enabled_{true};
     mutable std::mutex mutex_;
 };
 
@@ -66,8 +70,16 @@ using GetEnv = std::function<std::string(std::string_view)>;
 [[nodiscard]] std::filesystem::path defaultUsageDir(const GetEnv& getenv,
                                                     const std::filesystem::path& genericDataDir);
 
+// Vrai si OPENSTITCH_USAGE_LOG vaut 0/false/off/non : l'interrupteur des Préférences ne peut alors
+// pas réactiver le journal.
+[[nodiscard]] bool usageLogDisabledByEnvironment(const GetEnv& getenv);
+
 // Faux si OPENSTITCH_USAGE_LOG vaut 0/false/off/non, ou si `<dir>/DISABLED` existe.
 [[nodiscard]] bool usageLogEnabled(const GetEnv& getenv, const std::filesystem::path& dir);
+
+// Écrit (enabled=false) ou retire (enabled=true) le fichier `<dir>/DISABLED`. Faux si l'opération
+// échoue.
+[[nodiscard]] bool usageLogSetMarker(const std::filesystem::path& dir, bool enabled);
 
 // Échappement JSON d'une chaîne (guillemets, antislash, caractères de contrôle) ; longueur bornée.
 [[nodiscard]] std::string usageJsonEscape(std::string_view text, std::size_t maxBytes = 160);

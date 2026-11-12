@@ -17,12 +17,19 @@ class ToolController;
 
 class UsageController : public QObject {
     Q_OBJECT
-    Q_PROPERTY(bool enabled READ enabled CONSTANT)
+    Q_PROPERTY(bool enabled READ enabled WRITE setEnabled NOTIFY enabledChanged)
+    // Vrai si OPENSTITCH_USAGE_LOG=0 coupe le journal : l'interrupteur ne peut pas le réactiver.
+    Q_PROPERTY(bool lockedByEnvironment READ lockedByEnvironment CONSTANT)
     Q_PROPERTY(QString folder READ folder CONSTANT)
 public:
     explicit UsageController(UsageLog& log, QObject* parent = nullptr);
 
     [[nodiscard]] bool enabled() const { return log_.enabled(); }
+    [[nodiscard]] bool lockedByEnvironment() const { return lockedByEnvironment_; }
+    // Persiste le choix par le fichier `DISABLED` du dossier du journal (valable d'une version à
+    // l'autre). Sans effet si l'environnement coupe le journal ou si le fichier ne peut pas être
+    // écrit.
+    void setEnabled(bool on);
     [[nodiscard]] QString folder() const;
 
     // Un contrôle cliqué : l'identifiant est le `objectName` du bouton, à défaut son texte.
@@ -37,8 +44,12 @@ public:
     // Dossier et activation selon l'environnement et l'emplacement des données locales.
     [[nodiscard]] static UsageLogOptions defaultOptions(const QString& version);
 
+signals:
+    void enabledChanged();
+
 private:
     UsageLog& log_;
+    bool lockedByEnvironment_{false};
 };
 
 } // namespace openstitch::desktop_v2::studio

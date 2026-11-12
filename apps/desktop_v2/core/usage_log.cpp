@@ -80,8 +80,28 @@ std::filesystem::path defaultUsageDir(const GetEnv& getenv,
     return genericDataDir / "OpenStitch" / "usage";
 }
 
+bool usageLogDisabledByEnvironment(const GetEnv& getenv) {
+    const auto flag = getenv("OPENSTITCH_USAGE_LOG");
+    return !flag.empty() && falsy(flag);
+}
+
+bool usageLogSetMarker(const std::filesystem::path& dir, bool enabled) {
+    std::error_code ec;
+    const auto marker = dir / "DISABLED";
+    if (enabled) {
+        std::filesystem::remove(marker, ec);
+        return !ec;
+    }
+    std::filesystem::create_directories(dir, ec);
+    if (ec) {
+        return false;
+    }
+    std::ofstream out(marker, std::ios::binary);
+    return static_cast<bool>(out);
+}
+
 bool usageLogEnabled(const GetEnv& getenv, const std::filesystem::path& dir) {
-    if (const auto flag = getenv("OPENSTITCH_USAGE_LOG"); !flag.empty() && falsy(flag)) {
+    if (usageLogDisabledByEnvironment(getenv)) {
         return false;
     }
     std::error_code ec;

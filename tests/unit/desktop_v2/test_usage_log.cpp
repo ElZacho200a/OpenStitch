@@ -154,3 +154,45 @@ TEST_CASE("usage log: folder and switches come from the environment", "[desktop_
     std::ofstream(tmp.path / "DISABLED").put('\n');
     CHECK_FALSE(usageLogEnabled(get, tmp.path));
 }
+
+TEST_CASE("usage log: the marker file switches the log off and on", "[desktop_v2][usage]") {
+    TempDir tmp;
+    const GetEnv none = [](std::string_view) { return std::string{}; };
+    CHECK(usageLogEnabled(none, tmp.path));
+    CHECK(usageLogSetMarker(tmp.path, false));
+    CHECK(fs::exists(tmp.path / "DISABLED"));
+    CHECK_FALSE(usageLogEnabled(none, tmp.path));
+    CHECK(usageLogSetMarker(tmp.path, true));
+    CHECK_FALSE(fs::exists(tmp.path / "DISABLED"));
+    CHECK(usageLogEnabled(none, tmp.path));
+    CHECK(usageLogSetMarker(tmp.path, true)); // already on: still a success
+}
+
+TEST_CASE("usage log: the environment lock is reported separately", "[desktop_v2][usage]") {
+    std::map<std::string, std::string> env;
+    const GetEnv get = [&](std::string_view key) {
+        const auto it = env.find(std::string(key));
+        return it == env.end() ? std::string{} : it->second;
+    };
+    CHECK_FALSE(usageLogDisabledByEnvironment(get));
+    env["OPENSTITCH_USAGE_LOG"] = "off";
+    CHECK(usageLogDisabledByEnvironment(get));
+    env["OPENSTITCH_USAGE_LOG"] = "1";
+    CHECK_FALSE(usageLogDisabledByEnvironment(get));
+}
+
+TEST_CASE("usage log: setEnabled stops and resumes recording at runtime", "[desktop_v2][usage]") {
+    TempDir tmp;
+    auto clock = at(2026, 11, 12, 10, 0, 0, 0);
+    UsageLog log(options(tmp.path, &clock));
+    log.record("click", "before");
+    log.setEnabled(false);
+    log.record("click", "during");
+    log.setEnabled(true);
+    log.record("click", "after");
+    const auto lines = readLines(log.currentFile());
+    REQUIRE(lines.size() == 2);
+    CHECK(lines[0].find(R"("id":"before")") != std::string::npos);
+    CHECK(lines[1].find(R"("id":"after")") != std::string::npos);
+    CHECK(log.dir() == tmp.path);
+}

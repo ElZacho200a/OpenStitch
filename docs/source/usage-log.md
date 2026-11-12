@@ -46,8 +46,11 @@ identifiant est plafonné à 160 octets.
 
 ## Désactiver
 
-- Variable d'environnement `OPENSTITCH_USAGE_LOG=0` (ou `false`, `off`, `non`) avant le lancement ;
-- ou créer un fichier vide nommé `DISABLED` dans le dossier du journal.
+- **Préférences ▸ Usage** : décocher « Enregistrer l'usage de l'application sur cet ordinateur ». Le choix
+  est conservé par un fichier `DISABLED` dans le dossier du journal, donc valable d'une version à l'autre ;
+- ou variable d'environnement `OPENSTITCH_USAGE_LOG=0` (ou `false`, `off`, `non`) avant le lancement
+  (la case des Préférences est alors grisée) ;
+- ou créer soi-même un fichier vide nommé `DISABLED` dans le dossier du journal.
 
 Le journal ne gêne jamais le travail : une erreur d'écriture (disque plein, dossier inaccessible) est
 ignorée.
