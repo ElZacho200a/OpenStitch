@@ -256,7 +256,8 @@ const EnumTable<document::AutoSatinStrategy>& auto_satin_strategy_table() {
     static const EnumTable<document::AutoSatinStrategy> t{
         {"skeleton", document::AutoSatinStrategy::Skeleton},
         {"parallel_sweep", document::AutoSatinStrategy::ParallelSweep},
-        {"medial_axis", document::AutoSatinStrategy::MedialAxis}};
+        {"medial_axis", document::AutoSatinStrategy::MedialAxis},
+        {"guided_satin", document::AutoSatinStrategy::Guided}};
     return t;
 }
 const EnumTable<optimization::OrderStrategy>& strategy_table() {
@@ -670,24 +671,55 @@ template <class P> Field<P> auto_satin_guides_field(std::string name) {
         }
         std::vector<document::AutoSatinGuide> out;
         for (const auto& g : v) {
-            if (!g.is_object() || !g.contains("anchor_mm") || !g.contains("angle_deg")) {
-                refuse(code::kUsage, "champ « " + name + " » : guide {anchor_mm, angle_deg}");
+            if (!g.is_object()) {
+                refuse(code::kUsage, "champ « " + name + " » : guide objet attendu");
             }
             document::AutoSatinGuide guide;
-            guide.anchor = point_from_json(name, g["anchor_mm"]);
-            const double a = number_in_range(name, g["angle_deg"], -360.0, 360.0, "deg");
+            if (g.contains("path_mm")) {
+                if (!g["path_mm"].is_array() || g["path_mm"].size() < 2 ||
+                    g["path_mm"].size() > 1024) {
+                    refuse(code::kUsage, "champ « " + name + " » : path_mm exige 2..1024 points");
+                }
+                for (const auto& point : g["path_mm"]) {
+                    const Vec2um p = point_from_json(name, point);
+                    if (guide.path.empty() || guide.path.back() != p) {
+                        guide.path.push_back(p);
+                    }
+                }
+                if (guide.path.size() < 2) {
+                    refuse(code::kUsage, "champ « " + name + " » : tracé dégénéré");
+                }
+            }
+            if (!g.contains("anchor_mm") && guide.path.empty()) {
+                refuse(code::kUsage, "champ « " + name + " » : anchor_mm ou path_mm requis");
+            }
+            if (guide.path.empty() && !g.contains("angle_deg")) {
+                refuse(code::kUsage, "champ « " + name + " » : angle_deg requis sans path_mm");
+            }
+            guide.anchor = g.contains("anchor_mm") ? point_from_json(name, g["anchor_mm"])
+                                                   : guide.path.front();
+            const double a = g.contains("angle_deg")
+                                 ? number_in_range(name, g["angle_deg"], -360.0, 360.0, "deg")
+                                 : 0.0;
             guide.angle = Angle{a * std::numbers::pi / 180.0};
-            guide.absolute = g.value("absolute", false);
-            out.push_back(guide);
+            guide.absolute = g.value("absolute", !guide.path.empty());
+            out.push_back(std::move(guide));
         }
         p.guides = std::move(out);
     };
     f.get = [=](const P& p) {
         json out = json::array();
         for (const auto& g : p.guides) {
-            out.push_back({{"anchor_mm", point_json(g.anchor)},
-                           {"angle_deg", round6(g.angle.radians * 180.0 / std::numbers::pi)},
-                           {"absolute", g.absolute}});
+            json item{{"anchor_mm", point_json(g.anchor)},
+                      {"angle_deg", round6(g.angle.radians * 180.0 / std::numbers::pi)},
+                      {"absolute", g.absolute}};
+            if (!g.path.empty()) {
+                item["path_mm"] = json::array();
+                for (const Vec2um p : g.path) {
+                    item["path_mm"].push_back(point_json(p));
+                }
+            }
+            out.push_back(std::move(item));
         }
         return out;
     };

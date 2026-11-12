@@ -124,8 +124,15 @@ struct SatinAttempt {
     const char* strategy;
     bool compactAxis;
 };
-constexpr std::array<SatinAttempt, 4> kSatinAttempts{
-    {{"skeleton", false}, {"parallel_sweep", false}, {"medial_axis", false}, {"skeleton", true}}};
+constexpr std::array<SatinAttempt, 5> kSatinAttempts = [] {
+    std::array<SatinAttempt, 5> attempts{};
+    attempts[0] = {"skeleton", false};
+    attempts[1] = {"parallel_sweep", false};
+    attempts[2] = {"medial_axis", false};
+    attempts[3] = {"guided_satin", false};
+    attempts[4] = {"skeleton", true};
+    return attempts;
+}();
 } // namespace
 
 std::size_t satinAttemptCount() {

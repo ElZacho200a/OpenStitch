@@ -1337,6 +1337,9 @@ auto_satin::SkeletonSatinParameters auto_satin_engine(const document::AutoSatinP
     case document::AutoSatinStrategy::MedialAxis:
         engine.strategy = auto_satin::SatinStrategy::MedialAxis;
         break;
+    case document::AutoSatinStrategy::Guided:
+        engine.strategy = auto_satin::SatinStrategy::Guided;
+        break;
     }
     if (params.sweep_angle) {
         engine.sweep_auto_angle = false;
