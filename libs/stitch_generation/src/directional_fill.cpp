@@ -632,6 +632,50 @@ struct SpacingField {
     document::DensityCurve curve{document::DensityCurve::Linear};
     double densityFrom{1.0 / 400.0};
     double densityTo{1.0 / 400.0};
+    document::DensityTexture texture{document::DensityTexture::None};
+    double textureStrength{0.35};
+    std::uint32_t textureSeed{1};
+
+    // Hash de coordonnées de grille : aucune allocation, état ou RNG global.
+    // Un même point donne le même déplacement dans toutes les couches.
+    [[nodiscard]] static double hashCell(std::int32_t x, std::int32_t y,
+                                         std::uint32_t seed) {
+        std::uint32_t z = static_cast<std::uint32_t>(x) * 0x9E3779B9u;
+        z ^= static_cast<std::uint32_t>(y) * 0x85EBCA6Bu;
+        z ^= seed * 0xC2B2AE35u;
+        z ^= z >> 16;
+        z *= 0x7FEB352Du;
+        z ^= z >> 15;
+        z *= 0x846CA68Bu;
+        z ^= z >> 16;
+        return static_cast<double>(z) * (2.0 / 4294967295.0) - 1.0;
+    }
+
+    // Irrégularité déterministe dans le domaine du paramètre t :
+    // Feathered = bruit lissé de 2 mm ; Stippled = micro-cellules 0,65 mm.
+    // Le chemin None reste strictement identique aux anciens calculs.
+    [[nodiscard]] double textureAt(P2 p) const {
+        if (texture == document::DensityTexture::None || textureStrength <= 0.0)
+            return 0.0;
+        if (texture == document::DensityTexture::Stippled) {
+            const auto ix = static_cast<std::int32_t>(std::floor(p.x / 650.0));
+            const auto iy = static_cast<std::int32_t>(std::floor(p.y / 650.0));
+            return hashCell(ix, iy, textureSeed) * textureStrength * 0.12;
+        }
+        const double x = p.x / 2200.0;
+        const double y = p.y / 2200.0;
+        const auto ix = static_cast<std::int32_t>(std::floor(x));
+        const auto iy = static_cast<std::int32_t>(std::floor(y));
+        const auto fade = [](double v) { return v * v * (3.0 - 2.0 * v); };
+        const double fx = fade(x - ix);
+        const double fy = fade(y - iy);
+        const double a = hashCell(ix, iy, textureSeed);
+        const double b = hashCell(ix + 1, iy, textureSeed);
+        const double d = hashCell(ix, iy + 1, textureSeed);
+        const double e = hashCell(ix + 1, iy + 1, textureSeed);
+        return ((a + (b - a) * fx) * (1.0 - fy) +
+                (d + (e - d) * fx) * fy) * textureStrength * 0.22;
+    }
 
     [[nodiscard]] bool uniform() const { return invLen2 == 0.0 || from == to; }
 
@@ -657,7 +701,8 @@ struct SpacingField {
         if (uniform()) {
             return lo;
         }
-        const double t = shaped(curve, std::clamp(dot(p - origin, axis) * invLen2, 0.0, 1.0));
+        const double t = shaped(curve, std::clamp(
+            dot(p - origin, axis) * invLen2 + textureAt(p), 0.0, 1.0));
         if (interpolateDensity) {
             // Rampes opposées : rho_A(t) + rho_B(t) = rho_from + rho_to.
             return 1.0 / (densityFrom + (densityTo - densityFrom) * t);
@@ -685,6 +730,10 @@ SpacingField make_spacing_field(const document::DirectionalFillParams& p) {
     f.to = bound(g.spacing_to);
     f.interpolateDensity = g.interpolate_density;
     f.curve = g.curve;
+    f.texture = g.texture;
+    f.textureStrength = std::isfinite(g.texture_strength)
+                            ? std::clamp(g.texture_strength, 0.0, 1.0) : 0.0;
+    f.textureSeed = g.texture_seed;
     f.densityFrom = 1.0 / f.from;
     f.densityTo = 1.0 / f.to;
     f.lo = std::min(f.from, f.to);
