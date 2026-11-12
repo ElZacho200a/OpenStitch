@@ -343,6 +343,15 @@ void generate_satin(stitch::StitchSequence& sequence, const document::Embroidery
         if (reversed < normal) {
             const std::size_t n = result.satin.size();
             std::reverse(result.satin.begin(), result.satin.end());
+            if (!result.station_ends.empty()) {
+                const auto oldEnds = result.station_ends;
+                result.station_ends.clear();
+                result.station_ends.reserve(oldEnds.size());
+                for (std::size_t i = oldEnds.size(); i-- > 0;) {
+                    const auto first = i == 0 ? 0 : oldEnds[i - 1];
+                    result.station_ends.push_back(n - first);
+                }
+            }
             // `jump_before[k]` marquait l'arête (i-1, i) comme sautée ; une
             // fois la séquence inversée, ce même point physique se retrouve
             // avant la nouvelle position de l'ancien point (i-1), soit
@@ -353,6 +362,74 @@ void generate_satin(stitch::StitchSequence& sequence, const document::Embroidery
             // total-order-ok: valeurs scalaires ou entiers : les egalites sont indiscernables
             std::sort(result.jump_before.begin(), result.jump_before.end());
         }
+    }
+
+    // Fondu SATIN multicolore : chaque traversée est attribuée à UN seul
+    // fil avec un hachage stable (graine = groupe logique + rang de traversée).
+    // Cela évite les surépaisseurs dues à N colonnes satins superposées.
+    // Une traversée est conservée EN ENTIER, avec tous ses split stitches ;
+    // aucune découpe arbitraire d'un fil long en milieu de colonne.
+    if (object.multi_blend && object.multi_blend->count >= 2 &&
+        object.multi_blend->count <= 8 &&
+        object.multi_blend->index < object.multi_blend->count &&
+        !result.station_ends.empty()) {
+        const auto link = *object.multi_blend;
+        const auto old = std::move(result.satin);
+        const auto oldBreaks = std::move(result.jump_before);
+        std::vector<Vec2um> selected;
+        std::vector<std::size_t> breaks;
+        selected.reserve(old.size() / link.count + 16);
+        std::size_t offset = 0;
+        std::size_t lastSelected = result.station_ends.size();
+        const std::size_t stations = result.station_ends.size();
+        for (std::size_t s = 0; s < stations; ++s) {
+            const std::size_t end = result.station_ends[s];
+            if (end <= offset || end > old.size()) {
+                break;
+            }
+            const double t = stations > 1
+                                 ? static_cast<double>(s) / static_cast<double>(stations - 1)
+                                 : 0.0;
+            const double band = t * static_cast<double>(link.count - 1);
+            const int lower = std::min(static_cast<int>(band),
+                                       static_cast<int>(link.count) - 1);
+            const int upper = std::min(lower + 1, static_cast<int>(link.count) - 1);
+            const double fraction = band - lower;
+            std::uint64_t z = link.group.value ^ (s * 0x9E3779B97F4A7C15ull);
+            z ^= z >> 30;
+            z *= 0xBF58476D1CE4E5B9ull;
+            z ^= z >> 27;
+            z *= 0x94D049BB133111EBull;
+            z ^= z >> 31;
+            const double random = static_cast<double>(z >> 11) * (1.0 / 9007199254740992.0);
+            int chosen = random < (1.0 - fraction) ? lower : upper;
+            bool keep = chosen == static_cast<int>(link.index);
+            if (!link.complementary && link.index == 0) {
+                keep = true; // fond uniforme pour le mode superposition
+            } else if (!link.complementary && link.index > 0) {
+                // Voiles supplémentaires plus rares : jamais plus de 25 % des
+                // traversées pour limiter l'accumulation de satin.
+                keep = keep && random < 0.25;
+            }
+            if (keep) {
+                if (!selected.empty() && lastSelected + 1 != s) {
+                    breaks.push_back(selected.size());
+                }
+                for (const std::size_t jump : oldBreaks) {
+                    if (jump >= offset && jump < end) {
+                        breaks.push_back(selected.size() + (jump - offset));
+                    }
+                }
+                selected.insert(selected.end(), old.begin() + offset, old.begin() + end);
+                lastSelected = s;
+            }
+            offset = end;
+        }
+        result.satin = std::move(selected);
+        // Les doubles indices ne créent pas de sauts redondants.
+        std::sort(breaks.begin(), breaks.end());
+        breaks.erase(std::unique(breaks.begin(), breaks.end()), breaks.end());
+        result.jump_before = std::move(breaks);
     }
 
     // Sous-couches d'abord (passes distinctes), puis lock d'entrée, couche
