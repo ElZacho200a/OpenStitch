@@ -67,7 +67,12 @@ QColor FadeController::foreground() const {
 }
 
 QColor FadeController::background() const {
-    return axis_ ? colour(axis_->background) : QColor();
+    if (axis_) return colour(axis_->background);
+    if (id_ != 0) {
+        if (const auto* object = studio_.session().project().findEmbroidery(ObjectId{id_}))
+            return colour(object->rgb);
+    }
+    return QColor();
 }
 
 QString FadeController::summary() const {
