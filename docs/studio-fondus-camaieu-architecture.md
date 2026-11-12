@@ -1,5 +1,53 @@
 # Studio — Fondus de fils, camaïeux et dégradés de densité
-Date : 12 novembre 2026 — conception et tranche UI (pas une validation du moteur multicolore).
+Date : 12 novembre 2026 — implémentation candidate dans la PR #336 (CI et validation textile non acquises).
+
+## État de la branche PR #336
+
+La branche implémente désormais **un moteur n-aire candidat** (2 à 8 fils) pour
+les remplissages Tatami/directionnels, avec deux familles de couverture
+(complementaire / fond constant + surcouches légères), et pour les colonnes
+**satin** avec répartition déterministe de leurs traversées. Les méthodes
+linéaire / radiale / courbe, bords irréguliers, tramage et passé empiétant
+sont des options de calcul pour les remplissages, pas des filtres RGB.
+
+- Source de vérité : un `MultiBlendLink{group,index,count,complementary}`
+  enregistré dans chaque objet physique ; la fonction
+  `find_multi_blend` vérifie la complétude de la relation.
+- Création, modification du nombre de fils, suppression, migration des paires
+  legacy : **une commande composite undoable**, avec un rang de couture par
+  couche. Le moteur de points consomme des `EmbroideryObject` réels.
+- Profil couleur du remplissage : poids linéaires par morceaux
+  `DensityGradient.density_stops` ; en complémentaire la somme des
+  poids est égale à 1 à chaque arrêt et entre les arrêts.
+- Mode satin : sous-couche du premier fil seulement ; sélection de
+  traversées complètes dans chaque bloc par hachage spatial stable pour
+  limiter les superpositions, même avec points de division.
+- Le format OSP garde les couples bicolores anciens ; les champs n-aires
+  et les arrêts sont écrits uniquement lorsqu'ils sont utilisés.
+- Studio : liste des fils avec couleurs éditables, ajout/retrait jusqu'à 8,
+  géométrie et technique, inverse, courbes pour les remplissages, sauvegarde.
+- Performance : aucun RNG global, pas d'allocation à l'évaluation d'une
+  densité, tramage déterministe ; calcul du canevas réduit lors du
+  déplacement de poignées (aperçu géométrique jusqu'au commit).
+
+### Limitations importantes
+
+- Les nouveaux fils sont saisis comme **couleurs libres** et non encore choisis
+  automatiquement dans une **bibliothèque de références de fils réels** ;
+  l'assistant camaïeu basé sur le stock et les recettes de couleur reste à faire.
+- Le mode satin partage les traversées entre des fils, il ne prédit pas
+  la physique d'une colonne satin interpénétrée ni la tenue après lavage.
+- L'axe de géométrie et le profil de densité d'un **remplissage monochrome
+  préexistant** ne sont pas combinés avec le fondu multicolore :
+  un refus explicite évite une conversion destructive.
+- Les curseurs physiques avancés de chaque fil (seuils de densité,
+  contraintes de tissu, positions individuelles d'arrêt, mélange de techniques
+  par couche, masque peint) et les **benchmarks instrumentés** restent
+  à implémenter ou à étendre.
+- Les générateurs multi-couches coûtent jusqu'à N passes sur la géométrie ;
+  le gain de latence/mémoire **n'est pas encore mesuré** et la validation
+  sur tissu réel est indispensable. Les tests automatiques valident des
+  invariants structurels, pas la qualité esthétique du tissu.
 
 ## Deux notions, deux emplacements
 
@@ -35,7 +83,7 @@ en l'autre.
   FadeController / fade_service / project_ops : une action = une commande
   annulable, sans recalcul complet pendant le déplacement de la poignée.
 
-## Architecture cible pour 3+ fils / camaïeu
+## Architecture cible / évolutions pour 3+ fils et camaïeux
 
 Ne pas chaîner des `ColorBlendLink` binaires : ces liens réciproques codent
 un couple exact, et plusieurs paires indépendantes auraient des erreurs de
@@ -90,8 +138,11 @@ interpoler des couleurs RGB comme s'il s'agissait de nouveaux fils.**
    autre qu'un segment unique ; fonctionnalité séparée des méthodes
    ci-dessus.
 
-1–2 existent **pour deux fils**. 3–6 sont des pistes à prototyper et
-valider sur tissus/entoilages, pas des fonctions livrées dans ce lot.
+Les méthodes 1–6 ont maintenant des **implémentations candidates** pour
+une partie des objets supportés. L'atelier de références de fils, l'édition
+de profils personnalisés et la confirmation d'un rendu cousu comparable aux
+applications spécialisées restent des travaux distincts ; ces algorithmes ne
+constituent pas une validation physique.
 
 ## Plan de vérification
 
