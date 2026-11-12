@@ -2,6 +2,7 @@
 // Studio -- famille F « outils de dessin et d'édition vectorielle » : parcours réels (shell QML,
 // vrai canevas, souris QTest, vrai moteur) avec annulation en une étape, Échap et persistance OSP.
 // Aucun mock du moteur.
+#include <QFile>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
@@ -22,6 +23,7 @@
 #include "studio_controller.hpp"
 #include "tool_controller.hpp"
 #include "tool_registry.hpp"
+#include "usage_controller.hpp"
 #include "vector_controller.hpp"
 #include "vector_space_controller.hpp"
 #include "workspace_controller.hpp"
@@ -156,6 +158,7 @@ private slots:
     void initTestCase();
     void toolRailMatchesRegistry();
     void basicShapesByMouse();
+    void usageLogRecordsToolsAndActions();
     void polygonAndRegularShapes();
     void penBezierAndFreehand();
     void escapeCancelsGestures();
@@ -814,6 +817,28 @@ void StudioToolsTest::snappingIsConfigurable() {
     const auto free = boundsOf(rig.session.project(), rig.session.selection().targets().front().id);
     QVERIFY(std::abs(free.x0 - target.x1) > 0.01 && std::abs(free.x1 - target.x1) > 0.01);
     QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+}
+
+void StudioToolsTest::usageLogRecordsToolsAndActions() {
+    Rig rig;
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    UsageLogOptions options;
+    options.dir = std::filesystem::path(dir.path().toStdString());
+    options.version = "test";
+    UsageLog log(options);
+    UsageController usage(log);
+    usage.observe(rig.actions, rig.tools);
+    rig.tools.setActiveTool(QStringLiteral("draw.ellipse"));
+    QVERIFY(!rig.actions.run(QStringLiteral("no.such.action"), {}).isEmpty());
+    usage.click(QStringLiteral("gesture_satin"));
+    QFile file(QString::fromStdString(log.currentFile().string()));
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    const auto text = QString::fromUtf8(file.readAll());
+    QVERIFY(text.contains(QStringLiteral("\"k\":\"tool\",\"id\":\"draw.ellipse\"")));
+    QVERIFY(text.contains(
+        QStringLiteral("\"k\":\"action\",\"id\":\"no.such.action\",\"d\":\"refused\"")));
+    QVERIFY(text.contains(QStringLiteral("\"k\":\"click\",\"id\":\"gesture_satin\"")));
 }
 
 QTEST_MAIN(StudioToolsTest)
