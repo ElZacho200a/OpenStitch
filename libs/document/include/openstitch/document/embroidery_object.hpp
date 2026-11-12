@@ -117,6 +117,7 @@ enum class DensityTexture : std::uint8_t {
     None = 0,
     Feathered = 1, // frontière lissée et irrégulière
     Stippled = 2,  // tramage spatial à petites cellules
+    LongShort = 3, // passé empiétant : alternance de longueurs de points
 };
 
 enum class DensityGeometry : std::uint8_t {
