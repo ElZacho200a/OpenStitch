@@ -37,7 +37,8 @@ Item {
     readonly property var textures: [
         { id: 0, label: qsTr("Lisse") },
         { id: 1, label: qsTr("Bords irréguliers") },
-        { id: 2, label: qsTr("Tramé") }
+        { id: 2, label: qsTr("Tramé") },
+        { id: 3, label: qsTr("Passé empiétant") }
     ]
     implicitHeight: fields.implicitHeight + 22
 
@@ -373,6 +374,8 @@ Item {
                       ? qsTr("Les limites de couleur s'imbriquent de façon irrégulière, sans bruit aléatoire.")
                       : root.selectedTexture === 2
                         ? qsTr("Un tramage de petites cellules répartit les fils. À contrôler dans la simulation.")
+                      : root.selectedTexture === 3
+                        ? qsTr("Points de longueurs alternées et terminaison irrégulière, pour une transition picturale.")
                         : qsTr("Transition régulière de densité entre les fils.")
                 color: Theme.faint
                 font.family: Theme.fontFamily
