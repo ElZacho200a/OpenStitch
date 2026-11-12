@@ -269,6 +269,7 @@ void generate_running(stitch::StitchSequence& sequence, const document::VectorOb
 void generate_satin(stitch::StitchSequence& sequence, const document::EmbroideryObject& object,
                     const document::SatinParams& params) {
     SatinConfig config;
+    config.track_stations = object.multi_blend.has_value();
     config.density = params.density;
     config.pull_compensation = params.pull_compensation;
     config.center_underlay = params.center_underlay;
