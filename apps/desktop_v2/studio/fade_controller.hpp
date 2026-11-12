@@ -29,6 +29,7 @@ class FadeController : public QObject {
     Q_PROPERTY(QColor foreground READ foreground NOTIFY changed)
     Q_PROPERTY(QColor background READ background NOTIFY changed)
     Q_PROPERTY(bool complementary READ complementary NOTIFY changed)
+    Q_PROPERTY(int texture READ texture NOTIFY changed)
     Q_PROPERTY(int curve READ curve NOTIFY changed)
     Q_PROPERTY(QString summary READ summary NOTIFY changed)
     Q_PROPERTY(QVariantMap axis READ axis NOTIFY changed)
@@ -47,6 +48,7 @@ public:
     [[nodiscard]] QColor foreground() const;
     [[nodiscard]] QColor background() const;
     [[nodiscard]] bool complementary() const { return settings_ && settings_->complementary; }
+    [[nodiscard]] int texture() const { return settings_ ? settings_->texture : 0; }
     [[nodiscard]] int curve() const { return axis_ ? static_cast<int>(axis_->curve) : 0; }
     [[nodiscard]] QString summary() const;
     [[nodiscard]] QVariantMap axis() const { return axisMap(axis_); }
@@ -56,6 +58,8 @@ public:
     [[nodiscard]] bool lastOk() const { return ok_; }
 
     Q_INVOKABLE bool create(const QColor& foreground, bool complementary);
+    Q_INVOKABLE bool createWithTexture(const QColor& foreground, bool complementary, int texture);
+    Q_INVOKABLE bool setTexture(int texture);
     Q_INVOKABLE bool edit(const QColor& foreground, bool complementary);
     Q_INVOKABLE bool remove();
     // handle : 0 Start, 1 End, 2 Move, 3 Rotate. Aperçu = géométrie pure, aucun point régénéré.
