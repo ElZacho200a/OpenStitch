@@ -404,9 +404,21 @@ void generate_satin(stitch::StitchSequence& sequence, const document::Embroidery
             if (!link.complementary && link.index == 0) {
                 keep = true; // fond uniforme pour le mode superposition
             } else if (!link.complementary && link.index > 0) {
-                // Voiles supplémentaires plus rares : jamais plus de 25 % des
-                // traversées pour limiter l'accumulation de satin.
-                keep = keep && random < 0.25;
+                // Indépendant du tirage complémentaire : un second hash
+                // décide de la probabilité du voile coloré. Réutiliser random
+                // forçait certains fils à disparaître dans toute une demi-zone.
+                const double weight = lower == static_cast<int>(link.index)
+                                          ? (1.0 - fraction)
+                                          : upper == static_cast<int>(link.index) ? fraction : 0.0;
+                std::uint64_t overlay = z ^ 0xD1B54A32D192ED03ull;
+                overlay ^= overlay >> 30;
+                overlay *= 0xBF58476D1CE4E5B9ull;
+                overlay ^= overlay >> 27;
+                overlay *= 0x94D049BB133111EBull;
+                overlay ^= overlay >> 31;
+                const double draw =
+                    static_cast<double>(overlay >> 11) * (1.0 / 9007199254740992.0);
+                keep = draw < weight * 0.25;
             }
             if (keep) {
                 if (!selected.empty() && lastSelected + 1 != s) {
