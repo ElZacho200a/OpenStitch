@@ -304,7 +304,8 @@ std::vector<ActionDef> makeCatalog() {
                     choiceField("strategy", "Stratégie",
                                 {{"skeleton", "Squelette"},
                                  {"parallel_sweep", "Balayage parallèle"},
-                                 {"medial_axis", "Axe médian"}})};
+                                 {"medial_axis", "Axe médian"},
+                                 {"guided_satin", "Satin guidé"}})};
         a.build = [](const Values& v, const ActionContext& c, std::string&) {
             return perObject(c, "auto_satin",
                              R"(,"spacing_mm":)" + num(number(v, "spacing_mm")) +

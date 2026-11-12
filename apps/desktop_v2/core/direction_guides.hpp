@@ -6,6 +6,7 @@
 // les effacer. Un tatami (ou tout autre remplissage) est converti en directionnel au premier tracé,
 // dans la MÊME étape d'annulation. Sans Qt.
 
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -17,6 +18,13 @@ namespace openstitch::desktop_v2 {
 // Nombre de guides / de lignes de rupture, ou -1 si l'objet n'est pas un remplissage directionnel.
 [[nodiscard]] int directionGuideCount(const document::Project& project, std::uint64_t objectId);
 [[nodiscard]] int breakLineCount(const document::Project& project, std::uint64_t objectId);
+
+// Courbes centrales utilisées par la stratégie Guided. Les points restent en
+// coordonnées modèle pour la surcouche Studio et sont édités par commande annulable.
+[[nodiscard]] std::vector<std::vector<PointMm>>
+autoSatinGuidePaths(const document::Project& project, std::uint64_t objectId);
+ServiceResult moveAutoSatinGuideNode(DocumentSession& session, std::uint64_t objectId,
+                                     std::size_t guideIndex, std::size_t nodeIndex, PointMm to);
 
 // Trace un guide (`isBreak == false`, courbe lissée) ou une ligne de rupture (`true`, segments) à
 // partir de points en mm modèle. Au moins deux points distincts, dans les limites du motif. L'objet

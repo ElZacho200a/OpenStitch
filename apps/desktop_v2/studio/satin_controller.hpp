@@ -69,6 +69,9 @@ public:
     [[nodiscard]] int breakLineCount() const { return breaks_; }
     Q_INVOKABLE bool addGuide(const QVariantList& points, bool isBreak);
     Q_INVOKABLE bool clearGuides(bool breakLines);
+    // Tableau de courbes centrales : [[{x,y}, ...], ...] en mm modèle.
+    Q_INVOKABLE [[nodiscard]] QVariantList autoSatinGuidePaths() const;
+    Q_INVOKABLE bool moveAutoSatinGuidePoint(int guide, int node, double xMm, double yMm);
 signals:
     void changed();
     void messageChanged();

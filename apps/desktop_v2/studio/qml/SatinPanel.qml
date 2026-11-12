@@ -151,6 +151,7 @@ Rectangle {
                 objectName: "addBreakLine"
                 text: qsTr("Ajouter la ligne de rupture")
                 enabled: panel.ready && panel.validGuidePoints()
+                         && panel.controller.breakLineCount >= 0
                 tooltip: qsTr("Crée une ligne de rupture entre deux points du modèle (mm)")
                 onClicked: panel.controller.addGuide(panel.guidePoints(), true)
             }
@@ -161,14 +162,18 @@ Rectangle {
                 color: Theme.faint
                 font.family: Theme.fontFamily
                 text: !panel.ready || panel.controller.guideCount < 0 ? qsTr("Remplissage non directionnel (le premier guide le convertit).")
-                      : panel.controller.guideCount + qsTr(" guide(s), ") + panel.controller.breakLineCount + qsTr(" ligne(s) de rupture")
+                      : panel.controller.breakLineCount < 0
+                        ? panel.controller.guideCount + qsTr(" guide(s) de satin")
+                        : panel.controller.guideCount + qsTr(" guide(s), ") + panel.controller.breakLineCount + qsTr(" ligne(s) de rupture")
             }
             Flow {
                 Layout.fillWidth: true
                 spacing: 4
                 enabled: panel.ready && panel.controller.guideCount >= 0
                 StudioButton { objectName: "guidesClear"; text: qsTr("Retirer les guides"); onClicked: panel.controller.clearGuides(false) }
-                StudioButton { objectName: "breaksClear"; text: qsTr("Retirer les ruptures"); onClicked: panel.controller.clearGuides(true) }
+                StudioButton { objectName: "breaksClear"; text: qsTr("Retirer les ruptures")
+                    enabled: panel.ready && panel.controller.breakLineCount >= 0
+                    onClicked: panel.controller.clearGuides(true) }
             }
             Text {
                 objectName: "satinMessage"
