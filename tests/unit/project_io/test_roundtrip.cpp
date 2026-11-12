@@ -225,9 +225,8 @@ TEST_CASE("blend core: legacy JSON omits relation and keeps spacing interpolatio
 TEST_CASE("fade textures roundtrip and legacy files retain the regular method", "[blend_core]") {
     auto project = rich_project();
     document::DirectionalFillParams params;
-    params.density_gradient =
-        document::DensityGradient{um(0, 0), um(5'000, 0), Micrometers{400},
-                                  Micrometers{1'600}, true};
+    params.density_gradient = document::DensityGradient{um(0, 0), um(5'000, 0), Micrometers{400},
+                                                        Micrometers{1'600}, true};
     project.embroidery_objects[1].params = params;
     const auto regular = project_io::detail::project_to_json(project);
     const auto& oldGradient = regular["embroideryObjects"][1]["params"]["densityGradient"];
@@ -235,9 +234,9 @@ TEST_CASE("fade textures roundtrip and legacy files retain the regular method", 
     CHECK_FALSE(oldGradient.contains("textureStrength"));
     CHECK_FALSE(oldGradient.contains("textureSeed"));
 
-    for (const auto method : {document::DensityTexture::Feathered,
-                              document::DensityTexture::Stippled,
-                              document::DensityTexture::LongShort}) {
+    for (const auto method :
+         {document::DensityTexture::Feathered, document::DensityTexture::Stippled,
+          document::DensityTexture::LongShort}) {
         auto& gradient =
             std::get<document::DirectionalFillParams>(project.embroidery_objects[1].params)
                 .density_gradient;

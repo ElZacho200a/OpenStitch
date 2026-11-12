@@ -49,9 +49,7 @@ public:
         return settings_.has_value() || multiSettings_.has_value();
     }
     [[nodiscard]] bool multiFade() const { return multiSettings_.has_value(); }
-    [[nodiscard]] bool canCreate() const {
-        return id_ != 0 && !hasFade() && incompat_.isEmpty();
-    }
+    [[nodiscard]] bool canCreate() const { return id_ != 0 && !hasFade() && incompat_.isEmpty(); }
     [[nodiscard]] QString incompatibility() const { return incompat_; }
     [[nodiscard]] QColor foreground() const;
     [[nodiscard]] QColor background() const;
@@ -63,8 +61,7 @@ public:
         return multiSettings_ ? multiSettings_->texture : settings_ ? settings_->texture : 0;
     }
     [[nodiscard]] int geometry() const {
-        return multiSettings_ ? multiSettings_->geometry
-                              : settings_ ? settings_->geometry : 0;
+        return multiSettings_ ? multiSettings_->geometry : settings_ ? settings_->geometry : 0;
     }
     [[nodiscard]] QVariantList colors() const;
     [[nodiscard]] int curve() const;
@@ -79,10 +76,10 @@ public:
     Q_INVOKABLE bool createWithTexture(const QColor& foreground, bool complementary, int texture);
     Q_INVOKABLE bool setTexture(int texture);
     Q_INVOKABLE bool setGeometry(int geometry);
-    Q_INVOKABLE bool createMulticolor(const QVariantList& colors, bool complementary,
-                                      int texture, int geometry);
-    Q_INVOKABLE bool editMulticolor(const QVariantList& colors, bool complementary,
-                                    int texture, int geometry);
+    Q_INVOKABLE bool createMulticolor(const QVariantList& colors, bool complementary, int texture,
+                                      int geometry);
+    Q_INVOKABLE bool editMulticolor(const QVariantList& colors, bool complementary, int texture,
+                                    int geometry);
     Q_INVOKABLE bool edit(const QColor& foreground, bool complementary);
     Q_INVOKABLE bool remove();
     // handle : 0 Start, 1 End, 2 Move, 3 Rotate. Aperçu = géométrie pure, aucun point régénéré.

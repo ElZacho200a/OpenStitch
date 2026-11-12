@@ -56,8 +56,8 @@ void remap_color_blend_links(std::vector<document::EmbroideryObject>& copies,
                         continue;
                     }
                     const auto& link = *other.multi_blend;
-                    if (link.count != tag.count || link.index >= tag.count ||
-                        found[link.index] || other.source_vector != copy.source_vector ||
+                    if (link.count != tag.count || link.index >= tag.count || found[link.index] ||
+                        other.source_vector != copy.source_vector ||
                         link.complementary != tag.complementary) {
                         valid = false;
                         break;
@@ -65,8 +65,8 @@ void remap_color_blend_links(std::vector<document::EmbroideryObject>& copies,
                     found[link.index] = true;
                 }
             }
-            if (!valid || !std::all_of(found.begin(), found.end(),
-                                      [](bool value) { return value; })) {
+            if (!valid ||
+                !std::all_of(found.begin(), found.end(), [](bool value) { return value; })) {
                 copy.multi_blend.reset();
             }
         }

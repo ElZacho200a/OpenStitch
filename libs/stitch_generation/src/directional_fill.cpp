@@ -641,8 +641,7 @@ struct SpacingField {
 
     // Hash de coordonnées de grille : aucune allocation, état ou RNG global.
     // Un même point donne le même déplacement dans toutes les couches.
-    [[nodiscard]] static double hashCell(std::int32_t x, std::int32_t y,
-                                         std::uint32_t seed) {
+    [[nodiscard]] static double hashCell(std::int32_t x, std::int32_t y, std::uint32_t seed) {
         std::uint32_t z = static_cast<std::uint32_t>(x) * 0x9E3779B9u;
         z ^= static_cast<std::uint32_t>(y) * 0x85EBCA6Bu;
         z ^= seed * 0xC2B2AE35u;
@@ -676,8 +675,7 @@ struct SpacingField {
         const double b = hashCell(ix + 1, iy, textureSeed);
         const double d = hashCell(ix, iy + 1, textureSeed);
         const double e = hashCell(ix + 1, iy + 1, textureSeed);
-        return ((a + (b - a) * fx) * (1.0 - fy) +
-                (d + (e - d) * fx) * fy) * textureStrength * 0.22;
+        return ((a + (b - a) * fx) * (1.0 - fy) + (d + (e - d) * fx) * fy) * textureStrength * 0.22;
     }
 
     [[nodiscard]] bool uniform() const {
@@ -724,10 +722,9 @@ struct SpacingField {
             return 1.0;
         }
         const double t = positionAt(p);
-        const auto it = std::lower_bound(densityStops.begin(), densityStops.end(), t,
-                                         [](const auto& stop, double v) {
-                                             return stop.position < v;
-                                         });
+        const auto it =
+            std::lower_bound(densityStops.begin(), densityStops.end(), t,
+                             [](const auto& stop, double v) { return stop.position < v; });
         if (it == densityStops.begin()) {
             return it->weight;
         }
@@ -750,8 +747,7 @@ struct SpacingField {
         if (!densityStops.empty()) {
             // Les supports presque nuls sont coupés par StreamlineTracer::active.
             // Le plafond garde la grille de séparation et ses rayons bornés.
-            return std::clamp(from / std::max(0.1, densityWeight(p)),
-                              kGradientMin, kGradientMax);
+            return std::clamp(from / std::max(0.1, densityWeight(p)), kGradientMin, kGradientMax);
         }
         const double t = positionAt(p);
         if (interpolateDensity) {
@@ -782,12 +778,11 @@ SpacingField make_spacing_field(const document::DirectionalFillParams& p) {
     f.interpolateDensity = g.interpolate_density;
     f.curve = g.curve;
     f.texture = g.texture;
-    f.textureStrength = std::isfinite(g.texture_strength)
-                            ? std::clamp(g.texture_strength, 0.0, 1.0) : 0.0;
+    f.textureStrength =
+        std::isfinite(g.texture_strength) ? std::clamp(g.texture_strength, 0.0, 1.0) : 0.0;
     f.textureSeed = g.texture_seed;
     f.geometry = g.geometry;
-    f.curveBend = std::isfinite(g.curve_bend)
-                      ? std::clamp(g.curve_bend, -1.0, 1.0) : 0.0;
+    f.curveBend = std::isfinite(g.curve_bend) ? std::clamp(g.curve_bend, -1.0, 1.0) : 0.0;
     f.densityStops = g.density_stops;
     f.densityFrom = 1.0 / f.from;
     f.densityTo = 1.0 / f.to;

@@ -350,15 +350,14 @@ TEST_CASE("multicolor: five physical thread layers are one undoable blend group"
     const auto initial = project_ops::default_gradient_fill(f.project, f.fill);
     REQUIRE(initial);
     project_ops::MultiGradientFillSpec spec;
-    spec.colors = {{12, 25, 80}, {24, 64, 130}, {57, 113, 165},
-                   {91, 170, 205}, {180, 223, 238}};
+    spec.colors = {{12, 25, 80}, {24, 64, 130}, {57, 113, 165}, {91, 170, 205}, {180, 223, 238}};
     spec.gradient = initial->gradient;
     spec.gradient.texture = document::DensityTexture::Feathered;
     spec.complementary = true;
 
     commands::UndoStack stack;
-    auto command = project_ops::make_create_multicolor_gradient_fill_command(
-        f.project, f.fill, spec);
+    auto command =
+        project_ops::make_create_multicolor_gradient_fill_command(f.project, f.fill, spec);
     REQUIRE(command);
     stack.execute(std::move(*command), f.project);
     REQUIRE(f.project.embroidery_objects.size() == 5);
@@ -394,15 +393,14 @@ TEST_CASE("multicolor: five physical thread layers are one undoable blend group"
     CHECK(stitched->commands.size() > 20);
 
     // Même résultat après fermeture / réouverture.
-    const auto path = std::filesystem::temp_directory_path() /
-                      "openstitch_multicolor_gradient_test.osp";
+    const auto path =
+        std::filesystem::temp_directory_path() / "openstitch_multicolor_gradient_test.osp";
     REQUIRE(project_io::save_project(path, f.project));
     const auto reopened = project_io::load_project(path);
     std::filesystem::remove(path);
     REQUIRE(reopened);
     CHECK(document::find_multi_blend(*reopened, f.fill));
-    CHECK(project_ops::describe_multicolor_gradient_fill(*reopened, f.fill)->colors ==
-          spec.colors);
+    CHECK(project_ops::describe_multicolor_gradient_fill(*reopened, f.fill)->colors == spec.colors);
 
     REQUIRE(stack.undo(f.project));
     REQUIRE(f.project.embroidery_objects.size() == 1);
@@ -430,13 +428,11 @@ TEST_CASE("multicolor: editing layer count, removing group and undo stay atomic"
 
     spec.colors.pop_back();
     spec.gradient.geometry = document::DensityGeometry::Curved;
-    auto edited =
-        project_ops::make_edit_multicolor_gradient_fill_command(f.project, f.fill, spec);
+    auto edited = project_ops::make_edit_multicolor_gradient_fill_command(f.project, f.fill, spec);
     REQUIRE(edited);
     stack.execute(std::move(*edited), f.project);
     REQUIRE(f.project.embroidery_objects.size() == 3);
-    CHECK(project_ops::describe_multicolor_gradient_fill(f.project, f.fill)->colors ==
-          spec.colors);
+    CHECK(project_ops::describe_multicolor_gradient_fill(f.project, f.fill)->colors == spec.colors);
     REQUIRE(stack.undo(f.project));
     REQUIRE(f.project.embroidery_objects.size() == 4);
     CHECK(document::find_multi_blend(f.project, f.fill)->layers == original->layers);

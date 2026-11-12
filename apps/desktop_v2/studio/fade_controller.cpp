@@ -58,8 +58,8 @@ void FadeController::refresh() {
         } else {
             multiSettings_ = readMultiFade(project, id_);
             if (multiSettings_) {
-                const auto spec = project_ops::describe_multicolor_gradient_fill(
-                    project, ObjectId{id_});
+                const auto spec =
+                    project_ops::describe_multicolor_gradient_fill(project, ObjectId{id_});
                 if (spec) {
                     multiCurve_ = static_cast<int>(spec->gradient.curve);
                 }
@@ -191,8 +191,7 @@ bool FadeController::createWithTexture(const QColor& foreground, bool complement
     }
     auto settings = settingsOf(foreground, complementary);
     settings.texture = texture;
-    return report(createFade(studio_.session(), id_, settings),
-                  QStringLiteral("Fondu créé."));
+    return report(createFade(studio_.session(), id_, settings), QStringLiteral("Fondu créé."));
 }
 
 bool FadeController::setTexture(int texture) {
@@ -234,9 +233,8 @@ bool FadeController::setGeometry(int geometry) {
 }
 
 namespace {
-std::optional<MultiFadeSettings> multiSettingsOf(const QVariantList& inputs,
-                                                  bool complementary, int texture,
-                                                  int geometry) {
+std::optional<MultiFadeSettings> multiSettingsOf(const QVariantList& inputs, bool complementary,
+                                                 int texture, int geometry) {
     if (inputs.size() < 2 || inputs.size() > 8) {
         return std::nullopt;
     }
@@ -253,10 +251,9 @@ std::optional<MultiFadeSettings> multiSettingsOf(const QVariantList& inputs,
         if (!chosen.isValid()) {
             return std::nullopt;
         }
-        const std::array<std::uint8_t, 3> rgb{
-            static_cast<std::uint8_t>(chosen.red()),
-            static_cast<std::uint8_t>(chosen.green()),
-            static_cast<std::uint8_t>(chosen.blue())};
+        const std::array<std::uint8_t, 3> rgb{static_cast<std::uint8_t>(chosen.red()),
+                                              static_cast<std::uint8_t>(chosen.green()),
+                                              static_cast<std::uint8_t>(chosen.blue())};
         if (!settings.colors.empty() && rgb == settings.colors.back()) {
             return std::nullopt;
         }
@@ -266,27 +263,29 @@ std::optional<MultiFadeSettings> multiSettingsOf(const QVariantList& inputs,
 }
 } // namespace
 
-bool FadeController::createMulticolor(const QVariantList& colors, bool complementary,
-                                      int texture, int geometry) {
+bool FadeController::createMulticolor(const QVariantList& colors, bool complementary, int texture,
+                                      int geometry) {
     if (!canCreate()) {
         return refuse(QStringLiteral("Sélectionnez un remplissage compatible."));
     }
     const auto settings = multiSettingsOf(colors, complementary, texture, geometry);
     if (!settings) {
-        return refuse(QStringLiteral("Choisissez entre 2 et 8 fils #rrggbb consécutifs distincts."));
+        return refuse(
+            QStringLiteral("Choisissez entre 2 et 8 fils #rrggbb consécutifs distincts."));
     }
     return report(createMultiFade(studio_.session(), id_, *settings),
                   QStringLiteral("Camaïeu multicolore créé."));
 }
 
-bool FadeController::editMulticolor(const QVariantList& colors, bool complementary,
-                                    int texture, int geometry) {
+bool FadeController::editMulticolor(const QVariantList& colors, bool complementary, int texture,
+                                    int geometry) {
     if (!hasFade()) {
         return refuse(QStringLiteral("Sélectionnez un fondu existant."));
     }
     const auto settings = multiSettingsOf(colors, complementary, texture, geometry);
     if (!settings) {
-        return refuse(QStringLiteral("Choisissez entre 2 et 8 fils #rrggbb consécutifs distincts."));
+        return refuse(
+            QStringLiteral("Choisissez entre 2 et 8 fils #rrggbb consécutifs distincts."));
     }
     if (multiSettings_ && settings->colors == multiSettings_->colors &&
         settings->texture == multiSettings_->texture &&
@@ -315,8 +314,7 @@ bool FadeController::edit(const QColor& foreground, bool complementary) {
         settings.texture = settings_->texture;
         settings.geometry = settings_->geometry;
     }
-    return report(editFade(studio_.session(), id_, settings),
-                  QStringLiteral("Fondu modifié."));
+    return report(editFade(studio_.session(), id_, settings), QStringLiteral("Fondu modifié."));
 }
 
 bool FadeController::remove() {
@@ -367,8 +365,8 @@ bool FadeController::setCurve(int curve) {
         if (curve == multiCurve_) {
             return true;
         }
-        auto spec = project_ops::describe_multicolor_gradient_fill(
-            studio_.session().project(), ObjectId{id_});
+        auto spec = project_ops::describe_multicolor_gradient_fill(studio_.session().project(),
+                                                                   ObjectId{id_});
         if (!spec) {
             return refuse(QStringLiteral("Camaïeu introuvable."));
         }

@@ -19,7 +19,7 @@ namespace openstitch::desktop_v2 {
 struct FadeSettings {
     std::array<std::uint8_t, 3> foreground{255, 255, 255}; // fil du dessus
     bool complementary{true};                              // rampes de densité opposées
-    int texture{0}; // 0 régulier, 1 bords irréguliers, 2 micro-tramage
+    int texture{0};  // 0 régulier, 1 bords irréguliers, 2 micro-tramage
     int geometry{0}; // 0 linéaire, 1 radial, 2 courbe
 };
 
@@ -48,8 +48,8 @@ struct MultiFadeSettings {
     int geometry{0};
 };
 
-[[nodiscard]] std::optional<MultiFadeSettings>
-readMultiFade(const document::Project& project, std::uint64_t objectId);
+[[nodiscard]] std::optional<MultiFadeSettings> readMultiFade(const document::Project& project,
+                                                             std::uint64_t objectId);
 ServiceResult createMultiFade(DocumentSession& session, std::uint64_t objectId,
                               const MultiFadeSettings& settings);
 ServiceResult editMultiFade(DocumentSession& session, std::uint64_t objectId,

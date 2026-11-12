@@ -64,9 +64,8 @@ bool setup_geometry(const document::Project& project, ObjectId id,
         }
         gradient.from = Vec2um{Micrometers{static_cast<std::int32_t>(std::lround(cx))},
                                Micrometers{static_cast<std::int32_t>(std::lround(cy))}};
-        gradient.to = Vec2um{
-            Micrometers{static_cast<std::int32_t>(std::lround(cx + radius))},
-            gradient.from.y};
+        gradient.to = Vec2um{Micrometers{static_cast<std::int32_t>(std::lround(cx + radius))},
+                             gradient.from.y};
     }
     gradient.geometry = static_cast<document::DensityGeometry>(geometry);
     gradient.curve_bend = geometry == 2 ? 0.35 : 0.0;
@@ -108,8 +107,8 @@ ServiceResult createFade(DocumentSession& session, std::uint64_t objectId,
         return refuse("Technique ou géométrie de fondu inconnue.");
     }
     spec->gradient.texture = static_cast<document::DensityTexture>(settings.texture);
-    if (!setup_geometry(session.project(), ObjectId{objectId}, spec->gradient,
-                        settings.geometry, settings.geometry != 0)) {
+    if (!setup_geometry(session.project(), ObjectId{objectId}, spec->gradient, settings.geometry,
+                        settings.geometry != 0)) {
         return refuse("Forme incompatible avec cette géométrie.");
     }
     if (spec->foreground == spec->background) {
@@ -166,11 +165,9 @@ ServiceResult removeFade(DocumentSession& session, std::uint64_t objectId) {
     return {true, {}};
 }
 
-
 std::optional<MultiFadeSettings> readMultiFade(const document::Project& project,
                                                std::uint64_t objectId) {
-    const auto spec =
-        project_ops::describe_multicolor_gradient_fill(project, ObjectId{objectId});
+    const auto spec = project_ops::describe_multicolor_gradient_fill(project, ObjectId{objectId});
     if (!spec) {
         return std::nullopt;
     }
@@ -188,8 +185,7 @@ ServiceResult createMultiFade(DocumentSession& session, std::uint64_t objectId,
     if (base == nullptr || settings.colors.size() < 2 || settings.colors.size() > 8) {
         return refuse("Choisissez un remplissage et entre 2 et 8 fils.");
     }
-    const auto initial =
-        project_ops::default_gradient_fill(session.project(), ObjectId{objectId});
+    const auto initial = project_ops::default_gradient_fill(session.project(), ObjectId{objectId});
     if (!initial) {
         return refuse("La forme n'est pas compatible avec un fondu.");
     }
@@ -198,8 +194,8 @@ ServiceResult createMultiFade(DocumentSession& session, std::uint64_t objectId,
     spec.complementary = settings.complementary;
     spec.gradient = initial->gradient;
     spec.gradient.texture = static_cast<document::DensityTexture>(settings.texture);
-    if (!setup_geometry(session.project(), ObjectId{objectId}, spec.gradient,
-                        settings.geometry, settings.geometry != 0)) {
+    if (!setup_geometry(session.project(), ObjectId{objectId}, spec.gradient, settings.geometry,
+                        settings.geometry != 0)) {
         return refuse("Forme incompatible avec cette géométrie.");
     }
     auto command = project_ops::make_create_multicolor_gradient_fill_command(
@@ -220,8 +216,7 @@ ServiceResult editMultiFade(DocumentSession& session, std::uint64_t objectId,
         project_ops::describe_multicolor_gradient_fill(session.project(), ObjectId{objectId});
     if (!spec) {
         // Conversion contrôlée et annulable de la relation binaire historique.
-        const auto old =
-            project_ops::describe_gradient_fill(session.project(), ObjectId{objectId});
+        const auto old = project_ops::describe_gradient_fill(session.project(), ObjectId{objectId});
         if (!old) {
             return refuse("Sélectionnez un fondu de fils existant.");
         }
@@ -230,13 +225,12 @@ ServiceResult editMultiFade(DocumentSession& session, std::uint64_t objectId,
         spec->colors = {old->background, old->foreground};
         spec->complementary = old->complementary;
     }
-    const bool geometryChanged =
-        static_cast<int>(spec->gradient.geometry) != settings.geometry;
+    const bool geometryChanged = static_cast<int>(spec->gradient.geometry) != settings.geometry;
     spec->colors = settings.colors;
     spec->complementary = settings.complementary;
     spec->gradient.texture = static_cast<document::DensityTexture>(settings.texture);
-    if (geometryChanged && !setup_geometry(session.project(), ObjectId{objectId},
-                                            spec->gradient, settings.geometry, true)) {
+    if (geometryChanged && !setup_geometry(session.project(), ObjectId{objectId}, spec->gradient,
+                                           settings.geometry, true)) {
         return refuse("Forme incompatible avec cette géométrie.");
     }
     auto command = project_ops::make_edit_multicolor_gradient_fill_command(
@@ -249,8 +243,8 @@ ServiceResult editMultiFade(DocumentSession& session, std::uint64_t objectId,
 }
 
 ServiceResult removeMultiFade(DocumentSession& session, std::uint64_t objectId) {
-    auto command = project_ops::make_remove_multicolor_gradient_fill_command(
-        session.project(), ObjectId{objectId});
+    auto command = project_ops::make_remove_multicolor_gradient_fill_command(session.project(),
+                                                                             ObjectId{objectId});
     if (!command) {
         return refuse(command.error().message);
     }

@@ -25,8 +25,7 @@ struct MultiBlendLayers {
         return std::nullopt;
     }
     const auto tag = *selected->multi_blend;
-    if (!tag.group.valid() || tag.count < 2 || tag.count > 8 ||
-        !selected->source_vector.valid() ||
+    if (!tag.group.valid() || tag.count < 2 || tag.count > 8 || !selected->source_vector.valid() ||
         project.findObject(selected->source_vector) == nullptr) {
         return std::nullopt;
     }
@@ -43,8 +42,8 @@ struct MultiBlendLayers {
         if (link.count != tag.count || link.index >= tag.count ||
             link.complementary != tag.complementary ||
             member.source_vector != selected->source_vector ||
-            !(member.is_tatami() || member.is_directional()) ||
-            result.layers[link.index].valid() || member.color_blend) {
+            !(member.is_tatami() || member.is_directional()) || result.layers[link.index].valid() ||
+            member.color_blend) {
             return std::nullopt;
         }
         result.layers[link.index] = member.id;
