@@ -32,6 +32,7 @@ class FadeController : public QObject {
     Q_PROPERTY(int texture READ texture NOTIFY changed)
     Q_PROPERTY(int geometry READ geometry NOTIFY changed)
     Q_PROPERTY(bool multiFade READ multiFade NOTIFY changed)
+    Q_PROPERTY(bool satinTarget READ satinTarget NOTIFY changed)
     Q_PROPERTY(QVariantList colors READ colors NOTIFY changed)
     Q_PROPERTY(int curve READ curve NOTIFY changed)
     Q_PROPERTY(QString summary READ summary NOTIFY changed)
@@ -49,6 +50,7 @@ public:
         return settings_.has_value() || multiSettings_.has_value();
     }
     [[nodiscard]] bool multiFade() const { return multiSettings_.has_value(); }
+    [[nodiscard]] bool satinTarget() const;
     [[nodiscard]] bool canCreate() const { return id_ != 0 && !hasFade() && incompat_.isEmpty(); }
     [[nodiscard]] QString incompatibility() const { return incompat_; }
     [[nodiscard]] QColor foreground() const;
