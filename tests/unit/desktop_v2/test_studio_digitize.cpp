@@ -105,6 +105,7 @@ private slots:
     void satinColumnJourney();
     void directionGuidesJourney();
     void autoSatinThroughTheActionPalette();
+    void autoGuidesThroughTheActionPalette();
     void guidedAutoSatinGuideStaysAutoSatin();
     void textLetteringJourney();
     void mainQmlHostsDigitizePanels();
@@ -398,6 +399,25 @@ void StudioDigitizeTest::directionGuidesJourney() {
     QVERIFY(rig.session.undo());
     QVERIFY(rig.session.undo());
     QVERIFY(rig.session.undo());
+    QVERIFY(rig.session.undo());
+    QVERIFY(sequenceOf(rig.session).commands == base.commands);
+}
+
+void StudioDigitizeTest::autoGuidesThroughTheActionPalette() {
+    Rig rig;
+    const auto r = rig.session.applyBatch(batchAddRect({0, 0}, 40, 6), "Bande");
+    QVERIFY(r.committed);
+    rig.id = *createdObjectId(r.report);
+    const auto base = sequenceOf(rig.session);
+    rig.select(rig.id);
+    const auto depth = rig.steps();
+    // The catalog action works from the shape's medial axis: one undoable step that converts the
+    // tatami to a directional fill and replaces its guides.
+    QCOMPARE(rig.actions.run(QStringLiteral("fill.guides"), {}), QString());
+    QCOMPARE(rig.steps(), depth + 1);
+    rig.select(rig.id);
+    QTRY_VERIFY(rig.satin.guideCount() >= 1);
+    QVERIFY(sequenceOf(rig.session).commands != base.commands);
     QVERIFY(rig.session.undo());
     QVERIFY(sequenceOf(rig.session).commands == base.commands);
 }
