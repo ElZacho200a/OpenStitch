@@ -27,7 +27,8 @@ std::optional<FadeSettings> readFade(const document::Project& project, std::uint
     if (!spec) {
         return std::nullopt;
     }
-    return FadeSettings{spec->foreground, spec->complementary};
+    return FadeSettings{spec->foreground, spec->complementary,
+                        static_cast<int>(spec->gradient.texture)};
 }
 
 ServiceResult createFade(DocumentSession& session, std::uint64_t objectId,
@@ -46,6 +47,9 @@ ServiceResult createFade(DocumentSession& session, std::uint64_t objectId,
     spec->foreground = settings.foreground;
     spec->foreground_thread.reset(); // couleur libre : pas de fil de nuancier imposé
     spec->complementary = settings.complementary;
+    if (settings.texture < 0 || settings.texture > 2)
+        return refuse("Technique de fondu inconnue.");
+    spec->gradient.texture = static_cast<document::DensityTexture>(settings.texture);
     if (spec->foreground == spec->background) {
         return refuse("Choisissez un fil du dessus différent du fil du fond.");
     }
@@ -71,6 +75,9 @@ ServiceResult editFade(DocumentSession& session, std::uint64_t objectId,
     spec->foreground = settings.foreground;
     spec->foreground_thread.reset();
     spec->complementary = settings.complementary;
+    if (settings.texture < 0 || settings.texture > 2)
+        return refuse("Technique de fondu inconnue.");
+    spec->gradient.texture = static_cast<document::DensityTexture>(settings.texture);
     auto command =
         project_ops::make_edit_gradient_fill_command(session.project(), ObjectId{objectId}, *spec);
     if (!command) {
