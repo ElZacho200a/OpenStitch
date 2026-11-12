@@ -342,11 +342,13 @@ private slots:
         QVERIFY(map && image);
         QTRY_VERIFY_WITH_TIMEOUT(image->property("paintedWidth").toDouble() > 0.0, 5'000);
         const auto& seg = *rig.session.project().segmentation;
-        const double w = image->property("paintedWidth").toDouble();
-        const double h = image->property("paintedHeight").toDouble();
-        const double left = (image->width() - w) / 2.0;
-        const double top = (image->height() - h) / 2.0;
+        // The layout can still shift after the tool changes (the brush radius box appears), so the
+        // painted rectangle is read again for every point instead of once up front.
         const auto scenePixel = [&](int x, int y) {
+            const double w = image->property("paintedWidth").toDouble();
+            const double h = image->property("paintedHeight").toDouble();
+            const double left = (image->width() - w) / 2.0;
+            const double top = (image->height() - h) / 2.0;
             const QPointF local(left + w * (x + 0.5) / seg.width, top + h * (y + 0.5) / seg.height);
             return map->mapToScene(image->mapToItem(map, local)).toPoint();
         };
