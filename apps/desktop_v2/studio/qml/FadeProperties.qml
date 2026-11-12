@@ -24,6 +24,7 @@ Item {
     property int selectedGeometry: 0
     property var draftColors: []
     readonly property bool multiColors: draftColors.length > 2 || (ready && controller.multiFade)
+    readonly property bool satinTarget: ready && controller.satinTarget
     readonly property bool paletteValid: draftColors.length >= 2 && draftColors.length <= 8
         && draftColors.every(function(value, i) {
             return /^#[0-9a-fA-F]{6}$/.test(value)
@@ -332,9 +333,23 @@ Item {
                 font.pixelSize: Theme.smallSize
             }
 
-            SectionLabel { text: qsTr("TECHNIQUE DE FONDU") }
+            SectionLabel {
+                text: root.satinTarget ? qsTr("SATIN MULTICOLORE")
+                                       : qsTr("TECHNIQUE DE FONDU")
+            }
+            Text {
+                visible: root.satinTarget
+                Layout.fillWidth: true
+                text: qsTr("Répartition des traversées du satin entre les fils, avec alternance "
+                            + "déterministe. Chaque traversée conserve ses points de division.")
+                color: Theme.faint
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.smallSize
+                wrapMode: Text.WordWrap
+            }
             Text {
                 Layout.fillWidth: true
+                visible: !root.satinTarget
                 text: qsTr("Mélange optique entre fils distincts, différent du dégradé de densité d'un remplissage monochrome.")
                 color: Theme.faint
                 font.family: Theme.fontFamily
@@ -343,6 +358,7 @@ Item {
             }
             Text {
                 Layout.fillWidth: true
+                visible: !root.satinTarget
                 text: qsTr("Aspect de la transition")
                 color: Theme.foreground
                 font.family: Theme.fontFamily
@@ -351,6 +367,7 @@ Item {
             Flow {
                 Layout.fillWidth: true
                 spacing: 4
+                visible: !root.satinTarget
                 Repeater {
                     model: root.textures
                     delegate: StudioButton {
@@ -370,6 +387,7 @@ Item {
             }
             Text {
                 Layout.fillWidth: true
+                visible: !root.satinTarget
                 text: root.selectedTexture === 1
                       ? qsTr("Les limites de couleur s'imbriquent de façon irrégulière, sans bruit aléatoire.")
                       : root.selectedTexture === 2
@@ -384,6 +402,7 @@ Item {
             }
             Text {
                 Layout.fillWidth: true
+                visible: !root.satinTarget
                 text: qsTr("Géométrie de la transition")
                 color: Theme.foreground
                 font.family: Theme.fontFamily
@@ -392,6 +411,7 @@ Item {
             Flow {
                 Layout.fillWidth: true
                 spacing: 4
+                visible: !root.satinTarget
                 Repeater {
                     model: root.geometries
                     delegate: StudioButton {
@@ -438,10 +458,14 @@ Item {
                                                                   : root.distinctColor)
                     Layout.fillWidth: true
                     onClicked: {
-                        if (root.multiColors || root.selectedGeometry !== 0)
-                            root.controller.createMulticolor(root.draftColors,
-                                complementary.checked, root.selectedTexture,
-                                root.selectedGeometry)
+                        if (root.satinTarget || root.multiColors || root.selectedGeometry !== 0)
+                            root.controller.createMulticolor(
+                                root.satinTarget && !root.multiColors
+                                    ? [root.controller.background.toString(), colorField.text.trim()]
+                                    : root.draftColors,
+                                complementary.checked,
+                                root.satinTarget ? 0 : root.selectedTexture,
+                                root.satinTarget ? 0 : root.selectedGeometry)
                         else
                             root.controller.createWithTexture(colorField.text.trim(),
                                 complementary.checked, root.selectedTexture)
@@ -478,10 +502,14 @@ Item {
                 visible: root.hasFade
                 spacing: 7
 
-                SectionLabel { text: qsTr("PROFIL DE TRANSITION") }
+                SectionLabel {
+                    visible: !root.satinTarget
+                    text: qsTr("PROFIL DE TRANSITION")
+                }
                 Flow {
                     Layout.fillWidth: true
                     spacing: 4
+                    visible: !root.satinTarget
                     Repeater {
                         model: root.ready ? root.controller.curves : []
                         delegate: StudioButton {
@@ -504,6 +532,7 @@ Item {
 
                 StudioButton {
                     objectName: root.prefix + "Advanced"
+                    visible: !root.satinTarget
                     text: root.advancedOpen ? qsTr("Masquer les coordonnées avancées")
                                            : qsTr("Coordonnées avancées…")
                     quiet: true
@@ -512,7 +541,7 @@ Item {
                 }
                 ColumnLayout {
                     Layout.fillWidth: true
-                    visible: root.advancedOpen && !root.multiColors
+                    visible: root.advancedOpen && !root.satinTarget && !root.multiColors
                              && root.selectedGeometry === 0
                     Text {
                         text: qsTr("Modifier l'axe dans le canevas ou saisir des positions en mm.")
