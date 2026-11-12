@@ -285,6 +285,31 @@ void StudioDigitizeTest::fadeJourney() {
     QVERIFY(again.fade.setCurve(1));
     QCOMPARE(again.steps(), d2 + 2);
     QCOMPARE(again.fade.curve(), 1);
+    // Méthodes de fondu : géométrie pure en prévisualisation ; une
+    // commande annulable par changement de texture, sans pseudo-RNG global.
+    QCOMPARE(again.fade.texture(), 0);
+    const auto beforeTexture = again.steps();
+    QVERIFY(again.fade.setTexture(1));
+    QTRY_COMPARE(again.fade.texture(), 1);
+    QCOMPARE(again.steps(), beforeTexture + 1);
+    const auto feathered = sequenceOf(again.session);
+    QVERIFY(feathered.commands != faded.commands);
+    QVERIFY(again.fade.setTexture(2));
+    QTRY_COMPARE(again.fade.texture(), 2);
+    QCOMPARE(again.steps(), beforeTexture + 2);
+    const auto stippled = sequenceOf(again.session);
+    QVERIFY(stippled.commands != feathered.commands);
+    const auto same = again.steps();
+    QVERIFY(again.fade.setTexture(2));
+    QCOMPARE(again.steps(), same);
+    QVERIFY(!again.fade.setTexture(3));
+    QCOMPARE(again.steps(), same);
+    QVERIFY(again.session.undo());
+    QTRY_COMPARE(again.fade.texture(), 1);
+    QVERIFY(sequenceOf(again.session).commands == feathered.commands);
+    QVERIFY(again.session.undo());
+    QTRY_COMPARE(again.fade.texture(), 0);
+
     QVERIFY(!again.fade.setCurve(42)); // unknown curve: readable refusal
     QVERIFY(!again.fade.lastOk());
     QVERIFY(again.session.undo());
@@ -640,6 +665,12 @@ void StudioDigitizeTest::mainQmlHostsDigitizePanels() {
     QTRY_VERIFY(fade.hasFade());
     QVERIFY(press(window, "fadeCurve2"));
     QCOMPARE(fade.curve(), 2);
+    QVERIFY(press(window, "fadeTexture1"));
+    QTRY_COMPARE(fade.texture(), 1);
+    QVERIFY(press(window, "fadeTexture2"));
+    QTRY_COMPARE(fade.texture(), 2);
+    QVERIFY(press(window, "fadeTexture0"));
+    QTRY_COMPARE(fade.texture(), 0);
     QVERIFY(press(window, "fadeRemove"));
     QTRY_VERIFY(!fade.hasFade());
 
