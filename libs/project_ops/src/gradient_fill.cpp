@@ -66,8 +66,10 @@ void layer_update(const document::EmbroideryObject& before, const document::Embr
         batch.add(
             std::make_unique<commands::SetStitchParamsCommand>(before.id, after.params, field));
     }
-    batch.add(std::make_unique<commands::SetObjectThreadCommand>(
-        std::vector<commands::ObjectThreadAssignment>{{before.id, after.thread, after.rgb}}));
+    if (before.thread != after.thread || before.rgb != after.rgb) {
+        batch.add(std::make_unique<commands::SetObjectThreadCommand>(
+            std::vector<commands::ObjectThreadAssignment>{{before.id, after.thread, after.rgb}}));
+    }
 }
 
 } // namespace
@@ -379,6 +381,271 @@ make_remove_gradient_fill_command(const document::Project& project, ObjectId lay
     batch->add(std::make_unique<commands::ClearColorBlendLinkCommand>(layers->background,
                                                                       layers->foreground));
     batch->add(std::make_unique<commands::RemoveEmbroideryObjectCommand>(layers->foreground));
+    return std::unique_ptr<commands::ICommand>(std::move(batch));
+}
+
+
+namespace {
+
+// L'unique définition du comportement multicolore. Chaque fil dispose d'un
+// profil triangulaire à N arrêts. Entre deux teintes voisines, les poids sont
+// (1-u,u) : leur somme est 1 sans nécessiter N mélanges binaires.
+std::optional<std::vector<document::EmbroideryObject>>
+multicolor_layers(const document::EmbroideryObject& base,
+                  const std::vector<geometry::PathSet>& shape,
+                  const MultiGradientFillSpec& spec) {
+    const std::size_t n = spec.colors.size();
+    if (n < 2 || n > 8) {
+        return std::nullopt;
+    }
+    auto templateGradient = spec.gradient;
+    templateGradient.density_stops.clear();
+    auto pair = stitch_generation::make_color_blend_layers(
+        base, base, shape, templateGradient, true);
+    if (!pair) {
+        return std::nullopt;
+    }
+    const auto& baseParams = std::get<document::DirectionalFillParams>(pair->first.params);
+    const auto& topParams = std::get<document::DirectionalFillParams>(pair->second.params);
+    const Micrometers spacing{
+        std::clamp(baseParams.row_spacing.value, 100, 4'000)};
+    std::vector<document::EmbroideryObject> output;
+    output.reserve(n);
+    for (std::size_t i = 0; i < n; ++i) {
+        auto layer = (i == 0) ? pair->first : pair->second;
+        auto params = (i == 0) ? baseParams : topParams;
+        auto gradient = templateGradient;
+        gradient.spacing_from = gradient.spacing_to = spacing;
+        gradient.interpolate_density = true;
+        gradient.density_stops.reserve(n);
+        for (std::size_t s = 0; s < n; ++s) {
+            const double position =
+                static_cast<double>(s) / static_cast<double>(n - 1);
+            double weight = s == i ? 1.0 : 0.0;
+            if (!spec.complementary) {
+                // Fond uniforme et voiles colorés légers, sans accumulation
+                // de n sous-couches pleines.
+                weight = i == 0 ? 1.0 : weight * 0.30;
+            }
+            gradient.density_stops.push_back({position, weight});
+        }
+        params.density_gradient = std::move(gradient);
+        // Seule la couche de fond doit pouvoir recevoir une sous-couche :
+        // le moteur de fondu désactive pour le moment les sous-couches de
+        // chacune pour éviter de les empiler N fois.
+        params.underlay_mode = document::UnderlayMode::Manual;
+        params.underlay_edge = false;
+        params.underlay_parallel = false;
+        params.underlay_zigzag = false;
+        layer.params = std::move(params);
+        layer.rgb = spec.colors[i];
+        layer.thread.reset(); // palette libre, pas de fil réel inventé
+        layer.color_blend.reset();
+        layer.multi_blend.reset();
+        layer.overrides.clear();
+        layer.edited_fingerprint = 0;
+        layer.edited_point_count = 0;
+        output.push_back(std::move(layer));
+    }
+    return output;
+}
+
+std::vector<ObjectId> reordered_blend_ids(const document::Project& project,
+                                          const std::vector<ObjectId>& oldIds,
+                                          const std::vector<ObjectId>& newIds) {
+    std::vector<ObjectId> result;
+    result.reserve(project.embroidery_objects.size() + newIds.size());
+    for (const auto& object : project.embroidery_objects) {
+        if (std::find(oldIds.begin(), oldIds.end(), object.id) != oldIds.end()) {
+            continue;
+        }
+        result.push_back(object.id);
+        if (object.id == oldIds.front()) {
+            // Toutes les couches réellement conservées et nouvellement
+            // ajoutées sont recousues contiguës, dans l'ordre de leur indice.
+            for (std::size_t i = 1; i < newIds.size(); ++i) {
+                result.push_back(newIds[i]);
+            }
+        }
+    }
+    return result;
+}
+
+bool validate_multicolor(const MultiGradientFillSpec& spec) {
+    if (spec.colors.size() < 2 || spec.colors.size() > 8) {
+        return false;
+    }
+    for (std::size_t i = 1; i < spec.colors.size(); ++i) {
+        if (spec.colors[i] == spec.colors[i - 1]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+} // namespace
+
+std::optional<MultiGradientFillSpec>
+describe_multicolor_gradient_fill(const document::Project& project, ObjectId layer) {
+    const auto group = document::find_multi_blend(project, layer);
+    if (!group) {
+        return std::nullopt;
+    }
+    const auto* first = project.findEmbroidery(group->layers.front());
+    const auto* params =
+        first != nullptr ? std::get_if<document::DirectionalFillParams>(&first->params)
+                         : nullptr;
+    if (params == nullptr || !params->density_gradient) {
+        return std::nullopt;
+    }
+    MultiGradientFillSpec spec;
+    spec.complementary = group->complementary;
+    spec.gradient = *params->density_gradient;
+    spec.gradient.density_stops.clear(); // chaque membre a son propre profil
+    for (const auto id : group->layers) {
+        const auto* member = project.findEmbroidery(id);
+        if (member == nullptr) {
+            return std::nullopt;
+        }
+        spec.colors.push_back(member->rgb);
+    }
+    return spec;
+}
+
+Result<std::unique_ptr<commands::ICommand>>
+make_create_multicolor_gradient_fill_command(document::Project& project, ObjectId fill,
+                                             const MultiGradientFillSpec& spec) {
+    const auto* base = project.findEmbroidery(fill);
+    if (base == nullptr || base->color_blend || base->multi_blend ||
+        !validate_multicolor(spec)) {
+        return fail(ErrorCategory::OperationImpossible,
+                    "Choisissez un remplissage unique et entre 2 et 8 fils distincts.");
+    }
+    if (const auto why = gradient_incompatibility(project, fill); !why.empty()) {
+        return fail(ErrorCategory::OperationImpossible, why);
+    }
+    const auto* source = project.findObject(base->source_vector);
+    if (source == nullptr) {
+        return fail(ErrorCategory::OperationImpossible, "Forme source introuvable.");
+    }
+    auto layers = multicolor_layers(*base, source->paths, spec);
+    if (!layers) {
+        return fail(ErrorCategory::OperationImpossible, "Profil multicolore invalide.");
+    }
+    std::vector<ObjectId> newIds{base->id};
+    for (std::size_t i = 1; i < layers->size(); ++i) {
+        newIds.push_back(project.object_ids.next());
+    }
+    auto batch = std::make_unique<commands::CompositeCommand>("Créer un fondu multicolore");
+    layer_update(*base, layers->front(), *batch, "Fondu multicolore");
+    batch->add(std::make_unique<commands::SetMultiBlendLinkCommand>(
+        base->id, document::MultiBlendLink{base->id, 0,
+                     static_cast<std::uint8_t>(newIds.size()), spec.complementary}));
+    for (std::size_t i = 1; i < layers->size(); ++i) {
+        auto next = std::move((*layers)[i]);
+        next.id = newIds[i];
+        next.source_vector = base->source_vector;
+        next.name = base->name + " (fondu " + std::to_string(i + 1) + ")";
+        next.multi_blend = document::MultiBlendLink{
+            base->id, static_cast<std::uint8_t>(i),
+            static_cast<std::uint8_t>(newIds.size()), spec.complementary};
+        batch->add(std::make_unique<commands::AddEmbroideryObjectCommand>(std::move(next)));
+    }
+    batch->add(std::make_unique<commands::ReorderEmbroideryCommand>(
+        reordered_blend_ids(project, {base->id}, newIds)));
+    return std::unique_ptr<commands::ICommand>(std::move(batch));
+}
+
+Result<std::unique_ptr<commands::ICommand>>
+make_edit_multicolor_gradient_fill_command(document::Project& project, ObjectId member,
+                                           const MultiGradientFillSpec& spec) {
+    if (!validate_multicolor(spec)) {
+        return fail(ErrorCategory::OperationImpossible, "Entre 2 et 8 couleurs consécutives distinctes.");
+    }
+    const auto multi = document::find_multi_blend(project, member);
+    const auto legacy = multi ? std::nullopt : document::find_color_blend(project, member);
+    if (!multi && !legacy) {
+        return fail(ErrorCategory::OperationImpossible, "Aucun fondu de fils éditable.");
+    }
+    const std::vector<ObjectId> oldIds =
+        multi ? multi->layers : std::vector<ObjectId>{legacy->background, legacy->foreground};
+    const auto* base = project.findEmbroidery(oldIds.front());
+    const auto* source = base ? project.findObject(base->source_vector) : nullptr;
+    if (base == nullptr || source == nullptr) {
+        return fail(ErrorCategory::OperationImpossible, "Groupe incomplet.");
+    }
+    auto layers = multicolor_layers(*base, source->paths, spec);
+    if (!layers) {
+        return fail(ErrorCategory::OperationImpossible, "Transition multicolore invalide.");
+    }
+    std::vector<ObjectId> newIds;
+    newIds.reserve(layers->size());
+    for (std::size_t i = 0; i < layers->size(); ++i) {
+        newIds.push_back(i < oldIds.size() ? oldIds[i] : project.object_ids.next());
+    }
+    auto batch = std::make_unique<commands::CompositeCommand>("Modifier le fondu multicolore");
+    if (legacy) {
+        batch->add(std::make_unique<commands::ClearColorBlendLinkCommand>(
+            legacy->background, legacy->foreground));
+    }
+    for (std::size_t i = 0; i < layers->size(); ++i) {
+        auto next = std::move((*layers)[i]);
+        next.id = newIds[i];
+        next.source_vector = base->source_vector;
+        const document::MultiBlendLink tag{
+            base->id, static_cast<std::uint8_t>(i),
+            static_cast<std::uint8_t>(layers->size()), spec.complementary};
+        if (i < oldIds.size()) {
+            const auto* before = project.findEmbroidery(oldIds[i]);
+            if (before == nullptr) {
+                return fail(ErrorCategory::OperationImpossible, "Couche manquante.");
+            }
+            layer_update(*before, next, *batch, "Fondu multicolore");
+            if (before->multi_blend != tag) {
+                batch->add(
+                    std::make_unique<commands::SetMultiBlendLinkCommand>(before->id, tag));
+            }
+        } else {
+            next.name = base->name + " (fondu " + std::to_string(i + 1) + ")";
+            next.multi_blend = tag;
+            batch->add(std::make_unique<commands::AddEmbroideryObjectCommand>(
+                std::move(next)));
+        }
+    }
+    for (std::size_t i = layers->size(); i < oldIds.size(); ++i) {
+        batch->add(std::make_unique<commands::RemoveEmbroideryObjectCommand>(oldIds[i]));
+    }
+    if (oldIds.size() != newIds.size()) {
+        batch->add(std::make_unique<commands::ReorderEmbroideryCommand>(
+            reordered_blend_ids(project, oldIds, newIds)));
+    }
+    return std::unique_ptr<commands::ICommand>(std::move(batch));
+}
+
+Result<std::unique_ptr<commands::ICommand>>
+make_remove_multicolor_gradient_fill_command(const document::Project& project,
+                                              ObjectId member) {
+    const auto group = document::find_multi_blend(project, member);
+    if (!group) {
+        return fail(ErrorCategory::OperationImpossible, "Aucun groupe multicolore sélectionné.");
+    }
+    const auto* base = project.findEmbroidery(group->layers.front());
+    if (base == nullptr) {
+        return fail(ErrorCategory::OperationImpossible, "Couche de base introuvable.");
+    }
+    auto batch = std::make_unique<commands::CompositeCommand>("Supprimer le fondu multicolore");
+    if (const auto* params = std::get_if<document::DirectionalFillParams>(&base->params)) {
+        auto uniform = *params;
+        uniform.density_gradient.reset();
+        batch->add(std::make_unique<commands::SetStitchParamsCommand>(
+            base->id, uniform, "Remplissage uni"));
+    }
+    batch->add(std::make_unique<commands::SetMultiBlendLinkCommand>(
+        base->id, std::nullopt));
+    for (std::size_t i = 1; i < group->layers.size(); ++i) {
+        batch->add(std::make_unique<commands::RemoveEmbroideryObjectCommand>(
+            group->layers[i]));
+    }
     return std::unique_ptr<commands::ICommand>(std::move(batch));
 }
 
