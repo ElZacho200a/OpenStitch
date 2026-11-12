@@ -18,6 +18,7 @@ namespace openstitch::desktop_v2 {
 struct FadeSettings {
     std::array<std::uint8_t, 3> foreground{255, 255, 255}; // fil du dessus
     bool complementary{true};                              // rampes de densité opposées
+    int texture{0}; // 0 régulier, 1 bords irréguliers, 2 micro-tramage
 };
 
 // Texte « pourquoi ce remplissage ne peut pas porter un fondu » ; vide = compatible.
