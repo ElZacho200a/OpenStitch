@@ -388,6 +388,12 @@ json params_to_json(const document::StitchParams& params) {
                     if (g.curve != document::DensityCurve::Linear) {
                         j["densityGradient"]["curve"] = static_cast<int>(g.curve);
                     }
+                    if (g.texture != document::DensityTexture::None) {
+                        j["densityGradient"]["texture"] = static_cast<int>(g.texture);
+                        j["densityGradient"]["textureStrength"] =
+                            std::clamp(g.texture_strength, 0.0, 1.0);
+                        j["densityGradient"]["textureSeed"] = g.texture_seed;
+                    }
                 }
             } else if constexpr (std::is_same_v<T, document::AutoSatinParams>) {
                 json guides = json::array();
@@ -779,6 +785,19 @@ Result<document::StitchParams> params_from_json(const json& j) {
                          : curve == static_cast<int>(document::DensityCurve::EaseOut)
                              ? document::DensityCurve::EaseOut
                              : document::DensityCurve::Linear;
+            const int texture = g.value("texture", 0);
+            grad.texture = texture == 1 ? document::DensityTexture::Feathered
+                         : texture == 2 ? document::DensityTexture::Stippled
+                                        : document::DensityTexture::None;
+            // Les valeurs indéfinies ne doivent pas provoquer de calcul non borné.
+            if (grad.texture != document::DensityTexture::None) {
+                const double raw = g.value("textureStrength", 0.35);
+                grad.texture_strength = std::isfinite(raw) ? std::clamp(raw, 0.0, 1.0) : 0.35;
+                auto textureSeed = strict_uint32(g.value("textureSeed", json(1)),
+                                                 "densityGradient.textureSeed");
+                if (!textureSeed) return std::unexpected(textureSeed.error());
+                grad.texture_seed = *textureSeed;
+            }
             p.density_gradient = grad;
         }
         if (j.contains("seed")) {
