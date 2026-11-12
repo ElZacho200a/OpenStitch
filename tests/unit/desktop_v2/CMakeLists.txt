@@ -3,6 +3,7 @@ add_executable(test_desktop_v2_core
     test_selection_model.cpp
     test_task_manager.cpp
     test_tool_registry.cpp
+    test_usage_log.cpp
     test_session_and_pipeline.cpp
     test_preview_service.cpp
     test_hit_and_inspector.cpp
