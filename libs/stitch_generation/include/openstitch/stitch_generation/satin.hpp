@@ -119,6 +119,10 @@ struct SatinPass {
 struct SatinResult {
     std::vector<SatinPass> underlays; // center, edge A, edge B, zigzag (selon config)
     std::vector<Vec2um> satin;        // points du zigzag principal
+    // Fin (exclusive) de chaque traversée satin dans la séquence de points.
+    // Permet le fondu multicolore par traversées complètes, y compris lorsque
+    // des points de division ont été insérés entre les deux rails.
+    std::vector<std::size_t> station_ends;
     double max_width_um{0.0};         // largeur maximale (pour l'avertissement)
 
     // Indices dans `satin` où le fil doit être LEVÉ (saut) plutôt qu'enchaîné
