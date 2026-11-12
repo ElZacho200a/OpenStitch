@@ -20,7 +20,7 @@ const document::EmbroideryObject* findObject(const document::Project& p, std::ui
 }
 
 bool valid_mode(int texture, int geometry) {
-    return texture >= 0 && texture <= 2 && geometry >= 0 && geometry <= 2;
+    return texture >= 0 && texture <= 3 && geometry >= 0 && geometry <= 2;
 }
 
 // Les coordonnées du champ sont définies une seule fois lors du changement
