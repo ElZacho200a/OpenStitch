@@ -618,6 +618,20 @@ void StudioDigitizeTest::mainQmlHostsDigitizePanels() {
     QVERIFY(session.undo());
     QVERIFY(sequenceOf(session).commands == beforeMove.commands);
 
+    // Le fondu de fils apparaît aussi dans les propriétés de l'objet, et
+    // non parmi les réglages d'un dégradé de densité du remplissage.
+    auto* inlineFade = named(window, "inspectorFadeSection");
+    auto* inlineCreate = named(window, "inspectorFadeCreate");
+    auto* inlineColor = named(window, "inspectorFadeColorField");
+    QVERIFY(inlineFade && inlineCreate && inlineColor);
+    QTRY_VERIFY(inlineFade->isVisible());
+    QTRY_VERIFY(inlineCreate->isEnabled());
+    QVERIFY(inlineColor->setProperty("text", QStringLiteral("#ZZZZZZ")));
+    QTRY_VERIFY(!inlineCreate->isEnabled());
+    QVERIFY(inlineColor->property("invalid").toBool());
+    QVERIFY(inlineColor->setProperty("text", QStringLiteral("#c81e1e")));
+    QTRY_VERIFY(inlineCreate->isEnabled());
+
     // Fade panel.
     QVERIFY(press(window, "fadePanelButton"));
     QTRY_VERIFY(fade.canCreate());
