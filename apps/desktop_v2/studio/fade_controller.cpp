@@ -196,7 +196,7 @@ bool FadeController::createWithTexture(const QColor& foreground, bool complement
 }
 
 bool FadeController::setTexture(int texture) {
-    if (id_ == 0 || !hasFade() || texture < 0 || texture > 2) {
+    if (id_ == 0 || !hasFade() || texture < 0 || texture > 3) {
         return refuse(QStringLiteral("Technique de fondu inconnue ou aucune sélection."));
     }
     if (this->texture() == texture) {
