@@ -9,11 +9,13 @@
 #include "openstitch/commands/undo_stack.hpp"
 #include "openstitch/commands/vector_ops.hpp"
 #include "openstitch/document/color_blend.hpp"
+#include "openstitch/document/multi_blend.hpp"
 #include "openstitch/document/project.hpp"
 #include "openstitch/geometry/primitives.hpp"
 #include "openstitch/project_io/project_io.hpp"
 #include "openstitch/project_ops/gradient_fill.hpp"
 #include "openstitch/stitch_generation/color_blend.hpp"
+#include "openstitch/stitch_generation/generate.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
 
 using namespace openstitch;
@@ -339,4 +341,135 @@ TEST_CASE("gradient fill: the edit command applies exactly what the engine build
     stack.execute(std::move(*command), f.project);
     CHECK(f.project.embroidery_objects[0].params == built->first.params);
     CHECK(f.project.embroidery_objects[1].params == built->second.params);
+}
+
+TEST_CASE("multicolor: five physical thread layers are one undoable blend group",
+          "[project_ops][gradient][multicolor]") {
+    auto f = rectangle_fill();
+    const auto plain = f.project.embroidery_objects.front();
+    const auto initial = project_ops::default_gradient_fill(f.project, f.fill);
+    REQUIRE(initial);
+    project_ops::MultiGradientFillSpec spec;
+    spec.colors = {{12, 25, 80}, {24, 64, 130}, {57, 113, 165},
+                   {91, 170, 205}, {180, 223, 238}};
+    spec.gradient = initial->gradient;
+    spec.gradient.texture = document::DensityTexture::Feathered;
+    spec.complementary = true;
+
+    commands::UndoStack stack;
+    auto command = project_ops::make_create_multicolor_gradient_fill_command(
+        f.project, f.fill, spec);
+    REQUIRE(command);
+    stack.execute(std::move(*command), f.project);
+    REQUIRE(f.project.embroidery_objects.size() == 5);
+
+    const auto group = document::find_multi_blend(f.project, f.fill);
+    REQUIRE(group);
+    CHECK(group->layers.size() == 5);
+    CHECK(group->group == f.fill);
+    for (std::size_t i = 0; i < group->layers.size(); ++i) {
+        const auto* layer = f.project.findEmbroidery(group->layers[i]);
+        REQUIRE(layer);
+        CHECK(layer->rgb == spec.colors[i]);
+        REQUIRE(layer->multi_blend);
+        CHECK(layer->multi_blend->index == i);
+        const auto* params = std::get_if<document::DirectionalFillParams>(&layer->params);
+        REQUIRE(params);
+        REQUIRE(params->density_gradient);
+        CHECK(params->density_gradient->density_stops.size() == 5);
+        CHECK(params->density_gradient->density_stops[i].weight == 1.0);
+        for (std::size_t j = 0; j < 5; ++j) {
+            double sum = 0.0;
+            for (const auto member : group->layers) {
+                const auto* other = f.project.findEmbroidery(member);
+                const auto& grad =
+                    *std::get<document::DirectionalFillParams>(other->params).density_gradient;
+                sum += grad.density_stops[j].weight;
+            }
+            CHECK(sum == Catch::Approx(1.0));
+        }
+    }
+    const auto stitched = stitch_generation::effective_sequence(f.project);
+    REQUIRE(stitched);
+    CHECK(stitched->commands.size() > 20);
+
+    // Même résultat après fermeture / réouverture.
+    const auto path = std::filesystem::temp_directory_path() /
+                      "openstitch_multicolor_gradient_test.osp";
+    REQUIRE(project_io::save_project(path, f.project));
+    const auto reopened = project_io::load_project(path);
+    std::filesystem::remove(path);
+    REQUIRE(reopened);
+    CHECK(document::find_multi_blend(*reopened, f.fill));
+    CHECK(project_ops::describe_multicolor_gradient_fill(*reopened, f.fill)->colors ==
+          spec.colors);
+
+    REQUIRE(stack.undo(f.project));
+    REQUIRE(f.project.embroidery_objects.size() == 1);
+    CHECK(f.project.embroidery_objects.front().params == plain.params);
+    CHECK_FALSE(f.project.embroidery_objects.front().multi_blend);
+    REQUIRE(stack.redo(f.project));
+    REQUIRE(f.project.embroidery_objects.size() == 5);
+}
+
+TEST_CASE("multicolor: editing layer count, removing group and undo stay atomic",
+          "[project_ops][gradient][multicolor]") {
+    auto f = rectangle_fill();
+    commands::UndoStack stack;
+    auto initial = project_ops::default_gradient_fill(f.project, f.fill);
+    REQUIRE(initial);
+    project_ops::MultiGradientFillSpec spec;
+    spec.gradient = initial->gradient;
+    spec.colors = {{200, 5, 5}, {120, 40, 150}, {50, 30, 220}, {10, 120, 240}};
+    auto created =
+        project_ops::make_create_multicolor_gradient_fill_command(f.project, f.fill, spec);
+    REQUIRE(created);
+    stack.execute(std::move(*created), f.project);
+    const auto original = document::find_multi_blend(f.project, f.fill);
+    REQUIRE(original);
+
+    spec.colors.pop_back();
+    spec.gradient.geometry = document::DensityGeometry::Curved;
+    auto edited =
+        project_ops::make_edit_multicolor_gradient_fill_command(f.project, f.fill, spec);
+    REQUIRE(edited);
+    stack.execute(std::move(*edited), f.project);
+    REQUIRE(f.project.embroidery_objects.size() == 3);
+    CHECK(project_ops::describe_multicolor_gradient_fill(f.project, f.fill)->colors ==
+          spec.colors);
+    REQUIRE(stack.undo(f.project));
+    REQUIRE(f.project.embroidery_objects.size() == 4);
+    CHECK(document::find_multi_blend(f.project, f.fill)->layers == original->layers);
+
+    auto remove = project_ops::make_remove_multicolor_gradient_fill_command(f.project, f.fill);
+    REQUIRE(remove);
+    stack.execute(std::move(*remove), f.project);
+    CHECK_FALSE(document::find_multi_blend(f.project, f.fill));
+    CHECK(f.project.embroidery_objects.size() == 1);
+    REQUIRE(stack.undo(f.project));
+    CHECK(document::find_multi_blend(f.project, f.fill));
+}
+
+TEST_CASE("multicolor: legacy two-color blend upgrades without losing undo",
+          "[project_ops][gradient][multicolor]") {
+    auto f = rectangle_fill();
+    commands::UndoStack stack;
+    const auto top = make_gradient(f, stack);
+    REQUIRE(document::find_color_blend(f.project, top));
+    auto spec = project_ops::describe_gradient_fill(f.project, top);
+    REQUIRE(spec);
+    project_ops::MultiGradientFillSpec multi;
+    multi.colors = {spec->background, {70, 100, 170}, spec->foreground};
+    multi.gradient = spec->gradient;
+    auto conversion =
+        project_ops::make_edit_multicolor_gradient_fill_command(f.project, top, multi);
+    REQUIRE(conversion);
+    stack.execute(std::move(*conversion), f.project);
+    REQUIRE(f.project.embroidery_objects.size() == 3);
+    CHECK_FALSE(document::find_color_blend(f.project, top));
+    CHECK(document::find_multi_blend(f.project, top));
+    REQUIRE(stack.undo(f.project));
+    REQUIRE(f.project.embroidery_objects.size() == 2);
+    CHECK(document::find_color_blend(f.project, top));
+    CHECK_FALSE(document::find_multi_blend(f.project, top));
 }
