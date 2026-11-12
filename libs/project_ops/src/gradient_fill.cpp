@@ -221,6 +221,14 @@ std::string gradient_incompatibility(const document::Project& project, ObjectId 
         return "Le dégradé s'applique à un remplissage (tatami ou directionnel), pas à un "
                "satin ou un point droit.";
     }
+    // Deux intentions indépendantes. Le moteur historique utilise le même
+    // DensityGradient pour une rampe monochrome et pour une paire de fils :
+    // refuser une conversion destructrice plutôt que supprimer la rampe.
+    if (const auto* directional = std::get_if<document::DirectionalFillParams>(&emb->params);
+        directional != nullptr && directional->density_gradient) {
+        return "Ce remplissage possède déjà un dégradé de densité. Le fondu de fils "
+               "ne peut pas encore être combiné sans écraser ce réglage.";
+    }
     const auto* shape = shape_of(project, *emb);
     if (shape == nullptr || shape->empty()) {
         return "La forme source est introuvable.";
