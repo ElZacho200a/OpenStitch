@@ -2,6 +2,9 @@
 #include "usage_controller.hpp"
 
 #include <QByteArray>
+#include <QCoreApplication>
+#include <QEvent>
+#include <QShortcutEvent>
 #include <QStandardPaths>
 
 #include "action_controller.hpp"
@@ -34,8 +37,16 @@ void UsageController::click(const QString& id) {
     record(QStringLiteral("click"), id);
 }
 
-void UsageController::track(const QString& kind, const QString& id) {
-    record(kind, id);
+void UsageController::track(const QString& kind, const QString& id, const QString& detail) {
+    record(kind, id, detail);
+}
+
+bool UsageController::eventFilter(QObject* watched, QEvent* event) {
+    if (event->type() == QEvent::Shortcut) {
+        const auto* shortcut = static_cast<QShortcutEvent*>(event);
+        record(QStringLiteral("key"), shortcut->key().toString(QKeySequence::PortableText));
+    }
+    return QObject::eventFilter(watched, event);
 }
 
 void UsageController::record(const QString& kind, const QString& id, const QString& detail) {
@@ -46,6 +57,9 @@ void UsageController::record(const QString& kind, const QString& id, const QStri
 }
 
 void UsageController::observe(ActionController& actions, ToolController& tools) {
+    if (auto* app = QCoreApplication::instance()) {
+        app->installEventFilter(this);
+    }
     connect(&actions, &ActionController::ran, this, [this](const QString& id, bool ok) {
         record(QStringLiteral("action"), id, ok ? QString() : QStringLiteral("refused"));
     });

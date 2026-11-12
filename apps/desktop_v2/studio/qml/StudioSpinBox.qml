@@ -13,6 +13,15 @@ Controls.SpinBox {
     hoverEnabled: true
     wheelEnabled: true // la molette change la valeur, comme les champs numériques de V1
     focusPolicy: Qt.StrongFocus
+    // Journal d'usage local : jamais de texte saisi, seulement l'identifiant du contrôle.
+    Connections {
+        target: control
+        function onValueModified() {
+            const id = control.objectName.length > 0 ? control.objectName : ""
+            if (id.length > 0 && typeof usage !== "undefined" && usage)
+                usage.track("control", id, String(control.value))
+        }
+    }
     font.family: Theme.fontFamily
     font.pixelSize: Theme.smallSize
     leftPadding: 4

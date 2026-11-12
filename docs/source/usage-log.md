@@ -36,12 +36,12 @@ Une ligne JSON par événement :
 | `t` | date et heure UTC, au millième de seconde |
 | `sid` | identifiant aléatoire d'un lancement : relie les événements d'une session, sans identifier la personne |
 | `app`, `ver`, `os` | application, version, système |
-| `k` | type d'événement : `click` (bouton), `tool` (outil actif), `action` (commande de la palette ou du menu), `space` (espace de travail), `session` (`start` / `end`) |
+| `k` | type d'événement : `click` (bouton), `control` (interrupteur, case, curseur, liste, champ numérique : `d` = `on`/`off`, la valeur finale, ou `#` + l'index du choix), `key` (raccourci clavier, ex. `Ctrl+K`), `tool` (outil actif), `action` (commande de la palette ou du menu), `space` (espace de travail), `session` (`start` / `end`) |
 | `id` | identifiant du contrôle : `objectName` du bouton (à défaut son libellé), identifiant d'outil, d'action ou d'espace |
 | `d` | détail facultatif (`refused` quand une action est refusée) |
 
 **Ce qui n'est jamais enregistré** : noms ou chemins de fichiers, textes saisis (y compris le texte
-des lettrages), contenu ou nom des images, coordonnées de la souris, contenu du projet. Un
+des lettrages ; une liste déroulante n'enregistre que l'index du choix, jamais son libellé), contenu ou nom des images, coordonnées de la souris, contenu du projet. Un
 identifiant est plafonné à 160 octets.
 
 ## Désactiver

@@ -35,10 +35,11 @@ public:
     // Un contrôle cliqué : l'identifiant est le `objectName` du bouton, à défaut son texte.
     Q_INVOKABLE void click(const QString& id);
     // Événement d'un autre type depuis le QML (changement d'espace, par exemple).
-    Q_INVOKABLE void track(const QString& kind, const QString& id);
+    Q_INVOKABLE void track(const QString& kind, const QString& id, const QString& detail = {});
     void record(const QString& kind, const QString& id, const QString& detail = {});
 
-    // Journalise les actions exécutées (ActionController::ran) et les changements d'outil.
+    // Journalise les actions exécutées (ActionController::ran), les changements d'outil et, par un
+    // filtre d'événements de l'application, les raccourcis clavier (kind "key").
     void observe(ActionController& actions, ToolController& tools);
 
     // Dossier et activation selon l'environnement et l'emplacement des données locales.
@@ -46,6 +47,9 @@ public:
 
 signals:
     void enabledChanged();
+
+protected:
+    bool eventFilter(QObject* watched, QEvent* event) override;
 
 private:
     UsageLog& log_;

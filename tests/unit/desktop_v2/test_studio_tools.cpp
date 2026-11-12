@@ -4,11 +4,14 @@
 // Aucun mock du moteur.
 #include <QFile>
 #include <QGuiApplication>
+#include <QKeySequence>
 #include <QQmlApplicationEngine>
+#include <QQmlComponent>
 #include <QQmlContext>
 #include <QQuickItem>
 #include <QQuickStyle>
 #include <QQuickWindow>
+#include <QShortcutEvent>
 #include <QTemporaryDir>
 #include <QTest>
 #include <algorithm>
@@ -839,6 +842,27 @@ void StudioToolsTest::usageLogRecordsToolsAndActions() {
     QVERIFY(text.contains(
         QStringLiteral("\"k\":\"action\",\"id\":\"no.such.action\",\"d\":\"refused\"")));
     QVERIFY(text.contains(QStringLiteral("\"k\":\"click\",\"id\":\"gesture_satin\"")));
+
+    // A keyboard shortcut (application-wide filter) and a control hooked from QML.
+    QShortcutEvent shortcut(QKeySequence(QStringLiteral("Ctrl+K")), 1);
+    QCoreApplication::sendEvent(&usage, &shortcut);
+    QQmlEngine qml;
+    qml.rootContext()->setContextProperty(QStringLiteral("usage"), &usage);
+    QQmlComponent probe(&qml);
+    probe.setData(QByteArrayLiteral("import QtQuick\n"
+                                    "Item { Component.onCompleted: { "
+                                    "usage.track('control', 'probe_switch', 'on'); "
+                                    "usage.track('control', 'probe_two') } }"),
+                  QUrl());
+    std::unique_ptr<QObject> probeItem(probe.create());
+    QVERIFY2(probeItem != nullptr, qPrintable(probe.errorString()));
+    QFile mid(QString::fromStdString(log.currentFile().string()));
+    QVERIFY(mid.open(QIODevice::ReadOnly));
+    const auto midText = QString::fromUtf8(mid.readAll());
+    QVERIFY(midText.contains(QStringLiteral("\"k\":\"key\",\"id\":\"Ctrl+K\"")));
+    QVERIFY(
+        midText.contains(QStringLiteral("\"k\":\"control\",\"id\":\"probe_switch\",\"d\":\"on\"")));
+    QVERIFY(midText.contains(QStringLiteral("\"k\":\"control\",\"id\":\"probe_two\"}")));
 
     // The Preferences switch: off writes the DISABLED marker and stops recording; on removes it.
     usage.setEnabled(false);
