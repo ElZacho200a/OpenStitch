@@ -693,6 +693,9 @@ template <class P> Field<P> auto_satin_guides_field(std::string name) {
             if (!g.contains("anchor_mm") && guide.path.empty()) {
                 refuse(code::kUsage, "champ « " + name + " » : anchor_mm ou path_mm requis");
             }
+            if (guide.path.empty() && !g.contains("angle_deg")) {
+                refuse(code::kUsage, "champ « " + name + " » : angle_deg requis sans path_mm");
+            }
             guide.anchor = g.contains("anchor_mm") ? point_from_json(name, g["anchor_mm"])
                                                    : guide.path.front();
             const double a = g.contains("angle_deg")
