@@ -1886,6 +1886,12 @@ std::vector<SectorLines> compute_lines(const std::vector<Sector>& sectors,
     plan.target = static_cast<double>(params.stitch_length.value);
     plan.stagger = params.stagger;
     plan.intensity = handmade_intensity(params);
+    if (params.density_gradient &&
+        params.density_gradient->texture == document::DensityTexture::LongShort) {
+        // Réutilise la génération déterministe de pénétrations alternées,
+        // bornée entre 0,5 et 7 mm : pas de passe de post-traitement des points.
+        plan.intensity = std::max(plan.intensity, 0.75);
+    }
     plan.seed = params.seed;
     for (std::size_t si = 0; si < sectors.size(); ++si) {
         SectorLines sl;
