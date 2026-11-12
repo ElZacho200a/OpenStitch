@@ -488,8 +488,8 @@ TEST_CASE("multicolor satin: distributed traverses create separate machine color
     project_ops::MultiGradientFillSpec spec;
     spec.colors = {{20, 30, 100}, {35, 105, 175}, {95, 180, 205}};
     commands::UndoStack stack;
-    auto created = project_ops::make_create_multicolor_gradient_fill_command(
-        f.project, f.fill, spec);
+    auto created =
+        project_ops::make_create_multicolor_gradient_fill_command(f.project, f.fill, spec);
     REQUIRE(created);
     stack.execute(std::move(*created), f.project);
     const auto group = document::find_multi_blend(f.project, f.fill);
@@ -513,8 +513,7 @@ TEST_CASE("multicolor satin: distributed traverses create separate machine color
     REQUIRE(stack.redo(f.project));
     CHECK(document::find_multi_blend(f.project, f.fill));
 
-    auto remove =
-        project_ops::make_remove_multicolor_gradient_fill_command(f.project, f.fill);
+    auto remove = project_ops::make_remove_multicolor_gradient_fill_command(f.project, f.fill);
     REQUIRE(remove);
     stack.execute(std::move(*remove), f.project);
     CHECK_FALSE(document::find_multi_blend(f.project, f.fill));

@@ -204,7 +204,8 @@ bool FadeController::createWithTexture(const QColor& foreground, bool complement
 
 bool FadeController::setTexture(int texture) {
     if (satinTarget()) {
-        return refuse(QStringLiteral("Le satin utilise la répartition de traversées, sans tramage."));
+        return refuse(
+            QStringLiteral("Le satin utilise la répartition de traversées, sans tramage."));
     }
     if (id_ == 0 || !hasFade() || texture < 0 || texture > 3) {
         return refuse(QStringLiteral("Technique de fondu inconnue ou aucune sélection."));

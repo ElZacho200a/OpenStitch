@@ -369,10 +369,8 @@ void generate_satin(stitch::StitchSequence& sequence, const document::Embroidery
     // Cela évite les surépaisseurs dues à N colonnes satins superposées.
     // Une traversée est conservée EN ENTIER, avec tous ses split stitches ;
     // aucune découpe arbitraire d'un fil long en milieu de colonne.
-    if (object.multi_blend && object.multi_blend->count >= 2 &&
-        object.multi_blend->count <= 8 &&
-        object.multi_blend->index < object.multi_blend->count &&
-        !result.station_ends.empty()) {
+    if (object.multi_blend && object.multi_blend->count >= 2 && object.multi_blend->count <= 8 &&
+        object.multi_blend->index < object.multi_blend->count && !result.station_ends.empty()) {
         const auto link = *object.multi_blend;
         const auto old = std::move(result.satin);
         const auto oldBreaks = std::move(result.jump_before);
@@ -387,12 +385,10 @@ void generate_satin(stitch::StitchSequence& sequence, const document::Embroidery
             if (end <= offset || end > old.size()) {
                 break;
             }
-            const double t = stations > 1
-                                 ? static_cast<double>(s) / static_cast<double>(stations - 1)
-                                 : 0.0;
+            const double t =
+                stations > 1 ? static_cast<double>(s) / static_cast<double>(stations - 1) : 0.0;
             const double band = t * static_cast<double>(link.count - 1);
-            const int lower = std::min(static_cast<int>(band),
-                                       static_cast<int>(link.count) - 1);
+            const int lower = std::min(static_cast<int>(band), static_cast<int>(link.count) - 1);
             const int upper = std::min(lower + 1, static_cast<int>(link.count) - 1);
             const double fraction = band - lower;
             std::uint64_t z = link.group.value ^ (s * 0x9E3779B97F4A7C15ull);

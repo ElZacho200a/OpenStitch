@@ -123,7 +123,7 @@ struct SatinResult {
     // Permet le fondu multicolore par traversées complètes, y compris lorsque
     // des points de division ont été insérés entre les deux rails.
     std::vector<std::size_t> station_ends;
-    double max_width_um{0.0};         // largeur maximale (pour l'avertissement)
+    double max_width_um{0.0}; // largeur maximale (pour l'avertissement)
 
     // Indices dans `satin` où le fil doit être LEVÉ (saut) plutôt qu'enchaîné
     // par un point continu depuis le point précédent -- la couture reprend

@@ -42,8 +42,8 @@ struct MultiBlendLayers {
         if (link.count != tag.count || link.index >= tag.count ||
             link.complementary != tag.complementary ||
             member.source_vector != selected->source_vector ||
-            !(member.is_tatami() || member.is_directional() || member.is_satin()) || result.layers[link.index].valid() ||
-            member.color_blend) {
+            !(member.is_tatami() || member.is_directional() || member.is_satin()) ||
+            result.layers[link.index].valid() || member.color_blend) {
             return std::nullopt;
         }
         result.layers[link.index] = member.id;
