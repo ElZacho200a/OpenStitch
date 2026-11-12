@@ -2,6 +2,7 @@
 import QtQuick
 import QtQuick.Controls as Controls
 import QtQuick.Layouts
+import QtQuick.Dialogs
 import "."
 
 // Édition des régions de la segmentation : sélection, recoloration, fusion, suppression,
@@ -13,10 +14,36 @@ ColumnLayout {
 
     property string confirmText: ""
     property bool pendingResegment: false
+    property bool choosingMergeTarget: false
+    function tappedRegion(id, ctrlHeld) {
+        if (choosingMergeTarget) {
+            if (regionTools.mergeSelectedInto(id) === "")
+                choosingMergeTarget = false
+        } else {
+            regionTools.selectRegion(id, ctrlHeld ? "toggle" : "replace")
+        }
+    }
+    // Sourced from the active SegmentationSection in Studio, not hardcoded defaults.
+    property var segmentationOptions: imageTools.segmentationDefaults
+    property var pendingOptions: ({})
+    function requestRegeneration(resegment) {
+        pendingResegment = resegment
+        // Freeze the chosen settings while the overwrite confirmation is shown.
+        pendingOptions = Object.assign({}, segmentationOptions)
+        regionTools.regenerate(resegment, false, pendingOptions)
+    }
     property int islandPx: 12
     property int holePx: 12
+    function validHexColour(value) {
+        return /^#[0-9a-fA-F]{6}$/.test(String(value).trim())
+    }
     property int paletteColors: 8
+    property int paletteDistance: 60
+    property bool paletteMergeAdjacent: true
     property var strokePoints: []
+    // A brush gesture is valid only if it begins inside the painted image and never
+    // crosses the letterbox. Otherwise a later in-bounds move could paint unexpectedly.
+    property bool strokeStartedInside: false
 
     Connections {
         target: regionTools
@@ -47,42 +74,82 @@ ColumnLayout {
             fillMode: Image.PreserveAspectFit
             cache: false
             source: regionTools.hasSegmentation ? "image://prepare/regions?rev=" + regionTools.mapRevision : ""
-            // Pixel de l'image de travail sous un point de la zone.
+            // The ScrollView's MouseArea and the image have different origins (2 px margins).
+            // Reject letterboxed clicks instead of feeding out-of-image coordinates to the
+            // region brush. Convert only the painted image rectangle to source pixels.
             function pixelAt(px, py) {
-                // La miniature est bornée à 512 px : les clics restent exprimés
-                // dans les coordonnées de la vraie segmentation.
-                var ox = (width - paintedWidth) / 2
-                var oy = (height - paintedHeight) / 2
+                const p = mapImage.mapFromItem(mapArea, px, py)
+                const w = paintedWidth
+                const h = paintedHeight
+                const sourceW = regionTools.mapWidth
+                const sourceH = regionTools.mapHeight
+                if (w <= 0 || h <= 0 || sourceW <= 0 || sourceH <= 0)
+                    return null
+                const ox = (width - w) / 2
+                const oy = (height - h) / 2
+                if (p.x < ox || p.y < oy || p.x >= ox + w || p.y >= oy + h)
+                    return null
                 return {
-                    x: Math.floor((px - ox) / Math.max(1, paintedWidth) * regionTools.mapWidth),
-                    y: Math.floor((py - oy) / Math.max(1, paintedHeight) * regionTools.mapHeight)
+                    x: Math.min(sourceW - 1, Math.floor((p.x - ox) / w * sourceW)),
+                    y: Math.min(sourceH - 1, Math.floor((p.y - oy) / h * sourceH))
                 }
             }
         }
         MouseArea {
+            id: mapArea
             objectName: "regionMapArea"
             anchors.fill: parent
             enabled: regionTools.hasSegmentation
             onPressed: function(mouse) {
-                var p = mapImage.pixelAt(mouse.x, mouse.y)
+                const p = mapImage.pixelAt(mouse.x, mouse.y)
                 if (regionTools.tool === "select") {
-                    regionTools.selectAtPixel(p.x, p.y, (mouse.modifiers & Qt.ControlModifier) !== 0)
+                    section.strokeStartedInside = false
+                    if (p)
+                        regionTools.selectAtPixel(p.x, p.y, (mouse.modifiers & Qt.ControlModifier) !== 0)
+                    else if (!(mouse.modifiers & Qt.ControlModifier))
+                        regionTools.clearSelection()
                 } else {
-                    section.strokePoints = [p]
+                    section.strokeStartedInside = p !== null
+                    section.strokePoints = p ? [p] : []
                 }
             }
             onPositionChanged: function(mouse) {
-                if (regionTools.tool !== "select" && pressed) {
-                    var pts = section.strokePoints
-                    pts.push(mapImage.pixelAt(mouse.x, mouse.y))
-                    section.strokePoints = pts
+                if (regionTools.tool !== "select" && pressed && section.strokeStartedInside) {
+                    const p = mapImage.pixelAt(mouse.x, mouse.y)
+                    if (!p) {
+                        // Cancel the entire gesture rather than bridging an empty margin.
+                        section.strokeStartedInside = false
+                        section.strokePoints = []
+                        return
+                    }
+                    if (p) {
+                        const pts = section.strokePoints
+                        if (pts.length === 0 || pts[pts.length - 1].x !== p.x ||
+                                pts[pts.length - 1].y !== p.y)
+                            section.strokePoints = pts.concat([p])
+                    }
                 }
             }
-            onReleased: {
-                if (regionTools.tool !== "select" && section.strokePoints.length > 0) {
+            onReleased: function(mouse) {
+                // A release can arrive outside the painted image without a preceding
+                // positionChanged event (e.g. a fast drag). Never commit that stroke.
+                const releasePixel = mapImage.pixelAt(mouse.x, mouse.y)
+                if (regionTools.tool !== "select" && section.strokeStartedInside &&
+                        section.strokePoints.length > 0 && releasePixel !== null) {
+                    // A quick release may arrive without a final positionChanged event.
+                    // Include the release pixel so the last brush dab is not lost.
+                    const pts = section.strokePoints
+                    const last = pts[pts.length - 1]
+                    if (last.x !== releasePixel.x || last.y !== releasePixel.y)
+                        section.strokePoints = pts.concat([releasePixel])
                     regionTools.paintStroke(section.strokePoints, regionTools.tool === "erase")
-                    section.strokePoints = []
                 }
+                section.strokeStartedInside = false
+                section.strokePoints = []
+            }
+            onCanceled: {
+                section.strokeStartedInside = false
+                section.strokePoints = []
             }
         }
     }
@@ -109,6 +176,37 @@ ColumnLayout {
     }
 
     SectionLabel { text: qsTr("RÉGIONS (%1)").arg(regionTools.regions.length) }
+    RowLayout {
+        Layout.fillWidth: true
+        StudioButton {
+            objectName: "regionPrevious"
+            text: qsTr("◀ Précédente")
+            tooltip: qsTr("Sélectionner la région précédente de la liste")
+            enabled: regionTools.regions.length > 0
+            onClicked: regionTools.selectPreviousRegion()
+        }
+        StudioButton {
+            objectName: "regionNext"
+            text: qsTr("Suivante ▶")
+            tooltip: qsTr("Sélectionner la région suivante de la liste")
+            enabled: regionTools.regions.length > 0
+            onClicked: regionTools.selectNextRegion()
+        }
+        StudioButton {
+            objectName: "brushSmaller"
+            text: "−"
+            tooltip: qsTr("Pinceau : rayon plus petit")
+            visible: regionTools.tool !== "select"
+            onClicked: regionTools.stepBrushRadius(-1)
+        }
+        StudioButton {
+            objectName: "brushLarger"
+            text: "+"
+            tooltip: qsTr("Pinceau : rayon plus grand")
+            visible: regionTools.tool !== "select"
+            onClicked: regionTools.stepBrushRadius(1)
+        }
+    }
     Rectangle {
         Layout.fillWidth: true
         Layout.preferredHeight: 110
@@ -122,6 +220,7 @@ ColumnLayout {
             model: regionTools.regions
             delegate: Rectangle {
                 required property var modelData
+                objectName: "regionRow_" + modelData.id
                 readonly property bool isSelected: regionTools.selected.indexOf(modelData.id) >= 0
                 width: ListView.view.width
                 height: 24
@@ -137,8 +236,8 @@ ColumnLayout {
                     }
                 }
                 TapHandler {
-                    onTapped: regionTools.selectRegion(modelData.id,
-                              (point.modifiers & Qt.ControlModifier) ? "toggle" : "replace")
+                    onTapped: section.tappedRegion(modelData.id,
+                              (point.modifiers & Qt.ControlModifier) !== 0)
                 }
             }
         }
@@ -153,6 +252,12 @@ ColumnLayout {
     }
 
     SectionLabel { text: qsTr("RETOUCHES") }
+    ColorDialog {
+        id: regionColourPicker
+        objectName: "regionColorDialog"
+        title: qsTr("Couleur de la région")
+        onAccepted: colorField.text = selectedColor.toString()
+    }
     RowLayout {
         Layout.fillWidth: true
         StudioTextField {
@@ -161,12 +266,24 @@ ColumnLayout {
             Layout.fillWidth: true
             placeholderText: "#rrggbb"
             text: "#cc3344" // lint-ok: default thread colour (document data)
+            invalid: !section.validHexColour(text)
+            Accessible.name: qsTr("Couleur hexadécimale de la région")
+        }
+        StudioButton {
+            objectName: "regionPickColor"
+            text: qsTr("Palette…")
+            tooltip: qsTr("Choisir visuellement la couleur d'une région")
+            onClicked: {
+                if (section.validHexColour(colorField.text))
+                    regionColourPicker.selectedColor = colorField.text
+                regionColourPicker.open()
+            }
         }
         StudioButton {
             objectName: "regionRecolor"
             text: qsTr("Recolorer")
-            enabled: regionTools.selectedCount > 0
-            onClicked: regionTools.recolorSelected(colorField.text)
+            enabled: regionTools.selectedCount > 0 && section.validHexColour(colorField.text)
+            onClicked: regionTools.recolorSelected(colorField.text.trim())
         }
     }
     Flow {
@@ -175,7 +292,26 @@ ColumnLayout {
         StudioButton { objectName: "regionMerge"; text: qsTr("Fusionner la sélection"); enabled: regionTools.selectedCount > 1; onClicked: regionTools.mergeSelected() }
         StudioButton { objectName: "regionMergeNeighbour"; text: qsTr("Fusionner dans la voisine"); enabled: regionTools.selectedCount === 1
             onClicked: regionTools.mergeWithNeighbour(regionTools.selected[0]) }
+        StudioButton {
+            objectName: "regionChooseMergeTarget"
+            text: section.choosingMergeTarget ? qsTr("Annuler cible") : qsTr("Choisir la cible…")
+            checkable: true
+            checked: section.choosingMergeTarget
+            enabled: regionTools.selectedCount === 1 || section.choosingMergeTarget
+            tooltip: qsTr("Sélectionnez une région source puis cliquez la région à conserver dans la liste")
+            onClicked: section.choosingMergeTarget = !section.choosingMergeTarget
+        }
         StudioButton { objectName: "regionDelete"; text: qsTr("Supprimer"); enabled: regionTools.selectedCount > 0; onClicked: regionTools.deleteSelected() }
+    }
+    Text {
+        objectName: "regionMergeTargetHint"
+        Layout.fillWidth: true
+        visible: section.choosingMergeTarget
+        text: qsTr("Cliquez dans la liste sur la région qui doit absorber la sélection ; annulez avec le même bouton.")
+        wrapMode: Text.WordWrap
+        color: Theme.accent
+        font.pixelSize: Theme.smallSize
+        font.family: Theme.fontFamily
     }
     RowLayout {
         Layout.fillWidth: true
@@ -193,13 +329,33 @@ ColumnLayout {
         Layout.fillWidth: true
         Text { text: qsTr("Palette ≤"); color: Theme.foreground; font.pixelSize: Theme.bodySize; font.family: Theme.fontFamily }
         StudioSpinBox { objectName: "regionPaletteColors"; from: 1; to: 64; value: section.paletteColors; editable: true; onValueModified: section.paletteColors = value }
-        StudioButton { objectName: "regionReducePalette"; text: qsTr("Réduire"); enabled: regionTools.hasSegmentation
-            onClicked: regionTools.reducePalette(section.paletteColors, 60, true) }
+        StudioButton { objectName: "regionReducePalette"; text: qsTr("Réduire"); enabled: regionTools.hasSegmentation && !regionTools.busy
+            onClicked: regionTools.reducePalette(section.paletteColors, section.paletteDistance, section.paletteMergeAdjacent) }
+    }
+    RowLayout {
+        Layout.fillWidth: true
+        Text { text: qsTr("Distance couleurs"); color: Theme.foreground; font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily }
+        StudioSpinBox {
+            id: paletteDistanceControl
+            objectName: "regionPaletteDistance"
+            from: 0; to: 255; stepSize: 5
+            value: section.paletteDistance
+            editable: true
+            onValueModified: section.paletteDistance = value
+            Accessible.name: qsTr("Distance maximale de fusion des couleurs")
+        }
+        StudioCheckBox {
+            objectName: "regionMergeAdjacent"
+            text: qsTr("Voisines")
+            checked: section.paletteMergeAdjacent
+            onToggled: section.paletteMergeAdjacent = checked
+            Accessible.name: qsTr("Fusionner les régions de couleur voisines")
+        }
     }
     Text {
         objectName: "regionPalettePreview"
         Layout.fillWidth: true
-        readonly property var p: (regionTools.regions, regionTools.hasSegmentation) ? regionTools.previewReduction(section.paletteColors, 60, true) : ({ before: 0, after: 0 })
+        readonly property var p: (regionTools.regions, regionTools.hasSegmentation) ? regionTools.previewReduction(section.paletteColors, section.paletteDistance, section.paletteMergeAdjacent) : ({ before: 0, after: 0 })
         text: qsTr("Palette : %1 → %2 couleurs").arg(p.before).arg(p.after)
         color: Theme.muted; font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily
     }
@@ -212,13 +368,13 @@ ColumnLayout {
             text: qsTr("Régénérer les objets")
             emphasized: regionTools.stale
             enabled: regionTools.hasSegmentation && !regionTools.busy
-            onClicked: { section.pendingResegment = false; regionTools.regenerate(false, false, imageTools.segmentationDefaults) }
+            onClicked: section.requestRegeneration(false)
         }
         StudioButton {
             objectName: "regionResegment"
             text: qsTr("Re-segmenter")
             enabled: imageTools.hasImage && !regionTools.busy
-            onClicked: { section.pendingResegment = true; regionTools.regenerate(true, false, imageTools.segmentationDefaults) }
+            onClicked: section.requestRegeneration(true)
         }
         StudioButton {
             objectName: "regionCancelTask"
@@ -252,7 +408,7 @@ ColumnLayout {
                     emphasized: true
                     onClicked: {
                         section.confirmText = ""
-                        regionTools.regenerate(section.pendingResegment, true, imageTools.segmentationDefaults)
+                        regionTools.regenerate(section.pendingResegment, true, section.pendingOptions)
                     }
                 }
                 StudioButton {

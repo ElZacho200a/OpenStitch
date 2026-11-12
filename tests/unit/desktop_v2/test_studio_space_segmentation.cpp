@@ -260,6 +260,117 @@ private slots:
         QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
     }
 
+    // The region thumbnail is letterboxed inside its panel. A click on the empty margin must
+    // never turn into an out-of-bounds brush stroke, while a click on the painted image must
+    // still select the corresponding full-resolution region.
+    void regionMapRejectsLetterboxBrushClicks() {
+        Rig rig;
+        open(rig);
+        QVERIFY(rig.press("segmentationTab_1"));
+        auto* map = rig.named("regionMapArea");
+        auto* image = rig.named("regionMapImage");
+        QVERIFY(map);
+        QVERIFY(image);
+        QTRY_VERIFY_WITH_TIMEOUT(image->property("paintedWidth").toDouble() > 0.0, 5'000);
+        const double paintedW = image->property("paintedWidth").toDouble();
+        const double paintedH = image->property("paintedHeight").toDouble();
+        const double left = (image->width() - paintedW) / 2.0;
+        const double top = (image->height() - paintedH) / 2.0;
+        QVERIFY2(left > 8.0, "Expected horizontal letterboxing in the region thumbnail");
+
+        const auto onMap = [&](double imageX, double imageY) {
+            return image->mapToItem(map, QPointF(imageX, imageY));
+        };
+        const auto click = [&](const QPointF& local) {
+            QTest::mouseClick(rig.window, Qt::LeftButton, Qt::NoModifier,
+                              map->mapToScene(local).toPoint());
+        };
+
+        // The image-to-map coordinate transform must include the image's 2 px margins.
+        rig.regions.clearSelection();
+        click(onMap(left + paintedW * 0.25, top + paintedH * 0.25));
+        QTRY_COMPARE(rig.regions.selectedCount(), 1);
+        QCOMPARE(static_cast<std::uint64_t>(rig.regions.selected().at(0).toDouble()),
+                 regionAtPixel(rig.session.project(), 40, 30).value());
+
+        // Even with a large brush, clicking the empty letterbox must not mutate the document.
+        rig.regions.setTool(QStringLiteral("brush"));
+        rig.regions.setBrushRadius(200.0);
+        const auto revision = rig.session.revision();
+        const auto undoDepth = rig.session.undoNames().size();
+        click(onMap(1.0, top + paintedH * 0.5));
+        QTest::qWait(100);
+        QCOMPARE(rig.session.revision(), revision);
+        QCOMPARE(rig.session.undoNames().size(), undoDepth);
+
+        // Starting in the empty margin and dragging into the painted image must not
+        // initiate a stroke. Likewise, leaving the painted image cancels a stroke
+        // instead of connecting points across the letterbox on re-entry.
+        const QPoint blank = map->mapToScene(onMap(1.0, top + paintedH * 0.5)).toPoint();
+        const QPoint inside =
+            map->mapToScene(onMap(left + paintedW * 0.25, top + paintedH * 0.5)).toPoint();
+        QTest::mousePress(rig.window, Qt::LeftButton, Qt::NoModifier, blank);
+        QTest::mouseMove(rig.window, inside);
+        QTest::mouseRelease(rig.window, Qt::LeftButton, Qt::NoModifier, inside);
+        QCOMPARE(rig.session.revision(), revision);
+        QCOMPARE(rig.session.undoNames().size(), undoDepth);
+
+        QTest::mousePress(rig.window, Qt::LeftButton, Qt::NoModifier, inside);
+        QTest::mouseMove(rig.window, blank);
+        QTest::mouseMove(rig.window, inside);
+        QTest::mouseRelease(rig.window, Qt::LeftButton, Qt::NoModifier, inside);
+        QCOMPARE(rig.session.revision(), revision);
+        QCOMPARE(rig.session.undoNames().size(), undoDepth);
+
+        // Qt may deliver a release in the letterbox without a final move event.
+        // This must cancel rather than commit the in-bounds portion of the stroke.
+        QTest::mousePress(rig.window, Qt::LeftButton, Qt::NoModifier, inside);
+        QTest::mouseRelease(rig.window, Qt::LeftButton, Qt::NoModifier, blank);
+        QCOMPARE(rig.session.revision(), revision);
+        QCOMPARE(rig.session.undoNames().size(), undoDepth);
+        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+    }
+
+    // A fast drag may report only press and release. The last in-image brush dab must
+    // still be applied, with exactly one undo step (and no downstream regeneration).
+    void regionMapBrushIncludesReleasePixelWithoutMove() {
+        Rig rig;
+        open(rig);
+        QVERIFY(rig.press("segmentationTab_1"));
+        auto* map = rig.named("regionMapArea");
+        auto* image = rig.named("regionMapImage");
+        QVERIFY(map && image);
+        QTRY_VERIFY_WITH_TIMEOUT(image->property("paintedWidth").toDouble() > 0.0, 5'000);
+        const auto& seg = *rig.session.project().segmentation;
+        // The layout can still shift after the tool changes (the brush radius box appears), so the
+        // painted rectangle is read again for every point instead of once up front.
+        const auto scenePixel = [&](int x, int y) {
+            const double w = image->property("paintedWidth").toDouble();
+            const double h = image->property("paintedHeight").toDouble();
+            const double left = (image->width() - w) / 2.0;
+            const double top = (image->height() - h) / 2.0;
+            const QPointF local(left + w * (x + 0.5) / seg.width, top + h * (y + 0.5) / seg.height);
+            return map->mapToScene(image->mapToItem(map, local)).toPoint();
+        };
+
+        const auto chosen = regionAtPixel(rig.session.project(), 20, 20).value();
+        const auto other = regionAtPixel(rig.session.project(), 130, 30).value();
+        QVERIFY(chosen != other);
+        rig.regions.selectAtPixel(20, 20);
+        rig.regions.setTool(QStringLiteral("brush"));
+        rig.regions.setBrushRadius(3.0);
+        const auto depth = rig.session.undoNames().size();
+        const auto scene = rig.studio.scene();
+        QTest::mousePress(rig.window, Qt::LeftButton, Qt::NoModifier, scenePixel(100, 30));
+        QTest::mouseRelease(rig.window, Qt::LeftButton, Qt::NoModifier, scenePixel(130, 30));
+        QCOMPARE(regionAtPixel(rig.session.project(), 130, 30).value(), chosen);
+        QCOMPARE(rig.session.undoNames().size(), depth + 1);
+        QVERIFY(rig.studio.scene() == scene); // Segmentation edits do not regenerate stitches.
+        QVERIFY(rig.session.undo());
+        QCOMPARE(regionAtPixel(rig.session.project(), 130, 30).value(), other);
+        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+    }
+
     // --- sélection au clic ----------------------------------------------------------------
     void clickSelectsRegionsAndSyncsTheList() {
         Rig rig;
@@ -387,7 +498,22 @@ private slots:
         auto* panels = rig.named("segmentationPanels");
         QVERIFY(panels);
         // Segmentation : réglages saisis, aperçu annulable, application en une étape.
-        rig.named("segmentationSection")->setProperty("maxColors", 3);
+        auto* segmentationSettings = rig.named("segmentationSection");
+        QVERIFY(segmentationSettings);
+        // Ce parcours teste l'aperçu explicite : l'aperçu en direct a son propre test.
+        QVERIFY(segmentationSettings->setProperty("liveEnabled", false));
+        QVERIFY(segmentationSettings->setProperty("maxColors", 3));
+        QVERIFY(segmentationSettings->setProperty("minRegionPx", 25));
+        QVERIFY(segmentationSettings->setProperty("smoothing", 2));
+        QVERIFY(rig.press("segPreviewButton"));
+        QTRY_VERIFY_WITH_TIMEOUT(rig.images.segPreviewActive(), 20'000);
+        // F08-01: editing segmentation colours invalidates a completed preview
+        // without mutating the project or leaving the old image on screen.
+        const auto priorPreviewRevision = rig.session.revision();
+        QVERIFY(segmentationSettings->setProperty("maxColors", 4));
+        QTRY_VERIFY(!rig.images.segPreviewActive());
+        QCOMPARE(rig.session.revision(), priorPreviewRevision);
+        QVERIFY(segmentationSettings->setProperty("maxColors", 3));
         QVERIFY(rig.press("segPreviewButton"));
         QTRY_VERIFY_WITH_TIMEOUT(rig.images.segPreviewActive(), 20'000);
         QVERIFY(rig.press("segCancelButton"));
@@ -405,9 +531,62 @@ private slots:
         // Régions : sélection, recoloration, fusion, suppression, régénération.
         panels->setProperty("tab", 1);
         QVERIFY(rig.named("regionStaleBanner"));
+        // F08-02: unlike the old fixed 60/true values, the palette preview
+        // follows the editable colour-distance and adjacency settings.
+        auto* palette = rig.named("regionTools");
+        // F08-01: the region editor inherits the *actual* segmentation values,
+        // not ImageController's default values. Reconfirm uses the frozen copy.
+        QVERIFY(palette);
+        const auto liveOptions = palette->property("segmentationOptions").toMap();
+        QCOMPARE(liveOptions.value("max_colors").toInt(), 3);
+        QCOMPARE(liveOptions.value("min_region_px").toInt(), 25);
+        QCOMPARE(liveOptions.value("smoothing_radius_px").toInt(), 2);
+        auto* distance = rig.named("regionPaletteDistance");
+        auto* adjacent = rig.named("regionMergeAdjacent");
+        auto* preview = rig.named("regionPalettePreview");
+        QVERIFY(palette && distance && adjacent && preview);
+        QVERIFY(palette->setProperty("paletteDistance", 25));
+        QVERIFY(palette->setProperty("paletteMergeAdjacent", false));
+        QTRY_COMPARE(distance->property("value").toInt(), 25);
+        QTRY_VERIFY(!adjacent->property("checked").toBool());
+        const auto expectedPreview =
+            rig.regions.previewReduction(palette->property("paletteColors").toInt(), 25, false);
+        QTRY_COMPARE(preview->property("p").toMap().value("after").toInt(),
+                     expectedPreview.value("after").toInt());
         rig.regions.selectAtPixel(20, 20);
         QCOMPARE(rig.regions.selectedCount(), 1);
-        rig.named("regionColorField")->setProperty("text", QStringLiteral("#00aa55"));
+        // F08-02: a user-chosen destination replaces the automatic first
+        // neighbour. One real document command, one undo, and target ID kept.
+        const auto sourceId = rig.regions.selected().front().toDouble();
+        double destinationId = 0;
+        for (const auto& item : rig.regions.regions()) {
+            const double id = item.toMap().value("id").toDouble();
+            if (id != sourceId) {
+                destinationId = id;
+                break;
+            }
+        }
+        QVERIFY(destinationId > 0);
+        const auto beforeTargetMerge = rig.session.undoNames().size();
+        QVERIFY(rig.press("regionChooseMergeTarget"));
+        QTRY_VERIFY(palette->property("choosingMergeTarget").toBool());
+        QVERIFY(QMetaObject::invokeMethod(palette, "tappedRegion", Qt::DirectConnection,
+                                          Q_ARG(QVariant, QVariant(destinationId)),
+                                          Q_ARG(QVariant, QVariant(false))));
+        QCOMPARE(rig.session.undoNames().size(), beforeTargetMerge + 1);
+        QTRY_VERIFY(!palette->property("choosingMergeTarget").toBool());
+        QVERIFY(rig.session.undo());
+        rig.regions.selectAtPixel(20, 20);
+        QCOMPARE(rig.regions.selectedCount(), 1);
+        // F08-02: colour picker is available and malformed hex never reaches
+        // the document mutation. A valid hex colour enables recolouring.
+        QVERIFY(rig.named("regionPickColor"));
+        auto* recolourField = rig.named("regionColorField");
+        QVERIFY(recolourField);
+        QVERIFY(recolourField->setProperty("text", QStringLiteral("#not-a-colour")));
+        QTRY_VERIFY(!rig.named("regionRecolor")->isEnabled());
+        QVERIFY(recolourField->property("invalid").toBool());
+        QVERIFY(recolourField->setProperty("text", QStringLiteral("#00aa55")));
         QTRY_VERIFY(rig.named("regionRecolor")->isEnabled());
         QVERIFY(rig.press("regionRecolor"));
         QVERIFY(rig.regions.message().contains(QStringLiteral("recolor")));
@@ -431,6 +610,16 @@ private slots:
         panels->setProperty("tab", 2);
         QVERIFY(rig.press("aiProbeButton"));
         QTRY_VERIFY_WITH_TIMEOUT(!rig.images.aiBusy() && !rig.images.aiSummary().isEmpty(), 30'000);
+        // Request a re-segmentation and verify the exact user settings are
+        // captured for the confirmation path even if the UI changes afterward.
+        panels->setProperty("tab", 1);
+        QVERIFY(rig.press("regionResegment"));
+        const auto pending = palette->property("pendingOptions").toMap();
+        QCOMPARE(pending.value("max_colors").toInt(), 3);
+        QCOMPARE(pending.value("min_region_px").toInt(), 25);
+        QCOMPARE(pending.value("smoothing_radius_px").toInt(), 2);
+        if (rig.regions.busy())
+            rig.regions.cancelTask();
         QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
     }
 
@@ -459,6 +648,282 @@ private slots:
         workspace->setCurrent(QStringLiteral("segmentation"));
         QTRY_VERIFY(window->findChild<QObject*>(QStringLiteral("segmentationSpace")));
         QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join('\n')));
+    }
+
+private slots:
+    // regionMergeColorIntoUndo : selectionner 2 regions, appeler mergeColorInto(idSource, idCible)
+    // -> QString vide ; le nombre de regions diminue ; undo restaure.
+    void regionMergeColorIntoUndo() {
+        Rig rig;
+        open(rig);
+        const auto beforeCount = rig.regions.regions().size();
+        QVERIFY(beforeCount >= 2);
+        QVariantList allRegions = rig.regions.regions();
+        double sourceId = 0, targetId = 0;
+        for (const auto& r : allRegions) {
+            const QVariantMap m = r.toMap();
+            double id = m.value("id").toDouble();
+            if (sourceId == 0) {
+                sourceId = id;
+            } else if (targetId == 0) {
+                targetId = id;
+            }
+        }
+        QVERIFY(sourceId > 0 && targetId > 0);
+        QCOMPARE(rig.regions.mergeColorInto(sourceId, targetId), QString());
+        QTRY_COMPARE(rig.regions.regions().size(), beforeCount - 1);
+        QVERIFY(rig.session.undo());
+        QTRY_COMPARE(rig.regions.regions().size(), beforeCount);
+    }
+
+    // regionReducePaletteUndo : previewReduction(2, 60.0, true) renvoie "after" <= "before" ;
+    // reducePalette vide ; undo la retire.
+    void regionReducePaletteUndo() {
+        Rig rig;
+        open(rig);
+        const auto beforeDepth = rig.session.undoNames().size();
+        QVariantMap preview = rig.regions.previewReduction(2, 60.0, true);
+        QVERIFY(preview.value("after").toInt() <= preview.value("before").toInt());
+        QCOMPARE(rig.regions.reducePalette(2, 60.0, true), QString());
+        QCOMPARE(rig.session.undoNames().size(), beforeDepth + 1);
+        QVERIFY(rig.session.undo());
+        QCOMPARE(rig.session.undoNames().size(), beforeDepth);
+    }
+
+    // regionCleanIslandsUndo : cleanIslands(5) renvoie QString vide ou un message sans erreur ; si
+    // le projet change, undo restaure.
+    void regionCleanIslandsUndo() {
+        // Image de test sans petit îlot : message informatif, aucune étape d'annulation créée.
+        Rig rig;
+        open(rig);
+        const auto depth = rig.session.undoNames().size();
+        const QString msg = rig.regions.cleanIslands(5);
+        QVERIFY(msg.isEmpty() || msg.contains(QStringLiteral("rien")));
+        QCOMPARE(rig.session.undoNames().size(), depth);
+    }
+
+    // regionFillHolesUndo : même principe avec fillHoles(5).
+    void regionFillHolesUndo() {
+        Rig rig;
+        open(rig);
+        const auto depth = rig.session.undoNames().size();
+        const QString msg = rig.regions.fillHoles(5);
+        QVERIFY(msg.isEmpty() || msg.contains(QStringLiteral("Aucun")));
+        QCOMPARE(rig.session.undoNames().size(), depth);
+    }
+
+    // regionDeleteSelectedUndo : selectAtPixel(20,20) puis deleteSelected() vide ; un undo restaure
+    // le nombre d'objets embroidery_objects.
+    void regionDeleteSelectedUndo() {
+        Rig rig;
+        open(rig);
+        const auto beforeObjects = rig.session.project().embroidery_objects.size();
+        rig.regions.selectAtPixel(20, 20);
+        QTRY_COMPARE(rig.regions.selectedCount(), 1);
+        QCOMPARE(rig.regions.deleteSelected(), QString());
+        QVERIFY(rig.session.undoNames().size() > 0);
+        QVERIFY(rig.session.undo());
+        QCOMPARE(rig.session.project().embroidery_objects.size(), beforeObjects);
+    }
+
+    // regionPaintStrokeNeedsOneRegion : sans selection, paintStroke({}, false) renvoie un message
+    // NON vide (erreur "choisissez d'abord UNE region").
+    void regionPaintStrokeNeedsOneRegion() {
+        Rig rig;
+        open(rig);
+        const QString msg = rig.regions.paintStroke(QVariantList{}, false);
+        QVERIFY(!msg.isEmpty());
+        QVERIFY(msg.contains("choisissez"));
+    }
+
+    // regionSelectAllAndInvert : selectAll() puis invertSelection() ; apres inversion la selection
+    // est vide.
+    void regionSelectAllAndInvert() {
+        Rig rig;
+        open(rig);
+        rig.regions.selectAll();
+        QVERIFY(rig.regions.selectedCount() >= 2);
+        rig.regions.invertSelection();
+        QCOMPARE(rig.regions.selectedCount(), 0);
+    }
+    // Fusion de la sélection : refusée avec une seule région, une étape d'annulation sinon.
+    void regionMergeSelectedNeedsTwoAndUndoes() {
+        Rig rig;
+        open(rig);
+        const auto regions = rig.regions.regions();
+        QVERIFY(regions.size() >= 3);
+        const auto before = regions.size();
+        rig.regions.selectRegion(regions[0].toMap().value("id").toDouble());
+        QVERIFY(!rig.regions.mergeSelected().isEmpty());
+        rig.regions.selectRegion(regions[1].toMap().value("id").toDouble(), QStringLiteral("add"));
+        QCOMPARE(rig.regions.selectedCount(), 2);
+        const auto depth = rig.session.undoNames().size();
+        QCOMPARE(rig.regions.mergeSelected(), QString());
+        QCOMPARE(rig.session.undoNames().size(), depth + 1);
+        QTRY_VERIFY(rig.regions.regions().size() < before);
+        rig.session.undo();
+        QTRY_COMPARE(rig.regions.regions().size(), before);
+    }
+
+    // Fusion d'une région source dans une cible choisie : la cible garde son identité.
+    void regionMergeSelectedIntoKeepsTheTarget() {
+        Rig rig;
+        open(rig);
+        const auto regions = rig.regions.regions();
+        QVERIFY(regions.size() >= 2);
+        const auto before = regions.size();
+        const double source = regions[0].toMap().value("id").toDouble();
+        const double target = regions[1].toMap().value("id").toDouble();
+        rig.regions.selectAll();
+        QVERIFY(!rig.regions.mergeSelectedInto(target).isEmpty()); // plusieurs sources : refus
+        rig.regions.selectRegion(source);
+        QCOMPARE(rig.regions.mergeSelectedInto(target), QString());
+        QTRY_COMPARE(rig.regions.regions().size(), before - 1);
+        bool targetKept = false;
+        for (const auto& region : rig.regions.regions()) {
+            targetKept = targetKept || region.toMap().value("id").toDouble() == target;
+        }
+        QVERIFY(targetKept);
+        rig.session.undo();
+        QTRY_COMPARE(rig.regions.regions().size(), before);
+    }
+
+    // Fusion dans la voisine : une région du quadrillage a toujours une voisine.
+    void regionMergeWithNeighbourUndoes() {
+        Rig rig;
+        open(rig);
+        const auto regions = rig.regions.regions();
+        QVERIFY(regions.size() >= 2);
+        const auto before = regions.size();
+        QCOMPARE(rig.regions.mergeWithNeighbour(regions[0].toMap().value("id").toDouble()),
+                 QString());
+        QTRY_COMPARE(rig.regions.regions().size(), before - 1);
+        rig.session.undo();
+        QTRY_COMPARE(rig.regions.regions().size(), before);
+    }
+
+    // Sélection des voisines : sans sélection rien ne change, sinon la sélection s'étend.
+    void regionSelectNeighboursExpandsTheSelection() {
+        Rig rig;
+        open(rig);
+        rig.regions.clearSelection();
+        rig.regions.selectNeighbours();
+        QCOMPARE(rig.regions.selectedCount(), 0);
+        rig.regions.selectAtPixel(20, 20);
+        QCOMPARE(rig.regions.selectedCount(), 1);
+        rig.regions.selectNeighbours();
+        QVERIFY(rig.regions.selectedCount() >= 2);
+    }
+    // Parcours des régions (suivante / précédente, avec bouclage) et pas du rayon du pinceau.
+    void regionStepAndBrushRadiusSteps() {
+        Rig rig;
+        open(rig);
+        const auto regions = rig.regions.regions();
+        const int n = static_cast<int>(regions.size());
+        QVERIFY(n >= 2);
+        auto idAt = [&](int i) { return regions[i].toMap().value("id").toDouble(); };
+        rig.regions.clearSelection();
+        QVERIFY(rig.regions.selectNextRegion()); // sans sélection : la première
+        QCOMPARE(rig.regions.selectedCount(), 1);
+        QVERIFY(rig.regions.selectNextRegion());
+        rig.regions.selectRegion(idAt(n - 1));
+        QVERIFY(rig.regions.selectNextRegion());     // bouclage vers la première
+        QVERIFY(rig.regions.selectPreviousRegion()); // bouclage vers la dernière
+        QCOMPARE(rig.regions.selectedCount(), 1);
+        rig.regions.clearSelection();
+        QVERIFY(rig.regions.selectPreviousRegion()); // sans sélection : la dernière
+        QCOMPARE(rig.regions.selectedCount(), 1);
+        // Boutons de l'espace : mêmes actions.
+        QVERIFY(rig.press("regionNext"));
+        QCOMPARE(rig.regions.selectedCount(), 1);
+
+        const double radius = rig.regions.brushRadius();
+        rig.regions.stepBrushRadius(1);
+        QCOMPARE(rig.regions.brushRadius(), radius + 1.0);
+        rig.regions.stepBrushRadius(-2);
+        QCOMPARE(rig.regions.brushRadius(), radius - 1.0);
+        rig.regions.stepBrushRadius(-1000);
+        QCOMPARE(rig.regions.brushRadius(), 1.0);
+        rig.regions.stepBrushRadius(1000);
+        QCOMPARE(rig.regions.brushRadius(), 200.0);
+    }
+    // Aperçu en direct (V1) : un changement de réglage relance l'aperçu tout seul, sans toucher au
+    // document ; la case le désactive.
+    void segmentationPreviewIsLiveWhenSettingsChange() {
+        Rig rig;
+        open(rig);
+        auto* settings = rig.named("segmentationSection");
+        QVERIFY(settings);
+        QVERIFY(settings->property("liveEnabled").toBool());
+        QVERIFY(rig.named("segLiveBox"));
+        const auto revision = rig.session.revision();
+        QVERIFY(settings->setProperty("maxColors", 3));
+        QTRY_VERIFY_WITH_TIMEOUT(rig.images.segPreviewActive(), 20'000);
+        QVERIFY(settings->setProperty("maxColors", 4)); // invalide puis relance
+        QTRY_VERIFY_WITH_TIMEOUT(rig.images.segPreviewActive(), 20'000);
+        QCOMPARE(rig.session.revision(), revision);
+        // L'aperçu est posé SUR le canevas, à l'échelle de la caméra ; les régions du projet sont
+        // masquées pendant ce temps.
+        auto* overlay = rig.named("segmentationLivePreview");
+        QVERIFY(overlay);
+        QTRY_VERIFY_WITH_TIMEOUT(overlay->isVisible(), 5'000);
+        const auto view = rig.canvas()->viewState();
+        const double expectedWidth =
+            rig.images.imageWidth() * rig.images.mmPerPx() * view.value("zoom").toDouble();
+        QVERIFY(std::abs(overlay->width() - expectedWidth) < 1.0);
+        auto* space = rig.named("segmentationSpace");
+        QVERIFY(space);
+        QVERIFY(!space->property("canvasLayers").toMap().value("regions").toBool());
+        QVERIFY(rig.press("segCancelButton"));
+        QTRY_VERIFY(!rig.images.segPreviewActive());
+        QTRY_VERIFY(space->property("canvasLayers").toMap().value("regions").toBool());
+        QVERIFY(!overlay->isVisible());
+        QVERIFY(rig.press("segLiveBox"));
+        QVERIFY(!settings->property("liveEnabled").toBool());
+        QVERIFY(settings->setProperty("maxColors", 5));
+        auto* timer = rig.window->findChild<QObject*>(QStringLiteral("segLiveTimer"));
+        QVERIFY(timer);
+        QVERIFY(!timer->property("running").toBool()); // plus d'aperçu automatique
+        QCOMPARE(rig.session.revision(), revision);
+    }
+
+    // Suppr dans l'espace Segmentation supprime les régions sélectionnées (une étape d'annulation),
+    // comme le bouton Supprimer.
+    void deleteKeyRemovesTheSelectedRegions() {
+        Rig rig;
+        open(rig);
+        const auto before = rig.regions.regions().size();
+        const auto depth = rig.session.undoNames().size();
+        rig.regions.selectAtPixel(20, 20);
+        QCOMPARE(rig.regions.selectedCount(), 1);
+        rig.window->requestActivate();
+        QTest::keyClick(rig.window, Qt::Key_Delete);
+        QTRY_COMPARE(rig.session.undoNames().size(), depth + 1);
+        QTRY_VERIFY(rig.regions.regions().size() < before);
+        QCOMPARE(rig.regions.selectedCount(), 0);
+        QVERIFY(rig.session.undo());
+        QTRY_COMPARE(rig.regions.regions().size(), before);
+    }
+    // Le nombre de couleurs distinctes de la segmentation ne dépasse jamais « Couleurs maximum »
+    // et il est affiché (aperçu et projet).
+    void segmentationColourCountRespectsTheMaximumAndIsShown() {
+        Rig rig;
+        open(rig);
+        for (const int maximum : {2, 3}) {
+            QSignalSpy applied(&rig.images, &ImageController::segmentationApplied);
+            rig.images.applySegmentation({{QStringLiteral("max_colors"), maximum},
+                                          {QStringLiteral("min_region_px"), 16},
+                                          {QStringLiteral("smoothing_radius_px"), 1}});
+            QTRY_VERIFY_WITH_TIMEOUT(applied.count() >= 1, 30'000);
+            QVERIFY(rig.images.colorCount() >= 1);
+            QVERIFY2(rig.images.colorCount() <= maximum,
+                     qPrintable(QStringLiteral("%1 couleurs pour un maximum de %2")
+                                    .arg(rig.images.colorCount())
+                                    .arg(maximum)));
+        }
+        rig.images.previewSegmentation({{QStringLiteral("max_colors"), 3}});
+        QTRY_VERIFY_WITH_TIMEOUT(rig.images.segPreviewActive(), 20'000);
+        QVERIFY(rig.images.segPreviewInfo().contains(QStringLiteral("couleurs")));
     }
 };
 

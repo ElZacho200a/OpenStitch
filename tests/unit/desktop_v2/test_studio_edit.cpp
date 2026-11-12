@@ -155,6 +155,9 @@ private:
 private slots:
     void initTestCase();
     void selectionCommandsOnRealObjects();
+    void objectLockAndMoveToLayerAreUndoable();
+    void rotationAroundAChosenCentreIsOneUndoStep();
+    void duplicatingALayerCopiesItsObjectsInOneStep();
     void rectangleSelectionByMouse();
     void savedSelectionsAreRecalled();
     void transformsAreOneUndoStepAndPersist();
@@ -235,6 +238,108 @@ void StudioEditTest::selectionCommandsOnRealObjects() {
     rig.editor.selectNone();
     QVERIFY(rig.session.selection().empty());
     QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+}
+
+// Verrouiller un objet et le déplacer vers un autre calque : une étape d'annulation chacun ;
+// objet ou calque inconnu refusé sans rien changer.
+void StudioEditTest::objectLockAndMoveToLayerAreUndoable() {
+    Rig rig;
+    open(rig);
+    const auto base = steps(rig);
+    const QString lone = QString::number(kLone);
+    QVERIFY(!rig.session.project().findEmbroidery(ObjectId{kLone})->locked);
+    QVERIFY(rig.editor.setObjectLocked(lone, true));
+    QVERIFY(rig.session.project().findEmbroidery(ObjectId{kLone})->locked);
+    QCOMPARE(steps(rig), base + 1);
+    QVERIFY(rig.session.undo());
+    QVERIFY(!rig.session.project().findEmbroidery(ObjectId{kLone})->locked);
+
+    QCOMPARE(shapeOf(rig.session.project(), kLone).calque.value, std::uint64_t{201});
+    const auto before = steps(rig);
+    QVERIFY(rig.editor.moveObjectToLayer(lone, QStringLiteral("202")));
+    QCOMPARE(shapeOf(rig.session.project(), kLone).calque.value, std::uint64_t{202});
+    QCOMPARE(steps(rig), before + 1);
+    QVERIFY(rig.session.undo());
+    QCOMPARE(shapeOf(rig.session.project(), kLone).calque.value, std::uint64_t{201});
+
+    const auto stable = steps(rig);
+    QVERIFY(!rig.editor.moveObjectToLayer(QStringLiteral("999999"), QStringLiteral("202")));
+    QVERIFY(!rig.editor.moveObjectToLayer(lone, QStringLiteral("not-a-layer")));
+    QVERIFY(!rig.editor.setObjectLocked(QStringLiteral("not-an-id"), true));
+    QCOMPARE(steps(rig), stable);
+    QCOMPARE(shapeOf(rig.session.project(), kLone).calque.value, std::uint64_t{201});
+}
+
+// Dupliquer un calque : « <nom> (copie) » avec une copie de chaque forme et de chaque objet de
+// broderie, en une seule étape d'annulation ; calque inconnu refusé.
+void StudioEditTest::duplicatingALayerCopiesItsObjectsInOneStep() {
+    Rig rig;
+    open(rig);
+    const auto base = steps(rig);
+    const auto objectsBefore = rig.session.project().embroidery_objects.size();
+    const auto shapesBefore = rig.session.project().vector_objects.size();
+    const auto layersBefore = rig.editor.layers().size();
+    QVERIFY(!rig.editor.duplicateLayer(QStringLiteral("999999")));
+    QCOMPARE(steps(rig), base);
+
+    QVERIFY(rig.editor.duplicateLayer(QStringLiteral("201")));
+    QCOMPARE(steps(rig), base + 1);
+    QCOMPARE(rig.editor.layers().size(), layersBefore + 1);
+    QCOMPARE(rig.session.project().embroidery_objects.size(), objectsBefore + 3);
+    QCOMPARE(rig.session.project().vector_objects.size(), shapesBefore + 3);
+    std::uint64_t copyLayer = 0;
+    for (const auto& layer : rig.editor.layers()) {
+        const auto map = layer.toMap();
+        if (map.value(QStringLiteral("name")).toString() == QStringLiteral("Fond (copie)")) {
+            copyLayer = map.value(QStringLiteral("id")).toULongLong();
+        }
+    }
+    QVERIFY(copyLayer != 0);
+    int inCopy = 0;
+    for (const auto& shape : rig.session.project().vector_objects) {
+        inCopy += shape.calque.value == copyLayer ? 1 : 0;
+    }
+    QCOMPARE(inCopy, 3);
+    // La source est intacte.
+    QCOMPARE(shapeOf(rig.session.project(), kLone).calque.value, std::uint64_t{201});
+
+    QVERIFY(rig.session.undo());
+    QCOMPARE(steps(rig), base);
+    QCOMPARE(rig.editor.layers().size(), layersBefore);
+    QCOMPARE(rig.session.project().embroidery_objects.size(), objectsBefore);
+    QCOMPARE(rig.session.project().vector_objects.size(), shapesBefore);
+}
+
+// Rotation autour d'un centre choisi : la ligne tourne autour du point donné (et non de son propre
+// centre), en une étape d'annulation ; angle ou centre invalide refusé.
+void StudioEditTest::rotationAroundAChosenCentreIsOneUndoStep() {
+    Rig rig;
+    open(rig);
+    const auto base = steps(rig);
+    select(rig, {kLone}); // ligne horizontale de x = 40 à 50, y = 25 (mm modèle)
+    const auto centre = rig.editor.selectionCentreMm();
+    QVERIFY(std::abs(centre.value("x").toDouble() - 45.0) < 0.05);
+    QVERIFY(std::abs(centre.value("y").toDouble() - 25.0) < 0.05);
+    // 90° anti-horaires autour de l'origine : (x, y) -> (-y, x). Le centre (45, 25) va en (-25,
+    // 45).
+    QVERIFY(rig.editor.rotateAround(90.0, 0.0, 0.0));
+    QCOMPARE(steps(rig), base + 1);
+    settle(rig); // la boîte de sélection vient de la scène recalculée
+    const auto moved = rig.editor.selectionCentreMm();
+    QVERIFY(std::abs(moved.value("x").toDouble() - (-25.0)) < 0.1);
+    QVERIFY(std::abs(moved.value("y").toDouble() - 45.0) < 0.1);
+    QVERIFY(rig.session.undo());
+    QCOMPARE(steps(rig), base);
+    settle(rig);
+    const auto back = rig.editor.selectionCentreMm();
+    QVERIFY(std::abs(back.value("x").toDouble() - 45.0) < 0.05);
+
+    QVERIFY(!rig.editor.rotateAround(400.0, 0.0, 0.0));
+    QVERIFY(!rig.editor.rotateAround(std::nan(""), 0.0, 0.0));
+    QVERIFY(!rig.editor.rotateAround(10.0, std::nan(""), 0.0));
+    QCOMPARE(steps(rig), base);
+    QVERIFY(rig.window->findChild<QQuickItem*>(QStringLiteral("pivotApply")));
+    QVERIFY(rig.window->findChild<QQuickItem*>(QStringLiteral("pivotX")));
 }
 
 void StudioEditTest::rectangleSelectionByMouse() {

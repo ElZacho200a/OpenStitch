@@ -22,7 +22,18 @@ Controls.AbstractButton {
     implicitHeight: Theme.controlHeight
     hoverEnabled: true
     focusPolicy: Qt.StrongFocus
+    // Journal d'usage local : l'identifiant est l'objectName du bouton, à défaut son texte.
+    Connections {
+        target: button
+        function onClicked() {
+            if (typeof usage !== "undefined" && usage)
+                usage.click(button.objectName.length > 0 ? button.objectName
+                                                         : (button.text.length > 0 ? button.text : button.iconName))
+        }
+    }
     Accessible.name: tooltip.length > 0 ? tooltip : text
+    // The visual `active` state must also be available to assistive technology.
+    Accessible.checked: button.checked || button.active
     Accessible.description: !enabled && disabledReason.length > 0 ? disabledReason
                             : shortcutLabel.length > 0 ? qsTr("Raccourci : ") + shortcutLabel : ""
 

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "fix_controller.hpp"
 
+#include "task_pump.hpp"
+
 #include <algorithm>
 
 namespace openstitch::desktop_v2::studio {
@@ -19,13 +21,10 @@ FixController::FixController(StudioController& studio, QObject* parent)
             emit plansChanged();
         }
     });
-    pump_.setInterval(8);
-    connect(&pump_, &QTimer::timeout, this, [this] { tasks_.pump(); });
-    pump_.start();
+    attachTaskPump(tasks_, this);
 }
 
 FixController::~FixController() {
-    pump_.stop();
     tasks_.cancelAll();
 }
 

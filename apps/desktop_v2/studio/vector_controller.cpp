@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "vector_controller.hpp"
 
+#include "document_services.hpp"
+
 #include <algorithm>
 #include <cmath>
 
@@ -113,6 +115,20 @@ bool VectorController::breakApart() {
                std::to_string(selected[i]) + "}";
     }
     return apply(wrap(ops), QStringLiteral("Séparer les morceaux"), true);
+}
+
+bool VectorController::offsetShapes(double offsetMm) {
+    const auto result = openstitch::desktop_v2::offsetShapes(studio_.session(), ids(), offsetMm);
+    say(result.ok ? QStringLiteral("Forme décalée créée.")
+                  : QString::fromStdString(result.message));
+    return result.ok;
+}
+
+bool VectorController::outlineShapes(double widthMm) {
+    const auto result = openstitch::desktop_v2::outlineShapes(studio_.session(), ids(), widthMm);
+    say(result.ok ? QStringLiteral("Contour créé autour de la sélection.")
+                  : QString::fromStdString(result.message));
+    return result.ok;
 }
 
 bool VectorController::simplify(double toleranceMm) {

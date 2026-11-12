@@ -95,7 +95,7 @@ ToolRegistry ToolRegistry::builtin() {
     r.add({"eyedropper", "Pipette", "I", static_cast<std::uint8_t>(D | N | P | Z), Gesture::Pick,
            "Eyedropper"});
     r.add({"warp-brush", "Pinceau de déformation", "W", D, Gesture::Stroke, "Brush"});
-    r.add({"bucket", "Pot de peinture", "G", Z, Gesture::Pick, "Bucket"});
+    r.add({"bucket", "Pot de peinture", "Alt+G", Z, Gesture::Pick, "Bucket"});
     r.add({"click-to-stitch", "Clic-pour-broder", "A", static_cast<std::uint8_t>(N | Z),
            Gesture::Pick, "ClickToStitch"});
     r.add({"detail-brush", "Zones de détail", "Q", Z, Gesture::Stroke, "DetailBrush"});

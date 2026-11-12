@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "region_controller.hpp"
 
+#include "task_pump.hpp"
+
 #include <QColor>
 #include <QImage>
 #include <algorithm>
@@ -47,9 +49,7 @@ double numberOr(const QVariantMap& map, const char* key, double fallback) {
 RegionController::RegionController(StudioController& studio, ImageController& images,
                                    QObject* parent)
     : QObject(parent), studio_(studio), images_(images) {
-    pump_.setInterval(16);
-    connect(&pump_, &QTimer::timeout, this, [this] { tasks_.pump(); });
-    pump_.start();
+    attachTaskPump(tasks_, this);
     refreshTimer_.setSingleShot(true);
     refreshTimer_.setInterval(0);
     connect(&refreshTimer_, &QTimer::timeout, this, [this] { refresh(); });
@@ -76,7 +76,6 @@ RegionController::RegionController(StudioController& studio, ImageController& im
 }
 
 RegionController::~RegionController() {
-    pump_.stop();
     tasks_.cancelAll();
     studio_.session().unsubscribe(token_);
 }
@@ -275,6 +274,39 @@ void RegionController::selectNeighbours() {
     emit selectionChanged();
 }
 
+bool RegionController::stepRegion(int direction) {
+    const int count = static_cast<int>(regions_.size());
+    if (count == 0) {
+        return false;
+    }
+    int index =
+        direction > 0 ? -1 : count; // pas de sélection unique : on part du début / de la fin
+    if (selected_.size() == 1) {
+        for (int i = 0; i < count; ++i) {
+            if (idOf(regions_[i].toMap().value(QStringLiteral("id")).toDouble()) ==
+                selected_.front()) {
+                index = i;
+                break;
+            }
+        }
+    }
+    const int next = ((index + direction) % count + count) % count;
+    selectRegion(regions_[next].toMap().value(QStringLiteral("id")).toDouble());
+    return true;
+}
+
+bool RegionController::selectNextRegion() {
+    return stepRegion(1);
+}
+
+bool RegionController::selectPreviousRegion() {
+    return stepRegion(-1);
+}
+
+void RegionController::stepBrushRadius(int steps) {
+    setBrushRadius(brushRadius_ + steps);
+}
+
 void RegionController::invertSelection() {
     selected_ = invertRegionSet(studio_.session().project(), selected_);
     emit selectionChanged();
@@ -344,6 +376,19 @@ QString RegionController::mergeSelected() {
     }
     return report(mergeRegionSet(studio_.session(), selected_),
                   QStringLiteral("Régions fusionnées."));
+}
+
+QString RegionController::mergeSelectedInto(double target) {
+    if (selected_.size() != 1) {
+        const auto text = QStringLiteral("Sélectionnez une seule région source.");
+        setMessage(text, true);
+        return text;
+    }
+    // The target keeps its region ID and colour; the source is absorbed in
+    // one undoable document command, rather than merging into an arbitrary
+    // first neighbour.
+    return report(mergeRegionInto(studio_.session(), idOf(target), selected_.front()),
+                  QStringLiteral("Région fusionnée dans la région cible."));
 }
 
 QString RegionController::mergeWithNeighbour(double id) {

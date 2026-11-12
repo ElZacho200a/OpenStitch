@@ -2,12 +2,16 @@
 // Studio -- famille F « outils de dessin et d'édition vectorielle » : parcours réels (shell QML,
 // vrai canevas, souris QTest, vrai moteur) avec annulation en une étape, Échap et persistance OSP.
 // Aucun mock du moteur.
+#include <QFile>
 #include <QGuiApplication>
+#include <QKeySequence>
 #include <QQmlApplicationEngine>
+#include <QQmlComponent>
 #include <QQmlContext>
 #include <QQuickItem>
 #include <QQuickStyle>
 #include <QQuickWindow>
+#include <QShortcutEvent>
 #include <QTemporaryDir>
 #include <QTest>
 #include <algorithm>
@@ -22,6 +26,7 @@
 #include "studio_controller.hpp"
 #include "tool_controller.hpp"
 #include "tool_registry.hpp"
+#include "usage_controller.hpp"
 #include "vector_controller.hpp"
 #include "vector_space_controller.hpp"
 #include "workspace_controller.hpp"
@@ -156,6 +161,7 @@ private slots:
     void initTestCase();
     void toolRailMatchesRegistry();
     void basicShapesByMouse();
+    void usageLogRecordsToolsAndActions();
     void polygonAndRegularShapes();
     void penBezierAndFreehand();
     void escapeCancelsGestures();
@@ -163,6 +169,8 @@ private slots:
     void nodeDragFromSelectTool();
     void offscreenNodeHandlesDoNotFillQmlCanvas();
     void knifeAndBooleans();
+    void offsetShapesCreatesAGrownOrShrunkCopyInOneStep();
+    void outlineAroundTheSelectionIsARingInOneStep();
     void snappingIsConfigurable();
 };
 
@@ -255,10 +263,8 @@ void StudioToolsTest::toolRailMatchesRegistry() {
     QCOMPARE(rig.tools.activeTool(), QStringLiteral("node.edit"));
     QTest::keyClick(rig.window, Qt::Key_K);
     QCOMPARE(rig.tools.activeTool(), QStringLiteral("knife"));
-    rig.tools.setActiveTool(
-        QStringLiteral("bucket")); // pas encore disponible : refus, pas de changement
-    QCOMPARE(rig.tools.activeTool(), QStringLiteral("knife"));
-    QVERIFY(rig.tools.message().contains(QStringLiteral("pas encore")));
+    rig.tools.setActiveTool(QStringLiteral("bucket"));
+    QCOMPARE(rig.tools.activeTool(), QStringLiteral("bucket"));
     QVERIFY(!rig.tools.hint().isEmpty());
     QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
 }
@@ -627,6 +633,80 @@ void StudioToolsTest::nodeEditByMouse() {
     QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
 }
 
+// « Décaler la forme » : une copie agrandie ou rétrécie, une seule étape d'annulation ; refus
+// d'un décalage nul, hors bornes, d'une sélection vide ou qui ferait disparaître la forme.
+void StudioToolsTest::offsetShapesCreatesAGrownOrShrunkCopyInOneStep() {
+    Rig rig;
+    open(rig);
+    const auto a = draw(rig, "draw.rectangle", {-10, -5}, {10, 5});
+    QVERIFY(a != 0);
+    QVERIFY(rig.window->findChild<QQuickItem*>(QStringLiteral("offsetOutButton")));
+    QVERIFY(rig.window->findChild<QQuickItem*>(QStringLiteral("offsetInButton")));
+    const auto baseSteps = steps(rig);
+    const auto baseObjects = objects(rig);
+    rig.session.selection().replace({Target{TargetKind::EmbroideryObject, a}});
+
+    QVERIFY(rig.vectors.offsetShapes(2.0));
+    QCOMPARE(steps(rig), baseSteps + 1);
+    QCOMPARE(objects(rig), baseObjects + 1);
+    const auto grown =
+        boundsOf(rig.session.project(), rig.session.project().embroidery_objects.back().id.value);
+    QVERIFY(std::abs((grown.x1 - grown.x0) - 24.0) < 0.3);
+    QVERIFY(std::abs((grown.y1 - grown.y0) - 14.0) < 0.3);
+    QVERIFY(rig.session.undo());
+    QCOMPARE(steps(rig), baseSteps);
+    QCOMPARE(objects(rig), baseObjects);
+
+    rig.session.selection().replace({Target{TargetKind::EmbroideryObject, a}});
+    QVERIFY(rig.vectors.offsetShapes(-2.0));
+    const auto shrunk =
+        boundsOf(rig.session.project(), rig.session.project().embroidery_objects.back().id.value);
+    QVERIFY(std::abs((shrunk.x1 - shrunk.x0) - 16.0) < 0.3);
+    QVERIFY(rig.session.undo());
+
+    rig.session.selection().replace({Target{TargetKind::EmbroideryObject, a}});
+    QVERIFY(!rig.vectors.offsetShapes(0.0));
+    QVERIFY(!rig.vectors.offsetShapes(100.0));
+    QVERIFY(!rig.vectors.offsetShapes(-20.0)); // la forme (10 mm de haut) disparaîtrait
+    rig.session.selection().clear();
+    QVERIFY(!rig.vectors.offsetShapes(1.0));
+    QCOMPARE(steps(rig), baseSteps);
+    QCOMPARE(objects(rig), baseObjects);
+}
+
+// « Contour autour de la sélection » : un anneau (la forme d'origine en trou) plus large de la
+// largeur demandée, une seule étape d'annulation ; largeur nulle / négative / hors bornes refusée.
+void StudioToolsTest::outlineAroundTheSelectionIsARingInOneStep() {
+    Rig rig;
+    open(rig);
+    const auto a = draw(rig, "draw.rectangle", {-10, -5}, {10, 5});
+    QVERIFY(a != 0);
+    QVERIFY(rig.window->findChild<QQuickItem*>(QStringLiteral("outlineButton")));
+    const auto baseSteps = steps(rig);
+    const auto baseObjects = objects(rig);
+    rig.session.selection().replace({Target{TargetKind::EmbroideryObject, a}});
+    QVERIFY(rig.vectors.outlineShapes(2.0));
+    QCOMPARE(steps(rig), baseSteps + 1);
+    QCOMPARE(objects(rig), baseObjects + 1);
+    const auto ring =
+        boundsOf(rig.session.project(), rig.session.project().embroidery_objects.back().id.value);
+    QVERIFY(std::abs((ring.x1 - ring.x0) - 24.0) < 0.3);
+    const auto& shape = rig.session.project().vector_objects.back();
+    QVERIFY(!shape.paths.empty());
+    QCOMPARE(shape.paths.front().holes.size(), std::size_t{1});
+    QVERIFY(rig.session.undo());
+    QCOMPARE(steps(rig), baseSteps);
+    QCOMPARE(objects(rig), baseObjects);
+
+    rig.session.selection().replace({Target{TargetKind::EmbroideryObject, a}});
+    QVERIFY(!rig.vectors.outlineShapes(0.0));
+    QVERIFY(!rig.vectors.outlineShapes(-2.0));
+    QVERIFY(!rig.vectors.outlineShapes(100.0));
+    rig.session.selection().clear();
+    QVERIFY(!rig.vectors.outlineShapes(2.0));
+    QCOMPARE(steps(rig), baseSteps);
+}
+
 void StudioToolsTest::knifeAndBooleans() {
     Rig rig;
     open(rig);
@@ -740,6 +820,64 @@ void StudioToolsTest::snappingIsConfigurable() {
     const auto free = boundsOf(rig.session.project(), rig.session.selection().targets().front().id);
     QVERIFY(std::abs(free.x0 - target.x1) > 0.01 && std::abs(free.x1 - target.x1) > 0.01);
     QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+}
+
+void StudioToolsTest::usageLogRecordsToolsAndActions() {
+    Rig rig;
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    UsageLogOptions options;
+    options.dir = std::filesystem::path(dir.path().toStdString());
+    options.version = "test";
+    UsageLog log(options);
+    UsageController usage(log);
+    usage.observe(rig.actions, rig.tools);
+    rig.tools.setActiveTool(QStringLiteral("draw.ellipse"));
+    QVERIFY(!rig.actions.run(QStringLiteral("no.such.action"), {}).isEmpty());
+    usage.click(QStringLiteral("gesture_satin"));
+    QFile file(QString::fromStdString(log.currentFile().string()));
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    const auto text = QString::fromUtf8(file.readAll());
+    QVERIFY(text.contains(QStringLiteral("\"k\":\"tool\",\"id\":\"draw.ellipse\"")));
+    QVERIFY(text.contains(
+        QStringLiteral("\"k\":\"action\",\"id\":\"no.such.action\",\"d\":\"refused\"")));
+    QVERIFY(text.contains(QStringLiteral("\"k\":\"click\",\"id\":\"gesture_satin\"")));
+
+    // A keyboard shortcut (application-wide filter) and a control hooked from QML.
+    QShortcutEvent shortcut(QKeySequence(QStringLiteral("Ctrl+K")), 1);
+    QCoreApplication::sendEvent(&usage, &shortcut);
+    QQmlEngine qml;
+    qml.rootContext()->setContextProperty(QStringLiteral("usage"), &usage);
+    QQmlComponent probe(&qml);
+    probe.setData(QByteArrayLiteral("import QtQuick\n"
+                                    "Item { Component.onCompleted: { "
+                                    "usage.track('control', 'probe_switch', 'on'); "
+                                    "usage.track('control', 'probe_two') } }"),
+                  QUrl());
+    std::unique_ptr<QObject> probeItem(probe.create());
+    QVERIFY2(probeItem != nullptr, qPrintable(probe.errorString()));
+    QFile mid(QString::fromStdString(log.currentFile().string()));
+    QVERIFY(mid.open(QIODevice::ReadOnly));
+    const auto midText = QString::fromUtf8(mid.readAll());
+    QVERIFY(midText.contains(QStringLiteral("\"k\":\"key\",\"id\":\"Ctrl+K\"")));
+    QVERIFY(
+        midText.contains(QStringLiteral("\"k\":\"control\",\"id\":\"probe_switch\",\"d\":\"on\"")));
+    QVERIFY(midText.contains(QStringLiteral("\"k\":\"control\",\"id\":\"probe_two\"}")));
+
+    // The Preferences switch: off writes the DISABLED marker and stops recording; on removes it.
+    usage.setEnabled(false);
+    QVERIFY(!usage.enabled());
+    QVERIFY(QFile::exists(dir.filePath(QStringLiteral("DISABLED"))));
+    usage.click(QStringLiteral("after_off"));
+    usage.setEnabled(true);
+    QVERIFY(usage.enabled());
+    QVERIFY(!QFile::exists(dir.filePath(QStringLiteral("DISABLED"))));
+    usage.click(QStringLiteral("after_on"));
+    QFile again(QString::fromStdString(log.currentFile().string()));
+    QVERIFY(again.open(QIODevice::ReadOnly));
+    const auto later = QString::fromUtf8(again.readAll());
+    QVERIFY(!later.contains(QStringLiteral("after_off")));
+    QVERIFY(later.contains(QStringLiteral("after_on")));
 }
 
 QTEST_MAIN(StudioToolsTest)

@@ -23,7 +23,9 @@ Item {
     property bool showSource: true
 
     // Couches dessinées par CE canevas : image dessous (réalisée par l'espace Image), régions.
-    readonly property var canvasLayers: ({ sourceImage: root.showSource, regions: true,
+    // Pendant l'aperçu en direct, l'image prévisualisée remplace les régions du projet.
+    readonly property bool previewing: root.hasTools && imageTools.segPreviewActive
+    readonly property var canvasLayers: ({ sourceImage: root.showSource, regions: !root.previewing,
                                            stitches: false, selectionOverlays: false })
 
     // --- état publié et action « mettre à jour » du bandeau -----------------------------------
@@ -88,6 +90,31 @@ Item {
             tools: root.toolController
             layers: root.canvasLayers
             focus: true
+        }
+
+        // Aperçu de segmentation en direct SUR le canevas : l'image prévisualisée (mêmes dimensions
+        // que l'image de travail, centrée) est posée à l'échelle de la caméra. Aucun calcul ici.
+        Image {
+            id: livePreview
+            objectName: "segmentationLivePreview"
+            property int cameraTick: 0
+            readonly property var cam: { cameraTick; return spaceCanvas.viewState() }
+            readonly property double wMm: root.hasTools ? imageTools.imageWidth * imageTools.mmPerPx : 0
+            readonly property double hMm: root.hasTools ? imageTools.imageHeight * imageTools.mmPerPx : 0
+            visible: root.previewing && wMm > 0
+            enabled: false
+            cache: false
+            smooth: true
+            fillMode: Image.Stretch
+            source: visible ? "image://prepare/segmentation?rev=" + imageTools.imageRevision : ""
+            width: wMm * cam.zoom
+            height: hMm * cam.zoom
+            x: parent.width / 2 + (-wMm / 2 - cam.centerX) * cam.zoom
+            y: parent.height / 2 + (-hMm / 2 - cam.centerY) * cam.zoom
+            Connections {
+                target: spaceCanvas
+                function onViewChanged() { livePreview.cameraTick++ }
+            }
         }
 
         // Reflect actual image / region processing activity, not an estimated percentage.

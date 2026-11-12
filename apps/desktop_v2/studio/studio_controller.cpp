@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "studio_controller.hpp"
 
+#include "task_pump.hpp"
+
+#include <QElapsedTimer>
+
+#include "perf_log.hpp"
+
 #include <QColor>
 #include <QFileInfo>
 #include <algorithm>
@@ -31,25 +37,26 @@ StudioController::StudioController(DocumentSession& session, QObject* parent)
         }
         if (kind == ChangeKind::Replaced) {
             emit documentReplaced();
+            // Un AUTRE document ne doit jamais montrer la géométrie de l'ancien.
+            scene_.reset();
+            emit sceneChanged();
         }
-        scene_.reset();
-        emit sceneChanged();
+        // Édition du même document : l'ancienne géométrie reste affichée jusqu'à l'arrivée de la
+        // nouvelle (quelques dizaines de ms) au lieu de disparaître puis d'être recréée : plus de
+        // clignotement, et les listes liées (fils, film) ne se vident plus entre-temps.
         rebuildScene();
     });
     selectionToken_ = session_.selection().subscribe([this](const SelectionModel&) {
         emit selectionChanged();
         emit changed();
     });
-    pump_.setInterval(8);
-    connect(&pump_, &QTimer::timeout, this, [this] { tasks_.pump(); });
-    pump_.start();
+    attachTaskPump(tasks_, this);
     if (!session_.project().embroidery_objects.empty() || session_.project().imported_design) {
         rebuildScene();
     }
 }
 
 StudioController::~StudioController() {
-    pump_.stop();
     session_.unsubscribe(documentToken_);
     session_.selection().unsubscribe(selectionToken_);
     tasks_.cancelAll();
@@ -208,6 +215,8 @@ void StudioController::rebuildScene() {
     const auto request = ++request_;
     const auto revision = session_.revision();
     auto snapshot = session_.snapshot();
+    const auto wall = std::make_shared<QElapsedTimer>();
+    wall->start();
     busy_ = true;
     status_ = QStringLiteral("Préparation des segments…");
     emit changed();
@@ -216,7 +225,7 @@ void StudioController::rebuildScene() {
         [snapshot, revision](const TaskContext& task) {
             return build_studio_scene(snapshot, revision, task);
         },
-        [this, request](Result<std::shared_ptr<const StudioSceneSnapshot>>&& result) {
+        [this, request, wall](Result<std::shared_ptr<const StudioSceneSnapshot>>&& result) {
             // Un changement de segmentation entre-temps ne rend PAS cette géométrie
             // périmée. Seule une mutation des points relance et remplace la requête.
             if (request != request_) {
@@ -233,6 +242,20 @@ void StudioController::rebuildScene() {
                 return;
             }
             scene_ = std::move(*result);
+            if (perfLogEnabled()) {
+                const auto& t = scene_->timing;
+                perfLog(
+                    QStringLiteral("scene.rebuild"),
+                    {{QStringLiteral("wallMs"), static_cast<double>(wall->elapsed())},
+                     {QStringLiteral("objects"),
+                      static_cast<qulonglong>(session_.project().embroidery_objects.size())},
+                     {QStringLiteral("segments"), static_cast<qulonglong>(scene_->segments.size())},
+                     {QStringLiteral("effectiveSequenceMs"), t.effectiveSequenceMs},
+                     {QStringLiteral("threadSegmentsMs"), t.threadSegmentsMs},
+                     {QStringLiteral("verticesMs"), t.verticesMs},
+                     {QStringLiteral("pickGridMs"), t.pickGridMs},
+                     {QStringLiteral("builds"), sceneBuilds_}});
+            }
             status_ =
                 QStringLiteral("%1 segments · coordonnées en mm").arg(scene_->segments.size());
             emit sceneChanged();

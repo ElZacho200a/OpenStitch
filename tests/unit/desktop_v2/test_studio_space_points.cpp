@@ -459,6 +459,26 @@ private slots:
         QCOMPARE(rig.pointsSpace.camera().value(QStringLiteral("zoom")).toDouble() > 0.0, true);
         QVERIFY(kept.contains(QStringLiteral("zoom")));
     }
+    // Caméra mémorisée de l'espace Points : mémorisée, ignorée si vide ou inchangée, effacée.
+    void cameraIsRememberedIgnoredWhenUnchangedAndCleared() {
+        DocumentSession session;
+        StudioController studio(session);
+        PointsSpaceController pointsSpace(studio);
+        QSignalSpy changed(&pointsSpace, &PointsSpaceController::cameraChanged);
+        pointsSpace.rememberCamera({});
+        QCOMPARE(changed.count(), 0);
+        const QVariantMap view{{QStringLiteral("zoom"), 2.0}, {QStringLiteral("centerX"), 5.0}};
+        pointsSpace.rememberCamera(view);
+        QCOMPARE(changed.count(), 1);
+        QCOMPARE(pointsSpace.camera().value(QStringLiteral("zoom")).toDouble(), 2.0);
+        pointsSpace.rememberCamera(view);
+        QCOMPARE(changed.count(), 1);
+        pointsSpace.clearCamera();
+        QVERIFY(pointsSpace.camera().isEmpty());
+        QCOMPARE(changed.count(), 2);
+        pointsSpace.clearCamera();
+        QCOMPARE(changed.count(), 2);
+    }
 };
 
 QTEST_MAIN(StudioSpacePointsTest)

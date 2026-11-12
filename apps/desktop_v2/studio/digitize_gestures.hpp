@@ -77,11 +77,11 @@ signals:
     void overlayChanged();
 
 private:
-    enum class Drag { None, Points, Rect, Fade, RailNode, RungEnd, Stroke, NewRung };
+    enum class Drag { None, Points, Rect, Fade, RailNode, RungEnd, GuideNode, Stroke, NewRung };
     struct Grip {
-        enum class Type { RailNode, RungEnd };
+        enum class Type { RailNode, RungEnd, GuideNode };
         Type type{Type::RailNode};
-        int side{0};  // 0 = A, 1 = B
+        int side{0};  // rail: 0=A, 1=B ; guide: indice de la courbe
         int index{0}; // nœud ou barreau
         PointMm pos;
     };

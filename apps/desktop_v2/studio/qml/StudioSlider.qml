@@ -9,7 +9,24 @@ Controls.Slider {
     implicitHeight: 24
     implicitWidth: 120
     hoverEnabled: true
+    wheelEnabled: true // la molette règle la valeur par pas (stepSize)
     focusPolicy: Qt.StrongFocus
+    function logValue() {
+        if (control.objectName.length > 0 && typeof usage !== "undefined" && usage)
+            usage.track("control", control.objectName, String(control.value))
+    }
+    // Journal d'usage local : valeur finale seulement (relâchement, molette ou clavier).
+    Connections {
+        target: control
+        function onMoved() {
+            if (!control.pressed)
+                control.logValue()
+        }
+        function onPressedChanged() {
+            if (!control.pressed)
+                control.logValue()
+        }
+    }
     Accessible.role: Accessible.Slider
 
     background: Rectangle {

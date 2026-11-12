@@ -3,8 +3,14 @@
 
 #include <algorithm>
 
+#include <cmath>
+
 #include "openstitch/commands/calque_commands.hpp"
+#include "openstitch/commands/composite_command.hpp"
+#include "openstitch/commands/project_commands.hpp"
 #include "openstitch/commands/stitch_preset_commands.hpp"
+#include "openstitch/geometry/offset.hpp"
+#include "openstitch/geometry/polyline.hpp"
 
 namespace openstitch::desktop_v2 {
 
@@ -186,6 +192,138 @@ ServiceResult moveObjectsToCalque(DocumentSession& session,
     session.execute(
         std::make_unique<commands::SetShapesCalqueCommand>(std::move(shapes), ObjectId{calqueId}));
     return ok();
+}
+
+namespace {
+// Aplatit les courbes : Clipper2 travaille sur des polygones bruts (même tolérance que l'export
+// DXF).
+geometry::Path flattenToPath(const geometry::Path& path) {
+    constexpr Micrometers kFlattenTolerance{50};
+    const geometry::Polyline flat = geometry::flatten(path, kFlattenTolerance);
+    geometry::Path out;
+    out.closed = flat.closed;
+    out.nodes.reserve(flat.points.size());
+    for (const Vec2um& p : flat.points) {
+        out.nodes.push_back(
+            geometry::PathNode{p, geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    }
+    return out;
+}
+} // namespace
+
+ServiceResult duplicateCalque(DocumentSession& session, std::uint64_t calqueId) {
+    const auto& project = session.project();
+    const auto layer = std::ranges::find_if(project.calques,
+                                            [&](const auto& c) { return c.id.value == calqueId; });
+    if (layer == project.calques.end()) {
+        return refuse("Calque inconnu.");
+    }
+    const ObjectId newLayer = session.allocateObjectId();
+    std::vector<document::VectorObject> vectors;
+    std::vector<document::EmbroideryObject> embroideries;
+    for (const auto& shape : project.vector_objects) {
+        if (shape.calque.value != calqueId) {
+            continue;
+        }
+        document::VectorObject copy = shape;
+        copy.id = session.allocateObjectId();
+        copy.name = shape.name + " (copie)";
+        copy.calque = newLayer;
+        for (const auto& emb : project.embroidery_objects) {
+            if (emb.source_vector == shape.id) {
+                document::EmbroideryObject twin = emb;
+                twin.id = session.allocateObjectId();
+                twin.source_vector = copy.id;
+                twin.name = emb.name + " (copie)";
+                embroideries.push_back(std::move(twin));
+            }
+        }
+        vectors.push_back(std::move(copy));
+    }
+    const std::string name = layer->name + " (copie)";
+    std::vector<std::unique_ptr<commands::ICommand>> steps;
+    steps.push_back(std::make_unique<commands::AddCalqueCommand>(newLayer, name));
+    if (!vectors.empty()) {
+        steps.push_back(std::make_unique<commands::AddObjectBatchCommand>(
+            std::move(vectors), std::move(embroideries), "Dupliquer le calque"));
+    }
+    session.execute(
+        std::make_unique<commands::CompositeCommand>("Dupliquer le calque", std::move(steps)));
+    return ok();
+}
+
+namespace {
+ServiceResult makeOffsetCopies(DocumentSession& session,
+                               const std::vector<std::uint64_t>& objectIds, double offsetMm,
+                               bool ring) {
+    if (!std::isfinite(offsetMm) || offsetMm == 0.0 || std::abs(offsetMm) > 50.0) {
+        return refuse("Décalage invalide : entre -50 et 50 mm, non nul.");
+    }
+    // inset_path_set : delta > 0 = retrait intérieur, l'inverse de « positif agrandit ».
+    const Micrometers delta = to_micrometers(Millimeters{-offsetMm});
+    std::vector<document::VectorObject> vectors;
+    std::vector<document::EmbroideryObject> embroideries;
+    for (const auto id : objectIds) {
+        const auto* source = findObject(session.project(), id);
+        const auto* shape = source ? session.project().findObject(source->source_vector) : nullptr;
+        if (shape == nullptr) {
+            continue;
+        }
+        document::VectorObject result;
+        result.name = shape->name + (ring ? " (contour)" : " (décalé)");
+        result.rgb = shape->rgb;
+        result.calque = shape->calque;
+        for (const auto& set : shape->paths) {
+            geometry::PathSet flatSet;
+            flatSet.outer = flattenToPath(set.outer);
+            for (const auto& hole : set.holes) {
+                flatSet.holes.push_back(flattenToPath(hole));
+            }
+            const auto offset = geometry::inset_path_set(flatSet, delta);
+            if (!offset) {
+                return refuse("Décalage impossible : " + offset.error().message);
+            }
+            for (auto piece : *offset) {
+                if (ring) {
+                    piece.holes.clear(); // l'anneau n'a pour trou que la forme d'origine
+                    piece.holes.push_back(flattenToPath(set.outer));
+                }
+                result.paths.push_back(std::move(piece));
+            }
+        }
+        if (result.paths.empty()) {
+            continue; // la forme disparaît : rien à créer pour celle-ci
+        }
+        result.id = session.allocateObjectId();
+        document::EmbroideryObject copy = *source;
+        copy.id = session.allocateObjectId();
+        copy.name = result.name;
+        copy.source_vector = result.id;
+        vectors.push_back(std::move(result));
+        embroideries.push_back(std::move(copy));
+    }
+    if (vectors.empty()) {
+        return refuse(
+            "Rien à décaler : sélectionnez une forme, ou le décalage la fait disparaître.");
+    }
+    session.execute(std::make_unique<commands::AddObjectBatchCommand>(
+        std::move(vectors), std::move(embroideries),
+        ring ? "Contour autour de la sélection" : "Décaler la forme"));
+    return ok();
+}
+} // namespace
+
+ServiceResult offsetShapes(DocumentSession& session, const std::vector<std::uint64_t>& objectIds,
+                           double offsetMm) {
+    return makeOffsetCopies(session, objectIds, offsetMm, false);
+}
+
+ServiceResult outlineShapes(DocumentSession& session, const std::vector<std::uint64_t>& objectIds,
+                            double widthMm) {
+    if (!(widthMm > 0.0)) {
+        return refuse("Largeur du contour invalide : plus de 0 et au plus 50 mm.");
+    }
+    return makeOffsetCopies(session, objectIds, widthMm, true);
 }
 
 } // namespace openstitch::desktop_v2

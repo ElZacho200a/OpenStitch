@@ -56,7 +56,31 @@ ColumnLayout {
         }
     }
 
+    SectionLabel { text: qsTr("PINCEAU DE DÉFORMATION"); visible: panel.toolCtl && panel.toolCtl.activeTool === "warp-brush" }
     SectionLabel { text: qsTr("ACCROCHAGE") }
+    ColumnLayout {
+        visible: panel.toolCtl && panel.toolCtl.activeTool === "warp-brush"
+        Layout.fillWidth: true
+        Text { text: qsTr("Rayon du pinceau (mm)"); color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize }
+        StudioSpinBox {
+            objectName: "warpRadius"
+            from: 5; to: 600; stepSize: 5
+            value: panel.toolCtl ? Math.round(panel.toolCtl.warp.radiusMm * 10) : 50
+            textFromValue: function(value, locale) { return Number(value / 10).toLocaleString(locale, 'f', 1) }
+            valueFromText: function(text, locale) { return Math.round(Number.fromLocaleString(locale, text) * 10) }
+            editable: true
+            Accessible.name: qsTr("Rayon du pinceau en millimètres")
+            onValueModified: panel.toolCtl.warp.radiusMm = value / 10
+        }
+        Text { text: qsTr("Intensité (%)"); color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize }
+        StudioSpinBox {
+            objectName: "warpStrength"
+            from: 5; to: 100; value: panel.toolCtl ? Math.round(panel.toolCtl.warp.strength * 100) : 60
+            editable: true
+            Accessible.name: qsTr("Intensité du pinceau en pourcentage")
+            onValueModified: panel.toolCtl.warp.strength = value / 100
+        }
+    }
     Flow {
         Layout.fillWidth: true
         spacing: 6
@@ -108,6 +132,21 @@ ColumnLayout {
         Mini { objectName: "smoothButton"; text: qsTr("Lisser"); enabled: parent.some; onClicked: panel.vec.smooth(0.15) }
         Mini { objectName: "fillHolesButton"; text: qsTr("Combler trous"); enabled: parent.some; onClicked: panel.vec.fillHoles(4) }
         Mini { objectName: "toCurvesButton"; text: qsTr("En courbes"); enabled: parent.some; onClicked: panel.vec.convertToCurves() }
+        StudioTextField {
+            id: offsetField
+            objectName: "offsetMmField"
+            wheelStep: 0.5
+            wheelMin: 0.1
+            wheelMax: 50
+            implicitWidth: 52
+            text: "1.0"
+            enabled: parent.some
+            invalid: isNaN(parseFloat(text.replace(",", ".")))
+            Accessible.name: qsTr("Décalage en millimètres")
+        }
+        Mini { objectName: "offsetOutButton"; text: qsTr("Décaler +"); enabled: parent.some && !offsetField.invalid; onClicked: panel.vec.offsetShapes(Math.abs(parseFloat(offsetField.text.replace(",", ".")))) }
+        Mini { objectName: "outlineButton"; text: qsTr("Contour"); enabled: parent.some && !offsetField.invalid; onClicked: panel.vec.outlineShapes(Math.abs(parseFloat(offsetField.text.replace(",", ".")))) }
+        Mini { objectName: "offsetInButton"; text: qsTr("Décaler −"); enabled: parent.some && !offsetField.invalid; onClicked: panel.vec.offsetShapes(-Math.abs(parseFloat(offsetField.text.replace(",", ".")))) }
     }
     Text {
         objectName: "vectorMessage"

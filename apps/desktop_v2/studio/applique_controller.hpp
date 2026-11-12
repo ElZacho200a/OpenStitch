@@ -9,6 +9,7 @@
 #include <QObject>
 #include <QString>
 #include <QVariantMap>
+#include <cstdint>
 
 #include "inspector_controller.hpp"
 #include "studio_controller.hpp"
@@ -45,6 +46,7 @@ signals:
     void messageChanged();
 
 private:
+    std::uint64_t gateStamp_{0}; // documentStamp() au dernier changed rediffusé
     void say(bool ok, const QString& text);
     [[nodiscard]] std::uint64_t selectedApplique() const;
 

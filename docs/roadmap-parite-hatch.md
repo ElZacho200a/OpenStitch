@@ -38,11 +38,13 @@ Revue partielle du 2026-10-13 (`main` = `4a8088b`) : vague 1 — objets, cadres,
 | Priorité | ☑ Fait | ◐ Partiel | ☐ À faire | Total |
 |---|---|---|---|---|
 | 2026-10-26 | Claude (IA PR-02) | **Contrat de backend IA générique** `openstitch.ai.backend/1` : worker Python `ai-worker/` (adaptateur SAM 2.1 sans modifier `sam-worker/`, deux faux backends), client sans Qt dans `libs/ai_segmentation` (protocole, session avec annulation/délais, transport processus Windows+POSIX, registre de découverte avec repli classique), `openstitch-cli ai backends`, outil MCP `ai_backends` en lecture seule, 5 nouveaux codes d'erreur, tests Catch2 + Python. Le desktop garde son client SAM v1 (migration prévue). |
-| P0 | 12 | 28 | 5 | 45 |
-| P1 | 10 | 68 | 99 | 177 |
-| P2 | 3 | 34 | 128 | 165 |
+| P0 | 16 | 29 | 0 | 45 |
+| P1 | 34 | 125 | 14 | 173 |
+| P2 | 4 | 42 | 119 | 165 |
 | P3 | 0 | 3 | 38 | 41 |
-| **Total** | **25** | **133** | **270** | **428** |
+| **Total** | **54** | **199** | **171** | **424** |
+
+Tableau recalculé le 2026-11-11 par comptage mécanique des titres `### HP-… [Px] — ☑/◐/☐` (`main` `819e8e5`) ; il ne revérifie aucun statut contre le code. Les 424 titres comptés remplacent le total précédent (428) ; l'écart vient du format des titres, pas d'entrées retirées.
 
 Seconde passe approfondie du 2026-10-30 : **+61 entrées à faire** (12 P1, 36 P2, 13 P3), §27ter, lots G à L ; total +112 sur la journée.
 
@@ -1139,6 +1141,7 @@ plus.
   significative (principal + branches, max 8) ; (2) guides existants = remplacés,
   y compris le guide par défaut issu de la conversion tatami. Voir
   `docs/source/directional-fill.md` § Interface.
+- Constat (2026-11-12, agent) : le cœur existe déjà sur `main` : `directional_guides_from_region` (`libs/stitch_generation/.../directional_fill.hpp`, commit `0a8c495`, tests dans `test_directional_fill.cpp`), appelé par l'op `project_ops` (`op_params.cpp`) et par le bureau V1 (`apps/desktop/main_window_directional.cpp`). Studio : l'action `fill.guides` (« Guides de direction automatiques ») existe dans `apps/desktop_v2/core/action_catalog.cpp` (op `directional_guides`, remplace les guides, une seule commande annulable) et la palette de commandes liste tout le catalogue ; matrice de parité Studio : SERVICE_ONLY, sans test QTest ni recette réelle. Reste : test Studio, recette réelle, présence au clic droit à vérifier. Statut inchangé (☐) faute de preuve Studio ; une première tentative de doublon (même nom, signature différente) a été retirée : violation ODR détectée sous Linux.
 
 ### HP-STI-019 — Broderie à main levée (freehand) [P2] — ☐ À faire
 - Hatch : dessiner directement un point de contour, triple, satin à la souris
@@ -4570,6 +4573,7 @@ ouvrant le lot (§0.1).
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-11-11 | Claude (réconciliation) | Tableau d'avancement recalculé depuis les titres (P0 : 5 « à faire » → 0 ; P1 : 99 → 14 ; total 424). Aucun statut d'entrée modifié ni revérifié. Reste P1 « à faire » : HP-TXT-002, HP-STI-018.a, HP-ENG-009 (bloqué par HP-STI-018), HP-AUTO-011, HP-VIEW-009, HP-UX-001/004, HP-I18N-001.a/003, HP-PERF-004, HP-QA-009/010, HP-DIST-006/007, HP-PHYS-002/003. |
 | 2026-11-09 | Codex (Studio, F27-01 et F27-04) | HP-SEQ-002 : bande de fils dans Points, sélection groupée, réordonnancement annulable et sélecteur de couleur. Statut partiel conservé. Correction du démarrage Qt 6.8.3 après #310 via les hauteurs préférées des groupes d’actions. |
 | 2026-11-07 | Claude (Studio par défaut) | Roadmap : aucune entrée HP précise. Studio devient l'application par défaut : exécutable `openstitch.exe` (cible `openstitch_v2_studio`), installeur et artefacts de release construits sur Studio ; la V1 Widgets passe derrière `OPENSTITCH_BUILD_LEGACY_V1` (OFF par défaut, ON dans le preset `msvc` tant que la parité n'est pas complète) et devient `openstitch-v1.exe`. Suppression de la V1 : reportée à la fermeture des lignes ABSENT de la matrice de parité. |
 | 2026-11-07 | Codex (validation Studio) | Builds Debug/Release et suites complètes sur `1372589` : 2 579/2 579 chacune ; cœur compilé sans Qt, captures natives et mesures MSAA 4× publiées. Intégration de `main` `8c200e0` dans #282 : deux historiques conservés ; vérification ciblée après intégration (293 cas du cœur, deux shells QTest). Fondation toujours partielle, aucun statut HP-* clos ; cible p95 <16,7 ms non atteinte, CI suivie sur GitHub. |
@@ -4724,3 +4728,4 @@ ouvrant le lot (§0.1).
 | 2026-11-03 | Claude (dégradés) | HP-STI-010 et HP-STI-011 ◐ : le dégradé devient un remplissage logique rééditable (Uni/Dégradé, poignées canevas, réédition globale, couple supprimé/dupliqué ensemble) ; non validé sur machine ni tissu. |
 | 2026-11-06 | Claude (Desktop V2, session 3) | Roadmap : aucune entrée HP précise. Rattrapage V1 -> V2 : import de broderies machine (DST/PES/JEF/EXP) et DXF, types de remplissage complets, guides de direction et lignes de rupture, re-segmentation avec aperçu et réduction de palette, retouche de points multiple (saut, coupe), zoom, guides de session, qualité du rendu réaliste, sélection partagée des régions, espaces Formes / Zones, guide de parcours à état réel ; voir `docs/desktop-v2/13-retards-v2-vs-v1.md` et `14-dependances-parcours-et-visuel.md`. |
 | 2026-11-10 | Claude (inspecteur Studio) | Roadmap : aucune entrée HP précise. Réglages de points en sélection mixte : l'inspecteur Studio affiche et applique les réglages scalaires communs à tous les types (écart, compensation, sous-couche…), chaque objet recevant la valeur par son propre type, en une seule étape d'annulation ; réinitialisation par type ; les réglages propres à un seul type restent refusés. |
+| 2026-11-10 | Claude (perf Studio) | Roadmap : aucune entrée HP précise. PERF « 60 fps » lot 1 : suppression des 11 minuteurs de sondage `TaskManager::pump()` (~1 100 réveils/s au repos) au profit d une notification de fin de tâche ; voir `docs/desktop-v2/18-studio-benchmarks.md`. fps de l application entière non mesuré. |

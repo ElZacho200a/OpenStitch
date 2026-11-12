@@ -49,7 +49,12 @@ Rectangle {
                     width: parent.width - 4
                     currentIndex: panel.tab
                     SegmentationSection { id: segSection; Layout.fillWidth: true; Layout.alignment: Qt.AlignTop }
-                    RegionTools { Layout.fillWidth: true; Layout.alignment: Qt.AlignTop }
+                    RegionTools {
+                        Layout.fillWidth: true
+                        Layout.alignment: Qt.AlignTop
+                        // Re-segmenting must use the same live values as Preview/Apply.
+                        segmentationOptions: panel.segmentationOptions
+                    }
                     AiSection { Layout.fillWidth: true; Layout.alignment: Qt.AlignTop }
                 }
             }

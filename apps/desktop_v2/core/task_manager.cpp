@@ -62,11 +62,30 @@ TaskId TaskManager::enqueue(std::string label,
     return id;
 }
 
-void TaskManager::finish(TaskId id, std::optional<Error> error) {
+void TaskManager::setCompletionNotifier(std::function<void()> notifier) {
     std::scoped_lock lock(mutex_);
+    notifier_ =
+        notifier ? std::make_shared<const std::function<void()>>(std::move(notifier)) : nullptr;
+}
+
+void TaskManager::finish(TaskId id, std::optional<Error> error) {
+    std::shared_ptr<const std::function<void()>> notifier;
+    {
+        std::scoped_lock lock(mutex_);
+        if (!finishLocked(id, std::move(error))) {
+            return;
+        }
+        notifier = notifier_;
+    }
+    if (notifier && *notifier) {
+        (*notifier)(); // hors verrou : le rappel poste un événement, jamais de travail
+    }
+}
+
+bool TaskManager::finishLocked(TaskId id, std::optional<Error> error) {
     const auto it = tasks_.find(id);
     if (it == tasks_.end()) {
-        return;
+        return false;
     }
     auto& entry = *it->second;
     entry.info.done = entry.done.load();
@@ -87,6 +106,7 @@ void TaskManager::finish(TaskId id, std::optional<Error> error) {
     }
     finished_.emplace_back(entry.info, std::move(deliver));
     cv_.notify_all();
+    return true;
 }
 
 bool TaskManager::cancel(TaskId id) {

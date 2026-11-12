@@ -41,6 +41,14 @@ class AnalysisController : public QObject {
     Q_PROPERTY(bool diagnosticsReady READ diagnosticsReady NOTIFY diagnosticsChanged)
     Q_PROPERTY(bool diagnosticsStale READ diagnosticsStale NOTIFY diagnosticsChanged)
     Q_PROPERTY(QString diagnosticsSummary READ diagnosticsSummary NOTIFY diagnosticsChanged)
+    // Statistiques de broderie (V1) : points, sauts, coupes, changements de couleur, dimensions,
+    // fil. Calculées sur la séquence effective déjà construite (aucun recalcul) ; vide sans points.
+    Q_PROPERTY(QVariantMap statistics READ statistics NOTIFY statisticsChanged)
+    // Fidélité à l'image (V1) : comparaison pixel à pixel de l'image source et du fil posé.
+    Q_PROPERTY(bool fidelityReady READ fidelityReady NOTIFY fidelityChanged)
+    Q_PROPERTY(bool fidelityStale READ fidelityStale NOTIFY fidelityChanged)
+    Q_PROPERTY(QString fidelityText READ fidelityText NOTIFY fidelityChanged)
+    Q_PROPERTY(QString fidelityMapUrl READ fidelityMapUrl NOTIFY fidelityChanged)
     // Density map
     Q_PROPERTY(bool densityReady READ densityReady NOTIFY densityChanged)
     Q_PROPERTY(QString densitySummary READ densitySummary NOTIFY densityChanged)
@@ -98,6 +106,15 @@ public:
     [[nodiscard]] QString riskVerdict() const;
     [[nodiscard]] QString riskLevel() const;
 
+    // --- Statistiques et fidélité (V1) ---------------------------------------------------------
+    [[nodiscard]] QVariantMap statistics() const;
+    Q_INVOKABLE void measureFidelity();
+    Q_INVOKABLE void clearFidelity();
+    [[nodiscard]] bool fidelityReady() const { return fidelityRevision_.has_value(); }
+    [[nodiscard]] bool fidelityStale() const;
+    [[nodiscard]] QString fidelityText() const { return fidelityText_; }
+    [[nodiscard]] QString fidelityMapUrl() const { return fidelityMapUrl_; }
+
     // --- Order optimisation --------------------------------------------------------------------
     Q_INVOKABLE void proposeOrder(int strategy, bool improve);
     Q_INVOKABLE bool applyProposal();
@@ -136,6 +153,8 @@ public:
 
     Q_INVOKABLE void cancel();
 signals:
+    void statisticsChanged();
+    void fidelityChanged();
     void messageChanged();
     void busyChanged();
     void diagnosticsChanged();
@@ -146,6 +165,10 @@ signals:
     void renderChanged();
 
 private:
+    std::optional<std::uint64_t> fidelityRevision_;
+    QString fidelityText_;
+    QString fidelityMapUrl_;
+    std::uint64_t statsStamp_{0};
     void say(bool ok, const QString& text);
     void begin(const QString& label);
     void end();
@@ -168,7 +191,6 @@ private:
     std::optional<std::uint64_t> realisticRevision_;
     std::vector<UserHoop> userHoops_;
     RenderSettings render_;
-    QTimer pump_;
     TaskManager tasks_;
 };
 

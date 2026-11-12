@@ -33,6 +33,14 @@ ColumnLayout {
             onClicked: editor.addLayer(qsTr("Calque %1").arg(editor.layers.length + 1))
         }
         StudioButton {
+            objectName: "layerDuplicateButton"
+            text: qsTr("Dupl.")
+            implicitHeight: 28
+            enabled: panel.layerId.length > 0
+            tooltip: qsTr("Dupliquer le calque et ses objets")
+            onClicked: editor.duplicateLayer(panel.layerId)
+        }
+        StudioButton {
             objectName: "layerRenameButton"
             text: qsTr("Renommer")
             implicitHeight: 28

@@ -25,6 +25,10 @@ class InspectorController : public QObject {
     Q_OBJECT
     Q_PROPERTY(int count READ count NOTIFY changed)
     Q_PROPERTY(int revision READ revision NOTIFY changed)
+    // Couleur COMMUNE de la sélection (« #rrggbb »), vide si elle varie ou si rien n'est
+    // sélectionné.
+    Q_PROPERTY(QString colour READ colour NOTIFY changed)
+    Q_PROPERTY(bool colourMixed READ colourMixed NOTIFY changed)
     Q_PROPERTY(QString typeId READ typeId NOTIFY changed)
     Q_PROPERTY(QString typeLabel READ typeLabel NOTIFY changed)
     Q_PROPERTY(bool typeMixed READ typeMixed NOTIFY changed)
@@ -50,6 +54,8 @@ public:
     // (a slider being dragged must survive the refresh its own edit triggers).
     [[nodiscard]] int revision() const { return revision_; }
     Q_INVOKABLE [[nodiscard]] QVariantMap field(const QString& key) const;
+    [[nodiscard]] QString colour() const;
+    [[nodiscard]] bool colourMixed() const;
     [[nodiscard]] QString typeId() const;
     [[nodiscard]] QString typeLabel() const;
     [[nodiscard]] bool typeMixed() const;
@@ -81,6 +87,8 @@ public:
     [[nodiscard]] bool messageOk() const { return ok_; }
 
     // Every call returns "" on success, otherwise the readable refusal (document untouched).
+    // Change la couleur de TOUTE la sélection (types de points différents compris) : une étape.
+    Q_INVOKABLE QString setColour(const QString& hex);
     Q_INVOKABLE QString setParam(const QString& key, double value);
     // Typed entry: accepts "0,35" and "0.35"; text that is not a number is refused, not guessed.
     Q_INVOKABLE QString setParamText(const QString& key, const QString& text);

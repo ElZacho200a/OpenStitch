@@ -47,6 +47,13 @@ Window {
     readonly property var workspaceController: workspaceCtl
     readonly property var canvas: spaceHost.canvas
     WorkspaceController { id: workspaceCtl; controller: studio }
+    Connections {
+        target: workspaceCtl
+        function onCurrentChanged() {
+            if (typeof usage !== "undefined" && usage)
+                usage.track("space", workspaceCtl.current)
+        }
+    }
     Binding {
         target: workspaceCtl
         property: "segmentationDirty"
@@ -224,8 +231,14 @@ Window {
         workspaceCtl.treeMode = s.treeMode === "1"
     }
 
+    // Espace Segmentation : la sélection est faite de RÉGIONS (RegionController), pas d'objets du
+    // document ; Suppr supprime alors les régions sélectionnées (une étape d'annulation).
+    readonly property bool regionsSelected: typeof regionTools !== "undefined" && regionTools !== null &&
+                                           workspaceCtl.current === "segmentation" && regionTools.selectedCount > 0
     function deleteSelection() {
-        if (toolController !== null && toolController.selectedNodeCount > 0)
+        if (window.regionsSelected)
+            regionTools.deleteSelected()
+        else if (toolController !== null && toolController.selectedNodeCount > 0)
             toolController.deleteSelectedNodes()
         else
             editor.deleteSelection()
@@ -354,7 +367,8 @@ Window {
     Shortcut {
         sequence: "Delete"
         enabled: !window.keyboardOwnedByControl &&
-                 (studio.hasSelection || (toolController !== null && toolController.selectedNodeCount > 0))
+                 (studio.hasSelection || window.regionsSelected ||
+                  (toolController !== null && toolController.selectedNodeCount > 0))
         onActivated: window.deleteSelection()
     }
     Shortcut { sequence: "Ctrl+D"; enabled: studio.hasSelection; onActivated: window.duplicateWithFeedback() }

@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "inspector_controller.hpp"
 
+#include <QColor>
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <optional>
 
@@ -125,6 +127,32 @@ std::optional<ParamSpec> specOf(std::string_view typeId, std::string_view key) {
     return std::nullopt;
 }
 
+// Réglages ÉQUIVALENTS d'un type à l'autre : l'écart entre rangées s'appelle `row_spacing_mm`
+// (tatami, directionnel), `spacing_mm` (satin automatique) et `density_mm` (colonne de satin). Dans
+// une sélection de types différents ils forment UN réglage commun, sous la clé canonique
+// `row_spacing_mm` ; chaque objet est lu et écrit sous la clé de son propre type.
+std::string_view canonicalKey(std::string_view typeId, std::string_view key) {
+    if (typeId == "auto_satin" && key == "spacing_mm") {
+        return "row_spacing_mm";
+    }
+    if (typeId == "satin" && key == "density_mm") {
+        return "row_spacing_mm";
+    }
+    return key;
+}
+
+std::string nativeKey(std::string_view typeId, std::string_view canonical) {
+    if (canonical == "row_spacing_mm") {
+        if (typeId == "auto_satin") {
+            return "spacing_mm";
+        }
+        if (typeId == "satin") {
+            return "density_mm";
+        }
+    }
+    return std::string(canonical);
+}
+
 QString formatValue(const ParamSpec& spec, double value) {
     switch (spec.kind) {
     case ParamKind::Bool:
@@ -191,6 +219,47 @@ InspectorController::~InspectorController() {
     session_.selection().unsubscribe(selectionToken_);
 }
 
+QString InspectorController::colour() const {
+    const auto s = selection();
+    std::optional<std::array<std::uint8_t, 3>> common;
+    for (const auto id : s.ids) {
+        const auto* object = findObject(session_.project(), id);
+        if (object == nullptr) {
+            continue;
+        }
+        if (!common) {
+            common = object->rgb;
+        } else if (*common != object->rgb) {
+            return {};
+        }
+    }
+    return common ? QColor((*common)[0], (*common)[1], (*common)[2]).name() : QString();
+}
+
+bool InspectorController::colourMixed() const {
+    const auto s = selection();
+    return s.ids.size() > 1 && colour().isEmpty();
+}
+
+QString InspectorController::setColour(const QString& hex) {
+    const QColor parsed(hex);
+    if (!parsed.isValid()) {
+        return finish(QStringLiteral("Couleur invalide : %1").arg(hex), {});
+    }
+    const auto s = selection();
+    if (s.ids.empty()) {
+        return finish(QStringLiteral("Sélectionnez au moins un objet."), {});
+    }
+    const auto batch = batchSetColor(s.ids, {static_cast<std::uint8_t>(parsed.red()),
+                                             static_cast<std::uint8_t>(parsed.green()),
+                                             static_cast<std::uint8_t>(parsed.blue())});
+    const auto result = session_.applyBatch(batch, "Changer la couleur");
+    if (!result.committed) {
+        return finish(QStringLiteral("Changement de couleur refusé."), {});
+    }
+    return finish({}, QStringLiteral("Couleur modifiée."));
+}
+
 InspectorController::Selection InspectorController::selection() const {
     const auto state = inspect(session_.project(), session_.selection().targets());
     Selection out;
@@ -225,9 +294,14 @@ std::vector<ParamSpec> InspectorController::specsOf(const Selection& s) const {
         if (spec.kind == ParamKind::Point || spec.kind == ParamKind::List) {
             continue; // authored with their own editors, on one type at a time
         }
+        const std::string_view canonical = canonicalKey(s.groups.front().first, spec.key);
+        if (canonical != spec.key) {
+            spec.key = canonical; // clé canonique (vue sur du texte statique)
+            spec.label = "Écart entre rangées";
+        }
         bool shared = true;
         for (std::size_t i = 1; i < s.groups.size() && shared; ++i) {
-            const auto other = specOf(s.groups[i].first, spec.key);
+            const auto other = specOf(s.groups[i].first, nativeKey(s.groups[i].first, spec.key));
             shared = other && other->kind == spec.kind && other->options == spec.options;
             if (shared) {
                 spec.min = std::max(spec.min, other->min);
@@ -284,18 +358,19 @@ QVariantMap InspectorController::fieldMap(const Selection& s, const ParamSpec& s
     double pointY = 0.0;
     for (const auto id : s.ids) {
         const auto* object = findObject(session_.project(), id);
-        const auto v = object ? readParam(*object, spec.key) : std::nullopt;
+        const std::string own = object ? nativeKey(stitchTypeId(*object), spec.key) : std::string();
+        const auto v = object ? readParam(*object, own) : std::nullopt;
         if (!v) {
             continue;
         }
-        if (const auto own = defaultOf(stitchTypeId(*object), spec.key);
-            own && std::abs(*v - *own) > kEps) {
+        if (const auto def = defaultOf(stitchTypeId(*object), own);
+            def && std::abs(*v - *def) > kEps) {
             allDefault = false;
         }
-        const bool set = paramIsSet(*object, spec.key);
+        const bool set = paramIsSet(*object, own);
         if (set && !anySet) {
             anySet = true;
-            if (const auto pt = readPointMm(*object, spec.key)) {
+            if (const auto pt = readPointMm(*object, own)) {
                 pointX = pt->first;
                 pointY = pt->second;
             }
@@ -307,8 +382,8 @@ QVariantMap InspectorController::fieldMap(const Selection& s, const ParamSpec& s
             mixed = true;
         }
     }
-    const auto def =
-        defaultOf(s.groups.empty() ? s.typeId : s.groups.front().first, spec.key).value_or(value);
+    const std::string firstType = s.groups.empty() ? s.typeId : s.groups.front().first;
+    const auto def = defaultOf(firstType, nativeKey(firstType, spec.key)).value_or(value);
     const bool optionalKind = spec.kind == ParamKind::Point ||
                               spec.kind == ParamKind::OptionalNumber ||
                               spec.kind == ParamKind::List;
@@ -508,7 +583,7 @@ QString InspectorController::applyPairs(const Selection& s,
             return name + QStringLiteral(" : ce réglage se modifie par son propre éditeur.");
         }
         for (const auto& [type, ids] : s.groups) {
-            const auto json = batchSetParam(ids, type, key, value);
+            const auto json = batchSetParam(ids, type, nativeKey(type, key), value);
             if (json.empty()) {
                 return name + QStringLiteral(" : valeur refusée.");
             }
@@ -642,11 +717,12 @@ QString InspectorController::resetParam(const QString& key) {
     // Each type goes back to ITS OWN default (they can differ between types).
     std::vector<std::string> batches;
     for (const auto& [type, ids] : s.groups) {
-        const auto def = defaultOf(type, key.toStdString());
+        const auto native = nativeKey(type, key.toStdString());
+        const auto def = defaultOf(type, native);
         if (!def) {
             return finish(QStringLiteral("Aucune valeur par défaut pour ce réglage."));
         }
-        const auto json = batchSetParam(ids, type, key.toStdString(), *def);
+        const auto json = batchSetParam(ids, type, native, *def);
         if (json.empty()) {
             return finish(label + QStringLiteral(" : valeur refusée."));
         }
@@ -666,12 +742,13 @@ QString InspectorController::resetAll() {
     for (const auto& spec : specsOf(s)) {
         for (const auto& [type, ids] : s.groups) {
             if (isScalarKind(spec.kind)) {
-                if (const auto def = defaultOf(type, spec.key)) {
-                    batches.push_back(batchSetParam(ids, type, spec.key, *def));
+                const auto native = nativeKey(type, spec.key);
+                if (const auto def = defaultOf(type, native)) {
+                    batches.push_back(batchSetParam(ids, type, native, *def));
                 }
             } else if (spec.kind != ParamKind::List) {
                 // Guides, break lines and rungs are authored on the canvas: never wiped.
-                batches.push_back(batchClearParam(ids, type, spec.key));
+                batches.push_back(batchClearParam(ids, type, nativeKey(type, spec.key)));
             }
         }
     }

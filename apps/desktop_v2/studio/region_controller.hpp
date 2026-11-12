@@ -67,6 +67,12 @@ public:
     Q_INVOKABLE void selectNeighbours();
     Q_INVOKABLE void invertSelection();
     Q_INVOKABLE void selectAll();
+    // Parcours séquentiel de la liste des régions : sélection unique, retour à la première
+    // (ou à la dernière) en bout de liste. Faux si la segmentation n'a aucune région.
+    Q_INVOKABLE bool selectNextRegion();
+    Q_INVOKABLE bool selectPreviousRegion();
+    // Agrandit (pas > 0) ou réduit (pas < 0) le rayon du pinceau d'un pixel par pas, borné 1-200.
+    Q_INVOKABLE void stepBrushRadius(int steps);
     Q_INVOKABLE void clearSelection();
     // Objets de broderie issus des régions sélectionnées (identifiants).
     Q_INVOKABLE [[nodiscard]] QVariantList objectsOfSelection() const;
@@ -74,6 +80,8 @@ public:
     // --- Retouches (chacune : UNE étape d'annulation ; "" = fait, sinon le refus) -------------
     Q_INVOKABLE QString recolorSelected(const QString& hexColor);
     Q_INVOKABLE QString mergeSelected();
+    // Merge the single selected (source) region into a user-chosen target.
+    Q_INVOKABLE QString mergeSelectedInto(double target);
     Q_INVOKABLE QString mergeWithNeighbour(double id);
     Q_INVOKABLE QString mergeColorInto(double source, double target);
     Q_INVOKABLE QString deleteSelected();
@@ -114,8 +122,8 @@ private:
     StudioController& studio_;
     ImageController& images_;
     DocumentSession::Token token_{};
-    QTimer pump_;
     QTimer refreshTimer_;
+    bool stepRegion(int direction);
     QVariantList regions_;
     int mapRevision_{0};
     std::uint64_t observedDocumentRevision_{0};

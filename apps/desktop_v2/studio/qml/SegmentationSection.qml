@@ -15,6 +15,33 @@ ColumnLayout {
     property int smoothing: imageTools.segmentationDefaults.smoothing_radius_px
     readonly property var options: ({ max_colors: maxColors, min_region_px: minRegionPx,
                                       smoothing_radius_px: smoothing })
+    // The preview describes a specific parameter tuple. Invalidate/cancel it
+    // immediately when colours, island size or smoothing changes.
+    // Aperçu en direct (comme en V1) : un changement de réglage relance l'aperçu après 350 ms, sans
+    // toucher au document. Désactivable pour les grosses images.
+    property bool liveEnabled: true
+    function invalidatePreview() {
+        if (imageTools.segPreviewActive || imageTools.busy)
+            imageTools.cancelSegmentationPreview()
+        if (section.liveEnabled)
+            livePreview.restart()
+    }
+    Timer {
+        id: livePreview
+        objectName: "segLiveTimer"
+        interval: 350
+        onTriggered: {
+            if (!section.liveEnabled || !imageTools.hasImage)
+                return
+            if (imageTools.busy)
+                livePreview.restart() // attend la fin du calcul en cours
+            else
+                imageTools.previewSegmentation(section.options)
+        }
+    }
+    onMaxColorsChanged: invalidatePreview()
+    onMinRegionPxChanged: invalidatePreview()
+    onSmoothingChanged: invalidatePreview()
 
     SectionLabel { text: qsTr("APERÇU DE LA SEGMENTATION") }
     Rectangle {
@@ -38,7 +65,7 @@ ColumnLayout {
         objectName: "segmentationInfo"
         Layout.fillWidth: true
         text: imageTools.segPreviewActive ? imageTools.segPreviewInfo
-              : imageTools.hasSegmentation ? qsTr("Segmentation du projet : %1 régions").arg(imageTools.regionCount)
+              : imageTools.hasSegmentation ? qsTr("Segmentation du projet : %1 régions, %2 couleurs").arg(imageTools.regionCount).arg(imageTools.colorCount)
               : qsTr("Pas encore de segmentation.")
         color: Theme.muted; font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily
         wrapMode: Text.WordWrap
@@ -58,6 +85,13 @@ ColumnLayout {
         Text { text: qsTr("Lissage (px)"); color: Theme.foreground; font.pixelSize: Theme.bodySize; font.family: Theme.fontFamily; Layout.fillWidth: true }
         StudioSpinBox { objectName: "segSmoothing"; from: 0; to: 10; value: section.smoothing; editable: true
             onValueModified: section.smoothing = value }
+    }
+    StudioCheckBox {
+        objectName: "segLiveBox"
+        text: qsTr("Aperçu en direct")
+        checked: section.liveEnabled
+        onToggled: { section.liveEnabled = checked; if (checked) livePreview.restart() }
+        palette.windowText: Theme.foreground
     }
     RowLayout {
         Layout.fillWidth: true
