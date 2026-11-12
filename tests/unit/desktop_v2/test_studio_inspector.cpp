@@ -792,6 +792,17 @@ void StudioInspectorTest::qmlInspectorEditsThroughTheController() {
     QMetaObject::invokeMethod(reset, "clicked");
     QTRY_VERIFY(std::abs(*readParam(object(session, id), "row_spacing_mm") -
                          document::TatamiParams{}.row_spacing.value / 1000.0) < 1e-6);
+
+    // Sections fold and unfold: a folded section hides its fields, unfolding restores them.
+    auto* collapseAll = find("collapseAllSections");
+    auto* expandAll = find("expandAllSections");
+    QVERIFY(collapseAll != nullptr);
+    QVERIFY(expandAll != nullptr);
+    QVERIFY(find("param_row_spacing_mm") != nullptr);
+    QMetaObject::invokeMethod(collapseAll, "clicked");
+    QTRY_VERIFY(find("param_row_spacing_mm") == nullptr);
+    QMetaObject::invokeMethod(expandAll, "clicked");
+    QTRY_VERIFY(find("param_row_spacing_mm") != nullptr);
 }
 
 QTEST_MAIN(StudioInspectorTest)
