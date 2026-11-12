@@ -1,0 +1,115 @@
+# Studio — Fondus de fils, camaïeux et dégradés de densité
+Date : 12 novembre 2026 — conception et tranche UI (pas une validation du moteur multicolore).
+
+## Deux notions, deux emplacements
+
+1. **Dégradé de densité du remplissage** : une unique couleur de fil peut passer
+   de points serrés à des points ouverts. Réglage de type de points (Tatami ou
+   Directionnel, selon les générateurs effectivement supportés). Le champ
+   `DensityGradient` modifie l'écartement des lignes. Il ne crée pas de nouveau
+   fil ni de bloc de couleur.
+2. **Fondu de couleurs (fils)** : une transition chromatique entre *des fils
+   réels différents*, qui suppose plusieurs blocs de points et un ordre de
+   broderie. Le profil de densité peut être utilisé **par couche** comme une
+   technique de mélange, mais ne définit pas à lui seul le fondu logique.
+
+Ces réglages sont orthogonaux : un remplissage directionnel peut avoir un
+dégradé de densité et / ou porter une transition entre plusieurs fils. L'UI
+ne doit pas confondre ces deux intentions ni convertir implicitement l'une
+en l'autre.
+
+## Première tranche UI implémentée dans cette branche
+
+- L'éditeur de fondu est accessible directement dans les propriétés de
+  l'objet, lorsqu'un remplissage compatible unique est sélectionné.
+- Le tiroir Points/Fondu et l'inspecteur partagent **FadeProperties.qml**.
+- L'interface distingue visuellement le fil de départ et le fil d'arrivée,
+  donne accès à un vrai sélecteur de couleur et vérifie la saisie hexadécimale.
+- Elle présente le profil des densités complémentaires (ou fond constant),
+  les profils de transition existants et l'action inverser. Le réglage
+  manuel de l'axe (mm) est repliable, validé numériquement, et les
+  coordonnées sont alimentées depuis les poignées du canevas.
+- La bande colorée n'est explicitement **pas** une simulation des points
+  ou une prédiction de la couleur du textile.
+- Les fonctions réellement exécutables continuent de passer par
+  FadeController / fade_service / project_ops : une action = une commande
+  annulable, sans recalcul complet pendant le déplacement de la poignée.
+
+## Architecture cible pour 3+ fils / camaïeu
+
+Ne pas chaîner des `ColorBlendLink` binaires : ces liens réciproques codent
+un couple exact, et plusieurs paires indépendantes auraient des erreurs de
+sélection, conversion, suppression, ordre de couture et sauvegarde.
+
+Proposer un **GradientBlendGroup** persistant, identifié de manière stable :
+
+- forme source commune, type de point, axe/champ de progression ;
+- liste ordonnée de `ThreadStop` (`ThreadKey` optionnel, RGB de repli,
+  position [0,1], rôle et épaisseur/densité cible) ;
+- couches de broderie réelles, indices de couture et références
+  appartenant toutes au même groupe logique ;
+- méthode de mélange, courbe/largeur de chaque transition, limite
+  d'accumulation des points, graine déterministe pour l'irrégularité ;
+- interopérabilité OSP versionnée et règle de dégradation contrôlée
+  vers deux fils / anciens projets.
+
+La sélection d'une couche doit sélectionner le groupe logique. Créer,
+éditer, inverser, réordonner, supprimer, copier-coller et restaurer
+undo/redo doivent fonctionner **atomiquement**. Le logiciel doit garder
+les références des vrais fils (bibliothèque/stock), non interpoler des
+couleurs RGB inventées en guise de fils.
+
+### Construction du camaïeu
+
+Mode assisté : couleur de base → 3/4/5/6 nuances recommandées depuis les
+fils réellement disponibles ; ordre par clarté et/ou paramètre choisi.
+Une proposition ne doit jamais être assignée à un fil de nuancier inconnu.
+Mode manuel : ajouter/supprimer/déplacer chaque arrêt de couleur,
+changer le nuancier, la position et la longueur de sa transition.
+
+Chaque point d'abscisse curviligne `t` obtient des poids de couche
+`w_i(t)`, positifs, de somme 1 en mode complémentaire, après traitement
+du profil de transition. Les générateurs convertissent ces poids en
+densités de couture bornées et déterministes. **Le modèle ne doit pas
+interpoler des couleurs RGB comme s'il s'agissait de nouveaux fils.**
+
+## Méthodes de transition (séparer technique de couleurs)
+
+1. **Rampes complémentaires de densité** : méthode existante à deux fils,
+   généraliser en poids `w_i(t)` pour n fils.
+2. **Fond constant + surcouches légères** : méthode existante à deux
+   fils, généraliser avec contrôle de surcharge.
+3. **Bords effilochés / feathering** : pénétrations décalées de manière
+   déterministe sur la bordure, limites irrégulières entre zones.
+4. **Passé empiétant / long-and-short** : lignes de points de longueurs
+   alternées, transitions imbriquées, orientation guidée.
+5. **Points dispersés / tramage textile** : répartir les contributions de
+   fils par points ou courtes lignes espacées, contrôlées par une densité
+   globale et une graine.
+6. **Transitions courbes / radiales** : champ de progression géométrique
+   autre qu'un segment unique ; fonctionnalité séparée des méthodes
+   ci-dessus.
+
+1–2 existent **pour deux fils**. 3–6 sont des pistes à prototyper et
+valider sur tissus/entoilages, pas des fonctions livrées dans ce lot.
+
+## Plan de vérification
+
+- Deux fils : format OSP ancien, charge/sauvegarde, undo/redo, courbes,
+  inversion, édition de la couleur, déplacement de l'axe.
+- UI : sélection simple, champ hexadécimal invalide, couleur identique,
+  dégradé de densité sans fondu, apparence du fondu dans l'inspecteur,
+  champ numérique français `0,5`, dimensions petites.
+- Multicolore à venir : 3–6 fils, ordre et références, permutation,
+  suppression d'une couche, copie, export DST et réouverture OSP,
+  densités max et comportement sur petites zones, reproductibilité de
+  chaque graine, comparaison de la simulation avec des échantillons
+  brodés réels.
+- La CI ne valide pas à elle seule l'apparence des échantillons cousus.
+
+## Références de conception
+
+- Hatch Embroidery — Gradient Fill et Color Blending (effets distincts).
+- Wilcom EmbroideryStudio 2026 / v28 — Multi Blend : mélange de deux
+  couleurs ou plus par espaces de points variables.
+- Embrilliance StitchArtist — Gradient et Feathering.
