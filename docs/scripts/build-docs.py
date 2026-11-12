@@ -43,7 +43,7 @@ CHAPTERS = [
     "palettes-and-threads", "simulation", "analysis-and-validation", "production-sheet",
     "dst-format", "formats-pes-jef-exp", "project-format", "architecture", "module-reference",
     "data-model", "algorithms", "build-system", "developer-guide", "testing",
-    "contributing", "troubleshooting", "limitations", "roadmap", "glossary",
+    "contributing", "troubleshooting", "usage-log", "limitations", "roadmap", "glossary",
     "licenses", "generated-project-audit",
 ]
 
