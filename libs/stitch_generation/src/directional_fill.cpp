@@ -635,6 +635,9 @@ struct SpacingField {
     document::DensityTexture texture{document::DensityTexture::None};
     double textureStrength{0.35};
     std::uint32_t textureSeed{1};
+    document::DensityGeometry geometry{document::DensityGeometry::Linear};
+    double curveBend{0.0};
+    std::vector<document::DensityStop> densityStops;
 
     // Hash de coordonnées de grille : aucune allocation, état ou RNG global.
     // Un même point donne le même déplacement dans toutes les couches.
@@ -677,7 +680,9 @@ struct SpacingField {
                 (d + (e - d) * fx) * fy) * textureStrength * 0.22;
     }
 
-    [[nodiscard]] bool uniform() const { return invLen2 == 0.0 || from == to; }
+    [[nodiscard]] bool uniform() const {
+        return densityStops.empty() && (invLen2 == 0.0 || from == to);
+    }
 
     // Remappe t ∈ [0 ; 1] ; monotone, 0 → 0 et 1 → 1 : les écarts restent entre
     // `lo` et `hi`, donc la grille et la fenêtre d'auto-proximité restent valides.
@@ -697,12 +702,58 @@ struct SpacingField {
         return t;
     }
 
+    [[nodiscard]] double positionAt(P2 p) const {
+        if (invLen2 == 0.0) {
+            return 0.0;
+        }
+        const P2 delta = p - origin;
+        double t = dot(delta, axis) * invLen2;
+        if (geometry == document::DensityGeometry::Radial) {
+            t = std::sqrt(dot(delta, delta) * invLen2);
+        } else if (geometry == document::DensityGeometry::Curved) {
+            // Parabole transversale légère, indépendante de la résolution raster.
+            const double lateral = cross(delta, axis) * invLen2;
+            t += curveBend * lateral * lateral;
+        }
+        return shaped(curve, std::clamp(t + textureAt(p), 0.0, 1.0));
+    }
+
+    // Recherche sur 2..8 arrêts : pas d'allocation par point évalué.
+    [[nodiscard]] double densityWeight(P2 p) const {
+        if (densityStops.empty()) {
+            return 1.0;
+        }
+        const double t = positionAt(p);
+        const auto it = std::lower_bound(densityStops.begin(), densityStops.end(), t,
+                                         [](const auto& stop, double v) {
+                                             return stop.position < v;
+                                         });
+        if (it == densityStops.begin()) {
+            return it->weight;
+        }
+        if (it == densityStops.end()) {
+            return densityStops.back().weight;
+        }
+        const auto& left = *(it - 1);
+        const double span = it->position - left.position;
+        return left.weight + (it->weight - left.weight) * ((t - left.position) / span);
+    }
+
+    [[nodiscard]] bool active(P2 p) const {
+        return densityStops.empty() || densityWeight(p) >= 0.025;
+    }
+
     [[nodiscard]] double at(P2 p) const {
         if (uniform()) {
             return lo;
         }
-        const double t = shaped(curve, std::clamp(
-            dot(p - origin, axis) * invLen2 + textureAt(p), 0.0, 1.0));
+        if (!densityStops.empty()) {
+            // Les supports presque nuls sont coupés par StreamlineTracer::active.
+            // Le plafond garde la grille de séparation et ses rayons bornés.
+            return std::clamp(from / std::max(0.1, densityWeight(p)),
+                              kGradientMin, kGradientMax);
+        }
+        const double t = positionAt(p);
         if (interpolateDensity) {
             // Rampes opposées : rho_A(t) + rho_B(t) = rho_from + rho_to.
             return 1.0 / (densityFrom + (densityTo - densityFrom) * t);
@@ -734,6 +785,10 @@ SpacingField make_spacing_field(const document::DirectionalFillParams& p) {
     f.textureStrength = std::isfinite(g.texture_strength)
                             ? std::clamp(g.texture_strength, 0.0, 1.0) : 0.0;
     f.textureSeed = g.texture_seed;
+    f.geometry = g.geometry;
+    f.curveBend = std::isfinite(g.curve_bend)
+                      ? std::clamp(g.curve_bend, -1.0, 1.0) : 0.0;
+    f.densityStops = g.density_stops;
     f.densityFrom = 1.0 / f.from;
     f.densityTo = 1.0 / f.to;
     f.lo = std::min(f.from, f.to);
@@ -742,7 +797,12 @@ SpacingField make_spacing_field(const document::DirectionalFillParams& p) {
     f.axis = to_p2(g.to) - f.origin;
     const double len2 = dot(f.axis, f.axis);
     f.invLen2 = len2 > 1.0 ? 1.0 / len2 : 0.0;
-    if (f.uniform()) {
+    if (!f.densityStops.empty()) {
+        // Le poids peut s'approcher de zéro : garder un rayon de voisinage
+        // borné, et désactiver les zones vides plutôt que semer des fils rares.
+        f.lo = f.from;
+        f.hi = SpacingField::kGradientMax;
+    } else if (f.uniform()) {
         f.lo = f.hi = f.from; // axe dégénéré ou écarts égaux
     }
     return f;
@@ -1056,7 +1116,7 @@ public:
             for (double x = lo_.x + g / 2.0; x < hi_.x; x += g) {
                 const P2 c{x, y};
                 const double d = dist2(c, center);
-                if (d < bestD && sector_.trace.inside(c)) {
+                if (d < bestD && spacing_.active(c) && sector_.trace.inside(c)) {
                     bestD = d;
                     first = c;
                 }
@@ -1087,7 +1147,7 @@ private:
     }
 
     [[nodiscard]] bool valid_seed(P2 c, double factor) const {
-        return sector_.trace.inside(c) &&
+        return spacing_.active(c) && sector_.trace.inside(c) &&
                !grid_.too_close(c, factor * spacing_.at(c), -1, 0.0, 0.0);
     }
 
@@ -1186,14 +1246,15 @@ private:
                 break; // virage brutal : point singulier du champ
             }
             const P2 q = p + v2 * step_;
-            if (!sector_.trace.inside(q)) {
+            if (!spacing_.active(q) || !sector_.trace.inside(q)) {
+                // Sortie de la zone active ou du contour : même bisection.
                 // Sortie de la région : le point de bord exact est cherché par
                 // dichotomie pour que la couture atteigne le contour.
                 P2 in = p;
                 P2 out = q;
                 for (int it = 0; it < 14; ++it) {
                     const P2 m = (in + out) * 0.5;
-                    if (sector_.trace.inside(m)) {
+                    if (spacing_.active(m) && sector_.trace.inside(m)) {
                         in = m;
                     } else {
                         out = m;
