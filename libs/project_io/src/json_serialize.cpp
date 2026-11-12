@@ -801,6 +801,7 @@ Result<document::StitchParams> params_from_json(const json& j) {
             const int texture = g.value("texture", 0);
             grad.texture = texture == 1 ? document::DensityTexture::Feathered
                          : texture == 2 ? document::DensityTexture::Stippled
+                         : texture == 3 ? document::DensityTexture::LongShort
                                         : document::DensityTexture::None;
             // Les valeurs indéfinies ne doivent pas provoquer de calcul non borné.
             if (grad.texture != document::DensityTexture::None) {
