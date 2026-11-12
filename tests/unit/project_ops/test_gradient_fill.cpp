@@ -469,3 +469,55 @@ TEST_CASE("multicolor: legacy two-color blend upgrades without losing undo",
     CHECK(document::find_color_blend(f.project, top));
     CHECK_FALSE(document::find_multi_blend(f.project, top));
 }
+
+TEST_CASE("multicolor satin: distributed traverses create separate machine color blocks",
+          "[project_ops][gradient][multicolor][satin]") {
+    auto f = rectangle_fill();
+    document::SatinParams satin;
+    satin.rail_a.closed = false;
+    satin.rail_b.closed = false;
+    satin.rail_a.nodes = {{pt(0, 0), geometry::NodeType::Corner, {}, {}},
+                          {pt(30'000, 0), geometry::NodeType::Corner, {}, {}}};
+    satin.rail_b.nodes = {{pt(0, 4'000), geometry::NodeType::Corner, {}, {}},
+                          {pt(30'000, 4'000), geometry::NodeType::Corner, {}, {}}};
+    satin.density = Micrometers{400};
+    f.project.embroidery_objects.front().params = satin;
+
+    const auto original = stitch_generation::effective_sequence(f.project);
+    REQUIRE(original);
+    project_ops::MultiGradientFillSpec spec;
+    spec.colors = {{20, 30, 100}, {35, 105, 175}, {95, 180, 205}};
+    commands::UndoStack stack;
+    auto created = project_ops::make_create_multicolor_gradient_fill_command(
+        f.project, f.fill, spec);
+    REQUIRE(created);
+    stack.execute(std::move(*created), f.project);
+    const auto group = document::find_multi_blend(f.project, f.fill);
+    REQUIRE(group);
+    REQUIRE(group->layers.size() == 3);
+    for (const auto id : group->layers) {
+        const auto* object = f.project.findEmbroidery(id);
+        REQUIRE(object);
+        CHECK(object->is_satin());
+    }
+    const auto stitched = stitch_generation::effective_sequence(f.project);
+    REQUIRE(stitched);
+    CHECK(stitched->commands.size() > 10);
+
+    // Répartition exclusive par traverse : la quantité totale ne doit
+    // pas devenir triple sur le même ruban de satin.
+    CHECK(stitched->commands.size() < 2 * original->commands.size() + 20);
+
+    REQUIRE(stack.undo(f.project));
+    REQUIRE(f.project.embroidery_objects.size() == 1);
+    REQUIRE(stack.redo(f.project));
+    CHECK(document::find_multi_blend(f.project, f.fill));
+
+    auto remove =
+        project_ops::make_remove_multicolor_gradient_fill_command(f.project, f.fill);
+    REQUIRE(remove);
+    stack.execute(std::move(*remove), f.project);
+    CHECK_FALSE(document::find_multi_blend(f.project, f.fill));
+    REQUIRE(f.project.embroidery_objects.size() == 1);
+    CHECK(f.project.embroidery_objects[0].is_satin());
+}
