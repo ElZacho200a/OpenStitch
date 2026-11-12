@@ -67,7 +67,7 @@ public:
                               : settings_ ? settings_->geometry : 0;
     }
     [[nodiscard]] QVariantList colors() const;
-    [[nodiscard]] int curve() const { return axis_ ? static_cast<int>(axis_->curve) : 0; }
+    [[nodiscard]] int curve() const;
     [[nodiscard]] QString summary() const;
     [[nodiscard]] QVariantMap axis() const { return axisMap(axis_); }
     [[nodiscard]] QVariantList curves() const;
@@ -107,6 +107,7 @@ private:
     std::uint64_t id_{0};
     std::optional<FadeSettings> settings_;
     std::optional<MultiFadeSettings> multiSettings_;
+    int multiCurve_{0};
     std::optional<FadeAxisView> axis_;
     QString incompat_;
     QString message_;
