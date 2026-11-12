@@ -74,6 +74,15 @@ bool setup_geometry(const document::Project& project, ObjectId id,
 } // namespace
 
 std::string fadeIncompatibility(const document::Project& project, std::uint64_t objectId) {
+    const auto* emb = project.findEmbroidery(ObjectId{objectId});
+    if (emb && emb->is_satin() && !emb->multi_blend && !emb->color_blend) {
+        const auto* source = project.findObject(emb->source_vector);
+        const auto& satin = std::get<document::SatinParams>(emb->params);
+        if (source && !source->paths.empty() && satin.rail_a.nodes.size() >= 2 &&
+            satin.rail_b.nodes.size() >= 2) {
+            return {}; // Satin multicolore : création n-aire uniquement
+        }
+    }
     return project_ops::gradient_incompatibility(project, ObjectId{objectId});
 }
 
