@@ -237,6 +237,18 @@ QVariantList ActionController::searchAll(const QString& query) const {
 }
 
 QString ActionController::runCommand(const QString& id) {
+    const auto refusal = runCommandImpl(id);
+    emit ran(id, refusal.isEmpty());
+    return refusal;
+}
+
+QString ActionController::run(const QString& id, const QVariantMap& values) {
+    const auto refusal = runImpl(id, values);
+    emit ran(id, refusal.isEmpty());
+    return refusal;
+}
+
+QString ActionController::runCommandImpl(const QString& id) {
     const auto& table = studioCommands();
     const auto found = std::ranges::find(table, id.toStdString(), &StudioCommand::id);
     if (found == table.end()) {
@@ -298,7 +310,7 @@ QString ActionController::finish(const ActionDef& def, bool ok, const QString& m
     return ok ? QString() : message;
 }
 
-QString ActionController::run(const QString& id, const QVariantMap& values) {
+QString ActionController::runImpl(const QString& id, const QVariantMap& values) {
     const auto* def = find(id);
     if (!def) {
         return QStringLiteral("Action inconnue");

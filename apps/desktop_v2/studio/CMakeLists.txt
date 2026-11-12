@@ -8,6 +8,7 @@ endif()
 set(CMAKE_AUTOMOC ON)
 add_library(openstitch_studio_ui STATIC
     studio_controller.cpp perf_log.cpp studio_controller.hpp
+    usage_controller.cpp usage_controller.hpp
     history_controller.cpp history_controller.hpp
     action_controller.cpp action_controller.hpp
     edit_controller.cpp edit_controller.hpp

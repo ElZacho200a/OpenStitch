@@ -9,6 +9,7 @@ add_library(openstitch_desktop_v2_core STATIC
     core/task_manager.cpp
     core/document_session.cpp
     core/tool_registry.cpp
+    core/usage_log.cpp
     core/digitize_pipeline.cpp
     core/preview_service.cpp
     core/object_labels.cpp

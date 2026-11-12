@@ -47,6 +47,13 @@ Window {
     readonly property var workspaceController: workspaceCtl
     readonly property var canvas: spaceHost.canvas
     WorkspaceController { id: workspaceCtl; controller: studio }
+    Connections {
+        target: workspaceCtl
+        function onCurrentChanged() {
+            if (typeof usage !== "undefined" && usage)
+                usage.track("space", workspaceCtl.current)
+        }
+    }
     Binding {
         target: workspaceCtl
         property: "segmentationDirty"

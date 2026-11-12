@@ -40,6 +40,7 @@
 #include "studio_controller.hpp"
 #include "thread_controller.hpp"
 #include "tool_controller.hpp"
+#include "usage_controller.hpp"
 #include "vector_controller.hpp"
 #include "vector_space_controller.hpp"
 #include "view_controller.hpp"
@@ -116,6 +117,13 @@ int main(int argc, char** argv) {
                          QStandardPaths::writableLocation(QStandardPaths::AppDataLocation));
     InspectorController inspector(controller);
     ToolController tools(controller);
+    // Journal d'usage local (docs/source/usage-log.md) : jamais envoyé, désactivable.
+    UsageLog usageLog(UsageController::defaultOptions(QCoreApplication::applicationVersion()));
+    UsageController usage(usageLog);
+    usage.record(QStringLiteral("session"), QStringLiteral("start"));
+    QObject::connect(&app, &QCoreApplication::aboutToQuit, &usage,
+                     [&usage] { usage.record(QStringLiteral("session"), QStringLiteral("end")); });
+    usage.observe(actions, tools);
     VectorController vectors(controller);
     const std::filesystem::path configDir(
         QStandardPaths::writableLocation(QStandardPaths::AppDataLocation).toStdWString());
@@ -148,6 +156,7 @@ int main(int argc, char** argv) {
     engine.rootContext()->setContextProperty(QStringLiteral("satin"), &satin);
     engine.rootContext()->setContextProperty(QStringLiteral("fade"), &fade);
     engine.rootContext()->setContextProperty(QStringLiteral("prefs"), &prefs);
+    engine.rootContext()->setContextProperty(QStringLiteral("usage"), &usage);
     engine.rootContext()->setContextProperty(QStringLiteral("help"), &help);
     engine.rootContext()->setContextProperty(QStringLiteral("companion"), &companion);
     engine.rootContext()->setContextProperty(QStringLiteral("pointEdit"), &pointEdit);
