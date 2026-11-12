@@ -236,7 +236,8 @@ TEST_CASE("fade textures roundtrip and legacy files retain the regular method", 
     CHECK_FALSE(oldGradient.contains("textureSeed"));
 
     for (const auto method : {document::DensityTexture::Feathered,
-                              document::DensityTexture::Stippled}) {
+                              document::DensityTexture::Stippled,
+                              document::DensityTexture::LongShort}) {
         auto& gradient =
             std::get<document::DirectionalFillParams>(project.embroidery_objects[1].params)
                 .density_gradient;
