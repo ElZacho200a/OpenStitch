@@ -13,7 +13,22 @@ Item {
     // Absent in hosts that do not provide it (the shell tests of the other families).
     readonly property var ctl: typeof inspector !== "undefined" ? inspector : null
     property var layoutModel: []
+    // Folded sections by title; kept here so the state survives selection changes.
+    property var collapsedSections: ({})
+    readonly property bool searching: ctl !== null && ctl.query.trim().length > 0
     readonly property bool active: ctl !== null && ctl.count > 0
+
+    function setAllCollapsed(value) {
+        const next = {};
+        for (let i = 0; i < layoutModel.length; ++i)
+            next[layoutModel[i].title] = value;
+        collapsedSections = next;
+    }
+    function toggleSection(title) {
+        const next = Object.assign({}, collapsedSections);
+        next[title] = !next[title];
+        collapsedSections = next;
+    }
 
     function refreshLayout() {
         if (ctl === null)
@@ -222,6 +237,25 @@ Item {
                 Accessible.name: text
             }
 
+            RowLayout {
+                Layout.fillWidth: true
+                visible: root.layoutModel.length > 1
+                spacing: 6
+                StudioButton {
+                    objectName: "collapseAllSections"
+                    text: qsTr("Tout replier")
+                    tooltip: qsTr("Replier toutes les sections de réglages")
+                    onClicked: root.setAllCollapsed(true)
+                }
+                StudioButton {
+                    objectName: "expandAllSections"
+                    text: qsTr("Tout déplier")
+                    tooltip: qsTr("Déplier toutes les sections de réglages")
+                    onClicked: root.setAllCollapsed(false)
+                }
+                Item { Layout.fillWidth: true }
+            }
+
             Repeater {
                 model: root.layoutModel
                 delegate: ParamSection {
@@ -230,6 +264,9 @@ Item {
                     ctl: root.ctl
                     title: modelData.title
                     keys: modelData.keys
+                    // A search always shows its matches.
+                    collapsed: !root.searching && !!root.collapsedSections[modelData.title]
+                    onToggleRequested: root.toggleSection(modelData.title)
                 }
             }
 
