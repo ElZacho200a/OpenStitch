@@ -109,6 +109,16 @@ enum class DensityCurve : std::uint8_t {
     EaseOut = 4, // départ rapide, arrivée lente
 };
 
+// Une texture modifie la position de la transition sans déplacer les points
+// à chaque interaction souris. Les deux fils utilisent le même champ spatial
+// déterministe, ce qui préserve leur complémentarité de densité.
+// None garde EXACTEMENT le comportement des anciens .osp.
+enum class DensityTexture : std::uint8_t {
+    None = 0,
+    Feathered = 1, // frontière lissée et irrégulière
+    Stippled = 2,  // tramage spatial à petites cellules
+};
+
 // Dégradé de densité d'un remplissage directionnel : l'écart entre lignes de
 // couture varie le long de l'axe `from` → `to` (repère du modèle,
 // comme les guides), de `spacing_from` à `spacing_to`, et reste constant de
@@ -123,6 +133,11 @@ struct DensityGradient {
     // linéaire de son inverse (densité), pour des rampes de couleurs complémentaires.
     bool interpolate_density{false};
     DensityCurve curve{DensityCurve::Linear};
+    DensityTexture texture{DensityTexture::None};
+    // [0, 1], bornée à la lecture et au calcul ; mêmes paramètres sur les
+    // deux couches pour obtenir un fondu complémentaire.
+    double texture_strength{0.35};
+    std::uint32_t texture_seed{1};
 
     bool operator==(const DensityGradient&) const = default;
 };
