@@ -77,6 +77,14 @@ QString FadeController::objectId() const {
     return id_ == 0 ? QString() : QString::number(id_);
 }
 
+bool FadeController::satinTarget() const {
+    if (id_ == 0) {
+        return false;
+    }
+    const auto* layer = studio_.session().project().findEmbroidery(ObjectId{id_});
+    return layer != nullptr && layer->is_satin();
+}
+
 QColor FadeController::foreground() const {
     if (multiSettings_ && !multiSettings_->colors.empty()) {
         return colour(multiSettings_->colors.back());
@@ -195,6 +203,9 @@ bool FadeController::createWithTexture(const QColor& foreground, bool complement
 }
 
 bool FadeController::setTexture(int texture) {
+    if (satinTarget()) {
+        return refuse(QStringLiteral("Le satin utilise la répartition de traversées, sans tramage."));
+    }
     if (id_ == 0 || !hasFade() || texture < 0 || texture > 3) {
         return refuse(QStringLiteral("Technique de fondu inconnue ou aucune sélection."));
     }
@@ -214,6 +225,9 @@ bool FadeController::setTexture(int texture) {
 }
 
 bool FadeController::setGeometry(int geometry) {
+    if (satinTarget()) {
+        return refuse(QStringLiteral("Le fondu satin suit ses rails de couture."));
+    }
     if (id_ == 0 || !hasFade() || geometry < 0 || geometry > 2) {
         return refuse(QStringLiteral("Géométrie inconnue ou aucun fondu."));
     }
@@ -358,6 +372,9 @@ bool FadeController::reverse() {
 }
 
 bool FadeController::setCurve(int curve) {
+    if (satinTarget()) {
+        return refuse(QStringLiteral("Le fondu satin suit les traversées des rails."));
+    }
     if (id_ == 0 || curve < 0 || curve > static_cast<int>(FadeCurve::EaseOut)) {
         return refuse(QStringLiteral("Courbe inconnue ou aucun fondu."));
     }
