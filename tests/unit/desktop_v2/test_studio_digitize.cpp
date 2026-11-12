@@ -102,6 +102,7 @@ private slots:
     void pointEditPersistsInOsp();
     void fadeJourney();
     void fadeMatchesTheService();
+    void multicolorFadeJourney();
     void satinColumnJourney();
     void directionGuidesJourney();
     void autoSatinThroughTheActionPalette();
@@ -348,6 +349,50 @@ void StudioDigitizeTest::fadeMatchesTheService() {
     viaService.addRect();
     QVERIFY(createFade(viaService.session, viaService.id, FadeSettings{{200, 30, 30}, true}).ok);
     QVERIFY(sequenceOf(viaController.session).commands == sequenceOf(viaService.session).commands);
+}
+
+void StudioDigitizeTest::multicolorFadeJourney() {
+    Rig rig;
+    rig.addRect();
+    rig.select(rig.id);
+    QVERIFY(rig.fade.canCreate());
+    const auto original = sequenceOf(rig.session);
+    const auto depth = rig.steps();
+    const QVariantList colors{QStringLiteral("#142350"), QStringLiteral("#355c93"),
+                              QStringLiteral("#739cca"), QStringLiteral("#b6d5e4")};
+    QVERIFY(rig.fade.createMulticolor(colors, true, 1, 0));
+    QTRY_VERIFY(rig.fade.multiFade());
+    QCOMPARE(rig.fade.colors().size(), 4);
+    QCOMPARE(rig.session.project().embroidery_objects.size(), std::size_t{4});
+    QCOMPARE(rig.steps(), depth + 1);
+    QVERIFY(sequenceOf(rig.session).commands != original.commands);
+
+    // Déplacer la géométrie est atomique et réutilise les mêmes 4 couches.
+    QVERIFY(rig.fade.setGeometry(1)); // radial
+    QTRY_COMPARE(rig.fade.geometry(), 1);
+    QVERIFY(rig.fade.setTexture(3)); // passé empiétant
+    QTRY_COMPARE(rig.fade.texture(), 3);
+    QVERIFY(rig.fade.editMulticolor(colors, true, 3, 1));
+    QVERIFY(!rig.fade.editMulticolor({QStringLiteral("#abcdef")}, true, 3, 1));
+    const auto beforeNoop = rig.steps();
+    QVERIFY(rig.fade.setTexture(3));
+    QCOMPARE(rig.steps(), beforeNoop);
+
+    QVariantList smaller = colors;
+    smaller.removeLast();
+    QVERIFY(rig.fade.editMulticolor(smaller, true, 3, 1));
+    QTRY_COMPARE(rig.fade.colors().size(), 3);
+    QCOMPARE(rig.session.project().embroidery_objects.size(), std::size_t{3});
+
+    QVERIFY(rig.fade.remove());
+    QTRY_VERIFY(!rig.fade.hasFade());
+    QCOMPARE(rig.session.project().embroidery_objects.size(), std::size_t{1});
+
+    while (rig.steps() > depth) {
+        QVERIFY(rig.session.undo());
+    }
+    QCOMPARE(rig.session.project().embroidery_objects.size(), std::size_t{1});
+    QVERIFY(sequenceOf(rig.session).commands == original.commands);
 }
 
 void StudioDigitizeTest::satinColumnJourney() {
