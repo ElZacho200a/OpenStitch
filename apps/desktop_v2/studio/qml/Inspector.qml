@@ -12,6 +12,7 @@ Item {
     objectName: "inspector"
     // Absent in hosts that do not provide it (the shell tests of the other families).
     readonly property var ctl: typeof inspector !== "undefined" ? inspector : null
+    readonly property var fadeCtl: typeof fade !== "undefined" ? fade : null
     property var layoutModel: []
     // Folded sections by title; kept here so the state survives selection changes.
     property var collapsedSections: ({})
@@ -177,6 +178,31 @@ Item {
                 objectName: "inspectorColourDialog"
                 title: qsTr("Couleur de la sélection")
                 onAccepted: root.ctl.setColour(selectedColor.toString())
+            }
+
+            // Le fondu de FILS est une propriété de l'objet logique, pas un
+            // type de point ni un "dégradé" de densité directionnelle.
+            // Même éditeur que dans le tiroir Points, sans nested scrolling.
+            FadeProperties {
+                id: fadeInspector
+                objectName: "inspectorFadeSection"
+                controller: root.fadeCtl
+                prefix: "inspectorFade"
+                embedded: true
+                Layout.fillWidth: true
+                Layout.preferredHeight: implicitHeight
+                visible: root.fadeCtl !== null && root.ctl !== null && root.ctl.count === 1
+                         && (root.fadeCtl.hasFade || root.fadeCtl.canCreate)
+            }
+            Text {
+                objectName: "inspectorFadeDistinction"
+                Layout.fillWidth: true
+                visible: fadeInspector.visible
+                text: qsTr("Les paramètres de densité et d'orientation des points restent dans les réglages du remplissage ci-dessous.")
+                color: Theme.faint
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.captionSize
+                wrapMode: Text.WordWrap
             }
 
             StudioSwitch {
