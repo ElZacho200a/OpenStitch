@@ -21,6 +21,19 @@ Item {
                                           && colorField.text.trim().toLowerCase() !== controller.background.toString().toLowerCase()
     property bool advancedOpen: false
     property int selectedTexture: 0
+    property int selectedGeometry: 0
+    property var draftColors: []
+    readonly property bool multiColors: draftColors.length > 2 || (ready && controller.multiFade)
+    readonly property bool paletteValid: draftColors.length >= 2 && draftColors.length <= 8
+        && draftColors.every(function(value, i) {
+            return /^#[0-9a-fA-F]{6}$/.test(value)
+                && (i === 0 || value.toLowerCase() !== draftColors[i - 1].toLowerCase())
+        })
+    readonly property var geometries: [
+        { id: 0, label: qsTr("Linéaire") },
+        { id: 1, label: qsTr("Radial") },
+        { id: 2, label: qsTr("Courbe") }
+    ]
     readonly property var textures: [
         { id: 0, label: qsTr("Lisse") },
         { id: 1, label: qsTr("Bords irréguliers") },
@@ -28,6 +41,30 @@ Item {
     ]
     implicitHeight: fields.implicitHeight + 22
 
+    function updateDraftColor(index, value) {
+        const next = draftColors.slice()
+        if (index < 0 || index >= next.length)
+            return
+        next[index] = value.trim()
+        draftColors = next
+    }
+    function addDraftColor() {
+        if (draftColors.length >= 8)
+            return
+        const next = draftColors.slice()
+        if (next.length === 2)
+            next[1] = colorField.text.trim()
+        const last = next[next.length - 1].toLowerCase()
+        next.push(last === "#6b9bd1" ? "#c9816c" : "#6b9bd1")
+        draftColors = next
+    }
+    function removeDraftColor() {
+        if (draftColors.length <= 2)
+            return
+        const next = draftColors.slice()
+        next.pop()
+        draftColors = next
+    }
     function numberFromInput(value) {
         const normalized = value.trim().replace(",", ".")
         if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(normalized))
@@ -52,11 +89,18 @@ Item {
             colorField.text = controller.foreground.toString()
             complementary.checked = controller.complementary
             selectedTexture = controller.texture
+            selectedGeometry = controller.geometry
+            draftColors = controller.colors.slice(0)
         } else if (!colorValid || colorField.text.trim().toLowerCase() === controller.background.toString().toLowerCase()) {
             colorField.text = "#c81e1e"
             selectedTexture = 0
             if (colorField.text === controller.background.toString().toLowerCase())
                 colorField.text = "#2468a0"
+        }
+        if (!hasFade) {
+            selectedGeometry = 0
+            const swatches = controller.colors
+            draftColors = swatches.length >= 2 ? swatches.slice(0) : []
         }
         refreshHandle()
     }
@@ -69,9 +113,16 @@ Item {
 
     ColorDialog {
         id: colorDialog
+        property int colorIndex: -1
         objectName: root.prefix + "ColorDialog"
         title: qsTr("Choisir le fil du fondu")
-        onAccepted: colorField.text = selectedColor.toString()
+        onAccepted: {
+            if (colorIndex >= 0)
+                root.updateDraftColor(colorIndex, selectedColor.toString())
+            else
+                colorField.text = selectedColor.toString()
+            colorIndex = -1
+        }
     }
 
     Flickable {
@@ -144,6 +195,7 @@ Item {
                     text: qsTr("Choisir…")
                     tooltip: qsTr("Choisir la couleur du second fil")
                     onClicked: {
+                        colorDialog.colorIndex = -1
                         colorDialog.selectedColor = root.colorValid ? colorField.text.trim() : "#c81e1e"
                         colorDialog.open()
                     }
@@ -197,10 +249,92 @@ Item {
                 font.pixelSize: Theme.smallSize
             }
 
+            SectionLabel { text: qsTr("CAMAÏEU · 2 À 8 FILS") }
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("Chaque couleur correspond à une vraie couche de couture. "
+                           + "Les codes RGB sont des couleurs libres, pas des références de fil.")
+                color: Theme.faint
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.captionSize
+                wrapMode: Text.WordWrap
+            }
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 5
+                visible: root.multiColors
+                Repeater {
+                    model: root.draftColors.length
+                    delegate: RowLayout {
+                        required property int index
+                        Layout.fillWidth: true
+                        spacing: 5
+                        Text {
+                            text: qsTr("Fil %1").arg(index + 1)
+                            color: Theme.foreground
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.smallSize
+                        }
+                        Rectangle {
+                            Layout.preferredWidth: 22
+                            Layout.preferredHeight: 22
+                            radius: 3
+                            color: /^#[0-9a-fA-F]{6}$/.test(root.draftColors[index])
+                                   ? root.draftColors[index] : Theme.raised
+                            border.color: Theme.outline
+                        }
+                        StudioTextField {
+                            objectName: root.prefix + "Color" + index
+                            Layout.fillWidth: true
+                            text: root.draftColors[index]
+                            placeholderText: "#rrggbb"
+                            invalid: !/^#[0-9a-fA-F]{6}$/.test(text)
+                            onEditingFinished: root.updateDraftColor(index, text)
+                        }
+                        StudioButton {
+                            objectName: root.prefix + "Pick" + index
+                            text: qsTr("…")
+                            tooltip: qsTr("Choisir la couleur du fil %1").arg(index + 1)
+                            onClicked: {
+                                colorDialog.colorIndex = index
+                                colorDialog.selectedColor = root.draftColors[index]
+                                colorDialog.open()
+                            }
+                        }
+                    }
+                }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 5
+                StudioButton {
+                    objectName: root.prefix + "AddColor"
+                    text: qsTr("+ Ajouter un fil")
+                    Layout.fillWidth: true
+                    enabled: root.draftColors.length < 8 && root.paletteValid
+                    onClicked: root.addDraftColor()
+                }
+                StudioButton {
+                    objectName: root.prefix + "RemoveColor"
+                    text: qsTr("−")
+                    tooltip: qsTr("Retirer le dernier fil")
+                    enabled: root.draftColors.length > 2
+                    onClicked: root.removeDraftColor()
+                }
+            }
+            Text {
+                visible: root.multiColors && !root.paletteValid
+                Layout.fillWidth: true
+                text: qsTr("Chaque fil doit avoir un code #rrggbb, différent du précédent.")
+                color: Theme.warning
+                wrapMode: Text.WordWrap
+                font.pixelSize: Theme.smallSize
+            }
+
             SectionLabel { text: qsTr("TECHNIQUE DE FONDU") }
             Text {
                 Layout.fillWidth: true
-                text: qsTr("Variation de densité entre deux fils. À distinguer du dégradé de densité d'un seul remplissage.")
+                text: qsTr("Mélange optique entre fils distincts, différent du dégradé de densité d'un remplissage monochrome.")
                 color: Theme.faint
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.smallSize
@@ -245,6 +379,33 @@ Item {
                 font.pixelSize: Theme.captionSize
                 wrapMode: Text.WordWrap
             }
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("Géométrie de la transition")
+                color: Theme.foreground
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.smallSize
+            }
+            Flow {
+                Layout.fillWidth: true
+                spacing: 4
+                Repeater {
+                    model: root.geometries
+                    delegate: StudioButton {
+                        required property var modelData
+                        objectName: root.prefix + "Geometry" + modelData.id
+                        text: modelData.label
+                        checkable: true
+                        checked: root.selectedGeometry === modelData.id
+                        enabled: root.ready && (root.hasFade || root.canCreate)
+                        onClicked: {
+                            root.selectedGeometry = modelData.id
+                            if (root.hasFade)
+                                root.controller.setGeometry(modelData.id)
+                        }
+                    }
+                }
+            }
             StudioCheckBox {
                 id: complementary
                 objectName: root.prefix + "Complementary"
@@ -270,20 +431,35 @@ Item {
                     text: qsTr("Créer le fondu")
                     emphasized: true
                     visible: !root.hasFade
-                    enabled: root.canCreate && root.distinctColor
+                    enabled: root.canCreate && (root.multiColors ? root.paletteValid
+                                                                  : root.distinctColor)
                     Layout.fillWidth: true
-                    onClicked: root.controller.createWithTexture(
-                                   colorField.text.trim(), complementary.checked,
-                                   root.selectedTexture)
+                    onClicked: {
+                        if (root.multiColors || root.selectedGeometry !== 0)
+                            root.controller.createMulticolor(root.draftColors,
+                                complementary.checked, root.selectedTexture,
+                                root.selectedGeometry)
+                        else
+                            root.controller.createWithTexture(colorField.text.trim(),
+                                complementary.checked, root.selectedTexture)
+                    }
                 }
                 StudioButton {
                     objectName: root.prefix + "Edit"
                     text: qsTr("Appliquer")
                     emphasized: true
                     visible: root.hasFade
-                    enabled: root.hasFade && root.distinctColor
+                    enabled: root.hasFade && (root.multiColors ? root.paletteValid
+                                                               : root.distinctColor)
                     Layout.fillWidth: true
-                    onClicked: root.controller.edit(colorField.text.trim(), complementary.checked)
+                    onClicked: {
+                        if (root.multiColors)
+                            root.controller.editMulticolor(root.draftColors,
+                                complementary.checked, root.selectedTexture,
+                                root.selectedGeometry)
+                        else
+                            root.controller.edit(colorField.text.trim(), complementary.checked)
+                    }
                 }
                 StudioButton {
                     objectName: root.prefix + "Remove"
@@ -333,7 +509,8 @@ Item {
                 }
                 ColumnLayout {
                     Layout.fillWidth: true
-                    visible: root.advancedOpen
+                    visible: root.advancedOpen && !root.multiColors
+                             && root.selectedGeometry === 0
                     Text {
                         text: qsTr("Modifier l'axe dans le canevas ou saisir des positions en mm.")
                         color: Theme.faint
