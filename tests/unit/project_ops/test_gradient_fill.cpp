@@ -474,10 +474,8 @@ TEST_CASE("multicolor: legacy two-color blend upgrades without losing undo",
 
 TEST_CASE("multicolor directional: no long stitched bridges across inactive color zones",
           "[project_ops][gradient][multicolor][routing]") {
-    for (const auto texture : {document::DensityTexture::None,
-                               document::DensityTexture::Feathered,
-                               document::DensityTexture::Stippled,
-                               document::DensityTexture::LongShort}) {
+    for (int mode = 0; mode < 4; ++mode) {
+        const auto texture = static_cast<document::DensityTexture>(mode);
         auto f = rectangle_fill();
         commands::UndoStack stack;
         const auto initial = project_ops::default_gradient_fill(f.project, f.fill);
@@ -485,10 +483,13 @@ TEST_CASE("multicolor directional: no long stitched bridges across inactive colo
         project_ops::MultiGradientFillSpec spec;
         spec.gradient = initial->gradient;
         spec.gradient.texture = texture;
-        spec.colors = {{24, 42, 99}, {40, 83, 141}, {76, 122, 179},
-                       {125, 171, 205}, {183, 216, 229}};
-        auto command =
-            project_ops::make_create_multicolor_gradient_fill_command(f.project, f.fill, spec);
+        spec.colors.push_back({24, 42, 99});
+        spec.colors.push_back({40, 83, 141});
+        spec.colors.push_back({76, 122, 179});
+        spec.colors.push_back({125, 171, 205});
+        spec.colors.push_back({183, 216, 229});
+        using project_ops::make_create_multicolor_gradient_fill_command;
+        auto command = make_create_multicolor_gradient_fill_command(f.project, f.fill, spec);
         REQUIRE(command);
         stack.execute(std::move(*command), f.project);
         const auto result = stitch_generation::effective_sequence(f.project);
@@ -502,10 +503,8 @@ TEST_CASE("multicolor directional: no long stitched bridges across inactive colo
                 continue;
             }
             if (connected) {
-                const double dx = static_cast<double>(command.pos.x.value) -
-                                  static_cast<double>(last.x.value);
-                const double dy = static_cast<double>(command.pos.y.value) -
-                                  static_cast<double>(last.y.value);
+                const double dx = double(command.pos.x.value) - double(last.x.value);
+                const double dy = double(command.pos.y.value) - double(last.y.value);
                 longest = std::max(longest, std::hypot(dx, dy));
             }
             last = command.pos;
