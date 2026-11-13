@@ -22,6 +22,7 @@ Item {
     property bool advancedOpen: false
     property int selectedTexture: 0
     property int selectedGeometry: 0
+    property bool selectedComplementary: true
     property var draftColors: []
     readonly property bool multiColors: draftColors.length > 2 || (ready && controller.multiFade)
     readonly property bool satinTarget: ready && controller.satinTarget
@@ -89,9 +90,11 @@ Item {
             return
         if (hasFade) {
             colorField.text = controller.foreground.toString()
-            complementary.checked = controller.complementary
+            selectedComplementary = controller.complementary
             selectedTexture = controller.texture
             selectedGeometry = controller.geometry
+            if (selectedGeometry !== 1)
+                angleField.text = Number(controller.angle).toFixed(1)
             draftColors = controller.colors.slice(0)
         } else if (!colorValid || colorField.text.trim().toLowerCase() === controller.background.toString().toLowerCase()) {
             colorField.text = "#c81e1e" // lint-ok: couleur de fil saisie par l'utilisateur, pas couleur du thème
@@ -439,15 +442,37 @@ Item {
                     }
                 }
             }
-            StudioCheckBox {
-                id: complementary
-                objectName: root.prefix + "Complementary"
-                text: qsTr("Densités complémentaires")
-                checked: true
+            Text {
+                Layout.fillWidth: true
+                visible: !root.satinTarget
+                text: qsTr("Répartition des couches")
+                color: Theme.foreground
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.smallSize
+            }
+            Flow {
+                Layout.fillWidth: true
+                visible: !root.satinTarget
+                spacing: 4
+                StudioButton {
+                    objectName: root.prefix + "ModeComplementary"
+                    text: qsTr("Densités complémentaires")
+                    checkable: true
+                    checked: root.selectedComplementary
+                    onClicked: root.selectedComplementary = true
+                }
+                StudioButton {
+                    objectName: root.prefix + "ModeOverlay"
+                    text: qsTr("Superposition")
+                    checkable: true
+                    checked: !root.selectedComplementary
+                    onClicked: root.selectedComplementary = false
+                }
             }
             Text {
                 Layout.fillWidth: true
-                text: complementary.checked
+                visible: !root.satinTarget
+                text: root.selectedComplementary
                       ? qsTr("Le premier fil s'espace progressivement pendant que le second se densifie.")
                       : qsTr("Le premier fil reste uniforme et le second vient en superposition.")
                 color: Theme.faint
@@ -473,12 +498,12 @@ Item {
                                 !root.multiColors
                                     ? [root.controller.background.toString(), colorField.text.trim()]
                                     : root.draftColors,
-                                complementary.checked,
+                                root.selectedComplementary,
                                 root.satinTarget ? 0 : root.selectedTexture,
                                 root.satinTarget ? 0 : root.selectedGeometry)
                         else
                             root.controller.createWithTexture(colorField.text.trim(),
-                                complementary.checked, root.selectedTexture)
+                                root.selectedComplementary, root.selectedTexture)
                     }
                 }
                 StudioButton {
@@ -492,10 +517,10 @@ Item {
                     onClicked: {
                         if (root.multiColors)
                             root.controller.editMulticolor(root.draftColors,
-                                complementary.checked, root.selectedTexture,
+                                root.selectedComplementary, root.selectedTexture,
                                 root.selectedGeometry)
                         else
-                            root.controller.edit(colorField.text.trim(), complementary.checked)
+                            root.controller.edit(colorField.text.trim(), root.selectedComplementary)
                     }
                 }
                 StudioButton {
@@ -538,6 +563,55 @@ Item {
                     tooltip: qsTr("Échanger le début et la fin de la transition, en une opération annulable")
                     Layout.fillWidth: true
                     onClicked: root.controller.reverse()
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    visible: !root.satinTarget && root.selectedGeometry !== 1
+                    spacing: 5
+                    SectionLabel { text: qsTr("ORIENTATION DU FONDU") }
+                    Text {
+                        Layout.fillWidth: true
+                        text: qsTr("0° = horizontal, 90° = vertical. L'axe tourne autour du centre sans changer la largeur de transition.")
+                        color: Theme.faint
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.captionSize
+                        wrapMode: Text.WordWrap
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        StudioTextField {
+                            id: angleField
+                            objectName: root.prefix + "Angle"
+                            Layout.fillWidth: true
+                            placeholderText: qsTr("Angle (°)")
+                            invalid: root.hasFade && !isFinite(root.numberFromInput(text))
+                            Accessible.name: qsTr("Angle du fondu en degrés")
+                        }
+                        StudioButton {
+                            objectName: root.prefix + "AngleApply"
+                            text: qsTr("Appliquer")
+                            enabled: root.hasFade && isFinite(root.numberFromInput(angleField.text))
+                            onClicked: root.controller.setAngle(root.numberFromInput(angleField.text))
+                        }
+                    }
+                    Flow {
+                        Layout.fillWidth: true
+                        spacing: 4
+                        Repeater {
+                            model: [0, 45, 90, 135]
+                            delegate: StudioButton {
+                                required property int modelData
+                                objectName: root.prefix + "Angle" + modelData
+                                text: modelData + "°"
+                                quiet: true
+                                onClicked: {
+                                    angleField.text = String(modelData)
+                                    root.controller.setAngle(modelData)
+                                }
+                            }
+                        }
+                    }
                 }
 
                 StudioButton {

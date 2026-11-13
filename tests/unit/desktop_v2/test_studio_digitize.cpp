@@ -705,15 +705,28 @@ void StudioDigitizeTest::mainQmlHostsDigitizePanels() {
     // Fade panel.
     QVERIFY(press(window, "fadePanelButton"));
     QTRY_VERIFY(fade.canCreate());
+    for (int texture = 0; texture < 4; ++texture) {
+        QVERIFY(named(window, qPrintable(QStringLiteral("fadeTexture%1").arg(texture))));
+    }
+    for (int geometry = 0; geometry < 3; ++geometry) {
+        QVERIFY(named(window, qPrintable(QStringLiteral("fadeGeometry%1").arg(geometry))));
+    }
+    QVERIFY(named(window, "fadeModeComplementary"));
+    QVERIFY(named(window, "fadeModeOverlay"));
     QVERIFY(press(window, "fadeCreate"));
     studio.selectObject(QString::number(session.project().embroidery_objects.front().id.value));
     QTRY_VERIFY(fade.hasFade());
+    for (int curve = 0; curve < 5; ++curve) {
+        QVERIFY(named(window, qPrintable(QStringLiteral("fadeCurve%1").arg(curve))));
+    }
     QVERIFY(press(window, "fadeCurve2"));
     QCOMPARE(fade.curve(), 2);
     QVERIFY(press(window, "fadeTexture1"));
     QTRY_COMPARE(fade.texture(), 1);
     QVERIFY(press(window, "fadeTexture2"));
     QTRY_COMPARE(fade.texture(), 2);
+    QVERIFY(press(window, "fadeTexture3"));
+    QTRY_COMPARE(fade.texture(), 3);
     QVERIFY(press(window, "fadeTexture0"));
     QTRY_COMPARE(fade.texture(), 0);
     QVERIFY(press(window, "fadeRemove"));
@@ -723,10 +736,28 @@ void StudioDigitizeTest::mainQmlHostsDigitizePanels() {
     // passer par l'API de service ni éditer un .osp manuellement.
     QVERIFY(press(window, "fadeAddColor"));
     QTRY_VERIFY(named(window, "fadeColor2") != nullptr);
+    QVERIFY(press(window, "fadeModeOverlay"));
+    QVERIFY(press(window, "fadeGeometry2"));
     QVERIFY(press(window, "fadeCreate"));
     QTRY_VERIFY(fade.multiFade());
     QCOMPARE(fade.colors().size(), 3);
+    QVERIFY(!fade.complementary());
+    QCOMPARE(fade.geometry(), 2);
     QCOMPARE(session.project().embroidery_objects.size(), std::size_t{3});
+    auto* fadeAngle = named(window, "fadeAngle");
+    auto* fadeAngleApply = named(window, "fadeAngleApply");
+    QVERIFY(fadeAngle && fadeAngleApply);
+    QTRY_VERIFY(fadeAngle->isVisible());
+    const auto angleDepth = session.undoNames().size();
+    QVERIFY(fadeAngle->setProperty("text", QStringLiteral("90")));
+    QTRY_VERIFY(fadeAngleApply->isEnabled());
+    QVERIFY(press(window, "fadeAngleApply"));
+    QTRY_VERIFY(std::abs(fade.angle() - 90.0) < 0.01);
+    QCOMPARE(session.undoNames().size(), angleDepth + 1);
+    QVERIFY(session.undo());
+    QTRY_VERIFY(std::abs(fade.angle()) < 0.01);
+    QVERIFY(session.redo());
+    QTRY_VERIFY(std::abs(fade.angle() - 90.0) < 0.01);
     QVERIFY(press(window, "fadeAddColor"));
     QTRY_VERIFY(named(window, "fadeColor3") != nullptr);
     QVERIFY(press(window, "fadeEdit"));

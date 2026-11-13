@@ -1,0 +1,2443 @@
+{
+  "pr": 336,
+  "source": "C:\\w\\pr336\\build\\msvc\\apps\\cli\\Release\\openstitch-cli.exe",
+  "sha": null,
+  "sample": "40 x 20 mm rectangle + 30 x 3.2 mm satin rails",
+  "cases": [
+    {
+      "name": "legacy_2_linear",
+      "n": 2,
+      "texture": 0,
+      "geometry": 0,
+      "complementary": true,
+      "satin": false,
+      "legacy": true,
+      "osp_bytes": 962,
+      "inspect_rc": 0,
+      "inspect_ms": 29.9,
+      "counts": {
+        "vector_objects": 1,
+        "embroidery_objects": 2,
+        "text_objects": 0
+      },
+      "sequence": {
+        "commands": 821,
+        "stitches": 815,
+        "jumps": 2,
+        "trims": 2,
+        "color_changes": 1,
+        "thread_m": 2.0709402170545483,
+        "width_mm": 39.306,
+        "height_mm": 19.6
+      },
+      "layers": [
+        {
+          "id": 2,
+          "stitches": 409
+        },
+        {
+          "id": 3,
+          "stitches": 406
+        }
+      ],
+      "render_rc": 0,
+      "render_ms": 34.2,
+      "export_rc": 0,
+      "export_ms": 26.9,
+      "png_bytes": 273223,
+      "dst_quality": {
+        "stitches": 815,
+        "jumps": 11,
+        "color_changes": 1,
+        "diagonals_over_5mm": 0,
+        "diagonal_length_mm": 0.0,
+        "max_needle_step_mm": 4.0
+      },
+      "png_sha256": "dcc76d7a3262f43d499d95846af1f380be115ff0692babbf14d97a84366a0fb9"
+    },
+    {
+      "name": "legacy_2_feathered",
+      "n": 2,
+      "texture": 1,
+      "geometry": 0,
+      "complementary": true,
+      "satin": false,
+      "legacy": true,
+      "osp_bytes": 986,
+      "inspect_rc": 0,
+      "inspect_ms": 29.9,
+      "counts": {
+        "vector_objects": 1,
+        "embroidery_objects": 2,
+        "text_objects": 0
+      },
+      "sequence": {
+        "commands": 836,
+        "stitches": 830,
+        "jumps": 2,
+        "trims": 2,
+        "color_changes": 1,
+        "thread_m": 2.1113939973673617,
+        "width_mm": 39.208,
+        "height_mm": 19.6
+      },
+      "layers": [
+        {
+          "id": 2,
+          "stitches": 416
+        },
+        {
+          "id": 3,
+          "stitches": 414
+        }
+      ],
+      "render_rc": 0,
+      "render_ms": 34.8,
+      "export_rc": 0,
+      "export_ms": 25.9,
+      "png_bytes": 272074,
+      "dst_quality": {
+        "stitches": 830,
+        "jumps": 11,
+        "color_changes": 1,
+        "diagonals_over_5mm": 0,
+        "diagonal_length_mm": 0.0,
+        "max_needle_step_mm": 4.0
+      },
+      "png_sha256": "6b778017fcfaf3612859fad82ff93452ef3de03a8296614fbde5c836f033c452"
+    },
+    {
+      "name": "legacy_2_stippled",
+      "n": 2,
+      "texture": 2,
+      "geometry": 0,
+      "complementary": true,
+      "satin": false,
+      "legacy": true,
+      "osp_bytes": 988,
+      "inspect_rc": 0,
+      "inspect_ms": 143.9,
+      "counts": {
+        "vector_objects": 1,
+        "embroidery_objects": 2,
+        "text_objects": 0
+      },
+      "sequence": {
+        "commands": 825,
+        "stitches": 819,
+        "jumps": 2,
+        "trims": 2,
+        "color_changes": 1,
+        "thread_m": 2.0687447488003103,
+        "width_mm": 39.055,
+        "height_mm": 19.6
+      },
+      "layers": [
+        {
+          "id": 2,
+          "stitches": 409
+        },
+        {
+          "id": 3,
+          "stitches": 410
+        }
+      ],
+      "render_rc": 0,
+      "render_ms": 145.8,
+      "export_rc": 0,
+      "export_ms": 28.2,
+      "png_bytes": 270613,
+      "dst_quality": {
+        "stitches": 819,
+        "jumps": 9,
+        "color_changes": 1,
+        "diagonals_over_5mm": 0,
+        "diagonal_length_mm": 0.0,
+        "max_needle_step_mm": 3.3
+      },
+      "png_sha256": "7d5d78a0f35b1ad2d73caa29b1a5aee637f2111cc4b1273f283d02d732f7c952"
+    },
+    {
+      "name": "multi_2_linear",
+      "n": 2,
+      "texture": 0,
+      "geometry": 0,
+      "complementary": true,
+      "satin": false,
+      "legacy": false,
+      "osp_bytes": 994,
+      "inspect_rc": 0,
+      "inspect_ms": 31.2,
+      "counts": {
+        "vector_objects": 1,
+        "embroidery_objects": 2,
+        "text_objects": 0
+      },
+      "sequence": {
+        "commands": 943,
+        "stitches": 916,
+        "jumps": 14,
+        "trims": 11,
+        "color_changes": 1,
+        "thread_m": 2.26634278823999,
+        "width_mm": 39.6,
+        "height_mm": 19.469
+      },
+      "layers": [
+        {
+          "id": 2,
+          "stitches": 451
+        },
+        {
+          "id": 3,
+          "stitches": 465
+        }
+      ],
+      "render_rc": 0,
+      "render_ms": 140.1,
+      "export_rc": 0,
+      "export_ms": 28.6,
+      "png_bytes": 166596,
+      "dst_quality": {
+        "stitches": 916,
+        "jumps": 48,
+        "color_changes": 1,
+        "diagonals_over_5mm": 0,
+        "diagonal_length_mm": 0.0,
+        "max_needle_step_mm": 3.3
+      },
+      "png_sha256": "94076242db94cc591873ed0f7f20442ef7720828da49f5e8cbe6dddeff168d6d"
+    },
+    {
+      "name": "multi_3_linear",
+      "n": 3,
+      "texture": 0,
+      "geometry": 0,
+      "complementary": true,
+      "satin": false,
+      "legacy": false,
+      "osp_bytes": 1033,
+      "inspect_rc": 0,
+      "inspect_ms": 30.4,
+      "counts": {
+        "vector_objects": 1,
+        "embroidery_objects": 3,
+        "text_objects": 0
+      },
+      "sequence": {
+        "commands": 989,
+        "stitches": 940,
+        "jumps": 28,
+        "trims": 18,
+        "color_changes": 2,
+        "thread_m": 2.166449345134886,
+        "width_mm": 39.6,
+        "height_mm": 19.417
+      },
+      "layers": [
+        {
+          "id": 2,
+          "stitches": 284
+        },
+        {
+          "id": 3,
+          "stitches": 391
+        },
+        {
+          "id": 4,
+          "stitches": 265
+        }
+      ],
+      "render_rc": 0,
+      "render_ms": 138.3,
+      "export_rc": 0,
+      "export_ms": 26.4,
+      "png_bytes": 162197,
+      "dst_quality": {
+        "stitches": 940,
+        "jumps": 83,
+        "color_changes": 2,
+        "diagonals_over_5mm": 0,
+        "diagonal_length_mm": 0.0,
+        "max_needle_step_mm": 3.5
+      },
+      "png_sha256": "b37d02a6a92c3e196f3faf46783fa122ef4cd0437c96295c4f15451e88da6c52"
+    },
+    {
+      "name": "multi_5_linear",
+      "n": 5,
+      "texture": 0,
+      "geometry": 0,
+      "complementary": true,
+      "satin": false,
+      "legacy": false,
+      "osp_bytes": 1108,
+      "inspect_rc": 0,
+      "inspect_ms": 28.9,
+      "counts": {
+        "vector_objects": 1,
+        "embroidery_objects": 5,
+        "text_objects": 0
+      },
+      "sequence": {
+        "commands": 1179,
+        "stitches": 1084,
+        "jumps": 60,
+        "trims": 30,
+        "color_changes": 4,
+        "thread_m": 2.2057887848492803,
+        "width_mm": 39.6,
+        "height_mm": 19.583
+      },
+      "layers": [
+        {
+          "id": 2,
+          "stitches": 190
+        },
+        {
+          "id": 3,
+          "stitches": 255
+        },
+        {
+          "id": 4,
+          "stitches": 206
+        },
+        {
+          "id": 5,
+          "stitches": 248
+        },
+        {
+          "id": 6,
+          "stitches": 185
+        }
+      ],
+      "render_rc": 0,
+      "render_ms": 34.9,
+      "export_rc": 0,
+      "export_ms": 24.9,
+      "png_bytes": 170859,
+      "dst_quality": {
+        "stitches": 1084,
+        "jumps": 156,
+        "color_changes": 4,
+        "diagonals_over_5mm": 0,
+        "diagonal_length_mm": 0.0,
+        "max_needle_step_mm": 3.52
+      },
+      "png_sha256": "9d7ddd91e1e453268c0b0e04ba199d450fc9cddb794e595aac3784e5eb652270"
+    },
+    {
+      "name": "multi_5_feathered",
+      "n": 5,
+      "texture": 1,
+      "geometry": 0,
+      "complementary": true,
+      "satin": false,
+      "legacy": false,
+      "osp_bytes": 1129,
+      "inspect_rc": 0,
+      "inspect_ms": 30.3,
+      "counts": {
+        "vector_objects": 1,
+        "embroidery_objects": 5,
+        "text_objects": 0
+      },
+      "sequence": {
+        "commands": 1299,
+        "stitches": 1183,
+        "jumps": 70,
+        "trims": 41,
+        "color_changes": 4,
+        "thread_m": 2.3216767051858502,
+        "width_mm": 39.6,
+        "height_mm": 19.474
+      },
+      "layers": [
+        {
+          "id": 2,
+          "stitches": 212
+        },
+        {
+          "id": 3,
+          "stitches": 268
+        },
+        {
+          "id": 4,
+          "stitches": 227
+        },
+        {
+          "id": 5,
+          "stitches": 255
+        },
+        {
+          "id": 6,
+          "stitches": 221
+        }
+      ],
+      "render_rc": 0,
+      "render_ms": 33.9,
+      "export_rc": 0,
+      "export_ms": 24.9,
+      "png_bytes": 175913,
+      "dst_quality": {
+        "stitches": 1183,
+        "jumps": 195,
+        "color_changes": 4,
+        "diagonals_over_5mm": 0,
+        "diagonal_length_mm": 0.0,
+        "max_needle_step_mm": 3.7
+      },
+      "png_sha256": "0269db7e95c6b1d8bd787567d1fb7d4089390dbb5761498e43dd3b2886bdfa7b"
+    },
+    {
+      "name": "multi_5_stippled",
+      "n": 5,
+      "texture": 2,
+      "geometry": 0,
+      "complementary": true,
+      "satin": false,
+      "legacy": false,
+      "osp_bytes": 1132,
+      "inspect_rc": 0,
+      "inspect_ms": 29.3,
+      "counts": {
+        "vector_objects": 1,
+        "embroidery_objects": 5,
+        "text_objects": 0
+      },
+      "sequence": {
+        "commands": 1217,
+        "stitches": 1097,
+        "jumps": 79,
+        "trims": 36,
+        "color_changes": 4,
+        "thread_m": 2.189645779585848,
+        "width_mm": 39.6,
+        "height_mm": 19.573
+      },
+      "layers": [
+        {
+          "id": 2,
+          "stitches": 245
+        },
+        {
+          "id": 3,
+          "stitches": 251
+        },
+        {
+          "id": 4,
+          "stitches": 178
+        },
+        {
+          "id": 5,
+          "stitches": 226
+        },
+        {
+          "id": 6,
+          "stitches": 197
+        }
+      ],
+      "render_rc": 0,
+      "render_ms": 32.4,
+      "export_rc": 0,
+      "export_ms": 23.4,
+      "png_bytes": 178470,
+      "dst_quality": {
+        "stitches": 1097,
+        "jumps": 190,
+        "color_changes": 4,
+        "diagonals_over_5mm": 0,
+        "diagonal_length_mm": 0.0,
+        "max_needle_step_mm": 3.5
+      },
+      "png_sha256": "dec0fce00b045bda639df773ca1f1b2304b30afc9daa36772b2e9cdb95090d7b"
+    },
+    {
+      "name": "multi_5_longshort",
+      "n": 5,
+      "texture": 3,
+      "geometry": 0,
+      "complementary": true,
+      "satin": false,
+      "legacy": false,
+      "osp_bytes": 1131,
+      "inspect_rc": 0,
+      "inspect_ms": 27.3,
+      "counts": {
+        "vector_objects": 1,
+        "embroidery_objects": 5,
+        "text_objects": 0
+      },
+      "sequence": {
+        "commands": 1254,
+        "stitches": 1141,
+        "jumps": 70,
+        "trims": 38,
+        "color_changes": 4,
+        "thread_m": 2.306847085582073,
+        "width_mm": 39.6,
+        "height_mm": 19.474
+      },
+      "layers": [
+        {
+          "id": 2,
+          "stitches": 207
+        },
+        {
+          "id": 3,
+          "stitches": 272
+        },
+        {
+          "id": 4,
+          "stitches": 217
+        },
+        {
+          "id": 5,
+          "stitches": 243
+        },
+        {
+          "id": 6,
+          "stitches": 202
+        }
+      ],
+      "render_rc": 0,
+      "render_ms": 33.9,
+      "export_rc": 0,
+      "export_ms": 125.3,
+      "png_bytes": 175287,
+      "dst_quality": {
+        "stitches": 1141,
+        "jumps": 186,
+        "color_changes": 4,
+        "diagonals_over_5mm": 0,
+        "diagonal_length_mm": 0.0,
+        "max_needle_step_mm": 5.6
+      },
+      "png_sha256": "031b300f236dcb6140f79617306af030004cf3cc4bf00eed56957d43609ba531"
+    },
+    {
+      "name": "multi_5_radial",
+      "n": 5,
+      "texture": 0,
+      "geometry": 1,
+      "complementary": true,
+      "satin": false,
+      "legacy": false,
+      "osp_bytes": 1116,
+      "inspect_rc": 0,
+      "inspect_ms": 28.6,
+      "counts": {
+        "vector_objects": 1,
+        "embroidery_objects": 5,
+        "text_objects": 0
+      },
+      "sequence": {
+        "commands": 1565,
+        "stitches": 1424,
+        "jumps": 84,
+        "trims": 52,
+        "color_changes": 4,
+        "thread_m": 2.5010951012066864,
+        "width_mm": 39.6,
+        "height_mm": 19.58
+      },
+      "layers": [
+        {
+          "id": 2,
+          "stitches": 101
+        },
+        {
+          "id": 3,
+          "stitches": 308
+        },
+        {
+          "id": 4,
+          "stitches": 341
+        },
+        {
+          "id": 5,
+          "stitches": 380
+        },
+        {
+          "id": 6,
+          "stitches": 294
+        }
+      ],
+      "render_rc": 0,
+      "render_ms": 33.8,
+      "export_rc": 0,
+      "export_ms": 25.2,
+      "png_bytes": 185092,
+      "dst_quality": {
+        "stitches": 1424,
+        "jumps": 247,
+        "color_changes": 4,
+        "diagonals_over_5mm": 0,
+        "diagonal_length_mm": 0.0,
+        "max_needle_step_mm": 3.5
+      },
+      "png_sha256": "ed6270699f414643d5519a24229ac0c5dd879ed883a68eff9bf8d7da30d8bcce"
+    },
+    {
+      "name": "multi_5_curved",
+      "n": 5,
+      "texture": 0,
+      "geometry": 2,
+      "complementary": true,
+      "satin": false,
+      "legacy": false,
+      "osp_bytes": 1122,
+      "inspect_rc": 0,
+      "inspect_ms": 142.4,
+      "counts": {
+        "vector_objects": 1,
+        "embroidery_objects": 5,
+        "text_objects": 0
+      },
+      "sequence": {
+        "commands": 1240,
+        "stitches": 1139,
+        "jumps": 64,
+        "trims": 32,
+        "color_changes": 4,
+        "thread_m": 2.3185232154452033,
+        "width_mm": 39.6,
+        "height_mm": 19.596
+      },
+      "layers": [
+        {
+          "id": 2,
+          "stitches": 213
+        },
+        {
+          "id": 3,
+          "stitches": 258
+        },
+        {
+          "id": 4,
+          "stitches": 186
+        },
+        {
+          "id": 5,
+          "stitches": 277
+        },
+        {
+          "id": 6,
+          "stitches": 205
+        }
+      ],
+      "render_rc": 0,
+      "render_ms": 34.6,
+      "export_rc": 0,
+      "export_ms": 26.2,
+      "png_bytes": 175756,
+      "dst_quality": {
+        "stitches": 1139,
+        "jumps": 162,
+        "color_changes": 4,
+        "diagonals_over_5mm": 0,
+        "diagonal_length_mm": 0.0,
+        "max_needle_step_mm": 3.54
+      },
+      "png_sha256": "a20b923ee526952cdef3cee8ed5722b4cbe628dc6e6664e7eb234a8b5b112b10"
+    },
+    {
+      "name": "multi_5_overlay",
+      "n": 5,
+      "texture": 0,
+      "geometry": 0,
+      "complementary": false,
+      "satin": false,
+      "legacy": false,
+      "osp_bytes": 1115,
+      "inspect_rc": 0,
+      "inspect_ms": 36.6,
+      "counts": {
+        "vector_objects": 1,
+        "embroidery_objects": 5,
+        "text_objects": 0
+      },
+      "sequence": {
+        "commands": 1166,
+        "stitches": 1092,
+        "jumps": 40,
+        "trims": 29,
+        "color_changes": 4,
+        "thread_m": 2.5629741758000106,
+        "width_mm": 39.6,
+        "height_mm": 19.542
+      },
+      "layers": [
+        {
+          "id": 2,
+          "stitches": 666
+        },
+        {
+          "id": 3,
+          "stitches": 118
+        },
+        {
+          "id": 4,
+          "stitches": 91
+        },
+        {
+          "id": 5,
+          "stitches": 116
+        },
+        {
+          "id": 6,
+          "stitches": 101
+        }
+      ],
+      "render_rc": 0,
+      "render_ms": 42.0,
+      "export_rc": 0,
+      "export_ms": 36.2,
+      "png_bytes": 170771,
+      "dst_quality": {
+        "stitches": 1092,
+        "jumps": 132,
+        "color_changes": 4,
+        "diagonals_over_5mm": 0,
+        "diagonal_length_mm": 0.0,
+        "max_needle_step_mm": 3.4
+      },
+      "png_sha256": "31662ab5b0be4487ae8ac8a318a5c36781ae962ede85b42623e1e4789e05928a"
+    },
+    {
+      "name": "multi_8_linear",
+      "n": 8,
+      "texture": 0,
+      "geometry": 0,
+      "complementary": true,
+      "satin": false,
+      "legacy": false,
+      "osp_bytes": 1228,
+      "inspect_rc": 0,
+      "inspect_ms": 30.7,
+      "counts": {
+        "vector_objects": 1,
+        "embroidery_objects": 8,
+        "text_objects": 0
+      },
+      "sequence": {
+        "commands": 1494,
+        "stitches": 1375,
+        "jumps": 68,
+        "trims": 43,
+        "color_changes": 7,
+        "thread_m": 2.4368651383952025,
+        "width_mm": 39.6,
+        "height_mm": 19.568
+      },
+      "layers": [
+        {
+          "id": 2,
+          "stitches": 152
+        },
+        {
+          "id": 3,
+          "stitches": 180
+        },
+        {
+          "id": 4,
+          "stitches": 172
+        },
+        {
+          "id": 5,
+          "stitches": 148
+        },
+        {
+          "id": 6,
+          "stitches": 153
+        },
+        {
+          "id": 7,
+          "stitches": 160
+        },
+        {
+          "id": 8,
+          "stitches": 210
+        },
+        {
+          "id": 9,
+          "stitches": 200
+        }
+      ],
+      "render_rc": 0,
+      "render_ms": 39.5,
+      "export_rc": 0,
+      "export_ms": 27.3,
+      "png_bytes": 181777,
+      "dst_quality": {
+        "stitches": 1375,
+        "jumps": 200,
+        "color_changes": 7,
+        "diagonals_over_5mm": 0,
+        "diagonal_length_mm": 0.0,
+        "max_needle_step_mm": 3.5
+      },
+      "png_sha256": "8bbb3c055f12185821808f1b7ac970264d99c44fa17546c70acce9aa45f49307"
+    },
+    {
+      "name": "satin_3",
+      "n": 3,
+      "texture": 0,
+      "geometry": 0,
+      "complementary": true,
+      "satin": true,
+      "legacy": false,
+      "osp_bytes": 911,
+      "inspect_rc": 0,
+      "inspect_ms": 25.6,
+      "counts": {
+        "vector_objects": 1,
+        "embroidery_objects": 3,
+        "text_objects": 0
+      },
+      "sequence": {
+        "commands": 126,
+        "stitches": 115,
+        "jumps": 4,
+        "trims": 4,
+        "color_changes": 2,
+        "thread_m": 0.2752541342173697,
+        "width_mm": 30.0,
+        "height_mm": 3.2
+      },
+      "layers": [
+        {
+          "id": 2,
+          "stitches": 49
+        },
+        {
+          "id": 3,
+          "stitches": 44
+        },
+        {
+          "id": 4,
+          "stitches": 22
+        }
+      ],
+      "render_rc": 0,
+      "render_ms": 21.4,
+      "export_rc": 0,
+      "export_ms": 20.6,
+      "png_bytes": 37546,
+      "dst_quality": {
+        "stitches": 115,
+        "jumps": 18,
+        "color_changes": 2,
+        "diagonals_over_5mm": 0,
+        "diagonal_length_mm": 0.0,
+        "max_needle_step_mm": 3.26
+      },
+      "png_sha256": "11bbe4c5b8835a21a665052ca841136a8072602bef9674b1e4ffbe3584d33bec"
+    },
+    {
+      "name": "satin_5",
+      "n": 5,
+      "texture": 0,
+      "geometry": 0,
+      "complementary": true,
+      "satin": true,
+      "legacy": false,
+      "osp_bytes": 966,
+      "inspect_rc": 0,
+      "inspect_ms": 23.0,
+      "counts": {
+        "vector_objects": 1,
+        "embroidery_objects": 5,
+        "text_objects": 0
+      },
+      "sequence": {
+        "commands": 148,
+        "stitches": 131,
+        "jumps": 6,
+        "trims": 6,
+        "color_changes": 4,
+        "thread_m": 0.28799335894286227,
+        "width_mm": 30.0,
+        "height_mm": 3.2
+      },
+      "layers": [
+        {
+          "id": 2,
+          "stitches": 40
+        },
+        {
+          "id": 3,
+          "stitches": 23
+        },
+        {
+          "id": 4,
+          "stitches": 26
+        },
+        {
+          "id": 5,
+          "stitches": 23
+        },
+        {
+          "id": 6,
+          "stitches": 19
+        }
+      ],
+      "render_rc": 0,
+      "render_ms": 22.6,
+      "export_rc": 0,
+      "export_ms": 21.3,
+      "png_bytes": 37499,
+      "dst_quality": {
+        "stitches": 131,
+        "jumps": 26,
+        "color_changes": 4,
+        "diagonals_over_5mm": 0,
+        "diagonal_length_mm": 0.0,
+        "max_needle_step_mm": 3.26
+      },
+      "png_sha256": "e79ae835f6887f1385d150771d85605f27eae4deaa4a1b89232acf764eb04210"
+    },
+    {
+      "name": "satin_8",
+      "n": 8,
+      "texture": 0,
+      "geometry": 0,
+      "complementary": true,
+      "satin": true,
+      "legacy": false,
+      "osp_bytes": 1037,
+      "inspect_rc": 0,
+      "inspect_ms": 25.0,
+      "counts": {
+        "vector_objects": 1,
+        "embroidery_objects": 8,
+        "text_objects": 0
+      },
+      "sequence": {
+        "commands": 181,
+        "stitches": 155,
+        "jumps": 9,
+        "trims": 9,
+        "color_changes": 7,
+        "thread_m": 0.30710700838480726,
+        "width_mm": 30.0,
+        "height_mm": 3.2
+      },
+      "layers": [
+        {
+          "id": 2,
+          "stitches": 37
+        },
+        {
+          "id": 3,
+          "stitches": 17
+        },
+        {
+          "id": 4,
+          "stitches": 17
+        },
+        {
+          "id": 5,
+          "stitches": 20
+        },
+        {
+          "id": 6,
+          "stitches": 17
+        },
+        {
+          "id": 7,
+          "stitches": 17
+        },
+        {
+          "id": 8,
+          "stitches": 17
+        },
+        {
+          "id": 9,
+          "stitches": 13
+        }
+      ],
+      "render_rc": 0,
+      "render_ms": 23.2,
+      "export_rc": 0,
+      "export_ms": 19.9,
+      "png_bytes": 37568,
+      "dst_quality": {
+        "stitches": 155,
+        "jumps": 38,
+        "color_changes": 7,
+        "diagonals_over_5mm": 0,
+        "diagonal_length_mm": 0.0,
+        "max_needle_step_mm": 3.26
+      },
+      "png_sha256": "4753768088260c6bd8289d335e149eb6d7fab7fc0e6c283d77d50a8bc6c7ed3b"
+    }
+  ],
+  "benchmarks": [
+    {
+      "name": "multi_5_linear_x3",
+      "factor": 3,
+      "width_mm": 120,
+      "height_mm": 60,
+      "elapsed_ms": 62.7,
+      "return_code": 0,
+      "dst_quality": {
+        "stitches": 8260,
+        "jumps": 657,
+        "color_changes": 4,
+        "diagonals_over_5mm": 0,
+        "diagonal_length_mm": 0.0,
+        "max_needle_step_mm": 3.5
+      }
+    },
+    {
+      "name": "multi_5_linear_x6",
+      "factor": 6,
+      "width_mm": 240,
+      "height_mm": 120,
+      "elapsed_ms": 169.8,
+      "return_code": 0,
+      "dst_quality": {
+        "stitches": 30454,
+        "jumps": 1458,
+        "color_changes": 4,
+        "diagonals_over_5mm": 0,
+        "diagonal_length_mm": 0.0,
+        "max_needle_step_mm": 3.5
+      }
+    },
+    {
+      "name": "multi_8_linear_x3",
+      "factor": 3,
+      "width_mm": 120,
+      "height_mm": 60,
+      "elapsed_ms": 64.1,
+      "return_code": 0,
+      "dst_quality": {
+        "stitches": 8462,
+        "jumps": 810,
+        "color_changes": 7,
+        "diagonals_over_5mm": 0,
+        "diagonal_length_mm": 0.0,
+        "max_needle_step_mm": 3.5
+      }
+    },
+    {
+      "name": "multi_8_linear_x6",
+      "factor": 6,
+      "width_mm": 240,
+      "height_mm": 120,
+      "elapsed_ms": 156.4,
+      "return_code": 0,
+      "dst_quality": {
+        "stitches": 33844,
+        "jumps": 2857,
+        "color_changes": 7,
+        "diagonals_over_5mm": 0,
+        "diagonal_length_mm": 0.0,
+        "max_needle_step_mm": 3.5
+      }
+    }
+  ],
+  "commands": [
+    {
+      "command": "cli_version",
+      "args": [
+        "--version"
+      ],
+      "rc": 0,
+      "ms": 18.2,
+      "stdout": "0.1.0\n",
+      "stderr": ""
+    },
+    {
+      "command": "new_base",
+      "args": [
+        "project",
+        "new",
+        "C:\\w\\pr336\\qa-gradient-results\\base.osp",
+        "--width-mm",
+        "100",
+        "--height-mm",
+        "70"
+      ],
+      "rc": 0,
+      "ms": 19.9,
+      "stdout": "Projet créé : C:\\w\\pr336\\qa-gradient-results\\base.osp (cadre 100 x 70 mm)\n",
+      "stderr": ""
+    },
+    {
+      "command": "add_shape_and_directional",
+      "args": [
+        "project",
+        "apply",
+        "C:\\w\\pr336\\qa-gradient-results\\base.osp",
+        "C:\\w\\pr336\\qa-gradient-results\\base.json"
+      ],
+      "rc": 0,
+      "ms": 21.5,
+      "stdout": "  [0] add_shape : ok {\"bounds_mm\":{\"max_mm\":[20.0,10.0],\"min_mm\":[-20.0,-10.0]},\"id\":2,\"stitch_type\":\"tatami\",\"vector_id\":1}\n  [1] set_stitch_type : ok {\"changed\":true,\"from\":\"tatami\",\"id\":2,\"removed_sections\":0,\"to\":\"directional\"}\n",
+      "stderr": "Projet écrit : C:\\w\\pr336\\qa-gradient-results\\base.osp\n"
+    },
+    {
+      "command": "legacy_2_linear.inspect",
+      "args": [
+        "project",
+        "inspect",
+        "C:\\w\\pr336\\qa-gradient-results\\legacy_2_linear.osp",
+        "--json"
+      ],
+      "rc": 0,
+      "ms": 29.9,
+      "stdout": "\n          ]\n        ],\n        \"break_lines\": [],\n        \"density_gradient\": {\n          \"from_mm\": [\n            -20.0,\n            0.0\n          ],\n          \"to_mm\": [\n            20.0,\n            0.0\n          ],\n          \"spacing_from_mm\": 0.42,\n          \"spacing_to_mm\": 4.0,\n          \"interpolate_density\": true,\n          \"curve\": \"smooth\"\n        }\n      },\n      \"manual_overrides\": 0,\n      \"color_blend\": {\n        \"partner\": 3,\n        \"foreground\": false\n      },\n      \"region_area_mm2\": 800.0,\n      \"geometry_bounds\": {\n        \"min_mm\": [\n          -20.0,\n          -10.0\n        ],\n        \"max_mm\": [\n          20.0,\n          10.0\n        ],\n        \"width_mm\": 40.0,\n        \"height_mm\": 20.0\n      },\n      \"stitches\": {\n        \"total\": 409,\n        \"top\": 401,\n        \"underlay\": 0,\n        \"jumps\": 1,\n        \"thread_mm\": 1034.128541810068,\n        \"first_command_index\": 0,\n        \"bounds\": {\n          \"min_mm\": [\n            -19.794,\n            -9.8\n          ],\n          \"max_mm\": [\n            17.302,\n            9.8\n          ],\n          \"width_mm\": 37.096,\n          \"height_mm\": 19.6\n        }\n      }\n    },\n    {\n      \"id\": 3,\n      \"name\": \"QA legacy_2_linear : fil 2/2\",\n      \"order\": 1,\n      \"source_vector\": 1,\n      \"type\": \"directional\",\n      \"color\": \"#B7D8E5\",\n      \"thread\": null,\n      \"visible\": true,\n      \"locked\": false,\n      \"intent\": \"forced_user_choice\",\n      \"join\": \"inherit\",\n      \"connector\": \"inherit\",\n      \"params\": {\n        \"row_spacing_mm\": 0.4,\n        \"spacing_regularity\": 0.0,\n        \"stitch_length_mm\": 3.0,\n        \"edge_weight\": 0.0,\n        \"inset_mm\": 0.2,\n        \"stagger\": 3,\n        \"underlay_edge\": false,\n        \"underlay_parallel\": false,\n        \"underlay_inset_mm\": 0.6,\n        \"underlay_spacing_mm\": 2.0,\n        \"hidden_underpath\": false,\n        \"sector_overlap_mm\": 0.25,\n        \"handmade\": false,\n        \"handmade_intensity\": 50,\n        \"seed\": 2,\n        \"underlay_mode\": \"manual\",\n        \"pull_mode\": \"manual\",\n        \"edge_outline\": false,\n        \"guides\": [\n          [\n            [\n              -16.0,\n              0.0\n            ],\n            [\n              16.0,\n              0.0\n            ]\n          ]\n        ],\n        \"break_lines\": [],\n        \"density_gradient\": {\n          \"from_mm\": [\n            -20.0,\n            0.0\n          ],\n          \"to_mm\": [\n            20.0,\n            0.0\n          ],\n          \"spacing_from_mm\": 4.0,\n          \"spacing_to_mm\": 0.42,\n          \"interpolate_density\": true,\n          \"curve\": \"smooth\"\n        }\n      },\n      \"manual_overrides\": 0,\n      \"color_blend\": {\n        \"partner\": 2,\n        \"foreground\": true\n      },\n      \"region_area_mm2\": 800.0,\n      \"geometry_bounds\": {\n        \"min_mm\": [\n          -20.0,\n          -10.0\n        ],\n        \"max_mm\": [\n          20.0,\n          10.0\n        ],\n        \"width_mm\": 40.0,\n        \"height_mm\": 20.0\n      },\n      \"stitches\": {\n        \"total\": 406,\n        \"top\": 398,\n        \"underlay\": 0,\n        \"jumps\": 1,\n        \"thread_mm\": 1036.8116752444796,\n        \"first_command_index\": 411,\n        \"bounds\": {\n          \"min_mm\": [\n            -19.638,\n            -9.8\n          ],\n          \"max_mm\": [\n            19.512,\n            9.8\n          ],\n          \"width_mm\": 39.15,\n          \"height_mm\": 19.6\n        }\n      }\n    }\n  ],\n  \"warnings\": [],\n  \"counts\": {\n    \"vector_objects\": 1,\n    \"embroidery_objects\": 2,\n    \"text_objects\": 0\n  }\n}\n",
+      "stderr": "",
+      "inspection": {
+        "counts": {
+          "vector_objects": 1,
+          "embroidery_objects": 2,
+          "text_objects": 0
+        },
+        "sequence": {
+          "commands": 821,
+          "stitches": 815,
+          "jumps": 2,
+          "trims": 2,
+          "color_changes": 1,
+          "thread_m": 2.0709402170545483,
+          "width_mm": 39.306,
+          "height_mm": 19.6
+        },
+        "layers": [
+          {
+            "id": 2,
+            "stitches": 409
+          },
+          {
+            "id": 3,
+            "stitches": 406
+          }
+        ]
+      }
+    },
+    {
+      "command": "legacy_2_linear.render",
+      "args": [
+        "project",
+        "render",
+        "C:\\w\\pr336\\qa-gradient-results\\legacy_2_linear.osp",
+        "-o",
+        "C:\\w\\pr336\\qa-gradient-results\\legacy_2_linear.png",
+        "--px-per-mm",
+        "10",
+        "--fabric",
+        "#ece7df"
+      ],
+      "rc": 0,
+      "ms": 34.2,
+      "stdout": "Rendu écrit : C:\\w\\pr336\\qa-gradient-results\\legacy_2_linear.png (401 x 204 px, 10.00 px/mm)\n",
+      "stderr": ""
+    },
+    {
+      "command": "legacy_2_linear.export",
+      "args": [
+        "project",
+        "export",
+        "C:\\w\\pr336\\qa-gradient-results\\legacy_2_linear.osp",
+        "-o",
+        "C:\\w\\pr336\\qa-gradient-results\\legacy_2_linear.dst"
+      ],
+      "rc": 0,
+      "ms": 26.9,
+      "stdout": "Exporté (dst) : C:\\w\\pr336\\qa-gradient-results\\legacy_2_linear.dst\n",
+      "stderr": ""
+    },
+    {
+      "command": "legacy_2_feathered.inspect",
+      "args": [
+        "project",
+        "inspect",
+        "C:\\w\\pr336\\qa-gradient-results\\legacy_2_feathered.osp",
+        "--json"
+      ],
+      "rc": 0,
+      "ms": 29.9,
+      "stdout": "         ]\n        ],\n        \"break_lines\": [],\n        \"density_gradient\": {\n          \"from_mm\": [\n            -20.0,\n            0.0\n          ],\n          \"to_mm\": [\n            20.0,\n            0.0\n          ],\n          \"spacing_from_mm\": 0.42,\n          \"spacing_to_mm\": 4.0,\n          \"interpolate_density\": true,\n          \"curve\": \"smooth\"\n        }\n      },\n      \"manual_overrides\": 0,\n      \"color_blend\": {\n        \"partner\": 3,\n        \"foreground\": false\n      },\n      \"region_area_mm2\": 800.0,\n      \"geometry_bounds\": {\n        \"min_mm\": [\n          -20.0,\n          -10.0\n        ],\n        \"max_mm\": [\n          20.0,\n          10.0\n        ],\n        \"width_mm\": 40.0,\n        \"height_mm\": 20.0\n      },\n      \"stitches\": {\n        \"total\": 416,\n        \"top\": 408,\n        \"underlay\": 0,\n        \"jumps\": 1,\n        \"thread_mm\": 1055.4413135113266,\n        \"first_command_index\": 0,\n        \"bounds\": {\n          \"min_mm\": [\n            -19.57,\n            -9.8\n          ],\n          \"max_mm\": [\n            19.57,\n            9.8\n          ],\n          \"width_mm\": 39.14,\n          \"height_mm\": 19.6\n        }\n      }\n    },\n    {\n      \"id\": 3,\n      \"name\": \"QA legacy_2_feathered : fil 2/2\",\n      \"order\": 1,\n      \"source_vector\": 1,\n      \"type\": \"directional\",\n      \"color\": \"#B7D8E5\",\n      \"thread\": null,\n      \"visible\": true,\n      \"locked\": false,\n      \"intent\": \"forced_user_choice\",\n      \"join\": \"inherit\",\n      \"connector\": \"inherit\",\n      \"params\": {\n        \"row_spacing_mm\": 0.4,\n        \"spacing_regularity\": 0.0,\n        \"stitch_length_mm\": 3.0,\n        \"edge_weight\": 0.0,\n        \"inset_mm\": 0.2,\n        \"stagger\": 3,\n        \"underlay_edge\": false,\n        \"underlay_parallel\": false,\n        \"underlay_inset_mm\": 0.6,\n        \"underlay_spacing_mm\": 2.0,\n        \"hidden_underpath\": false,\n        \"sector_overlap_mm\": 0.25,\n        \"handmade\": false,\n        \"handmade_intensity\": 50,\n        \"seed\": 2,\n        \"underlay_mode\": \"manual\",\n        \"pull_mode\": \"manual\",\n        \"edge_outline\": false,\n        \"guides\": [\n          [\n            [\n              -16.0,\n              0.0\n            ],\n            [\n              16.0,\n              0.0\n            ]\n          ]\n        ],\n        \"break_lines\": [],\n        \"density_gradient\": {\n          \"from_mm\": [\n            -20.0,\n            0.0\n          ],\n          \"to_mm\": [\n            20.0,\n            0.0\n          ],\n          \"spacing_from_mm\": 4.0,\n          \"spacing_to_mm\": 0.42,\n          \"interpolate_density\": true,\n          \"curve\": \"smooth\"\n        }\n      },\n      \"manual_overrides\": 0,\n      \"color_blend\": {\n        \"partner\": 2,\n        \"foreground\": true\n      },\n      \"region_area_mm2\": 800.0,\n      \"geometry_bounds\": {\n        \"min_mm\": [\n          -20.0,\n          -10.0\n        ],\n        \"max_mm\": [\n          20.0,\n          10.0\n        ],\n        \"width_mm\": 40.0,\n        \"height_mm\": 20.0\n      },\n      \"stitches\": {\n        \"total\": 414,\n        \"top\": 406,\n        \"underlay\": 0,\n        \"jumps\": 1,\n        \"thread_mm\": 1055.9526838560357,\n        \"first_command_index\": 418,\n        \"bounds\": {\n          \"min_mm\": [\n            -19.638,\n            -9.8\n          ],\n          \"max_mm\": [\n            19.407,\n            9.8\n          ],\n          \"width_mm\": 39.045,\n          \"height_mm\": 19.6\n        }\n      }\n    }\n  ],\n  \"warnings\": [],\n  \"counts\": {\n    \"vector_objects\": 1,\n    \"embroidery_objects\": 2,\n    \"text_objects\": 0\n  }\n}\n",
+      "stderr": "",
+      "inspection": {
+        "counts": {
+          "vector_objects": 1,
+          "embroidery_objects": 2,
+          "text_objects": 0
+        },
+        "sequence": {
+          "commands": 836,
+          "stitches": 830,
+          "jumps": 2,
+          "trims": 2,
+          "color_changes": 1,
+          "thread_m": 2.1113939973673617,
+          "width_mm": 39.208,
+          "height_mm": 19.6
+        },
+        "layers": [
+          {
+            "id": 2,
+            "stitches": 416
+          },
+          {
+            "id": 3,
+            "stitches": 414
+          }
+        ]
+      }
+    },
+    {
+      "command": "legacy_2_feathered.render",
+      "args": [
+        "project",
+        "render",
+        "C:\\w\\pr336\\qa-gradient-results\\legacy_2_feathered.osp",
+        "-o",
+        "C:\\w\\pr336\\qa-gradient-results\\legacy_2_feathered.png",
+        "--px-per-mm",
+        "10",
+        "--fabric",
+        "#ece7df"
+      ],
+      "rc": 0,
+      "ms": 34.8,
+      "stdout": "Rendu écrit : C:\\w\\pr336\\qa-gradient-results\\legacy_2_feathered.png (400 x 204 px, 10.00 px/mm)\n",
+      "stderr": ""
+    },
+    {
+      "command": "legacy_2_feathered.export",
+      "args": [
+        "project",
+        "export",
+        "C:\\w\\pr336\\qa-gradient-results\\legacy_2_feathered.osp",
+        "-o",
+        "C:\\w\\pr336\\qa-gradient-results\\legacy_2_feathered.dst"
+      ],
+      "rc": 0,
+      "ms": 25.9,
+      "stdout": "Exporté (dst) : C:\\w\\pr336\\qa-gradient-results\\legacy_2_feathered.dst\n",
+      "stderr": ""
+    },
+    {
+      "command": "legacy_2_stippled.inspect",
+      "args": [
+        "project",
+        "inspect",
+        "C:\\w\\pr336\\qa-gradient-results\\legacy_2_stippled.osp",
+        "--json"
+      ],
+      "rc": 0,
+      "ms": 143.9,
+      "stdout": "\n          ]\n        ],\n        \"break_lines\": [],\n        \"density_gradient\": {\n          \"from_mm\": [\n            -20.0,\n            0.0\n          ],\n          \"to_mm\": [\n            20.0,\n            0.0\n          ],\n          \"spacing_from_mm\": 0.42,\n          \"spacing_to_mm\": 4.0,\n          \"interpolate_density\": true,\n          \"curve\": \"smooth\"\n        }\n      },\n      \"manual_overrides\": 0,\n      \"color_blend\": {\n        \"partner\": 3,\n        \"foreground\": false\n      },\n      \"region_area_mm2\": 800.0,\n      \"geometry_bounds\": {\n        \"min_mm\": [\n          -20.0,\n          -10.0\n        ],\n        \"max_mm\": [\n          20.0,\n          10.0\n        ],\n        \"width_mm\": 40.0,\n        \"height_mm\": 20.0\n      },\n      \"stitches\": {\n        \"total\": 409,\n        \"top\": 401,\n        \"underlay\": 0,\n        \"jumps\": 1,\n        \"thread_mm\": 1034.6812297032589,\n        \"first_command_index\": 0,\n        \"bounds\": {\n          \"min_mm\": [\n            -19.45,\n            -9.8\n          ],\n          \"max_mm\": [\n            17.95,\n            9.8\n          ],\n          \"width_mm\": 37.4,\n          \"height_mm\": 19.6\n        }\n      }\n    },\n    {\n      \"id\": 3,\n      \"name\": \"QA legacy_2_stippled : fil 2/2\",\n      \"order\": 1,\n      \"source_vector\": 1,\n      \"type\": \"directional\",\n      \"color\": \"#B7D8E5\",\n      \"thread\": null,\n      \"visible\": true,\n      \"locked\": false,\n      \"intent\": \"forced_user_choice\",\n      \"join\": \"inherit\",\n      \"connector\": \"inherit\",\n      \"params\": {\n        \"row_spacing_mm\": 0.4,\n        \"spacing_regularity\": 0.0,\n        \"stitch_length_mm\": 3.0,\n        \"edge_weight\": 0.0,\n        \"inset_mm\": 0.2,\n        \"stagger\": 3,\n        \"underlay_edge\": false,\n        \"underlay_parallel\": false,\n        \"underlay_inset_mm\": 0.6,\n        \"underlay_spacing_mm\": 2.0,\n        \"hidden_underpath\": false,\n        \"sector_overlap_mm\": 0.25,\n        \"handmade\": false,\n        \"handmade_intensity\": 50,\n        \"seed\": 2,\n        \"underlay_mode\": \"manual\",\n        \"pull_mode\": \"manual\",\n        \"edge_outline\": false,\n        \"guides\": [\n          [\n            [\n              -16.0,\n              0.0\n            ],\n            [\n              16.0,\n              0.0\n            ]\n          ]\n        ],\n        \"break_lines\": [],\n        \"density_gradient\": {\n          \"from_mm\": [\n            -20.0,\n            0.0\n          ],\n          \"to_mm\": [\n            20.0,\n            0.0\n          ],\n          \"spacing_from_mm\": 4.0,\n          \"spacing_to_mm\": 0.42,\n          \"interpolate_density\": true,\n          \"curve\": \"smooth\"\n        }\n      },\n      \"manual_overrides\": 0,\n      \"color_blend\": {\n        \"partner\": 2,\n        \"foreground\": true\n      },\n      \"region_area_mm2\": 800.0,\n      \"geometry_bounds\": {\n        \"min_mm\": [\n          -20.0,\n          -10.0\n        ],\n        \"max_mm\": [\n          20.0,\n          10.0\n        ],\n        \"width_mm\": 40.0,\n        \"height_mm\": 20.0\n      },\n      \"stitches\": {\n        \"total\": 410,\n        \"top\": 402,\n        \"underlay\": 0,\n        \"jumps\": 1,\n        \"thread_mm\": 1034.0635190970515,\n        \"first_command_index\": 411,\n        \"bounds\": {\n          \"min_mm\": [\n            -16.749,\n            -9.8\n          ],\n          \"max_mm\": [\n            19.605,\n            9.8\n          ],\n          \"width_mm\": 36.354,\n          \"height_mm\": 19.6\n        }\n      }\n    }\n  ],\n  \"warnings\": [],\n  \"counts\": {\n    \"vector_objects\": 1,\n    \"embroidery_objects\": 2,\n    \"text_objects\": 0\n  }\n}\n",
+      "stderr": "",
+      "inspection": {
+        "counts": {
+          "vector_objects": 1,
+          "embroidery_objects": 2,
+          "text_objects": 0
+        },
+        "sequence": {
+          "commands": 825,
+          "stitches": 819,
+          "jumps": 2,
+          "trims": 2,
+          "color_changes": 1,
+          "thread_m": 2.0687447488003103,
+          "width_mm": 39.055,
+          "height_mm": 19.6
+        },
+        "layers": [
+          {
+            "id": 2,
+            "stitches": 409
+          },
+          {
+            "id": 3,
+            "stitches": 410
+          }
+        ]
+      }
+    },
+    {
+      "command": "legacy_2_stippled.render",
+      "args": [
+        "project",
+        "render",
+        "C:\\w\\pr336\\qa-gradient-results\\legacy_2_stippled.osp",
+        "-o",
+        "C:\\w\\pr336\\qa-gradient-results\\legacy_2_stippled.png",
+        "--px-per-mm",
+        "10",
+        "--fabric",
+        "#ece7df"
+      ],
+      "rc": 0,
+      "ms": 145.8,
+      "stdout": "Rendu écrit : C:\\w\\pr336\\qa-gradient-results\\legacy_2_stippled.png (398 x 204 px, 10.00 px/mm)\n",
+      "stderr": ""
+    },
+    {
+      "command": "legacy_2_stippled.export",
+      "args": [
+        "project",
+        "export",
+        "C:\\w\\pr336\\qa-gradient-results\\legacy_2_stippled.osp",
+        "-o",
+        "C:\\w\\pr336\\qa-gradient-results\\legacy_2_stippled.dst"
+      ],
+      "rc": 0,
+      "ms": 28.2,
+      "stdout": "Exporté (dst) : C:\\w\\pr336\\qa-gradient-results\\legacy_2_stippled.dst\n",
+      "stderr": ""
+    },
+    {
+      "command": "multi_2_linear.inspect",
+      "args": [
+        "project",
+        "inspect",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_2_linear.osp",
+        "--json"
+      ],
+      "rc": 0,
+      "ms": 31.2,
+      "stdout": "uides\": [\n          [\n            [\n              -16.0,\n              0.0\n            ],\n            [\n              16.0,\n              0.0\n            ]\n          ]\n        ],\n        \"break_lines\": [],\n        \"density_gradient\": {\n          \"from_mm\": [\n            -20.0,\n            0.0\n          ],\n          \"to_mm\": [\n            20.0,\n            0.0\n          ],\n          \"spacing_from_mm\": 0.42,\n          \"spacing_to_mm\": 0.42,\n          \"interpolate_density\": true,\n          \"curve\": \"smooth\"\n        }\n      },\n      \"manual_overrides\": 0,\n      \"region_area_mm2\": 800.0,\n      \"geometry_bounds\": {\n        \"min_mm\": [\n          -20.0,\n          -10.0\n        ],\n        \"max_mm\": [\n          20.0,\n          10.0\n        ],\n        \"width_mm\": 40.0,\n        \"height_mm\": 20.0\n      },\n      \"stitches\": {\n        \"total\": 451,\n        \"top\": 419,\n        \"underlay\": 0,\n        \"jumps\": 5,\n        \"thread_mm\": 1135.7488383173154,\n        \"first_command_index\": 0,\n        \"bounds\": {\n          \"min_mm\": [\n            -19.8,\n            -9.478\n          ],\n          \"max_mm\": [\n            16.228,\n            9.645\n          ],\n          \"width_mm\": 36.028,\n          \"height_mm\": 19.123\n        }\n      }\n    },\n    {\n      \"id\": 3,\n      \"name\": \"QA multi_2_linear : fil 2/2\",\n      \"order\": 1,\n      \"source_vector\": 1,\n      \"type\": \"directional\",\n      \"color\": \"#28538D\",\n      \"thread\": null,\n      \"visible\": true,\n      \"locked\": false,\n      \"intent\": \"forced_user_choice\",\n      \"join\": \"inherit\",\n      \"connector\": \"inherit\",\n      \"params\": {\n        \"row_spacing_mm\": 0.4,\n        \"spacing_regularity\": 0.0,\n        \"stitch_length_mm\": 3.0,\n        \"edge_weight\": 0.0,\n        \"inset_mm\": 0.2,\n        \"stagger\": 3,\n        \"underlay_edge\": false,\n        \"underlay_parallel\": false,\n        \"underlay_inset_mm\": 0.6,\n        \"underlay_spacing_mm\": 2.0,\n        \"hidden_underpath\": false,\n        \"sector_overlap_mm\": 0.25,\n        \"handmade\": false,\n        \"handmade_intensity\": 50,\n        \"seed\": 2,\n        \"underlay_mode\": \"manual\",\n        \"pull_mode\": \"manual\",\n        \"edge_outline\": false,\n        \"guides\": [\n          [\n            [\n              -16.0,\n              0.0\n            ],\n            [\n              16.0,\n              0.0\n            ]\n          ]\n        ],\n        \"break_lines\": [],\n        \"density_gradient\": {\n          \"from_mm\": [\n            -20.0,\n            0.0\n          ],\n          \"to_mm\": [\n            20.0,\n            0.0\n          ],\n          \"spacing_from_mm\": 0.42,\n          \"spacing_to_mm\": 0.42,\n          \"interpolate_density\": true,\n          \"curve\": \"smooth\"\n        }\n      },\n      \"manual_overrides\": 0,\n      \"region_area_mm2\": 800.0,\n      \"geometry_bounds\": {\n        \"min_mm\": [\n          -20.0,\n          -10.0\n        ],\n        \"max_mm\": [\n          20.0,\n          10.0\n        ],\n        \"width_mm\": 40.0,\n        \"height_mm\": 20.0\n      },\n      \"stitches\": {\n        \"total\": 465,\n        \"top\": 409,\n        \"underlay\": 0,\n        \"jumps\": 9,\n        \"thread_mm\": 1130.593949922675,\n        \"first_command_index\": 460,\n        \"bounds\": {\n          \"min_mm\": [\n            -16.228,\n            -9.769\n          ],\n          \"max_mm\": [\n            19.8,\n            9.7\n          ],\n          \"width_mm\": 36.028,\n          \"height_mm\": 19.469\n        }\n      }\n    }\n  ],\n  \"warnings\": [],\n  \"counts\": {\n    \"vector_objects\": 1,\n    \"embroidery_objects\": 2,\n    \"text_objects\": 0\n  }\n}\n",
+      "stderr": "",
+      "inspection": {
+        "counts": {
+          "vector_objects": 1,
+          "embroidery_objects": 2,
+          "text_objects": 0
+        },
+        "sequence": {
+          "commands": 943,
+          "stitches": 916,
+          "jumps": 14,
+          "trims": 11,
+          "color_changes": 1,
+          "thread_m": 2.26634278823999,
+          "width_mm": 39.6,
+          "height_mm": 19.469
+        },
+        "layers": [
+          {
+            "id": 2,
+            "stitches": 451
+          },
+          {
+            "id": 3,
+            "stitches": 465
+          }
+        ]
+      }
+    },
+    {
+      "command": "multi_2_linear.render",
+      "args": [
+        "project",
+        "render",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_2_linear.osp",
+        "-o",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_2_linear.png",
+        "--px-per-mm",
+        "10",
+        "--fabric",
+        "#ece7df"
+      ],
+      "rc": 0,
+      "ms": 140.1,
+      "stdout": "Rendu écrit : C:\\w\\pr336\\qa-gradient-results\\multi_2_linear.png (403 x 202 px, 10.00 px/mm)\n",
+      "stderr": ""
+    },
+    {
+      "command": "multi_2_linear.export",
+      "args": [
+        "project",
+        "export",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_2_linear.osp",
+        "-o",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_2_linear.dst"
+      ],
+      "rc": 0,
+      "ms": 28.6,
+      "stdout": "Exporté (dst) : C:\\w\\pr336\\qa-gradient-results\\multi_2_linear.dst\n",
+      "stderr": ""
+    },
+    {
+      "command": "multi_3_linear.inspect",
+      "args": [
+        "project",
+        "inspect",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_3_linear.osp",
+        "--json"
+      ],
+      "rc": 0,
+      "ms": 30.4,
+      "stdout": "\": [\n          [\n            [\n              -16.0,\n              0.0\n            ],\n            [\n              16.0,\n              0.0\n            ]\n          ]\n        ],\n        \"break_lines\": [],\n        \"density_gradient\": {\n          \"from_mm\": [\n            -20.0,\n            0.0\n          ],\n          \"to_mm\": [\n            20.0,\n            0.0\n          ],\n          \"spacing_from_mm\": 0.42,\n          \"spacing_to_mm\": 0.42,\n          \"interpolate_density\": true,\n          \"curve\": \"smooth\"\n        }\n      },\n      \"manual_overrides\": 0,\n      \"region_area_mm2\": 800.0,\n      \"geometry_bounds\": {\n        \"min_mm\": [\n          -20.0,\n          -10.0\n        ],\n        \"max_mm\": [\n          20.0,\n          10.0\n        ],\n        \"width_mm\": 40.0,\n        \"height_mm\": 20.0\n      },\n      \"stitches\": {\n        \"total\": 391,\n        \"top\": 327,\n        \"underlay\": 0,\n        \"jumps\": 13,\n        \"thread_mm\": 920.6374031709892,\n        \"first_command_index\": 290,\n        \"bounds\": {\n          \"min_mm\": [\n            -17.359,\n            -9.508\n          ],\n          \"max_mm\": [\n            17.359,\n            9.675\n          ],\n          \"width_mm\": 34.718,\n          \"height_mm\": 19.183\n        }\n      }\n    },\n    {\n      \"id\": 4,\n      \"name\": \"QA multi_3_linear : fil 3/3\",\n      \"order\": 2,\n      \"source_vector\": 1,\n      \"type\": \"directional\",\n      \"color\": \"#4C7AB3\",\n      \"thread\": null,\n      \"visible\": true,\n      \"locked\": false,\n      \"intent\": \"forced_user_choice\",\n      \"join\": \"inherit\",\n      \"connector\": \"inherit\",\n      \"params\": {\n        \"row_spacing_mm\": 0.4,\n        \"spacing_regularity\": 0.0,\n        \"stitch_length_mm\": 3.0,\n        \"edge_weight\": 0.0,\n        \"inset_mm\": 0.2,\n        \"stagger\": 3,\n        \"underlay_edge\": false,\n        \"underlay_parallel\": false,\n        \"underlay_inset_mm\": 0.6,\n        \"underlay_spacing_mm\": 2.0,\n        \"hidden_underpath\": false,\n        \"sector_overlap_mm\": 0.25,\n        \"handmade\": false,\n        \"handmade_intensity\": 50,\n        \"seed\": 2,\n        \"underlay_mode\": \"manual\",\n        \"pull_mode\": \"manual\",\n        \"edge_outline\": false,\n        \"guides\": [\n          [\n            [\n              -16.0,\n              0.0\n            ],\n            [\n              16.0,\n              0.0\n            ]\n          ]\n        ],\n        \"break_lines\": [],\n        \"density_gradient\": {\n          \"from_mm\": [\n            -20.0,\n            0.0\n          ],\n          \"to_mm\": [\n            20.0,\n            0.0\n          ],\n          \"spacing_from_mm\": 0.42,\n          \"spacing_to_mm\": 0.42,\n          \"interpolate_density\": true,\n          \"curve\": \"smooth\"\n        }\n      },\n      \"manual_overrides\": 0,\n      \"region_area_mm2\": 800.0,\n      \"geometry_bounds\": {\n        \"min_mm\": [\n          -20.0,\n          -10.0\n        ],\n        \"max_mm\": [\n          20.0,\n          10.0\n        ],\n        \"width_mm\": 40.0,\n        \"height_mm\": 20.0\n      },\n      \"stitches\": {\n        \"total\": 265,\n        \"top\": 209,\n        \"underlay\": 0,\n        \"jumps\": 12,\n        \"thread_mm\": 578.1105175442107,\n        \"first_command_index\": 703,\n        \"bounds\": {\n          \"min_mm\": [\n            0.333,\n            -9.485\n          ],\n          \"max_mm\": [\n            19.8,\n            9.652\n          ],\n          \"width_mm\": 19.467,\n          \"height_mm\": 19.137\n        }\n      }\n    }\n  ],\n  \"warnings\": [],\n  \"counts\": {\n    \"vector_objects\": 1,\n    \"embroidery_objects\": 3,\n    \"text_objects\": 0\n  }\n}\n",
+      "stderr": "",
+      "inspection": {
+        "counts": {
+          "vector_objects": 1,
+          "embroidery_objects": 3,
+          "text_objects": 0
+        },
+        "sequence": {
+          "commands": 989,
+          "stitches": 940,
+          "jumps": 28,
+          "trims": 18,
+          "color_changes": 2,
+          "thread_m": 2.166449345134886,
+          "width_mm": 39.6,
+          "height_mm": 19.417
+        },
+        "layers": [
+          {
+            "id": 2,
+            "stitches": 284
+          },
+          {
+            "id": 3,
+            "stitches": 391
+          },
+          {
+            "id": 4,
+            "stitches": 265
+          }
+        ]
+      }
+    },
+    {
+      "command": "multi_3_linear.render",
+      "args": [
+        "project",
+        "render",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_3_linear.osp",
+        "-o",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_3_linear.png",
+        "--px-per-mm",
+        "10",
+        "--fabric",
+        "#ece7df"
+      ],
+      "rc": 0,
+      "ms": 138.3,
+      "stdout": "Rendu écrit : C:\\w\\pr336\\qa-gradient-results\\multi_3_linear.png (403 x 202 px, 10.00 px/mm)\n",
+      "stderr": ""
+    },
+    {
+      "command": "multi_3_linear.export",
+      "args": [
+        "project",
+        "export",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_3_linear.osp",
+        "-o",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_3_linear.dst"
+      ],
+      "rc": 0,
+      "ms": 26.4,
+      "stdout": "Exporté (dst) : C:\\w\\pr336\\qa-gradient-results\\multi_3_linear.dst\n",
+      "stderr": ""
+    },
+    {
+      "command": "multi_5_linear.inspect",
+      "args": [
+        "project",
+        "inspect",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_5_linear.osp",
+        "--json"
+      ],
+      "rc": 0,
+      "ms": 28.9,
+      "stdout": "des\": [\n          [\n            [\n              -16.0,\n              0.0\n            ],\n            [\n              16.0,\n              0.0\n            ]\n          ]\n        ],\n        \"break_lines\": [],\n        \"density_gradient\": {\n          \"from_mm\": [\n            -20.0,\n            0.0\n          ],\n          \"to_mm\": [\n            20.0,\n            0.0\n          ],\n          \"spacing_from_mm\": 0.42,\n          \"spacing_to_mm\": 0.42,\n          \"interpolate_density\": true,\n          \"curve\": \"smooth\"\n        }\n      },\n      \"manual_overrides\": 0,\n      \"region_area_mm2\": 800.0,\n      \"geometry_bounds\": {\n        \"min_mm\": [\n          -20.0,\n          -10.0\n        ],\n        \"max_mm\": [\n          20.0,\n          10.0\n        ],\n        \"width_mm\": 40.0,\n        \"height_mm\": 20.0\n      },\n      \"stitches\": {\n        \"total\": 248,\n        \"top\": 168,\n        \"underlay\": 0,\n        \"jumps\": 16,\n        \"thread_mm\": 479.5122979299988,\n        \"first_command_index\": 705,\n        \"bounds\": {\n          \"min_mm\": [\n            0.167,\n            -9.773\n          ],\n          \"max_mm\": [\n            18.145,\n            9.799\n          ],\n          \"width_mm\": 17.978,\n          \"height_mm\": 19.572\n        }\n      }\n    },\n    {\n      \"id\": 6,\n      \"name\": \"QA multi_5_linear : fil 5/5\",\n      \"order\": 4,\n      \"source_vector\": 1,\n      \"type\": \"directional\",\n      \"color\": \"#B7D8E5\",\n      \"thread\": null,\n      \"visible\": true,\n      \"locked\": false,\n      \"intent\": \"forced_user_choice\",\n      \"join\": \"inherit\",\n      \"connector\": \"inherit\",\n      \"params\": {\n        \"row_spacing_mm\": 0.4,\n        \"spacing_regularity\": 0.0,\n        \"stitch_length_mm\": 3.0,\n        \"edge_weight\": 0.0,\n        \"inset_mm\": 0.2,\n        \"stagger\": 3,\n        \"underlay_edge\": false,\n        \"underlay_parallel\": false,\n        \"underlay_inset_mm\": 0.6,\n        \"underlay_spacing_mm\": 2.0,\n        \"hidden_underpath\": false,\n        \"sector_overlap_mm\": 0.25,\n        \"handmade\": false,\n        \"handmade_intensity\": 50,\n        \"seed\": 2,\n        \"underlay_mode\": \"manual\",\n        \"pull_mode\": \"manual\",\n        \"edge_outline\": false,\n        \"guides\": [\n          [\n            [\n              -16.0,\n              0.0\n            ],\n            [\n              16.0,\n              0.0\n            ]\n          ]\n        ],\n        \"break_lines\": [],\n        \"density_gradient\": {\n          \"from_mm\": [\n            -20.0,\n            0.0\n          ],\n          \"to_mm\": [\n            20.0,\n            0.0\n          ],\n          \"spacing_from_mm\": 0.42,\n          \"spacing_to_mm\": 0.42,\n          \"interpolate_density\": true,\n          \"curve\": \"smooth\"\n        }\n      },\n      \"manual_overrides\": 0,\n      \"region_area_mm2\": 800.0,\n      \"geometry_bounds\": {\n        \"min_mm\": [\n          -20.0,\n          -10.0\n        ],\n        \"max_mm\": [\n          20.0,\n          10.0\n        ],\n        \"width_mm\": 40.0,\n        \"height_mm\": 20.0\n      },\n      \"stitches\": {\n        \"total\": 185,\n        \"top\": 153,\n        \"underlay\": 0,\n        \"jumps\": 8,\n        \"thread_mm\": 366.0988418178924,\n        \"first_command_index\": 980,\n        \"bounds\": {\n          \"min_mm\": [\n            7.136,\n            -9.433\n          ],\n          \"max_mm\": [\n            19.8,\n            9.599\n          ],\n          \"width_mm\": 12.664,\n          \"height_mm\": 19.032\n        }\n      }\n    }\n  ],\n  \"warnings\": [],\n  \"counts\": {\n    \"vector_objects\": 1,\n    \"embroidery_objects\": 5,\n    \"text_objects\": 0\n  }\n}\n",
+      "stderr": "",
+      "inspection": {
+        "counts": {
+          "vector_objects": 1,
+          "embroidery_objects": 5,
+          "text_objects": 0
+        },
+        "sequence": {
+          "commands": 1179,
+          "stitches": 1084,
+          "jumps": 60,
+          "trims": 30,
+          "color_changes": 4,
+          "thread_m": 2.2057887848492803,
+          "width_mm": 39.6,
+          "height_mm": 19.583
+        },
+        "layers": [
+          {
+            "id": 2,
+            "stitches": 190
+          },
+          {
+            "id": 3,
+            "stitches": 255
+          },
+          {
+            "id": 4,
+            "stitches": 206
+          },
+          {
+            "id": 5,
+            "stitches": 248
+          },
+          {
+            "id": 6,
+            "stitches": 185
+          }
+        ]
+      }
+    },
+    {
+      "command": "multi_5_linear.render",
+      "args": [
+        "project",
+        "render",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_5_linear.osp",
+        "-o",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_5_linear.png",
+        "--px-per-mm",
+        "10",
+        "--fabric",
+        "#ece7df"
+      ],
+      "rc": 0,
+      "ms": 34.9,
+      "stdout": "Rendu écrit : C:\\w\\pr336\\qa-gradient-results\\multi_5_linear.png (403 x 203 px, 10.00 px/mm)\n",
+      "stderr": ""
+    },
+    {
+      "command": "multi_5_linear.export",
+      "args": [
+        "project",
+        "export",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_5_linear.osp",
+        "-o",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_5_linear.dst"
+      ],
+      "rc": 0,
+      "ms": 24.9,
+      "stdout": "Exporté (dst) : C:\\w\\pr336\\qa-gradient-results\\multi_5_linear.dst\n",
+      "stderr": ""
+    },
+    {
+      "command": "multi_5_feathered.inspect",
+      "args": [
+        "project",
+        "inspect",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_5_feathered.osp",
+        "--json"
+      ],
+      "rc": 0,
+      "ms": 30.3,
+      "stdout": "s\": [\n          [\n            [\n              -16.0,\n              0.0\n            ],\n            [\n              16.0,\n              0.0\n            ]\n          ]\n        ],\n        \"break_lines\": [],\n        \"density_gradient\": {\n          \"from_mm\": [\n            -20.0,\n            0.0\n          ],\n          \"to_mm\": [\n            20.0,\n            0.0\n          ],\n          \"spacing_from_mm\": 0.42,\n          \"spacing_to_mm\": 0.42,\n          \"interpolate_density\": true,\n          \"curve\": \"smooth\"\n        }\n      },\n      \"manual_overrides\": 0,\n      \"region_area_mm2\": 800.0,\n      \"geometry_bounds\": {\n        \"min_mm\": [\n          -20.0,\n          -10.0\n        ],\n        \"max_mm\": [\n          20.0,\n          10.0\n        ],\n        \"width_mm\": 40.0,\n        \"height_mm\": 20.0\n      },\n      \"stitches\": {\n        \"total\": 255,\n        \"top\": 183,\n        \"underlay\": 0,\n        \"jumps\": 17,\n        \"thread_mm\": 515.9364476435742,\n        \"first_command_index\": 780,\n        \"bounds\": {\n          \"min_mm\": [\n            -1.048,\n            -9.716\n          ],\n          \"max_mm\": [\n            18.672,\n            9.738\n          ],\n          \"width_mm\": 19.72,\n          \"height_mm\": 19.454\n        }\n      }\n    },\n    {\n      \"id\": 6,\n      \"name\": \"QA multi_5_feathered : fil 5/5\",\n      \"order\": 4,\n      \"source_vector\": 1,\n      \"type\": \"directional\",\n      \"color\": \"#B7D8E5\",\n      \"thread\": null,\n      \"visible\": true,\n      \"locked\": false,\n      \"intent\": \"forced_user_choice\",\n      \"join\": \"inherit\",\n      \"connector\": \"inherit\",\n      \"params\": {\n        \"row_spacing_mm\": 0.4,\n        \"spacing_regularity\": 0.0,\n        \"stitch_length_mm\": 3.0,\n        \"edge_weight\": 0.0,\n        \"inset_mm\": 0.2,\n        \"stagger\": 3,\n        \"underlay_edge\": false,\n        \"underlay_parallel\": false,\n        \"underlay_inset_mm\": 0.6,\n        \"underlay_spacing_mm\": 2.0,\n        \"hidden_underpath\": false,\n        \"sector_overlap_mm\": 0.25,\n        \"handmade\": false,\n        \"handmade_intensity\": 50,\n        \"seed\": 2,\n        \"underlay_mode\": \"manual\",\n        \"pull_mode\": \"manual\",\n        \"edge_outline\": false,\n        \"guides\": [\n          [\n            [\n              -16.0,\n              0.0\n            ],\n            [\n              16.0,\n              0.0\n            ]\n          ]\n        ],\n        \"break_lines\": [],\n        \"density_gradient\": {\n          \"from_mm\": [\n            -20.0,\n            0.0\n          ],\n          \"to_mm\": [\n            20.0,\n            0.0\n          ],\n          \"spacing_from_mm\": 0.42,\n          \"spacing_to_mm\": 0.42,\n          \"interpolate_density\": true,\n          \"curve\": \"smooth\"\n        }\n      },\n      \"manual_overrides\": 0,\n      \"region_area_mm2\": 800.0,\n      \"geometry_bounds\": {\n        \"min_mm\": [\n          -20.0,\n          -10.0\n        ],\n        \"max_mm\": [\n          20.0,\n          10.0\n        ],\n        \"width_mm\": 40.0,\n        \"height_mm\": 20.0\n      },\n      \"stitches\": {\n        \"total\": 221,\n        \"top\": 181,\n        \"underlay\": 0,\n        \"jumps\": 8,\n        \"thread_mm\": 454.5054217607553,\n        \"first_command_index\": 1062,\n        \"bounds\": {\n          \"min_mm\": [\n            4.54,\n            -9.574\n          ],\n          \"max_mm\": [\n            19.8,\n            9.735\n          ],\n          \"width_mm\": 15.26,\n          \"height_mm\": 19.309\n        }\n      }\n    }\n  ],\n  \"warnings\": [],\n  \"counts\": {\n    \"vector_objects\": 1,\n    \"embroidery_objects\": 5,\n    \"text_objects\": 0\n  }\n}\n",
+      "stderr": "",
+      "inspection": {
+        "counts": {
+          "vector_objects": 1,
+          "embroidery_objects": 5,
+          "text_objects": 0
+        },
+        "sequence": {
+          "commands": 1299,
+          "stitches": 1183,
+          "jumps": 70,
+          "trims": 41,
+          "color_changes": 4,
+          "thread_m": 2.3216767051858502,
+          "width_mm": 39.6,
+          "height_mm": 19.474
+        },
+        "layers": [
+          {
+            "id": 2,
+            "stitches": 212
+          },
+          {
+            "id": 3,
+            "stitches": 268
+          },
+          {
+            "id": 4,
+            "stitches": 227
+          },
+          {
+            "id": 5,
+            "stitches": 255
+          },
+          {
+            "id": 6,
+            "stitches": 221
+          }
+        ]
+      }
+    },
+    {
+      "command": "multi_5_feathered.render",
+      "args": [
+        "project",
+        "render",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_5_feathered.osp",
+        "-o",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_5_feathered.png",
+        "--px-per-mm",
+        "10",
+        "--fabric",
+        "#ece7df"
+      ],
+      "rc": 0,
+      "ms": 33.9,
+      "stdout": "Rendu écrit : C:\\w\\pr336\\qa-gradient-results\\multi_5_feathered.png (403 x 202 px, 10.00 px/mm)\n",
+      "stderr": ""
+    },
+    {
+      "command": "multi_5_feathered.export",
+      "args": [
+        "project",
+        "export",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_5_feathered.osp",
+        "-o",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_5_feathered.dst"
+      ],
+      "rc": 0,
+      "ms": 24.9,
+      "stdout": "Exporté (dst) : C:\\w\\pr336\\qa-gradient-results\\multi_5_feathered.dst\n",
+      "stderr": ""
+    },
+    {
+      "command": "multi_5_stippled.inspect",
+      "args": [
+        "project",
+        "inspect",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_5_stippled.osp",
+        "--json"
+      ],
+      "rc": 0,
+      "ms": 29.3,
+      "stdout": "des\": [\n          [\n            [\n              -16.0,\n              0.0\n            ],\n            [\n              16.0,\n              0.0\n            ]\n          ]\n        ],\n        \"break_lines\": [],\n        \"density_gradient\": {\n          \"from_mm\": [\n            -20.0,\n            0.0\n          ],\n          \"to_mm\": [\n            20.0,\n            0.0\n          ],\n          \"spacing_from_mm\": 0.42,\n          \"spacing_to_mm\": 0.42,\n          \"interpolate_density\": true,\n          \"curve\": \"smooth\"\n        }\n      },\n      \"manual_overrides\": 0,\n      \"region_area_mm2\": 800.0,\n      \"geometry_bounds\": {\n        \"min_mm\": [\n          -20.0,\n          -10.0\n        ],\n        \"max_mm\": [\n          20.0,\n          10.0\n        ],\n        \"width_mm\": 40.0,\n        \"height_mm\": 20.0\n      },\n      \"stitches\": {\n        \"total\": 226,\n        \"top\": 170,\n        \"underlay\": 0,\n        \"jumps\": 15,\n        \"thread_mm\": 463.7043601214908,\n        \"first_command_index\": 749,\n        \"bounds\": {\n          \"min_mm\": [\n            -0.65,\n            -9.777\n          ],\n          \"max_mm\": [\n            18.2,\n            9.796\n          ],\n          \"width_mm\": 18.85,\n          \"height_mm\": 19.573\n        }\n      }\n    },\n    {\n      \"id\": 6,\n      \"name\": \"QA multi_5_stippled : fil 5/5\",\n      \"order\": 4,\n      \"source_vector\": 1,\n      \"type\": \"directional\",\n      \"color\": \"#B7D8E5\",\n      \"thread\": null,\n      \"visible\": true,\n      \"locked\": false,\n      \"intent\": \"forced_user_choice\",\n      \"join\": \"inherit\",\n      \"connector\": \"inherit\",\n      \"params\": {\n        \"row_spacing_mm\": 0.4,\n        \"spacing_regularity\": 0.0,\n        \"stitch_length_mm\": 3.0,\n        \"edge_weight\": 0.0,\n        \"inset_mm\": 0.2,\n        \"stagger\": 3,\n        \"underlay_edge\": false,\n        \"underlay_parallel\": false,\n        \"underlay_inset_mm\": 0.6,\n        \"underlay_spacing_mm\": 2.0,\n        \"hidden_underpath\": false,\n        \"sector_overlap_mm\": 0.25,\n        \"handmade\": false,\n        \"handmade_intensity\": 50,\n        \"seed\": 2,\n        \"underlay_mode\": \"manual\",\n        \"pull_mode\": \"manual\",\n        \"edge_outline\": false,\n        \"guides\": [\n          [\n            [\n              -16.0,\n              0.0\n            ],\n            [\n              16.0,\n              0.0\n            ]\n          ]\n        ],\n        \"break_lines\": [],\n        \"density_gradient\": {\n          \"from_mm\": [\n            -20.0,\n            0.0\n          ],\n          \"to_mm\": [\n            20.0,\n            0.0\n          ],\n          \"spacing_from_mm\": 0.42,\n          \"spacing_to_mm\": 0.42,\n          \"interpolate_density\": true,\n          \"curve\": \"smooth\"\n        }\n      },\n      \"manual_overrides\": 0,\n      \"region_area_mm2\": 800.0,\n      \"geometry_bounds\": {\n        \"min_mm\": [\n          -20.0,\n          -10.0\n        ],\n        \"max_mm\": [\n          20.0,\n          10.0\n        ],\n        \"width_mm\": 40.0,\n        \"height_mm\": 20.0\n      },\n      \"stitches\": {\n        \"total\": 197,\n        \"top\": 173,\n        \"underlay\": 0,\n        \"jumps\": 14,\n        \"thread_mm\": 402.8394981052617,\n        \"first_command_index\": 998,\n        \"bounds\": {\n          \"min_mm\": [\n            5.629,\n            -9.638\n          ],\n          \"max_mm\": [\n            19.8,\n            9.739\n          ],\n          \"width_mm\": 14.171,\n          \"height_mm\": 19.377\n        }\n      }\n    }\n  ],\n  \"warnings\": [],\n  \"counts\": {\n    \"vector_objects\": 1,\n    \"embroidery_objects\": 5,\n    \"text_objects\": 0\n  }\n}\n",
+      "stderr": "",
+      "inspection": {
+        "counts": {
+          "vector_objects": 1,
+          "embroidery_objects": 5,
+          "text_objects": 0
+        },
+        "sequence": {
+          "commands": 1217,
+          "stitches": 1097,
+          "jumps": 79,
+          "trims": 36,
+          "color_changes": 4,
+          "thread_m": 2.189645779585848,
+          "width_mm": 39.6,
+          "height_mm": 19.573
+        },
+        "layers": [
+          {
+            "id": 2,
+            "stitches": 245
+          },
+          {
+            "id": 3,
+            "stitches": 251
+          },
+          {
+            "id": 4,
+            "stitches": 178
+          },
+          {
+            "id": 5,
+            "stitches": 226
+          },
+          {
+            "id": 6,
+            "stitches": 197
+          }
+        ]
+      }
+    },
+    {
+      "command": "multi_5_stippled.render",
+      "args": [
+        "project",
+        "render",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_5_stippled.osp",
+        "-o",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_5_stippled.png",
+        "--px-per-mm",
+        "10",
+        "--fabric",
+        "#ece7df"
+      ],
+      "rc": 0,
+      "ms": 32.4,
+      "stdout": "Rendu écrit : C:\\w\\pr336\\qa-gradient-results\\multi_5_stippled.png (403 x 203 px, 10.00 px/mm)\n",
+      "stderr": ""
+    },
+    {
+      "command": "multi_5_stippled.export",
+      "args": [
+        "project",
+        "export",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_5_stippled.osp",
+        "-o",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_5_stippled.dst"
+      ],
+      "rc": 0,
+      "ms": 23.4,
+      "stdout": "Exporté (dst) : C:\\w\\pr336\\qa-gradient-results\\multi_5_stippled.dst\n",
+      "stderr": ""
+    },
+    {
+      "command": "multi_5_longshort.inspect",
+      "args": [
+        "project",
+        "inspect",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_5_longshort.osp",
+        "--json"
+      ],
+      "rc": 0,
+      "ms": 27.3,
+      "stdout": ": [\n          [\n            [\n              -16.0,\n              0.0\n            ],\n            [\n              16.0,\n              0.0\n            ]\n          ]\n        ],\n        \"break_lines\": [],\n        \"density_gradient\": {\n          \"from_mm\": [\n            -20.0,\n            0.0\n          ],\n          \"to_mm\": [\n            20.0,\n            0.0\n          ],\n          \"spacing_from_mm\": 0.42,\n          \"spacing_to_mm\": 0.42,\n          \"interpolate_density\": true,\n          \"curve\": \"smooth\"\n        }\n      },\n      \"manual_overrides\": 0,\n      \"region_area_mm2\": 800.0,\n      \"geometry_bounds\": {\n        \"min_mm\": [\n          -20.0,\n          -10.0\n        ],\n        \"max_mm\": [\n          20.0,\n          10.0\n        ],\n        \"width_mm\": 40.0,\n        \"height_mm\": 20.0\n      },\n      \"stitches\": {\n        \"total\": 243,\n        \"top\": 179,\n        \"underlay\": 0,\n        \"jumps\": 17,\n        \"thread_mm\": 509.48248925265534,\n        \"first_command_index\": 769,\n        \"bounds\": {\n          \"min_mm\": [\n            -1.048,\n            -9.716\n          ],\n          \"max_mm\": [\n            18.672,\n            9.738\n          ],\n          \"width_mm\": 19.72,\n          \"height_mm\": 19.454\n        }\n      }\n    },\n    {\n      \"id\": 6,\n      \"name\": \"QA multi_5_longshort : fil 5/5\",\n      \"order\": 4,\n      \"source_vector\": 1,\n      \"type\": \"directional\",\n      \"color\": \"#B7D8E5\",\n      \"thread\": null,\n      \"visible\": true,\n      \"locked\": false,\n      \"intent\": \"forced_user_choice\",\n      \"join\": \"inherit\",\n      \"connector\": \"inherit\",\n      \"params\": {\n        \"row_spacing_mm\": 0.4,\n        \"spacing_regularity\": 0.0,\n        \"stitch_length_mm\": 3.0,\n        \"edge_weight\": 0.0,\n        \"inset_mm\": 0.2,\n        \"stagger\": 3,\n        \"underlay_edge\": false,\n        \"underlay_parallel\": false,\n        \"underlay_inset_mm\": 0.6,\n        \"underlay_spacing_mm\": 2.0,\n        \"hidden_underpath\": false,\n        \"sector_overlap_mm\": 0.25,\n        \"handmade\": false,\n        \"handmade_intensity\": 50,\n        \"seed\": 2,\n        \"underlay_mode\": \"manual\",\n        \"pull_mode\": \"manual\",\n        \"edge_outline\": false,\n        \"guides\": [\n          [\n            [\n              -16.0,\n              0.0\n            ],\n            [\n              16.0,\n              0.0\n            ]\n          ]\n        ],\n        \"break_lines\": [],\n        \"density_gradient\": {\n          \"from_mm\": [\n            -20.0,\n            0.0\n          ],\n          \"to_mm\": [\n            20.0,\n            0.0\n          ],\n          \"spacing_from_mm\": 0.42,\n          \"spacing_to_mm\": 0.42,\n          \"interpolate_density\": true,\n          \"curve\": \"smooth\"\n        }\n      },\n      \"manual_overrides\": 0,\n      \"region_area_mm2\": 800.0,\n      \"geometry_bounds\": {\n        \"min_mm\": [\n          -20.0,\n          -10.0\n        ],\n        \"max_mm\": [\n          20.0,\n          10.0\n        ],\n        \"width_mm\": 40.0,\n        \"height_mm\": 20.0\n      },\n      \"stitches\": {\n        \"total\": 202,\n        \"top\": 174,\n        \"underlay\": 0,\n        \"jumps\": 8,\n        \"thread_mm\": 445.55178138733316,\n        \"first_command_index\": 1038,\n        \"bounds\": {\n          \"min_mm\": [\n            4.54,\n            -9.574\n          ],\n          \"max_mm\": [\n            19.8,\n            9.735\n          ],\n          \"width_mm\": 15.26,\n          \"height_mm\": 19.309\n        }\n      }\n    }\n  ],\n  \"warnings\": [],\n  \"counts\": {\n    \"vector_objects\": 1,\n    \"embroidery_objects\": 5,\n    \"text_objects\": 0\n  }\n}\n",
+      "stderr": "",
+      "inspection": {
+        "counts": {
+          "vector_objects": 1,
+          "embroidery_objects": 5,
+          "text_objects": 0
+        },
+        "sequence": {
+          "commands": 1254,
+          "stitches": 1141,
+          "jumps": 70,
+          "trims": 38,
+          "color_changes": 4,
+          "thread_m": 2.306847085582073,
+          "width_mm": 39.6,
+          "height_mm": 19.474
+        },
+        "layers": [
+          {
+            "id": 2,
+            "stitches": 207
+          },
+          {
+            "id": 3,
+            "stitches": 272
+          },
+          {
+            "id": 4,
+            "stitches": 217
+          },
+          {
+            "id": 5,
+            "stitches": 243
+          },
+          {
+            "id": 6,
+            "stitches": 202
+          }
+        ]
+      }
+    },
+    {
+      "command": "multi_5_longshort.render",
+      "args": [
+        "project",
+        "render",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_5_longshort.osp",
+        "-o",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_5_longshort.png",
+        "--px-per-mm",
+        "10",
+        "--fabric",
+        "#ece7df"
+      ],
+      "rc": 0,
+      "ms": 33.9,
+      "stdout": "Rendu écrit : C:\\w\\pr336\\qa-gradient-results\\multi_5_longshort.png (403 x 202 px, 10.00 px/mm)\n",
+      "stderr": ""
+    },
+    {
+      "command": "multi_5_longshort.export",
+      "args": [
+        "project",
+        "export",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_5_longshort.osp",
+        "-o",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_5_longshort.dst"
+      ],
+      "rc": 0,
+      "ms": 125.3,
+      "stdout": "Exporté (dst) : C:\\w\\pr336\\qa-gradient-results\\multi_5_longshort.dst\n",
+      "stderr": ""
+    },
+    {
+      "command": "multi_5_radial.inspect",
+      "args": [
+        "project",
+        "inspect",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_5_radial.osp",
+        "--json"
+      ],
+      "rc": 0,
+      "ms": 28.6,
+      "stdout": "    \"guides\": [\n          [\n            [\n              -16.0,\n              0.0\n            ],\n            [\n              16.0,\n              0.0\n            ]\n          ]\n        ],\n        \"break_lines\": [],\n        \"density_gradient\": {\n          \"from_mm\": [\n            0.0,\n            0.0\n          ],\n          \"to_mm\": [\n            22.36,\n            0.0\n          ],\n          \"spacing_from_mm\": 0.42,\n          \"spacing_to_mm\": 0.42,\n          \"interpolate_density\": true,\n          \"curve\": \"smooth\"\n        }\n      },\n      \"manual_overrides\": 0,\n      \"region_area_mm2\": 800.0,\n      \"geometry_bounds\": {\n        \"min_mm\": [\n          -20.0,\n          -10.0\n        ],\n        \"max_mm\": [\n          20.0,\n          10.0\n        ],\n        \"width_mm\": 40.0,\n        \"height_mm\": 20.0\n      },\n      \"stitches\": {\n        \"total\": 380,\n        \"top\": 268,\n        \"underlay\": 0,\n        \"jumps\": 26,\n        \"thread_mm\": 660.963265918426,\n        \"first_command_index\": 819,\n        \"bounds\": {\n          \"min_mm\": [\n            -19.8,\n            -9.764\n          ],\n          \"max_mm\": [\n            19.8,\n            9.786\n          ],\n          \"width_mm\": 39.6,\n          \"height_mm\": 19.55\n        }\n      }\n    },\n    {\n      \"id\": 6,\n      \"name\": \"QA multi_5_radial : fil 5/5\",\n      \"order\": 4,\n      \"source_vector\": 1,\n      \"type\": \"directional\",\n      \"color\": \"#B7D8E5\",\n      \"thread\": null,\n      \"visible\": true,\n      \"locked\": false,\n      \"intent\": \"forced_user_choice\",\n      \"join\": \"inherit\",\n      \"connector\": \"inherit\",\n      \"params\": {\n        \"row_spacing_mm\": 0.4,\n        \"spacing_regularity\": 0.0,\n        \"stitch_length_mm\": 3.0,\n        \"edge_weight\": 0.0,\n        \"inset_mm\": 0.2,\n        \"stagger\": 3,\n        \"underlay_edge\": false,\n        \"underlay_parallel\": false,\n        \"underlay_inset_mm\": 0.6,\n        \"underlay_spacing_mm\": 2.0,\n        \"hidden_underpath\": false,\n        \"sector_overlap_mm\": 0.25,\n        \"handmade\": false,\n        \"handmade_intensity\": 50,\n        \"seed\": 2,\n        \"underlay_mode\": \"manual\",\n        \"pull_mode\": \"manual\",\n        \"edge_outline\": false,\n        \"guides\": [\n          [\n            [\n              -16.0,\n              0.0\n            ],\n            [\n              16.0,\n              0.0\n            ]\n          ]\n        ],\n        \"break_lines\": [],\n        \"density_gradient\": {\n          \"from_mm\": [\n            0.0,\n            0.0\n          ],\n          \"to_mm\": [\n            22.36,\n            0.0\n          ],\n          \"spacing_from_mm\": 0.42,\n          \"spacing_to_mm\": 0.42,\n          \"interpolate_density\": true,\n          \"curve\": \"smooth\"\n        }\n      },\n      \"manual_overrides\": 0,\n      \"region_area_mm2\": 800.0,\n      \"geometry_bounds\": {\n        \"min_mm\": [\n          -20.0,\n          -10.0\n        ],\n        \"max_mm\": [\n          20.0,\n          10.0\n        ],\n        \"width_mm\": 40.0,\n        \"height_mm\": 20.0\n      },\n      \"stitches\": {\n        \"total\": 294,\n        \"top\": 190,\n        \"underlay\": 0,\n        \"jumps\": 16,\n        \"thread_mm\": 440.94029907688935,\n        \"first_command_index\": 1240,\n        \"bounds\": {\n          \"min_mm\": [\n            -19.8,\n            -9.794\n          ],\n          \"max_mm\": [\n            19.8,\n            9.72\n          ],\n          \"width_mm\": 39.6,\n          \"height_mm\": 19.514\n        }\n      }\n    }\n  ],\n  \"warnings\": [],\n  \"counts\": {\n    \"vector_objects\": 1,\n    \"embroidery_objects\": 5,\n    \"text_objects\": 0\n  }\n}\n",
+      "stderr": "",
+      "inspection": {
+        "counts": {
+          "vector_objects": 1,
+          "embroidery_objects": 5,
+          "text_objects": 0
+        },
+        "sequence": {
+          "commands": 1565,
+          "stitches": 1424,
+          "jumps": 84,
+          "trims": 52,
+          "color_changes": 4,
+          "thread_m": 2.5010951012066864,
+          "width_mm": 39.6,
+          "height_mm": 19.58
+        },
+        "layers": [
+          {
+            "id": 2,
+            "stitches": 101
+          },
+          {
+            "id": 3,
+            "stitches": 308
+          },
+          {
+            "id": 4,
+            "stitches": 341
+          },
+          {
+            "id": 5,
+            "stitches": 380
+          },
+          {
+            "id": 6,
+            "stitches": 294
+          }
+        ]
+      }
+    },
+    {
+      "command": "multi_5_radial.render",
+      "args": [
+        "project",
+        "render",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_5_radial.osp",
+        "-o",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_5_radial.png",
+        "--px-per-mm",
+        "10",
+        "--fabric",
+        "#ece7df"
+      ],
+      "rc": 0,
+      "ms": 33.8,
+      "stdout": "Rendu écrit : C:\\w\\pr336\\qa-gradient-results\\multi_5_radial.png (403 x 203 px, 10.00 px/mm)\n",
+      "stderr": ""
+    },
+    {
+      "command": "multi_5_radial.export",
+      "args": [
+        "project",
+        "export",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_5_radial.osp",
+        "-o",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_5_radial.dst"
+      ],
+      "rc": 0,
+      "ms": 25.2,
+      "stdout": "Exporté (dst) : C:\\w\\pr336\\qa-gradient-results\\multi_5_radial.dst\n",
+      "stderr": ""
+    },
+    {
+      "command": "multi_5_curved.inspect",
+      "args": [
+        "project",
+        "inspect",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_5_curved.osp",
+        "--json"
+      ],
+      "rc": 0,
+      "ms": 142.4,
+      "stdout": "des\": [\n          [\n            [\n              -16.0,\n              0.0\n            ],\n            [\n              16.0,\n              0.0\n            ]\n          ]\n        ],\n        \"break_lines\": [],\n        \"density_gradient\": {\n          \"from_mm\": [\n            -20.0,\n            0.0\n          ],\n          \"to_mm\": [\n            20.0,\n            0.0\n          ],\n          \"spacing_from_mm\": 0.42,\n          \"spacing_to_mm\": 0.42,\n          \"interpolate_density\": true,\n          \"curve\": \"smooth\"\n        }\n      },\n      \"manual_overrides\": 0,\n      \"region_area_mm2\": 800.0,\n      \"geometry_bounds\": {\n        \"min_mm\": [\n          -20.0,\n          -10.0\n        ],\n        \"max_mm\": [\n          20.0,\n          10.0\n        ],\n        \"width_mm\": 40.0,\n        \"height_mm\": 20.0\n      },\n      \"stitches\": {\n        \"total\": 277,\n        \"top\": 173,\n        \"underlay\": 0,\n        \"jumps\": 20,\n        \"thread_mm\": 514.1413241442702,\n        \"first_command_index\": 710,\n        \"bounds\": {\n          \"min_mm\": [\n            -0.895,\n            -9.8\n          ],\n          \"max_mm\": [\n            17.896,\n            9.796\n          ],\n          \"width_mm\": 18.791,\n          \"height_mm\": 19.596\n        }\n      }\n    },\n    {\n      \"id\": 6,\n      \"name\": \"QA multi_5_curved : fil 5/5\",\n      \"order\": 4,\n      \"source_vector\": 1,\n      \"type\": \"directional\",\n      \"color\": \"#B7D8E5\",\n      \"thread\": null,\n      \"visible\": true,\n      \"locked\": false,\n      \"intent\": \"forced_user_choice\",\n      \"join\": \"inherit\",\n      \"connector\": \"inherit\",\n      \"params\": {\n        \"row_spacing_mm\": 0.4,\n        \"spacing_regularity\": 0.0,\n        \"stitch_length_mm\": 3.0,\n        \"edge_weight\": 0.0,\n        \"inset_mm\": 0.2,\n        \"stagger\": 3,\n        \"underlay_edge\": false,\n        \"underlay_parallel\": false,\n        \"underlay_inset_mm\": 0.6,\n        \"underlay_spacing_mm\": 2.0,\n        \"hidden_underpath\": false,\n        \"sector_overlap_mm\": 0.25,\n        \"handmade\": false,\n        \"handmade_intensity\": 50,\n        \"seed\": 2,\n        \"underlay_mode\": \"manual\",\n        \"pull_mode\": \"manual\",\n        \"edge_outline\": false,\n        \"guides\": [\n          [\n            [\n              -16.0,\n              0.0\n            ],\n            [\n              16.0,\n              0.0\n            ]\n          ]\n        ],\n        \"break_lines\": [],\n        \"density_gradient\": {\n          \"from_mm\": [\n            -20.0,\n            0.0\n          ],\n          \"to_mm\": [\n            20.0,\n            0.0\n          ],\n          \"spacing_from_mm\": 0.42,\n          \"spacing_to_mm\": 0.42,\n          \"interpolate_density\": true,\n          \"curve\": \"smooth\"\n        }\n      },\n      \"manual_overrides\": 0,\n      \"region_area_mm2\": 800.0,\n      \"geometry_bounds\": {\n        \"min_mm\": [\n          -20.0,\n          -10.0\n        ],\n        \"max_mm\": [\n          20.0,\n          10.0\n        ],\n        \"width_mm\": 40.0,\n        \"height_mm\": 20.0\n      },\n      \"stitches\": {\n        \"total\": 205,\n        \"top\": 173,\n        \"underlay\": 0,\n        \"jumps\": 8,\n        \"thread_mm\": 416.7558535276813,\n        \"first_command_index\": 1021,\n        \"bounds\": {\n          \"min_mm\": [\n            6.074,\n            -9.425\n          ],\n          \"max_mm\": [\n            19.8,\n            9.577\n          ],\n          \"width_mm\": 13.726,\n          \"height_mm\": 19.002\n        }\n      }\n    }\n  ],\n  \"warnings\": [],\n  \"counts\": {\n    \"vector_objects\": 1,\n    \"embroidery_objects\": 5,\n    \"text_objects\": 0\n  }\n}\n",
+      "stderr": "",
+      "inspection": {
+        "counts": {
+          "vector_objects": 1,
+          "embroidery_objects": 5,
+          "text_objects": 0
+        },
+        "sequence": {
+          "commands": 1240,
+          "stitches": 1139,
+          "jumps": 64,
+          "trims": 32,
+          "color_changes": 4,
+          "thread_m": 2.3185232154452033,
+          "width_mm": 39.6,
+          "height_mm": 19.596
+        },
+        "layers": [
+          {
+            "id": 2,
+            "stitches": 213
+          },
+          {
+            "id": 3,
+            "stitches": 258
+          },
+          {
+            "id": 4,
+            "stitches": 186
+          },
+          {
+            "id": 5,
+            "stitches": 277
+          },
+          {
+            "id": 6,
+            "stitches": 205
+          }
+        ]
+      }
+    },
+    {
+      "command": "multi_5_curved.render",
+      "args": [
+        "project",
+        "render",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_5_curved.osp",
+        "-o",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_5_curved.png",
+        "--px-per-mm",
+        "10",
+        "--fabric",
+        "#ece7df"
+      ],
+      "rc": 0,
+      "ms": 34.6,
+      "stdout": "Rendu écrit : C:\\w\\pr336\\qa-gradient-results\\multi_5_curved.png (403 x 203 px, 10.00 px/mm)\n",
+      "stderr": ""
+    },
+    {
+      "command": "multi_5_curved.export",
+      "args": [
+        "project",
+        "export",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_5_curved.osp",
+        "-o",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_5_curved.dst"
+      ],
+      "rc": 0,
+      "ms": 26.2,
+      "stdout": "Exporté (dst) : C:\\w\\pr336\\qa-gradient-results\\multi_5_curved.dst\n",
+      "stderr": ""
+    },
+    {
+      "command": "multi_5_overlay.inspect",
+      "args": [
+        "project",
+        "inspect",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_5_overlay.osp",
+        "--json"
+      ],
+      "rc": 0,
+      "ms": 36.6,
+      "stdout": " false,\n        \"guides\": [\n          [\n            [\n              -16.0,\n              0.0\n            ],\n            [\n              16.0,\n              0.0\n            ]\n          ]\n        ],\n        \"break_lines\": [],\n        \"density_gradient\": {\n          \"from_mm\": [\n            -20.0,\n            0.0\n          ],\n          \"to_mm\": [\n            20.0,\n            0.0\n          ],\n          \"spacing_from_mm\": 0.42,\n          \"spacing_to_mm\": 0.42,\n          \"interpolate_density\": true,\n          \"curve\": \"smooth\"\n        }\n      },\n      \"manual_overrides\": 0,\n      \"region_area_mm2\": 800.0,\n      \"geometry_bounds\": {\n        \"min_mm\": [\n          -20.0,\n          -10.0\n        ],\n        \"max_mm\": [\n          20.0,\n          10.0\n        ],\n        \"width_mm\": 40.0,\n        \"height_mm\": 20.0\n      },\n      \"stitches\": {\n        \"total\": 116,\n        \"top\": 52,\n        \"underlay\": 0,\n        \"jumps\": 11,\n        \"thread_mm\": 185.987,\n        \"first_command_index\": 915,\n        \"bounds\": {\n          \"min_mm\": [\n            0.556,\n            -9.654\n          ],\n          \"max_mm\": [\n            16.567,\n            9.585\n          ],\n          \"width_mm\": 16.011,\n          \"height_mm\": 19.239\n        }\n      }\n    },\n    {\n      \"id\": 6,\n      \"name\": \"QA multi_5_overlay : fil 5/5\",\n      \"order\": 4,\n      \"source_vector\": 1,\n      \"type\": \"directional\",\n      \"color\": \"#B7D8E5\",\n      \"thread\": null,\n      \"visible\": true,\n      \"locked\": false,\n      \"intent\": \"forced_user_choice\",\n      \"join\": \"inherit\",\n      \"connector\": \"inherit\",\n      \"params\": {\n        \"row_spacing_mm\": 0.4,\n        \"spacing_regularity\": 0.0,\n        \"stitch_length_mm\": 3.0,\n        \"edge_weight\": 0.0,\n        \"inset_mm\": 0.2,\n        \"stagger\": 3,\n        \"underlay_edge\": false,\n        \"underlay_parallel\": false,\n        \"underlay_inset_mm\": 0.6,\n        \"underlay_spacing_mm\": 2.0,\n        \"hidden_underpath\": false,\n        \"sector_overlap_mm\": 0.25,\n        \"handmade\": false,\n        \"handmade_intensity\": 50,\n        \"seed\": 2,\n        \"underlay_mode\": \"manual\",\n        \"pull_mode\": \"manual\",\n        \"edge_outline\": false,\n        \"guides\": [\n          [\n            [\n              -16.0,\n              0.0\n            ],\n            [\n              16.0,\n              0.0\n            ]\n          ]\n        ],\n        \"break_lines\": [],\n        \"density_gradient\": {\n          \"from_mm\": [\n            -20.0,\n            0.0\n          ],\n          \"to_mm\": [\n            20.0,\n            0.0\n          ],\n          \"spacing_from_mm\": 0.42,\n          \"spacing_to_mm\": 0.42,\n          \"interpolate_density\": true,\n          \"curve\": \"smooth\"\n        }\n      },\n      \"manual_overrides\": 0,\n      \"region_area_mm2\": 800.0,\n      \"geometry_bounds\": {\n        \"min_mm\": [\n          -20.0,\n          -10.0\n        ],\n        \"max_mm\": [\n          20.0,\n          10.0\n        ],\n        \"width_mm\": 40.0,\n        \"height_mm\": 20.0\n      },\n      \"stitches\": {\n        \"total\": 101,\n        \"top\": 53,\n        \"underlay\": 0,\n        \"jumps\": 6,\n        \"thread_mm\": 167.254,\n        \"first_command_index\": 1051,\n        \"bounds\": {\n          \"min_mm\": [\n            7.586,\n            -9.756\n          ],\n          \"max_mm\": [\n            19.8,\n            9.777\n          ],\n          \"width_mm\": 12.214,\n          \"height_mm\": 19.533\n        }\n      }\n    }\n  ],\n  \"warnings\": [],\n  \"counts\": {\n    \"vector_objects\": 1,\n    \"embroidery_objects\": 5,\n    \"text_objects\": 0\n  }\n}\n",
+      "stderr": "",
+      "inspection": {
+        "counts": {
+          "vector_objects": 1,
+          "embroidery_objects": 5,
+          "text_objects": 0
+        },
+        "sequence": {
+          "commands": 1166,
+          "stitches": 1092,
+          "jumps": 40,
+          "trims": 29,
+          "color_changes": 4,
+          "thread_m": 2.5629741758000106,
+          "width_mm": 39.6,
+          "height_mm": 19.542
+        },
+        "layers": [
+          {
+            "id": 2,
+            "stitches": 666
+          },
+          {
+            "id": 3,
+            "stitches": 118
+          },
+          {
+            "id": 4,
+            "stitches": 91
+          },
+          {
+            "id": 5,
+            "stitches": 116
+          },
+          {
+            "id": 6,
+            "stitches": 101
+          }
+        ]
+      }
+    },
+    {
+      "command": "multi_5_overlay.render",
+      "args": [
+        "project",
+        "render",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_5_overlay.osp",
+        "-o",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_5_overlay.png",
+        "--px-per-mm",
+        "10",
+        "--fabric",
+        "#ece7df"
+      ],
+      "rc": 0,
+      "ms": 42.0,
+      "stdout": "Rendu écrit : C:\\w\\pr336\\qa-gradient-results\\multi_5_overlay.png (403 x 203 px, 10.00 px/mm)\n",
+      "stderr": ""
+    },
+    {
+      "command": "multi_5_overlay.export",
+      "args": [
+        "project",
+        "export",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_5_overlay.osp",
+        "-o",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_5_overlay.dst"
+      ],
+      "rc": 0,
+      "ms": 36.2,
+      "stdout": "Exporté (dst) : C:\\w\\pr336\\qa-gradient-results\\multi_5_overlay.dst\n",
+      "stderr": ""
+    },
+    {
+      "command": "multi_8_linear.inspect",
+      "args": [
+        "project",
+        "inspect",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_8_linear.osp",
+        "--json"
+      ],
+      "rc": 0,
+      "ms": 30.7,
+      "stdout": "s\": [\n          [\n            [\n              -16.0,\n              0.0\n            ],\n            [\n              16.0,\n              0.0\n            ]\n          ]\n        ],\n        \"break_lines\": [],\n        \"density_gradient\": {\n          \"from_mm\": [\n            -20.0,\n            0.0\n          ],\n          \"to_mm\": [\n            20.0,\n            0.0\n          ],\n          \"spacing_from_mm\": 0.42,\n          \"spacing_to_mm\": 0.42,\n          \"interpolate_density\": true,\n          \"curve\": \"smooth\"\n        }\n      },\n      \"manual_overrides\": 0,\n      \"region_area_mm2\": 800.0,\n      \"geometry_bounds\": {\n        \"min_mm\": [\n          -20.0,\n          -10.0\n        ],\n        \"max_mm\": [\n          20.0,\n          10.0\n        ],\n        \"width_mm\": 40.0,\n        \"height_mm\": 20.0\n      },\n      \"stitches\": {\n        \"total\": 210,\n        \"top\": 162,\n        \"underlay\": 0,\n        \"jumps\": 8,\n        \"thread_mm\": 397.4648624094277,\n        \"first_command_index\": 1049,\n        \"bounds\": {\n          \"min_mm\": [\n            5.988,\n            -9.705\n          ],\n          \"max_mm\": [\n            18.604,\n            9.689\n          ],\n          \"width_mm\": 12.616,\n          \"height_mm\": 19.394\n        }\n      }\n    },\n    {\n      \"id\": 9,\n      \"name\": \"QA multi_8_linear : fil 8/8\",\n      \"order\": 7,\n      \"source_vector\": 1,\n      \"type\": \"directional\",\n      \"color\": \"#E0694F\",\n      \"thread\": null,\n      \"visible\": true,\n      \"locked\": false,\n      \"intent\": \"forced_user_choice\",\n      \"join\": \"inherit\",\n      \"connector\": \"inherit\",\n      \"params\": {\n        \"row_spacing_mm\": 0.4,\n        \"spacing_regularity\": 0.0,\n        \"stitch_length_mm\": 3.0,\n        \"edge_weight\": 0.0,\n        \"inset_mm\": 0.2,\n        \"stagger\": 3,\n        \"underlay_edge\": false,\n        \"underlay_parallel\": false,\n        \"underlay_inset_mm\": 0.6,\n        \"underlay_spacing_mm\": 2.0,\n        \"hidden_underpath\": false,\n        \"sector_overlap_mm\": 0.25,\n        \"handmade\": false,\n        \"handmade_intensity\": 50,\n        \"seed\": 2,\n        \"underlay_mode\": \"manual\",\n        \"pull_mode\": \"manual\",\n        \"edge_outline\": false,\n        \"guides\": [\n          [\n            [\n              -16.0,\n              0.0\n            ],\n            [\n              16.0,\n              0.0\n            ]\n          ]\n        ],\n        \"break_lines\": [],\n        \"density_gradient\": {\n          \"from_mm\": [\n            -20.0,\n            0.0\n          ],\n          \"to_mm\": [\n            20.0,\n            0.0\n          ],\n          \"spacing_from_mm\": 0.42,\n          \"spacing_to_mm\": 0.42,\n          \"interpolate_density\": true,\n          \"curve\": \"smooth\"\n        }\n      },\n      \"manual_overrides\": 0,\n      \"region_area_mm2\": 800.0,\n      \"geometry_bounds\": {\n        \"min_mm\": [\n          -20.0,\n          -10.0\n        ],\n        \"max_mm\": [\n          20.0,\n          10.0\n        ],\n        \"width_mm\": 40.0,\n        \"height_mm\": 20.0\n      },\n      \"stitches\": {\n        \"total\": 200,\n        \"top\": 144,\n        \"underlay\": 0,\n        \"jumps\": 11,\n        \"thread_mm\": 360.4201469907479,\n        \"first_command_index\": 1274,\n        \"bounds\": {\n          \"min_mm\": [\n            10.616,\n            -9.744\n          ],\n          \"max_mm\": [\n            19.8,\n            9.782\n          ],\n          \"width_mm\": 9.184,\n          \"height_mm\": 19.526\n        }\n      }\n    }\n  ],\n  \"warnings\": [],\n  \"counts\": {\n    \"vector_objects\": 1,\n    \"embroidery_objects\": 8,\n    \"text_objects\": 0\n  }\n}\n",
+      "stderr": "",
+      "inspection": {
+        "counts": {
+          "vector_objects": 1,
+          "embroidery_objects": 8,
+          "text_objects": 0
+        },
+        "sequence": {
+          "commands": 1494,
+          "stitches": 1375,
+          "jumps": 68,
+          "trims": 43,
+          "color_changes": 7,
+          "thread_m": 2.4368651383952025,
+          "width_mm": 39.6,
+          "height_mm": 19.568
+        },
+        "layers": [
+          {
+            "id": 2,
+            "stitches": 152
+          },
+          {
+            "id": 3,
+            "stitches": 180
+          },
+          {
+            "id": 4,
+            "stitches": 172
+          },
+          {
+            "id": 5,
+            "stitches": 148
+          },
+          {
+            "id": 6,
+            "stitches": 153
+          },
+          {
+            "id": 7,
+            "stitches": 160
+          },
+          {
+            "id": 8,
+            "stitches": 210
+          },
+          {
+            "id": 9,
+            "stitches": 200
+          }
+        ]
+      }
+    },
+    {
+      "command": "multi_8_linear.render",
+      "args": [
+        "project",
+        "render",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_8_linear.osp",
+        "-o",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_8_linear.png",
+        "--px-per-mm",
+        "10",
+        "--fabric",
+        "#ece7df"
+      ],
+      "rc": 0,
+      "ms": 39.5,
+      "stdout": "Rendu écrit : C:\\w\\pr336\\qa-gradient-results\\multi_8_linear.png (403 x 203 px, 10.00 px/mm)\n",
+      "stderr": ""
+    },
+    {
+      "command": "multi_8_linear.export",
+      "args": [
+        "project",
+        "export",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_8_linear.osp",
+        "-o",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_8_linear.dst"
+      ],
+      "rc": 0,
+      "ms": 27.3,
+      "stdout": "Exporté (dst) : C:\\w\\pr336\\qa-gradient-results\\multi_8_linear.dst\n",
+      "stderr": ""
+    },
+    {
+      "command": "satin_3.inspect",
+      "args": [
+        "project",
+        "inspect",
+        "C:\\w\\pr336\\qa-gradient-results\\satin_3.osp",
+        "--json"
+      ],
+      "rc": 0,
+      "ms": 25.6,
+      "stdout": "0.0,\n        \"lock_start\": \"none\",\n        \"lock_end\": \"none\",\n        \"lock_length_mm\": 0.8,\n        \"lock_passes\": 2,\n        \"underlay_mode\": \"manual\",\n        \"pull_mode\": \"manual\",\n        \"auto_spacing\": false,\n        \"corner_mode\": \"none\",\n        \"rail_a\": [\n          [\n            -15.0,\n            -1.6\n          ],\n          [\n            15.0,\n            -1.6\n          ]\n        ],\n        \"rail_b\": [\n          [\n            -15.0,\n            1.6\n          ],\n          [\n            15.0,\n            1.6\n          ]\n        ],\n        \"rungs\": []\n      },\n      \"manual_overrides\": 0,\n      \"region_area_mm2\": 800.0,\n      \"geometry_bounds\": {\n        \"min_mm\": [\n          -20.0,\n          -10.0\n        ],\n        \"max_mm\": [\n          20.0,\n          10.0\n        ],\n        \"width_mm\": 40.0,\n        \"height_mm\": 20.0\n      },\n      \"stitches\": {\n        \"total\": 44,\n        \"top\": 36,\n        \"underlay\": 0,\n        \"jumps\": 1,\n        \"thread_mm\": 122.72326160126921,\n        \"first_command_index\": 53,\n        \"bounds\": {\n          \"min_mm\": [\n            -6.97,\n            -1.6\n          ],\n          \"max_mm\": [\n            8.708,\n            1.6\n          ],\n          \"width_mm\": 15.678,\n          \"height_mm\": 3.2\n        }\n      }\n    },\n    {\n      \"id\": 4,\n      \"name\": \"QA satin_3 : fil 3/3\",\n      \"order\": 2,\n      \"source_vector\": 1,\n      \"type\": \"satin\",\n      \"color\": \"#4C7AB3\",\n      \"thread\": null,\n      \"visible\": true,\n      \"locked\": false,\n      \"intent\": \"forced_user_choice\",\n      \"join\": \"inherit\",\n      \"connector\": \"inherit\",\n      \"params\": {\n        \"density_mm\": 0.45,\n        \"pull_compensation_mm\": 0.0,\n        \"center_underlay\": false,\n        \"max_width_mm\": 10.0,\n        \"max_width_hard_mm\": 48.0,\n        \"short_stitch\": \"disabled\",\n        \"split_stitch\": \"simple\",\n        \"cap_start\": \"flat\",\n        \"cap_end\": \"flat\",\n        \"max_stitch_length_mm\": 7.0,\n        \"underlay_edge\": false,\n        \"underlay_zigzag\": false,\n        \"pull_left_mm\": 0.0,\n        \"pull_right_mm\": 0.0,\n        \"push_start_mm\": 0.0,\n        \"push_end_mm\": 0.0,\n        \"lock_start\": \"none\",\n        \"lock_end\": \"none\",\n        \"lock_length_mm\": 0.8,\n        \"lock_passes\": 2,\n        \"underlay_mode\": \"manual\",\n        \"pull_mode\": \"manual\",\n        \"auto_spacing\": false,\n        \"corner_mode\": \"none\",\n        \"rail_a\": [\n          [\n            -15.0,\n            -1.6\n          ],\n          [\n            15.0,\n            -1.6\n          ]\n        ],\n        \"rail_b\": [\n          [\n            -15.0,\n            1.6\n          ],\n          [\n            15.0,\n            1.6\n          ]\n        ],\n        \"rungs\": []\n      },\n      \"manual_overrides\": 0,\n      \"region_area_mm2\": 800.0,\n      \"geometry_bounds\": {\n        \"min_mm\": [\n          -20.0,\n          -10.0\n        ],\n        \"max_mm\": [\n          20.0,\n          10.0\n        ],\n        \"width_mm\": 40.0,\n        \"height_mm\": 20.0\n      },\n      \"stitches\": {\n        \"total\": 22,\n        \"top\": 14,\n        \"underlay\": 0,\n        \"jumps\": 1,\n        \"thread_mm\": 51.60249712959583,\n        \"first_command_index\": 100,\n        \"bounds\": {\n          \"min_mm\": [\n            9.157,\n            -1.6\n          ],\n          \"max_mm\": [\n            15.0,\n            1.6\n          ],\n          \"width_mm\": 5.843,\n          \"height_mm\": 3.2\n        }\n      }\n    }\n  ],\n  \"warnings\": [],\n  \"counts\": {\n    \"vector_objects\": 1,\n    \"embroidery_objects\": 3,\n    \"text_objects\": 0\n  }\n}\n",
+      "stderr": "",
+      "inspection": {
+        "counts": {
+          "vector_objects": 1,
+          "embroidery_objects": 3,
+          "text_objects": 0
+        },
+        "sequence": {
+          "commands": 126,
+          "stitches": 115,
+          "jumps": 4,
+          "trims": 4,
+          "color_changes": 2,
+          "thread_m": 0.2752541342173697,
+          "width_mm": 30.0,
+          "height_mm": 3.2
+        },
+        "layers": [
+          {
+            "id": 2,
+            "stitches": 49
+          },
+          {
+            "id": 3,
+            "stitches": 44
+          },
+          {
+            "id": 4,
+            "stitches": 22
+          }
+        ]
+      }
+    },
+    {
+      "command": "satin_3.render",
+      "args": [
+        "project",
+        "render",
+        "C:\\w\\pr336\\qa-gradient-results\\satin_3.osp",
+        "-o",
+        "C:\\w\\pr336\\qa-gradient-results\\satin_3.png",
+        "--px-per-mm",
+        "10",
+        "--fabric",
+        "#ece7df"
+      ],
+      "rc": 0,
+      "ms": 21.4,
+      "stdout": "Rendu écrit : C:\\w\\pr336\\qa-gradient-results\\satin_3.png (307 x 40 px, 10.00 px/mm)\n",
+      "stderr": ""
+    },
+    {
+      "command": "satin_3.export",
+      "args": [
+        "project",
+        "export",
+        "C:\\w\\pr336\\qa-gradient-results\\satin_3.osp",
+        "-o",
+        "C:\\w\\pr336\\qa-gradient-results\\satin_3.dst"
+      ],
+      "rc": 0,
+      "ms": 20.6,
+      "stdout": "Exporté (dst) : C:\\w\\pr336\\qa-gradient-results\\satin_3.dst\n",
+      "stderr": ""
+    },
+    {
+      "command": "satin_5.inspect",
+      "args": [
+        "project",
+        "inspect",
+        "C:\\w\\pr336\\qa-gradient-results\\satin_5.osp",
+        "--json"
+      ],
+      "rc": 0,
+      "ms": 23.0,
+      "stdout": "0,\n        \"lock_start\": \"none\",\n        \"lock_end\": \"none\",\n        \"lock_length_mm\": 0.8,\n        \"lock_passes\": 2,\n        \"underlay_mode\": \"manual\",\n        \"pull_mode\": \"manual\",\n        \"auto_spacing\": false,\n        \"corner_mode\": \"none\",\n        \"rail_a\": [\n          [\n            -15.0,\n            -1.6\n          ],\n          [\n            15.0,\n            -1.6\n          ]\n        ],\n        \"rail_b\": [\n          [\n            -15.0,\n            1.6\n          ],\n          [\n            15.0,\n            1.6\n          ]\n        ],\n        \"rungs\": []\n      },\n      \"manual_overrides\": 0,\n      \"region_area_mm2\": 800.0,\n      \"geometry_bounds\": {\n        \"min_mm\": [\n          -20.0,\n          -10.0\n        ],\n        \"max_mm\": [\n          20.0,\n          10.0\n        ],\n        \"width_mm\": 40.0,\n        \"height_mm\": 20.0\n      },\n      \"stitches\": {\n        \"total\": 23,\n        \"top\": 15,\n        \"underlay\": 0,\n        \"jumps\": 1,\n        \"thread_mm\": 54.843750784624454,\n        \"first_command_index\": 99,\n        \"bounds\": {\n          \"min_mm\": [\n            3.764,\n            -1.6\n          ],\n          \"max_mm\": [\n            10.093,\n            1.6\n          ],\n          \"width_mm\": 6.329,\n          \"height_mm\": 3.2\n        }\n      }\n    },\n    {\n      \"id\": 6,\n      \"name\": \"QA satin_5 : fil 5/5\",\n      \"order\": 4,\n      \"source_vector\": 1,\n      \"type\": \"satin\",\n      \"color\": \"#B7D8E5\",\n      \"thread\": null,\n      \"visible\": true,\n      \"locked\": false,\n      \"intent\": \"forced_user_choice\",\n      \"join\": \"inherit\",\n      \"connector\": \"inherit\",\n      \"params\": {\n        \"density_mm\": 0.45,\n        \"pull_compensation_mm\": 0.0,\n        \"center_underlay\": false,\n        \"max_width_mm\": 10.0,\n        \"max_width_hard_mm\": 48.0,\n        \"short_stitch\": \"disabled\",\n        \"split_stitch\": \"simple\",\n        \"cap_start\": \"flat\",\n        \"cap_end\": \"flat\",\n        \"max_stitch_length_mm\": 7.0,\n        \"underlay_edge\": false,\n        \"underlay_zigzag\": false,\n        \"pull_left_mm\": 0.0,\n        \"pull_right_mm\": 0.0,\n        \"push_start_mm\": 0.0,\n        \"push_end_mm\": 0.0,\n        \"lock_start\": \"none\",\n        \"lock_end\": \"none\",\n        \"lock_length_mm\": 0.8,\n        \"lock_passes\": 2,\n        \"underlay_mode\": \"manual\",\n        \"pull_mode\": \"manual\",\n        \"auto_spacing\": false,\n        \"corner_mode\": \"none\",\n        \"rail_a\": [\n          [\n            -15.0,\n            -1.6\n          ],\n          [\n            15.0,\n            -1.6\n          ]\n        ],\n        \"rail_b\": [\n          [\n            -15.0,\n            1.6\n          ],\n          [\n            15.0,\n            1.6\n          ]\n        ],\n        \"rungs\": []\n      },\n      \"manual_overrides\": 0,\n      \"region_area_mm2\": 800.0,\n      \"geometry_bounds\": {\n        \"min_mm\": [\n          -20.0,\n          -10.0\n        ],\n        \"max_mm\": [\n          20.0,\n          10.0\n        ],\n        \"width_mm\": 40.0,\n        \"height_mm\": 20.0\n      },\n      \"stitches\": {\n        \"total\": 19,\n        \"top\": 11,\n        \"underlay\": 0,\n        \"jumps\": 1,\n        \"thread_mm\": 41.913332938509505,\n        \"first_command_index\": 125,\n        \"bounds\": {\n          \"min_mm\": [\n            10.506,\n            -1.6\n          ],\n          \"max_mm\": [\n            15.0,\n            1.6\n          ],\n          \"width_mm\": 4.494,\n          \"height_mm\": 3.2\n        }\n      }\n    }\n  ],\n  \"warnings\": [],\n  \"counts\": {\n    \"vector_objects\": 1,\n    \"embroidery_objects\": 5,\n    \"text_objects\": 0\n  }\n}\n",
+      "stderr": "",
+      "inspection": {
+        "counts": {
+          "vector_objects": 1,
+          "embroidery_objects": 5,
+          "text_objects": 0
+        },
+        "sequence": {
+          "commands": 148,
+          "stitches": 131,
+          "jumps": 6,
+          "trims": 6,
+          "color_changes": 4,
+          "thread_m": 0.28799335894286227,
+          "width_mm": 30.0,
+          "height_mm": 3.2
+        },
+        "layers": [
+          {
+            "id": 2,
+            "stitches": 40
+          },
+          {
+            "id": 3,
+            "stitches": 23
+          },
+          {
+            "id": 4,
+            "stitches": 26
+          },
+          {
+            "id": 5,
+            "stitches": 23
+          },
+          {
+            "id": 6,
+            "stitches": 19
+          }
+        ]
+      }
+    },
+    {
+      "command": "satin_5.render",
+      "args": [
+        "project",
+        "render",
+        "C:\\w\\pr336\\qa-gradient-results\\satin_5.osp",
+        "-o",
+        "C:\\w\\pr336\\qa-gradient-results\\satin_5.png",
+        "--px-per-mm",
+        "10",
+        "--fabric",
+        "#ece7df"
+      ],
+      "rc": 0,
+      "ms": 22.6,
+      "stdout": "Rendu écrit : C:\\w\\pr336\\qa-gradient-results\\satin_5.png (307 x 40 px, 10.00 px/mm)\n",
+      "stderr": ""
+    },
+    {
+      "command": "satin_5.export",
+      "args": [
+        "project",
+        "export",
+        "C:\\w\\pr336\\qa-gradient-results\\satin_5.osp",
+        "-o",
+        "C:\\w\\pr336\\qa-gradient-results\\satin_5.dst"
+      ],
+      "rc": 0,
+      "ms": 21.3,
+      "stdout": "Exporté (dst) : C:\\w\\pr336\\qa-gradient-results\\satin_5.dst\n",
+      "stderr": ""
+    },
+    {
+      "command": "satin_8.inspect",
+      "args": [
+        "project",
+        "inspect",
+        "C:\\w\\pr336\\qa-gradient-results\\satin_8.osp",
+        "--json"
+      ],
+      "rc": 0,
+      "ms": 25.0,
+      "stdout": "0.0,\n        \"lock_start\": \"none\",\n        \"lock_end\": \"none\",\n        \"lock_length_mm\": 0.8,\n        \"lock_passes\": 2,\n        \"underlay_mode\": \"manual\",\n        \"pull_mode\": \"manual\",\n        \"auto_spacing\": false,\n        \"corner_mode\": \"none\",\n        \"rail_a\": [\n          [\n            -15.0,\n            -1.6\n          ],\n          [\n            15.0,\n            -1.6\n          ]\n        ],\n        \"rail_b\": [\n          [\n            -15.0,\n            1.6\n          ],\n          [\n            15.0,\n            1.6\n          ]\n        ],\n        \"rungs\": []\n      },\n      \"manual_overrides\": 0,\n      \"region_area_mm2\": 800.0,\n      \"geometry_bounds\": {\n        \"min_mm\": [\n          -20.0,\n          -10.0\n        ],\n        \"max_mm\": [\n          20.0,\n          10.0\n        ],\n        \"width_mm\": 40.0,\n        \"height_mm\": 20.0\n      },\n      \"stitches\": {\n        \"total\": 17,\n        \"top\": 9,\n        \"underlay\": 0,\n        \"jumps\": 1,\n        \"thread_mm\": 35.451156958840436,\n        \"first_command_index\": 144,\n        \"bounds\": {\n          \"min_mm\": [\n            9.157,\n            -1.6\n          ],\n          \"max_mm\": [\n            12.77,\n            1.6\n          ],\n          \"width_mm\": 3.613,\n          \"height_mm\": 3.2\n        }\n      }\n    },\n    {\n      \"id\": 9,\n      \"name\": \"QA satin_8 : fil 8/8\",\n      \"order\": 7,\n      \"source_vector\": 1,\n      \"type\": \"satin\",\n      \"color\": \"#E0694F\",\n      \"thread\": null,\n      \"visible\": true,\n      \"locked\": false,\n      \"intent\": \"forced_user_choice\",\n      \"join\": \"inherit\",\n      \"connector\": \"inherit\",\n      \"params\": {\n        \"density_mm\": 0.45,\n        \"pull_compensation_mm\": 0.0,\n        \"center_underlay\": false,\n        \"max_width_mm\": 10.0,\n        \"max_width_hard_mm\": 48.0,\n        \"short_stitch\": \"disabled\",\n        \"split_stitch\": \"simple\",\n        \"cap_start\": \"flat\",\n        \"cap_end\": \"flat\",\n        \"max_stitch_length_mm\": 7.0,\n        \"underlay_edge\": false,\n        \"underlay_zigzag\": false,\n        \"pull_left_mm\": 0.0,\n        \"pull_right_mm\": 0.0,\n        \"push_start_mm\": 0.0,\n        \"push_end_mm\": 0.0,\n        \"lock_start\": \"none\",\n        \"lock_end\": \"none\",\n        \"lock_length_mm\": 0.8,\n        \"lock_passes\": 2,\n        \"underlay_mode\": \"manual\",\n        \"pull_mode\": \"manual\",\n        \"auto_spacing\": false,\n        \"corner_mode\": \"none\",\n        \"rail_a\": [\n          [\n            -15.0,\n            -1.6\n          ],\n          [\n            15.0,\n            -1.6\n          ]\n        ],\n        \"rail_b\": [\n          [\n            -15.0,\n            1.6\n          ],\n          [\n            15.0,\n            1.6\n          ]\n        ],\n        \"rungs\": []\n      },\n      \"manual_overrides\": 0,\n      \"region_area_mm2\": 800.0,\n      \"geometry_bounds\": {\n        \"min_mm\": [\n          -20.0,\n          -10.0\n        ],\n        \"max_mm\": [\n          20.0,\n          10.0\n        ],\n        \"width_mm\": 40.0,\n        \"height_mm\": 20.0\n      },\n      \"stitches\": {\n        \"total\": 13,\n        \"top\": 5,\n        \"underlay\": 0,\n        \"jumps\": 1,\n        \"thread_mm\": 22.524164452742234,\n        \"first_command_index\": 164,\n        \"bounds\": {\n          \"min_mm\": [\n            13.202,\n            -1.6\n          ],\n          \"max_mm\": [\n            15.0,\n            1.6\n          ],\n          \"width_mm\": 1.798,\n          \"height_mm\": 3.2\n        }\n      }\n    }\n  ],\n  \"warnings\": [],\n  \"counts\": {\n    \"vector_objects\": 1,\n    \"embroidery_objects\": 8,\n    \"text_objects\": 0\n  }\n}\n",
+      "stderr": "",
+      "inspection": {
+        "counts": {
+          "vector_objects": 1,
+          "embroidery_objects": 8,
+          "text_objects": 0
+        },
+        "sequence": {
+          "commands": 181,
+          "stitches": 155,
+          "jumps": 9,
+          "trims": 9,
+          "color_changes": 7,
+          "thread_m": 0.30710700838480726,
+          "width_mm": 30.0,
+          "height_mm": 3.2
+        },
+        "layers": [
+          {
+            "id": 2,
+            "stitches": 37
+          },
+          {
+            "id": 3,
+            "stitches": 17
+          },
+          {
+            "id": 4,
+            "stitches": 17
+          },
+          {
+            "id": 5,
+            "stitches": 20
+          },
+          {
+            "id": 6,
+            "stitches": 17
+          },
+          {
+            "id": 7,
+            "stitches": 17
+          },
+          {
+            "id": 8,
+            "stitches": 17
+          },
+          {
+            "id": 9,
+            "stitches": 13
+          }
+        ]
+      }
+    },
+    {
+      "command": "satin_8.render",
+      "args": [
+        "project",
+        "render",
+        "C:\\w\\pr336\\qa-gradient-results\\satin_8.osp",
+        "-o",
+        "C:\\w\\pr336\\qa-gradient-results\\satin_8.png",
+        "--px-per-mm",
+        "10",
+        "--fabric",
+        "#ece7df"
+      ],
+      "rc": 0,
+      "ms": 23.2,
+      "stdout": "Rendu écrit : C:\\w\\pr336\\qa-gradient-results\\satin_8.png (307 x 40 px, 10.00 px/mm)\n",
+      "stderr": ""
+    },
+    {
+      "command": "satin_8.export",
+      "args": [
+        "project",
+        "export",
+        "C:\\w\\pr336\\qa-gradient-results\\satin_8.osp",
+        "-o",
+        "C:\\w\\pr336\\qa-gradient-results\\satin_8.dst"
+      ],
+      "rc": 0,
+      "ms": 19.9,
+      "stdout": "Exporté (dst) : C:\\w\\pr336\\qa-gradient-results\\satin_8.dst\n",
+      "stderr": ""
+    },
+    {
+      "command": "multi_5_linear_x3.benchmark",
+      "args": [
+        "project",
+        "export",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_5_linear_x3.osp",
+        "-o",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_5_linear_x3.dst"
+      ],
+      "rc": 0,
+      "ms": 62.7,
+      "stdout": "Exporté (dst) : C:\\w\\pr336\\qa-gradient-results\\multi_5_linear_x3.dst\n",
+      "stderr": ""
+    },
+    {
+      "command": "multi_5_linear_x6.benchmark",
+      "args": [
+        "project",
+        "export",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_5_linear_x6.osp",
+        "-o",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_5_linear_x6.dst"
+      ],
+      "rc": 0,
+      "ms": 169.8,
+      "stdout": "Exporté (dst) : C:\\w\\pr336\\qa-gradient-results\\multi_5_linear_x6.dst\n",
+      "stderr": ""
+    },
+    {
+      "command": "multi_8_linear_x3.benchmark",
+      "args": [
+        "project",
+        "export",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_8_linear_x3.osp",
+        "-o",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_8_linear_x3.dst"
+      ],
+      "rc": 0,
+      "ms": 64.1,
+      "stdout": "Exporté (dst) : C:\\w\\pr336\\qa-gradient-results\\multi_8_linear_x3.dst\n",
+      "stderr": ""
+    },
+    {
+      "command": "multi_8_linear_x6.benchmark",
+      "args": [
+        "project",
+        "export",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_8_linear_x6.osp",
+        "-o",
+        "C:\\w\\pr336\\qa-gradient-results\\multi_8_linear_x6.dst"
+      ],
+      "rc": 0,
+      "ms": 156.4,
+      "stdout": "Exporté (dst) : C:\\w\\pr336\\qa-gradient-results\\multi_8_linear_x6.dst\n",
+      "stderr": ""
+    }
+  ]
+}

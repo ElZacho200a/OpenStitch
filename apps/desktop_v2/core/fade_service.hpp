@@ -50,6 +50,12 @@ struct MultiFadeSettings {
 
 [[nodiscard]] std::optional<MultiFadeSettings> readMultiFade(const document::Project& project,
                                                              std::uint64_t objectId);
+// Orientation de l'axe from->to en degrés modèle (-180..180), commune aux fondus binaires et
+// n-aires. Le radial conserve son axe interne mais l'UI ne présente pas cet angle comme un réglage.
+[[nodiscard]] std::optional<double> readFadeAngle(const document::Project& project,
+                                                  std::uint64_t objectId);
+// Tourne l'axe autour de son centre sans changer sa longueur, en une commande annulable.
+ServiceResult setFadeAngle(DocumentSession& session, std::uint64_t objectId, double degrees);
 ServiceResult createMultiFade(DocumentSession& session, std::uint64_t objectId,
                               const MultiFadeSettings& settings);
 ServiceResult editMultiFade(DocumentSession& session, std::uint64_t objectId,

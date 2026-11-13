@@ -73,10 +73,14 @@ en l'autre.
 - Le tiroir Points/Fondu et l'inspecteur partagent **FadeProperties.qml**.
 - L'interface distingue visuellement le fil de départ et le fil d'arrivée,
   donne accès à un vrai sélecteur de couleur et vérifie la saisie hexadécimale.
-- Elle présente le profil des densités complémentaires (ou fond constant),
-  les profils de transition existants et l'action inverser. Le réglage
-  manuel de l'axe (mm) est repliable, validé numériquement, et les
-  coordonnées sont alimentées depuis les poignées du canevas.
+- Elle présente explicitement les deux répartitions de couches, **densités
+  complémentaires** et **superposition sur fond constant**, ainsi que les
+  quatre aspects, trois géométries, cinq profils et l'action inverser.
+- L'orientation en degrés est réglable pour les champs linéaires et courbes,
+  de deux à huit fils. Elle tourne l'axe commun autour de son centre sans
+  changer sa longueur, en une commande annulable. Le radial n'affiche pas un
+  faux angle. Le réglage manuel des coordonnées (mm) reste disponible pour
+  l'axe bicolore linéaire et les poignées du canevas.
 - La bande colorée n'est explicitement **pas** une simulation des points
   ou une prédiction de la couleur du textile.
 - Les fonctions réellement exécutables continuent de passer par

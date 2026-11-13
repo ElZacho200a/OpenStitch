@@ -1,0 +1,66 @@
+[
+  {
+    "name": "multi_5_linear_x3",
+    "factor": 3,
+    "width_mm": 120,
+    "height_mm": 60,
+    "elapsed_ms": 62.7,
+    "return_code": 0,
+    "dst_quality": {
+      "stitches": 8260,
+      "jumps": 657,
+      "color_changes": 4,
+      "diagonals_over_5mm": 0,
+      "diagonal_length_mm": 0.0,
+      "max_needle_step_mm": 3.5
+    }
+  },
+  {
+    "name": "multi_5_linear_x6",
+    "factor": 6,
+    "width_mm": 240,
+    "height_mm": 120,
+    "elapsed_ms": 169.8,
+    "return_code": 0,
+    "dst_quality": {
+      "stitches": 30454,
+      "jumps": 1458,
+      "color_changes": 4,
+      "diagonals_over_5mm": 0,
+      "diagonal_length_mm": 0.0,
+      "max_needle_step_mm": 3.5
+    }
+  },
+  {
+    "name": "multi_8_linear_x3",
+    "factor": 3,
+    "width_mm": 120,
+    "height_mm": 60,
+    "elapsed_ms": 64.1,
+    "return_code": 0,
+    "dst_quality": {
+      "stitches": 8462,
+      "jumps": 810,
+      "color_changes": 7,
+      "diagonals_over_5mm": 0,
+      "diagonal_length_mm": 0.0,
+      "max_needle_step_mm": 3.5
+    }
+  },
+  {
+    "name": "multi_8_linear_x6",
+    "factor": 6,
+    "width_mm": 240,
+    "height_mm": 120,
+    "elapsed_ms": 156.4,
+    "return_code": 0,
+    "dst_quality": {
+      "stitches": 33844,
+      "jumps": 2857,
+      "color_changes": 7,
+      "diagonals_over_5mm": 0,
+      "diagonal_length_mm": 0.0,
+      "max_needle_step_mm": 3.5
+    }
+  }
+]

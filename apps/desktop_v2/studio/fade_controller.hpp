@@ -31,6 +31,7 @@ class FadeController : public QObject {
     Q_PROPERTY(bool complementary READ complementary NOTIFY changed)
     Q_PROPERTY(int texture READ texture NOTIFY changed)
     Q_PROPERTY(int geometry READ geometry NOTIFY changed)
+    Q_PROPERTY(double angle READ angle NOTIFY changed)
     Q_PROPERTY(bool multiFade READ multiFade NOTIFY changed)
     Q_PROPERTY(bool satinTarget READ satinTarget NOTIFY changed)
     Q_PROPERTY(QVariantList colors READ colors NOTIFY changed)
@@ -65,6 +66,7 @@ public:
     [[nodiscard]] int geometry() const {
         return multiSettings_ ? multiSettings_->geometry : settings_ ? settings_->geometry : 0;
     }
+    [[nodiscard]] double angle() const;
     [[nodiscard]] QVariantList colors() const;
     [[nodiscard]] int curve() const;
     [[nodiscard]] QString summary() const;
@@ -78,6 +80,7 @@ public:
     Q_INVOKABLE bool createWithTexture(const QColor& foreground, bool complementary, int texture);
     Q_INVOKABLE bool setTexture(int texture);
     Q_INVOKABLE bool setGeometry(int geometry);
+    Q_INVOKABLE bool setAngle(double degrees);
     Q_INVOKABLE bool createMulticolor(const QVariantList& colors, bool complementary, int texture,
                                       int geometry);
     Q_INVOKABLE bool editMulticolor(const QVariantList& colors, bool complementary, int texture,

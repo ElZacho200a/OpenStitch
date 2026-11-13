@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <numbers>
 
 #include "openstitch/project_ops/gradient_fill.hpp"
 
@@ -69,6 +70,44 @@ bool setup_geometry(const document::Project& project, ObjectId id,
     }
     gradient.geometry = static_cast<document::DensityGeometry>(geometry);
     gradient.curve_bend = geometry == 2 ? 0.35 : 0.0;
+    return true;
+}
+
+std::optional<double> gradient_angle(const document::DensityGradient& gradient) {
+    const double dx = static_cast<double>(gradient.to.x.value) - gradient.from.x.value;
+    const double dy = static_cast<double>(gradient.to.y.value) - gradient.from.y.value;
+    if (std::hypot(dx, dy) < 1.0) {
+        return std::nullopt;
+    }
+    return std::atan2(dy, dx) * 180.0 / std::numbers::pi;
+}
+
+bool rotate_gradient(document::DensityGradient& gradient, double degrees) {
+    if (!std::isfinite(degrees)) {
+        return false;
+    }
+    const double dx = static_cast<double>(gradient.to.x.value) - gradient.from.x.value;
+    const double dy = static_cast<double>(gradient.to.y.value) - gradient.from.y.value;
+    const double length = std::hypot(dx, dy);
+    if (length < 1.0) {
+        return false;
+    }
+    const double radians = std::remainder(degrees, 360.0) * std::numbers::pi / 180.0;
+    const double cx = (static_cast<double>(gradient.from.x.value) + gradient.to.x.value) * 0.5;
+    const double cy = (static_cast<double>(gradient.from.y.value) + gradient.to.y.value) * 0.5;
+    const double hx = std::cos(radians) * length * 0.5;
+    const double hy = std::sin(radians) * length * 0.5;
+    const auto inside = [](double value) {
+        return value >= std::numeric_limits<std::int32_t>::min() &&
+               value <= std::numeric_limits<std::int32_t>::max();
+    };
+    if (!inside(cx - hx) || !inside(cx + hx) || !inside(cy - hy) || !inside(cy + hy)) {
+        return false;
+    }
+    gradient.from = Vec2um{Micrometers{static_cast<std::int32_t>(std::lround(cx - hx))},
+                           Micrometers{static_cast<std::int32_t>(std::lround(cy - hy))}};
+    gradient.to = Vec2um{Micrometers{static_cast<std::int32_t>(std::lround(cx + hx))},
+                         Micrometers{static_cast<std::int32_t>(std::lround(cy + hy))}};
     return true;
 }
 } // namespace
@@ -183,6 +222,54 @@ std::optional<MultiFadeSettings> readMultiFade(const document::Project& project,
     return MultiFadeSettings{spec->colors, spec->complementary,
                              static_cast<int>(spec->gradient.texture),
                              static_cast<int>(spec->gradient.geometry)};
+}
+
+std::optional<double> readFadeAngle(const document::Project& project, std::uint64_t objectId) {
+    if (const auto spec =
+            project_ops::describe_multicolor_gradient_fill(project, ObjectId{objectId})) {
+        return gradient_angle(spec->gradient);
+    }
+    if (const auto spec = project_ops::describe_gradient_fill(project, ObjectId{objectId})) {
+        return gradient_angle(spec->gradient);
+    }
+    return std::nullopt;
+}
+
+ServiceResult setFadeAngle(DocumentSession& session, std::uint64_t objectId, double degrees) {
+    if (auto spec =
+            project_ops::describe_multicolor_gradient_fill(session.project(), ObjectId{objectId})) {
+        const auto before = spec->gradient;
+        if (!rotate_gradient(spec->gradient, degrees)) {
+            return refuse("Angle invalide ou axe de fondu dégénéré.");
+        }
+        if (spec->gradient == before) {
+            return {true, {}};
+        }
+        auto command = project_ops::make_edit_multicolor_gradient_fill_command(
+            session.projectForIdAllocation(), ObjectId{objectId}, *spec);
+        if (!command) {
+            return refuse(command.error().message);
+        }
+        session.execute(std::move(*command));
+        return {true, {}};
+    }
+    if (auto spec = project_ops::describe_gradient_fill(session.project(), ObjectId{objectId})) {
+        const auto before = spec->gradient;
+        if (!rotate_gradient(spec->gradient, degrees)) {
+            return refuse("Angle invalide ou axe de fondu dégénéré.");
+        }
+        if (spec->gradient == before) {
+            return {true, {}};
+        }
+        auto command = project_ops::make_edit_gradient_fill_command(session.project(),
+                                                                    ObjectId{objectId}, *spec);
+        if (!command) {
+            return refuse(command.error().message);
+        }
+        session.execute(std::move(*command));
+        return {true, {}};
+    }
+    return refuse("Cet objet ne porte pas de fondu.");
 }
 
 ServiceResult createMultiFade(DocumentSession& session, std::uint64_t objectId,

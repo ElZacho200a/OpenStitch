@@ -120,6 +120,13 @@ int FadeController::curve() const {
     return multiSettings_ ? multiCurve_ : axis_ ? static_cast<int>(axis_->curve) : 0;
 }
 
+double FadeController::angle() const {
+    if (id_ == 0) {
+        return 0.0;
+    }
+    return readFadeAngle(studio_.session().project(), id_).value_or(0.0);
+}
+
 QVariantList FadeController::colors() const {
     QVariantList result;
     if (multiSettings_) {
@@ -245,6 +252,17 @@ bool FadeController::setGeometry(int geometry) {
     settings.geometry = geometry;
     return report(editFade(studio_.session(), id_, settings),
                   QStringLiteral("Géométrie modifiée."));
+}
+
+bool FadeController::setAngle(double degrees) {
+    if (id_ == 0 || !hasFade()) {
+        return refuse(QStringLiteral("Aucun fondu à orienter."));
+    }
+    if (geometry() == 1) {
+        return refuse(QStringLiteral("Un fondu radial n'a pas d'angle d'axe visible."));
+    }
+    return report(openstitch::desktop_v2::setFadeAngle(studio_.session(), id_, degrees),
+                  QStringLiteral("Angle du fondu modifié."));
 }
 
 namespace {
