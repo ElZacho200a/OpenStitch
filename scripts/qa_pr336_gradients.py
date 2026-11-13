@@ -257,7 +257,7 @@ def build():
         manifest.append(entry)
         (OUT/"manifest.json").write_text(json.dumps(manifest,indent=2,ensure_ascii=False),
                                          encoding="utf-8")
-    results = {"pr":336,"source":"GitHub Actions Windows artifact 13988349715",
+    results = {"pr":336,"source":str(CLI), "sha":os.environ.get("GITHUB_SHA"),
                "sample":"40 x 20 mm rectangle + 30 x 3.2 mm satin rails",
                "cases":manifest,"commands":LOG}
     (OUT/"report.json").write_text(json.dumps(results,indent=2,ensure_ascii=False),encoding="utf-8")
