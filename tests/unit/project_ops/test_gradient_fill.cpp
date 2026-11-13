@@ -632,6 +632,21 @@ TEST_CASE("multicolor satin: all eight thread regions stay nonempty and reproduc
         CHECK(count > 0);
     }
 
+    // La sauvegarde OSP doit préserver le routage satin et les huit fils :
+    // une réouverture ne doit pas modifier la séquence machine générée.
+    const auto satin_file =
+        std::filesystem::temp_directory_path() / "openstitch_multicolor_satin_eight.osp";
+    REQUIRE(project_io::save_project(satin_file, f.project).has_value());
+    const auto reopened_satin = project_io::load_project(satin_file);
+    REQUIRE(reopened_satin);
+    const auto reopened_group = document::find_multi_blend(*reopened_satin, f.fill);
+    REQUIRE(reopened_group);
+    CHECK(reopened_group->layers.size() == 8);
+    const auto reopened_stitches = stitch_generation::effective_sequence(*reopened_satin);
+    REQUIRE(reopened_stitches);
+    CHECK(reopened_stitches->commands == stitched->commands);
+    std::filesystem::remove(satin_file);
+
     // Un satin multicolore ne doit pas se transformer en une suite de
     // deplacements machine. Les sauts sont permis aux frontieres des fils,
     // mais leur proportion doit rester bornee meme avec huit couleurs.
