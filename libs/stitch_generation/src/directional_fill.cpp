@@ -1965,8 +1965,8 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
     // L'écart est local sous un dégradé de densité : une liaison cousue de
     // 4 × l'écart MAXIMAL traverserait la zone dense (long fil parasite).
     const SpacingField field = make_spacing_field(params);
-    const bool masked = params.density_gradient &&
-                        !params.density_gradient->density_stops.empty();
+    const auto& gradient = params.density_gradient;
+    const bool masked = gradient && !gradient->density_stops.empty();
     // Dans un fondu N-aire, un fil devient rare hors de sa zone. Le rayon
     // de semis peut être 4 mm à ces endroits, mais ce n'est PAS une permission
     // de coudre un long fil diagonal entre deux lignes isolées.
@@ -1984,10 +1984,12 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
     // scalaires au plus, sans géométrie/caches supplémentaires.
     const auto linkInside = [&](P2 a, P2 b) {
         if (masked) {
-            return dist(a, b) <= 1'200.0 && field.densityWeight(a) >= 0.2 &&
-                   field.densityWeight(b) >= 0.2 &&
-                   field.densityWeight((a + b) * 0.5) >= 0.2 &&
-                   whole.segment_inside(a, b);
+            if (dist(a, b) > 1'200.0 || !whole.segment_inside(a, b)) {
+                return false;
+            }
+            const P2 midpoint = (a + b) * 0.5;
+            return field.densityWeight(a) >= 0.2 && field.densityWeight(b) >= 0.2 &&
+                   field.densityWeight(midpoint) >= 0.2;
         }
         return dist(a, b) <= 3.0 * kMinStitch || whole.segment_inside(a, b);
     };
