@@ -262,8 +262,29 @@ def build():
                "cases":manifest,"commands":LOG}
     (OUT/"report.json").write_text(json.dumps(results,indent=2,ensure_ascii=False),encoding="utf-8")
     failures = [e["name"] for e in manifest if e.get("render_rc") != 0 or e.get("export_rc") != 0]
-    print("QA SUMMARY:", json.dumps({"scenarios":len(manifest),"failures":failures},
-                                    ensure_ascii=False),flush=True)
+    # Echec sur de vrais points dangereux, pas seulement sur des commandes
+    # CLI qui retournent zero. Un filet de securite, pas un essai sur tissu.
+    quality_failures = []
+    for entry in manifest:
+        stats = entry.get("dst_quality")
+        if not stats:
+            quality_failures.append(entry["name"] + ": DST absent/illisible")
+            continue
+        if stats["max_needle_step_mm"] > 7.0:
+            quality_failures.append(
+                entry["name"] + ": point cousu de "
+                + str(stats["max_needle_step_mm"]) + " mm (limite 7 mm)")
+        if entry["name"] == "satin_3" and stats["jumps"] > 60:
+            quality_failures.append(
+                entry["name"] + ": " + str(stats["jumps"]) + " sauts (limite 60)")
+        if entry["name"] == "satin_5" and stats["jumps"] > 90:
+            quality_failures.append(
+                entry["name"] + ": " + str(stats["jumps"]) + " sauts (limite 90)")
+    print("QA SUMMARY:", json.dumps({"scenarios": len(manifest), "failures": failures,
+                                      "quality_failures": quality_failures},
+                                     ensure_ascii=False), flush=True)
+    if failures or quality_failures:
+        sys.exit(2)
 
 if __name__ == "__main__":
     try:
