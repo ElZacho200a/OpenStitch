@@ -380,15 +380,17 @@ def build():
             quality_failures.append(
                 entry["name"] + ": point cousu de "
                 + str(stats["max_needle_step_mm"]) + " mm (limite 7 mm)")
-        if entry["name"] == "satin_3" and stats["jumps"] > 60:
-            quality_failures.append(
-                entry["name"] + ": " + str(stats["jumps"]) + " sauts (limite 60)")
-        if entry["name"] == "satin_8" and stats["jumps"] > 140:
-            quality_failures.append(
-                entry["name"] + ": " + str(stats["jumps"]) + " sauts (limite 140)")
-        if entry["name"] == "satin_5" and stats["jumps"] > 90:
-            quality_failures.append(
-                entry["name"] + ": " + str(stats["jumps"]) + " sauts (limite 90)")
+        # A satin can pass the 7 mm stitch limit while producing far too many
+        # non-sewing moves. Keep a per-size budget and a proportional guard:
+        # the historical loose 60/90/140 limits would miss a large regression.
+        satin_jump_limits = {"satin_3": 30, "satin_5": 45, "satin_8": 60}
+        if entry["name"] in satin_jump_limits:
+            limit = satin_jump_limits[entry["name"]]
+            if stats["jumps"] > limit or stats["jumps"] * 3 > stats["stitches"]:
+                quality_failures.append(
+                    entry["name"] + ": " + str(stats["jumps"]) + " sauts pour "
+                    + str(stats["stitches"]) + " points (limite "
+                    + str(limit) + " et <= 1 saut / 3 points)")
     print("QA SUMMARY:", json.dumps({"scenarios": len(manifest), "expected_scenarios": len(cases), "failures": failures,
                                       "quality_failures": quality_failures},
                                      ensure_ascii=False), flush=True)
