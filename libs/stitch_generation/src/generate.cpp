@@ -396,8 +396,8 @@ void generate_satin(stitch::StitchSequence& sequence, const document::Embroidery
             const int lower =
                 std::clamp(static_cast<int>(band), 0, static_cast<int>(link.count) - 2);
             const int upper = lower + 1;
-            const double fraction = std::clamp(
-                (band - (static_cast<double>(lower) + 0.5)) / 0.32 + 0.5, 0.0, 1.0);
+            const double position = (band - (static_cast<double>(lower) + 0.5)) / 0.32 + 0.5;
+            const double fraction = std::clamp(position, 0.0, 1.0);
             std::uint64_t z = link.group.value ^ (s * 0x9E3779B97F4A7C15ull);
             z ^= z >> 30;
             z *= 0xBF58476D1CE4E5B9ull;
