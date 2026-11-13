@@ -345,6 +345,18 @@ bool ThreadController::moveInOrder(const QString& objectId, int toPosition) {
         QStringLiteral("Ordre de couture modifié"));
 }
 
+bool ThreadController::moveToPositionAbsolute(const QString& objectId, int toPosition) {
+    bool parsed = false;
+    const auto id = objectId.toULongLong(&parsed);
+    if (!parsed || toPosition < 0) {
+        return report({false, "Objet ou position invalide"}, {});
+    }
+    // moveToPositionAbsolute prend une position absolue (int) au lieu d'un décalage relatif
+    return report(
+        desktop_v2::moveToPositionAbsolute(studio_.session(), id, static_cast<std::size_t>(toPosition)),
+        QStringLiteral("Ordre de couture modifié (déplacement absolu)"));
+}
+
 QVariantList ThreadController::searchThreads(const QString& chartId, const QString& query) const {
     QVariantList list;
     for (const auto& choice :
@@ -792,3 +804,7 @@ bool ThreadController::renameColorway(int index, const QString& name) {
 }
 
 } // namespace openstitch::desktop_v2::studio
+
+// force rebuild marker for absolute move feature
+
+// force rebuild for absolute move feature

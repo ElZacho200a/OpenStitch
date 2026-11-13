@@ -1,0 +1,13 @@
+{
+  "name": "openstitch",
+  "version": "1.0.0",
+  "description": "OpenStitch Embroidery Software",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": ["embroidery"],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {}
+}

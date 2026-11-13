@@ -23,6 +23,7 @@ struct ViewController::SimData {
     std::set<std::uint64_t> visible;
     bool imported{false};
     std::vector<OverlayJump> jumps;
+    std::vector<OverlayTrim> trims;
     std::vector<std::uint32_t> stitchesBefore; // size = commands + 1
     std::vector<std::uint32_t> segmentsBefore; // visible segments prefix, size = commands + 1
     std::uint64_t revision{0};
@@ -423,6 +424,7 @@ void ViewController::setGuideColor(const QColor& color) {
     }
 OS_LAYER_SETTER(LayerStitches, layerStitches_)
 OS_LAYER_SETTER(LayerJumps, layerJumps_)
+OS_LAYER_SETTER(LayerTrims, layerTrims_)
 OS_LAYER_SETTER(LayerHoop, layerHoop_)
 OS_LAYER_SETTER(LayerDensity, layerDensity_)
 OS_LAYER_SETTER(LayerRisk, layerRisk_)
@@ -851,6 +853,9 @@ void ViewController::publish() {
     overlays->markers = markers_;
     if (layerJumps_ && sim_) {
         overlays->jumps = sim_->jumps;
+    }
+    if (layerTrims_ && sim_) {
+        overlays->trims = sim_->trims;
     }
     overlays->visibleSegments = simActive_ ? segmentsAt(position_) : CanvasOverlays::all;
     overlays->realistic = realistic_ && realisticOnGpu();

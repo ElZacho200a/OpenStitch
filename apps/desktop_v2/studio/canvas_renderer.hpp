@@ -36,6 +36,10 @@ struct OverlayMarker {
 struct OverlayJump {
     double ax{0}, ay{0}, bx{0}, by{0};
 };
+struct OverlayTrim {
+    double x{0}, y{0}; // position du point de coupe en coordonnées scène
+    QColor color{231, 76, 60}; // rouge pour les coupes
+};
 struct CanvasOverlays {
     static constexpr std::size_t all = std::numeric_limits<std::size_t>::max();
     bool showStitches{true};
@@ -48,6 +52,7 @@ struct CanvasOverlays {
     std::vector<OverlayImage> images;
     std::vector<OverlayMarker> markers;
     std::vector<OverlayJump> jumps;   // drawn when non-empty
+    std::vector<OverlayTrim> trims;   // drawn when non-empty
     std::size_t visibleSegments{all}; // simulation: first N segments of the scene
     // Rendu réaliste accéléré (chemin RHI uniquement ; le backend logiciel l'ignore et garde le
     // raster CPU de référence). Vue seule : ne change ni le document ni les points.
