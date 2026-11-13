@@ -632,6 +632,22 @@ TEST_CASE("multicolor satin: all eight thread regions stay nonempty and reproduc
         CHECK(count > 0);
     }
 
+    // Une transition de couleur doit etre explicite dans le flux machine :
+    // aucune couture ne peut relier deux objets de fils differents.
+    bool has_previous_stitch = false;
+    ObjectId previous_source{};
+    for (const auto& command : stitched->commands) {
+        if (command.type != stitch::CommandType::Stitch) {
+            has_previous_stitch = false;
+            continue;
+        }
+        if (has_previous_stitch) {
+            CHECK(command.source == previous_source);
+        }
+        previous_source = command.source;
+        has_previous_stitch = true;
+    }
+
     // Les transitions entre fils doivent rester des déplacements, pas des
     // diagonales cousues. Un point cousu ne doit jamais dépasser 7 mm.
     bool connected = false;
