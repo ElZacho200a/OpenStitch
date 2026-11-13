@@ -1,15 +1,9 @@
-name: QA PR336 gradients from built CLI artifact
+# Comparatif historique volontairement manuel : ce job telecharge le
+# binaire du commit 80982b4. La QA du SHA courant est lancee depuis ci.yml,
+# apres la compilation des binaires de la PR (sans ancien artefact en cache).
+name: QA PR336 baseline historique (SHA 80982b4)
 
 on:
-  push:
-    branches: [feat/studio-fade-ux-camaieu-foundation-20261112]
-    paths:
-      - "scripts/qa_pr336_gradients.py"
-      - ".github/workflows/qa-pr336-gradients.yml"
-  pull_request:
-    paths:
-      - "scripts/qa_pr336_gradients.py"
-      - ".github/workflows/qa-pr336-gradients.yml"
   workflow_dispatch:
 
 permissions:
