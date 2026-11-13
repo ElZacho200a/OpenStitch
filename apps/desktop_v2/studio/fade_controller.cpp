@@ -419,15 +419,20 @@ bool FadeController::setCurve(int curve) {
         return refuse(QStringLiteral("Courbe inconnue ou aucun fondu."));
     }
     if (multiSettings_) {
-        if (curve == multiCurve_) {
-            return true;
-        }
         auto spec = project_ops::describe_multicolor_gradient_fill(studio_.session().project(),
                                                                    ObjectId{id_});
         if (!spec) {
             return refuse(QStringLiteral("Camaïeu introuvable."));
         }
-        spec->gradient.curve = static_cast<document::DensityCurve>(curve);
+        const auto selected = static_cast<document::DensityCurve>(curve);
+        const bool allSelected =
+            spec->layer_curves.size() == spec->colors.size() &&
+            std::all_of(spec->layer_curves.begin(), spec->layer_curves.end(),
+                        [&](document::DensityCurve value) { return value == selected; });
+        if (curve == multiCurve_ && allSelected) {
+            return true;
+        }
+        spec->gradient.curve = selected;
         // Le profil global reste un préréglage cohérent : il s'applique à
         // toutes les couches, avant les éventuelles retouches individuelles.
         spec->layer_curves.assign(spec->colors.size(), spec->gradient.curve);
