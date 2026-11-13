@@ -629,8 +629,8 @@ void StudioToolsTest::perfDenseNodeSelectionOverlay() {
     using Clock = std::chrono::steady_clock;
     const auto percentile = [](std::vector<double> values, double p) {
         std::sort(values.begin(), values.end());
-        const auto index = static_cast<std::size_t>(
-            std::ceil(p * static_cast<double>(values.size())) - 1.0);
+        const auto index =
+            static_cast<std::size_t>(std::ceil(p * static_cast<double>(values.size())) - 1.0);
         return values[std::min(index, values.size() - 1)];
     };
 
@@ -671,8 +671,7 @@ void StudioToolsTest::perfDenseNodeSelectionOverlay() {
     qInfo("[perf-vector-overlay] nodes=%zu displayed=%zu runs=%d p50=%.3fms p95=%.3fms "
           "p99=%.3fms max=%.3fms",
           nodeTotal, displayedMarkers, measuredRuns, percentile(samplesMs, 0.50),
-          percentile(samplesMs, 0.95), percentile(samplesMs, 0.99),
-          percentile(samplesMs, 1.0));
+          percentile(samplesMs, 0.95), percentile(samplesMs, 0.99), percentile(samplesMs, 1.0));
 }
 
 void StudioToolsTest::nodeEditByMouse() {
