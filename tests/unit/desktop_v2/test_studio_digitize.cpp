@@ -384,6 +384,12 @@ void StudioDigitizeTest::multicolorFadeJourney() {
     QTRY_COMPARE(rig.fade.layerCurve(1), 0);
     QVERIFY(rig.fade.setLayerCurve(1, 4));
     QTRY_COMPARE(rig.fade.layerCurve(1), 4);
+    // Le profil global doit réellement effacer la personnalisation,
+    // même si l'ID global reste déjà « Linéaire ».
+    QVERIFY(rig.fade.setCurve(0));
+    QTRY_COMPARE(rig.fade.layerCurve(1), 0);
+    QVERIFY(rig.fade.setLayerCurve(1, 4));
+    QTRY_COMPARE(rig.fade.layerCurve(1), 4);
 
     // Déplacer la géométrie est atomique et réutilise les mêmes 4 couches.
     QVERIFY(rig.fade.setGeometry(1)); // radial
