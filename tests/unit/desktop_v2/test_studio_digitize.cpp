@@ -398,6 +398,11 @@ void StudioDigitizeTest::multicolorFadeJourney() {
     QTRY_COMPARE(rig.fade.texture(), 3);
     QVERIFY(rig.fade.editMulticolor(colors, true, 3, 1));
     QTRY_COMPARE(rig.fade.layerCurve(1), 4);
+    // Inverser ne doit pas laisser les profils attachés aux anciens indices.
+    QVERIFY(rig.fade.reverse());
+    QTRY_COMPARE(rig.fade.layerCurve(2), 4);
+    QVERIFY(rig.fade.reverse());
+    QTRY_COMPARE(rig.fade.layerCurve(1), 4);
     QVERIFY(!rig.fade.editMulticolor({QStringLiteral("#abcdef")}, true, 3, 1));
     const auto beforeNoop = rig.steps();
     QVERIFY(rig.fade.setTexture(3));
