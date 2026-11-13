@@ -631,6 +631,24 @@ TEST_CASE("multicolor satin: all eight thread regions stay nonempty and reproduc
     for (const std::size_t count : counts) {
         CHECK(count > 0);
     }
+
+    // Les transitions entre fils doivent rester des déplacements, pas des
+    // diagonales cousues. Un point cousu ne doit jamais dépasser 7 mm.
+    bool connected = false;
+    auto previous = stitched->commands.front().pos;
+    for (const auto& command : stitched->commands) {
+        if (command.type == stitch::CommandType::Stitch) {
+            if (connected) {
+                const double dx = static_cast<double>(command.pos.x.value - previous.x.value);
+                const double dy = static_cast<double>(command.pos.y.value - previous.y.value);
+                CHECK(std::hypot(dx, dy) <= 7'000.0);
+            }
+            previous = command.pos;
+            connected = true;
+        } else {
+            connected = false;
+        }
+    }
 }
 
 TEST_CASE("multicolor satin: distributed traverses create separate machine color blocks",
