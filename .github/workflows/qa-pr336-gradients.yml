@@ -1,0 +1,47 @@
+name: QA PR336 gradients from built CLI artifact
+
+on:
+  push:
+    branches: [feat/studio-fade-ux-camaieu-foundation-20261112]
+    paths:
+      - "scripts/qa_pr336_gradients.py"
+      - ".github/workflows/qa-pr336-gradients.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  render-gradients:
+    runs-on: windows-2025
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download the actual PR 336 Windows CI package
+        uses: actions/download-artifact@v4
+        with:
+          name: openstitch-beta-windows-x64
+          path: extracted
+          run-id: 43311906929
+          github-token: ${{ github.token }}
+      - name: Verify actual CLI from CI artifact
+        shell: pwsh
+        run: |
+          Get-Item "extracted/cli/Release/openstitch-cli.exe"
+          & "extracted/cli/Release/openstitch-cli.exe" --version
+      - name: Render physical stitch patterns from all fade techniques
+        shell: pwsh
+        env:
+          PYTHONUTF8: "1"
+          OPENSTITCH_CLI: ${{ github.workspace }}/extracted/cli/Release/openstitch-cli.exe
+        run: |
+          python scripts/qa_pr336_gradients.py
+      - name: Upload sample OSP, DST, previews and test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-pr336-real-gradients
+          path: qa-gradient-results/
+          retention-days: 10
+          if-no-files-found: warn
