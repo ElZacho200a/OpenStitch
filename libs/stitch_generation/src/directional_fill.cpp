@@ -1996,7 +1996,7 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
 
     // Autoroute d'underpath : contour extérieur rentré (comme le tatami).
     std::vector<P2> highway;
-    if (params.hidden_underpath) {
+    if (params.hidden_underpath && !masked) {
         if (auto r = geometry::inset_path_set(geometry::PathSet{region.outer, {}},
                                               params.underlay_inset);
             r && !r->empty() && r->front().outer.nodes.size() >= 3) {
@@ -2204,7 +2204,7 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
                         }
                         if (!(direct && d <= sewLimit(rp))) {
                             jump = true;
-                            if (params.hidden_underpath) {
+                            if (params.hidden_underpath && !masked) {
                                 if (direct && d <= underpathLimit(rp)) {
                                     emitTravel({cur, rp});
                                     jump = false;
