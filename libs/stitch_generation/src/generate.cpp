@@ -389,9 +389,15 @@ void generate_satin(stitch::StitchSequence& sequence, const document::Embroidery
             const double t =
                 stations > 1 ? static_cast<double>(s) / static_cast<double>(stations - 1) : 0.0;
             const double band = t * static_cast<double>(link.count - 1);
-            const int lower = std::min(static_cast<int>(band), static_cast<int>(link.count) - 1);
-            const int upper = std::min(lower + 1, static_cast<int>(link.count) - 1);
-            const double fraction = band - lower;
+            // Le centre de chaque fil occupe une plage continue. Seules les
+            // frontieres entre deux fils sont tramées (0,32 plage de couleur).
+            // Un tirage sur toute la longueur fragmentait chaque couleur en
+            // dizaines d'ilots et imposait trop de sauts/coupes satin.
+            const int lower =
+                std::clamp(static_cast<int>(band), 0, static_cast<int>(link.count) - 2);
+            const int upper = lower + 1;
+            const double fraction = std::clamp(
+                (band - (static_cast<double>(lower) + 0.5)) / 0.32 + 0.5, 0.0, 1.0);
             std::uint64_t z = link.group.value ^ (s * 0x9E3779B97F4A7C15ull);
             z ^= z >> 30;
             z *= 0xBF58476D1CE4E5B9ull;
@@ -437,9 +443,8 @@ void generate_satin(stitch::StitchSequence& sequence, const document::Embroidery
             offset = end;
         }
         result.satin = std::move(selected);
-        // Les doubles indices ne créent pas de sauts redondants.
-        // total-order-ok: indices d'entiers, les égalités sont indiscernables.
-        std::sort(breaks.begin(), breaks.end());
+        // Les stations sont parcourues dans l'ordre, et oldBreaks est déjà
+        // ordonné. La liste est donc monotone sans tri supplémentaire.
         breaks.erase(std::unique(breaks.begin(), breaks.end()), breaks.end());
         result.jump_before = std::move(breaks);
     }
