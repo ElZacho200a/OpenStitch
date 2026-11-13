@@ -470,6 +470,52 @@ TEST_CASE("multicolor: legacy two-color blend upgrades without losing undo",
     CHECK_FALSE(document::find_multi_blend(f.project, top));
 }
 
+TEST_CASE("multicolor directional: no long stitched bridges across inactive color zones",
+          "[project_ops][gradient][multicolor][routing]") {
+    for (const auto texture : {document::DensityTexture::None,
+                               document::DensityTexture::Feathered,
+                               document::DensityTexture::Stippled,
+                               document::DensityTexture::LongShort}) {
+        auto f = rectangle_fill();
+        commands::UndoStack stack;
+        const auto initial = project_ops::default_gradient_fill(f.project, f.fill);
+        REQUIRE(initial);
+        project_ops::MultiGradientFillSpec spec;
+        spec.gradient = initial->gradient;
+        spec.gradient.texture = texture;
+        spec.colors = {{24, 42, 99}, {40, 83, 141}, {76, 122, 179},
+                       {125, 171, 205}, {183, 216, 229}};
+        auto command =
+            project_ops::make_create_multicolor_gradient_fill_command(f.project, f.fill, spec);
+        REQUIRE(command);
+        stack.execute(std::move(*command), f.project);
+        const auto result = stitch_generation::effective_sequence(f.project);
+        REQUIRE(result);
+        bool connected = false;
+        Vec2um last{};
+        double longest = 0.0;
+        for (const auto& command : result->commands) {
+            if (command.type != stitch::CommandType::Stitch) {
+                connected = false;
+                continue;
+            }
+            if (connected) {
+                const double dx = static_cast<double>(command.pos.x.value) -
+                                  static_cast<double>(last.x.value);
+                const double dy = static_cast<double>(command.pos.y.value) -
+                                  static_cast<double>(last.y.value);
+                longest = std::max(longest, std::hypot(dx, dy));
+            }
+            last = command.pos;
+            connected = true;
+        }
+        CAPTURE(static_cast<int>(texture), longest);
+        // Les raccords masqués doivent se transformer en sauts. Le générateur
+        // vise des points de 4 mm, 7 mm étant le plafond physique général.
+        CHECK(longest <= 7'000.0);
+    }
+}
+
 TEST_CASE("multicolor satin: distributed traverses create separate machine color blocks",
           "[project_ops][gradient][multicolor][satin]") {
     auto f = rectangle_fill();
