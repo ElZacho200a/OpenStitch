@@ -347,8 +347,22 @@ Item {
             }
 
             SectionLabel {
-                text: root.satinTarget ? qsTr("SATIN MULTICOLORE")
+                text: root.satinTarget ? qsTr("SATIN ENTRELACÉ MULTICOLORE")
                                        : qsTr("TECHNIQUE DE FONDU")
+            }
+            Flow {
+                Layout.fillWidth: true
+                spacing: 4
+                visible: root.satinTarget
+                StudioButton {
+                    objectName: root.prefix + "SatinInterlaced"
+                    text: qsTr("Entrelacé")
+                    checkable: true
+                    checked: true
+                    enabled: root.ready && (root.hasFade || root.canCreate)
+                    tooltip: qsTr("Répartit les traversées entre les fils sans empiler des colonnes satin complètes")
+                    onClicked: checked = true
+                }
             }
             Text {
                 visible: root.satinTarget
@@ -486,7 +500,8 @@ Item {
                 spacing: 6
                 StudioButton {
                     objectName: root.prefix + "Create"
-                    text: qsTr("Créer le fondu")
+                    text: root.satinTarget ? qsTr("Créer le satin entrelacé")
+                                           : qsTr("Créer le fondu")
                     emphasized: true
                     visible: !root.hasFade
                     enabled: root.canCreate && (root.multiColors ? root.paletteValid

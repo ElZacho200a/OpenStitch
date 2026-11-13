@@ -71,6 +71,12 @@ en l'autre.
 - L'éditeur de fondu est accessible directement dans les propriétés de
   l'objet, lorsqu'un remplissage compatible unique est sélectionné.
 - Le tiroir Points/Fondu et l'inspecteur partagent **FadeProperties.qml**.
+- Lorsqu'une colonne satin est sélectionnée, le même panneau expose explicitement
+  **Satin entrelacé** : la création n-aire répartit les traversées entre les fils
+  au lieu d'empiler des colonnes satin complètes.
+- Les neuf profils de transition persistés par le moteur sont tous proposés dans
+  Studio ; les profils individuels restent réservés aux remplissages, car le satin
+  entrelacé est piloté par ses traversées et non par un champ de densité.
 - L'interface distingue visuellement le fil de départ et le fil d'arrivée,
   donne accès à un vrai sélecteur de couleur et vérifie la saisie hexadécimale.
 - Elle présente explicitement les deux répartitions de couches, **densités

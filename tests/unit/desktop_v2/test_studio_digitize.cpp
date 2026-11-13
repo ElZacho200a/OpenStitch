@@ -261,7 +261,7 @@ void StudioDigitizeTest::fadeJourney() {
     QTRY_VERIFY(rig.fade.hasFade());
     QVERIFY(!rig.fade.axis().isEmpty());
     QVERIFY(!rig.fade.summary().isEmpty());
-    QCOMPARE(rig.fade.curves().size(), 5);
+    QCOMPARE(rig.fade.curves().size(), 9);
     QCOMPARE(rig.fade.curveProfile().size(), 32);
     const auto faded = sequenceOf(rig.session);
 
@@ -286,6 +286,10 @@ void StudioDigitizeTest::fadeJourney() {
     QVERIFY(again.fade.setCurve(1));
     QCOMPARE(again.steps(), d2 + 2);
     QCOMPARE(again.fade.curve(), 1);
+    QVERIFY(again.fade.setCurve(8));
+    QCOMPARE(again.fade.curve(), 8);
+    QVERIFY(again.session.undo());
+    QTRY_COMPARE(again.fade.curve(), 1);
     // Méthodes de fondu : géométrie pure en prévisualisation ; une
     // commande annulable par changement de texture, sans pseudo-RNG global.
     QCOMPARE(again.fade.texture(), 0);
@@ -747,11 +751,15 @@ void StudioDigitizeTest::mainQmlHostsDigitizePanels() {
     QVERIFY(press(window, "fadeCreate"));
     studio.selectObject(QString::number(session.project().embroidery_objects.front().id.value));
     QTRY_VERIFY(fade.hasFade());
-    for (int curve = 0; curve < 5; ++curve) {
+    for (int curve = 0; curve < 9; ++curve) {
         QVERIFY(named(window, qPrintable(QStringLiteral("fadeCurve%1").arg(curve))));
     }
     QVERIFY(press(window, "fadeCurve2"));
     QCOMPARE(fade.curve(), 2);
+    for (int curve = 5; curve < 9; ++curve) {
+        QVERIFY(press(window, qPrintable(QStringLiteral("fadeCurve%1").arg(curve))));
+        QTRY_COMPARE(fade.curve(), curve);
+    }
     QVERIFY(press(window, "fadeTexture1"));
     QTRY_COMPARE(fade.texture(), 1);
     QVERIFY(press(window, "fadeTexture2"));
@@ -855,6 +863,12 @@ void StudioDigitizeTest::mainQmlHostsDigitizePanels() {
     QVERIFY(press(window, "fadePanelButton"));
     QTRY_VERIFY(fade.satinTarget());
     QTRY_VERIFY(fade.canCreate());
+    auto* interlaced = named(window, "fadeSatinInterlaced");
+    QVERIFY(interlaced);
+    QTRY_VERIFY(interlaced->isVisible());
+    QVERIFY(interlaced->property("checked").toBool());
+    QCOMPARE(named(window, "fadeCreate")->property("text").toString(),
+             QStringLiteral("Créer le satin entrelacé"));
     QVERIFY(press(window, "fadeCreate"));
     QTRY_VERIFY(fade.multiFade());
     QCOMPARE(fade.colors().size(), 2);
