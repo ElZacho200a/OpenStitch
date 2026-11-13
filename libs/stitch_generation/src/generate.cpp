@@ -943,7 +943,11 @@ void generate_tatami(stitch::StitchSequence& sequence, const document::VectorObj
         // tracés de sous-couche et le remplissage s'enchaînent sans saut (donc sans coupe).
         const auto underlay = tatami_underlay(region, resolve_underlay(params, region));
         std::optional<FillLinker> linker;
-        if (params.hidden_underpath) {
+        // Les liaisons cachées seraient visibles au-dessus du tissu entre
+        // les ilots d'un fil dont le masque descend à densité nulle.
+        const bool masked = params.density_gradient &&
+                            !params.density_gradient->density_stops.empty();
+        if (params.hidden_underpath && !masked) {
             linker.emplace(region, params.stitch_length, params.underlay_inset);
         }
         for (const auto& up : underlay) {
