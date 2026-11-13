@@ -116,6 +116,9 @@ struct MultiGradientFillSpec {
     using Rgb = std::array<std::uint8_t, 3>;
     std::vector<Rgb> colors;
     document::DensityGradient gradient;
+    // Profil de chaque fil indépendant (comme Multi Blend). Vide = profil
+    // commun historique ; sinon un profil par couche physique.
+    std::vector<document::DensityCurve> layer_curves;
     bool complementary{true};
 };
 
