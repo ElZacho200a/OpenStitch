@@ -564,7 +564,7 @@ TEST_CASE("multicolor gradient: expanded density profiles persist and change sti
 
     const auto file = std::filesystem::temp_directory_path() /
                       "openstitch_multicolor_extended_curves.osp";
-    REQUIRE(project_io::save_project(fixture.project, file));
+    REQUIRE(project_io::save_project(file, fixture.project).has_value());
     auto reopened = project_io::load_project(file);
     REQUIRE(reopened);
     const auto persisted = project_ops::describe_multicolor_gradient_fill(*reopened,
