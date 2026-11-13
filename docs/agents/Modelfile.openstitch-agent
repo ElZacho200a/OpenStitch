@@ -1,0 +1,8 @@
+# Agent local OpenCode : qwen3.5:9b avec contexte 32 K (le defaut d'Ollama tronque en silence les definitions d'outils).
+# Creer : ollama create openstitch-agent -f docs/agents/Modelfile.openstitch-agent
+FROM qwen3.5:9b
+PARAMETER num_ctx 32768
+PARAMETER temperature 0.2
+PARAMETER top_p 0.9
+PARAMETER repeat_penalty 1.05
+PARAMETER num_predict 8192

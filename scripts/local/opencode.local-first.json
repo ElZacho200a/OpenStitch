@@ -1,0 +1,24 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "ollama/openstitch-agent:latest",
+  "permission": {
+    "edit": "allow",
+    "bash": {
+      "*": "allow",
+      "git commit*": "deny",
+      "git push*": "deny",
+      "git merge*": "deny",
+      "git reset*": "deny",
+      "git checkout*": "deny",
+      "git clean*": "deny",
+      "git rebase*": "deny",
+      "git stash*": "deny",
+      "gh *": "deny",
+      "rm -rf*": "deny",
+      "Remove-Item*": "deny",
+      "curl*": "deny",
+      "wget*": "deny",
+      "Invoke-WebRequest*": "deny"
+    }
+  }
+}
