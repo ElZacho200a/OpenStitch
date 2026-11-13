@@ -320,6 +320,10 @@ def build():
                         entry["layers"] = inspection["layers"]
             p = OUT / f"{name}.png"
             entry["png_bytes"] = p.stat().st_size if p.exists() else 0
+            # A nonempty file is not necessarily a valid rendered PNG.
+            entry["png_valid"] = (p.is_file() and p.stat().st_size >= 45
+                                  and p.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
+                                  and p.read_bytes().endswith(b"IEND\xaeB`\x82"))
             dst = OUT / f"{name}.dst"
             if dst.exists():
                 entry["dst_quality"] = dst_quality(dst)
@@ -343,7 +347,7 @@ def build():
                "sample":"40 x 20 mm rectangle + 30 x 3.2 mm satin rails",
                "cases":manifest, "benchmarks": benchmarks, "commands": LOG}
     (OUT/"report.json").write_text(json.dumps(results,indent=2,ensure_ascii=False),encoding="utf-8")
-    failures = [e["name"] for e in manifest if e.get("render_rc") != 0 or e.get("export_rc") != 0 or e.get("png_bytes", 0) == 0]
+    failures = [e["name"] for e in manifest if e.get("render_rc") != 0 or e.get("export_rc") != 0 or not e.get("png_valid", False)]
     # Echec sur de vrais points dangereux, pas seulement sur des commandes
     # CLI qui retournent zero. Un filet de securite, pas un essai sur tissu.
     quality_failures = []
