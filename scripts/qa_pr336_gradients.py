@@ -145,6 +145,10 @@ def make_variant(doc, name, n, texture=0, geometry=0, comp=True, satin=False, le
             p["densityGradient"] = gradient(shape_box, texture, geometry,
                                             layer=None if legacy else i,
                                             n=n, comp=comp)
+            profile = {"multi_5_convex": 5, "multi_5_concave": 6,
+                       "multi_5_convex_concave": 7, "multi_5_concave_convex": 8}
+            if name in profile:
+                p["densityGradient"]["curve"] = profile[name]
             if legacy:
                 p["densityGradient"].pop("densityStops", None)
                 p["densityGradient"]["spacingFrom"] = 420 if i == 0 else 4000
@@ -272,6 +276,10 @@ def build():
         ("multi_5_feathered",5,1,0,True,False,False),
         ("multi_5_stippled",5,2,0,True,False,False),
         ("multi_5_longshort",5,3,0,True,False,False),
+        ("multi_5_convex",5,0,0,True,False,False),
+        ("multi_5_concave",5,0,0,True,False,False),
+        ("multi_5_convex_concave",5,0,0,True,False,False),
+        ("multi_5_concave_convex",5,0,0,True,False,False),
         ("multi_5_radial",5,0,1,True,False,False),
         ("multi_5_curved",5,0,2,True,False,False),
         ("multi_5_overlay",5,0,0,False,False,False),
@@ -282,7 +290,7 @@ def build():
     ]
     # Keep the reported QA matrix aligned with the actual scenarios.
     assert len(cases) == len({case[0] for case in cases}), "Duplicate QA case names"
-    assert len(cases) == 16, f"PR336 QA matrix drift: expected 16 cases, got {len(cases)}"
+    assert len(cases) == 20, f"PR336 QA matrix drift: expected 20 cases, got {len(cases)}"
     for name,n,texture,geo,complementary,satin,legacy in cases:
         entry = {"name": name, "n": n, "texture": texture,
                  "geometry": geo, "complementary": complementary,
@@ -323,6 +331,13 @@ def build():
         manifest.append(entry)
         (OUT/"manifest.json").write_text(json.dumps(manifest,indent=2,ensure_ascii=False),
                                          encoding="utf-8")
+    by_name = {entry["name"]: entry for entry in manifest}
+    reference = by_name["multi_5_linear"].get("png_sha256")
+    for profile_name in ("multi_5_convex", "multi_5_concave",
+                         "multi_5_convex_concave", "multi_5_concave_convex"):
+        if by_name[profile_name].get("png_sha256") == reference:
+            raise RuntimeError("Profile " + profile_name +
+                               " gives the identical preview as linear fill")
     benchmarks = large_design_benchmarks()
     results = {"pr":336,"source":str(CLI), "sha":os.environ.get("GITHUB_SHA"),
                "sample":"40 x 20 mm rectangle + 30 x 3.2 mm satin rails",
