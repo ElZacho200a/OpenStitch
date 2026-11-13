@@ -3,6 +3,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <filesystem>
 
@@ -514,6 +515,55 @@ TEST_CASE("multicolor directional: no long stitched bridges across inactive colo
         // Les raccords masqués doivent se transformer en sauts. Le générateur
         // vise des points de 4 mm, 7 mm étant le plafond physique général.
         CHECK(longest <= 7'000.0);
+    }
+}
+
+
+TEST_CASE("multicolor satin: all eight thread regions stay nonempty and reproducible",
+          "[project_ops][gradient][multicolor][satin]") {
+    auto f = rectangle_fill();
+    document::SatinParams satin;
+    satin.rail_a.closed = false;
+    satin.rail_b.closed = false;
+    satin.rail_a.nodes = {{pt(0, 0), geometry::NodeType::Corner, {}, {}},
+                          {pt(30'000, 0), geometry::NodeType::Corner, {}, {}}};
+    satin.rail_b.nodes = {{pt(0, 4'000), geometry::NodeType::Corner, {}, {}},
+                          {pt(30'000, 4'000), geometry::NodeType::Corner, {}, {}}};
+    satin.density = Micrometers{400};
+    f.project.embroidery_objects.front().params = satin;
+
+    project_ops::MultiGradientFillSpec spec;
+    spec.colors = {{24, 42, 99},   {40, 83, 141}, {76, 122, 179}, {125, 171, 205},
+                   {183, 216, 229}, {236, 231, 208}, {241, 182, 134}, {224, 105, 79}};
+    commands::UndoStack stack;
+    auto created =
+        project_ops::make_create_multicolor_gradient_fill_command(f.project, f.fill, spec);
+    REQUIRE(created);
+    stack.execute(std::move(*created), f.project);
+    const auto group = document::find_multi_blend(f.project, f.fill);
+    REQUIRE(group);
+    REQUIRE(group->layers.size() == 8);
+
+    const auto stitched = stitch_generation::effective_sequence(f.project);
+    REQUIRE(stitched);
+    const auto repeated = stitch_generation::effective_sequence(f.project);
+    REQUIRE(repeated);
+    CHECK(stitched->commands == repeated->commands);
+
+    std::array<std::size_t, 8> counts{};
+    for (const auto& command : stitched->commands) {
+        if (command.type != stitch::CommandType::Stitch) {
+            continue;
+        }
+        for (std::size_t i = 0; i < group->layers.size(); ++i) {
+            if (command.source == group->layers[i]) {
+                ++counts[i];
+                break;
+            }
+        }
+    }
+    for (const std::size_t count : counts) {
+        CHECK(count > 0);
     }
 }
 
