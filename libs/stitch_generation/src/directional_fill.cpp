@@ -1970,8 +1970,12 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
     // Dans un fondu N-aire, un fil devient rare hors de sa zone. Le rayon
     // de semis peut être 4 mm à ces endroits, mais ce n'est PAS une permission
     // de coudre un long fil diagonal entre deux lignes isolées.
+    // Raccords courts (~2,4 mm) autorises uniquement DANS la zone ou le fil
+    // contribue deja au camaieu. La limite est independante de l'espacement
+    // local, qui peut devenir enorme au bord d'une couleur.
+    constexpr double kMaskedLinkUm = 2'400.0;
     const auto sewLimit = [&](P2 p) {
-        return masked ? 1'200.0 : std::max(4.0 * field.at(p), 1'500.0);
+        return masked ? kMaskedLinkUm : std::max(4.0 * field.at(p), 1'500.0);
     };
     const auto underpathLimit = [&](P2 p) {
         return masked ? 0.0 : std::max(6.0 * field.at(p), 8'000.0);
@@ -1984,12 +1988,20 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
     // scalaires au plus, sans géométrie/caches supplémentaires.
     const auto linkInside = [&](P2 a, P2 b) {
         if (masked) {
-            if (dist(a, b) > 1'200.0 || !whole.segment_inside(a, b)) {
+            if (dist2(a, b) > kMaskedLinkUm * kMaskedLinkUm ||
+                !whole.segment_inside(a, b)) {
                 return false;
             }
-            const P2 midpoint = (a + b) * 0.5;
-            return field.densityWeight(a) >= 0.2 && field.densityWeight(b) >= 0.2 &&
-                   field.densityWeight(midpoint) >= 0.2;
+            // Un raccord oblique ne doit pas traverser le creux d'un fondu,
+            // meme si ses deux extremites sont denses. Les evaluations ne
+            // concernent que les courts candidats dans la grille de voisinage.
+            const P2 step = b - a;
+            for (const double t : {0.0, 0.25, 0.5, 0.75, 1.0}) {
+                if (field.densityWeight(a + step * t) < 0.2) {
+                    return false;
+                }
+            }
+            return true;
         }
         return dist(a, b) <= 3.0 * kMinStitch || whole.segment_inside(a, b);
     };
@@ -2107,18 +2119,70 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
         // Voisinage : deux lignes sont voisines si une extrémité de l'une est
         // à portée de liaison cousue d'une extrémité de l'autre.
         std::vector<std::vector<std::size_t>> neighbors(n);
-        for (std::size_t a = 0; a < n; ++a) {
-            for (std::size_t b = a + 1; b < n; ++b) {
-                bool close = false;
+        if (masked && n >= 32) {
+            // Une couche du fondu contient surtout des lignes rares et
+            // disjointes. La double boucle O(n²) compare alors des milliers
+            // d'extremites distantes. Trier seulement les abscisses des
+            // extremites donne O(n log n + voisins locaux), sans grille
+            // persistante ni cache partage entre couleurs.
+            struct Endpoint {
+                double x;
+                std::size_t line;
+            };
+            std::vector<Endpoint> ends;
+            ends.reserve(2 * n);
+            for (std::size_t li = 0; li < n; ++li) {
+                ends.push_back({stitched[li].front().x, li});
+                ends.push_back({stitched[li].back().x, li});
+            }
+            std::stable_sort(ends.begin(), ends.end(),
+                             [](const Endpoint& a, const Endpoint& b) {
+                                 return a.x < b.x;
+                             });
+            std::vector<std::size_t> candidates;
+            for (std::size_t a = 0; a < n; ++a) {
+                candidates.clear();
                 for (const P2 ea : {stitched[a].front(), stitched[a].back()}) {
-                    for (const P2 eb : {stitched[b].front(), stitched[b].back()}) {
-                        const double sew = sewLimit(ea);
-                        close = close || dist2(ea, eb) <= sew * sew;
+                    const auto begin = std::lower_bound(
+                        ends.begin(), ends.end(), ea.x - kMaskedLinkUm,
+                        [](const Endpoint& e, double x) { return e.x < x; });
+                    for (auto it = begin; it != ends.end() &&
+                                           it->x <= ea.x + kMaskedLinkUm; ++it) {
+                        if (it->line > a) {
+                            candidates.push_back(it->line);
+                        }
                     }
                 }
-                if (close) {
-                    neighbors[a].push_back(b);
-                    neighbors[b].push_back(a);
+                std::stable_sort(candidates.begin(), candidates.end());
+                candidates.erase(std::unique(candidates.begin(), candidates.end()),
+                                 candidates.end());
+                for (const std::size_t b : candidates) {
+                    bool close = false;
+                    for (const P2 ea : {stitched[a].front(), stitched[a].back()}) {
+                        for (const P2 eb : {stitched[b].front(), stitched[b].back()}) {
+                            close = close || linkInside(ea, eb);
+                        }
+                    }
+                    if (close) {
+                        neighbors[a].push_back(b);
+                        neighbors[b].push_back(a);
+                    }
+                }
+            }
+        } else {
+            for (std::size_t a = 0; a < n; ++a) {
+                for (std::size_t b = a + 1; b < n; ++b) {
+                    bool close = false;
+                    for (const P2 ea : {stitched[a].front(), stitched[a].back()}) {
+                        for (const P2 eb : {stitched[b].front(), stitched[b].back()}) {
+                            const double sew = sewLimit(ea);
+                            close = close || dist2(ea, eb) <= sew * sew;
+                        }
+                    }
+                    if (close) {
+                        neighbors[a].push_back(b);
+                        neighbors[b].push_back(a);
+                    }
                 }
             }
         }
