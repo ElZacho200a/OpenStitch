@@ -969,8 +969,10 @@ void generate_directional(stitch::StitchSequence& sequence, const document::Vect
         std::optional<FillLinker> linker;
         // Les liaisons cachées seraient visibles au-dessus du tissu entre
         // les ilots d'un fil dont le masque descend à densité nulle.
-        const bool masked = params.density_gradient &&
-                            !params.density_gradient->density_stops.empty();
+        bool masked = false;
+        if (params.density_gradient) {
+            masked = !params.density_gradient->density_stops.empty();
+        }
         if (params.hidden_underpath && !masked) {
             linker.emplace(region, params.stitch_length, params.underlay_inset);
         }
