@@ -215,7 +215,8 @@ def build():
         ("multi_5_overlay",5,0,0,False,False,False),
         ("multi_8_linear",8,0,0,True,False,False),
         ("satin_3",3,0,0,True,True,False),
-        ("satin_5",5,0,0,True,True,False)
+        ("satin_5",5,0,0,True,True,False),
+        ("satin_8",8,0,0,True,True,False)
     ]
     for name,n,texture,geo,complementary,satin,legacy in cases:
         entry = {"name": name, "n": n, "texture": texture,
@@ -270,6 +271,12 @@ def build():
         if not stats:
             quality_failures.append(entry["name"] + ": DST absent/illisible")
             continue
+        if stats["color_changes"] != entry["n"] - 1:
+            quality_failures.append(
+                entry["name"] + ": " + str(stats["color_changes"])
+                + " changements pour " + str(entry["n"]) + " fils")
+        if stats["stitches"] <= entry["n"]:
+            quality_failures.append(entry["name"] + ": broderie vide ou presque vide")
         if stats["max_needle_step_mm"] > 7.0:
             quality_failures.append(
                 entry["name"] + ": point cousu de "
