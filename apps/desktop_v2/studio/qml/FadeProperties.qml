@@ -557,6 +557,52 @@ Item {
                         }
                     }
                 }
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    visible: root.hasFade && root.multiColors && !root.satinTarget
+                    spacing: 6
+                    SectionLabel { text: qsTr("PROFIL INDIVIDUEL DE CHAQUE FIL") }
+                    Text {
+                        Layout.fillWidth: true
+                        text: qsTr("Comme dans un mélange multicouche : chaque fil peut avoir sa propre courbe de densité. Le profil global ci-dessus réinitialise toutes les couches.")
+                        color: Theme.faint
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.captionSize
+                        wrapMode: Text.WordWrap
+                    }
+                    Repeater {
+                        model: root.ready && root.hasFade ? root.controller.colors.length : 0
+                        delegate: RowLayout {
+                            id: layerRow
+                            required property int index
+                            Layout.fillWidth: true
+                            spacing: 6
+                            Rectangle {
+                                Layout.preferredWidth: 18
+                                Layout.preferredHeight: 18
+                                radius: 3
+                                color: root.controller.colors[layerRow.index]
+                                border.color: Theme.outline
+                            }
+                            Text {
+                                text: qsTr("Fil %1").arg(layerRow.index + 1)
+                                color: Theme.foreground
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.smallSize
+                            }
+                            StudioComboBox {
+                                objectName: root.prefix + "LayerCurve" + layerRow.index
+                                Layout.fillWidth: true
+                                model: root.controller.curves
+                                textRole: "label"
+                                valueRole: "id"
+                                currentIndex: root.controller.layerCurve(layerRow.index)
+                                onActivated: root.controller.setLayerCurve(layerRow.index, currentIndex)
+                                Accessible.name: qsTr("Profil de transition du fil %1").arg(layerRow.index + 1)
+                            }
+                        }
+                    }
+                }
                 StudioButton {
                     objectName: root.prefix + "Reverse"
                     text: qsTr("Inverser le sens")
