@@ -518,7 +518,6 @@ TEST_CASE("multicolor directional: no long stitched bridges across inactive colo
     }
 }
 
-
 TEST_CASE("multicolor satin: all eight thread regions stay nonempty and reproducible",
           "[project_ops][gradient][multicolor][satin]") {
     auto f = rectangle_fill();
@@ -533,8 +532,14 @@ TEST_CASE("multicolor satin: all eight thread regions stay nonempty and reproduc
     f.project.embroidery_objects.front().params = satin;
 
     project_ops::MultiGradientFillSpec spec;
-    spec.colors = {{24, 42, 99},   {40, 83, 141}, {76, 122, 179}, {125, 171, 205},
-                   {183, 216, 229}, {236, 231, 208}, {241, 182, 134}, {224, 105, 79}};
+    spec.colors.push_back({24, 42, 99});
+    spec.colors.push_back({40, 83, 141});
+    spec.colors.push_back({76, 122, 179});
+    spec.colors.push_back({125, 171, 205});
+    spec.colors.push_back({183, 216, 229});
+    spec.colors.push_back({236, 231, 208});
+    spec.colors.push_back({241, 182, 134});
+    spec.colors.push_back({224, 105, 79});
     commands::UndoStack stack;
     auto created =
         project_ops::make_create_multicolor_gradient_fill_command(f.project, f.fill, spec);
