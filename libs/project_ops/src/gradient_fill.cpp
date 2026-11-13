@@ -503,7 +503,7 @@ bool validate_multicolor(const MultiGradientFillSpec& spec) {
         return false;
     }
     for (const auto curve : spec.layer_curves) {
-        if (static_cast<int>(curve) > static_cast<int>(document::DensityCurve::EaseOut)) {
+        if (static_cast<int>(curve) > static_cast<int>(document::DensityCurve::ConcaveConvex)) {
             return false;
         }
     }
