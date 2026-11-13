@@ -632,6 +632,22 @@ TEST_CASE("multicolor satin: all eight thread regions stay nonempty and reproduc
         CHECK(count > 0);
     }
 
+    // Un satin multicolore ne doit pas se transformer en une suite de
+    // deplacements machine. Les sauts sont permis aux frontieres des fils,
+    // mais leur proportion doit rester bornee meme avec huit couleurs.
+    std::size_t satin_stitches = 0;
+    std::size_t satin_jumps = 0;
+    for (const auto& command : stitched->commands) {
+        if (command.type == stitch::CommandType::Stitch) {
+            ++satin_stitches;
+        } else if (command.type == stitch::CommandType::Jump) {
+            ++satin_jumps;
+        }
+    }
+    REQUIRE(satin_stitches > 0);
+    CAPTURE(satin_stitches, satin_jumps);
+    CHECK(satin_jumps * 3 <= satin_stitches);
+
     // Une transition de couleur doit etre explicite dans le flux machine :
     // aucune couture ne peut relier deux objets de fils differents.
     bool has_previous_stitch = false;
