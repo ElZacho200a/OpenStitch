@@ -791,9 +791,10 @@ Result<document::StitchParams> params_from_json(const json& j) {
             const int curve = g.value("curve", 0);
             // Conserver les identifiants historiques 0..4 ; les profils 5..8
             // sont optionnels. Les valeurs inconnues sont toujours rejetees.
-            grad.curve = curve >= 0 && curve <= static_cast<int>(document::DensityCurve::ConcaveConvex)
-                             ? static_cast<document::DensityCurve>(curve)
-                             : document::DensityCurve::Linear;
+            grad.curve = document::DensityCurve::Linear;
+            if (curve >= 0 && curve <= static_cast<int>(document::DensityCurve::ConcaveConvex)) {
+                grad.curve = static_cast<document::DensityCurve>(curve);
+            }
             const int texture = g.value("texture", 0);
             grad.texture = texture == 1   ? document::DensityTexture::Feathered
                            : texture == 2 ? document::DensityTexture::Stippled
