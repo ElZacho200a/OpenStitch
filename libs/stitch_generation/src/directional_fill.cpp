@@ -1988,8 +1988,10 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
     // scalaires au plus, sans géométrie/caches supplémentaires.
     const auto linkInside = [&](P2 a, P2 b) {
         if (masked) {
-            if (dist2(a, b) > kMaskedLinkUm * kMaskedLinkUm ||
-                !whole.segment_inside(a, b)) {
+            if (dist2(a, b) > kMaskedLinkUm * kMaskedLinkUm) {
+                return false;
+            }
+            if (!whole.segment_inside(a, b)) {
                 return false;
             }
             // Un raccord oblique ne doit pas traverser le creux d'un fondu,
@@ -2125,37 +2127,30 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
             // d'extremites distantes. Trier seulement les abscisses des
             // extremites donne O(n log n + voisins locaux), sans grille
             // persistante ni cache partage entre couleurs.
-            struct Endpoint {
-                double x;
-                std::size_t line;
-            };
+            using Endpoint = std::pair<double, std::size_t>;
             std::vector<Endpoint> ends;
             ends.reserve(2 * n);
             for (std::size_t li = 0; li < n; ++li) {
                 ends.push_back({stitched[li].front().x, li});
                 ends.push_back({stitched[li].back().x, li});
             }
-            std::stable_sort(ends.begin(), ends.end(),
-                             [](const Endpoint& a, const Endpoint& b) {
-                                 return a.x < b.x;
-                             });
+            std::stable_sort(ends.begin(), ends.end());
             std::vector<std::size_t> candidates;
             for (std::size_t a = 0; a < n; ++a) {
                 candidates.clear();
                 for (const P2 ea : {stitched[a].front(), stitched[a].back()}) {
-                    const auto begin = std::lower_bound(
-                        ends.begin(), ends.end(), ea.x - kMaskedLinkUm,
-                        [](const Endpoint& e, double x) { return e.x < x; });
-                    for (auto it = begin; it != ends.end() &&
-                                           it->x <= ea.x + kMaskedLinkUm; ++it) {
-                        if (it->line > a) {
-                            candidates.push_back(it->line);
+                    const Endpoint lower{ea.x - kMaskedLinkUm, 0};
+                    auto it = std::lower_bound(ends.begin(), ends.end(), lower);
+                    while (it != ends.end() && it->first <= ea.x + kMaskedLinkUm) {
+                        if (it->second > a) {
+                            candidates.push_back(it->second);
                         }
+                        ++it;
                     }
                 }
                 std::stable_sort(candidates.begin(), candidates.end());
-                candidates.erase(std::unique(candidates.begin(), candidates.end()),
-                                 candidates.end());
+                const auto uniqueEnd = std::unique(candidates.begin(), candidates.end());
+                candidates.erase(uniqueEnd, candidates.end());
                 for (const std::size_t b : candidates) {
                     bool close = false;
                     for (const P2 ea : {stitched[a].front(), stitched[a].back()}) {
