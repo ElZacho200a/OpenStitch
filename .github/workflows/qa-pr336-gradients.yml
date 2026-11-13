@@ -6,6 +6,10 @@ on:
     paths:
       - "scripts/qa_pr336_gradients.py"
       - ".github/workflows/qa-pr336-gradients.yml"
+  pull_request:
+    paths:
+      - "scripts/qa_pr336_gradients.py"
+      - ".github/workflows/qa-pr336-gradients.yml"
   workflow_dispatch:
 
 permissions:
