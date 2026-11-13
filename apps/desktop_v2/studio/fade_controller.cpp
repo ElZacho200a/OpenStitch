@@ -158,7 +158,7 @@ QVariantMap FadeController::axisMap(const std::optional<FadeAxisView>& v) {
 
 QVariantList FadeController::curves() const {
     QVariantList list;
-    for (int i = 0; i <= static_cast<int>(FadeCurve::EaseOut); ++i) {
+    for (int i = 0; i <= static_cast<int>(FadeCurve::ConcaveConvex); ++i) {
         list.push_back(
             QVariantMap{{QStringLiteral("id"), i},
                         {QStringLiteral("label"), q(fadeCurveLabel(static_cast<FadeCurve>(i)))}});
@@ -394,7 +394,7 @@ bool FadeController::setCurve(int curve) {
     if (satinTarget()) {
         return refuse(QStringLiteral("Le fondu satin suit les traversées des rails."));
     }
-    if (id_ == 0 || curve < 0 || curve > static_cast<int>(FadeCurve::EaseOut)) {
+    if (id_ == 0 || curve < 0 || curve > static_cast<int>(FadeCurve::ConcaveConvex)) {
         return refuse(QStringLiteral("Courbe inconnue ou aucun fondu."));
     }
     if (multiSettings_) {
