@@ -386,8 +386,16 @@ void generate_satin(stitch::StitchSequence& sequence, const document::Embroidery
             if (end <= offset || end > old.size()) {
                 break;
             }
-            const double t =
-                stations > 1 ? static_cast<double>(s) / static_cast<double>(stations - 1) : 0.0;
+            // Le melange d'une traverse sur deux cree une multitude
+            // d'ilots de satin et autant de sauts entre ses groupes de points.
+            // Dither par petites plages de trois traverses : on conserve
+            // l'alternance optique (typiquement 1,2 mm a 0,4 mm de densite)
+            // tout en gardant des plages consecutives pour chaque fil.
+            constexpr std::size_t kDitherStations = 3;
+            const std::size_t groupStart = (s / kDitherStations) * kDitherStations;
+            const std::size_t groupEnd = std::min(stations, groupStart + kDitherStations);
+            const double middle = static_cast<double>(groupStart + groupEnd - 1) * 0.5;
+            const double t = stations > 1 ? middle / static_cast<double>(stations - 1) : 0.0;
             const double band = t * static_cast<double>(link.count - 1);
             // Le centre de chaque fil occupe une plage continue. Seules les
             // frontieres entre deux fils sont tramées (0,32 plage de couleur).
@@ -398,7 +406,8 @@ void generate_satin(stitch::StitchSequence& sequence, const document::Embroidery
             const int upper = lower + 1;
             const double position = (band - (static_cast<double>(lower) + 0.5)) / 0.32 + 0.5;
             const double fraction = std::clamp(position, 0.0, 1.0);
-            std::uint64_t z = link.group.value ^ (s * 0x9E3779B97F4A7C15ull);
+            const std::size_t groupIndex = s / kDitherStations;
+            std::uint64_t z = link.group.value ^ (groupIndex * 0x9E3779B97F4A7C15ull);
             z ^= z >> 30;
             z *= 0xBF58476D1CE4E5B9ull;
             z ^= z >> 27;
