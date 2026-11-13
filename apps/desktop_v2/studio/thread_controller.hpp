@@ -68,6 +68,7 @@ public:
     Q_INVOKABLE bool setThreadVisible(int entry, bool visible);
     Q_INVOKABLE bool selectThreadObjects(int entry);
     Q_INVOKABLE bool moveInOrder(const QString& objectId, int toPosition);
+    Q_INVOKABLE bool moveToPositionAbsolute(const QString& objectId, int toPosition);
 
     // --- Charts ----------------------------------------------------------------------------------
     // [{chartId, code, name, brand, color, distance}]

@@ -159,19 +159,19 @@ while ($attempt -lt $MaxAttempts) {
     $pf = Join-Path $dir "prompt$attempt.txt"; Write-Utf8 $pf $prompt
     $out = Join-Path $dir "events$attempt.jsonl"; $err = Join-Path $dir "stderr$attempt.txt"
     $env:OPENCODE_CONFIG = $ocCfg
+    # sortie ecrite EN DIRECT dans events<N>.jsonl (suivi possible pendant le run)
+    $oc = Join-Path $env:APPDATA 'npm/opencode.cmd'
     $psi = New-Object Diagnostics.ProcessStartInfo
-    $psi.FileName = (Join-Path $env:APPDATA 'npm/opencode.cmd')
+    $psi.FileName = 'cmd.exe'
     $psi.WorkingDirectory = $root
-    $psi.UseShellExecute = $false; $psi.RedirectStandardOutput = $true; $psi.RedirectStandardError = $true
-    $psi.StandardOutputEncoding = [Text.Encoding]::UTF8
-    $psi.Arguments = "run --auto --format json --model $Model --title $Id-$attempt -f `"$pf`" `"Execute la mission decrite dans le fichier joint.`""
+    $psi.UseShellExecute = $false; $psi.CreateNoWindow = $true
+    $psi.Arguments = "/d /c `"`"$oc`" run --auto --format json --model $Model --title $Id-$attempt -f `"$pf`" `"Execute la mission decrite dans le fichier joint.`" > `"$out`" 2> `"$err`"`""
     $proc = [Diagnostics.Process]::Start($psi)
-    $stdoutTask = $proc.StandardOutput.ReadToEndAsync(); $stderrTask = $proc.StandardError.ReadToEndAsync()
     if (-not $proc.WaitForExit($TimeoutMin * 60000)) { & taskkill /PID $proc.Id /T /F | Out-Null; $timedOut = $true } else { $timedOut = $false }
-    Write-Utf8 $out $stdoutTask.Result; Write-Utf8 $err $stderrTask.Result
+    $evText = if (Test-Path $out) { [IO.File]::ReadAllText($out, [Text.Encoding]::UTF8) } else { '' }
 
     # analyse des evenements : texte final, cout, fournisseur
-    foreach ($line in ($stdoutTask.Result -split "`n")) {
+    foreach ($line in ($evText -split "`n")) {
         if (-not $line.Trim().StartsWith('{')) { continue }
         try { $ev = $line | ConvertFrom-Json } catch { continue }
         if ($ev.type -eq 'text' -and $ev.part.text) { $lastText = $ev.part.text }

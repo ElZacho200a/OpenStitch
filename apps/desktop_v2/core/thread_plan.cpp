@@ -180,6 +180,27 @@ ServiceResult moveInOrder(DocumentSession& session, std::uint64_t id, std::size_
     return ok();
 }
 
+// Déplace un objet vers une position absolue dans l'ordre de couture (drag-and-drop style).
+// Permet de sauter les objets masqués et respecte toujours l'ordre des calques.
+ServiceResult moveToPositionAbsolute(DocumentSession& session, std::uint64_t id, int toPosition) {
+    const auto& project = session.project();
+    if (project.findEmbroidery(ObjectId{id}) == nullptr) {
+        return refuse("Choisissez un objet de broderie.");
+    }
+    // Vérifier que la position est valide (0 à sewingOrder.size()-1)
+    if (toPosition < 0 || static_cast<std::size_t>(toPosition) >= project.sewingOrder().size()) {
+        return refuse("Position hors des limites : " + std::to_string(toPosition) +
+                      " (doit être entre 0 et " + std::to_string(project.sewingOrder().size()-1) + ").");
+    }
+    // Utiliser la même fonction que moveInOrder mais avec une position absolue
+    if (!commands::moved_sewing_order(project, ObjectId{id}, toPosition)) {
+        return refuse("Déplacement vers la position " + std::to_string(toPosition) +
+                      " impossible : même position ou ordre des calques violé.");
+    }
+    session.execute(std::make_unique<commands::MoveInSewingOrderCommand>(ObjectId{id}, toPosition));
+    return ok();
+}
+
 std::vector<ColorwayRow> colorwayRows(const document::Project& project) {
     std::vector<ColorwayRow> out;
     for (std::size_t i = 0; i < project.colorways.size(); ++i) {

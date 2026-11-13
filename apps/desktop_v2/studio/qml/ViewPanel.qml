@@ -282,6 +282,7 @@ Item {
                             spacing: 2
                             StudioCheckBox { objectName: "layerStitchesBox"; text: qsTr("Points"); checked: view.layerStitches; onToggled: view.layerStitches = checked; palette.windowText: Theme.foreground }
                             StudioCheckBox { objectName: "layerJumpsBox"; text: qsTr("Sauts"); checked: view.layerJumps; onToggled: view.layerJumps = checked; palette.windowText: Theme.foreground }
+                            StudioCheckBox { objectName: "layerTrimsBox"; text: qsTr("Coupes"); checked: view.layerTrims; onToggled: view.layerTrims = checked; palette.windowText: Theme.foreground }
                             StudioCheckBox { objectName: "layerHoopBox"; text: qsTr("Cadre"); checked: view.layerHoop; onToggled: view.layerHoop = checked; palette.windowText: Theme.foreground }
                             StudioCheckBox { objectName: "layerDensityBox"; text: qsTr("Densité"); checked: view.layerDensity; onToggled: view.layerDensity = checked; palette.windowText: Theme.foreground }
                             StudioCheckBox { objectName: "layerRiskBox"; text: qsTr("Risque tissu"); checked: view.layerRisk; onToggled: view.layerRisk = checked; palette.windowText: Theme.foreground }

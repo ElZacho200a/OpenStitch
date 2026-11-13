@@ -43,6 +43,7 @@ class ViewController : public QObject {
     Q_PROPERTY(QVariantList guides READ guides NOTIFY displayChanged)
     Q_PROPERTY(bool layerStitches READ layerStitches WRITE setLayerStitches NOTIFY displayChanged)
     Q_PROPERTY(bool layerJumps READ layerJumps WRITE setLayerJumps NOTIFY displayChanged)
+    Q_PROPERTY(bool layerTrims READ layerTrims WRITE setLayerTrims NOTIFY displayChanged)
     Q_PROPERTY(bool layerHoop READ layerHoop WRITE setLayerHoop NOTIFY displayChanged)
     Q_PROPERTY(bool layerDensity READ layerDensity WRITE setLayerDensity NOTIFY displayChanged)
     Q_PROPERTY(bool layerRisk READ layerRisk WRITE setLayerRisk NOTIFY displayChanged)
@@ -149,6 +150,8 @@ public:
     void setLayerStitches(bool value);
     [[nodiscard]] bool layerJumps() const { return layerJumps_; }
     void setLayerJumps(bool value);
+    [[nodiscard]] bool layerTrims() const { return layerTrims_; }
+    void setLayerTrims(bool value);
     [[nodiscard]] bool layerHoop() const { return layerHoop_; }
     void setLayerHoop(bool value);
     [[nodiscard]] bool layerDensity() const { return layerDensity_; }
@@ -200,7 +203,7 @@ private:
     bool rulers_{false};
     std::vector<double> guidesX_, guidesY_; // model mm (X right, Y up)
     QColor guideColor_{0, 170, 220};
-    bool layerStitches_{true}, layerJumps_{false}, layerHoop_{true}, layerDensity_{true},
+    bool layerStitches_{true}, layerJumps_{false}, layerTrims_{false}, layerHoop_{true}, layerDensity_{true},
         layerRisk_{true};
     bool realistic_{false};
     bool lastRealisticGpu_{false};

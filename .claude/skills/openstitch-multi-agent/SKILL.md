@@ -11,6 +11,12 @@ rapporte que s'il économise plus qu'il ne coûte, en temps (parallélisme) ou e
 chef de lot (sorties volumineuses gardées hors de sa session). Aucun plafond arbitraire
 sur le nombre d'agents : le nombre suit le nombre d'unités réellement indépendantes.
 
+## 0. Modèle local d'abord
+
+Avant de lancer un sous-agent Claude pour une tâche de lecture, tri ou résumé, vérifier si un
+modèle Ollama local existe (`ollama list`) : s'il convient, l'utiliser (quota économisé). Règles
+et limites : `openstitch-token-efficiency` §2 bis. Code et décisions restent sur Claude.
+
 ## 1. Décider (dans cet ordre)
 
 | Situation | Décision |
