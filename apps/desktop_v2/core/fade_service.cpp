@@ -343,7 +343,7 @@ ServiceResult editMultiFade(DocumentSession& session, std::uint64_t objectId,
 
 ServiceResult setMultiFadeLayerCurve(DocumentSession& session, std::uint64_t objectId,
                                     std::size_t layerIndex, int curve) {
-    if (curve < 0 || curve > static_cast<int>(document::DensityCurve::EaseOut)) {
+    if (curve < 0 || curve > static_cast<int>(document::DensityCurve::ConcaveConvex)) {
         return refuse("Profil de densité inconnu.");
     }
     auto spec =
