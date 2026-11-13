@@ -438,6 +438,7 @@ void generate_satin(stitch::StitchSequence& sequence, const document::Embroidery
         }
         result.satin = std::move(selected);
         // Les doubles indices ne créent pas de sauts redondants.
+        // total-order-ok: indices d'entiers, les égalités sont indiscernables.
         std::sort(breaks.begin(), breaks.end());
         breaks.erase(std::unique(breaks.begin(), breaks.end()), breaks.end());
         result.jump_before = std::move(breaks);
