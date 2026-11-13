@@ -736,6 +736,21 @@ void StudioDigitizeTest::mainQmlHostsDigitizePanels() {
     QTRY_VERIFY(!fade.hasFade());
     QCOMPARE(session.project().embroidery_objects.size(), std::size_t{1});
 
+    // Le radial bicolore utilise le texte que l'utilisateur vient de saisir,
+    // pas la valeur plus ancienne gardee dans draftColors par le controleur.
+    auto* radialColor = named(window, "fadeColorField");
+    QVERIFY(radialColor);
+    QVERIFY(radialColor->setProperty("text", QStringLiteral("#3388aa")));
+    QVERIFY(press(window, "fadeGeometry1"));
+    QVERIFY(press(window, "fadeCreate"));
+    QTRY_VERIFY(fade.multiFade());
+    QCOMPARE(fade.colors().size(), 2);
+    QCOMPARE(fade.colors().at(1).toString(), QStringLiteral("#3388aa"));
+    QCOMPARE(fade.geometry(), 1);
+    QVERIFY(press(window, "fadeRemove"));
+    QTRY_VERIFY(!fade.hasFade());
+    QCOMPARE(session.project().embroidery_objects.size(), std::size_t{1});
+
     // Satin panel: F19-02, numeric rail moves use full validated values
     // and bound node indices, not partial parseFloat("0,5") == 0.
     QVERIFY(press(window, "satinPanelButton"));
@@ -772,6 +787,18 @@ void StudioDigitizeTest::mainQmlHostsDigitizePanels() {
     QVERIFY(!satinId.isEmpty());
     studio.selectObject(satinId);
     QTRY_VERIFY(satin.isSatin());
+
+    // Le satin a deux fils doit passer par le meme panneau, sans tenter
+    // de creer l'ancien fondu binaire reserve au tatami.
+    QVERIFY(press(window, "fadePanelButton"));
+    QTRY_VERIFY(fade.satinTarget());
+    QTRY_VERIFY(fade.canCreate());
+    QVERIFY(press(window, "fadeCreate"));
+    QTRY_VERIFY(fade.multiFade());
+    QCOMPARE(fade.colors().size(), 2);
+    QVERIFY(press(window, "fadeRemove"));
+    QTRY_VERIFY(!fade.hasFade());
+    QVERIFY(press(window, "satinPanelButton"));
     auto* xField = named(window, "satinNodeX");
     auto* yField = named(window, "satinNodeY");
     auto* railNode = named(window, "satinNode");
