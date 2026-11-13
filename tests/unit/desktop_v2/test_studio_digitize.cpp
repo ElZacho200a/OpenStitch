@@ -367,12 +367,31 @@ void StudioDigitizeTest::multicolorFadeJourney() {
     QCOMPARE(rig.steps(), depth + 1);
     QVERIFY(sequenceOf(rig.session).commands != original.commands);
 
+    // Profils individuels comme Hatch Multi Blend : modification isolée,
+    // refus sans mutation, et réédition des couleurs sans perdre le choix.
+    const auto beforeProfile = rig.steps();
+    QCOMPARE(rig.fade.layerCurve(1), 0);
+    QVERIFY(rig.fade.setLayerCurve(1, 3));
+    QTRY_COMPARE(rig.fade.layerCurve(1), 3);
+    QCOMPARE(rig.fade.layerCurve(0), 0);
+    QCOMPARE(rig.steps(), beforeProfile + 1);
+    QVERIFY(rig.fade.setLayerCurve(1, 3));
+    QCOMPARE(rig.steps(), beforeProfile + 1);
+    QVERIFY(!rig.fade.setLayerCurve(9, 0));
+    QVERIFY(!rig.fade.setLayerCurve(1, 99));
+    QCOMPARE(rig.steps(), beforeProfile + 1);
+    QVERIFY(rig.session.undo());
+    QTRY_COMPARE(rig.fade.layerCurve(1), 0);
+    QVERIFY(rig.fade.setLayerCurve(1, 4));
+    QTRY_COMPARE(rig.fade.layerCurve(1), 4);
+
     // Déplacer la géométrie est atomique et réutilise les mêmes 4 couches.
     QVERIFY(rig.fade.setGeometry(1)); // radial
     QTRY_COMPARE(rig.fade.geometry(), 1);
     QVERIFY(rig.fade.setTexture(3)); // passé empiétant
     QTRY_COMPARE(rig.fade.texture(), 3);
     QVERIFY(rig.fade.editMulticolor(colors, true, 3, 1));
+    QTRY_COMPARE(rig.fade.layerCurve(1), 4);
     QVERIFY(!rig.fade.editMulticolor({QStringLiteral("#abcdef")}, true, 3, 1));
     const auto beforeNoop = rig.steps();
     QVERIFY(rig.fade.setTexture(3));
@@ -382,6 +401,7 @@ void StudioDigitizeTest::multicolorFadeJourney() {
     smaller.removeLast();
     QVERIFY(rig.fade.editMulticolor(smaller, true, 3, 1));
     QTRY_COMPARE(rig.fade.colors().size(), 3);
+    QTRY_COMPARE(rig.fade.layerCurve(1), 4);
     QCOMPARE(rig.session.project().embroidery_objects.size(), std::size_t{3});
 
     QVERIFY(rig.fade.remove());
