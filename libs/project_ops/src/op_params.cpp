@@ -249,7 +249,13 @@ const EnumTable<document::PullMode>& pull_mode_table() {
 const EnumTable<document::DensityCurve>& density_curve_table() {
     static const EnumTable<document::DensityCurve> t{{"linear", document::DensityCurve::Linear},
                                                      {"smooth", document::DensityCurve::Smooth},
-                                                     {"steep", document::DensityCurve::Steep}};
+                                                     {"steep", document::DensityCurve::Steep},
+                                                     {"ease_in", document::DensityCurve::EaseIn},
+                                                     {"ease_out", document::DensityCurve::EaseOut},
+                                                     {"convex", document::DensityCurve::Convex},
+                                                     {"concave", document::DensityCurve::Concave},
+                                                     {"convex_concave", document::DensityCurve::ConvexConcave},
+                                                     {"concave_convex", document::DensityCurve::ConcaveConvex}};
     return t;
 }
 const EnumTable<document::AutoSatinStrategy>& auto_satin_strategy_table() {
