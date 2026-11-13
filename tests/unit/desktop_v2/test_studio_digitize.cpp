@@ -303,7 +303,7 @@ void StudioDigitizeTest::fadeJourney() {
     const auto same = again.steps();
     QVERIFY(again.fade.setTexture(2));
     QCOMPARE(again.steps(), same);
-    QVERIFY(!again.fade.setTexture(3));
+    QVERIFY(!again.fade.setTexture(4)); // 0..3 sont valides, 4 est inconnu
     QCOMPARE(again.steps(), same);
     QVERIFY(again.session.undo());
     QTRY_COMPARE(again.fade.texture(), 1);
