@@ -43,6 +43,14 @@ constexpr double kMaxCoordMm = 1000.0;
         return FadeCurve::EaseIn;
     case document::DensityCurve::EaseOut:
         return FadeCurve::EaseOut;
+    case document::DensityCurve::Convex:
+        return FadeCurve::Convex;
+    case document::DensityCurve::Concave:
+        return FadeCurve::Concave;
+    case document::DensityCurve::ConvexConcave:
+        return FadeCurve::ConvexConcave;
+    case document::DensityCurve::ConcaveConvex:
+        return FadeCurve::ConcaveConvex;
     case document::DensityCurve::Linear:
         break;
     }
@@ -59,6 +67,14 @@ constexpr double kMaxCoordMm = 1000.0;
         return document::DensityCurve::EaseIn;
     case FadeCurve::EaseOut:
         return document::DensityCurve::EaseOut;
+    case FadeCurve::Convex:
+        return document::DensityCurve::Convex;
+    case FadeCurve::Concave:
+        return document::DensityCurve::Concave;
+    case FadeCurve::ConvexConcave:
+        return document::DensityCurve::ConvexConcave;
+    case FadeCurve::ConcaveConvex:
+        return document::DensityCurve::ConcaveConvex;
     case FadeCurve::Linear:
         break;
     }
@@ -197,6 +213,14 @@ std::string fadeCurveLabel(FadeCurve curve) {
         return "Départ lent";
     case FadeCurve::EaseOut:
         return "Départ rapide";
+    case FadeCurve::Convex:
+        return "Convexe cubique";
+    case FadeCurve::Concave:
+        return "Concave cubique";
+    case FadeCurve::ConvexConcave:
+        return "Convexe-concave";
+    case FadeCurve::ConcaveConvex:
+        return "Concave-convexe";
     }
     return {};
 }
@@ -212,6 +236,23 @@ double fadeCurveValue(FadeCurve curve, double t) {
         return t * t;
     case FadeCurve::EaseOut:
         return t * (2.0 - t);
+    case FadeCurve::Convex:
+        return t * t * t;
+    case FadeCurve::Concave: {
+        const double u = 1.0 - t;
+        return 1.0 - u * u * u;
+    }
+    case FadeCurve::ConvexConcave:
+        return t <= 0.5 ? 4.0 * t * t * t
+                        : 1.0 - 4.0 * (1.0 - t) * (1.0 - t) * (1.0 - t);
+    case FadeCurve::ConcaveConvex: {
+        if (t <= 0.5) {
+            const double u = 1.0 - 2.0 * t;
+            return 0.5 * (1.0 - u * u * u);
+        }
+        const double u = 2.0 * t - 1.0;
+        return 0.5 + 0.5 * u * u * u;
+    }
     case FadeCurve::Linear:
         break;
     }
