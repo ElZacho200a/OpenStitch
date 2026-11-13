@@ -107,6 +107,10 @@ enum class DensityCurve : std::uint8_t {
     Steep = 2,
     EaseIn = 3,  // départ lent, arrivée rapide
     EaseOut = 4, // départ rapide, arrivée lente
+    Convex = 5, // transition cubique lente puis fortement croissante
+    Concave = 6, // transition cubique rapide puis adoucie
+    ConvexConcave = 7, // plateaux longs aux deux extremites
+    ConcaveConvex = 8, // transition rapide aux bords, plateau central
 };
 
 // Une texture modifie la position de la transition sans déplacer les points
