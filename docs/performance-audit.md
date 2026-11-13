@@ -463,8 +463,15 @@ non dessiné par le niveau de détail et vérifie qu'il devient sélectionné et
 
 **Preuve structurelle.** `test_desktop_v2_studio_tools` passe avec 10 000 nœuds source, au plus
 3 100 marqueurs ordinaires affichés et moins de la moitié des marqueurs initiaux. Ce relevé ne
-constitue pas encore une mesure de latence p95 ; il prouve la borne de travail côté rendu et la
-conservation des interactions.
+prouve la borne de travail côté rendu et la conservation des interactions.
+
+**Mesure locale Release.** Le micro-banc opt-in `perfDenseNodeSelectionOverlay`
+(`OPENSTITCH_PERF=1`) mesure le chemin sélection de l'objet dense → reconstruction des lots →
+conversion de la surcouche visible en types Qt, après 10 passages de chauffe et sur 100 passages.
+Sur Windows 11, Qt 6.8.3, backend Quick logiciel/offscreen, quatre exécutions donnent un p50 entre
+4,04 et 4,55 ms, un p95 entre 4,48 et 5,23 ms et un p99 entre 9,61 et 10,83 ms. La scène circulaire
+de 10 000 nœuds produit 74 marqueurs visibles avec ce cadrage. Cette mesure ne couvre ni la peinture
+QPainter, ni la présentation GPU/écran : elle ne constitue donc pas un relevé FPS global.
 
 **Limite et suite.** Les marqueurs restent dessinés par le canevas QPainter actuel. Un passage à
 des instances GPU/QSG ne sera justifié qu'après profilage du nouveau chemin : le principal coût

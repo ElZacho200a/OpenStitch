@@ -15,6 +15,7 @@
 #include <QTemporaryDir>
 #include <QTest>
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <filesystem>
 #include <numbers>
@@ -198,6 +199,7 @@ private slots:
     void nodeDragFromSelectTool();
     void offscreenNodeHandlesDoNotFillQmlCanvas();
     void denseNodeHandlesUseDisplayLodButRemainEditable();
+    void perfDenseNodeSelectionOverlay();
     void knifeAndBooleans();
     void offsetShapesCreatesAGrownOrShrunkCopyInOneStep();
     void outlineAroundTheSelectionIsARingInOneStep();
@@ -618,6 +620,59 @@ void StudioToolsTest::denseNodeHandlesUseDisplayLodButRemainEditable() {
                !item.value(QStringLiteral("pts")).toList().isEmpty();
     });
     QVERIFY(selectedVisible);
+}
+
+void StudioToolsTest::perfDenseNodeSelectionOverlay() {
+    if (qEnvironmentVariableIntValue("OPENSTITCH_PERF") != 1) {
+        QSKIP("mesure désactivée : définir OPENSTITCH_PERF=1");
+    }
+    using Clock = std::chrono::steady_clock;
+    const auto percentile = [](std::vector<double> values, double p) {
+        std::sort(values.begin(), values.end());
+        const auto index = static_cast<std::size_t>(
+            std::ceil(p * static_cast<double>(values.size())) - 1.0);
+        return values[std::min(index, values.size() - 1)];
+    };
+
+    Rig rig;
+    open(rig);
+    constexpr std::size_t nodeTotal = 10'000;
+    constexpr int warmupRuns = 10;
+    constexpr int measuredRuns = 100;
+    rig.session.replaceProject(denseNodeProject(nodeTotal), true);
+    rig.tools.setActiveTool(QStringLiteral("select"));
+
+    std::vector<double> samplesMs;
+    samplesMs.reserve(measuredRuns);
+    std::size_t displayedMarkers = 0;
+    for (int run = 0; run < warmupRuns + measuredRuns; ++run) {
+        rig.session.selection().clear();
+        const auto start = Clock::now();
+        rig.session.selection().replace({Target{TargetKind::EmbroideryObject, 51}});
+        const auto overlay = rig.canvas->toolOverlay();
+        const auto elapsedMs =
+            std::chrono::duration<double, std::milli>(Clock::now() - start).count();
+        if (run >= warmupRuns) {
+            samplesMs.push_back(elapsedMs);
+        }
+        if (run == warmupRuns + measuredRuns - 1) {
+            for (const auto& value : overlay) {
+                const auto item = value.toMap();
+                if (item.value(QStringLiteral("kind")).toString() == QStringLiteral("point")) {
+                    displayedMarkers += static_cast<std::size_t>(
+                        item.value(QStringLiteral("pts")).toList().size() / 2);
+                }
+            }
+        }
+    }
+
+    QVERIFY(displayedMarkers > 0);
+    QVERIFY(displayedMarkers <= 3'100);
+    qInfo("[perf-vector-overlay] nodes=%zu displayed=%zu runs=%d p50=%.3fms p95=%.3fms "
+          "p99=%.3fms max=%.3fms",
+          nodeTotal, displayedMarkers, measuredRuns, percentile(samplesMs, 0.50),
+          percentile(samplesMs, 0.95), percentile(samplesMs, 0.99),
+          percentile(samplesMs, 1.0));
 }
 
 void StudioToolsTest::nodeEditByMouse() {
