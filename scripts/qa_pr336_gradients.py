@@ -356,6 +356,10 @@ def build():
             quality_failures.append(entry["name"] + ": benchmark export failed")
         elif entry["dst_quality"]["max_needle_step_mm"] > 7.0:
             quality_failures.append(entry["name"] + ": unsafe large-design needle step")
+        if entry["dst_quality"] and entry["dst_quality"]["diagonals_over_5mm"] > 0:
+            quality_failures.append(
+                entry["name"] + ": " + str(entry["dst_quality"]["diagonals_over_5mm"])
+                + " diagonal sewn connectors > 5 mm in large-design DST")
     for entry in manifest:
         if entry.get("inspect_rc") != 0 or entry.get("inspect_parse"):
             quality_failures.append(entry["name"] + ": projet OSP non inspectable")
@@ -380,6 +384,11 @@ def build():
             quality_failures.append(
                 entry["name"] + ": point cousu de "
                 + str(stats["max_needle_step_mm"]) + " mm (limite 7 mm)")
+        if stats["diagonals_over_5mm"] > 0:
+            quality_failures.append(
+                entry["name"] + ": " + str(stats["diagonals_over_5mm"])
+                + " diagonales cousues > 5 mm (longueur totale "
+                + str(stats["diagonal_length_mm"]) + " mm)")
         # A satin can pass the 7 mm stitch limit while producing far too many
         # non-sewing moves. Keep a per-size budget and a proportional guard:
         # the historical loose 60/90/140 limits would miss a large regression.
