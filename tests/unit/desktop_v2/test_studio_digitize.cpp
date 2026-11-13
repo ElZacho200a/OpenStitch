@@ -719,6 +719,23 @@ void StudioDigitizeTest::mainQmlHostsDigitizePanels() {
     QVERIFY(press(window, "fadeRemove"));
     QTRY_VERIFY(!fade.hasFade());
 
+    // Le vrai panneau Studio permet de fabriquer un camaïeu N-aire sans
+    // passer par l'API de service ni éditer un .osp manuellement.
+    QVERIFY(press(window, "fadeAddColor"));
+    QTRY_VERIFY(named(window, "fadeColor2") != nullptr);
+    QVERIFY(press(window, "fadeCreate"));
+    QTRY_VERIFY(fade.multiFade());
+    QCOMPARE(fade.colors().size(), 3);
+    QCOMPARE(session.project().embroidery_objects.size(), std::size_t{3});
+    QVERIFY(press(window, "fadeAddColor"));
+    QTRY_VERIFY(named(window, "fadeColor3") != nullptr);
+    QVERIFY(press(window, "fadeEdit"));
+    QTRY_COMPARE(fade.colors().size(), 4);
+    QCOMPARE(session.project().embroidery_objects.size(), std::size_t{4});
+    QVERIFY(press(window, "fadeRemove"));
+    QTRY_VERIFY(!fade.hasFade());
+    QCOMPARE(session.project().embroidery_objects.size(), std::size_t{1});
+
     // Satin panel: F19-02, numeric rail moves use full validated values
     // and bound node indices, not partial parseFloat("0,5") == 0.
     QVERIFY(press(window, "satinPanelButton"));
