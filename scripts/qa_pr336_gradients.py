@@ -30,6 +30,21 @@ def call(label, args, timeout=85):
                   "rc": p.returncode,
                   "ms": round((time.perf_counter() - begin) * 1000, 1),
                   "stdout": p.stdout[-3500:], "stderr": p.stderr[-3500:]}
+        # Keep the log compact, but parse the COMPLETE JSON before truncation.
+        # The inspect response exceeds 12 KB for five satin colors.
+        if label.endswith(".inspect") and p.returncode == 0:
+            try:
+                payload = json.loads(p.stdout)
+                result["inspection"] = {
+                    "counts": payload.get("counts", {}),
+                    "sequence": payload.get("sequence", {}),
+                    "layers": [
+                        {"id": o.get("id"), "stitches": o.get("stitches", {}).get("total", 0)}
+                        for o in payload.get("embroidery_objects", [])
+                    ],
+                }
+            except Exception as e:
+                result["inspect_parse"] = str(e)
     except Exception as e:
         result = {"command": label, "rc": -999,
                   "ms": round((time.perf_counter() - begin) * 1000, 1),
@@ -284,14 +299,14 @@ def build():
                 entry[opname+"_rc"] = result["rc"]
                 entry[opname+"_ms"] = result["ms"]
                 if opname == "inspect" and result["rc"] == 0:
-                    try:
-                        metrics = json.loads(result["stdout"])
-                        entry["counts"] = metrics.get("counts",{})
-                        entry["layers"] = [
-                            {"id": o.get("id"), "stitches": o.get("stitches",{}).get("total",0)}
-                            for o in metrics.get("embroidery_objects",[])]
-                    except Exception as e:
-                        entry["inspect_parse"] = str(e)
+                    inspection = result.get("inspection")
+                    if inspection is None:
+                        entry["inspect_parse"] = result.get("inspect_parse",
+                                                            "missing JSON inspection")
+                    else:
+                        entry["counts"] = inspection["counts"]
+                        entry["sequence"] = inspection["sequence"]
+                        entry["layers"] = inspection["layers"]
             p = OUT / f"{name}.png"
             entry["png_bytes"] = p.stat().st_size if p.exists() else 0
             dst = OUT / f"{name}.dst"
@@ -320,6 +335,15 @@ def build():
         elif entry["dst_quality"]["max_needle_step_mm"] > 7.0:
             quality_failures.append(entry["name"] + ": unsafe large-design needle step")
     for entry in manifest:
+        if entry.get("inspect_rc") != 0 or entry.get("inspect_parse"):
+            quality_failures.append(entry["name"] + ": projet OSP non inspectable")
+        if entry.get("counts", {}).get("embroidery_objects") != entry["n"]:
+            quality_failures.append(entry["name"] + ": nombre de couches OSP incorrect")
+        if entry.get("sequence", {}).get("color_changes") != entry["n"] - 1:
+            quality_failures.append(entry["name"] + ": changements de fil du moteur incorrects")
+        if len(entry.get("layers", [])) != entry["n"] or any(
+                layer["stitches"] <= 0 for layer in entry.get("layers", [])):
+            quality_failures.append(entry["name"] + ": couche sans points brodes")
         stats = entry.get("dst_quality")
         if not stats:
             quality_failures.append(entry["name"] + ": DST absent/illisible")
