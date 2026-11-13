@@ -531,6 +531,9 @@ TEST_CASE("multicolor gradient: expanded density profiles persist and change sti
     commands::UndoStack undo;
     project_ops::MultiGradientFillSpec spec;
     spec.colors = {{24, 42, 99}, {86, 144, 197}, {232, 216, 162}};
+    const auto defaults = project_ops::default_gradient_fill(fixture.project, fixture.fill);
+    REQUIRE(defaults);
+    spec.gradient = defaults->gradient;
     auto created = project_ops::make_create_multicolor_gradient_fill_command(fixture.project,
                                                                              fixture.fill, spec);
     REQUIRE(created);
