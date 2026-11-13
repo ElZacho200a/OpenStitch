@@ -356,6 +356,9 @@ TEST_CASE("multicolor: five physical thread layers are one undoable blend group"
     spec.colors = {{12, 25, 80}, {24, 64, 130}, {57, 113, 165}, {91, 170, 205}, {180, 223, 238}};
     spec.gradient = initial->gradient;
     spec.gradient.texture = document::DensityTexture::Feathered;
+    spec.layer_curves = {document::DensityCurve::Linear, document::DensityCurve::Smooth,
+                         document::DensityCurve::Steep, document::DensityCurve::EaseIn,
+                         document::DensityCurve::EaseOut};
     spec.complementary = true;
 
     commands::UndoStack stack;
@@ -378,6 +381,7 @@ TEST_CASE("multicolor: five physical thread layers are one undoable blend group"
         const auto* params = std::get_if<document::DirectionalFillParams>(&layer->params);
         REQUIRE(params);
         REQUIRE(params->density_gradient);
+        CHECK(params->density_gradient->curve == spec.layer_curves[i]);
         CHECK(params->density_gradient->density_stops.size() == 5);
         CHECK(params->density_gradient->density_stops[i].weight == 1.0);
         for (std::size_t j = 0; j < 5; ++j) {
@@ -403,7 +407,10 @@ TEST_CASE("multicolor: five physical thread layers are one undoable blend group"
     std::filesystem::remove(path);
     REQUIRE(reopened);
     CHECK(document::find_multi_blend(*reopened, f.fill));
-    CHECK(project_ops::describe_multicolor_gradient_fill(*reopened, f.fill)->colors == spec.colors);
+    const auto restored = project_ops::describe_multicolor_gradient_fill(*reopened, f.fill);
+    REQUIRE(restored);
+    CHECK(restored->colors == spec.colors);
+    CHECK(restored->layer_curves == spec.layer_curves);
 
     REQUIRE(stack.undo(f.project));
     REQUIRE(f.project.embroidery_objects.size() == 1);
