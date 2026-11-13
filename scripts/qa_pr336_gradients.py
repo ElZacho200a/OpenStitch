@@ -142,6 +142,44 @@ def make_variant(doc, name, n, texture=0, geometry=0, comp=True, satin=False, le
         doc["embroideryObjects"].append(ob)
     doc["objectIdLast"] = max(doc["objectIdLast"], base_id+n-1)
 
+def dst_quality(path: Path):
+    """Count actual needle-down records and diagonal connectors; DST coordinates in 0.1 mm."""
+    blob = path.read_bytes()[512:]
+    needle = jumps = colors = bad_diag = 0
+    bad_len = 0.0
+    worst = 0.0
+    for offset in range(0, len(blob) - 2, 3):
+        a, b, c = blob[offset:offset+3]
+        if c == 0xF3:
+            break
+        if c == 0xC3:
+            colors += 1
+            continue
+        # Tajima DST ternary 1/3/9/27/81 units, each 0.1 mm.
+        dx = ((a & 1) > 0) - ((a & 2) > 0)
+        dx += 3 * (((b & 1) > 0) - ((b & 2) > 0))
+        dx += 9 * (((a & 4) > 0) - ((a & 8) > 0))
+        dx += 27 * (((b & 4) > 0) - ((b & 8) > 0))
+        dx += 81 * (((c & 4) > 0) - ((c & 8) > 0))
+        dy = ((a & 128) > 0) - ((a & 64) > 0)
+        dy += 3 * (((b & 128) > 0) - ((b & 64) > 0))
+        dy += 9 * (((a & 32) > 0) - ((a & 16) > 0))
+        dy += 27 * (((b & 32) > 0) - ((b & 16) > 0))
+        dy += 81 * (((c & 32) > 0) - ((c & 16) > 0))
+        import math
+        length = 0.1 * math.hypot(dx, dy)
+        if c & 0x80:
+            jumps += 1
+        else:
+            needle += 1
+            worst = max(worst, length)
+            if length > 5.0 and abs(dx) > 2 and abs(dy) > 2:
+                bad_diag += 1
+                bad_len += length
+    return {"stitches": needle, "jumps": jumps, "color_changes": colors,
+            "diagonals_over_5mm": bad_diag, "diagonal_length_mm": round(bad_len, 1),
+            "max_needle_step_mm": round(worst, 2)}
+
 def build():
     if not CLI.is_file():
         raise RuntimeError(f"CI executable missing: {CLI}")
@@ -208,6 +246,9 @@ def build():
                         entry["inspect_parse"] = str(e)
             p = OUT / f"{name}.png"
             entry["png_bytes"] = p.stat().st_size if p.exists() else 0
+            dst = OUT / f"{name}.dst"
+            if dst.exists():
+                entry["dst_quality"] = dst_quality(dst)
             if p.exists():
                 entry["png_sha256"] = hashlib.sha256(p.read_bytes()).hexdigest()
         except Exception as exc:
