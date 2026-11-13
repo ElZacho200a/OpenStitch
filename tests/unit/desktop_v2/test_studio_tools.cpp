@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
+#include <numbers>
 
 #include "action_controller.hpp"
 #include "edit_controller.hpp"
@@ -60,6 +61,34 @@ document::Project anchorProject() {
         project.embroidery_objects.push_back(object);
     }
     project.object_ids.reset(300);
+    return project;
+}
+
+document::Project denseNodeProject(std::size_t count) {
+    auto project = anchorProject();
+    document::VectorObject vector;
+    vector.id = ObjectId{50};
+    geometry::Path path;
+    path.closed = true;
+    path.nodes.reserve(count);
+    constexpr double radiusUm = 25'000.0;
+    for (std::size_t i = 0; i < count; ++i) {
+        const double angle =
+            2.0 * std::numbers::pi * static_cast<double>(i) / static_cast<double>(count);
+        path.nodes.push_back(
+            {{Micrometers{static_cast<std::int32_t>(std::lround(radiusUm * std::cos(angle)))},
+              Micrometers{static_cast<std::int32_t>(std::lround(radiusUm * std::sin(angle)))}}});
+    }
+    vector.paths.push_back({std::move(path), {}});
+    project.vector_objects.push_back(std::move(vector));
+    document::EmbroideryObject object;
+    object.id = ObjectId{51};
+    object.source_vector = ObjectId{50};
+    object.name = "Dense vector";
+    object.rgb = {20, 40, 200};
+    object.params = document::RunningStitchParams{Micrometers{2'000}};
+    project.embroidery_objects.push_back(std::move(object));
+    project.object_ids.reset(100);
     return project;
 }
 
@@ -168,6 +197,7 @@ private slots:
     void nodeEditByMouse();
     void nodeDragFromSelectTool();
     void offscreenNodeHandlesDoNotFillQmlCanvas();
+    void denseNodeHandlesUseDisplayLodButRemainEditable();
     void knifeAndBooleans();
     void offsetShapesCreatesAGrownOrShrunkCopyInOneStep();
     void outlineAroundTheSelectionIsARingInOneStep();
@@ -528,9 +558,10 @@ void StudioToolsTest::offscreenNodeHandlesDoNotFillQmlCanvas() {
     const auto countMarkers = [](const QVariantList& items) {
         int markers = 0;
         for (const auto& item : items) {
-            const auto kind = item.toMap().value(QStringLiteral("kind")).toString();
+            const auto map = item.toMap();
+            const auto kind = map.value(QStringLiteral("kind")).toString();
             if (kind == QStringLiteral("point") || kind == QStringLiteral("selected")) {
-                ++markers;
+                markers += map.value(QStringLiteral("pts")).toList().size() / 2;
             }
         }
         return markers;
@@ -544,6 +575,49 @@ void StudioToolsTest::offscreenNodeHandlesDoNotFillQmlCanvas() {
     // may cross the viewport in other pan/zoom configurations.
     QVERIFY(!outside.isEmpty());
     QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+}
+
+void StudioToolsTest::denseNodeHandlesUseDisplayLodButRemainEditable() {
+    Rig rig;
+    open(rig);
+    constexpr std::size_t nodeTotal = 10'000;
+    rig.session.replaceProject(denseNodeProject(nodeTotal), true);
+    rig.session.selection().replace({Target{TargetKind::EmbroideryObject, 51}});
+    rig.tools.setActiveTool(QStringLiteral("select"));
+
+    std::size_t sourceMarkers = 0;
+    for (const auto& item : rig.tools.overlay()) {
+        if (item.kind == ToolOverlayItem::Kind::Point) {
+            sourceMarkers += item.points.size();
+        }
+    }
+    QCOMPARE(sourceMarkers, nodeTotal);
+
+    std::size_t displayedMarkers = 0;
+    for (const auto& value : rig.canvas->toolOverlay()) {
+        const auto item = value.toMap();
+        if (item.value(QStringLiteral("kind")).toString() == QStringLiteral("point")) {
+            displayedMarkers +=
+                static_cast<std::size_t>(item.value(QStringLiteral("pts")).toList().size() / 2);
+        }
+    }
+    QVERIFY(displayedMarkers > 0);
+    QVERIFY(displayedMarkers <= 3'100); // budget + cellules partielles aux bords
+    QVERIFY(displayedMarkers < nodeTotal / 2);
+
+    // Le LOD ne touche pas le modèle d'édition : un nœud masqué visuellement reste cliquable.
+    const auto view = nodeView(rig.session.project(), 51);
+    QVERIFY(view.has_value());
+    QCOMPARE(view->nodes.size(), nodeTotal);
+    const auto target = view->nodes[nodeTotal / 3].pos;
+    QTest::mouseClick(rig.window, Qt::LeftButton, {}, at(rig, target.x, target.y));
+    QCOMPARE(rig.tools.selectedNodeCount(), 1);
+    const auto selectedVisible = std::ranges::any_of(rig.canvas->toolOverlay(), [](const auto& v) {
+        const auto item = v.toMap();
+        return item.value(QStringLiteral("kind")).toString() == QStringLiteral("selected") &&
+               !item.value(QStringLiteral("pts")).toList().isEmpty();
+    });
+    QVERIFY(selectedVisible);
 }
 
 void StudioToolsTest::nodeEditByMouse() {

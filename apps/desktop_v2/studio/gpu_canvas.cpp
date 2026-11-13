@@ -9,6 +9,7 @@
 #include <QWheelEvent>
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <optional>
 
 #include "canvas_renderer.hpp"
@@ -312,19 +313,44 @@ QVariantList GpuCanvas::toolOverlay() const {
     // Rayon d'un nœud proportionnel à la forme éditée (~1,5 % de sa diagonale à l'écran), borné.
     const double spanPx = tools_->nodeSpanMm() * camera_.scale();
     const double markerPx = std::clamp(spanPx * 0.015, 1.5, 3.5);
-    // QML Canvas node markers are visible only inside the viewport. Large vector
-    // objects may carry thousands of nodes; skip their QVariant allocations offscreen.
+    // QML Canvas node markers are visible only inside the viewport. Large imported paths can
+    // carry tens of thousands of nodes: in addition to culling offscreen markers, keep one
+    // ordinary marker per screen-space cell. This is display-only LOD: ToolController retains
+    // every NodeHandle for hit-testing and editing, and selected nodes always bypass the LOD.
     // Do not cull lines: an edge may cross the viewport with both endpoints outside.
     constexpr double marginPx = 8.0;
+    constexpr double minCellPx = 8.0;
+    constexpr double markerBudget = 3'000.0;
+    const double viewportArea = std::max(1.0, width() * height());
+    const double cellPx = std::max(minCellPx, std::sqrt(viewportArea / markerBudget));
+    const int columns =
+        std::max(1, static_cast<int>(std::ceil((width() + 2.0 * marginPx) / cellPx)));
+    const int rows = std::max(1, static_cast<int>(std::ceil((height() + 2.0 * marginPx) / cellPx)));
+    std::vector<std::uint8_t> occupied(
+        static_cast<std::size_t>(columns) * static_cast<std::size_t>(rows), 0);
     for (const auto& item : tools_->overlay()) {
         const bool isMarker = item.kind == ToolOverlayItem::Kind::Point ||
                               item.kind == ToolOverlayItem::Kind::Selected;
+        const bool keepEveryMarker = item.kind == ToolOverlayItem::Kind::Selected;
         QVariantList pts;
         for (const auto& p : item.points) {
             const auto s = camera_.worldToScreen(p);
             if (isMarker && (s.x < -marginPx || s.y < -marginPx || s.x > width() + marginPx ||
                              s.y > height() + marginPx)) {
                 continue;
+            }
+            if (isMarker && !keepEveryMarker) {
+                const int column = std::clamp(
+                    static_cast<int>(std::floor((s.x + marginPx) / cellPx)), 0, columns - 1);
+                const int row = std::clamp(static_cast<int>(std::floor((s.y + marginPx) / cellPx)),
+                                           0, rows - 1);
+                auto& used =
+                    occupied[static_cast<std::size_t>(row) * static_cast<std::size_t>(columns) +
+                             static_cast<std::size_t>(column)];
+                if (used != 0) {
+                    continue;
+                }
+                used = 1;
             }
             pts << s.x << s.y;
         }

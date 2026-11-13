@@ -911,13 +911,27 @@ void ToolController::rebuild() {
         for (const auto& outline : preview ? *preview : view_->outlines) {
             line(preview ? ToolOverlayItem::Kind::Ghost : ToolOverlayItem::Kind::Closed, outline);
         }
+        ToolOverlayItem nodes;
+        nodes.kind = ToolOverlayItem::Kind::Point;
+        ToolOverlayItem selectedNodes;
+        selectedNodes.kind = ToolOverlayItem::Kind::Selected;
+        nodes.points.reserve(view_->nodes.size());
+        selectedNodes.points.reserve(nodeSel_.size());
         for (const auto& n : view_->nodes) {
             const bool selected = std::ranges::find(nodeSel_, n.ref) != nodeSel_.end();
             PointMm pos = n.pos;
             if (selected && drag_ == Drag::Nodes) {
                 pos = {pos.x + delta.x, pos.y + delta.y};
             }
-            line(selected ? ToolOverlayItem::Kind::Selected : ToolOverlayItem::Kind::Point, {pos});
+            (selected ? selectedNodes : nodes).points.push_back(toScene(pos));
+        }
+        // Dense imported paths may contain tens of thousands of nodes. Keep two packed batches
+        // instead of allocating one overlay item (and later one QVariantMap) per node.
+        if (!nodes.points.empty()) {
+            overlay_.push_back(std::move(nodes));
+        }
+        if (!selectedNodes.points.empty()) {
+            overlay_.push_back(std::move(selectedNodes));
         }
         for (const auto& t : view_->tangents) {
             if (std::ranges::find(nodeSel_, t.node) != nodeSel_.end()) {
