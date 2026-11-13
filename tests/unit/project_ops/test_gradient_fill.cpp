@@ -525,6 +525,58 @@ TEST_CASE("multicolor directional: no long stitched bridges across inactive colo
     }
 }
 
+TEST_CASE("multicolor gradient: expanded density profiles persist and change stitch paths",
+          "[project_ops][gradient][multicolor][curves]") {
+    auto fixture = rectangle_fill();
+    commands::UndoStack undo;
+    project_ops::MultiGradientFillSpec spec;
+    spec.colors = {{24, 42, 99}, {86, 144, 197}, {232, 216, 162}};
+    auto created = project_ops::make_create_multicolor_gradient_fill_command(
+        fixture.project, fixture.fill, spec);
+    REQUIRE(created);
+    undo.execute(std::move(*created), fixture.project);
+
+    const auto original = stitch_generation::effective_sequence(fixture.project);
+    REQUIRE(original);
+    for (const auto curve :
+         {document::DensityCurve::Convex, document::DensityCurve::Concave,
+          document::DensityCurve::ConvexConcave, document::DensityCurve::ConcaveConvex}) {
+        auto changed = project_ops::describe_multicolor_gradient_fill(fixture.project,
+                                                                      fixture.fill);
+        REQUIRE(changed);
+        changed->layer_curves.assign(changed->colors.size(), curve);
+        auto edit = project_ops::make_edit_multicolor_gradient_fill_command(
+            fixture.project, fixture.fill, *changed);
+        REQUIRE(edit);
+        undo.execute(std::move(*edit), fixture.project);
+
+        const auto applied = project_ops::describe_multicolor_gradient_fill(fixture.project,
+                                                                             fixture.fill);
+        REQUIRE(applied);
+        REQUIRE(applied->layer_curves.size() == applied->colors.size());
+        for (const auto v : applied->layer_curves) {
+            CHECK(v == curve);
+        }
+        const auto generated = stitch_generation::effective_sequence(fixture.project);
+        REQUIRE(generated);
+        CHECK(generated->commands != original->commands);
+    }
+
+    const auto file = std::filesystem::temp_directory_path() /
+                      "openstitch_multicolor_extended_curves.osp";
+    REQUIRE(project_io::save_project(fixture.project, file));
+    auto reopened = project_io::load_project(file);
+    REQUIRE(reopened);
+    const auto persisted = project_ops::describe_multicolor_gradient_fill(*reopened,
+                                                                           fixture.fill);
+    REQUIRE(persisted);
+    REQUIRE(persisted->layer_curves.size() == 3);
+    for (const auto curve : persisted->layer_curves) {
+        CHECK(curve == document::DensityCurve::ConcaveConvex);
+    }
+    std::filesystem::remove(file);
+}
+
 TEST_CASE("multicolor satin: all eight thread regions stay nonempty and reproducible",
           "[project_ops][gradient][multicolor][satin]") {
     auto f = rectangle_fill();
