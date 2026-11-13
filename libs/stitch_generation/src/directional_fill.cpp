@@ -700,14 +700,21 @@ struct SpacingField {
             const double u = 1.0 - t;
             return 1.0 - u * u * u;
         }
-        case document::DensityCurve::ConvexConcave:
-            return t <= 0.5 ? 4.0 * t * t * t
-                            : 1.0 - 4.0 * (1.0 - t) * (1.0 - t) * (1.0 - t);
-        case document::DensityCurve::ConcaveConvex:
-            return t <= 0.5 ? 0.5 * (1.0 - (1.0 - 2.0 * t) * (1.0 - 2.0 * t) *
-                                              (1.0 - 2.0 * t))
-                            : 0.5 + 0.5 * (2.0 * t - 1.0) * (2.0 * t - 1.0) *
-                                        (2.0 * t - 1.0);
+        case document::DensityCurve::ConvexConcave: {
+            if (t <= 0.5) {
+                return 4.0 * t * t * t;
+            }
+            const double u = 1.0 - t;
+            return 1.0 - 4.0 * u * u * u;
+        }
+        case document::DensityCurve::ConcaveConvex: {
+            if (t <= 0.5) {
+                const double u = 1.0 - 2.0 * t;
+                return 0.5 * (1.0 - u * u * u);
+            }
+            const double u = 2.0 * t - 1.0;
+            return 0.5 + 0.5 * u * u * u;
+        }
         case document::DensityCurve::Linear:
             break;
         }
