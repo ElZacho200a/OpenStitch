@@ -180,6 +180,53 @@ def dst_quality(path: Path):
             "diagonals_over_5mm": bad_diag, "diagonal_length_mm": round(bad_len, 1),
             "max_needle_step_mm": round(worst, 2)}
 
+def scale_for_benchmark(document, factor):
+    """Scale the design geometry while retaining *physical* stitch spacing."""
+    for vector in document["vectorObjects"]:
+        for shape in vector["paths"]:
+            for path in [shape["outer"], *shape.get("holes", [])]:
+                for node in path["nodes"]:
+                    node["pos"] = [int(v * factor) for v in node["pos"]]
+                    for handle in ("tanIn", "tanOut"):
+                        if handle in node:
+                            node[handle] = [int(v * factor) for v in node[handle]]
+    for obj in document["embroideryObjects"]:
+        params = obj["params"]
+        gradient = params.get("densityGradient")
+        if gradient:
+            for key in ("fromX", "fromY", "toX", "toY"):
+                gradient[key] = int(gradient[key] * factor)
+        for guide in params.get("guides", []):
+            for node in guide.get("nodes", []):
+                node["pos"] = [int(v * factor) for v in node["pos"]]
+    if "canvas" in document:
+        canvas = document["canvas"]
+        canvas["width"] = int(canvas["width"] * factor)
+        canvas["height"] = int(canvas["height"] * factor)
+
+
+def large_design_benchmarks():
+    """Process-level elapsed times; informative, not a hardware-independent threshold."""
+    benchmarks = []
+    for source in ("multi_5_linear", "multi_8_linear"):
+        for factor in (3, 6):
+            name = source + "_x" + str(factor)
+            target = OUT / (name + ".osp")
+            patch_osp(OUT / (source + ".osp"), target,
+                      lambda doc: scale_for_benchmark(doc, factor))
+            dst = OUT / (name + ".dst")
+            result = call(name + ".benchmark",
+                          ["project", "export", target, "-o", dst], timeout=85)
+            stats = dst_quality(dst) if dst.is_file() else {}
+            entry = {"name": name, "factor": factor, "width_mm": 40 * factor,
+                     "height_mm": 20 * factor, "elapsed_ms": result["ms"],
+                     "return_code": result["rc"], "dst_quality": stats}
+            benchmarks.append(entry)
+    (OUT / "benchmarks.json").write_text(
+        json.dumps(benchmarks, ensure_ascii=False, indent=2), encoding="utf-8")
+    return benchmarks
+
+
 def build():
     if not CLI.is_file():
         raise RuntimeError(f"CI executable missing: {CLI}")
@@ -258,14 +305,20 @@ def build():
         manifest.append(entry)
         (OUT/"manifest.json").write_text(json.dumps(manifest,indent=2,ensure_ascii=False),
                                          encoding="utf-8")
+    benchmarks = large_design_benchmarks()
     results = {"pr":336,"source":str(CLI), "sha":os.environ.get("GITHUB_SHA"),
                "sample":"40 x 20 mm rectangle + 30 x 3.2 mm satin rails",
-               "cases":manifest,"commands":LOG}
+               "cases":manifest, "benchmarks": benchmarks, "commands": LOG}
     (OUT/"report.json").write_text(json.dumps(results,indent=2,ensure_ascii=False),encoding="utf-8")
     failures = [e["name"] for e in manifest if e.get("render_rc") != 0 or e.get("export_rc") != 0]
     # Echec sur de vrais points dangereux, pas seulement sur des commandes
     # CLI qui retournent zero. Un filet de securite, pas un essai sur tissu.
     quality_failures = []
+    for entry in benchmarks:
+        if entry["return_code"] != 0 or not entry["dst_quality"]:
+            quality_failures.append(entry["name"] + ": benchmark export failed")
+        elif entry["dst_quality"]["max_needle_step_mm"] > 7.0:
+            quality_failures.append(entry["name"] + ": unsafe large-design needle step")
     for entry in manifest:
         stats = entry.get("dst_quality")
         if not stats:
