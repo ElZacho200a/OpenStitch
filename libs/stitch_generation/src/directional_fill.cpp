@@ -1965,16 +1965,30 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
     // L'écart est local sous un dégradé de densité : une liaison cousue de
     // 4 × l'écart MAXIMAL traverserait la zone dense (long fil parasite).
     const SpacingField field = make_spacing_field(params);
-    const auto sewLimit = [&](P2 p) { return std::max(4.0 * field.at(p), 1'500.0); };
-    const auto underpathLimit = [&](P2 p) { return std::max(6.0 * field.at(p), 8'000.0); };
+    const bool masked = params.density_gradient &&
+                        !params.density_gradient->density_stops.empty();
+    // Dans un fondu N-aire, un fil devient rare hors de sa zone. Le rayon
+    // de semis peut être 4 mm à ces endroits, mais ce n'est PAS une permission
+    // de coudre un long fil diagonal entre deux lignes isolées.
+    const auto sewLimit = [&](P2 p) {
+        return masked ? 1'200.0 : std::max(4.0 * field.at(p), 1'500.0);
+    };
+    const auto underpathLimit = [&](P2 p) {
+        return masked ? 0.0 : std::max(6.0 * field.at(p), 8'000.0);
+    };
 
     const auto polys = region_polys(region);
     const RegionIndex whole(polys, std::clamp(spacing, 250.0, 1'000.0));
-    // Liaison intérieure : le segment reste dans la région, ou il est assez court
-    // (≤ 1,5 mm) pour être cousu par-dessus un vide étroit — marche d'un contour
-    // en escalier, fente de moins de 1,5 mm. Un saut y laissait un fil coupé et
-    // un déplacement parasite entre deux rangées voisines.
+    // Un segment qui traverse une couleur absente n'est pas un "chemin
+    // caché" : lever le fil. Vérification directe et locale, 3 poids
+    // scalaires au plus, sans géométrie/caches supplémentaires.
     const auto linkInside = [&](P2 a, P2 b) {
+        if (masked) {
+            return dist(a, b) <= 1'200.0 && field.densityWeight(a) >= 0.2 &&
+                   field.densityWeight(b) >= 0.2 &&
+                   field.densityWeight((a + b) * 0.5) >= 0.2 &&
+                   whole.segment_inside(a, b);
+        }
         return dist(a, b) <= 3.0 * kMinStitch || whole.segment_inside(a, b);
     };
 
