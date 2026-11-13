@@ -547,8 +547,8 @@ describe_multicolor_gradient_fill(const document::Project& project, ObjectId lay
         spec.colors.push_back(member->rgb);
         const auto* params = std::get_if<document::DirectionalFillParams>(&member->params);
         if (params != nullptr) {
-            const auto curve = params->density_gradient ? params->density_gradient->curve
-                                                       : spec.gradient.curve;
+            const auto curve =
+                params->density_gradient ? params->density_gradient->curve : spec.gradient.curve;
             spec.layer_curves.push_back(curve);
         }
     }

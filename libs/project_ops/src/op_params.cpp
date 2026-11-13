@@ -248,12 +248,15 @@ const EnumTable<document::PullMode>& pull_mode_table() {
 }
 const EnumTable<document::DensityCurve>& density_curve_table() {
     using Curve = document::DensityCurve;
-    static const EnumTable<Curve> t{
-        {"linear", Curve::Linear},   {"smooth", Curve::Smooth},
-        {"steep", Curve::Steep},     {"ease_in", Curve::EaseIn},
-        {"ease_out", Curve::EaseOut}, {"convex", Curve::Convex},
-        {"concave", Curve::Concave}, {"convex_concave", Curve::ConvexConcave},
-        {"concave_convex", Curve::ConcaveConvex}};
+    static const EnumTable<Curve> t{{"linear", Curve::Linear},
+                                    {"smooth", Curve::Smooth},
+                                    {"steep", Curve::Steep},
+                                    {"ease_in", Curve::EaseIn},
+                                    {"ease_out", Curve::EaseOut},
+                                    {"convex", Curve::Convex},
+                                    {"concave", Curve::Concave},
+                                    {"convex_concave", Curve::ConvexConcave},
+                                    {"concave_convex", Curve::ConcaveConvex}};
     return t;
 }
 const EnumTable<document::AutoSatinStrategy>& auto_satin_strategy_table() {

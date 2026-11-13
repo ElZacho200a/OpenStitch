@@ -531,8 +531,8 @@ TEST_CASE("multicolor gradient: expanded density profiles persist and change sti
     commands::UndoStack undo;
     project_ops::MultiGradientFillSpec spec;
     spec.colors = {{24, 42, 99}, {86, 144, 197}, {232, 216, 162}};
-    auto created = project_ops::make_create_multicolor_gradient_fill_command(
-        fixture.project, fixture.fill, spec);
+    auto created = project_ops::make_create_multicolor_gradient_fill_command(fixture.project,
+                                                                             fixture.fill, spec);
     REQUIRE(created);
     undo.execute(std::move(*created), fixture.project);
 
@@ -541,17 +541,17 @@ TEST_CASE("multicolor gradient: expanded density profiles persist and change sti
     for (const auto curve :
          {document::DensityCurve::Convex, document::DensityCurve::Concave,
           document::DensityCurve::ConvexConcave, document::DensityCurve::ConcaveConvex}) {
-        auto changed = project_ops::describe_multicolor_gradient_fill(fixture.project,
-                                                                      fixture.fill);
+        auto changed =
+            project_ops::describe_multicolor_gradient_fill(fixture.project, fixture.fill);
         REQUIRE(changed);
         changed->layer_curves.assign(changed->colors.size(), curve);
-        auto edit = project_ops::make_edit_multicolor_gradient_fill_command(
-            fixture.project, fixture.fill, *changed);
+        auto edit = project_ops::make_edit_multicolor_gradient_fill_command(fixture.project,
+                                                                            fixture.fill, *changed);
         REQUIRE(edit);
         undo.execute(std::move(*edit), fixture.project);
 
-        const auto applied = project_ops::describe_multicolor_gradient_fill(fixture.project,
-                                                                             fixture.fill);
+        const auto applied =
+            project_ops::describe_multicolor_gradient_fill(fixture.project, fixture.fill);
         REQUIRE(applied);
         REQUIRE(applied->layer_curves.size() == applied->colors.size());
         for (const auto v : applied->layer_curves) {
@@ -562,13 +562,12 @@ TEST_CASE("multicolor gradient: expanded density profiles persist and change sti
         CHECK(generated->commands != original->commands);
     }
 
-    const auto file = std::filesystem::temp_directory_path() /
-                      "openstitch_multicolor_extended_curves.osp";
+    const auto file =
+        std::filesystem::temp_directory_path() / "openstitch_multicolor_extended_curves.osp";
     REQUIRE(project_io::save_project(file, fixture.project).has_value());
     auto reopened = project_io::load_project(file);
     REQUIRE(reopened);
-    const auto persisted = project_ops::describe_multicolor_gradient_fill(*reopened,
-                                                                           fixture.fill);
+    const auto persisted = project_ops::describe_multicolor_gradient_fill(*reopened, fixture.fill);
     REQUIRE(persisted);
     REQUIRE(persisted->layer_curves.size() == 3);
     for (const auto curve : persisted->layer_curves) {

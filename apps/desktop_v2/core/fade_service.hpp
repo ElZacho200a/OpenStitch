@@ -62,7 +62,7 @@ ServiceResult editMultiFade(DocumentSession& session, std::uint64_t objectId,
                             const MultiFadeSettings& settings);
 // Profil d'une couche (0..N-1) : chaque modification est une seule commande undoable.
 ServiceResult setMultiFadeLayerCurve(DocumentSession& session, std::uint64_t objectId,
-                                    std::size_t layerIndex, int curve);
+                                     std::size_t layerIndex, int curve);
 ServiceResult removeMultiFade(DocumentSession& session, std::uint64_t objectId);
 
 } // namespace openstitch::desktop_v2

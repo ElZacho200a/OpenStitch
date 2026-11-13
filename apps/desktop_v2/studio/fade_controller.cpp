@@ -404,8 +404,8 @@ int FadeController::layerCurve(int layer) const {
     if (id_ == 0 || layer < 0 || !multiSettings_) {
         return -1;
     }
-    const auto spec = project_ops::describe_multicolor_gradient_fill(studio_.session().project(),
-                                                                     ObjectId{id_});
+    const auto spec =
+        project_ops::describe_multicolor_gradient_fill(studio_.session().project(), ObjectId{id_});
     if (!spec || static_cast<std::size_t>(layer) >= spec->layer_curves.size()) {
         return -1;
     }
@@ -416,9 +416,9 @@ bool FadeController::setLayerCurve(int layer, int curve) {
     if (layer < 0 || !multiFade() || satinTarget()) {
         return refuse(QStringLiteral("Sélectionnez une couche de remplissage multicolore."));
     }
-    return report(setMultiFadeLayerCurve(studio_.session(), id_, static_cast<std::size_t>(layer),
-                                         curve),
-                  QStringLiteral("Profil de ce fil modifié."));
+    return report(
+        setMultiFadeLayerCurve(studio_.session(), id_, static_cast<std::size_t>(layer), curve),
+        QStringLiteral("Profil de ce fil modifié."));
 }
 
 bool FadeController::setCurve(int curve) {
