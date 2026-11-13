@@ -21,7 +21,17 @@ enum class FadeHandle : std::uint8_t { Start, End, Move, Rotate };
 
 // Courbe de transition de la densité entre les deux fils (mêmes formules que le moteur) : le profil
 // 0 → 1 le long de l'axe, de « fond pur » à « dessus pur ».
-enum class FadeCurve : std::uint8_t { Linear = 0, Smooth = 1, Steep = 2, EaseIn = 3, EaseOut = 4 };
+enum class FadeCurve : std::uint8_t {
+    Linear = 0,
+    Smooth = 1,
+    Steep = 2,
+    EaseIn = 3,
+    EaseOut = 4,
+    Convex = 5,
+    Concave = 6,
+    ConvexConcave = 7,
+    ConcaveConvex = 8,
+};
 
 [[nodiscard]] std::string fadeCurveLabel(FadeCurve curve);
 // Valeur de la courbe en t ∈ [0 ; 1] (0 → 0, 1 → 1, monotone).
