@@ -393,8 +393,10 @@ std::optional<std::vector<document::EmbroideryObject>>
 multicolor_layers(const document::EmbroideryObject& base,
                   const std::vector<geometry::PathSet>& shape, const MultiGradientFillSpec& spec) {
     const std::size_t n = spec.colors.size();
-    if (n < 2 || n > 8 ||
-        (!spec.layer_curves.empty() && spec.layer_curves.size() != n)) {
+    if (n < 2 || n > 8) {
+        return std::nullopt;
+    }
+    if (!spec.layer_curves.empty() && spec.layer_curves.size() != n) {
         return std::nullopt;
     }
     if (const auto* satin = std::get_if<document::SatinParams>(&base.params)) {
@@ -543,10 +545,11 @@ describe_multicolor_gradient_fill(const document::Project& project, ObjectId lay
             return std::nullopt;
         }
         spec.colors.push_back(member->rgb);
-        if (const auto* layerParams = std::get_if<document::DirectionalFillParams>(&member->params)) {
-            spec.layer_curves.push_back(layerParams->density_gradient
-                                            ? layerParams->density_gradient->curve
-                                            : spec.gradient.curve);
+        const auto* params = std::get_if<document::DirectionalFillParams>(&member->params);
+        if (params != nullptr) {
+            const auto curve = params->density_gradient ? params->density_gradient->curve
+                                                       : spec.gradient.curve;
+            spec.layer_curves.push_back(curve);
         }
     }
     return spec;
