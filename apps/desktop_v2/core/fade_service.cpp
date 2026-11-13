@@ -323,12 +323,40 @@ ServiceResult editMultiFade(DocumentSession& session, std::uint64_t objectId,
     }
     const bool geometryChanged = static_cast<int>(spec->gradient.geometry) != settings.geometry;
     spec->colors = settings.colors;
+    if (!spec->layer_curves.empty()) {
+        spec->layer_curves.resize(spec->colors.size(), spec->gradient.curve);
+    }
     spec->complementary = settings.complementary;
     spec->gradient.texture = static_cast<document::DensityTexture>(settings.texture);
     if (geometryChanged && !setup_geometry(session.project(), ObjectId{objectId}, spec->gradient,
                                            settings.geometry, true)) {
         return refuse("Forme incompatible avec cette géométrie.");
     }
+    auto command = project_ops::make_edit_multicolor_gradient_fill_command(
+        session.projectForIdAllocation(), ObjectId{objectId}, *spec);
+    if (!command) {
+        return refuse(command.error().message);
+    }
+    session.execute(std::move(*command));
+    return {true, {}};
+}
+
+ServiceResult setMultiFadeLayerCurve(DocumentSession& session, std::uint64_t objectId,
+                                    std::size_t layerIndex, int curve) {
+    if (curve < 0 || curve > static_cast<int>(document::DensityCurve::EaseOut)) {
+        return refuse("Profil de densité inconnu.");
+    }
+    auto spec =
+        project_ops::describe_multicolor_gradient_fill(session.project(), ObjectId{objectId});
+    if (!spec || spec->layer_curves.size() != spec->colors.size() ||
+        layerIndex >= spec->layer_curves.size()) {
+        return refuse("Sélectionnez une couche de remplissage multicolore.");
+    }
+    const auto selected = static_cast<document::DensityCurve>(curve);
+    if (spec->layer_curves[layerIndex] == selected) {
+        return {true, {}};
+    }
+    spec->layer_curves[layerIndex] = selected;
     auto command = project_ops::make_edit_multicolor_gradient_fill_command(
         session.projectForIdAllocation(), ObjectId{objectId}, *spec);
     if (!command) {
