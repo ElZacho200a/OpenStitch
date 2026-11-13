@@ -102,7 +102,13 @@ Item {
         if (!hasFade) {
             selectedGeometry = 0
             const swatches = controller.colors
-            draftColors = swatches.length >= 2 ? swatches.slice(0) : []
+            const next = swatches.length >= 2 ? swatches.slice(0) : []
+            // Tant que la transition n'existe pas, le champ texte est la
+            // source de verite du second fil. Sinon le radial bicolore ou
+            // « Ajouter un fil » reutiliserait une couleur perimee.
+            if (next.length === 2)
+                next[1] = colorField.text.trim()
+            draftColors = next
         }
         refreshHandle()
     }
@@ -238,6 +244,10 @@ Item {
                     text: "#c81e1e" // lint-ok: couleur de fil saisie par l'utilisateur, pas couleur du thème
                     placeholderText: "#rrggbb"
                     invalid: !root.colorValid
+                    onTextChanged: {
+                        if (!root.hasFade && root.draftColors.length === 2)
+                            root.updateDraftColor(1, text)
+                    }
                     Accessible.name: qsTr("Couleur hexadécimale du fil d'arrivée")
                 }
             }
@@ -460,7 +470,7 @@ Item {
                     onClicked: {
                         if (root.satinTarget || root.multiColors || root.selectedGeometry !== 0)
                             root.controller.createMulticolor(
-                                root.satinTarget && !root.multiColors
+                                !root.multiColors
                                     ? [root.controller.background.toString(), colorField.text.trim()]
                                     : root.draftColors,
                                 complementary.checked,
