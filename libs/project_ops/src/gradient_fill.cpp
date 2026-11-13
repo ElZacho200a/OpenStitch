@@ -393,7 +393,8 @@ std::optional<std::vector<document::EmbroideryObject>>
 multicolor_layers(const document::EmbroideryObject& base,
                   const std::vector<geometry::PathSet>& shape, const MultiGradientFillSpec& spec) {
     const std::size_t n = spec.colors.size();
-    if (n < 2 || n > 8) {
+    if (n < 2 || n > 8 ||
+        (!spec.layer_curves.empty() && spec.layer_curves.size() != n)) {
         return std::nullopt;
     }
     if (const auto* satin = std::get_if<document::SatinParams>(&base.params)) {
@@ -439,6 +440,9 @@ multicolor_layers(const document::EmbroideryObject& base,
         auto layer = (i == 0) ? pair->first : pair->second;
         auto params = (i == 0) ? baseParams : topParams;
         auto gradient = templateGradient;
+        if (!spec.layer_curves.empty()) {
+            gradient.curve = spec.layer_curves[i];
+        }
         gradient.spacing_from = gradient.spacing_to = spacing;
         gradient.interpolate_density = true;
         gradient.density_stops.reserve(n);
@@ -494,8 +498,14 @@ std::vector<ObjectId> reordered_blend_ids(const document::Project& project,
 }
 
 bool validate_multicolor(const MultiGradientFillSpec& spec) {
-    if (spec.colors.size() < 2 || spec.colors.size() > 8) {
+    if (spec.colors.size() < 2 || spec.colors.size() > 8 ||
+        (!spec.layer_curves.empty() && spec.layer_curves.size() != spec.colors.size())) {
         return false;
+    }
+    for (const auto curve : spec.layer_curves) {
+        if (static_cast<int>(curve) > static_cast<int>(document::DensityCurve::EaseOut)) {
+            return false;
+        }
     }
     for (std::size_t i = 1; i < spec.colors.size(); ++i) {
         if (spec.colors[i] == spec.colors[i - 1]) {
@@ -533,6 +543,11 @@ describe_multicolor_gradient_fill(const document::Project& project, ObjectId lay
             return std::nullopt;
         }
         spec.colors.push_back(member->rgb);
+        if (const auto* layerParams = std::get_if<document::DirectionalFillParams>(&member->params)) {
+            spec.layer_curves.push_back(layerParams->density_gradient
+                                            ? layerParams->density_gradient->curve
+                                            : spec.gradient.curve);
+        }
     }
     return spec;
 }
