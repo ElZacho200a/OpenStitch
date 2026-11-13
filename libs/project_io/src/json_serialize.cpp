@@ -789,14 +789,10 @@ Result<document::StitchParams> params_from_json(const json& j) {
             grad.interpolate_density = g.value("interpolateDensity", false);
             // Valeur inconnue (fichier édité à la main ou plus récent) : linéaire.
             const int curve = g.value("curve", 0);
-            grad.curve = curve == static_cast<int>(document::DensityCurve::Smooth)
-                             ? document::DensityCurve::Smooth
-                         : curve == static_cast<int>(document::DensityCurve::Steep)
-                             ? document::DensityCurve::Steep
-                         : curve == static_cast<int>(document::DensityCurve::EaseIn)
-                             ? document::DensityCurve::EaseIn
-                         : curve == static_cast<int>(document::DensityCurve::EaseOut)
-                             ? document::DensityCurve::EaseOut
+            // Conserver les identifiants historiques 0..4 ; les profils 5..8
+            // sont optionnels. Les valeurs inconnues sont toujours rejetees.
+            grad.curve = curve >= 0 && curve <= static_cast<int>(document::DensityCurve::ConcaveConvex)
+                             ? static_cast<document::DensityCurve>(curve)
                              : document::DensityCurve::Linear;
             const int texture = g.value("texture", 0);
             grad.texture = texture == 1   ? document::DensityTexture::Feathered
