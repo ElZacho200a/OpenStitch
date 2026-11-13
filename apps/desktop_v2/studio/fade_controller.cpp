@@ -382,10 +382,20 @@ bool FadeController::reverse() {
         return refuse(QStringLiteral("Aucun fondu à inverser."));
     }
     if (multiSettings_) {
-        auto settings = *multiSettings_;
-        std::reverse(settings.colors.begin(), settings.colors.end());
-        return report(editMultiFade(studio_.session(), id_, settings),
-                      QStringLiteral("Ordre des couleurs inversé."));
+        auto spec = project_ops::describe_multicolor_gradient_fill(studio_.session().project(),
+                                                                   ObjectId{id_});
+        if (!spec) {
+            return refuse(QStringLiteral("Camaïeu introuvable."));
+        }
+        std::reverse(spec->colors.begin(), spec->colors.end());
+        std::reverse(spec->layer_curves.begin(), spec->layer_curves.end());
+        auto command = project_ops::make_edit_multicolor_gradient_fill_command(
+            studio_.session().projectForIdAllocation(), ObjectId{id_}, *spec);
+        if (!command) {
+            return refuse(q(command.error().message));
+        }
+        studio_.session().execute(std::move(*command));
+        return report(ServiceResult{true, {}}, QStringLiteral("Ordre des couleurs inversé."));
     }
     return report(reverseFade(studio_.session(), id_), QStringLiteral("Sens du fondu inversé."));
 }
