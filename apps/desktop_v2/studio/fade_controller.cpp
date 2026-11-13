@@ -428,6 +428,9 @@ bool FadeController::setCurve(int curve) {
             return refuse(QStringLiteral("Camaïeu introuvable."));
         }
         spec->gradient.curve = static_cast<document::DensityCurve>(curve);
+        // Le profil global reste un préréglage cohérent : il s'applique à
+        // toutes les couches, avant les éventuelles retouches individuelles.
+        spec->layer_curves.assign(spec->colors.size(), spec->gradient.curve);
         auto command = project_ops::make_edit_multicolor_gradient_fill_command(
             studio_.session().projectForIdAllocation(), ObjectId{id_}, *spec);
         if (!command) {
