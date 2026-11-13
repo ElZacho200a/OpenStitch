@@ -20,21 +20,21 @@ SimulationMarks simulationMarks(const stitch::StitchSequence& sequence) {
     marks.total = sequence.commands.size();
     ObjectId current{};
     bool first = true;
-    
+
     // Collecter les sauts et coupes en une seule passe
     std::vector<std::size_t> jump_positions;
     std::vector<std::size_t> trim_positions;
-    
+
     for (std::size_t i = 0; i < sequence.commands.size(); ++i) {
         const auto& c = sequence.commands[i];
-        
+
         // Collecter les sauts et coupes
         if (c.type == stitch::CommandType::Jump) {
             jump_positions.push_back(i + 1);
         } else if (c.type == stitch::CommandType::Trim) {
             trim_positions.push_back(i + 1);
         }
-        
+
         if (c.type == stitch::CommandType::ColorChange) {
             marks.colours.push_back(i + 1);
             continue;
@@ -50,11 +50,11 @@ SimulationMarks simulationMarks(const stitch::StitchSequence& sequence) {
             first = false;
         }
     }
-    
+
     // Sauvegarder les positions de sauts et coupes
     marks.jumps = std::move(jump_positions);
     marks.trims = std::move(trim_positions);
-    
+
     return marks;
 }
 
