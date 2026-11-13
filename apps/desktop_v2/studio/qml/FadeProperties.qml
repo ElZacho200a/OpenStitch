@@ -57,7 +57,7 @@ Item {
         if (next.length === 2)
             next[1] = colorField.text.trim()
         const last = next[next.length - 1].toLowerCase()
-        next.push(last === "#6b9bd1" ? "#c9816c" : "#6b9bd1")
+        next.push(last === "#6b9bd1" ? "#c9816c" : "#6b9bd1") // lint-ok: couleur de fil saisie par l'utilisateur, pas couleur du thème
         draftColors = next
     }
     function removeDraftColor() {
@@ -94,10 +94,10 @@ Item {
             selectedGeometry = controller.geometry
             draftColors = controller.colors.slice(0)
         } else if (!colorValid || colorField.text.trim().toLowerCase() === controller.background.toString().toLowerCase()) {
-            colorField.text = "#c81e1e"
+            colorField.text = "#c81e1e" // lint-ok: couleur de fil saisie par l'utilisateur, pas couleur du thème
             selectedTexture = 0
             if (colorField.text === controller.background.toString().toLowerCase())
-                colorField.text = "#2468a0"
+                colorField.text = "#2468a0" // lint-ok: couleur de fil saisie par l'utilisateur, pas couleur du thème
         }
         if (!hasFade) {
             selectedGeometry = 0
@@ -198,7 +198,7 @@ Item {
                     tooltip: qsTr("Choisir la couleur du second fil")
                     onClicked: {
                         colorDialog.colorIndex = -1
-                        colorDialog.selectedColor = root.colorValid ? colorField.text.trim() : "#c81e1e"
+                        colorDialog.selectedColor = root.colorValid ? colorField.text.trim() : "#c81e1e" // lint-ok: couleur de fil saisie par l'utilisateur, pas couleur du thème
                         colorDialog.open()
                     }
                 }
@@ -235,7 +235,7 @@ Item {
                     id: colorField
                     objectName: root.prefix + "ColorField"
                     Layout.fillWidth: true
-                    text: "#c81e1e"
+                    text: "#c81e1e" // lint-ok: couleur de fil saisie par l'utilisateur, pas couleur du thème
                     placeholderText: "#rrggbb"
                     invalid: !root.colorValid
                     Accessible.name: qsTr("Couleur hexadécimale du fil d'arrivée")
