@@ -282,6 +282,7 @@ def build():
     ]
     # Keep the reported QA matrix aligned with the actual scenarios.
     assert len(cases) == len({case[0] for case in cases}), "Duplicate QA case names"
+    assert len(cases) == 16, f"PR336 QA matrix drift: expected 16 cases, got {len(cases)}"
     for name,n,texture,geo,complementary,satin,legacy in cases:
         entry = {"name": name, "n": n, "texture": texture,
                  "geometry": geo, "complementary": complementary,
