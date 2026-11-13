@@ -280,6 +280,8 @@ def build():
         ("satin_5",5,0,0,True,True,False),
         ("satin_8",8,0,0,True,True,False)
     ]
+    # Keep the reported QA matrix aligned with the actual scenarios.
+    assert len(cases) == len({case[0] for case in cases}), "Duplicate QA case names"
     for name,n,texture,geo,complementary,satin,legacy in cases:
         entry = {"name": name, "n": n, "texture": texture,
                  "geometry": geo, "complementary": complementary,
@@ -325,7 +327,7 @@ def build():
                "sample":"40 x 20 mm rectangle + 30 x 3.2 mm satin rails",
                "cases":manifest, "benchmarks": benchmarks, "commands": LOG}
     (OUT/"report.json").write_text(json.dumps(results,indent=2,ensure_ascii=False),encoding="utf-8")
-    failures = [e["name"] for e in manifest if e.get("render_rc") != 0 or e.get("export_rc") != 0]
+    failures = [e["name"] for e in manifest if e.get("render_rc") != 0 or e.get("export_rc") != 0 or e.get("png_bytes", 0) == 0]
     # Echec sur de vrais points dangereux, pas seulement sur des commandes
     # CLI qui retournent zero. Un filet de securite, pas un essai sur tissu.
     quality_failures = []
@@ -361,10 +363,13 @@ def build():
         if entry["name"] == "satin_3" and stats["jumps"] > 60:
             quality_failures.append(
                 entry["name"] + ": " + str(stats["jumps"]) + " sauts (limite 60)")
+        if entry["name"] == "satin_8" and stats["jumps"] > 140:
+            quality_failures.append(
+                entry["name"] + ": " + str(stats["jumps"]) + " sauts (limite 140)")
         if entry["name"] == "satin_5" and stats["jumps"] > 90:
             quality_failures.append(
                 entry["name"] + ": " + str(stats["jumps"]) + " sauts (limite 90)")
-    print("QA SUMMARY:", json.dumps({"scenarios": len(manifest), "failures": failures,
+    print("QA SUMMARY:", json.dumps({"scenarios": len(manifest), "expected_scenarios": len(cases), "failures": failures,
                                       "quality_failures": quality_failures},
                                      ensure_ascii=False), flush=True)
     if failures or quality_failures:
