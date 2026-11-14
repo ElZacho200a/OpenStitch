@@ -17,6 +17,7 @@ Item {
     // Transitional virtual entry: persisted gradient objects will replace this adapter.
     property bool gradientEditorRequested: false
     readonly property bool gradientSelected: fadeCtl !== null && fadeCtl.hasFade
+    onGradientSelectedChanged: if (gradientSelected) gradientEditorRequested = false
     readonly property var stitchTypeChoices: {
         const choices = ctl ? ctl.types.slice(0) : []
         choices.push({ id: "multicolor_gradient", label: qsTr("Fondu multicolore"),
