@@ -64,7 +64,7 @@ fichiers modifiés seulement.
 
 Chargés à la demande selon leur description : `openstitch-docs`, `-build-test`,
 `-stitch-param`, `-cli-debug`, `-bugfix`, `-commit`, `-performance`, `-digitize`,
-`-multi-agent`, `-roadmap`, `-token-efficiency`, `-notion`. Règles qui s'appliquent même sans les charger :
+`-multi-agent`, `-roadmap`, `-token-efficiency`, `-notion`, `-studio-ux`. Règles qui s'appliquent même sans les charger :
 
 - **Chaque commit met à jour `docs/roadmap-parite-hatch.md`** (statut, nouveaux manques,
   journal §28) ou écrit « roadmap : aucune entrée concernée » dans le message.
