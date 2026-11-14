@@ -80,3 +80,20 @@ TEST_CASE("fade requests that cannot work are refused with the engine's reason",
     CHECK_FALSE(createFade(g.session, g.id, same).ok);
     CHECK(g.session.undoNames().size() == depth);
 }
+
+TEST_CASE("a satin without rails reports the missing geometry rather than a tatami-only error",
+          "[desktop_v2][fade][satin]") {
+    auto f = rectFill();
+    REQUIRE(f.session.applyBatch(batchSetStitchType({f.id}, "satin"), "Satin").committed);
+    const auto* satin = f.session.project().findEmbroidery(ObjectId{f.id});
+    REQUIRE(satin != nullptr);
+    REQUIRE(satin->is_satin());
+    const auto& params = std::get<document::SatinParams>(satin->params);
+    REQUIRE((params.rail_a.nodes.size() < 2 || params.rail_b.nodes.size() < 2));
+    const auto why = fadeIncompatibility(f.session.project(), f.id);
+    CHECK(why.find("rails satin") != std::string::npos);
+    MultiFadeSettings settings;
+    settings.colors = {{255, 0, 0}, {0, 0, 255}};
+    const auto result = createMultiFade(f.session, f.id, settings);
+    CHECK_FALSE(result.ok);
+}
