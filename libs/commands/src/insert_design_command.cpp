@@ -120,6 +120,14 @@ void InsertDesignCommand::apply(document::Project& project) {
                     object.color_blend.reset();
                 }
             }
+            if (object.multi_blend) {
+                const auto it = embroidery_map.find(object.multi_blend->group);
+                if (it != embroidery_map.end()) {
+                    object.multi_blend->group = it->second;
+                } else {
+                    object.multi_blend.reset(); // fragment partiel sans chef de groupe
+                }
+            }
         }
     }
 

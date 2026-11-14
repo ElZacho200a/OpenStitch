@@ -388,6 +388,25 @@ json params_to_json(const document::StitchParams& params) {
                     if (g.curve != document::DensityCurve::Linear) {
                         j["densityGradient"]["curve"] = static_cast<int>(g.curve);
                     }
+                    if (g.texture != document::DensityTexture::None) {
+                        j["densityGradient"]["texture"] = static_cast<int>(g.texture);
+                        j["densityGradient"]["textureStrength"] =
+                            std::clamp(g.texture_strength, 0.0, 1.0);
+                        j["densityGradient"]["textureSeed"] = g.texture_seed;
+                    }
+                    if (g.geometry != document::DensityGeometry::Linear) {
+                        j["densityGradient"]["geometry"] = static_cast<int>(g.geometry);
+                    }
+                    if (g.curve_bend != 0.0) {
+                        j["densityGradient"]["bend"] = g.curve_bend;
+                    }
+                    if (!g.density_stops.empty()) {
+                        auto stops = json::array();
+                        for (const auto& stop : g.density_stops) {
+                            stops.push_back(json::array({stop.position, stop.weight}));
+                        }
+                        j["densityGradient"]["densityStops"] = std::move(stops);
+                    }
                 }
             } else if constexpr (std::is_same_v<T, document::AutoSatinParams>) {
                 json guides = json::array();
@@ -770,15 +789,55 @@ Result<document::StitchParams> params_from_json(const json& j) {
             grad.interpolate_density = g.value("interpolateDensity", false);
             // Valeur inconnue (fichier édité à la main ou plus récent) : linéaire.
             const int curve = g.value("curve", 0);
-            grad.curve = curve == static_cast<int>(document::DensityCurve::Smooth)
-                             ? document::DensityCurve::Smooth
-                         : curve == static_cast<int>(document::DensityCurve::Steep)
-                             ? document::DensityCurve::Steep
-                         : curve == static_cast<int>(document::DensityCurve::EaseIn)
-                             ? document::DensityCurve::EaseIn
-                         : curve == static_cast<int>(document::DensityCurve::EaseOut)
-                             ? document::DensityCurve::EaseOut
-                             : document::DensityCurve::Linear;
+            // Conserver les identifiants historiques 0..4 ; les profils 5..8
+            // sont optionnels. Les valeurs inconnues sont toujours rejetees.
+            grad.curve = document::DensityCurve::Linear;
+            if (curve >= 0 && curve <= static_cast<int>(document::DensityCurve::ConcaveConvex)) {
+                grad.curve = static_cast<document::DensityCurve>(curve);
+            }
+            const int texture = g.value("texture", 0);
+            grad.texture = texture == 1   ? document::DensityTexture::Feathered
+                           : texture == 2 ? document::DensityTexture::Stippled
+                           : texture == 3 ? document::DensityTexture::LongShort
+                                          : document::DensityTexture::None;
+            // Les valeurs indéfinies ne doivent pas provoquer de calcul non borné.
+            if (grad.texture != document::DensityTexture::None) {
+                const double raw = g.value("textureStrength", 0.35);
+                grad.texture_strength = std::isfinite(raw) ? std::clamp(raw, 0.0, 1.0) : 0.35;
+                auto textureSeed =
+                    strict_uint32(g.value("textureSeed", json(1)), "densityGradient.textureSeed");
+                if (!textureSeed)
+                    return std::unexpected(textureSeed.error());
+                grad.texture_seed = *textureSeed;
+            }
+            const int geometry = g.value("geometry", 0);
+            grad.geometry = geometry == 1   ? document::DensityGeometry::Radial
+                            : geometry == 2 ? document::DensityGeometry::Curved
+                                            : document::DensityGeometry::Linear;
+            const double bend = g.value("bend", 0.0);
+            grad.curve_bend = std::isfinite(bend) ? std::clamp(bend, -1.0, 1.0) : 0.0;
+            if (g.contains("densityStops")) {
+                const auto& stops = g.at("densityStops");
+                if (!stops.is_array() || stops.size() < 2 || stops.size() > 12) {
+                    return fail(ErrorCategory::InvalidFile, "Fondu : profil de densité invalide.");
+                }
+                double previous = -1.0;
+                for (const auto& point : stops) {
+                    if (!point.is_array() || point.size() != 2 || !point[0].is_number() ||
+                        !point[1].is_number()) {
+                        return fail(ErrorCategory::InvalidFile,
+                                    "Fondu : arrêt de densité invalide.");
+                    }
+                    const double position = point[0].get<double>();
+                    const double weight = point[1].get<double>();
+                    if (!std::isfinite(position) || !std::isfinite(weight) || position < 0.0 ||
+                        position > 1.0 || weight < 0.0 || weight > 1.0 || position <= previous) {
+                        return fail(ErrorCategory::InvalidFile, "Fondu : poids hors limites.");
+                    }
+                    grad.density_stops.push_back({position, weight});
+                    previous = position;
+                }
+            }
             p.density_gradient = grad;
         }
         if (j.contains("seed")) {
@@ -1645,6 +1704,12 @@ json project_to_json(const document::Project& project) {
             eo["colorBlend"] = {{"partner", e.color_blend->partner.value},
                                 {"foreground", e.color_blend->foreground}};
         }
+        if (e.multi_blend) {
+            eo["multiBlend"] = {{"group", e.multi_blend->group.value},
+                                {"index", e.multi_blend->index},
+                                {"count", e.multi_blend->count},
+                                {"complementary", e.multi_blend->complementary}};
+        }
         if (!e.overrides.empty()) {
             eo["overrides"] = json::array();
             for (const auto& ov : e.overrides) {
@@ -1947,6 +2012,28 @@ Result<document::Project> project_from_json(const json& j) {
 
             // Métadonnée facultative : entier uint64 exact (jamais via double) et rôle
             // strictement booléen. Les liens orphelins restent lisibles mais ne se résolvent pas.
+            if (eo.contains("multiBlend")) {
+                const auto& link = eo.at("multiBlend");
+                if (!link.is_object() || !link.contains("group") || !link.contains("index") ||
+                    !link.contains("count") || !link["index"].is_number_integer() ||
+                    !link["count"].is_number_integer() ||
+                    (link.contains("complementary") && !link["complementary"].is_boolean())) {
+                    return fail(ErrorCategory::InvalidFile, "Fondu multicolore mal formé.");
+                }
+                const auto group = strict_uint64(link.at("group"), "multiBlend.group");
+                if (!group) {
+                    return std::unexpected(group.error());
+                }
+                const int index = link["index"].get<int>();
+                const int count = link["count"].get<int>();
+                if (*group == 0 || count < 2 || count > 8 || index < 0 || index >= count) {
+                    return fail(ErrorCategory::InvalidFile,
+                                "Indices de fondu multicolore invalides.");
+                }
+                e.multi_blend = document::MultiBlendLink{
+                    ObjectId{*group}, static_cast<std::uint8_t>(index),
+                    static_cast<std::uint8_t>(count), link.value("complementary", true)};
+            }
             if (eo.contains("colorBlend")) {
                 const auto& link = eo.at("colorBlend");
                 if (!link.is_object() || !link.contains("partner") ||

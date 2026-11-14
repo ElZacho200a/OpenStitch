@@ -29,6 +29,12 @@ class FadeController : public QObject {
     Q_PROPERTY(QColor foreground READ foreground NOTIFY changed)
     Q_PROPERTY(QColor background READ background NOTIFY changed)
     Q_PROPERTY(bool complementary READ complementary NOTIFY changed)
+    Q_PROPERTY(int texture READ texture NOTIFY changed)
+    Q_PROPERTY(int geometry READ geometry NOTIFY changed)
+    Q_PROPERTY(double angle READ angle NOTIFY changed)
+    Q_PROPERTY(bool multiFade READ multiFade NOTIFY changed)
+    Q_PROPERTY(bool satinTarget READ satinTarget NOTIFY changed)
+    Q_PROPERTY(QVariantList colors READ colors NOTIFY changed)
     Q_PROPERTY(int curve READ curve NOTIFY changed)
     Q_PROPERTY(QString summary READ summary NOTIFY changed)
     Q_PROPERTY(QVariantMap axis READ axis NOTIFY changed)
@@ -41,13 +47,28 @@ public:
     ~FadeController() override;
 
     [[nodiscard]] QString objectId() const;
-    [[nodiscard]] bool hasFade() const { return settings_.has_value(); }
-    [[nodiscard]] bool canCreate() const { return id_ != 0 && !settings_ && incompat_.isEmpty(); }
+    [[nodiscard]] bool hasFade() const {
+        return settings_.has_value() || multiSettings_.has_value();
+    }
+    [[nodiscard]] bool multiFade() const { return multiSettings_.has_value(); }
+    [[nodiscard]] bool satinTarget() const;
+    [[nodiscard]] bool canCreate() const { return id_ != 0 && !hasFade() && incompat_.isEmpty(); }
     [[nodiscard]] QString incompatibility() const { return incompat_; }
     [[nodiscard]] QColor foreground() const;
     [[nodiscard]] QColor background() const;
-    [[nodiscard]] bool complementary() const { return settings_ && settings_->complementary; }
-    [[nodiscard]] int curve() const { return axis_ ? static_cast<int>(axis_->curve) : 0; }
+    [[nodiscard]] bool complementary() const {
+        return multiSettings_ ? multiSettings_->complementary
+                              : settings_ && settings_->complementary;
+    }
+    [[nodiscard]] int texture() const {
+        return multiSettings_ ? multiSettings_->texture : settings_ ? settings_->texture : 0;
+    }
+    [[nodiscard]] int geometry() const {
+        return multiSettings_ ? multiSettings_->geometry : settings_ ? settings_->geometry : 0;
+    }
+    [[nodiscard]] double angle() const;
+    [[nodiscard]] QVariantList colors() const;
+    [[nodiscard]] int curve() const;
     [[nodiscard]] QString summary() const;
     [[nodiscard]] QVariantMap axis() const { return axisMap(axis_); }
     [[nodiscard]] QVariantList curves() const;
@@ -56,12 +77,22 @@ public:
     [[nodiscard]] bool lastOk() const { return ok_; }
 
     Q_INVOKABLE bool create(const QColor& foreground, bool complementary);
+    Q_INVOKABLE bool createWithTexture(const QColor& foreground, bool complementary, int texture);
+    Q_INVOKABLE bool setTexture(int texture);
+    Q_INVOKABLE bool setGeometry(int geometry);
+    Q_INVOKABLE bool setAngle(double degrees);
+    Q_INVOKABLE bool createMulticolor(const QVariantList& colors, bool complementary, int texture,
+                                      int geometry);
+    Q_INVOKABLE bool editMulticolor(const QVariantList& colors, bool complementary, int texture,
+                                    int geometry);
     Q_INVOKABLE bool edit(const QColor& foreground, bool complementary);
     Q_INVOKABLE bool remove();
     // handle : 0 Start, 1 End, 2 Move, 3 Rotate. Aperçu = géométrie pure, aucun point régénéré.
     Q_INVOKABLE QVariantMap previewHandle(int handle, double xMm, double yMm, bool symmetric) const;
     Q_INVOKABLE bool commitHandle(int handle, double xMm, double yMm, bool symmetric);
     Q_INVOKABLE bool setCurve(int curve);
+    Q_INVOKABLE int layerCurve(int layer) const;
+    Q_INVOKABLE bool setLayerCurve(int layer, int curve);
     // Inverse le sens du fondu (début <-> fin) : une étape d'annulation.
     Q_INVOKABLE bool reverse();
 signals:
@@ -79,6 +110,8 @@ private:
     std::vector<Target> lastSeenSelection_;
     std::uint64_t id_{0};
     std::optional<FadeSettings> settings_;
+    std::optional<MultiFadeSettings> multiSettings_;
+    int multiCurve_{0};
     std::optional<FadeAxisView> axis_;
     QString incompat_;
     QString message_;

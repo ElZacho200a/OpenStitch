@@ -25,7 +25,8 @@
 
 namespace openstitch::desktop_v2::studio {
 
-// Un élément de surcouche d'aperçu (mm scène). Peu d'éléments, jamais un par point de couture.
+// Un élément de surcouche d'aperçu (mm scène). Les marqueurs homogènes sont regroupés en lots ;
+// il n'y a jamais un élément par point de couture ou par nœud vectoriel.
 struct ToolOverlayItem {
     enum class Kind { Line, Closed, Point, Selected, Tangent, Ghost };
     Kind kind{Kind::Line};

@@ -1004,6 +1004,9 @@ SatinResult finish_satin_stations(const std::vector<SatinStation>& stations,
             }
         }
         result.satin.push_back(toUm(pb));
+        if (config.track_stations) {
+            result.station_ends.push_back(result.satin.size());
+        }
         prevB = pb;
         ++emitted;
     }
@@ -1096,6 +1099,9 @@ SatinResult fill_satin(const geometry::Path& rail_a, const geometry::Path& rail_
         } else {
             result.satin.push_back(toUm(pb));
             result.satin.push_back(toUm(pa));
+        }
+        if (config.track_stations) {
+            result.station_ends.push_back(result.satin.size());
         }
     }
     return result;

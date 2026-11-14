@@ -80,6 +80,18 @@ const char* density_curve_name(document::DensityCurve c) {
         return "smooth";
     case document::DensityCurve::Steep:
         return "steep";
+    case document::DensityCurve::EaseIn:
+        return "ease_in";
+    case document::DensityCurve::EaseOut:
+        return "ease_out";
+    case document::DensityCurve::Convex:
+        return "convex";
+    case document::DensityCurve::Concave:
+        return "concave";
+    case document::DensityCurve::ConvexConcave:
+        return "convex_concave";
+    case document::DensityCurve::ConcaveConvex:
+        return "concave_convex";
     case document::DensityCurve::Linear:
         break;
     }

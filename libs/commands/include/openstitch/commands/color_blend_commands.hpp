@@ -93,4 +93,33 @@ private:
     std::optional<document::ColorBlendLink> previousSecond_;
 };
 
+// Métadonnée d'appartenance à un groupe multicolore, modifiée sans toucher aux
+// points : les paramètres de couture sont mis à jour séparément et de façon
+// atomique par une CompositeCommand.
+class SetMultiBlendLinkCommand final : public ICommand {
+public:
+    SetMultiBlendLinkCommand(ObjectId id, std::optional<document::MultiBlendLink> next)
+        : id_(id), next_(std::move(next)) {}
+
+    void apply(document::Project& project) override {
+        if (auto* object = project.findEmbroidery(id_)) {
+            before_ = object->multi_blend;
+            object->multi_blend = next_;
+        }
+    }
+
+    void revert(document::Project& project) override {
+        if (auto* object = project.findEmbroidery(id_)) {
+            object->multi_blend = before_;
+        }
+    }
+
+    [[nodiscard]] std::string name() const override { return "Modifier le groupe de fondu"; }
+
+private:
+    ObjectId id_;
+    std::optional<document::MultiBlendLink> before_;
+    std::optional<document::MultiBlendLink> next_;
+};
+
 } // namespace openstitch::commands

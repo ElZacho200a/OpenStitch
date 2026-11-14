@@ -632,8 +632,55 @@ struct SpacingField {
     document::DensityCurve curve{document::DensityCurve::Linear};
     double densityFrom{1.0 / 400.0};
     double densityTo{1.0 / 400.0};
+    document::DensityTexture texture{document::DensityTexture::None};
+    double textureStrength{0.35};
+    std::uint32_t textureSeed{1};
+    document::DensityGeometry geometry{document::DensityGeometry::Linear};
+    double curveBend{0.0};
+    std::vector<document::DensityStop> densityStops;
 
-    [[nodiscard]] bool uniform() const { return invLen2 == 0.0 || from == to; }
+    // Hash de coordonnées de grille : aucune allocation, état ou RNG global.
+    // Un même point donne le même déplacement dans toutes les couches.
+    [[nodiscard]] static double hashCell(std::int32_t x, std::int32_t y, std::uint32_t seed) {
+        std::uint32_t z = static_cast<std::uint32_t>(x) * 0x9E3779B9u;
+        z ^= static_cast<std::uint32_t>(y) * 0x85EBCA6Bu;
+        z ^= seed * 0xC2B2AE35u;
+        z ^= z >> 16;
+        z *= 0x7FEB352Du;
+        z ^= z >> 15;
+        z *= 0x846CA68Bu;
+        z ^= z >> 16;
+        return static_cast<double>(z) * (2.0 / 4294967295.0) - 1.0;
+    }
+
+    // Irrégularité déterministe dans le domaine du paramètre t :
+    // Feathered = bruit lissé de 2 mm ; Stippled = micro-cellules 0,65 mm.
+    // Le chemin None reste strictement identique aux anciens calculs.
+    [[nodiscard]] double textureAt(P2 p) const {
+        if (texture == document::DensityTexture::None || textureStrength <= 0.0)
+            return 0.0;
+        if (texture == document::DensityTexture::Stippled) {
+            const auto ix = static_cast<std::int32_t>(std::floor(p.x / 650.0));
+            const auto iy = static_cast<std::int32_t>(std::floor(p.y / 650.0));
+            return hashCell(ix, iy, textureSeed) * textureStrength * 0.12;
+        }
+        const double x = p.x / 2200.0;
+        const double y = p.y / 2200.0;
+        const auto ix = static_cast<std::int32_t>(std::floor(x));
+        const auto iy = static_cast<std::int32_t>(std::floor(y));
+        const auto fade = [](double v) { return v * v * (3.0 - 2.0 * v); };
+        const double fx = fade(x - ix);
+        const double fy = fade(y - iy);
+        const double a = hashCell(ix, iy, textureSeed);
+        const double b = hashCell(ix + 1, iy, textureSeed);
+        const double d = hashCell(ix, iy + 1, textureSeed);
+        const double e = hashCell(ix + 1, iy + 1, textureSeed);
+        return ((a + (b - a) * fx) * (1.0 - fy) + (d + (e - d) * fx) * fy) * textureStrength * 0.22;
+    }
+
+    [[nodiscard]] bool uniform() const {
+        return densityStops.empty() && (invLen2 == 0.0 || from == to);
+    }
 
     // Remappe t ∈ [0 ; 1] ; monotone, 0 → 0 et 1 → 1 : les écarts restent entre
     // `lo` et `hi`, donc la grille et la fenêtre d'auto-proximité restent valides.
@@ -647,17 +694,83 @@ struct SpacingField {
             return t * t;
         case document::DensityCurve::EaseOut:
             return t * (2.0 - t);
+        case document::DensityCurve::Convex:
+            return t * t * t;
+        case document::DensityCurve::Concave: {
+            const double u = 1.0 - t;
+            return 1.0 - u * u * u;
+        }
+        case document::DensityCurve::ConvexConcave: {
+            if (t <= 0.5) {
+                return 4.0 * t * t * t;
+            }
+            const double u = 1.0 - t;
+            return 1.0 - 4.0 * u * u * u;
+        }
+        case document::DensityCurve::ConcaveConvex: {
+            if (t <= 0.5) {
+                const double u = 1.0 - 2.0 * t;
+                return 0.5 * (1.0 - u * u * u);
+            }
+            const double u = 2.0 * t - 1.0;
+            return 0.5 + 0.5 * u * u * u;
+        }
         case document::DensityCurve::Linear:
             break;
         }
         return t;
     }
 
+    [[nodiscard]] double positionAt(P2 p) const {
+        if (invLen2 == 0.0) {
+            return 0.0;
+        }
+        const P2 delta = p - origin;
+        double t = dot(delta, axis) * invLen2;
+        if (geometry == document::DensityGeometry::Radial) {
+            t = std::sqrt(dot(delta, delta) * invLen2);
+        } else if (geometry == document::DensityGeometry::Curved) {
+            // Parabole transversale légère, indépendante de la résolution raster.
+            const double lateral = cross(delta, axis) * invLen2;
+            t += curveBend * lateral * lateral;
+        }
+        return shaped(curve, std::clamp(t + textureAt(p), 0.0, 1.0));
+    }
+
+    // Recherche sur 2..8 arrêts : pas d'allocation par point évalué.
+    [[nodiscard]] double densityWeight(P2 p) const {
+        if (densityStops.empty()) {
+            return 1.0;
+        }
+        const double t = positionAt(p);
+        const auto it =
+            std::lower_bound(densityStops.begin(), densityStops.end(), t,
+                             [](const auto& stop, double v) { return stop.position < v; });
+        if (it == densityStops.begin()) {
+            return it->weight;
+        }
+        if (it == densityStops.end()) {
+            return densityStops.back().weight;
+        }
+        const auto& left = *(it - 1);
+        const double span = it->position - left.position;
+        return left.weight + (it->weight - left.weight) * ((t - left.position) / span);
+    }
+
+    [[nodiscard]] bool active(P2 p) const {
+        return densityStops.empty() || densityWeight(p) >= 0.025;
+    }
+
     [[nodiscard]] double at(P2 p) const {
         if (uniform()) {
             return lo;
         }
-        const double t = shaped(curve, std::clamp(dot(p - origin, axis) * invLen2, 0.0, 1.0));
+        if (!densityStops.empty()) {
+            // Les supports presque nuls sont coupés par StreamlineTracer::active.
+            // Le plafond garde la grille de séparation et ses rayons bornés.
+            return std::clamp(from / std::max(0.1, densityWeight(p)), kGradientMin, kGradientMax);
+        }
+        const double t = positionAt(p);
         if (interpolateDensity) {
             // Rampes opposées : rho_A(t) + rho_B(t) = rho_from + rho_to.
             return 1.0 / (densityFrom + (densityTo - densityFrom) * t);
@@ -685,6 +798,13 @@ SpacingField make_spacing_field(const document::DirectionalFillParams& p) {
     f.to = bound(g.spacing_to);
     f.interpolateDensity = g.interpolate_density;
     f.curve = g.curve;
+    f.texture = g.texture;
+    f.textureStrength =
+        std::isfinite(g.texture_strength) ? std::clamp(g.texture_strength, 0.0, 1.0) : 0.0;
+    f.textureSeed = g.texture_seed;
+    f.geometry = g.geometry;
+    f.curveBend = std::isfinite(g.curve_bend) ? std::clamp(g.curve_bend, -1.0, 1.0) : 0.0;
+    f.densityStops = g.density_stops;
     f.densityFrom = 1.0 / f.from;
     f.densityTo = 1.0 / f.to;
     f.lo = std::min(f.from, f.to);
@@ -693,7 +813,12 @@ SpacingField make_spacing_field(const document::DirectionalFillParams& p) {
     f.axis = to_p2(g.to) - f.origin;
     const double len2 = dot(f.axis, f.axis);
     f.invLen2 = len2 > 1.0 ? 1.0 / len2 : 0.0;
-    if (f.uniform()) {
+    if (!f.densityStops.empty()) {
+        // Le poids peut s'approcher de zéro : garder un rayon de voisinage
+        // borné, et désactiver les zones vides plutôt que semer des fils rares.
+        f.lo = f.from;
+        f.hi = SpacingField::kGradientMax;
+    } else if (f.uniform()) {
         f.lo = f.hi = f.from; // axe dégénéré ou écarts égaux
     }
     return f;
@@ -1007,7 +1132,7 @@ public:
             for (double x = lo_.x + g / 2.0; x < hi_.x; x += g) {
                 const P2 c{x, y};
                 const double d = dist2(c, center);
-                if (d < bestD && sector_.trace.inside(c)) {
+                if (d < bestD && spacing_.active(c) && sector_.trace.inside(c)) {
                     bestD = d;
                     first = c;
                 }
@@ -1038,7 +1163,7 @@ private:
     }
 
     [[nodiscard]] bool valid_seed(P2 c, double factor) const {
-        return sector_.trace.inside(c) &&
+        return spacing_.active(c) && sector_.trace.inside(c) &&
                !grid_.too_close(c, factor * spacing_.at(c), -1, 0.0, 0.0);
     }
 
@@ -1137,14 +1262,15 @@ private:
                 break; // virage brutal : point singulier du champ
             }
             const P2 q = p + v2 * step_;
-            if (!sector_.trace.inside(q)) {
+            if (!spacing_.active(q) || !sector_.trace.inside(q)) {
+                // Sortie de la zone active ou du contour : même bisection.
                 // Sortie de la région : le point de bord exact est cherché par
                 // dichotomie pour que la couture atteigne le contour.
                 P2 in = p;
                 P2 out = q;
                 for (int it = 0; it < 14; ++it) {
                     const P2 m = (in + out) * 0.5;
-                    if (sector_.trace.inside(m)) {
+                    if (spacing_.active(m) && sector_.trace.inside(m)) {
                         in = m;
                     } else {
                         out = m;
@@ -1776,6 +1902,12 @@ std::vector<SectorLines> compute_lines(const std::vector<Sector>& sectors,
     plan.target = static_cast<double>(params.stitch_length.value);
     plan.stagger = params.stagger;
     plan.intensity = handmade_intensity(params);
+    if (params.density_gradient &&
+        params.density_gradient->texture == document::DensityTexture::LongShort) {
+        // Réutilise la génération déterministe de pénétrations alternées,
+        // bornée entre 0,5 et 7 mm : pas de passe de post-traitement des points.
+        plan.intensity = std::max(plan.intensity, 0.75);
+    }
     plan.seed = params.seed;
     for (std::size_t si = 0; si < sectors.size(); ++si) {
         SectorLines sl;
@@ -1854,22 +1986,52 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
     // L'écart est local sous un dégradé de densité : une liaison cousue de
     // 4 × l'écart MAXIMAL traverserait la zone dense (long fil parasite).
     const SpacingField field = make_spacing_field(params);
-    const auto sewLimit = [&](P2 p) { return std::max(4.0 * field.at(p), 1'500.0); };
-    const auto underpathLimit = [&](P2 p) { return std::max(6.0 * field.at(p), 8'000.0); };
+    const auto& gradient = params.density_gradient;
+    const bool masked = gradient && !gradient->density_stops.empty();
+    // Dans un fondu N-aire, un fil devient rare hors de sa zone. Le rayon
+    // de semis peut être 4 mm à ces endroits, mais ce n'est PAS une permission
+    // de coudre un long fil diagonal entre deux lignes isolées.
+    // Raccords courts (~2,4 mm) autorises uniquement DANS la zone ou le fil
+    // contribue deja au camaieu. La limite est independante de l'espacement
+    // local, qui peut devenir enorme au bord d'une couleur.
+    constexpr double kMaskedLinkUm = 2'400.0;
+    const auto sewLimit = [&](P2 p) {
+        return masked ? kMaskedLinkUm : std::max(4.0 * field.at(p), 1'500.0);
+    };
+    const auto underpathLimit = [&](P2 p) {
+        return masked ? 0.0 : std::max(6.0 * field.at(p), 8'000.0);
+    };
 
     const auto polys = region_polys(region);
     const RegionIndex whole(polys, std::clamp(spacing, 250.0, 1'000.0));
-    // Liaison intérieure : le segment reste dans la région, ou il est assez court
-    // (≤ 1,5 mm) pour être cousu par-dessus un vide étroit — marche d'un contour
-    // en escalier, fente de moins de 1,5 mm. Un saut y laissait un fil coupé et
-    // un déplacement parasite entre deux rangées voisines.
+    // Un segment qui traverse une couleur absente n'est pas un "chemin
+    // caché" : lever le fil. Vérification directe et locale, 3 poids
+    // scalaires au plus, sans géométrie/caches supplémentaires.
     const auto linkInside = [&](P2 a, P2 b) {
+        if (masked) {
+            if (dist2(a, b) > kMaskedLinkUm * kMaskedLinkUm) {
+                return false;
+            }
+            if (!whole.segment_inside(a, b)) {
+                return false;
+            }
+            // Un raccord oblique ne doit pas traverser le creux d'un fondu,
+            // meme si ses deux extremites sont denses. Les evaluations ne
+            // concernent que les courts candidats dans la grille de voisinage.
+            const P2 step = b - a;
+            for (const double t : {0.0, 0.25, 0.5, 0.75, 1.0}) {
+                if (field.densityWeight(a + step * t) < 0.2) {
+                    return false;
+                }
+            }
+            return true;
+        }
         return dist(a, b) <= 3.0 * kMinStitch || whole.segment_inside(a, b);
     };
 
     // Autoroute d'underpath : contour extérieur rentré (comme le tatami).
     std::vector<P2> highway;
-    if (params.hidden_underpath) {
+    if (params.hidden_underpath && !masked) {
         if (auto r = geometry::inset_path_set(geometry::PathSet{region.outer, {}},
                                               params.underlay_inset);
             r && !r->empty() && r->front().outer.nodes.size() >= 3) {
@@ -1980,18 +2142,63 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
         // Voisinage : deux lignes sont voisines si une extrémité de l'une est
         // à portée de liaison cousue d'une extrémité de l'autre.
         std::vector<std::vector<std::size_t>> neighbors(n);
-        for (std::size_t a = 0; a < n; ++a) {
-            for (std::size_t b = a + 1; b < n; ++b) {
-                bool close = false;
+        if (masked && n >= 32) {
+            // Une couche du fondu contient surtout des lignes rares et
+            // disjointes. La double boucle O(n²) compare alors des milliers
+            // d'extremites distantes. Trier seulement les abscisses des
+            // extremites donne O(n log n + voisins locaux), sans grille
+            // persistante ni cache partage entre couleurs.
+            using Endpoint = std::pair<double, std::size_t>;
+            std::vector<Endpoint> ends;
+            ends.reserve(2 * n);
+            for (std::size_t li = 0; li < n; ++li) {
+                ends.push_back({stitched[li].front().x, li});
+                ends.push_back({stitched[li].back().x, li});
+            }
+            std::stable_sort(ends.begin(), ends.end());
+            std::vector<std::size_t> candidates;
+            for (std::size_t a = 0; a < n; ++a) {
+                candidates.clear();
                 for (const P2 ea : {stitched[a].front(), stitched[a].back()}) {
-                    for (const P2 eb : {stitched[b].front(), stitched[b].back()}) {
-                        const double sew = sewLimit(ea);
-                        close = close || dist2(ea, eb) <= sew * sew;
+                    const Endpoint lower{ea.x - kMaskedLinkUm, 0};
+                    auto it = std::lower_bound(ends.begin(), ends.end(), lower);
+                    while (it != ends.end() && it->first <= ea.x + kMaskedLinkUm) {
+                        if (it->second > a) {
+                            candidates.push_back(it->second);
+                        }
+                        ++it;
                     }
                 }
-                if (close) {
-                    neighbors[a].push_back(b);
-                    neighbors[b].push_back(a);
+                std::stable_sort(candidates.begin(), candidates.end());
+                const auto uniqueEnd = std::unique(candidates.begin(), candidates.end());
+                candidates.erase(uniqueEnd, candidates.end());
+                for (const std::size_t b : candidates) {
+                    bool close = false;
+                    for (const P2 ea : {stitched[a].front(), stitched[a].back()}) {
+                        for (const P2 eb : {stitched[b].front(), stitched[b].back()}) {
+                            close = close || linkInside(ea, eb);
+                        }
+                    }
+                    if (close) {
+                        neighbors[a].push_back(b);
+                        neighbors[b].push_back(a);
+                    }
+                }
+            }
+        } else {
+            for (std::size_t a = 0; a < n; ++a) {
+                for (std::size_t b = a + 1; b < n; ++b) {
+                    bool close = false;
+                    for (const P2 ea : {stitched[a].front(), stitched[a].back()}) {
+                        for (const P2 eb : {stitched[b].front(), stitched[b].back()}) {
+                            const double sew = sewLimit(ea);
+                            close = close || dist2(ea, eb) <= sew * sew;
+                        }
+                    }
+                    if (close) {
+                        neighbors[a].push_back(b);
+                        neighbors[b].push_back(a);
+                    }
                 }
             }
         }
@@ -2077,7 +2284,7 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
                         }
                         if (!(direct && d <= sewLimit(rp))) {
                             jump = true;
-                            if (params.hidden_underpath) {
+                            if (params.hidden_underpath && !masked) {
                                 if (direct && d <= underpathLimit(rp)) {
                                     emitTravel({cur, rp});
                                     jump = false;

@@ -2,12 +2,14 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <cmath>
+#include <limits>
 #include <memory>
 
 #include "document_session.hpp"
 #include "fade_axis.hpp"
 #include "fade_service.hpp"
 #include "openstitch/project_ops/factory.hpp"
+#include "openstitch/project_ops/gradient_fill.hpp"
 #include "shape_batch.hpp"
 
 using namespace openstitch;
@@ -122,6 +124,40 @@ TEST_CASE("an out-of-range drag is refused and changes nothing", "[desktop_v2][f
     const auto depth = f.session.undoNames().size();
     CHECK_FALSE(dragFadeHandle(f.session, f.id, FadeHandle::Move, {5000.0, 0.0}, false).ok);
     CHECK(f.session.undoNames().size() == depth);
+}
+
+TEST_CASE("a multicolor fade angle rotates one shared axis and undo restores it",
+          "[desktop_v2][fade][multicolor]") {
+    Fixture f;
+    MultiFadeSettings settings;
+    settings.colors = {{{20, 60, 120}}, {{90, 140, 190}}, {{220, 235, 245}}};
+    settings.geometry = 2; // curved fields also have an explicit orientation
+    REQUIRE(createMultiFade(f.session, f.id, settings).ok);
+    const auto beforeAngle = readFadeAngle(f.session.project(), f.id);
+    REQUIRE(beforeAngle.has_value());
+    const auto before =
+        project_ops::describe_multicolor_gradient_fill(f.session.project(), ObjectId{f.id});
+    REQUIRE(before.has_value());
+    const double beforeLength = std::hypot(
+        static_cast<double>(before->gradient.to.x.value - before->gradient.from.x.value),
+        static_cast<double>(before->gradient.to.y.value - before->gradient.from.y.value));
+    const auto depth = f.session.undoNames().size();
+
+    REQUIRE(setFadeAngle(f.session, f.id, 90.0).ok);
+    CHECK(f.session.undoNames().size() == depth + 1);
+    REQUIRE(readFadeAngle(f.session.project(), f.id).has_value());
+    CHECK(std::abs(*readFadeAngle(f.session.project(), f.id) - 90.0) < 0.01);
+    const auto after =
+        project_ops::describe_multicolor_gradient_fill(f.session.project(), ObjectId{f.id});
+    REQUIRE(after.has_value());
+    const double afterLength =
+        std::hypot(static_cast<double>(after->gradient.to.x.value - after->gradient.from.x.value),
+                   static_cast<double>(after->gradient.to.y.value - after->gradient.from.y.value));
+    CHECK(std::abs(afterLength - beforeLength) < 2.0); // arrondi entier en micromètres
+
+    REQUIRE(f.session.undo());
+    CHECK(std::abs(*readFadeAngle(f.session.project(), f.id) - *beforeAngle) < 0.01);
+    CHECK_FALSE(setFadeAngle(f.session, f.id, std::numeric_limits<double>::infinity()).ok);
 }
 
 TEST_CASE("every fade curve runs from 0 to 1 monotonically and has a label",
