@@ -847,8 +847,7 @@ TEST_CASE("rails_from_contour : grand contour segmente reste lineaire en memoire
     }
     const auto rails = rails_from_contour(contour);
     REQUIRE(rails.has_value());
-    CHECK(rails->first.nodes.size() + rails->second.nodes.size() ==
-          contour.nodes.size() + 2);
+    CHECK(rails->first.nodes.size() + rails->second.nodes.size() == contour.nodes.size() + 2);
     CHECK(rails_from_contour(contour) == rails); // deterministic geometry
 }
 
