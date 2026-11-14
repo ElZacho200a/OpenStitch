@@ -97,6 +97,8 @@ Item {
                 currentIndex: {
                     if (!root.ctl || root.ctl.typeMixed)
                         return -1;
+                    if (root.gradientSelected)
+                        return root.stitchTypeChoices.length - 1;
                     const t = root.stitchTypeChoices;
                     for (let i = 0; i < t.length; ++i)
                         if (t[i].current)
