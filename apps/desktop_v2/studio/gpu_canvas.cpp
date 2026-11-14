@@ -321,6 +321,7 @@ QVariantList GpuCanvas::toolOverlay() const {
     constexpr double marginPx = 8.0;
     constexpr double minCellPx = 8.0;
     constexpr double markerBudget = 3'000.0;
+    constexpr double minPolylineStepPx = 2.0;
     const double viewportArea = std::max(1.0, width() * height());
     const double cellPx = std::max(minCellPx, std::sqrt(viewportArea / markerBudget));
     const int columns =
@@ -332,8 +333,13 @@ QVariantList GpuCanvas::toolOverlay() const {
         const bool isMarker = item.kind == ToolOverlayItem::Kind::Point ||
                               item.kind == ToolOverlayItem::Kind::Selected;
         const bool keepEveryMarker = item.kind == ToolOverlayItem::Kind::Selected;
+        const bool simplifyPolyline = !isMarker && item.points.size() > 2;
         QVariantList pts;
-        for (const auto& p : item.points) {
+        double lastLineX = 0.0;
+        double lastLineY = 0.0;
+        bool hasLinePoint = false;
+        for (std::size_t index = 0; index < item.points.size(); ++index) {
+            const auto& p = item.points[index];
             const auto s = camera_.worldToScreen(p);
             if (isMarker && (s.x < -marginPx || s.y < -marginPx || s.x > width() + marginPx ||
                              s.y > height() + marginPx)) {
@@ -352,7 +358,19 @@ QVariantList GpuCanvas::toolOverlay() const {
                 }
                 used = 1;
             }
+            // The vector image below already carries the full geometry. The selection outline is
+            // only a screen-space cue: avoid sending sub-pixel vertices to the QML Canvas while
+            // retaining the first and last point so open/crossing segments stay intact.
+            if (simplifyPolyline && hasLinePoint && index + 1 < item.points.size() &&
+                std::hypot(s.x - lastLineX, s.y - lastLineY) < minPolylineStepPx) {
+                continue;
+            }
             pts << s.x << s.y;
+            if (simplifyPolyline) {
+                lastLineX = s.x;
+                lastLineY = s.y;
+                hasLinePoint = true;
+            }
         }
         if (pts.isEmpty()) {
             continue;

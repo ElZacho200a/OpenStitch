@@ -456,6 +456,9 @@ quand plusieurs points occupaient le même voisinage à l'écran.
 canevas applique ensuite un niveau de détail déterministe en espace écran aux nœuds ordinaires :
 au plus un marqueur par cellule, avec environ 3 000 cellules visibles pour une fenêtre usuelle.
 Les points hors écran restent éliminés et le point sélectionné contourne toujours cette limite.
+Le contour de sélection élimine également ses sommets sous-pixel, tout en conservant ses
+extrémités : sur la scène circulaire de régression, 10 001 sommets source deviennent environ
+436 à 456 sommets d'affichage selon le cadrage.
 
 La géométrie source complète reste dans le modèle et dans les lots du contrôleur : sélection,
 édition et hit-testing continuent donc à voir les 10 000 nœuds. Le test clique notamment un nœud
@@ -468,10 +471,19 @@ prouve la borne de travail côté rendu et la conservation des interactions.
 **Mesure locale Release.** Le micro-banc opt-in `perfDenseNodeSelectionOverlay`
 (`OPENSTITCH_PERF=1`) mesure le chemin sélection de l'objet dense → reconstruction des lots →
 conversion de la surcouche visible en types Qt, après 10 passages de chauffe et sur 100 passages.
-Sur Windows 11, Qt 6.8.3, backend Quick logiciel/offscreen, quatre exécutions donnent un p50 entre
-4,04 et 4,55 ms, un p95 entre 4,48 et 5,23 ms et un p99 entre 9,61 et 10,83 ms. La scène circulaire
-de 10 000 nœuds produit 74 marqueurs visibles avec ce cadrage. Cette mesure ne couvre ni la peinture
-QPainter, ni la présentation GPU/écran : elle ne constitue donc pas un relevé FPS global.
+Sur Windows 11, Qt 6.8.3, backend Quick logiciel/offscreen, quatre exécutions après le LOD du
+contour donnent un p50 entre 3,68 et 3,81 ms, un p95 entre 4,05 et 4,63 ms et un p99 entre 8,57 et
+9,91 ms. La scène circulaire de 10 000 nœuds produit 74 marqueurs visibles avec ce cadrage. Cette
+mesure ne couvre ni la peinture QPainter, ni la présentation GPU/écran : elle ne constitue donc
+pas un relevé FPS global.
+
+**Banc natif.** `perfDenseNodeSelectionNative` ouvre le shell complet, vérifie un backend RHI
+matériel et compare une cadence témoin sans sélection aux sélections légère et dense. Dans la
+session du 14 novembre 2026, `QSG_INFO=1` confirme D3D11 sur une NVIDIA GeForce RTX 5060 Ti, mais
+la cadence témoin elle-même est bridée à un p95 de 262,46 ms ; les sélections légère (262,16 ms)
+et dense (263,64 ms) sont indiscernables de ce témoin. Ces valeurs ne mesurent donc pas le coût de
+l'overlay et ne valident ni n'invalident un portage QSG. Le banc doit être rejoué dans une session
+graphique non bridée, fenêtre réellement présentée et dégagée.
 
 **Limite et suite.** Les marqueurs restent dessinés par le canevas QPainter actuel. Un passage à
 des instances GPU/QSG ne sera justifié qu'après profilage du nouveau chemin : le principal coût
