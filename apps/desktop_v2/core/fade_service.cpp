@@ -73,6 +73,20 @@ bool setup_geometry(const document::Project& project, ObjectId id,
     return true;
 }
 
+// Fil de nuancier d'une couleur de la nouvelle palette : celui de la même couleur dans
+// l'ancienne palette (couleur inchangée, déplacée ou inversée), sinon couleur libre. Une
+// réédition (technique, angle, profil, ordre, nombre de fils) ne perd donc aucune référence.
+std::optional<thread_palette::ThreadKey>
+thread_for(const std::array<std::uint8_t, 3>& rgb,
+           const std::vector<document::GradientThread>& previous) {
+    for (const auto& thread : previous) {
+        if (thread.rgb == rgb && thread.thread) {
+            return thread.thread;
+        }
+    }
+    return std::nullopt;
+}
+
 std::optional<double> gradient_angle(const document::DensityGradient& gradient) {
     const double dx = static_cast<double>(gradient.to.x.value) - gradient.from.x.value;
     const double dy = static_cast<double>(gradient.to.y.value) - gradient.from.y.value;
@@ -125,6 +139,12 @@ std::string fadeIncompatibility(const document::Project& project, std::uint64_t 
 }
 
 std::optional<FadeSettings> readFade(const document::Project& project, std::uint64_t objectId) {
+    // Vue « deux fils » de tout fondu : le dernier fil de la palette est le fil d'arrivée.
+    if (const auto multi = project_ops::describe_multicolor_gradient(project, ObjectId{objectId})) {
+        return FadeSettings{multi->palette.back().rgb, multi->complementary,
+                            static_cast<int>(multi->transition.texture),
+                            static_cast<int>(multi->transition.geometry)};
+    }
     const auto spec = project_ops::describe_gradient_fill(project, ObjectId{objectId});
     if (!spec) {
         return std::nullopt;
@@ -133,6 +153,22 @@ std::optional<FadeSettings> readFade(const document::Project& project, std::uint
                         static_cast<int>(spec->gradient.texture),
                         static_cast<int>(spec->gradient.geometry)};
 }
+
+// Un seul moteur : le fondu « deux fils » historique de l'interface est un fondu multicolore
+// à deux fils (ancre + grille de rangées partagée). Les anciens couples `ColorBlendLink` des
+// projets existants restent lisibles et sont convertis à leur première modification.
+namespace {
+int method_for_texture(int texture) {
+    switch (static_cast<document::DensityTexture>(texture)) {
+    case document::DensityTexture::LongShort:
+        return static_cast<int>(document::GradientMethod::LongAndShort);
+    case document::DensityTexture::Stippled:
+        return static_cast<int>(document::GradientMethod::ControlledScatter);
+    default:
+        return static_cast<int>(document::GradientMethod::Directional);
+    }
+}
+} // namespace
 
 ServiceResult createFade(DocumentSession& session, std::uint64_t objectId,
                          const FadeSettings& settings) {
@@ -143,66 +179,47 @@ ServiceResult createFade(DocumentSession& session, std::uint64_t objectId,
     if (const auto why = fadeIncompatibility(session.project(), objectId); !why.empty()) {
         return refuse(why);
     }
-    auto spec = project_ops::default_gradient_fill(session.project(), ObjectId{objectId});
-    if (!spec) {
-        return refuse("Ce remplissage ne peut pas porter un fondu (forme vide ou dégénérée).");
-    }
-    spec->foreground = settings.foreground;
-    spec->foreground_thread.reset(); // couleur libre : pas de fil de nuancier imposé
-    spec->complementary = settings.complementary;
-    if (!valid_mode(settings.texture, settings.geometry)) {
-        return refuse("Technique ou géométrie de fondu inconnue.");
-    }
-    spec->gradient.texture = static_cast<document::DensityTexture>(settings.texture);
-    if (!setup_geometry(session.project(), ObjectId{objectId}, spec->gradient, settings.geometry,
-                        settings.geometry != 0)) {
-        return refuse("Forme incompatible avec cette géométrie.");
-    }
-    if (spec->foreground == spec->background) {
+    if (settings.foreground == object->rgb) {
         return refuse("Choisissez un fil du dessus différent du fil du fond.");
     }
-    const auto* shape = session.project().findObject(object->source_vector);
-    if (shape == nullptr) {
-        return refuse("Forme source introuvable.");
-    }
-    auto command = project_ops::make_create_gradient_fill_command(
-        session.projectForIdAllocation(), ObjectId{objectId}, *spec, shape->paths);
-    if (!command) {
-        return refuse(command.error().message);
-    }
-    session.execute(std::move(*command));
-    return {true, {}};
+    MultiFadeSettings multi;
+    multi.colors = {object->rgb, settings.foreground};
+    multi.complementary = settings.complementary;
+    multi.texture = settings.texture;
+    multi.geometry = settings.geometry;
+    multi.method = object->is_satin() ? static_cast<int>(document::GradientMethod::SatinInterlaced)
+                                      : method_for_texture(settings.texture);
+    return createMultiFade(session, objectId, multi);
 }
 
 ServiceResult editFade(DocumentSession& session, std::uint64_t objectId,
                        const FadeSettings& settings) {
-    auto spec = project_ops::describe_gradient_fill(session.project(), ObjectId{objectId});
-    if (!spec) {
-        return refuse("Cet objet ne porte pas de fondu.");
-    }
-    spec->foreground = settings.foreground;
-    spec->foreground_thread.reset();
-    spec->complementary = settings.complementary;
-    if (!valid_mode(settings.texture, settings.geometry)) {
-        return refuse("Technique ou géométrie de fondu inconnue.");
-    }
-    spec->gradient.texture = static_cast<document::DensityTexture>(settings.texture);
-    if (static_cast<int>(spec->gradient.geometry) != settings.geometry) {
-        if (!setup_geometry(session.project(), ObjectId{objectId}, spec->gradient,
-                            settings.geometry, true)) {
-            return refuse("Forme incompatible avec cette géométrie.");
+    auto multi = readMultiFade(session.project(), objectId);
+    if (!multi) {
+        const auto legacy = readFade(session.project(), objectId);
+        const auto old = project_ops::describe_gradient_fill(session.project(), ObjectId{objectId});
+        if (!legacy || !old) {
+            return refuse("Cet objet ne porte pas de fondu.");
         }
+        multi.emplace();
+        multi->colors = {old->background, old->foreground};
+        multi->geometry = legacy->geometry;
     }
-    auto command =
-        project_ops::make_edit_gradient_fill_command(session.project(), ObjectId{objectId}, *spec);
-    if (!command) {
-        return refuse(command.error().message);
+    multi->colors.back() = settings.foreground;
+    multi->complementary = settings.complementary;
+    multi->texture = settings.texture;
+    multi->geometry = settings.geometry;
+    if (multi->method != static_cast<int>(document::GradientMethod::SatinInterlaced) &&
+        multi->method != static_cast<int>(document::GradientMethod::CrossHatching)) {
+        multi->method = method_for_texture(settings.texture);
     }
-    session.execute(std::move(*command));
-    return {true, {}};
+    return editMultiFade(session, objectId, *multi);
 }
 
 ServiceResult removeFade(DocumentSession& session, std::uint64_t objectId) {
+    if (project_ops::describe_multicolor_gradient(session.project(), ObjectId{objectId})) {
+        return removeMultiFade(session, objectId);
+    }
     auto command =
         project_ops::make_remove_gradient_fill_command(session.project(), ObjectId{objectId});
     if (!command) {
@@ -297,11 +314,12 @@ ServiceResult createMultiFade(DocumentSession& session, std::uint64_t objectId,
     }
     project_ops::MulticolorGradientSpec spec = *initial;
     spec.method = static_cast<document::GradientMethod>(settings.method);
+    const auto defaults = spec.palette; // fil du remplissage d'origine pour sa couleur
     spec.palette.clear();
     spec.palette.reserve(settings.colors.size());
     for (const auto& rgb : settings.colors) {
-        spec.palette.push_back(
-            document::GradientThread{rgb, std::nullopt, document::DensityCurve::Linear});
+        spec.palette.push_back(document::GradientThread{rgb, thread_for(rgb, defaults),
+                                                        document::DensityCurve::Linear});
     }
     spec.complementary = settings.complementary;
     spec.transition.texture = static_cast<document::DensityTexture>(settings.texture);
@@ -338,8 +356,8 @@ ServiceResult editMultiFade(DocumentSession& session, std::uint64_t objectId,
         }
         spec.emplace();
         spec->transition = old->gradient;
-        spec->palette = {{old->background, std::nullopt, document::DensityCurve::Linear},
-                         {old->foreground, std::nullopt, document::DensityCurve::Linear}};
+        spec->palette = {{old->background, old->background_thread, document::DensityCurve::Linear},
+                         {old->foreground, old->foreground_thread, document::DensityCurve::Linear}};
         spec->complementary = old->complementary;
         switch (old->gradient.texture) {
         case document::DensityTexture::LongShort:
@@ -360,7 +378,8 @@ ServiceResult editMultiFade(DocumentSession& session, std::uint64_t objectId,
     spec->palette.reserve(settings.colors.size());
     for (std::size_t i = 0; i < settings.colors.size(); ++i) {
         const auto curve = i < oldPalette.size() ? oldPalette[i].curve : commonCurve;
-        spec->palette.push_back({settings.colors[i], std::nullopt, curve});
+        spec->palette.push_back(
+            {settings.colors[i], thread_for(settings.colors[i], oldPalette), curve});
     }
     spec->complementary = settings.complementary;
     spec->method = static_cast<document::GradientMethod>(settings.method);

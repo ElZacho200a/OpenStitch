@@ -399,9 +399,64 @@ document::DensityTexture texture_for_method(document::GradientMethod method) {
     }
 }
 
-// L'unique définition du comportement multicolore. Chaque fil dispose d'un
-// profil triangulaire à N arrêts. Entre deux teintes voisines, les poids sont
-// (1-u,u) : leur somme est 1 sans nécessiter N mélanges binaires.
+// Densité relative des surcouches du mode « superposition » : le fond reste plein, les
+// fils suivants sont cousus PAR-DESSUS sur une grille commune à 60 % de la densité
+// nominale. À l'arrivée, le dernier fil couvre donc nettement le fond (total ≤ 160 %).
+constexpr double kOverlayDensity = 0.6;
+// Échantillons d'une transition courbe : arrêts linéaires par morceaux entre eux.
+constexpr int kCurveSamples = 8;
+
+// Poids w_i(t) des N fils à la position t ∈ [0 ; 1] : entre les fils s et s+1, la
+// transition suit le profil `curves[s + 1]` ; la somme vaut toujours 1.
+std::vector<double> blend_weights(double t, std::size_t n,
+                                  const std::vector<document::DensityCurve>& curves) {
+    std::vector<double> w(n, 0.0);
+    const double x = std::clamp(t, 0.0, 1.0) * static_cast<double>(n - 1);
+    const auto s = std::min(static_cast<std::size_t>(x), n - 2);
+    const double v =
+        stitch_generation::shape_density_curve(curves[s + 1], x - static_cast<double>(s));
+    w[s] = 1.0 - v;
+    w[s + 1] = v;
+    return w;
+}
+
+// Positions des arrêts : bornes des transitions, plus des échantillons pour un profil
+// non linéaire. Identiques pour toutes les couches (tranches jointives).
+std::vector<double> blend_positions(std::size_t n,
+                                    const std::vector<document::DensityCurve>& curves) {
+    std::vector<double> positions{0.0};
+    const double span = 1.0 / static_cast<double>(n - 1);
+    for (std::size_t s = 0; s + 1 < n; ++s) {
+        const int samples = curves[s + 1] == document::DensityCurve::Linear ? 1 : kCurveSamples;
+        for (int k = 1; k <= samples; ++k) {
+            positions.push_back(
+                (static_cast<double>(s) + static_cast<double>(k) / static_cast<double>(samples)) *
+                span);
+        }
+    }
+    positions.back() = 1.0;
+    return positions;
+}
+
+// Écart nominal du fondu : celui du remplissage d'origine tant qu'il n'est pas un
+// fondu, sinon celui déjà enregistré dans le fondu.
+Micrometers nominal_spacing(const document::EmbroideryObject& base,
+                            const document::DensityGradient& gradient) {
+    int value = std::min(gradient.spacing_from.value, gradient.spacing_to.value);
+    if (const auto* tatami = std::get_if<document::TatamiParams>(&base.params)) {
+        value = tatami->row_spacing.value;
+    } else if (const auto* directional = std::get_if<document::DirectionalFillParams>(&base.params);
+               directional != nullptr && !directional->density_gradient) {
+        value = directional->row_spacing.value;
+    }
+    return Micrometers{std::clamp(value, 100, 4'000)};
+}
+
+// L'unique définition du comportement multicolore (remplissages) : toutes les couches
+// tracent la MÊME grille de rangées et chacune ne coud que sa tranche
+// (`DensityGradient::shared_rows`). En complémentaire, les tranches partitionnent [0 ; 1]
+// partout : couverture exacte, aucune rangée cousue deux fois. En superposition, le fond
+// est plein et les autres fils se partagent une grille de surcouche plus légère.
 std::optional<std::vector<document::EmbroideryObject>>
 multicolor_layers(const document::EmbroideryObject& base,
                   const std::vector<geometry::PathSet>& shape, const MulticolorGradientSpec& spec) {
@@ -409,6 +464,15 @@ multicolor_layers(const document::EmbroideryObject& base,
     if (n < 2 || n > 8) {
         return std::nullopt;
     }
+    const auto finish = [&](document::EmbroideryObject& layer, std::size_t i) {
+        layer.rgb = spec.palette[i].rgb;
+        layer.thread = spec.palette[i].thread;
+        layer.color_blend.reset();
+        layer.multi_blend.reset();
+        layer.overrides.clear();
+        layer.edited_fingerprint = 0;
+        layer.edited_point_count = 0;
+    };
     if (const auto* satin = std::get_if<document::SatinParams>(&base.params)) {
         if (satin->rail_a.nodes.size() < 2 || satin->rail_b.nodes.size() < 2) {
             return std::nullopt;
@@ -425,64 +489,74 @@ multicolor_layers(const document::EmbroideryObject& base,
                 params.underlay_mode = document::UnderlayMode::Manual;
             }
             next.params = std::move(params);
-            next.rgb = spec.palette[i].rgb;
-            next.thread = spec.palette[i].thread;
-            next.color_blend.reset();
-            next.multi_blend.reset();
-            next.overrides.clear();
-            next.edited_fingerprint = 0;
-            next.edited_point_count = 0;
+            finish(next, i);
             layers.push_back(std::move(next));
         }
         return layers;
     }
+    const Micrometers nominal = nominal_spacing(base, spec.transition);
     auto templateGradient = spec.transition;
-    templateGradient.texture = texture_for_method(spec.method);
+    if (spec.method != document::GradientMethod::Directional) {
+        templateGradient.texture = texture_for_method(spec.method);
+    }
     templateGradient.density_stops.clear();
+    templateGradient.shared_rows = false;
+    templateGradient.spacing_from = templateGradient.spacing_to = nominal;
     auto pair =
         stitch_generation::make_color_blend_layers(base, base, shape, templateGradient, true);
     if (!pair) {
         return std::nullopt;
     }
-    const auto& baseParams = std::get<document::DirectionalFillParams>(pair->first.params);
-    const auto& topParams = std::get<document::DirectionalFillParams>(pair->second.params);
-    const Micrometers spacing{std::clamp(baseParams.row_spacing.value, 100, 4'000)};
+    // Paramètres communs (guide, graine, écart) : identiques dans toutes les couches pour
+    // que la grille de rangées le soit aussi.
+    const auto commonParams = std::get<document::DirectionalFillParams>(pair->first.params);
+    std::vector<document::DensityCurve> curves;
+    curves.reserve(n);
+    for (const auto& thread : spec.palette) {
+        curves.push_back(thread.curve);
+    }
+    const auto positions = blend_positions(n, curves);
+    const Micrometers overlay{
+        std::clamp(static_cast<int>(std::lround(nominal.value / kOverlayDensity)), 100, 4'000)};
     std::vector<document::EmbroideryObject> output;
     output.reserve(n);
     for (std::size_t i = 0; i < n; ++i) {
-        auto layer = (i == 0) ? pair->first : pair->second;
-        auto params = (i == 0) ? baseParams : topParams;
+        auto layer = pair->first;
+        auto params = commonParams;
         auto gradient = templateGradient;
-        gradient.curve = spec.palette[i].curve;
-        gradient.spacing_from = gradient.spacing_to = spacing;
+        gradient.curve = curves[i];
         gradient.interpolate_density = true;
-        gradient.density_stops.reserve(n);
-        for (std::size_t s = 0; s < n; ++s) {
-            const double position = static_cast<double>(s) / static_cast<double>(n - 1);
-            double weight = s == i ? 1.0 : 0.0;
-            if (!spec.complementary) {
-                // Fond uniforme et voiles colorés légers, sans accumulation
-                // de n sous-couches pleines.
-                weight = i == 0 ? 1.0 : weight * 0.30;
+        gradient.shared_rows = true;
+        const bool overlayLayer = !spec.complementary && i != 0;
+        gradient.spacing_from = gradient.spacing_to = overlayLayer ? overlay : nominal;
+        gradient.density_stops.reserve(positions.size());
+        for (const double position : positions) {
+            const auto w = blend_weights(position, n, curves);
+            double lower = 0.0;
+            double weight = w[i];
+            if (spec.complementary) {
+                for (std::size_t j = 0; j < i; ++j) {
+                    lower += w[j];
+                }
+            } else if (i == 0) {
+                weight = 1.0; // fond plein sous les surcouches
+            } else {
+                for (std::size_t j = 1; j < i; ++j) {
+                    lower += w[j];
+                }
             }
-            gradient.density_stops.push_back({position, weight});
+            gradient.density_stops.push_back(
+                {position, std::clamp(weight, 0.0, 1.0), std::clamp(lower, 0.0, 1.0)});
         }
+        params.row_spacing = gradient.spacing_from;
         params.density_gradient = std::move(gradient);
-        // Seule la couche de fond doit pouvoir recevoir une sous-couche :
-        // le moteur de fondu désactive pour le moment les sous-couches de
-        // chacune pour éviter de les empiler N fois.
+        // Une seule sous-couche au plus (fond) : pas de N sous-couches empilées.
         params.underlay_mode = document::UnderlayMode::Manual;
         params.underlay_edge = false;
         params.underlay_parallel = false;
         params.underlay_zigzag = false;
         layer.params = std::move(params);
-        layer.rgb = spec.palette[i].rgb;
-        layer.thread = spec.palette[i].thread;
-        layer.color_blend.reset();
-        layer.multi_blend.reset();
-        layer.overrides.clear();
-        layer.edited_fingerprint = 0;
-        layer.edited_point_count = 0;
+        finish(layer, i);
         output.push_back(std::move(layer));
     }
     return output;
@@ -568,6 +642,11 @@ crosshatch_layers(const document::EmbroideryObject& base,
     const Micrometers spacing{std::clamp(
         spec.transition.spacing_from.value > 0 ? spec.transition.spacing_from.value : 1'500, 300,
         10'000)};
+    std::vector<document::DensityCurve> curves;
+    for (const auto& thread : spec.palette) {
+        curves.push_back(thread.curve);
+    }
+    const auto positions = blend_positions(n, curves);
     std::vector<document::EmbroideryObject> output;
     output.reserve(n);
     for (std::size_t i = 0; i < n; ++i) {
@@ -580,18 +659,14 @@ crosshatch_layers(const document::EmbroideryObject& base,
         document::DensityGradient gradient = spec.transition;
         gradient.interpolate_density = true;
         gradient.density_stops.clear();
-        gradient.density_stops.reserve(n);
-        for (std::size_t s = 0; s < n; ++s) {
-            const double position =
-                n > 1 ? static_cast<double>(s) / static_cast<double>(n - 1) : 0.0;
-            double weight = s == i ? 1.0 : 0.0;
-            if (!spec.complementary) {
-                weight = i == 0 ? 1.0 : weight * 0.30;
-            }
+        // Grilles d'angles différents : pas de grille partagée, mais les mêmes poids de
+        // transition (somme 1, profil de chaque transition échantillonné) que les autres
+        // méthodes ; la courbe est déjà dans les arrêts, jamais réappliquée à t.
+        gradient.curve = document::DensityCurve::Linear;
+        for (const double position : positions) {
+            const double w = blend_weights(position, n, curves)[i];
+            const double weight = spec.complementary ? w : (i == 0 ? 1.0 : w * kOverlayDensity);
             gradient.density_stops.push_back({position, weight});
-        }
-        if (spec.palette[i].curve != document::DensityCurve::Linear) {
-            gradient.curve = spec.palette[i].curve;
         }
         params.density_gradient = std::move(gradient);
         params.underlay_mode = document::UnderlayMode::Manual;
@@ -732,6 +807,15 @@ std::optional<MulticolorGradientSpec> describe_multicolor_gradient(const documen
     MulticolorGradientSpec spec;
     spec.method = params.method;
     spec.palette = params.palette;
+    // Les couches physiques font foi pour la couleur et le fil : le panneau Fils peut leur
+    // affecter un fil de nuancier (ou une couleur) sans passer par l'ancre. Sans cette relecture,
+    // la réédition suivante du fondu rétablissait l'ancienne couleur libre de la palette.
+    for (std::size_t i = 0; i < spec.palette.size() && i < group->layers.size(); ++i) {
+        if (const auto* layer = project.findEmbroidery(group->layers[i])) {
+            spec.palette[i].rgb = layer->rgb;
+            spec.palette[i].thread = layer->thread;
+        }
+    }
     spec.transition = params.transition;
     spec.complementary = params.complementary;
     spec.satin_density = params.satin_density;

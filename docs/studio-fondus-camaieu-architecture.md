@@ -83,6 +83,29 @@ sont des options de calcul pour les remplissages, pas des filtres RGB.
   sur tissu réel est indispensable. Les tests automatiques valident des
   invariants structurels, pas la qualité esthétique du tissu.
 
+## Refonte du 14 novembre 2026 (après PR #341)
+
+Audit mesuré (fil cousu par bande d'un rectangle, rapporté à un remplissage uni) puis corrigé :
+
+- **Moteur** : grille de rangées partagée entre les couches d'un fondu (voir
+  `docs/source/directional-fill.md` § « Grille partagée »). Couverture 88–112 % au lieu de
+  73–191 % ; superposition à 60 % ; profil par transition dont la somme des poids reste 1.
+- **Fils** : la palette est relue depuis les couches physiques (le panneau Fils fait foi) et
+  toute réédition conserve le fil de nuancier d'une couleur inchangée.
+- **Canevas** : axe, zone, profil et inversion fonctionnent sur les fondus multicolores.
+- **Interface** : un seul éditeur, dans l'inspecteur. Ordre : fils (liste éditable, aperçu des
+  couleurs) → technique (méthode et aspect fusionnés) → répartition → transition (géométrie,
+  orientation, profil, « Ajuster l'axe au canevas », inverser) → profil de chaque transition.
+  Chaque réglage est appliqué immédiatement en un pas d'annulation ; plus de bouton
+  « Appliquer ». Le tiroir « Fondu » (barre de panneaux et hub) et l'outil « Geste fondu » sont
+  retirés : ils dupliquaient l'inspecteur.
+- **Un seul moteur** : les points d'entrée « deux fils » (`createFade`, action « Fondu de
+  fils… ») créent un fondu multicolore à deux fils ; un ancien couple `ColorBlendLink` est
+  converti à sa première modification.
+
+Reste : validation sur tissu (pièce-test), rails satin entrelacés éditables, détection
+automatique des fondus dans la numérisation.
+
 ## Deux notions, deux emplacements
 
 1. **Dégradé de densité du remplissage** : une unique couleur de fil peut passer

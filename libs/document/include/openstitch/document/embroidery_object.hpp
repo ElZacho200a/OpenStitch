@@ -140,6 +140,9 @@ enum class DensityGeometry : std::uint8_t {
 struct DensityStop {
     double position{0.0};
     double weight{1.0};
+    // Grille partagée (`DensityGradient::shared_rows`) : début de la tranche de rangées
+    // possédée par la couche, [lower ; lower + weight) ⊂ [0 ; 1]. Ignoré sinon.
+    double lower{0.0};
     bool operator==(const DensityStop&) const = default;
 };
 
@@ -166,6 +169,13 @@ struct DensityGradient {
     DensityGeometry geometry{DensityGeometry::Linear};
     double curve_bend{0.0};
     std::vector<DensityStop> density_stops;
+    // Fondu à grille partagée : toutes les couches d'un fondu tracent les MÊMES rangées
+    // (écart uniforme `spacing_from`) et chacune ne coud que les segments dont la tranche
+    // [lower ; lower + weight) contient le seuil de la rangée. Les tranches des couches
+    // complémentaires partitionnent [0 ; 1] : couverture exacte, aucune rangée doublée.
+    // Faux (anciens projets) : densité indépendante par couche, génération inchangée.
+    // La courbe des transitions est déjà intégrée aux arrêts : `curve` n'y est pas appliquée.
+    bool shared_rows{false};
 
     bool operator==(const DensityGradient&) const = default;
 };
@@ -644,10 +654,11 @@ enum class GradientMethod : std::uint8_t {
     return std::nullopt;
 }
 
-// Un fil de la palette (HP : fondu multicolore autonome). `curve` : profil de densité propre
-// à cette couche ; `Linear` pour toutes = profil commun. `thread` facultatif : couleur libre si
-// absent (comme `EmbroideryObject::
-// thread`), jamais déduit d'une bibliothèque non chargée.
+// Un fil de la palette (HP : fondu multicolore autonome). `curve` : profil de la TRANSITION qui
+// mène du fil précédent à celui-ci (sans effet pour le premier fil) ; les poids des fils gardent
+// une somme de 1 quel que soit le mélange de profils. `thread` facultatif : couleur libre si
+// absent (comme `EmbroideryObject::thread`), jamais déduit d'une bibliothèque non chargée ; une
+// réédition conserve la référence de toute couleur inchangée.
 struct GradientThread {
     std::array<std::uint8_t, 3> rgb{};
     std::optional<thread_palette::ThreadKey> thread;
@@ -669,7 +680,9 @@ struct MulticolorGradientParams {
     // 2 à 8 fils, de l'arrière vers l'avant (ordre de couture). Validé par
     // `project_ops::make_create_multicolor_gradient_object_command`, pas par le modèle.
     std::vector<GradientThread> palette;
-    bool complementary{true}; // rampes de densité opposées (faux = fond uniforme + voiles)
+    // Vrai : les fils se partagent UNE grille de rangées (couverture exacte). Faux : premier fil
+    // plein, les suivants cousus par-dessus sur une grille de surcouche à 60 % de densité.
+    bool complementary{true};
     // Axe, géométrie (linéaire/radiale/courbe), courbe et texture communs ; `density_stops` est
     // reconstruit par le moteur pour chaque couche (ignoré ici, comme `templateGradient`).
     DensityGradient transition;

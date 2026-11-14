@@ -733,107 +733,77 @@ void StudioDigitizeTest::mainQmlHostsDigitizePanels() {
     QVERIFY(session.undo());
     QVERIFY(sequenceOf(session).commands == beforeMove.commands);
 
-    // Le fondu de fils apparaît aussi dans les propriétés de l'objet, et
-    // non parmi les réglages d'un dégradé de densité du remplissage.
+    // Un SEUL éditeur de fondu : la section de l'inspecteur (plus de tiroir ni d'outil dédié).
+    // Chaque réglage d'un fondu existant s'applique immédiatement, en un pas d'annulation.
+    QVERIFY(!named(window, "fadePanelButton"));
     auto* inlineFade = named(window, "inspectorFadeSection");
-    auto* inlineCreate = named(window, "inspectorFadeCreate");
-    auto* inlineColor = named(window, "inspectorFadeColorField");
-    QVERIFY(inlineFade && inlineCreate && inlineColor);
+    QVERIFY(inlineFade);
     QTRY_VERIFY(inlineFade->isVisible());
-    QTRY_VERIFY(inlineCreate->isEnabled());
-    QVERIFY(inlineColor->setProperty("text", QStringLiteral("#ZZZZZZ")));
-    QTRY_VERIFY(!inlineCreate->isEnabled());
-    QVERIFY(inlineColor->property("invalid").toBool());
-    QVERIFY(inlineColor->setProperty("text", QStringLiteral("#c81e1e")));
-    QTRY_VERIFY(inlineCreate->isEnabled());
-
-    // Fade panel.
-    QVERIFY(press(window, "fadePanelButton"));
     QTRY_VERIFY(fade.canCreate());
-    for (int texture = 0; texture < 4; ++texture) {
-        QVERIFY(named(window, qPrintable(QStringLiteral("fadeTexture%1").arg(texture))));
-    }
-    for (int geometry = 0; geometry < 3; ++geometry) {
-        QVERIFY(named(window, qPrintable(QStringLiteral("fadeGeometry%1").arg(geometry))));
-    }
-    QVERIFY(named(window, "fadeModeComplementary"));
-    QVERIFY(named(window, "fadeModeOverlay"));
-    QVERIFY(press(window, "fadeCreate"));
-    studio.selectObject(QString::number(session.project().embroidery_objects.front().id.value));
-    QTRY_VERIFY(fade.hasFade());
-    for (int curve = 0; curve < 9; ++curve) {
-        QVERIFY(named(window, qPrintable(QStringLiteral("fadeCurve%1").arg(curve))));
-    }
-    QVERIFY(press(window, "fadeCurve2"));
-    QCOMPARE(fade.curve(), 2);
-    for (int curve = 5; curve < 9; ++curve) {
-        QVERIFY(press(window, qPrintable(QStringLiteral("fadeCurve%1").arg(curve))));
-        QTRY_COMPARE(fade.curve(), curve);
-    }
-    QVERIFY(press(window, "fadeTexture1"));
-    QTRY_COMPARE(fade.texture(), 1);
-    QVERIFY(press(window, "fadeTexture2"));
-    QTRY_COMPARE(fade.texture(), 2);
-    QVERIFY(press(window, "fadeTexture3"));
-    QTRY_COMPARE(fade.texture(), 3);
-    QVERIFY(press(window, "fadeTexture0"));
-    QTRY_COMPARE(fade.texture(), 0);
-    QVERIFY(press(window, "fadeRemove"));
-    QTRY_VERIFY(!fade.hasFade());
-
-    // Le vrai panneau Studio permet de fabriquer un camaïeu N-aire sans
-    // passer par l'API de service ni éditer un .osp manuellement.
-    QVERIFY(press(window, "fadeAddColor"));
-    QTRY_VERIFY(named(window, "fadeColor2") != nullptr);
-    QVERIFY(press(window, "fadeModeOverlay"));
-    QVERIFY(press(window, "fadeGeometry2"));
-    QVERIFY(press(window, "fadeCreate"));
+    auto* inlineCreate = named(window, "inspectorFadeCreate");
+    QTRY_VERIFY(named(window, "inspectorFadeColor1") != nullptr);
+    auto* arrival = named(window, "inspectorFadeColor1");
+    QVERIFY(inlineCreate && arrival);
+    QTRY_VERIFY(inlineCreate->isEnabled());
+    QVERIFY(arrival->setProperty("text", QStringLiteral("#ZZZZZZ")));
+    QVERIFY(arrival->property("invalid").toBool());
+    QVERIFY(arrival->setProperty("text", QStringLiteral("#3388aa")));
+    QVERIFY(QMetaObject::invokeMethod(arrival, "editingFinished"));
+    QVERIFY(press(window, "inspectorFadeAddColor"));
+    QTRY_VERIFY(named(window, "inspectorFadeColor2") != nullptr);
+    QVERIFY(press(window, "inspectorFadeCreate"));
     QTRY_VERIFY(fade.multiFade());
     QCOMPARE(fade.colors().size(), 3);
-    QVERIFY(!fade.complementary());
-    QCOMPARE(fade.geometry(), 2);
+    QCOMPARE(fade.colors().at(1).toString(), QStringLiteral("#3388aa"));
     QCOMPARE(session.project().embroidery_objects.size(), std::size_t{4}); // ancre + 3 couches
-    for (int method = 0; method < 5; ++method) {
-        QVERIFY(named(window, qPrintable(QStringLiteral("fadeMethod%1").arg(method))));
-    }
-    QVERIFY(press(window, "fadeMethod2"));
-    QVERIFY(press(window, "fadeEdit"));
+    // L'axe est éditable au canevas pour un fondu multicolore.
+    QVERIFY(!fade.axis().isEmpty());
+    QVERIFY(named(window, "inspectorFadeEditAxis"));
+
+    const auto stepDepth = [&] { return session.undoNames().size(); };
+    auto fadeDepth = stepDepth();
+    QVERIFY(press(window, "inspectorFadeModeOverlay"));
+    QTRY_VERIFY(!fade.complementary());
+    QCOMPARE(stepDepth(), fadeDepth + 1);
+    fadeDepth = stepDepth();
+    QVERIFY(press(window, "inspectorFadeGeometry2"));
+    QTRY_COMPARE(fade.geometry(), 2);
+    QCOMPARE(stepDepth(), fadeDepth + 1);
+    auto* style = named(window, "inspectorFadeStyle");
+    QVERIFY(style);
+    QVERIFY(QMetaObject::invokeMethod(style, "activated", Q_ARG(int, 2)));
     QTRY_COMPARE(fade.method(), 2); // passé empiétant réellement appliqué depuis le QML
-    auto* fadeAngle = named(window, "fadeAngle");
-    auto* fadeAngleApply = named(window, "fadeAngleApply");
-    QVERIFY(fadeAngle && fadeAngleApply);
-    QTRY_VERIFY(fadeAngle->isVisible());
-    const auto angleDepth = session.undoNames().size();
-    QVERIFY(fadeAngle->setProperty("text", QStringLiteral("90")));
-    QTRY_VERIFY(fadeAngleApply->isEnabled());
-    QVERIFY(press(window, "fadeAngleApply"));
+    QCOMPARE(fade.style(), 2);
+    auto* curveBox = named(window, "inspectorFadeCurve");
+    QVERIFY(curveBox);
+    QVERIFY(QMetaObject::invokeMethod(curveBox, "activated", Q_ARG(int, 2)));
+    QTRY_COMPARE(fade.curve(), 2);
+
+    auto* angleField = named(window, "inspectorFadeAngle");
+    QVERIFY(angleField);
+    QTRY_VERIFY(angleField->isVisible());
+    fadeDepth = stepDepth();
+    QVERIFY(angleField->setProperty("text", QStringLiteral("90")));
+    QVERIFY(QMetaObject::invokeMethod(angleField, "editingFinished"));
     QTRY_VERIFY(std::abs(fade.angle() - 90.0) < 0.01);
-    QCOMPARE(session.undoNames().size(), angleDepth + 1);
+    QCOMPARE(stepDepth(), fadeDepth + 1);
     QVERIFY(session.undo());
     QTRY_VERIFY(std::abs(fade.angle()) < 0.01);
     QVERIFY(session.redo());
     QTRY_VERIFY(std::abs(fade.angle() - 90.0) < 0.01);
-    QVERIFY(press(window, "fadeAddColor"));
-    QTRY_VERIFY(named(window, "fadeColor3") != nullptr);
-    QVERIFY(press(window, "fadeEdit"));
+
+    QVERIFY(press(window, "inspectorFadeAddColor"));
     QTRY_COMPARE(fade.colors().size(), 4);
     QCOMPARE(session.project().embroidery_objects.size(), std::size_t{5}); // ancre + 4 couches
-    QVERIFY(press(window, "fadeRemove"));
-    QTRY_VERIFY(!fade.hasFade());
-    QCOMPARE(session.project().embroidery_objects.size(), std::size_t{1});
-
-    // Le radial bicolore utilise le texte que l'utilisateur vient de saisir,
-    // pas la valeur plus ancienne gardee dans draftColors par le controleur.
-    auto* radialColor = named(window, "fadeColorField");
-    QVERIFY(radialColor);
-    QVERIFY(radialColor->setProperty("text", QStringLiteral("#3388aa")));
-    QVERIFY(press(window, "fadeGeometry1"));
-    QVERIFY(press(window, "fadeCreate"));
-    QTRY_VERIFY(fade.multiFade());
-    QCOMPARE(fade.colors().size(), 2);
-    QCOMPARE(fade.colors().at(1).toString(), QStringLiteral("#3388aa"));
-    QCOMPARE(fade.geometry(), 1);
-    QVERIFY(press(window, "fadeRemove"));
+    QVERIFY(press(window, "inspectorFadeRemoveColor0"));
+    QTRY_COMPARE(fade.colors().size(), 3);
+    QCOMPARE(fade.colors().at(0).toString(), QStringLiteral("#3388aa"));
+    // Inverser retourne l'axe (géométrie courbe ici) sans changer l'ordre de couture.
+    const double beforeReverse = fade.angle();
+    QVERIFY(press(window, "inspectorFadeReverse"));
+    QTRY_VERIFY(std::abs(std::abs(fade.angle() - beforeReverse) - 180.0) < 0.01);
+    QCOMPARE(fade.colors().at(0).toString(), QStringLiteral("#3388aa"));
+    QVERIFY(press(window, "inspectorFadeRemove"));
     QTRY_VERIFY(!fade.hasFade());
     QCOMPARE(session.project().embroidery_objects.size(), std::size_t{1});
 
@@ -874,23 +844,22 @@ void StudioDigitizeTest::mainQmlHostsDigitizePanels() {
     studio.selectObject(satinId);
     QTRY_VERIFY(satin.isSatin());
 
-    // Le satin a deux fils doit passer par le meme panneau, sans tenter
-    // de creer l'ancien fondu binaire reserve au tatami.
-    QVERIFY(press(window, "fadePanelButton"));
+    // Le satin passe par le meme editeur de l'inspecteur : satin entrelace.
     QTRY_VERIFY(fade.satinTarget());
     QTRY_VERIFY(fade.canCreate());
-    auto* interlaced = named(window, "fadeSatinInterlaced");
-    QVERIFY(interlaced);
-    QTRY_VERIFY(interlaced->isVisible());
-    QVERIFY(interlaced->property("checked").toBool());
-    QCOMPARE(named(window, "fadeCreate")->property("text").toString(),
-             QStringLiteral("Créer le satin entrelacé"));
-    QVERIFY(press(window, "fadeCreate"));
+    QTRY_COMPARE(named(window, "inspectorFadeCreate")->property("text").toString(),
+                 QStringLiteral("Créer le satin entrelacé"));
+    QVERIFY(press(window, "inspectorFadeCreate"));
     QTRY_VERIFY(fade.multiFade());
     QCOMPARE(fade.colors().size(), 2);
-    QVERIFY(press(window, "fadeRemove"));
+    QCOMPARE(fade.style(), 5);
+    QVERIFY(press(window, "inspectorFadeRemove"));
     QTRY_VERIFY(!fade.hasFade());
-    QVERIFY(press(window, "satinPanelButton"));
+    // Le panneau Satin est resté ouvert (le fondu n'a plus de tiroir qui le remplaçait).
+    if (hub->property("openPanel").toString() != QStringLiteral("satin")) {
+        QVERIFY(press(window, "satinPanelButton"));
+    }
+    QTRY_COMPARE(hub->property("openPanel").toString(), QStringLiteral("satin"));
     auto* xField = named(window, "satinNodeX");
     auto* yField = named(window, "satinNodeY");
     auto* railNode = named(window, "satinNode");

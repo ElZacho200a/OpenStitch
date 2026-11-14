@@ -228,8 +228,8 @@ private slots:
         QVERIFY(mouseClick(rig.window, "viewPanelButton"));
         QTRY_COMPARE(viewHub->property("openPanel").toString(), QStringLiteral("view"));
         QCOMPARE(digitizeHub->property("openPanel").toString(), QString());
-        QVERIFY(mouseClick(rig.window, "fadePanelButton"));
-        QTRY_COMPARE(digitizeHub->property("openPanel").toString(), QStringLiteral("fade"));
+        QVERIFY(mouseClick(rig.window, "pointEditPanelButton"));
+        QTRY_COMPARE(digitizeHub->property("openPanel").toString(), QStringLiteral("points"));
         QCOMPARE(viewHub->property("openPanel").toString(), QString());
         QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
     }
@@ -255,8 +255,10 @@ private slots:
         QVERIFY(press(rig.window, "viewPanelButton"));
         QCOMPARE(viewHub->property("openPanel").toString(), QStringLiteral("view"));
         QCOMPARE(digitizeHub->property("openPanel").toString(), QString());
-        QVERIFY(press(rig.window, "fadePanelButton"));
-        QCOMPARE(digitizeHub->property("openPanel").toString(), QStringLiteral("fade"));
+        // Le fondu n'a plus de tiroir : il se règle dans l'inspecteur de l'objet.
+        QVERIFY(!named(rig.window, "fadePanelButton"));
+        QVERIFY(press(rig.window, "pointEditPanelButton"));
+        QCOMPARE(digitizeHub->property("openPanel").toString(), QStringLiteral("points"));
         QCOMPARE(viewHub->property("openPanel").toString(), QString());
         // Même par la propriété (--open-panels) : jamais deux panneaux ensemble.
         viewHub->setProperty("openPanel", QStringLiteral("analysis"));
@@ -370,10 +372,12 @@ private slots:
         open(rig);
         QVERIFY(named(rig.window, "pointsToolRail"));
         for (const char* name :
-             {"gesture_satin", "gesture_guide", "gesture_break", "gesture_fade", "gesture_points",
-              "gesture_rungs", "selectToolButton", "panToolButton", "fitToolButton"}) {
+             {"gesture_satin", "gesture_guide", "gesture_break", "gesture_points", "gesture_rungs",
+              "selectToolButton", "panToolButton", "fitToolButton"}) {
             QVERIFY2(named(rig.window, name), name);
         }
+        // L'axe du fondu se règle depuis l'inspecteur (« Ajuster l'axe au canevas »).
+        QVERIFY(!named(rig.window, "gesture_fade"));
         // Les outils de dessin vectoriel quittent cet espace.
         for (const char* name : {"tool_draw.rectangle", "tool_draw.ellipse", "tool_draw.bezier",
                                  "tool_node.edit", "tool_knife"}) {
@@ -389,7 +393,7 @@ private slots:
     void gesturesLiveInTheOptionsBar() {
         Rig rig;
         open(rig);
-        for (const char* name : {"gesture_points", "gesture_fade", "gesture_satin", "gesture_guide",
+        for (const char* name : {"gesture_points", "gesture_satin", "gesture_guide",
                                  "gesture_break", "gesture_rungs"}) {
             QVERIFY2(named(rig.window, name), name);
         }

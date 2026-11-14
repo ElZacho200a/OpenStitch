@@ -44,6 +44,9 @@ class FadeController : public QObject {
     Q_PROPERTY(QVariantMap axis READ axis NOTIFY changed)
     Q_PROPERTY(QVariantList curves READ curves CONSTANT)
     Q_PROPERTY(QVariantList methods READ methods CONSTANT)
+    // Technique unique présentée à l'utilisateur : méthode + aspect (cf. `styles`).
+    Q_PROPERTY(int style READ style NOTIFY changed)
+    Q_PROPERTY(QVariantList styles READ styles CONSTANT)
     Q_PROPERTY(QVariantList curveProfile READ curveProfile NOTIFY changed)
     Q_PROPERTY(QString message READ message NOTIFY messageChanged)
     Q_PROPERTY(bool lastOk READ lastOk NOTIFY messageChanged)
@@ -88,6 +91,8 @@ public:
     [[nodiscard]] QVariantMap axis() const { return axisMap(axis_); }
     [[nodiscard]] QVariantList curves() const;
     [[nodiscard]] QVariantList methods() const;
+    [[nodiscard]] int style() const;
+    [[nodiscard]] QVariantList styles() const;
     [[nodiscard]] QVariantList curveProfile() const;
     [[nodiscard]] QString message() const { return message_; }
     [[nodiscard]] bool lastOk() const { return ok_; }
@@ -119,12 +124,22 @@ public:
     Q_INVOKABLE bool setLayerCurve(int layer, int curve);
     // Inverse le sens du fondu (début <-> fin) : une étape d'annulation.
     Q_INVOKABLE bool reverse();
+    // Réglages appliqués IMMÉDIATEMENT (un pas d'annulation chacun), sans bouton « Appliquer ».
+    // Un ancien fondu à deux fils est converti au fondu multicolore à sa première modification.
+    Q_INVOKABLE bool setColors(const QVariantList& colors);
+    Q_INVOKABLE bool setStyle(int style);
+    Q_INVOKABLE bool setComplementary(bool complementary);
+    Q_INVOKABLE bool setSatinDensity(double mm);
+    Q_INVOKABLE bool setCrosshatch(int layers, double angleDeg);
 signals:
     void changed();
     void messageChanged();
 
 private:
     void refresh();
+    // Réglages multicolores actuels, y compris ceux déduits d'un ancien fondu à deux fils.
+    [[nodiscard]] std::optional<MultiFadeSettings> current() const;
+    bool apply(const MultiFadeSettings& next, const QString& success);
     bool report(const ServiceResult& result, const QString& success);
     bool refuse(const QString& why);
     [[nodiscard]] static QVariantMap axisMap(const std::optional<FadeAxisView>& view);

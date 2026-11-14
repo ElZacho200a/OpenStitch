@@ -78,18 +78,23 @@ géométrie, texture) et la méthode (`GradientMethod` : `Directional`, `SatinIn
 `LongAndShort`, `ControlledScatter`, `CrossHatching`, persistées par nom). Les points réels sont
 produits par des `EmbroideryObject` **physiques** distincts (satin/tatami/directionnel selon la
 méthode), tagués vers l'ancre par `MultiBlendLink` (`document::find_gradient_group` résout le
-groupe depuis l'ancre ou n'importe quelle couche). Aucun nouvel algorithme de points : Directional/
-LongAndShort/ControlledScatter réutilisent le remplissage directionnel à `DensityGradient`
-complémentaire (texture `None`/`LongShort`/`Stippled`) ; SatinInterlaced réutilise le satin à
+groupe depuis l'ancre ou n'importe quelle couche). Directional/LongAndShort/ControlledScatter
+réutilisent le remplissage directionnel, sur une **grille de rangées partagée** (2026-11-14,
+voir `directional-fill.md` § « Grille partagée ») : toutes les couches tracent les mêmes rangées
+et chacune coud sa tranche, ce qui garantit une couverture égale à celle d'un remplissage uni ;
+la texture (`None`/`Feathered`/`LongShort`/`Stippled`) ne fait que déformer les frontières ; SatinInterlaced réutilise le satin à
 rails, dérivés automatiquement du contour source (`stitch_generation::rails_from_contour`) quand
 aucun n'existe déjà ; CrossHatching superpose des remplissages directionnels à guide droit, un
 angle par groupe de couches. API : `project_ops::make_create/edit/remove_multicolor_gradient_
 command` (méthode explicite) ; `make_create/edit/remove_multicolor_gradient_fill_command` restent
 pour la compatibilité (méthode devinée depuis la texture). Rupture de compatibilité acceptée :
 un groupe `multiBlend` d'un projet antérieur à cette refonte (sans ancre) est refusé explicitement
-au chargement. Bureau : vraie entrée « Fondu multicolore » du sélecteur de type (inspecteur). Reste :
-panneau dédié (méthode/palette/géométrie/mélange/réglages spécifiques/optimisation/avancé), édition
-manuelle des rails satin entrelacés, isolement des couches physiques hors sélection/arbre d'objets.
+au chargement. Bureau : vraie entrée « Fondu multicolore » du sélecteur de type et **éditeur
+unique** dans l'inspecteur (fils, technique, répartition, transition, profil de chaque transition ;
+chaque réglage appliqué immédiatement en un pas d'annulation ; axe réglable au canevas). Les
+anciens couples à deux fils restent lisibles et sont convertis à leur première modification.
+Reste : édition manuelle des rails satin entrelacés, isolement des couches physiques hors
+sélection/arbre d'objets.
 
 Le tableau reflète la **qualité métier**, pas seulement la présence de code : le
 running stitch est solide ; le tatami est fonctionnel, sa sous-couche et son
