@@ -138,6 +138,7 @@ private slots:
     void guardDialogIsShownByTheRealQml();
     void discardFromCloseDialogClosesWindowWithoutSaving();
     void recentFilesPersistPruneAndReopen();
+    void openingMessageIsReplacedOnceLoadedInsteadOfLingering();
     void dropAndCommandLineDispatchByExtension();
     void machineExportImportRoundTrip();
     void overflowExportRequiresExplicitConfirmation();
@@ -546,6 +547,23 @@ void StudioFilesTest::recentFilesPersistPruneAndReopen() {
     // Un fichier introuvable est signalé sans toucher au document.
     reread.files->openPath(dir.filePath(QStringLiteral("fantome.osp")));
     QVERIFY(reread.files->messageIsError());
+}
+
+// QA-STUDIO-001 POP-015/UX-11: "Ouverture de X…" must not linger as if still loading once the
+// document is visible -- loadFinished(true) replaces it instead of leaving it for the toast's
+// 8 s timer.
+void StudioFilesTest::openingMessageIsReplacedOnceLoadedInsteadOfLingering() {
+    QTemporaryDir dir;
+    QTemporaryDir state;
+    QVERIFY(dir.isValid() && state.isValid());
+    const auto path = osp(dir, "boat.osp", studioFixture());
+    Rig rig(state.path());
+    rig.files->openPath(path);
+    QVERIFY(rig.files->message().startsWith(QStringLiteral("Ouverture de")));
+    QTRY_VERIFY_WITH_TIMEOUT(
+        !rig.studio.busy() && !rig.files->busy() && rig.studio.scene() != nullptr, 15'000);
+    QCOMPARE(rig.files->message(), QStringLiteral("Projet ouvert."));
+    QVERIFY(!rig.files->messageIsError());
 }
 
 void StudioFilesTest::dropAndCommandLineDispatchByExtension() {

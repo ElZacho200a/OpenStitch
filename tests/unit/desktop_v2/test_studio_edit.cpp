@@ -786,6 +786,19 @@ void StudioEditTest::contextMenuAndEyedropper() {
     QCOMPARE(rig.session.project().embroidery_objects.size(), count);
     QMetaObject::invokeMethod(menu, "close");
 
+    // QA-STUDIO-001 POP-004 : clic droit sur le vide désélectionne ; le menu grise
+    // Dupliquer/Supprimer au lieu de proposer « Supprimer 0 objet(s) » activable.
+    settle(rig);
+    QTest::mouseClick(rig.window, Qt::RightButton, Qt::NoModifier, at(rig, 0, 5));
+    QTRY_COMPARE(selected(rig), (std::vector<std::uint64_t>{}));
+    QTRY_VERIFY(menu->property("visible").toBool());
+    QCOMPARE(remove->property("text").toString(), QStringLiteral("Supprimer 0 objet(s)"));
+    QVERIFY(!remove->property("enabled").toBool());
+    auto* duplicate = rig.window->findChild<QObject*>(QStringLiteral("contextDuplicate"));
+    QVERIFY(duplicate);
+    QVERIFY(!duplicate->property("enabled").toBool());
+    QMetaObject::invokeMethod(menu, "close");
+
     // Pipette : la couleur de l'objet cliqué passe à la sélection, en une étape.
     settle(rig);
     select(rig, {kGreen});

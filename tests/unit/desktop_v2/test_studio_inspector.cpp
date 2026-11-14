@@ -7,6 +7,7 @@
 #include <QQuickStyle>
 #include <QQuickWindow>
 #include <QTemporaryDir>
+#include <QWheelEvent>
 #include <QtTest/QtTest>
 
 #include <algorithm>
@@ -162,6 +163,7 @@ private slots:
     void persistsInTheOspFile();
     void presetsLifecycle();
     void qmlInspectorEditsThroughTheController();
+    void sliderWheelRequiresFocusAndOtherwiseScrollsThePanel();
 };
 
 void StudioInspectorTest::initTestCase() {
@@ -803,6 +805,68 @@ void StudioInspectorTest::qmlInspectorEditsThroughTheController() {
     QTRY_VERIFY(find("param_row_spacing_mm") == nullptr);
     QMetaObject::invokeMethod(expandAll, "clicked");
     QTRY_VERIFY(find("param_row_spacing_mm") != nullptr);
+}
+
+// QA-STUDIO-001 LAY-023: scrolling the inspector with the wheel while it happens to pass
+// over a slider must not silently change that slider's value -- only an already-focused
+// slider (clicked or tabbed to) should react to the wheel.
+void StudioInspectorTest::sliderWheelRequiresFocusAndOtherwiseScrollsThePanel() {
+    DocumentSession session;
+    auto created = project_ops::create_empty_project({});
+    session.replaceProject(std::move(*created), true);
+    const auto id = addRect(session);
+    StudioController studio(session);
+    InspectorController inspector(studio);
+    QQmlEngine engine;
+    QStringList qmlWarnings;
+    connect(&engine, &QQmlEngine::warnings, this, [&](const QList<QQmlError>& errors) {
+        for (const auto& e : errors) {
+            qmlWarnings.push_back(e.toString());
+        }
+    });
+    engine.rootContext()->setContextProperty(QStringLiteral("inspector"), &inspector);
+    QQmlComponent component(&engine, QUrl(QStringLiteral("qrc:/studio/qml/Inspector.qml")));
+    QVERIFY2(component.status() == QQmlComponent::Ready, qPrintable(component.errorString()));
+    QQuickWindow window;
+    // Shorter than the panel's content so the Flickable actually has room to scroll.
+    window.resize(320, 260);
+    std::unique_ptr<QObject> created_item(component.create());
+    QVERIFY2(created_item != nullptr, qPrintable(component.errorString()));
+    auto* root = qobject_cast<QQuickItem*>(created_item.get());
+    QVERIFY(root != nullptr);
+    root->setParentItem(window.contentItem());
+    root->setSize({320, 260});
+    select(session, {id});
+    QTRY_VERIFY(root->isVisible());
+    const auto find = [&](const char* name) { return findItem(root, QString::fromLatin1(name)); };
+    QTRY_VERIFY2(find("slider_row_spacing_mm") != nullptr,
+                 qPrintable(qmlWarnings.join(QLatin1Char(10))));
+    auto* slider = find("slider_row_spacing_mm");
+    auto* flick = find("inspectorFlick");
+    QVERIFY(flick != nullptr);
+    QTRY_VERIFY(flick->property("contentHeight").toDouble() > flick->height() + 10.0);
+
+    const auto sendWheel = [&] {
+        const QPointF scene =
+            slider->mapToScene(QPointF(slider->width() / 2, slider->height() / 2));
+        QWheelEvent wheel(scene, window.mapToGlobal(scene.toPoint()), QPoint(), QPoint(0, 120),
+                          Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+        QCoreApplication::sendEvent(&window, &wheel);
+        return wheel.isAccepted();
+    };
+
+    // Not focused: the slider must leave the wheel alone (unaccepted, free to scroll an
+    // ancestor Flickable) instead of silently changing its value.
+    QVERIFY(!slider->hasActiveFocus());
+    const double valueBefore = *readParam(object(session, id), "row_spacing_mm");
+    QVERIFY(!sendWheel());
+    QCOMPARE(*readParam(object(session, id), "row_spacing_mm"), valueBefore);
+
+    // Focused (as a click would leave it): the wheel now adjusts the value, as in V1.
+    slider->forceActiveFocus();
+    QTRY_VERIFY(slider->hasActiveFocus());
+    QVERIFY(sendWheel());
+    QTRY_VERIFY(*readParam(object(session, id), "row_spacing_mm") != valueBefore);
 }
 
 QTEST_MAIN(StudioInspectorTest)

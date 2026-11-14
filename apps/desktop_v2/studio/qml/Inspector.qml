@@ -49,6 +49,7 @@ Item {
 
     Flickable {
         id: flick
+        objectName: "inspectorFlick"
         anchors.fill: parent
         contentWidth: width
         contentHeight: column.implicitHeight + 24

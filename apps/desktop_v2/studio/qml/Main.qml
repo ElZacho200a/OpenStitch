@@ -647,7 +647,12 @@ Window {
         z: 100
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        anchors.rightMargin: 20
+        // Every space's right-side inspector can reach up to Theme.inspectorWidth (VectorSpace
+        // goes further, 320px) ; anchoring at the window's edge put this toast on top of its
+        // placeholder text whenever nothing is selected (QA-STUDIO-001 POP-015, reproduction on
+        // PointsSpace with an up-to-date stage: "<espace> : résultat à jour"). Clear the widest
+        // known panel instead of the window edge.
+        anchors.rightMargin: Theme.inspectorWidth + 46
         // The FilePanel already owns a centred task toast; never overlap it.
         anchors.bottomMargin: filePanel.notificationVisible ? 108 : 48
         visible: window.feedbackText.length > 0

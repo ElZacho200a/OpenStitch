@@ -9,7 +9,10 @@ Controls.Slider {
     implicitHeight: 24
     implicitWidth: 120
     hoverEnabled: true
-    wheelEnabled: true // la molette règle la valeur par pas (stepSize)
+    // La molette règle la valeur par pas (stepSize), mais seulement une fois le curseur
+    // focalisé (clic ou Tab) : sinon elle vole le défilement du panneau qui le contient
+    // (QA-STUDIO-001 LAY-023).
+    wheelEnabled: control.activeFocus
     focusPolicy: Qt.StrongFocus
     function logValue() {
         if (control.objectName.length > 0 && typeof usage !== "undefined" && usage)
