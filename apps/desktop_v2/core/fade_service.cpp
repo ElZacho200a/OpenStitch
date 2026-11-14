@@ -114,13 +114,20 @@ bool rotate_gradient(document::DensityGradient& gradient, double degrees) {
 
 std::string fadeIncompatibility(const document::Project& project, std::uint64_t objectId) {
     const auto* emb = project.findEmbroidery(ObjectId{objectId});
-    if (emb && emb->is_satin() && !emb->multi_blend && !emb->color_blend) {
+    if (emb && emb->is_satin()) {
+        if (emb->multi_blend || emb->color_blend) {
+            return "Ce satin appartient déjà à un fondu multicolore.";
+        }
         const auto* source = project.findObject(emb->source_vector);
         const auto& satin = std::get<document::SatinParams>(emb->params);
-        if (source && !source->paths.empty() && satin.rail_a.nodes.size() >= 2 &&
-            satin.rail_b.nodes.size() >= 2) {
-            return {}; // Satin multicolore : création n-aire uniquement
+        if (source == nullptr || source->paths.empty()) {
+            return "Ce satin n'a pas de forme vectorielle source exploitable.";
         }
+        if (satin.rail_a.nodes.size() < 2 || satin.rail_b.nodes.size() < 2) {
+            return "Le satin entrelacé nécessite deux rails satin définis (au moins deux points par rail). "
+                   "Le simple choix du type de points Satin ne crée pas ces rails.";
+        }
+        return {}; // Satin multicolore : création n-aire uniquement
     }
     return project_ops::gradient_incompatibility(project, ObjectId{objectId});
 }
