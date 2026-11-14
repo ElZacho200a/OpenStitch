@@ -820,6 +820,8 @@ const char* stitch_type_name(const document::EmbroideryObject& object) {
         return "cross_stitch";
     case 13:
         return "applique";
+    case 14:
+        return "multicolor_gradient";
     default:
         return "unknown";
     }
