@@ -1161,10 +1161,8 @@ rails_from_contour(const geometry::Path& contour) {
         return a < b; // deterministic choice for duplicate coordinates
     };
     std::sort(sorted.begin(), sorted.end(), lessPoint);
-    sorted.erase(std::unique(sorted.begin(), sorted.end(), [&](std::size_t a, std::size_t b) {
-                     return pts[a] == pts[b];
-                 }),
-                 sorted.end());
+    const auto samePoint = [&](std::size_t a, std::size_t b) { return pts[a] == pts[b]; };
+    sorted.erase(std::unique(sorted.begin(), sorted.end(), samePoint), sorted.end());
     if (sorted.size() < 2) {
         return std::nullopt;
     }
@@ -1179,8 +1177,7 @@ rails_from_contour(const geometry::Path& contour) {
     std::vector<std::size_t> hull;
     hull.reserve(sorted.size() * 2);
     for (const std::size_t i : sorted) {
-        while (hull.size() >= 2 &&
-               cross(hull[hull.size() - 2], hull.back(), i) <= 0.0L) {
+        while (hull.size() >= 2 && cross(hull[hull.size() - 2], hull.back(), i) <= 0.0L) {
             hull.pop_back();
         }
         hull.push_back(i);
@@ -1188,8 +1185,7 @@ rails_from_contour(const geometry::Path& contour) {
     const std::size_t lowerSize = hull.size();
     for (std::size_t k = sorted.size() - 1; k-- > 0;) {
         const std::size_t i = sorted[k];
-        while (hull.size() > lowerSize &&
-               cross(hull[hull.size() - 2], hull.back(), i) <= 0.0L) {
+        while (hull.size() > lowerSize && cross(hull[hull.size() - 2], hull.back(), i) <= 0.0L) {
             hull.pop_back();
         }
         hull.push_back(i);
@@ -1247,8 +1243,7 @@ rails_from_contour(const geometry::Path& contour) {
     railA.nodes.reserve(iEnd0 < iEnd1 ? iEnd1 - iEnd0 + 1 : 2);
     railB.nodes.reserve(pts.size() - (iEnd1 - iEnd0) + 1);
     const auto append = [&](geometry::Path& rail, std::size_t idx) {
-        rail.nodes.push_back(
-            {pts[idx], geometry::NodeType::Corner, std::nullopt, std::nullopt});
+        rail.nodes.push_back({pts[idx], geometry::NodeType::Corner, std::nullopt, std::nullopt});
     };
     for (std::size_t i = iEnd0; i != iEnd1; i = (i + 1) % pts.size()) {
         append(railA, i);
