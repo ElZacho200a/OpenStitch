@@ -38,6 +38,20 @@ Claude vérifie ensuite : `git diff --stat`, un test ciblé, les invariants de C
 Pas de secret dans les prompts locaux. Pas de commit/push/merge/force-push/suppression par l'agent. Pas de deux écrivains simultanés sur le même arbre. Respecter les worktrees, branches et réservations Notion en cours ; le périmètre `-Scope` est obligatoire dès que d'autres chantiers modifient l'arbre.
 Claude garde la main sur GitHub (PR) et Notion (authentification).
 
+## Place mesurée du modèle local (essais du 2026-11-14, `openstitch-agent` 9B)
+
+| Usage | Résultat | Consigne |
+|---|---|---|
+| Lire un extrait et répondre, `-Level 1 -Quote -File chemin:début-fin` | juste, citations vérifiées par le script, 2-3 s | par défaut pour toute lecture de doc ou de code |
+| Message de commit ou de PR depuis un diff (`-File` sur le diff) | fidèle au diff, 3 s | par défaut |
+| Tri d'erreurs de compilation sans le code | réponse générique | joindre la plage de code en cause, sinon inutile |
+| Écrire un test C++ (`-Level 2`) | 0 fichier modifié en 2 essais (114 s) | un seul essai, puis écriture directe consignée par `-LogClaude` |
+
+Règles d'appel du niveau 1 : toujours passer les fichiers (un fichier introuvable bloque l'appel) ;
+préférer une plage `chemin:début-fin` à un fichier entier ; `-Quote` dès que la réponse sert à
+décider ; un statut `PARTIAL` signifie qu'une citation est introuvable : ne pas croire ce point.
+`-Stats` donne les tokens réellement traités en local.
+
 ## Limites connues
 
 qwen3.5:9b appelle mal les outils : le script relance une fois avec la cause locale. Contexte de départ 16-32 K ; ne l'augmenter qu'après mesure.
