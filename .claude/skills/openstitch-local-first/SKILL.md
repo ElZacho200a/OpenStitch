@@ -20,6 +20,7 @@ Règle de fond : `.claude/rules/local-first.md`. Outil : `scripts/local/delegate
 
 ```powershell
 scripts/local/delegate.ps1 -Level 1 -Mission "Resume le role de ce fichier en 5 lignes" -File libs/core/src/x.cpp
+scripts/local/delegate.ps1 -Level 1 -Quote -Mission "Pourquoi reste-t-il des sauts ?" -File docs/source/tatami.md:186-251
 scripts/local/delegate.ps1 -Id test-x -Level 2 -Mission "Ajoute 2 cas Catch2 pour ..." -Scope tests/unit/core/test_x.cpp -Verify "scripts/qrun.ps1 ..."
 scripts/local/delegate.ps1 -Stats
 ```

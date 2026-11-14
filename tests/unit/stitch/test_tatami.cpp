@@ -921,3 +921,30 @@ TEST_CASE("tatami : carre mordu par un arc, liaisons de bord cousues (pas de sau
         CHECK(count_jumps(fill) <= 2);
     }
 }
+
+// Les fins de rangée d'un remplissage dépassent le bord (compensation de tirage) : une extrémité
+// à une fraction de millimètre HORS de la région doit rester reliée, sinon la liaison cachée
+// échoue avant toute recherche et devient une coupe (E12, mesure sur `sample/` : 546 -> 229).
+TEST_CASE("HiddenRouter : une extremite a 0,2 mm hors du bord reste reliee") {
+    const auto region = square_with_hole();
+    const HiddenRouter router(region, Micrometers{600}, 100'000.0);
+    const Vec2um nearOut{Micrometers{-200}, Micrometers{20'000}}; // 0,2 mm à gauche du bord
+    const Vec2um inside{Micrometers{3'000}, Micrometers{37'000}};
+    const auto route = router.route(nearOut, inside);
+    REQUIRE_FALSE(route.empty());
+    CHECK(route.front() == nearOut);
+    CHECK(route.back() == inside);
+
+    // 2 mm dehors : ce n'est plus un débord de rangée, rien n'est relié.
+    const Vec2um farOut{Micrometers{-2'000}, Micrometers{20'000}};
+    CHECK(router.route(farOut, inside).empty());
+
+    // De l'autre côté du trou : la tolérance ne vaut que pour le tronçon d'extrémité, les
+    // tronçons suivants restent strictement dans la région (le trou est contourné).
+    const Vec2um across{Micrometers{34'000}, Micrometers{20'000}};
+    const auto detour = router.route(nearOut, across);
+    REQUIRE(detour.size() >= 3);
+    for (std::size_t i = 2; i < detour.size(); ++i) {
+        CHECK(segment_stays_in_region(region, detour[i - 1], detour[i]));
+    }
+}

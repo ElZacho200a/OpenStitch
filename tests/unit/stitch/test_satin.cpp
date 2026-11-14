@@ -5,6 +5,7 @@
 #include <optional>
 #include <utility>
 
+#include "openstitch/geometry/polyline.hpp"
 #include "openstitch/stitch_generation/lock.hpp"
 #include "openstitch/stitch_generation/satin.hpp"
 
@@ -829,6 +830,43 @@ TEST_CASE("rails_from_contour : rectangle allonge -> deux longs rails") {
     REQUIRE_FALSE(result.satin.empty());
     CHECK(result.max_width_um > 3'000.0);
     CHECK(result.max_width_um < 6'000.0);
+}
+
+TEST_CASE("rails_from_contour : grand contour segmente reste lineaire en memoire") {
+    // 14 000 sommets : l'ancienne recherche de deux points extremaux faisait
+    // pres de 100 millions de comparaisons et bloquait Studio.
+    geometry::Path contour;
+    contour.closed = true;
+    constexpr std::int32_t half = 7'000;
+    contour.nodes.reserve(2 * half);
+    for (std::int32_t i = 0; i < half; ++i) {
+        contour.nodes.push_back({v(i * 8, 0), geometry::NodeType::Corner, {}, {}});
+    }
+    for (std::int32_t i = half; i-- > 0;) {
+        contour.nodes.push_back({v(i * 8, 3'000), geometry::NodeType::Corner, {}, {}});
+    }
+    const auto rails = rails_from_contour(contour);
+    REQUIRE(rails.has_value());
+    CHECK(rails->first.nodes.size() + rails->second.nodes.size() == contour.nodes.size() + 2);
+    CHECK(rails_from_contour(contour) == rails); // deterministic geometry
+}
+
+TEST_CASE("rails_from_contour : courbes Bezier utilisent les indices aplatis") {
+    geometry::Path contour;
+    contour.closed = true;
+    contour.nodes = {
+        {v(0, 0), geometry::NodeType::Corner, {}, {}},
+        {v(20'000, 0), geometry::NodeType::Corner, {}, {}},
+        {v(20'000, 4'000), geometry::NodeType::Corner, {}, {}},
+        {v(0, 4'000), geometry::NodeType::Corner, {}, {}},
+    };
+    contour.nodes[0].tan_out = v(5'000, -6'000);
+    contour.nodes[1].tan_in = v(-5'000, -6'000);
+    const auto flat = geometry::flatten(contour, Micrometers{30});
+    REQUIRE(flat.points.size() > contour.nodes.size());
+    const auto rails = rails_from_contour(contour);
+    REQUIRE(rails.has_value());
+    CHECK(rails->first.nodes.size() + rails->second.nodes.size() == flat.points.size() + 2);
 }
 
 TEST_CASE("rails_from_contour : contour trop petit -> nullopt") {

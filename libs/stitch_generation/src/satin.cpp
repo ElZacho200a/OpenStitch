@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <numbers>
+#include <numeric>
 
 namespace openstitch::stitch_generation {
 
@@ -1136,50 +1137,124 @@ std::vector<SatinRungSeg> default_rungs(const geometry::Path& rail_a, const geom
 
 std::optional<std::pair<geometry::Path, geometry::Path>>
 rails_from_contour(const geometry::Path& contour) {
-    const auto pts = to_points(contour);
+    // The extrema must index the SAME geometry later used to build the rails.
+    // A Bezier contour can flatten to many more points than original PathNodes;
+    // indexing contour.nodes with a flattened index was out of bounds.
+    const auto flat = geometry::flatten(contour, kRailFlattenTolerance);
+    const auto& pts = flat.points;
     if (pts.size() < 4) {
         return std::nullopt;
     }
 
-    // Deux sommets les plus éloignés = les « bouts » de la colonne.
-    std::size_t iEnd0 = 0;
-    std::size_t iEnd1 = 0;
-    double best = -1.0;
-    for (std::size_t i = 0; i < pts.size(); ++i) {
-        for (std::size_t j = i + 1; j < pts.size(); ++j) {
-            const double d = dist(pts[i], pts[j]);
-            if (d > best) {
-                best = d;
-                iEnd0 = i;
-                iEnd1 = j;
-            }
+    // The diameter of a point set is attained by two vertices of its convex
+    // hull. Monotone chain + rotating calipers: O(n log n) time, O(n) space,
+    // instead of testing every pair (O(n^2)) on dense segmented contours.
+    std::vector<std::size_t> sorted(pts.size());
+    std::iota(sorted.begin(), sorted.end(), std::size_t{0});
+    const auto lessPoint = [&](std::size_t a, std::size_t b) {
+        if (pts[a].x.value != pts[b].x.value) {
+            return pts[a].x.value < pts[b].x.value;
         }
-    }
-    if (best <= 0.0) {
+        if (pts[a].y.value != pts[b].y.value) {
+            return pts[a].y.value < pts[b].y.value;
+        }
+        return a < b; // deterministic choice for duplicate coordinates
+    };
+    std::sort(sorted.begin(), sorted.end(), lessPoint);
+    const auto samePoint = [&](std::size_t a, std::size_t b) { return pts[a] == pts[b]; };
+    sorted.erase(std::unique(sorted.begin(), sorted.end(), samePoint), sorted.end());
+    if (sorted.size() < 2) {
         return std::nullopt;
     }
 
-    // Les deux chaînes entre iEnd0 et iEnd1 forment les deux rails.
+    const auto cross = [&](std::size_t a, std::size_t b, std::size_t c) {
+        const long double abx = static_cast<long double>(pts[b].x.value) - pts[a].x.value;
+        const long double aby = static_cast<long double>(pts[b].y.value) - pts[a].y.value;
+        const long double acx = static_cast<long double>(pts[c].x.value) - pts[a].x.value;
+        const long double acy = static_cast<long double>(pts[c].y.value) - pts[a].y.value;
+        return abx * acy - aby * acx;
+    };
+    std::vector<std::size_t> hull;
+    hull.reserve(sorted.size() * 2);
+    for (const std::size_t i : sorted) {
+        while (hull.size() >= 2 && cross(hull[hull.size() - 2], hull.back(), i) <= 0.0L) {
+            hull.pop_back();
+        }
+        hull.push_back(i);
+    }
+    const std::size_t lowerSize = hull.size();
+    for (std::size_t k = sorted.size() - 1; k-- > 0;) {
+        const std::size_t i = sorted[k];
+        while (hull.size() > lowerSize && cross(hull[hull.size() - 2], hull.back(), i) <= 0.0L) {
+            hull.pop_back();
+        }
+        hull.push_back(i);
+    }
+    hull.pop_back(); // duplicated first hull vertex
+    if (hull.size() < 2) {
+        return std::nullopt;
+    }
+
+    const auto distanceSquared = [&](std::size_t a, std::size_t b) {
+        const long double dx = static_cast<long double>(pts[a].x.value) - pts[b].x.value;
+        const long double dy = static_cast<long double>(pts[a].y.value) - pts[b].y.value;
+        return dx * dx + dy * dy;
+    };
+    std::size_t iEnd0 = 0;
+    std::size_t iEnd1 = 0;
+    long double best = -1.0L;
+    const auto consider = [&](std::size_t a, std::size_t b) {
+        const auto lo = std::min(a, b);
+        const auto hi = std::max(a, b);
+        const long double d2 = distanceSquared(lo, hi);
+        if (d2 > best || (d2 == best && std::pair{lo, hi} < std::pair{iEnd0, iEnd1})) {
+            best = d2;
+            iEnd0 = lo;
+            iEnd1 = hi;
+        }
+    };
+    std::size_t j = 1;
+    const std::size_t h = hull.size();
+    for (std::size_t i = 0; i < h; ++i) {
+        const std::size_t next = (i + 1) % h;
+        const auto area = [&](std::size_t k) {
+            return std::abs(cross(hull[i], hull[next], hull[k]));
+        };
+        while (area((j + 1) % h) > area(j)) {
+            j = (j + 1) % h;
+        }
+        consider(hull[i], hull[j]);
+        consider(hull[next], hull[j]);
+        // With parallel edges, both antipodal candidates may be tied in area.
+        // Include the next one so the diameter and tie-breaking stay exact.
+        if (area((j + 1) % h) == area(j)) {
+            consider(hull[i], hull[(j + 1) % h]);
+            consider(hull[next], hull[(j + 1) % h]);
+        }
+    }
+    if (best <= 0.0L) {
+        return std::nullopt;
+    }
+
     geometry::Path railA;
     geometry::Path railB;
     railA.closed = false;
     railB.closed = false;
+    railA.nodes.reserve(iEnd0 < iEnd1 ? iEnd1 - iEnd0 + 1 : 2);
+    railB.nodes.reserve(pts.size() - (iEnd1 - iEnd0) + 1);
+    const auto append = [&](geometry::Path& rail, std::size_t idx) {
+        rail.nodes.push_back({pts[idx], geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    };
     for (std::size_t i = iEnd0; i != iEnd1; i = (i + 1) % pts.size()) {
-        railA.nodes.push_back(contour.nodes[i]);
+        append(railA, i);
     }
-    railA.nodes.push_back(contour.nodes[iEnd1]);
+    append(railA, iEnd1);
     for (std::size_t i = iEnd1; i != iEnd0; i = (i + 1) % pts.size()) {
-        railB.nodes.push_back(contour.nodes[i]);
+        append(railB, i);
     }
-    railB.nodes.push_back(contour.nodes[iEnd0]);
-    // railB parcourt le contour dans l'autre sens : on l'inverse pour que les
-    // deux rails aillent du même bout au même bout.
+    append(railB, iEnd0);
     std::reverse(railB.nodes.begin(), railB.nodes.end());
-
-    if (railA.nodes.size() < 2 || railB.nodes.size() < 2) {
-        return std::nullopt;
-    }
-    return std::pair{railA, railB};
+    return std::pair{std::move(railA), std::move(railB)};
 }
 
 } // namespace openstitch::stitch_generation

@@ -215,6 +215,44 @@ ne convient de toute façon pas (satin ou point droit).
 **Limites connues** (non traitées ici) : ~280 coupes entre sous-couche et satin dans les objets
 auto-satin (réseaux multi-sections), qui relèvent du routage satin.
 
+### Extrémités de liaison hors région (2026-11-14)
+
+**Symptôme** : l'auto-numérisation par défaut de `sample/` (382 x 287 mm, 97 objets, tous avec
+`hidden_underpath`) garde 546 coupes ; un seul tatami porte 72 sauts internes.
+
+**Cause racine, par mesure** (compteurs temporaires dans `HiddenRouter::route`) : sur 544
+liaisons tentées par `emit_fill`, 368 échouent avant toute recherche parce que le départ (263)
+ou l'arrivée (105) ne « voit » aucun point de passage. Ces extrémités sont des fins de rangée :
+la compensation de tirage les pousse au-delà du bord de la région, et `stays_inside` strict
+rejette tout segment qui en part. `fill_tatami` évite ce piège en raisonnant sur les positions
+rognées (`prevC`, `rpC`) ; le routeur, lui, reçoit les positions réellement cousues. Le plafond
+de longueur n'est pas en cause : le porter de 60 à 150 mm ne retire que 15 coupes.
+
+**Correctif** : `HiddenRouter` applique une tolérance au bord de 0,3 mm (`kEndpointEdgeTol`)
+aux SEULS tronçons qui touchent une extrémité (trajet direct, départ -> point de passage,
+point de passage -> arrivée) ; les tronçons entre points de passage restent stricts, un trou
+est toujours contourné. Le nombre de points de passage retenus par trajet passe de 24 à 96 :
+24 ne gardait qu'un amas autour du segment direct.
+
+**Mesure** (`openstitch-cli digitize`, options par défaut, build Debug) :
+
+| image | coupes | sauts | points | fil |
+|---|---|---|---|---|
+| `sample/` | 546 -> 229 | 571 -> 232 | 140 960 -> 141 996 | 356,7 -> 363,9 m |
+| marine synthétique | 32 -> 20 | 38 -> 20 | 7 232 -> 7 253 | 17,15 -> 17,40 m |
+| `logo_small` | 4 -> 2 | 5 -> 2 | 399 -> 389 | 0,85 -> 0,85 m |
+
+Par réglage sur `sample/` : tolérance seule (24 points de passage) 334 coupes ; avec 48 : 268 ;
+avec 96 : 229. La tolérance est sur un plateau (229 à 0,3 mm, 226 à 0,6 mm, 212 à 1 mm) : la
+plus petite valeur est retenue. Sortie identique sur deux exécutions.
+
+**Coût** : la numérisation complète de `sample/` passe de 2,1 s à 4,0 s en Debug ; non mesuré
+en Release.
+
+**Ce qui reste** (compteurs relevés avec 48 points de passage, non refaits à 96) : 117
+liaisons sans trajet par le contour rentré, 53 sans point de passage sous le plafond de 60 mm,
+et les déplacements entre objets.
+
 ## Déplacements internes (audit marine plein cadre, 2026-09-22)
 
 Trois défauts mesurés sur le tatami d'un grand ciel percé de nuages, avec

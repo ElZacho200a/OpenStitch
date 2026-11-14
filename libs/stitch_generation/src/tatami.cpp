@@ -1040,8 +1040,10 @@ bool RegionSegmentTester::stays_inside(Vec2um a, Vec2um b, Micrometers edge_tole
 
 struct HiddenRouter::Impl {
     // Au plus ce nombre de points de passage (les moins dÃ©tournÃ©s) sont retenus par trajet :
-    // le graphe de visibilitÃ© reste petit mÃªme sur une forme criblÃ©e de trous.
-    static constexpr std::size_t kMaxCandidates = 24;
+    // le graphe de visibilitÃ© reste petit mÃªme sur une forme criblÃ©e de trous. 24 ne gardait
+    // qu'un amas serré autour du segment direct, insuffisant pour contourner un obstacle
+    // (mesure sur `sample/`, coupes : 334 avec 24, 268 avec 48, 229 avec 96).
+    static constexpr std::size_t kMaxCandidates = 96;
 
     Impl(const geometry::PathSet& region_, Micrometers inset_, double cap_um)
         : region(region_), inset(inset_), tester(region_), cap(cap_um) {}
@@ -1090,6 +1092,13 @@ struct HiddenRouter::Impl {
 
 namespace {
 
+// Tolérance au bord (µm) des SEULS tronçons qui touchent une extrémité du trajet. Les fins
+// de rangée d'un remplissage dépassent le bord de la région (compensation de tirage) : testées
+// strictement, elles ne « voient » aucun point de passage et la liaison échoue avant toute
+// recherche (mesure sur `sample/` : 368 échecs sur 544 liaisons tentées). Le fil y reste sous la
+// bordure, comme pour `kLinkEdgeTol` ; les tronçons entre points de passage restent stricts.
+constexpr Micrometers kEndpointEdgeTol{300};
+
 double distance_um(Vec2um a, Vec2um b) {
     return std::hypot(static_cast<double>(a.x.value) - static_cast<double>(b.x.value),
                       static_cast<double>(a.y.value) - static_cast<double>(b.y.value));
@@ -1108,7 +1117,7 @@ std::vector<Vec2um> HiddenRouter::route(Vec2um a, Vec2um b) const {
     if (direct <= 0.0) {
         return {};
     }
-    if (direct <= impl_->cap && impl_->tester.stays_inside(a, b)) {
+    if (direct <= impl_->cap && impl_->tester.stays_inside(a, b, kEndpointEdgeTol)) {
         return {a, b};
     }
 
@@ -1152,8 +1161,8 @@ std::vector<Vec2um> HiddenRouter::route(Vec2um a, Vec2um b) const {
         bool anyFromA = false;
         bool anyToB = false;
         for (std::size_t i = 1; i < last; ++i) {
-            seenFromA[i] = impl_->tester.stays_inside(a, nodes[i]) ? 1 : 0;
-            seesB[i] = impl_->tester.stays_inside(nodes[i], b) ? 1 : 0;
+            seenFromA[i] = impl_->tester.stays_inside(a, nodes[i], kEndpointEdgeTol) ? 1 : 0;
+            seesB[i] = impl_->tester.stays_inside(nodes[i], b, kEndpointEdgeTol) ? 1 : 0;
             anyFromA = anyFromA || seenFromA[i];
             anyToB = anyToB || seesB[i];
         }

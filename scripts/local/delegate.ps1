@@ -19,6 +19,9 @@
 .EXAMPLE
   scripts/local/delegate.ps1 -Id fix-x -Level 2 -Mission "Corriger ..." -Scope libs/core/src/x.cpp,tests/unit/core/test_x.cpp -Verify "scripts/qrun.ps1 ..."
   scripts/local/delegate.ps1 -Level 1 -Mission "Resume ce fichier" -File libs/core/src/x.cpp
+  scripts/local/delegate.ps1 -Level 1 -Quote -Mission "Pourquoi ... ?" -File docs/source/tatami.md:186-251
+    (-File accepte chemin:debut-fin ; -Quote exige des extraits exacts, verifies dans les fichiers transmis ;
+     PARTIAL = extrait introuvable ; fichier absent ou contexte > -NumCtx = BLOCKED)
   scripts/local/delegate.ps1 -Stats
 #>
 param(
@@ -33,12 +36,18 @@ param(
     [int]$TimeoutMin = 0,
     [int]$MaxChars = 1500,
     [string]$Model = 'ollama/openstitch-agent:latest',
+    [switch]$Quote,
+    [int]$NumCtx = 16384,
     [switch]$Stats,
     [string]$LogClaude
 )
 
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
+# "powershell -File delegate.ps1 -File a,b" transmet UNE chaine "a,b" (pas un tableau) : on redecoupe,
+# sinon les fichiers sont ignores en silence et le modele repond sans contexte (il invente).
+$File = @($File | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+$Scope = @($Scope | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 $root = (git rev-parse --show-toplevel 2>$null)
 if (-not $root) { $root = (Get-Location).Path }
 $root = (Resolve-Path $root).Path
@@ -58,6 +67,9 @@ if ($Stats) {
     Write-Output ("appels locaux : {0} (SUCCESS {1}, PARTIAL {2}, BLOCKED {3}, FAILED {4})" -f $loc.Count,
         @($loc | ? { $_.status -eq 'SUCCESS' }).Count, @($loc | ? { $_.status -eq 'PARTIAL' }).Count,
         @($loc | ? { $_.status -eq 'BLOCKED' }).Count, @($loc | ? { $_.status -eq 'FAILED' }).Count)
+    $tin = 0; $tout = 0; $secs = 0
+    foreach ($x in $loc) { if ($x.tok_in) { $tin += [int]$x.tok_in }; if ($x.tok_out) { $tout += [int]$x.tok_out }; if ($x.secs) { $secs += [int]$x.secs } }
+    Write-Output ("tokens traites en local (niveau 1, mesures par Ollama) : {0} entree, {1} sortie ; temps local cumule : {2}s" -f $tin, $tout, $secs)
     Write-Output ("interventions Claude : {0} (escalades {1}, edits directs signales {2})" -f $cl.Count,
         @($cl | ? { $_.kind -eq 'claude-escalation' }).Count, @($cl | ? { $_.kind -eq 'claude-direct' }).Count)
     exit 0
@@ -86,26 +98,71 @@ function Write-Utf8($path, $text) { [IO.File]::WriteAllText($path, $text, (New-O
 
 # --- niveau 1 : appel direct -------------------------------------------------
 if ($Level -eq 1) {
-    $ctxText = ''
+    # Contexte : chaque -File est "chemin" ou "chemin:debut-fin" (plage de lignes, 1 = premiere).
+    # Un fichier introuvable BLOQUE l'appel : sans son contexte le modele invente.
+    $ctxText = ''; $missing = @()
     foreach ($f in $File) {
-        $p = Join-Path $root $f
-        if (Test-Path $p) { $ctxText += "`n### $f`n" + (Get-Content -LiteralPath $p -Raw -Encoding UTF8) }
+        $path = $f; $from = 0; $to = 0
+        if ($f -match '^(.+):(\d+)-(\d+)$') { $path = $Matches[1]; $from = [int]$Matches[2]; $to = [int]$Matches[3] }
+        $p = Join-Path $root $path
+        if (-not (Test-Path -LiteralPath $p -PathType Leaf)) { $missing += $path; continue }
+        if ($from -gt 0) {
+            $all = @(Get-Content -LiteralPath $p -Encoding UTF8)
+            $to = [Math]::Min($to, $all.Count)
+            $ctxText += "`n### $path (lignes $from-$to)`n" + (($all[($from - 1)..($to - 1)]) -join "`n")
+        } else {
+            $ctxText += "`n### $path`n" + (Get-Content -LiteralPath $p -Raw -Encoding UTF8)
+        }
     }
+    if ($missing.Count) { Write-Output ("BLOCKED: fichier(s) introuvable(s) : " + ($missing -join ', ')); exit 2 }
+    # Garde de taille : ~3 caracteres par token ; au-dela de la fenetre Ollama tronque en silence.
+    $estTok = [int](($Mission.Length + $ctxText.Length) / 3)
+    if ($estTok -gt ($NumCtx - 1500)) {
+        Write-Output "BLOCKED: contexte trop grand (~$estTok tokens estimes pour -NumCtx $NumCtx) : passer des plages (chemin:debut-fin) ou decouper"
+        exit 2
+    }
+    $lq = [string][char]0xAB; $rq = [string][char]0xBB
+    $ask = $Mission
+    if ($Quote) {
+        $ask += " Pour chaque puce, cite ENTRE GUILLEMETS $lq $rq un court extrait exact (5 a 12 mots, recopie mot pour mot) du texte fourni qui le prouve, puis le nom du fichier. Exemple de puce : - Le plafond est de 16 mm : $lq borne par underpathCap (16 mm) $rq (tatami.md). N'invente rien."
+    }
+    # Petit modele : la consigne placee APRES le contexte est mieux suivie (et repetee en tete).
+    $userMsg = if ($ctxText) { "$Mission`n`n===== TEXTE FOURNI =====$ctxText`n===== FIN DU TEXTE =====`n`nCONSIGNE : $ask" } else { $ask }
     $body = @{ model = $modelTag; stream = $false; think = $false; keep_alive = '30m'
-        options = @{ num_ctx = 16384; temperature = 0.1 }
+        options = @{ num_ctx = $NumCtx; temperature = 0.1 }
         messages = @(
             @{ role = 'system'; content = 'Reponds en francais, de facon concise et factuelle. Si une information manque, dis-le.' },
-            @{ role = 'user'; content = ($Mission + $ctxText) }) } | ConvertTo-Json -Depth 6
+            @{ role = 'user'; content = $userMsg }) } | ConvertTo-Json -Depth 6
+    $tokIn = 0; $tokOut = 0; $proof = ''
     try {
         $r = Invoke-RestMethod -Uri http://127.0.0.1:11434/api/chat -Method Post -TimeoutSec 600 `
             -Body ([Text.Encoding]::UTF8.GetBytes($body)) -ContentType 'application/json; charset=utf-8'
         $ans = $r.message.content
+        $tokIn = [int]$r.prompt_eval_count; $tokOut = [int]$r.eval_count
         Write-Utf8 (Join-Path $dir 'answer.txt') $ans
         $status = if ($ans) { 'SUCCESS' } else { 'FAILED' }
+        # Preuve mecanique (-Quote) : chaque extrait cite doit se retrouver dans le contexte transmis
+        # (espaces normalises). Aucun extrait, ou un extrait introuvable : PARTIAL, a ne pas croire.
+        if ($Quote -and $ans) {
+            # marqueurs Markdown (gras, code) retires des deux cotes : le modele les omet en citant
+            $norm = { param($s) ((($s -replace '[`*]', '') -replace '\s+', ' ').Trim()).ToLowerInvariant() }
+            $hay = & $norm $ctxText
+            $found = [regex]::Matches($ans, [regex]::Escape($lq) + '\s*([^' + $lq + $rq + ']{12,}?)\s*' + [regex]::Escape($rq))
+            $bad = @()
+            foreach ($m in $found) {
+                $q = (& $norm $m.Groups[1].Value).Trim('.', ' ', [char]0x2026)
+                if (-not $hay.Contains($q)) { $bad += $m.Groups[1].Value.Trim() }
+            }
+            $proof = "citations verifiees : $($found.Count - $bad.Count)/$($found.Count)"
+            if ($found.Count -eq 0 -or $bad.Count -gt 0) { $status = 'PARTIAL' }
+            if ($bad.Count) { $proof += "`nINTROUVABLES dans les fichiers (ne pas croire ces points) :`n" + (($bad | ForEach-Object { "  - $_" }) -join "`n") }
+        }
     } catch { $ans = "erreur: $($_.Exception.Message)"; $status = 'FAILED' }
-    Add-Stat @{ kind = 'local'; ts = (Get-Date -Format o); id = $Id; level = 1; status = $status; secs = [int]$sw.Elapsed.TotalSeconds; provider = 'ollama' }
+    Add-Stat @{ kind = 'local'; ts = (Get-Date -Format o); id = $Id; level = 1; status = $status; secs = [int]$sw.Elapsed.TotalSeconds; provider = 'ollama'; tok_in = $tokIn; tok_out = $tokOut; files = $File.Count }
     $short = if ($ans.Length -gt $MaxChars) { $ans.Substring(0, $MaxChars) + "`n[... tronque, complet : build/local-first/$Id/answer.txt]" } else { $ans }
-    Write-Output "[$Id] niveau 1 : $status"; Write-Output $short
+    Write-Output "[$Id] niveau 1 : $status | fichiers lus : $($File.Count) | tokens locaux : $tokIn entree, $tokOut sortie | $([int]$sw.Elapsed.TotalSeconds)s"
+    if ($proof) { Write-Output $proof }
+    Write-Output $short
     exit $(if ($status -eq 'SUCCESS') { 0 } else { 1 })
 }
 
