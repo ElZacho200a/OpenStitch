@@ -215,6 +215,19 @@ def scale_for_benchmark(document, factor):
         if gradient:
             for key in ("fromX", "fromY", "toX", "toY"):
                 gradient[key] = int(gradient[key] * factor)
+        if params.get("type") == "satin":
+            # Satin rails are embedded in embroidery params, not vectorObjects.
+            # Without scaling these, an x6 benchmark still stitches a 30 mm rail.
+            for rail_name in ("railA", "railB"):
+                for node in params.get(rail_name, {}).get("nodes", []):
+                    node["pos"] = [int(v * factor) for v in node["pos"]]
+                    for handle in ("tanIn", "tanOut"):
+                        if handle in node:
+                            node[handle] = [int(v * factor) for v in node[handle]]
+            for rung in params.get("rungs", []):
+                for key in ("a", "b", "start", "end"):
+                    if isinstance(rung.get(key), list) and len(rung[key]) == 2:
+                        rung[key] = [int(v * factor) for v in rung[key]]
         for guide in params.get("guides", []):
             for node in guide.get("nodes", []):
                 node["pos"] = [int(v * factor) for v in node["pos"]]
@@ -227,7 +240,7 @@ def scale_for_benchmark(document, factor):
 def large_design_benchmarks():
     """Process-level elapsed times; informative, not a hardware-independent threshold."""
     benchmarks = []
-    for source in ("multi_5_linear", "multi_8_linear"):
+    for source in ("multi_5_linear", "multi_8_linear", "satin_8"):
         for factor in (3, 6):
             name = source + "_x" + str(factor)
             target = OUT / (name + ".osp")
@@ -236,9 +249,10 @@ def large_design_benchmarks():
             dst = OUT / (name + ".dst")
             result = call(name + ".benchmark",
                           ["project", "export", target, "-o", dst], timeout=85)
-            stats = dst_quality(dst) if dst.is_file() else {}
+            stats = dst_quality(dst) if result["rc"] == 0 and dst.is_file() else {}
             entry = {"name": name, "factor": factor, "width_mm": 40 * factor,
-                     "height_mm": 20 * factor, "elapsed_ms": result["ms"],
+                     "height_mm": (3.2 if source == "satin_8" else 20) * factor,
+                     "elapsed_ms": result["ms"],
                      "return_code": result["rc"], "dst_quality": stats}
             benchmarks.append(entry)
     (OUT / "benchmarks.json").write_text(
