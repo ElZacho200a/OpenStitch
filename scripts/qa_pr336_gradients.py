@@ -221,18 +221,21 @@ def scale_for_benchmark(document, factor):
             for key in ("fromX", "fromY", "toX", "toY"):
                 gradient[key] = int(gradient[key] * factor)
         if params.get("type") == "satin":
-            # Satin rails are embedded in embroidery params, not vectorObjects.
-            # Without scaling these, an x6 benchmark still stitches a 30 mm rail.
+            # Scale the rail *length*, not its physical width. Scaling both
+            # axes turns a 3.2 mm satin into a 19.2 mm satin at x6, which
+            # necessarily requires long needle penetrations and makes the
+            # benchmark measure an unsafe ribbon rather than a large motif.
+            # The fixture rails run along X; preserve Y and stitch spacing.
             for rail_name in ("railA", "railB"):
                 for node in params.get(rail_name, {}).get("nodes", []):
-                    node["pos"] = [int(v * factor) for v in node["pos"]]
+                    node["pos"][0] = int(node["pos"][0] * factor)
                     for handle in ("tanIn", "tanOut"):
                         if handle in node:
-                            node[handle] = [int(v * factor) for v in node[handle]]
+                            node[handle][0] = int(node[handle][0] * factor)
             for rung in params.get("rungs", []):
                 for key in ("a", "b", "start", "end"):
                     if isinstance(rung.get(key), list) and len(rung[key]) == 2:
-                        rung[key] = [int(v * factor) for v in rung[key]]
+                        rung[key][0] = int(rung[key][0] * factor)
         for guide in params.get("guides", []):
             for node in guide.get("nodes", []):
                 node["pos"] = [int(v * factor) for v in node["pos"]]
@@ -264,7 +267,7 @@ def large_design_benchmarks():
                          and preview.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
                          and preview.read_bytes().endswith(b"IEND\xaeB`\x82"))
             entry = {"name": name, "factor": factor, "width_mm": 40 * factor,
-                     "height_mm": (3.2 if source == "satin_8" else 20) * factor,
+                     "height_mm": (3.2 if source == "satin_8" else 20 * factor),
                      "elapsed_ms": result["ms"],
                      "return_code": result["rc"], "dst_quality": stats,
                      "render_return_code": rendered["rc"], "png_valid": png_valid}
