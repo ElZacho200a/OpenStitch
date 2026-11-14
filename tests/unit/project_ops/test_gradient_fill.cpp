@@ -366,12 +366,12 @@ TEST_CASE("multicolor: five physical thread layers are one undoable blend group"
         project_ops::make_create_multicolor_gradient_fill_command(f.project, f.fill, spec);
     REQUIRE(command);
     stack.execute(std::move(*command), f.project);
-    REQUIRE(f.project.embroidery_objects.size() == 5);
+    REQUIRE(f.project.embroidery_objects.size() == 6); // ancre + 5 couches physiques
 
-    const auto group = document::find_multi_blend(f.project, f.fill);
+    const auto group = document::find_gradient_group(f.project, f.fill);
     REQUIRE(group);
     CHECK(group->layers.size() == 5);
-    CHECK(group->group == f.fill);
+    CHECK(group->anchor == f.fill);
     for (std::size_t i = 0; i < group->layers.size(); ++i) {
         const auto* layer = f.project.findEmbroidery(group->layers[i]);
         REQUIRE(layer);
@@ -406,7 +406,7 @@ TEST_CASE("multicolor: five physical thread layers are one undoable blend group"
     const auto reopened = project_io::load_project(path);
     std::filesystem::remove(path);
     REQUIRE(reopened);
-    CHECK(document::find_multi_blend(*reopened, f.fill));
+    CHECK(document::find_gradient_group(*reopened, f.fill));
     const auto restored = project_ops::describe_multicolor_gradient_fill(*reopened, f.fill);
     REQUIRE(restored);
     CHECK(restored->colors == spec.colors);
@@ -417,7 +417,7 @@ TEST_CASE("multicolor: five physical thread layers are one undoable blend group"
     CHECK(f.project.embroidery_objects.front().params == plain.params);
     CHECK_FALSE(f.project.embroidery_objects.front().multi_blend);
     REQUIRE(stack.redo(f.project));
-    REQUIRE(f.project.embroidery_objects.size() == 5);
+    REQUIRE(f.project.embroidery_objects.size() == 6);
 }
 
 TEST_CASE("multicolor: editing layer count, removing group and undo stay atomic",
@@ -433,7 +433,7 @@ TEST_CASE("multicolor: editing layer count, removing group and undo stay atomic"
         project_ops::make_create_multicolor_gradient_fill_command(f.project, f.fill, spec);
     REQUIRE(created);
     stack.execute(std::move(*created), f.project);
-    const auto original = document::find_multi_blend(f.project, f.fill);
+    const auto original = document::find_gradient_group(f.project, f.fill);
     REQUIRE(original);
 
     spec.colors.pop_back();
@@ -441,19 +441,19 @@ TEST_CASE("multicolor: editing layer count, removing group and undo stay atomic"
     auto edited = project_ops::make_edit_multicolor_gradient_fill_command(f.project, f.fill, spec);
     REQUIRE(edited);
     stack.execute(std::move(*edited), f.project);
-    REQUIRE(f.project.embroidery_objects.size() == 3);
+    REQUIRE(f.project.embroidery_objects.size() == 4); // ancre + 3 couches
     CHECK(project_ops::describe_multicolor_gradient_fill(f.project, f.fill)->colors == spec.colors);
     REQUIRE(stack.undo(f.project));
-    REQUIRE(f.project.embroidery_objects.size() == 4);
-    CHECK(document::find_multi_blend(f.project, f.fill)->layers == original->layers);
+    REQUIRE(f.project.embroidery_objects.size() == 5); // ancre + 4 couches
+    CHECK(document::find_gradient_group(f.project, f.fill)->layers == original->layers);
 
     auto remove = project_ops::make_remove_multicolor_gradient_fill_command(f.project, f.fill);
     REQUIRE(remove);
     stack.execute(std::move(*remove), f.project);
-    CHECK_FALSE(document::find_multi_blend(f.project, f.fill));
+    CHECK_FALSE(document::find_gradient_group(f.project, f.fill));
     CHECK(f.project.embroidery_objects.size() == 1);
     REQUIRE(stack.undo(f.project));
-    CHECK(document::find_multi_blend(f.project, f.fill));
+    CHECK(document::find_gradient_group(f.project, f.fill));
 }
 
 TEST_CASE("multicolor: legacy two-color blend upgrades without losing undo",
@@ -471,13 +471,15 @@ TEST_CASE("multicolor: legacy two-color blend upgrades without losing undo",
         project_ops::make_edit_multicolor_gradient_fill_command(f.project, top, multi);
     REQUIRE(conversion);
     stack.execute(std::move(*conversion), f.project);
-    REQUIRE(f.project.embroidery_objects.size() == 3);
+    REQUIRE(f.project.embroidery_objects.size() == 4); // ancre + 3 couches
     CHECK_FALSE(document::find_color_blend(f.project, top));
-    CHECK(document::find_multi_blend(f.project, top));
+    // `top` (ancien dessus) est retiré par la conversion : plus aucune des nouvelles couches ne
+    // réutilise son id. L'ancre, elle, reprend l'id du fond (`f.fill`).
+    CHECK(document::find_gradient_group(f.project, f.fill));
     REQUIRE(stack.undo(f.project));
     REQUIRE(f.project.embroidery_objects.size() == 2);
     CHECK(document::find_color_blend(f.project, top));
-    CHECK_FALSE(document::find_multi_blend(f.project, top));
+    CHECK_FALSE(document::find_gradient_group(f.project, top));
 }
 
 TEST_CASE("multicolor directional: no long stitched bridges across inactive color zones",
@@ -606,7 +608,7 @@ TEST_CASE("multicolor satin: all eight thread regions stay nonempty and reproduc
         project_ops::make_create_multicolor_gradient_fill_command(f.project, f.fill, spec);
     REQUIRE(created);
     stack.execute(std::move(*created), f.project);
-    const auto group = document::find_multi_blend(f.project, f.fill);
+    const auto group = document::find_gradient_group(f.project, f.fill);
     REQUIRE(group);
     REQUIRE(group->layers.size() == 8);
 
@@ -639,7 +641,7 @@ TEST_CASE("multicolor satin: all eight thread regions stay nonempty and reproduc
     REQUIRE(project_io::save_project(satin_file, f.project).has_value());
     const auto reopened_satin = project_io::load_project(satin_file);
     REQUIRE(reopened_satin);
-    const auto reopened_group = document::find_multi_blend(*reopened_satin, f.fill);
+    const auto reopened_group = document::find_gradient_group(*reopened_satin, f.fill);
     REQUIRE(reopened_group);
     CHECK(reopened_group->layers.size() == 8);
     const auto reopened_stitches = stitch_generation::effective_sequence(*reopened_satin);
@@ -720,7 +722,7 @@ TEST_CASE("multicolor satin: distributed traverses create separate machine color
         project_ops::make_create_multicolor_gradient_fill_command(f.project, f.fill, spec);
     REQUIRE(created);
     stack.execute(std::move(*created), f.project);
-    const auto group = document::find_multi_blend(f.project, f.fill);
+    const auto group = document::find_gradient_group(f.project, f.fill);
     REQUIRE(group);
     REQUIRE(group->layers.size() == 3);
     for (const auto id : group->layers) {
@@ -739,12 +741,187 @@ TEST_CASE("multicolor satin: distributed traverses create separate machine color
     REQUIRE(stack.undo(f.project));
     REQUIRE(f.project.embroidery_objects.size() == 1);
     REQUIRE(stack.redo(f.project));
-    CHECK(document::find_multi_blend(f.project, f.fill));
+    CHECK(document::find_gradient_group(f.project, f.fill));
 
     auto remove = project_ops::make_remove_multicolor_gradient_fill_command(f.project, f.fill);
     REQUIRE(remove);
     stack.execute(std::move(*remove), f.project);
-    CHECK_FALSE(document::find_multi_blend(f.project, f.fill));
+    CHECK_FALSE(document::find_gradient_group(f.project, f.fill));
     REQUIRE(f.project.embroidery_objects.size() == 1);
     CHECK(f.project.embroidery_objects[0].is_satin());
+}
+
+// --- API explicite (MulticolorGradientSpec), mission 2026-11-14, Phase 3 ------------------------
+
+TEST_CASE("multicolor gradient object: explicit API creates, reads back and removes an anchor",
+          "[project_ops][gradient][multicolor][object]") {
+    auto f = rectangle_fill();
+    project_ops::MulticolorGradientSpec spec;
+    spec.method = document::GradientMethod::Directional;
+    spec.palette = {document::GradientThread{{10, 20, 220}, std::nullopt},
+                    document::GradientThread{{220, 120, 10}, std::nullopt},
+                    document::GradientThread{{40, 200, 60}, std::nullopt}};
+    spec.transition.from = pt(0, 0);
+    spec.transition.to = pt(30'000, 0);
+
+    commands::UndoStack stack;
+    auto created = project_ops::make_create_multicolor_gradient_command(f.project, f.fill, spec);
+    REQUIRE(created);
+    stack.execute(std::move(*created), f.project);
+    REQUIRE(f.project.embroidery_objects.size() == 4); // ancre + 3 couches
+    REQUIRE(f.project.embroidery_objects[0].id == f.fill);
+    CHECK(f.project.embroidery_objects[0].is_multicolor_gradient());
+
+    const auto described = project_ops::describe_multicolor_gradient(f.project, f.fill);
+    REQUIRE(described);
+    CHECK(described->method == document::GradientMethod::Directional);
+    REQUIRE(described->palette.size() == 3);
+    CHECK(described->palette[1].rgb == spec.palette[1].rgb);
+
+    const auto group = document::find_gradient_group(f.project, f.fill);
+    REQUIRE(group);
+    CHECK(group->anchor == f.fill);
+    CHECK(group->layers.size() == 3);
+    for (const auto id : group->layers) {
+        const auto* layer = f.project.findEmbroidery(id);
+        REQUIRE(layer);
+        CHECK(layer->is_directional());
+    }
+
+    auto edited = spec;
+    edited.palette[0].rgb = {5, 5, 5};
+    auto editCmd = project_ops::make_edit_multicolor_gradient_command(f.project, f.fill, edited);
+    REQUIRE(editCmd);
+    stack.execute(std::move(*editCmd), f.project);
+    CHECK(project_ops::describe_multicolor_gradient(f.project, f.fill)->palette[0].rgb ==
+          std::array<std::uint8_t, 3>{5, 5, 5});
+
+    auto removed = project_ops::make_remove_multicolor_gradient_command(f.project, f.fill);
+    REQUIRE(removed);
+    stack.execute(std::move(*removed), f.project);
+    REQUIRE(f.project.embroidery_objects.size() == 1);
+    CHECK_FALSE(project_ops::describe_multicolor_gradient(f.project, f.fill).has_value());
+    REQUIRE(stack.undo(f.project));
+    REQUIRE(f.project.embroidery_objects.size() == 4);
+    REQUIRE(stack.undo(f.project));
+    REQUIRE(stack.undo(f.project));
+    REQUIRE(f.project.embroidery_objects.size() == 1);
+    CHECK_FALSE(f.project.embroidery_objects.front().is_multicolor_gradient());
+}
+
+TEST_CASE("multicolor gradient object: satin interlaced derives rails when none exist",
+          "[project_ops][gradient][multicolor][object][satin]") {
+    auto f = rectangle_fill(); // Tatami, pas de rails -- rien a reutiliser.
+    REQUIRE_FALSE(std::get_if<document::SatinParams>(&f.project.embroidery_objects[0].params));
+
+    project_ops::MulticolorGradientSpec spec;
+    spec.method = document::GradientMethod::SatinInterlaced;
+    spec.satin_density = Micrometers{400};
+    spec.palette = {document::GradientThread{{255, 0, 0}, std::nullopt},
+                    document::GradientThread{{0, 255, 0}, std::nullopt},
+                    document::GradientThread{{0, 0, 255}, std::nullopt}};
+
+    CHECK(project_ops::multicolor_gradient_incompatibility(f.project, f.fill, spec.method).empty());
+
+    commands::UndoStack stack;
+    auto created = project_ops::make_create_multicolor_gradient_command(f.project, f.fill, spec);
+    REQUIRE(created);
+    stack.execute(std::move(*created), f.project);
+
+    const auto group = document::find_gradient_group(f.project, f.fill);
+    REQUIRE(group);
+    REQUIRE(group->layers.size() == 3);
+    for (const auto id : group->layers) {
+        const auto* layer = f.project.findEmbroidery(id);
+        REQUIRE(layer);
+        REQUIRE(layer->is_satin());
+        const auto& satin = std::get<document::SatinParams>(layer->params);
+        CHECK(satin.rail_a.nodes.size() >= 2);
+        CHECK(satin.rail_b.nodes.size() >= 2);
+    }
+    const auto stitched = stitch_generation::effective_sequence(f.project);
+    REQUIRE(stitched);
+    CHECK(stitched->commands.size() > 10);
+}
+
+TEST_CASE(
+    "multicolor gradient object: satin interlaced is refused on a shape too small for two rails",
+    "[project_ops][gradient][multicolor][object][satin]") {
+    document::Project project;
+    document::VectorObject vec;
+    vec.id = project.object_ids.next();
+    // Contour degenere (tous les sommets confondus) : la distance maximale entre deux sommets
+    // est nulle, `rails_from_contour` refuse toujours ce cas (quel que soit le compte de points
+    // apres fermeture) -- plus robuste qu'un seuil de nombre de sommets pour ce test.
+    geometry::Path triangle;
+    triangle.closed = true;
+    triangle.nodes = {{pt(0, 0), geometry::NodeType::Corner, {}, {}},
+                      {pt(0, 0), geometry::NodeType::Corner, {}, {}},
+                      {pt(0, 0), geometry::NodeType::Corner, {}, {}}};
+    vec.paths.push_back(geometry::PathSet{triangle, {}});
+    document::EmbroideryObject emb;
+    emb.id = project.object_ids.next();
+    emb.source_vector = vec.id;
+    emb.params = document::TatamiParams{};
+    project.vector_objects.push_back(std::move(vec));
+    project.embroidery_objects.push_back(emb);
+
+    const auto why = project_ops::multicolor_gradient_incompatibility(
+        project, emb.id, document::GradientMethod::SatinInterlaced);
+    CHECK_FALSE(why.empty());
+    CHECK(why.find("rails") != std::string::npos);
+    // Message actionnable, pas un simple constat (mission : "ne te contente pas d'afficher
+    // rails manquants").
+    CHECK(why.find("Dessinez") != std::string::npos);
+
+    project_ops::MulticolorGradientSpec spec;
+    spec.method = document::GradientMethod::SatinInterlaced;
+    spec.palette = {document::GradientThread{{255, 0, 0}, std::nullopt},
+                    document::GradientThread{{0, 0, 255}, std::nullopt}};
+    const auto created =
+        project_ops::make_create_multicolor_gradient_command(project, emb.id, spec);
+    CHECK_FALSE(created.has_value());
+}
+
+TEST_CASE("multicolor gradient object: cross hatching layers all stitch at their own angle",
+          "[project_ops][gradient][multicolor][object][crosshatch]") {
+    auto f = rectangle_fill();
+    project_ops::MulticolorGradientSpec spec;
+    spec.method = document::GradientMethod::CrossHatching;
+    spec.crosshatch_layers = 2;
+    spec.crosshatch_angle = Angle{0.0};
+    spec.transition.spacing_from = Micrometers{600};
+    spec.transition.spacing_to = Micrometers{600};
+    spec.palette = {document::GradientThread{{10, 10, 200}, std::nullopt},
+                    document::GradientThread{{200, 10, 10}, std::nullopt},
+                    document::GradientThread{{10, 200, 10}, std::nullopt},
+                    document::GradientThread{{200, 200, 10}, std::nullopt}};
+
+    commands::UndoStack stack;
+    auto created = project_ops::make_create_multicolor_gradient_command(f.project, f.fill, spec);
+    REQUIRE(created);
+    stack.execute(std::move(*created), f.project);
+
+    const auto group = document::find_gradient_group(f.project, f.fill);
+    REQUIRE(group);
+    REQUIRE(group->layers.size() == 4);
+    for (std::size_t i = 0; i < group->layers.size(); ++i) {
+        const auto* layer = f.project.findEmbroidery(group->layers[i]);
+        REQUIRE(layer);
+        REQUIRE(layer->is_directional());
+        const auto& params = std::get<document::DirectionalFillParams>(layer->params);
+        REQUIRE(params.guides.size() == 1);
+        REQUIRE(params.density_gradient);
+        CHECK(params.density_gradient->density_stops[i].weight == Catch::Approx(1.0));
+    }
+    // Les deux premières couches alternent entre deux angles perpendiculaires (0 et 90 degres) ;
+    // chacune doit produire des points reels.
+    const auto stitched = stitch_generation::effective_sequence(f.project);
+    REQUIRE(stitched);
+    CHECK(stitched->commands.size() > 10);
+
+    // Determinisme : deux generations identiques produisent la meme sequence.
+    const auto repeated = stitch_generation::effective_sequence(f.project);
+    REQUIRE(repeated);
+    CHECK(stitched->commands == repeated->commands);
 }

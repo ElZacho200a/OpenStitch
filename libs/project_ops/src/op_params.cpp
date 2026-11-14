@@ -1205,9 +1205,9 @@ std::string params_catalog_text() {
     out += "cross_stitch : " + join(field_names(fields_of<document::CrossStitchParams>())) + " ; ";
     out += "applique : " + join(field_names(fields_of<document::AppliqueParams>())) + " ; ";
     out += "multicolor_gradient : " +
-           join(field_names(fields_of<document::MulticolorGradientParams>())) +
-           " (palette/transition : commande dédiée, hors set_params). ";
-    out += "Suffixe _mm = millimètres, _deg = degrés ; énumérations en chaîne";
+           join(field_names(fields_of<document::MulticolorGradientParams>())) + " ; ";
+    out += "Suffixe _mm = millimètres, _deg = degrés ; énumérations en chaîne. Palette et "
+           "transition du fondu multicolore : commande dédiée, hors set_params";
     return out;
 }
 
