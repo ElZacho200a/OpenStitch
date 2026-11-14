@@ -64,7 +64,7 @@ def valid_png(path: Path):
     import zlib
     try:
         data = path.read_bytes()
-        if not data.startswith(b"\\x89PNG\\r\\n\\x1a\\n"):
+        if not data.startswith(b"\x89PNG\r\n\x1a\n"):
             return False
         pos = 8
         seen_ihdr = seen_idat = False
