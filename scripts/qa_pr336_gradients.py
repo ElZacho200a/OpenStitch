@@ -292,14 +292,19 @@ def verify_ci_source_sha():
                                 text=True, check=True)
         return result.stdout.strip().lower()
     checkout = git("rev-parse", "HEAD")
-    parents = git("rev-list", "--parents", "-n", "1", "HEAD").split()
+    # GitHub Actions checkout defaults to fetch-depth: 1. rev-list treats a
+    # shallow checkout commit as a root and omits its parents, even when the
+    # commit object itself records the merge parents. Read that object instead.
+    commit_object = git("cat-file", "-p", "HEAD")
+    parents = [line.split(" ", 1)[1] for line in commit_object.splitlines()
+               if line.startswith("parent ")]
     github_sha = os.environ.get("GITHUB_SHA", "").strip().lower()
     if github_sha and checkout != github_sha:
         raise RuntimeError(f"QA checkout {checkout} differs from GITHUB_SHA {github_sha}")
-    if checkout != expected and (len(parents) < 3 or parents[2] != expected):
+    if checkout != expected and (len(parents) < 2 or parents[1] != expected):
         raise RuntimeError(
             f"QA source mismatch: expected PR head {expected}, checkout {checkout}, "
-            f"parents {parents[1:]}; refusing to attribute results to another SHA")
+            f"parents {parents}; refusing to attribute results to another SHA")
     print("QA SOURCE VERIFIED:", json.dumps({
         "checkout_sha": checkout, "pr_head_sha": expected,
         "checkout_kind": "head" if checkout == expected else "merge"
