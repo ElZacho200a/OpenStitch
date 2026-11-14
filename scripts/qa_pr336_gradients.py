@@ -88,6 +88,10 @@ def valid_png(path: Path):
             elif kind == b"IHDR":
                 return False
             if kind == b"IDAT":
+                # A zero-length IDAT sequence is not an image preview.
+                # Do not accept an IDAT before IHDR or after unrelated chunks.
+                if size == 0 and not seen_idat:
+                    return False
                 seen_idat = True
             if kind == b"IEND":
                 return size == 0 and seen_idat and end == len(data)
