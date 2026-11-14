@@ -277,7 +277,37 @@ def large_design_benchmarks():
     return benchmarks
 
 
+def verify_ci_source_sha():
+    """Reject a QA run using a checkout unrelated to the advertised PR head.
+
+    GitHub pull_request checkouts normally use a synthetic merge commit, so
+    GITHUB_SHA is *not* the PR head. The merge commit's second parent must be
+    the head SHA. Direct-head checkouts are also supported.
+    """
+    expected = os.environ.get("OPENSTITCH_PR_HEAD_SHA", "").strip().lower()
+    if not expected:
+        return
+    def git(*args):
+        result = subprocess.run(["git", *args], cwd=ROOT, capture_output=True,
+                                text=True, check=True)
+        return result.stdout.strip().lower()
+    checkout = git("rev-parse", "HEAD")
+    parents = git("rev-list", "--parents", "-n", "1", "HEAD").split()
+    github_sha = os.environ.get("GITHUB_SHA", "").strip().lower()
+    if github_sha and checkout != github_sha:
+        raise RuntimeError(f"QA checkout {checkout} differs from GITHUB_SHA {github_sha}")
+    if checkout != expected and (len(parents) < 3 or parents[2] != expected):
+        raise RuntimeError(
+            f"QA source mismatch: expected PR head {expected}, checkout {checkout}, "
+            f"parents {parents[1:]}; refusing to attribute results to another SHA")
+    print("QA SOURCE VERIFIED:", json.dumps({
+        "checkout_sha": checkout, "pr_head_sha": expected,
+        "checkout_kind": "head" if checkout == expected else "merge"
+    }), flush=True)
+
+
 def build():
+    verify_ci_source_sha()
     if not CLI.is_file():
         raise RuntimeError(f"CI executable missing: {CLI}")
     base = OUT / "base.osp"
