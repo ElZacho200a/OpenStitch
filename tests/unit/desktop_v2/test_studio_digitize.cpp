@@ -367,7 +367,7 @@ void StudioDigitizeTest::multicolorFadeJourney() {
     QVERIFY(rig.fade.createMulticolor(colors, true, 1, 0));
     QTRY_VERIFY(rig.fade.multiFade());
     QCOMPARE(rig.fade.colors().size(), 4);
-    QCOMPARE(rig.session.project().embroidery_objects.size(), std::size_t{4});
+    QCOMPARE(rig.session.project().embroidery_objects.size(), std::size_t{5}); // ancre + 4 couches
     QCOMPARE(rig.steps(), depth + 1);
     QVERIFY(sequenceOf(rig.session).commands != original.commands);
 
@@ -417,7 +417,7 @@ void StudioDigitizeTest::multicolorFadeJourney() {
     QVERIFY(rig.fade.editMulticolor(smaller, true, 3, 1));
     QTRY_COMPARE(rig.fade.colors().size(), 3);
     QTRY_COMPARE(rig.fade.layerCurve(1), 4);
-    QCOMPARE(rig.session.project().embroidery_objects.size(), std::size_t{3});
+    QCOMPARE(rig.session.project().embroidery_objects.size(), std::size_t{4}); // ancre + 3 couches
 
     QVERIFY(rig.fade.remove());
     QTRY_VERIFY(!rig.fade.hasFade());
@@ -782,7 +782,13 @@ void StudioDigitizeTest::mainQmlHostsDigitizePanels() {
     QCOMPARE(fade.colors().size(), 3);
     QVERIFY(!fade.complementary());
     QCOMPARE(fade.geometry(), 2);
-    QCOMPARE(session.project().embroidery_objects.size(), std::size_t{3});
+    QCOMPARE(session.project().embroidery_objects.size(), std::size_t{4}); // ancre + 3 couches
+    for (int method = 0; method < 5; ++method) {
+        QVERIFY(named(window, qPrintable(QStringLiteral("fadeMethod%1").arg(method))));
+    }
+    QVERIFY(press(window, "fadeMethod2"));
+    QVERIFY(press(window, "fadeEdit"));
+    QTRY_COMPARE(fade.method(), 2); // passé empiétant réellement appliqué depuis le QML
     auto* fadeAngle = named(window, "fadeAngle");
     auto* fadeAngleApply = named(window, "fadeAngleApply");
     QVERIFY(fadeAngle && fadeAngleApply);
@@ -801,7 +807,7 @@ void StudioDigitizeTest::mainQmlHostsDigitizePanels() {
     QTRY_VERIFY(named(window, "fadeColor3") != nullptr);
     QVERIFY(press(window, "fadeEdit"));
     QTRY_COMPARE(fade.colors().size(), 4);
-    QCOMPARE(session.project().embroidery_objects.size(), std::size_t{4});
+    QCOMPARE(session.project().embroidery_objects.size(), std::size_t{5}); // ancre + 4 couches
     QVERIFY(press(window, "fadeRemove"));
     QTRY_VERIFY(!fade.hasFade());
     QCOMPARE(session.project().embroidery_objects.size(), std::size_t{1});

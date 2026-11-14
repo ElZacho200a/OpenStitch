@@ -23,11 +23,17 @@ quand aucun n'existe (`stitch_generation::rails_from_contour`), et une vraie ent
 sélecteur de type de Studio (`inspector_model.cpp`/`Inspector.qml`, remplace l'adaptateur virtuel
 transitoire de la PR #341 initiale).
 
-Non fait (sections encore valables ci-dessous) : panneau dédié dans l'ordre méthode/palette/
-géométrie/mélange/réglages spécifiques/optimisation/avancé demandé par la mission (`FadeProperties.
-qml` reste construit autour de l'ancien modèle texture/géométrie entier) ; édition manuelle des
-rails satin entrelacés depuis l'UI ; isolement des couches physiques hors sélection/arbre d'objets ;
-assistant de camaïeu basé sur une bibliothèque de fils réels (toujours couleurs libres).
+Le panneau partagé `FadeProperties.qml` expose désormais les cinq méthodes en premier, puis la
+palette, la géométrie, le mélange et les réglages propres à la méthode : densité du satin
+entrelacé, nombre de directions et angle initial des hachures croisées. Le service desktop relit et
+édite la spec autonome complète ; l'angle de transition reste modifiable pour les méthodes non
+radiales. Le cas de la PR #340 est absorbé par une correction plus complète : un satin sans rails
+manuels est réellement créé grâce aux rails dérivés du contour, au lieu de seulement afficher un
+diagnostic plus précis.
+
+Non fait (sections encore valables ci-dessous) : édition manuelle des rails satin entrelacés depuis
+l'UI ; isolement des couches physiques hors sélection/arbre d'objets ; assistant de camaïeu basé
+sur une bibliothèque de fils réels (toujours couleurs libres) ; mesures et recette textile.
 
 ## État de la branche PR #336
 
