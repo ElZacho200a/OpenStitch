@@ -156,6 +156,20 @@ Item {
             SectionLabel { text: qsTr("FONDU DE COULEURS · FILS") }
 
             Text {
+                objectName: root.prefix + "SatinAvailability"
+                Layout.fillWidth: true
+                visible: root.satinTarget
+                text: root.hasFade || root.canCreate
+                      ? qsTr("Satin entrelacé disponible : faites défiler jusqu'à « SATIN ENTRELACÉ MULTICOLORE ».")
+                      : qsTr("Satin sélectionné, mais entrelacement indisponible : %1")
+                            .arg(root.ready ? root.controller.incompatibility : "")
+                color: root.hasFade || root.canCreate ? Theme.faint : Theme.warning
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.smallSize
+                wrapMode: Text.WordWrap
+            }
+
+            Text {
                 objectName: root.prefix + "Summary"
                 Layout.fillWidth: true
                 color: Theme.faint
