@@ -210,6 +210,9 @@ def dst_quality(path: Path):
     needle = jumps = colors = bad_diag = 0
     bad_len = 0.0
     worst = 0.0
+    jump_length = 0.0
+    worst_jump = 0.0
+    jumps_over_5mm = 0
     for offset in range(0, len(blob) - 2, 3):
         a, b, c = blob[offset:offset+3]
         if c == 0xF3:
@@ -232,6 +235,10 @@ def dst_quality(path: Path):
         length = 0.1 * math.hypot(dx, dy)
         if c & 0x80:
             jumps += 1
+            jump_length += length
+            worst_jump = max(worst_jump, length)
+            if length > 5.0:
+                jumps_over_5mm += 1
         else:
             needle += 1
             worst = max(worst, length)
@@ -240,7 +247,11 @@ def dst_quality(path: Path):
                 bad_len += length
     return {"stitches": needle, "jumps": jumps, "color_changes": colors,
             "diagonals_over_5mm": bad_diag, "diagonal_length_mm": round(bad_len, 1),
-            "max_needle_step_mm": round(worst, 2)}
+            "max_needle_step_mm": round(worst, 2),
+            "jump_ratio": round(jumps / needle, 4) if needle else None,
+            "jump_distance_mm": round(jump_length, 1),
+            "max_jump_step_mm": round(worst_jump, 2),
+            "jumps_over_5mm": jumps_over_5mm}
 
 def scale_for_benchmark(document, factor):
     """Scale the design geometry while retaining *physical* stitch spacing."""
@@ -483,6 +494,9 @@ def build():
                     entry["name"] + ": excessive satin travel (" +
                     str(stats["jumps"]) + " jumps / " +
                     str(stats["stitches"]) + " stitches; max 1/3)")
+        # Report travel separately from sewn diagonals. DST jump commands
+        # move the hoop without needle-down and must not be scored as unsafe
+        # sewn connectors, but their distance matters for routing efficiency.
         if entry["dst_quality"] and entry["dst_quality"]["diagonals_over_5mm"] > 0:
             quality_failures.append(
                 entry["name"] + ": " + str(entry["dst_quality"]["diagonals_over_5mm"])
