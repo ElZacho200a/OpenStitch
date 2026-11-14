@@ -388,17 +388,25 @@ make_remove_gradient_fill_command(const document::Project& project, ObjectId lay
 
 namespace {
 
+document::DensityTexture texture_for_method(document::GradientMethod method) {
+    switch (method) {
+    case document::GradientMethod::LongAndShort:
+        return document::DensityTexture::LongShort;
+    case document::GradientMethod::ControlledScatter:
+        return document::DensityTexture::Stippled;
+    default:
+        return document::DensityTexture::None;
+    }
+}
+
 // L'unique définition du comportement multicolore. Chaque fil dispose d'un
 // profil triangulaire à N arrêts. Entre deux teintes voisines, les poids sont
 // (1-u,u) : leur somme est 1 sans nécessiter N mélanges binaires.
 std::optional<std::vector<document::EmbroideryObject>>
 multicolor_layers(const document::EmbroideryObject& base,
-                  const std::vector<geometry::PathSet>& shape, const MultiGradientFillSpec& spec) {
-    const std::size_t n = spec.colors.size();
+                  const std::vector<geometry::PathSet>& shape, const MulticolorGradientSpec& spec) {
+    const std::size_t n = spec.palette.size();
     if (n < 2 || n > 8) {
-        return std::nullopt;
-    }
-    if (!spec.layer_curves.empty() && spec.layer_curves.size() != n) {
         return std::nullopt;
     }
     if (const auto* satin = std::get_if<document::SatinParams>(&base.params)) {
@@ -417,8 +425,8 @@ multicolor_layers(const document::EmbroideryObject& base,
                 params.underlay_mode = document::UnderlayMode::Manual;
             }
             next.params = std::move(params);
-            next.rgb = spec.colors[i];
-            next.thread.reset();
+            next.rgb = spec.palette[i].rgb;
+            next.thread = spec.palette[i].thread;
             next.color_blend.reset();
             next.multi_blend.reset();
             next.overrides.clear();
@@ -428,7 +436,8 @@ multicolor_layers(const document::EmbroideryObject& base,
         }
         return layers;
     }
-    auto templateGradient = spec.gradient;
+    auto templateGradient = spec.transition;
+    templateGradient.texture = texture_for_method(spec.method);
     templateGradient.density_stops.clear();
     auto pair =
         stitch_generation::make_color_blend_layers(base, base, shape, templateGradient, true);
@@ -444,9 +453,7 @@ multicolor_layers(const document::EmbroideryObject& base,
         auto layer = (i == 0) ? pair->first : pair->second;
         auto params = (i == 0) ? baseParams : topParams;
         auto gradient = templateGradient;
-        if (!spec.layer_curves.empty()) {
-            gradient.curve = spec.layer_curves[i];
-        }
+        gradient.curve = spec.palette[i].curve;
         gradient.spacing_from = gradient.spacing_to = spacing;
         gradient.interpolate_density = true;
         gradient.density_stops.reserve(n);
@@ -469,8 +476,8 @@ multicolor_layers(const document::EmbroideryObject& base,
         params.underlay_parallel = false;
         params.underlay_zigzag = false;
         layer.params = std::move(params);
-        layer.rgb = spec.colors[i];
-        layer.thread.reset(); // palette libre, pas de fil réel inventé
+        layer.rgb = spec.palette[i].rgb;
+        layer.thread = spec.palette[i].thread;
         layer.color_blend.reset();
         layer.multi_blend.reset();
         layer.overrides.clear();
@@ -526,39 +533,6 @@ bool validate_palette(const std::vector<document::GradientThread>& palette) {
         }
     }
     return true;
-}
-
-// Texture du générateur directionnel qui réalise `method` (Phase 3, mission 2026-11-14) :
-// Directional/LongAndShort/ControlledScatter partagent le même générateur, seule la texture du
-// `DensityGradient` change -- aucun nouvel algorithme de points.
-document::DensityTexture texture_for_method(document::GradientMethod method) {
-    switch (method) {
-    case document::GradientMethod::LongAndShort:
-        return document::DensityTexture::LongShort;
-    case document::GradientMethod::ControlledScatter:
-        return document::DensityTexture::Stippled;
-    default:
-        return document::DensityTexture::None;
-    }
-}
-
-MultiGradientFillSpec to_legacy_spec(const MulticolorGradientSpec& spec) {
-    MultiGradientFillSpec legacy;
-    legacy.colors.reserve(spec.palette.size());
-    legacy.layer_curves.reserve(spec.palette.size());
-    bool anyCurve = false;
-    for (const auto& thread : spec.palette) {
-        legacy.colors.push_back(thread.rgb);
-        legacy.layer_curves.push_back(thread.curve);
-        anyCurve = anyCurve || thread.curve != document::DensityCurve::Linear;
-    }
-    if (!anyCurve) {
-        legacy.layer_curves.clear();
-    }
-    legacy.gradient = spec.transition;
-    legacy.gradient.texture = texture_for_method(spec.method);
-    legacy.complementary = spec.complementary;
-    return legacy;
 }
 
 // Ligne guide droite traversant `shape` à `angle` (modèle, Y vers le haut), centrée sur sa boîte
@@ -650,7 +624,6 @@ gradient_object_layers(const document::EmbroideryObject& base,
     if (spec.method == document::GradientMethod::CrossHatching) {
         return crosshatch_layers(base, shape, spec);
     }
-    const auto legacy = to_legacy_spec(spec);
     if (spec.method == document::GradientMethod::SatinInterlaced) {
         document::EmbroideryObject satinBase = base;
         const auto* existing = std::get_if<document::SatinParams>(&base.params);
@@ -670,7 +643,7 @@ gradient_object_layers(const document::EmbroideryObject& base,
             satin.density = spec.satin_density;
             satinBase.params = std::move(satin);
         }
-        return multicolor_layers(satinBase, shape, legacy);
+        return multicolor_layers(satinBase, shape, spec);
     }
     document::EmbroideryObject layerBase = base;
     if (std::holds_alternative<document::SatinParams>(layerBase.params)) {
@@ -678,25 +651,7 @@ gradient_object_layers(const document::EmbroideryObject& base,
         // directionnel neuf (comme `multicolor_layers` le fait déjà pour tout `base` non satin).
         layerBase.params = document::DirectionalFillParams{};
     }
-    return multicolor_layers(layerBase, shape, legacy);
-}
-
-bool validate_multicolor(const MultiGradientFillSpec& spec) {
-    if (spec.colors.size() < 2 || spec.colors.size() > 8 ||
-        (!spec.layer_curves.empty() && spec.layer_curves.size() != spec.colors.size())) {
-        return false;
-    }
-    for (const auto curve : spec.layer_curves) {
-        if (static_cast<int>(curve) > static_cast<int>(document::DensityCurve::ConcaveConvex)) {
-            return false;
-        }
-    }
-    for (std::size_t i = 1; i < spec.colors.size(); ++i) {
-        if (spec.colors[i] == spec.colors[i - 1]) {
-            return false;
-        }
-    }
-    return true;
+    return multicolor_layers(layerBase, shape, spec);
 }
 
 document::MulticolorGradientParams anchor_params_from_spec(const MulticolorGradientSpec& spec) {
@@ -759,10 +714,9 @@ build_gradient_anchor_command(document::Project& project, const document::Embroi
 
 // --- Fondu multicolore AUTONOME (mission 2026-11-14, Phase 3) -----------------------------------
 //
-// API primaire : l'ancre (`document::MulticolorGradientParams`) porte palette/transition/méthode
-// de façon permanente. Les fonctions historiques ci-dessous (`*_multicolor_gradient_fill_*`,
-// `MultiGradientFillSpec`) deviennent de simples adaptateurs vers celle-ci, pour les appelants
-// existants (Studio, tests) qui n'ont pas encore de méthode explicite.
+// API unique : l'ancre (`document::MulticolorGradientParams`) porte palette/transition/méthode
+// de façon permanente. La conversion d'un ancien couple `ColorBlendLink` est traitée directement
+// dans `make_edit_multicolor_gradient_command`, sans architecture n-aire parallèle.
 
 std::optional<MulticolorGradientSpec> describe_multicolor_gradient(const document::Project& project,
                                                                    ObjectId anchorOrMember) {
@@ -870,7 +824,24 @@ make_edit_multicolor_gradient_command(document::Project& project, ObjectId ancho
     }
     const auto group = document::find_gradient_group(project, anchorOrMember);
     if (!group) {
-        return fail(ErrorCategory::OperationImpossible, "Aucun fondu multicolore sélectionné.");
+        // Upgrade contrôlé d'un ancien fondu binaire : l'objet de fond devient l'ancre et
+        // l'ancienne couche de dessus est retirée dans le même pas d'annulation.
+        const auto legacy = document::find_color_blend(project, anchorOrMember);
+        if (!legacy) {
+            return fail(ErrorCategory::OperationImpossible, "Aucun fondu multicolore sélectionné.");
+        }
+        const auto* base = project.findEmbroidery(legacy->background);
+        if (base == nullptr) {
+            return fail(ErrorCategory::OperationImpossible, "Couche de fond introuvable.");
+        }
+        auto inner = build_gradient_anchor_command(project, *base, spec, true, legacy->foreground);
+        if (!inner) {
+            return inner;
+        }
+        auto batch = std::make_unique<commands::CompositeCommand>("Modifier le fondu multicolore");
+        batch->add(std::move(*inner));
+        batch->add(std::make_unique<commands::RemoveEmbroideryObjectCommand>(legacy->foreground));
+        return std::unique_ptr<commands::ICommand>(std::move(batch));
     }
     const auto* anchor = project.findEmbroidery(group->anchor);
     const auto* templateBase = project.findEmbroidery(group->layers.front());
@@ -954,131 +925,6 @@ make_remove_multicolor_gradient_command(const document::Project& project, Object
         batch->add(std::make_unique<commands::RemoveEmbroideryObjectCommand>(layerId));
     }
     return std::unique_ptr<commands::ICommand>(std::move(batch));
-}
-
-// --- Adaptateurs historiques (MultiGradientFillSpec, méthode devinée depuis la texture) ---------
-
-namespace {
-
-document::GradientMethod infer_method(const document::EmbroideryObject* base,
-                                      document::DensityTexture texture) {
-    if (base != nullptr && base->is_satin()) {
-        return document::GradientMethod::SatinInterlaced;
-    }
-    switch (texture) {
-    case document::DensityTexture::LongShort:
-        return document::GradientMethod::LongAndShort;
-    case document::DensityTexture::Stippled:
-        return document::GradientMethod::ControlledScatter;
-    default:
-        return document::GradientMethod::Directional;
-    }
-}
-
-MulticolorGradientSpec from_legacy_spec(const MultiGradientFillSpec& spec,
-                                        const document::EmbroideryObject* base) {
-    MulticolorGradientSpec unified;
-    unified.method = infer_method(base, spec.gradient.texture);
-    unified.transition = spec.gradient;
-    unified.complementary = spec.complementary;
-    unified.palette.reserve(spec.colors.size());
-    for (std::size_t i = 0; i < spec.colors.size(); ++i) {
-        document::GradientThread thread;
-        thread.rgb = spec.colors[i];
-        if (i < spec.layer_curves.size()) {
-            thread.curve = spec.layer_curves[i];
-        }
-        unified.palette.push_back(thread);
-    }
-    return unified;
-}
-
-} // namespace
-
-std::optional<MultiGradientFillSpec>
-describe_multicolor_gradient_fill(const document::Project& project, ObjectId layer) {
-    const auto full = describe_multicolor_gradient(project, layer);
-    if (!full) {
-        return std::nullopt;
-    }
-    MultiGradientFillSpec spec;
-    spec.gradient = full->transition;
-    spec.complementary = full->complementary;
-    bool anyCurve = false;
-    for (const auto& thread : full->palette) {
-        spec.colors.push_back(thread.rgb);
-        spec.layer_curves.push_back(thread.curve);
-        anyCurve = anyCurve || thread.curve != document::DensityCurve::Linear;
-    }
-    if (!anyCurve) {
-        spec.layer_curves.clear();
-    }
-    return spec;
-}
-
-Result<std::unique_ptr<commands::ICommand>>
-make_create_multicolor_gradient_fill_command(document::Project& project, ObjectId fill,
-                                             const MultiGradientFillSpec& spec) {
-    if (!validate_multicolor(spec)) {
-        return fail(ErrorCategory::OperationImpossible,
-                    "Choisissez un remplissage unique et entre 2 et 8 fils distincts.");
-    }
-    const auto* base = project.findEmbroidery(fill);
-    return make_create_multicolor_gradient_command(project, fill, from_legacy_spec(spec, base));
-}
-
-Result<std::unique_ptr<commands::ICommand>>
-make_edit_multicolor_gradient_fill_command(document::Project& project, ObjectId member,
-                                           const MultiGradientFillSpec& spec) {
-    if (!validate_multicolor(spec)) {
-        return fail(ErrorCategory::OperationImpossible,
-                    "Entre 2 et 8 couleurs consécutives distinctes.");
-    }
-    if (const auto group = document::find_gradient_group(project, member)) {
-        // Préserve la méthode et ses réglages propres (absents de `MultiGradientFillSpec`) :
-        // ne JAMAIS la redeviner depuis la texture, qui romprait un satin entrelacé existant
-        // dès que l'appelant passe `member` = l'ancre (jamais satin elle-même).
-        auto unified = from_legacy_spec(spec, project.findEmbroidery(group->layers.front()));
-        if (const auto current = describe_multicolor_gradient(project, member)) {
-            unified.method = current->method;
-            unified.satin_density = current->satin_density;
-            unified.crosshatch_layers = current->crosshatch_layers;
-            unified.crosshatch_angle = current->crosshatch_angle;
-        }
-        return make_edit_multicolor_gradient_command(project, member, unified);
-    }
-    // Ancien fondu à deux fils (ColorBlendLink) : upgrade en un seul pas d'annulation, comme
-    // avant -- `build_gradient_anchor_command` déliera le lien dans le MÊME lot.
-    const auto legacy = document::find_color_blend(project, member);
-    if (!legacy) {
-        return fail(ErrorCategory::OperationImpossible, "Aucun fondu de fils éditable.");
-    }
-    const auto* base = project.findEmbroidery(legacy->background);
-    if (base == nullptr) {
-        return fail(ErrorCategory::OperationImpossible, "Couche de fond introuvable.");
-    }
-    // Pas d'appel à `multicolor_gradient_incompatibility` ici : son premier refus serait "déjà un
-    // fondu à deux fils", exactement le cas attendu de cette conversion. `build_gradient_anchor_
-    // command` échoue proprement (via `gradient_object_layers`) si la géométrie/méthode ne
-    // convient pas (ex. satin entrelacé sans rails dérivables).
-    auto inner = build_gradient_anchor_command(project, *base, from_legacy_spec(spec, base), true,
-                                               legacy->foreground);
-    if (!inner) {
-        return inner;
-    }
-    // `build_gradient_anchor_command` ne connaît que `base` (devenu l'ancre) : l'ancienne couche
-    // de dessus (`legacy->foreground`) n'est réutilisée par AUCUNE des nouvelles couches
-    // physiques (ids tous neufs) -- sans ce retrait, elle resterait un objet fantôme, délié mais
-    // jamais supprimé.
-    auto batch = std::make_unique<commands::CompositeCommand>("Modifier le fondu multicolore");
-    batch->add(std::move(*inner));
-    batch->add(std::make_unique<commands::RemoveEmbroideryObjectCommand>(legacy->foreground));
-    return std::unique_ptr<commands::ICommand>(std::move(batch));
-}
-
-Result<std::unique_ptr<commands::ICommand>>
-make_remove_multicolor_gradient_fill_command(const document::Project& project, ObjectId member) {
-    return make_remove_multicolor_gradient_command(project, member);
 }
 
 } // namespace openstitch::project_ops

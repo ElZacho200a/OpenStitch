@@ -136,11 +136,11 @@ TEST_CASE("a multicolor fade angle rotates one shared axis and undo restores it"
     const auto beforeAngle = readFadeAngle(f.session.project(), f.id);
     REQUIRE(beforeAngle.has_value());
     const auto before =
-        project_ops::describe_multicolor_gradient_fill(f.session.project(), ObjectId{f.id});
+        project_ops::describe_multicolor_gradient(f.session.project(), ObjectId{f.id});
     REQUIRE(before.has_value());
     const double beforeLength = std::hypot(
-        static_cast<double>(before->gradient.to.x.value - before->gradient.from.x.value),
-        static_cast<double>(before->gradient.to.y.value - before->gradient.from.y.value));
+        static_cast<double>(before->transition.to.x.value - before->transition.from.x.value),
+        static_cast<double>(before->transition.to.y.value - before->transition.from.y.value));
     const auto depth = f.session.undoNames().size();
 
     REQUIRE(setFadeAngle(f.session, f.id, 90.0).ok);
@@ -148,11 +148,11 @@ TEST_CASE("a multicolor fade angle rotates one shared axis and undo restores it"
     REQUIRE(readFadeAngle(f.session.project(), f.id).has_value());
     CHECK(std::abs(*readFadeAngle(f.session.project(), f.id) - 90.0) < 0.01);
     const auto after =
-        project_ops::describe_multicolor_gradient_fill(f.session.project(), ObjectId{f.id});
+        project_ops::describe_multicolor_gradient(f.session.project(), ObjectId{f.id});
     REQUIRE(after.has_value());
-    const double afterLength =
-        std::hypot(static_cast<double>(after->gradient.to.x.value - after->gradient.from.x.value),
-                   static_cast<double>(after->gradient.to.y.value - after->gradient.from.y.value));
+    const double afterLength = std::hypot(
+        static_cast<double>(after->transition.to.x.value - after->transition.from.x.value),
+        static_cast<double>(after->transition.to.y.value - after->transition.from.y.value));
     CHECK(std::abs(afterLength - beforeLength) < 2.0); // arrondi entier en micromètres
 
     REQUIRE(f.session.undo());

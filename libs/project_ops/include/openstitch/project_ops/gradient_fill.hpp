@@ -109,42 +109,8 @@ make_edit_gradient_fill_command(const document::Project& project, ObjectId layer
 [[nodiscard]] Result<std::unique_ptr<commands::ICommand>>
 make_remove_gradient_fill_command(const document::Project& project, ObjectId layer);
 
-// Camaïeu réellement multicolore : une forme logique, 2..8 fils cousus dans
-// l'ordre de la liste. Les densités par couche sont des courbes en cloche
-// piecewise-linéaires, dont la somme vaut 1 en mode complémentaire.
-struct MultiGradientFillSpec {
-    using Rgb = std::array<std::uint8_t, 3>;
-    std::vector<Rgb> colors;
-    document::DensityGradient gradient;
-    // Profil de chaque fil indépendant (comme Multi Blend). Vide = profil
-    // commun historique ; sinon un profil par couche physique.
-    std::vector<document::DensityCurve> layer_curves;
-    bool complementary{true};
-};
-
-// Relit N fils et leur axe depuis un membre quelconque du groupe.
-[[nodiscard]] std::optional<MultiGradientFillSpec>
-describe_multicolor_gradient_fill(const document::Project& project, ObjectId layer);
-
-// Créer, rééditer (également convertir un ancien fondu à deux fils) et
-// supprimer : chaque opération produit UNE commande annulable, pas une
-// succession de fondus binaires. L'allocation d'IDs utilise le compteur
-// documentaire habituel.
-[[nodiscard]] Result<std::unique_ptr<commands::ICommand>>
-make_create_multicolor_gradient_fill_command(document::Project& project, ObjectId fill,
-                                             const MultiGradientFillSpec& spec);
-
-[[nodiscard]] Result<std::unique_ptr<commands::ICommand>>
-make_edit_multicolor_gradient_fill_command(document::Project& project, ObjectId member,
-                                           const MultiGradientFillSpec& spec);
-
-[[nodiscard]] Result<std::unique_ptr<commands::ICommand>>
-make_remove_multicolor_gradient_fill_command(const document::Project& project, ObjectId member);
-
 // Fondu multicolore AUTONOME (mission 2026-11-14) : spec complète d'un objet ancre
-// (`document::MulticolorGradientParams`), méthode EXPLICITE -- contrairement à
-// `MultiGradientFillSpec` qui la devine depuis `gradient.texture` pour la compatibilité des
-// fonctions historiques ci-dessus (désormais de simples adaptateurs vers celles-ci).
+// (`document::MulticolorGradientParams`), méthode explicite et palette persistante.
 struct MulticolorGradientSpec {
     document::GradientMethod method{document::GradientMethod::Directional};
     std::vector<document::GradientThread> palette; // 2..8, de l'arrière vers l'avant

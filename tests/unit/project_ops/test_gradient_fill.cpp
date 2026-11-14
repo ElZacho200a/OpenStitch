@@ -68,6 +68,74 @@ ObjectId make_gradient(Fixture& f, commands::UndoStack& stack, GradientFillSpec*
     return f.project.embroidery_objects[1].id;
 }
 
+// Adaptateur de test local pour conserver la lisibilité des scénarios PR #336 tout en exerçant
+// exclusivement l'API autonome publique. L'ancien MultiGradientFillSpec n'existe plus en prod.
+struct LegacyGradientSpec {
+    std::vector<std::array<std::uint8_t, 3>> colors;
+    document::DensityGradient gradient;
+    std::vector<document::DensityCurve> layer_curves;
+    bool complementary{true};
+};
+
+project_ops::MulticolorGradientSpec autonomous(const LegacyGradientSpec& legacy) {
+    project_ops::MulticolorGradientSpec spec;
+    spec.transition = legacy.gradient;
+    spec.complementary = legacy.complementary;
+    switch (legacy.gradient.texture) {
+    case document::DensityTexture::LongShort:
+        spec.method = document::GradientMethod::LongAndShort;
+        break;
+    case document::DensityTexture::Stippled:
+        spec.method = document::GradientMethod::ControlledScatter;
+        break;
+    default:
+        spec.method = document::GradientMethod::Directional;
+        break;
+    }
+    for (std::size_t i = 0; i < legacy.colors.size(); ++i) {
+        spec.palette.push_back({legacy.colors[i], std::nullopt,
+                                i < legacy.layer_curves.size() ? legacy.layer_curves[i]
+                                                               : document::DensityCurve::Linear});
+    }
+    return spec;
+}
+
+std::optional<LegacyGradientSpec> describe_legacy(const document::Project& project, ObjectId id) {
+    const auto current = project_ops::describe_multicolor_gradient(project, id);
+    if (!current) {
+        return std::nullopt;
+    }
+    LegacyGradientSpec legacy;
+    legacy.gradient = current->transition;
+    legacy.complementary = current->complementary;
+    for (const auto& thread : current->palette) {
+        legacy.colors.push_back(thread.rgb);
+        legacy.layer_curves.push_back(thread.curve);
+    }
+    return legacy;
+}
+
+Result<std::unique_ptr<commands::ICommand>>
+create_multicolor(document::Project& project, ObjectId fill, const LegacyGradientSpec& spec) {
+    auto next = autonomous(spec);
+    if (const auto* base = project.findEmbroidery(fill); base != nullptr && base->is_satin()) {
+        next.method = document::GradientMethod::SatinInterlaced;
+    }
+    return project_ops::make_create_multicolor_gradient_command(project, fill, next);
+}
+
+Result<std::unique_ptr<commands::ICommand>>
+edit_multicolor(document::Project& project, ObjectId member, const LegacyGradientSpec& spec) {
+    auto next = autonomous(spec);
+    if (const auto current = project_ops::describe_multicolor_gradient(project, member)) {
+        next.method = current->method;
+        next.satin_density = current->satin_density;
+        next.crosshatch_layers = current->crosshatch_layers;
+        next.crosshatch_angle = current->crosshatch_angle;
+    }
+    return project_ops::make_edit_multicolor_gradient_command(project, member, next);
+}
+
 } // namespace
 
 TEST_CASE("gradient fill: uniform to gradient and back is one undo step each",
@@ -352,7 +420,7 @@ TEST_CASE("multicolor: five physical thread layers are one undoable blend group"
     const auto plain = f.project.embroidery_objects.front();
     const auto initial = project_ops::default_gradient_fill(f.project, f.fill);
     REQUIRE(initial);
-    project_ops::MultiGradientFillSpec spec;
+    LegacyGradientSpec spec;
     spec.colors = {{12, 25, 80}, {24, 64, 130}, {57, 113, 165}, {91, 170, 205}, {180, 223, 238}};
     spec.gradient = initial->gradient;
     spec.gradient.texture = document::DensityTexture::Feathered;
@@ -362,8 +430,7 @@ TEST_CASE("multicolor: five physical thread layers are one undoable blend group"
     spec.complementary = true;
 
     commands::UndoStack stack;
-    auto command =
-        project_ops::make_create_multicolor_gradient_fill_command(f.project, f.fill, spec);
+    auto command = create_multicolor(f.project, f.fill, spec);
     REQUIRE(command);
     stack.execute(std::move(*command), f.project);
     REQUIRE(f.project.embroidery_objects.size() == 6); // ancre + 5 couches physiques
@@ -407,7 +474,7 @@ TEST_CASE("multicolor: five physical thread layers are one undoable blend group"
     std::filesystem::remove(path);
     REQUIRE(reopened);
     CHECK(document::find_gradient_group(*reopened, f.fill));
-    const auto restored = project_ops::describe_multicolor_gradient_fill(*reopened, f.fill);
+    const auto restored = describe_legacy(*reopened, f.fill);
     REQUIRE(restored);
     CHECK(restored->colors == spec.colors);
     CHECK(restored->layer_curves == spec.layer_curves);
@@ -426,11 +493,10 @@ TEST_CASE("multicolor: editing layer count, removing group and undo stay atomic"
     commands::UndoStack stack;
     auto initial = project_ops::default_gradient_fill(f.project, f.fill);
     REQUIRE(initial);
-    project_ops::MultiGradientFillSpec spec;
+    LegacyGradientSpec spec;
     spec.gradient = initial->gradient;
     spec.colors = {{200, 5, 5}, {120, 40, 150}, {50, 30, 220}, {10, 120, 240}};
-    auto created =
-        project_ops::make_create_multicolor_gradient_fill_command(f.project, f.fill, spec);
+    auto created = create_multicolor(f.project, f.fill, spec);
     REQUIRE(created);
     stack.execute(std::move(*created), f.project);
     const auto original = document::find_gradient_group(f.project, f.fill);
@@ -438,16 +504,16 @@ TEST_CASE("multicolor: editing layer count, removing group and undo stay atomic"
 
     spec.colors.pop_back();
     spec.gradient.geometry = document::DensityGeometry::Curved;
-    auto edited = project_ops::make_edit_multicolor_gradient_fill_command(f.project, f.fill, spec);
+    auto edited = edit_multicolor(f.project, f.fill, spec);
     REQUIRE(edited);
     stack.execute(std::move(*edited), f.project);
     REQUIRE(f.project.embroidery_objects.size() == 4); // ancre + 3 couches
-    CHECK(project_ops::describe_multicolor_gradient_fill(f.project, f.fill)->colors == spec.colors);
+    CHECK(describe_legacy(f.project, f.fill)->colors == spec.colors);
     REQUIRE(stack.undo(f.project));
     REQUIRE(f.project.embroidery_objects.size() == 5); // ancre + 4 couches
     CHECK(document::find_gradient_group(f.project, f.fill)->layers == original->layers);
 
-    auto remove = project_ops::make_remove_multicolor_gradient_fill_command(f.project, f.fill);
+    auto remove = project_ops::make_remove_multicolor_gradient_command(f.project, f.fill);
     REQUIRE(remove);
     stack.execute(std::move(*remove), f.project);
     CHECK_FALSE(document::find_gradient_group(f.project, f.fill));
@@ -464,11 +530,10 @@ TEST_CASE("multicolor: legacy two-color blend upgrades without losing undo",
     REQUIRE(document::find_color_blend(f.project, top));
     auto spec = project_ops::describe_gradient_fill(f.project, top);
     REQUIRE(spec);
-    project_ops::MultiGradientFillSpec multi;
+    LegacyGradientSpec multi;
     multi.colors = {spec->background, {70, 100, 170}, spec->foreground};
     multi.gradient = spec->gradient;
-    auto conversion =
-        project_ops::make_edit_multicolor_gradient_fill_command(f.project, top, multi);
+    auto conversion = edit_multicolor(f.project, top, multi);
     REQUIRE(conversion);
     stack.execute(std::move(*conversion), f.project);
     REQUIRE(f.project.embroidery_objects.size() == 4); // ancre + 3 couches
@@ -490,7 +555,7 @@ TEST_CASE("multicolor directional: no long stitched bridges across inactive colo
         commands::UndoStack stack;
         const auto initial = project_ops::default_gradient_fill(f.project, f.fill);
         REQUIRE(initial);
-        project_ops::MultiGradientFillSpec spec;
+        LegacyGradientSpec spec;
         spec.gradient = initial->gradient;
         spec.gradient.texture = texture;
         spec.colors.push_back({24, 42, 99});
@@ -498,8 +563,7 @@ TEST_CASE("multicolor directional: no long stitched bridges across inactive colo
         spec.colors.push_back({76, 122, 179});
         spec.colors.push_back({125, 171, 205});
         spec.colors.push_back({183, 216, 229});
-        using project_ops::make_create_multicolor_gradient_fill_command;
-        auto command = make_create_multicolor_gradient_fill_command(f.project, f.fill, spec);
+        auto command = create_multicolor(f.project, f.fill, spec);
         REQUIRE(command);
         stack.execute(std::move(*command), f.project);
         const auto result = stitch_generation::effective_sequence(f.project);
@@ -531,13 +595,12 @@ TEST_CASE("multicolor gradient: expanded density profiles persist and change sti
           "[project_ops][gradient][multicolor][curves]") {
     auto fixture = rectangle_fill();
     commands::UndoStack undo;
-    project_ops::MultiGradientFillSpec spec;
+    LegacyGradientSpec spec;
     spec.colors = {{24, 42, 99}, {86, 144, 197}, {232, 216, 162}};
     const auto defaults = project_ops::default_gradient_fill(fixture.project, fixture.fill);
     REQUIRE(defaults);
     spec.gradient = defaults->gradient;
-    auto created = project_ops::make_create_multicolor_gradient_fill_command(fixture.project,
-                                                                             fixture.fill, spec);
+    auto created = create_multicolor(fixture.project, fixture.fill, spec);
     REQUIRE(created);
     undo.execute(std::move(*created), fixture.project);
 
@@ -546,17 +609,14 @@ TEST_CASE("multicolor gradient: expanded density profiles persist and change sti
     for (const auto curve :
          {document::DensityCurve::Convex, document::DensityCurve::Concave,
           document::DensityCurve::ConvexConcave, document::DensityCurve::ConcaveConvex}) {
-        auto changed =
-            project_ops::describe_multicolor_gradient_fill(fixture.project, fixture.fill);
+        auto changed = describe_legacy(fixture.project, fixture.fill);
         REQUIRE(changed);
         changed->layer_curves.assign(changed->colors.size(), curve);
-        auto edit = project_ops::make_edit_multicolor_gradient_fill_command(fixture.project,
-                                                                            fixture.fill, *changed);
+        auto edit = edit_multicolor(fixture.project, fixture.fill, *changed);
         REQUIRE(edit);
         undo.execute(std::move(*edit), fixture.project);
 
-        const auto applied =
-            project_ops::describe_multicolor_gradient_fill(fixture.project, fixture.fill);
+        const auto applied = describe_legacy(fixture.project, fixture.fill);
         REQUIRE(applied);
         REQUIRE(applied->layer_curves.size() == applied->colors.size());
         for (const auto v : applied->layer_curves) {
@@ -572,7 +632,7 @@ TEST_CASE("multicolor gradient: expanded density profiles persist and change sti
     REQUIRE(project_io::save_project(file, fixture.project).has_value());
     auto reopened = project_io::load_project(file);
     REQUIRE(reopened);
-    const auto persisted = project_ops::describe_multicolor_gradient_fill(*reopened, fixture.fill);
+    const auto persisted = describe_legacy(*reopened, fixture.fill);
     REQUIRE(persisted);
     REQUIRE(persisted->layer_curves.size() == 3);
     for (const auto curve : persisted->layer_curves) {
@@ -594,7 +654,7 @@ TEST_CASE("multicolor satin: all eight thread regions stay nonempty and reproduc
     satin.density = Micrometers{400};
     f.project.embroidery_objects.front().params = satin;
 
-    project_ops::MultiGradientFillSpec spec;
+    LegacyGradientSpec spec;
     spec.colors.push_back({24, 42, 99});
     spec.colors.push_back({40, 83, 141});
     spec.colors.push_back({76, 122, 179});
@@ -604,8 +664,7 @@ TEST_CASE("multicolor satin: all eight thread regions stay nonempty and reproduc
     spec.colors.push_back({241, 182, 134});
     spec.colors.push_back({224, 105, 79});
     commands::UndoStack stack;
-    auto created =
-        project_ops::make_create_multicolor_gradient_fill_command(f.project, f.fill, spec);
+    auto created = create_multicolor(f.project, f.fill, spec);
     REQUIRE(created);
     stack.execute(std::move(*created), f.project);
     const auto group = document::find_gradient_group(f.project, f.fill);
@@ -715,11 +774,10 @@ TEST_CASE("multicolor satin: distributed traverses create separate machine color
 
     const auto original = stitch_generation::effective_sequence(f.project);
     REQUIRE(original);
-    project_ops::MultiGradientFillSpec spec;
+    LegacyGradientSpec spec;
     spec.colors = {{20, 30, 100}, {35, 105, 175}, {95, 180, 205}};
     commands::UndoStack stack;
-    auto created =
-        project_ops::make_create_multicolor_gradient_fill_command(f.project, f.fill, spec);
+    auto created = create_multicolor(f.project, f.fill, spec);
     REQUIRE(created);
     stack.execute(std::move(*created), f.project);
     const auto group = document::find_gradient_group(f.project, f.fill);
@@ -743,7 +801,7 @@ TEST_CASE("multicolor satin: distributed traverses create separate machine color
     REQUIRE(stack.redo(f.project));
     CHECK(document::find_gradient_group(f.project, f.fill));
 
-    auto remove = project_ops::make_remove_multicolor_gradient_fill_command(f.project, f.fill);
+    auto remove = project_ops::make_remove_multicolor_gradient_command(f.project, f.fill);
     REQUIRE(remove);
     stack.execute(std::move(*remove), f.project);
     CHECK_FALSE(document::find_gradient_group(f.project, f.fill));

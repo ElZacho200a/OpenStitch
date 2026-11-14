@@ -336,16 +336,22 @@ ServiceResult editMultiFade(DocumentSession& session, std::uint64_t objectId,
         if (!old) {
             return refuse("Sélectionnez un fondu de fils existant.");
         }
-        const auto initial =
-            project_ops::default_multicolor_gradient(session.project(), ObjectId{objectId});
-        if (!initial) {
-            return refuse("La forme n'est pas compatible avec un fondu multicolore.");
-        }
-        spec = *initial;
+        spec.emplace();
         spec->transition = old->gradient;
         spec->palette = {{old->background, std::nullopt, document::DensityCurve::Linear},
                          {old->foreground, std::nullopt, document::DensityCurve::Linear}};
         spec->complementary = old->complementary;
+        switch (old->gradient.texture) {
+        case document::DensityTexture::LongShort:
+            spec->method = document::GradientMethod::LongAndShort;
+            break;
+        case document::DensityTexture::Stippled:
+            spec->method = document::GradientMethod::ControlledScatter;
+            break;
+        default:
+            spec->method = document::GradientMethod::Directional;
+            break;
+        }
     }
     const bool geometryChanged = static_cast<int>(spec->transition.geometry) != settings.geometry;
     const auto commonCurve = spec->transition.curve;

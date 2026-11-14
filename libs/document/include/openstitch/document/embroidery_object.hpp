@@ -645,8 +645,8 @@ enum class GradientMethod : std::uint8_t {
 }
 
 // Un fil de la palette (HP : fondu multicolore autonome). `curve` : profil de densité propre
-// à cette couche (comme `MultiGradientFillSpec::layer_curves`) ; `Linear` pour toutes = profil
-// commun historique. `thread` facultatif : couleur libre si absent (comme `EmbroideryObject::
+// à cette couche ; `Linear` pour toutes = profil commun. `thread` facultatif : couleur libre si
+// absent (comme `EmbroideryObject::
 // thread`), jamais déduit d'une bibliothèque non chargée.
 struct GradientThread {
     std::array<std::uint8_t, 3> rgb{};
