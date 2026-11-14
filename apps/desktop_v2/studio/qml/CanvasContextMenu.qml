@@ -34,7 +34,7 @@ Controls.Menu {
         }
     }
     Controls.MenuSeparator { }
-    Controls.MenuItem { text: qsTr("Dupliquer"); enabled: menu.hasSelection; onTriggered: editor.duplicate(5) }
+    Controls.MenuItem { objectName: "contextDuplicate"; text: qsTr("Dupliquer"); enabled: menu.hasSelection; onTriggered: editor.duplicate(5) }
     Controls.MenuItem {
         objectName: "contextDelete"
         text: qsTr("Supprimer %1 objet(s)").arg(editor.selectedCount)
