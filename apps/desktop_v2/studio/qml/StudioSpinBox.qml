@@ -11,7 +11,10 @@ Controls.SpinBox {
     implicitHeight: Math.max(28, Math.round(Theme.controlHeight * 0.75))
     implicitWidth: 110
     hoverEnabled: true
-    wheelEnabled: true // la molette change la valeur, comme les champs numériques de V1
+    // La molette change la valeur, comme les champs numériques de V1, mais seulement une fois
+    // le champ focalisé (clic ou Tab) : sinon elle vole le défilement du panneau qui le
+    // contient (QA-STUDIO-001 LAY-023).
+    wheelEnabled: control.activeFocus
     focusPolicy: Qt.StrongFocus
     // Journal d'usage local : jamais de texte saisi, seulement l'identifiant du contrôle.
     Connections {
