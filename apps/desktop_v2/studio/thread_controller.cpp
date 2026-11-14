@@ -352,9 +352,9 @@ bool ThreadController::moveToPositionAbsolute(const QString& objectId, int toPos
         return report({false, "Objet ou position invalide"}, {});
     }
     // moveToPositionAbsolute prend une position absolue (int) au lieu d'un décalage relatif
-    return report(
-        desktop_v2::moveToPositionAbsolute(studio_.session(), id, static_cast<std::size_t>(toPosition)),
-        QStringLiteral("Ordre de couture modifié (déplacement absolu)"));
+    return report(desktop_v2::moveToPositionAbsolute(studio_.session(), id,
+                                                     static_cast<std::size_t>(toPosition)),
+                  QStringLiteral("Ordre de couture modifié (déplacement absolu)"));
 }
 
 QVariantList ThreadController::searchThreads(const QString& chartId, const QString& query) const {
