@@ -232,6 +232,19 @@ def scale_for_benchmark(document, factor):
                     for handle in ("tanIn", "tanOut"):
                         if handle in node:
                             node[handle][0] = int(node[handle][0] * factor)
+            # Guard against accidentally widening the satin when scaling.
+            a_nodes = params["railA"]["nodes"]
+            b_nodes = params["railB"]["nodes"]
+            if len(a_nodes) != 2 or len(b_nodes) != 2:
+                raise RuntimeError("QA satin fixture rails changed unexpectedly")
+            expected_length = 30_000 * factor
+            actual_length = abs(a_nodes[-1]["pos"][0] - a_nodes[0]["pos"][0])
+            if actual_length != expected_length:
+                raise RuntimeError(
+                    f"QA satin benchmark length {actual_length} != {expected_length}")
+            if any(abs(a["pos"][1] - b["pos"][1]) != 3_200
+                   for a, b in zip(a_nodes, b_nodes)):
+                raise RuntimeError("QA satin benchmark width is not 3.2 mm")
             for rung in params.get("rungs", []):
                 for key in ("a", "b", "start", "end"):
                     if isinstance(rung.get(key), list) and len(rung[key]) == 2:
@@ -266,7 +279,7 @@ def large_design_benchmarks():
                          and preview.stat().st_size >= 45
                          and preview.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
                          and preview.read_bytes().endswith(b"IEND\xaeB`\x82"))
-            entry = {"name": name, "factor": factor, "width_mm": 40 * factor,
+            entry = {"name": name, "factor": factor, "width_mm": (30 if source == "satin_8" else 40) * factor,
                      "height_mm": (3.2 if source == "satin_8" else 20 * factor),
                      "elapsed_ms": result["ms"],
                      "return_code": result["rc"], "dst_quality": stats,
