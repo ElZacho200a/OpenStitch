@@ -37,7 +37,7 @@ struct OverlayJump {
     double ax{0}, ay{0}, bx{0}, by{0};
 };
 struct OverlayTrim {
-    double x{0}, y{0}; // position du point de coupe en coordonnées scène
+    double x{0}, y{0};         // position du point de coupe en coordonnées scène
     QColor color{231, 76, 60}; // rouge pour les coupes
 };
 struct CanvasOverlays {

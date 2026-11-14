@@ -190,7 +190,8 @@ ServiceResult moveToPositionAbsolute(DocumentSession& session, std::uint64_t id,
     // Vérifier que la position est valide (0 à sewingOrder.size()-1)
     if (toPosition < 0 || static_cast<std::size_t>(toPosition) >= project.sewingOrder().size()) {
         return refuse("Position hors des limites : " + std::to_string(toPosition) +
-                      " (doit être entre 0 et " + std::to_string(project.sewingOrder().size()-1) + ").");
+                      " (doit être entre 0 et " + std::to_string(project.sewingOrder().size() - 1) +
+                      ").");
     }
     // Utiliser la même fonction que moveInOrder mais avec une position absolue
     if (!commands::moved_sewing_order(project, ObjectId{id}, toPosition)) {

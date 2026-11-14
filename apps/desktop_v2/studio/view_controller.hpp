@@ -203,8 +203,8 @@ private:
     bool rulers_{false};
     std::vector<double> guidesX_, guidesY_; // model mm (X right, Y up)
     QColor guideColor_{0, 170, 220};
-    bool layerStitches_{true}, layerJumps_{false}, layerTrims_{false}, layerHoop_{true}, layerDensity_{true},
-        layerRisk_{true};
+    bool layerStitches_{true}, layerJumps_{false}, layerTrims_{false}, layerHoop_{true},
+        layerDensity_{true}, layerRisk_{true};
     bool realistic_{false};
     bool lastRealisticGpu_{false};
     RealisticStyle realisticStyle_;
