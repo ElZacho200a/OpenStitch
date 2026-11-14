@@ -2225,6 +2225,11 @@ couches ; objets verrouillables ; coût estimé ; routage satin multi-colonnes.
   `libs/project_io`, `apps/desktop/properties_panel`.
 
 ### HP-SEQ-006 — Minimiser les coupes [P1] — ◐ Partiel (2026-10-13, en PR)
+- Livré (2026-11-14) : liaisons cachées INTERNES du remplissage. `HiddenRouter` tolère
+  0,3 mm au bord pour ses seuls tronçons d'extrémité (les fins de rangée dépassent la région
+  par compensation de tirage et étaient rejetées) et retient 96 points de passage au lieu de
+  24. Auto-numérisation par défaut, `sample/` : 546 -> 229 coupes ; marine synthétique : 32 -> 20.
+  Voir `docs/source/tatami.md`, « Extrémités de liaison hors région ».
 - À faire : préférer un déplacement cousu caché sous un objet cousu ensuite
   (même couleur ou couverture garantie) plutôt qu'une coupe ; métrique :
   nombre de coupes sur le corpus.
@@ -4729,3 +4734,4 @@ ouvrant le lot (§0.1).
 | 2026-11-06 | Claude (Desktop V2, session 3) | Roadmap : aucune entrée HP précise. Rattrapage V1 -> V2 : import de broderies machine (DST/PES/JEF/EXP) et DXF, types de remplissage complets, guides de direction et lignes de rupture, re-segmentation avec aperçu et réduction de palette, retouche de points multiple (saut, coupe), zoom, guides de session, qualité du rendu réaliste, sélection partagée des régions, espaces Formes / Zones, guide de parcours à état réel ; voir `docs/desktop-v2/13-retards-v2-vs-v1.md` et `14-dependances-parcours-et-visuel.md`. |
 | 2026-11-10 | Claude (inspecteur Studio) | Roadmap : aucune entrée HP précise. Réglages de points en sélection mixte : l'inspecteur Studio affiche et applique les réglages scalaires communs à tous les types (écart, compensation, sous-couche…), chaque objet recevant la valeur par son propre type, en une seule étape d'annulation ; réinitialisation par type ; les réglages propres à un seul type restent refusés. |
 | 2026-11-10 | Claude (perf Studio) | Roadmap : aucune entrée HP précise. PERF « 60 fps » lot 1 : suppression des 11 minuteurs de sondage `TaskManager::pump()` (~1 100 réveils/s au repos) au profit d une notification de fin de tâche ; voir `docs/desktop-v2/18-studio-benchmarks.md`. fps de l application entière non mesuré. |
+| 2026-11-14 | Claude (E12, coupes internes) | **HP-SEQ-006 ◐** : `HiddenRouter` accepte une extrémité de liaison à 0,3 mm hors région (débord de compensation de tirage) et passe de 24 à 96 points de passage ; coupes de l'auto-numérisation par défaut 546 -> 229 sur `sample/`, 32 -> 20 sur la marine synthétique, +0,7 % de points. Reste : liaisons sans trajet par le contour rentré, coût en temps à mesurer en Release (2,1 -> 4,0 s en Debug sur `sample/`). |
