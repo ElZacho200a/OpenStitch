@@ -58,6 +58,44 @@ def call(label, args, timeout=85):
     print(json.dumps(result, ensure_ascii=False), flush=True)
     return result
 
+def valid_png(path: Path):
+    """Reject truncated/corrupted previews, not just bad PNG signatures."""
+    import struct
+    import zlib
+    try:
+        data = path.read_bytes()
+        if not data.startswith(b"\\x89PNG\\r\\n\\x1a\\n"):
+            return False
+        pos = 8
+        seen_ihdr = seen_idat = False
+        while pos + 12 <= len(data):
+            size = struct.unpack_from(">I", data, pos)[0]
+            end = pos + 12 + size
+            if end > len(data):
+                return False
+            kind = data[pos + 4:pos + 8]
+            payload = data[pos + 8:pos + 8 + size]
+            crc = struct.unpack_from(">I", data, pos + 8 + size)[0]
+            if zlib.crc32(kind + payload) != crc:
+                return False
+            if not seen_ihdr:
+                if kind != b"IHDR" or size != 13:
+                    return False
+                width, height = struct.unpack_from(">II", payload)
+                if width == 0 or height == 0:
+                    return False
+                seen_ihdr = True
+            elif kind == b"IHDR":
+                return False
+            if kind == b"IDAT":
+                seen_idat = True
+            if kind == b"IEND":
+                return size == 0 and seen_idat and end == len(data)
+            pos = end
+        return False
+    except (OSError, ValueError, struct.error):
+        return False
+
 def patch_osp(base: Path, target: Path, mutate):
     with zipfile.ZipFile(base, "r") as archive:
         entries = [(v.filename, archive.read(v.filename))
@@ -275,10 +313,7 @@ def large_design_benchmarks():
             rendered = call(name + ".render",
                             ["project", "render", target, "-o", preview,
                              "--px-per-mm", "3", "--fabric", "#ece7df"], timeout=85)
-            png_valid = (rendered["rc"] == 0 and preview.is_file()
-                         and preview.stat().st_size >= 45
-                         and preview.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
-                         and preview.read_bytes().endswith(b"IEND\xaeB`\x82"))
+            png_valid = (rendered["rc"] == 0 and valid_png(preview))
             entry = {"name": name, "factor": factor, "width_mm": (30 if source == "satin_8" else 40) * factor,
                      "height_mm": (3.2 if source == "satin_8" else 20 * factor),
                      "elapsed_ms": result["ms"],
@@ -400,9 +435,7 @@ def build():
             p = OUT / f"{name}.png"
             entry["png_bytes"] = p.stat().st_size if p.exists() else 0
             # A nonempty file is not necessarily a valid rendered PNG.
-            entry["png_valid"] = (p.is_file() and p.stat().st_size >= 45
-                                  and p.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
-                                  and p.read_bytes().endswith(b"IEND\xaeB`\x82"))
+            entry["png_valid"] = valid_png(p)
             dst = OUT / f"{name}.dst"
             if dst.exists():
                 entry["dst_quality"] = dst_quality(dst)
