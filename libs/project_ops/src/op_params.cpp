@@ -267,6 +267,15 @@ const EnumTable<document::AutoSatinStrategy>& auto_satin_strategy_table() {
         {"guided_satin", document::AutoSatinStrategy::Guided}};
     return t;
 }
+const EnumTable<document::GradientMethod>& gradient_method_table() {
+    static const EnumTable<document::GradientMethod> t{
+        {"directional", document::GradientMethod::Directional},
+        {"satin_interlaced", document::GradientMethod::SatinInterlaced},
+        {"long_and_short", document::GradientMethod::LongAndShort},
+        {"controlled_scatter", document::GradientMethod::ControlledScatter},
+        {"cross_hatching", document::GradientMethod::CrossHatching}};
+    return t;
+}
 const EnumTable<optimization::OrderStrategy>& strategy_table() {
     static const EnumTable<optimization::OrderStrategy> t{
         {"document", optimization::OrderStrategy::Document},
@@ -333,7 +342,7 @@ const char* stitch_type_name(const document::StitchParams& p) {
     static constexpr const char* names[] = {
         "running",     "tatami",          "satin",        "directional", "auto_satin",
         "blanket",     "contour_fill",    "motif_run",    "motif_fill",  "radial_fill",
-        "spiral_fill", "crosshatch_fill", "cross_stitch", "applique"};
+        "spiral_fill", "crosshatch_fill", "cross_stitch", "applique",    "multicolor_gradient"};
     return names[p.index()];
 }
 
@@ -1106,6 +1115,26 @@ const std::vector<Field<document::CrossStitchParams>>& fields_of<document::Cross
     return fields;
 }
 
+// Palette et transition (axe, courbe, géométrie) restent hors de ce mécanisme générique par
+// champ : elles se modifient par la commande dédiée (spec complète, comme les rails satin ou les
+// guides auto-satin le sont par leurs propres champs `rail_field`/`auto_satin_guides_field`, mais
+// la palette mélange rgb/fil/courbe par couche -- pas un simple scalaire ou vecteur de points).
+template <>
+const std::vector<Field<document::MulticolorGradientParams>>&
+fields_of<document::MulticolorGradientParams>() {
+    using P = document::MulticolorGradientParams;
+    static const auto fields = [] {
+        std::vector<Field<P>> v;
+        v.push_back(enum_field<P>("method", &P::method, gradient_method_table()));
+        v.push_back(bool_field<P>("complementary", &P::complementary));
+        v.push_back(mm_field<P>("satin_density_mm", &P::satin_density, 0.1, 2.0));
+        v.push_back(int_field<P>("crosshatch_layers", &P::crosshatch_layers, 2, 3));
+        v.push_back(deg_field<P>("crosshatch_angle_deg", &P::crosshatch_angle, -360.0, 360.0));
+        return v;
+    }();
+    return fields;
+}
+
 // Types de points (noms) qui possèdent le champ `name`.
 std::vector<std::string> types_having(const std::string& name) {
     std::vector<std::string> out;
@@ -1151,6 +1180,9 @@ std::vector<std::string> types_having(const std::string& name) {
     if (find_field(fields_of<document::AppliqueParams>(), name) != nullptr) {
         out.emplace_back("applique");
     }
+    if (find_field(fields_of<document::MulticolorGradientParams>(), name) != nullptr) {
+        out.emplace_back("multicolor_gradient");
+    }
     return out;
 }
 
@@ -1171,8 +1203,11 @@ std::string params_catalog_text() {
     out += "crosshatch_fill : " + join(field_names(fields_of<document::CrosshatchFillParams>())) +
            " ; ";
     out += "cross_stitch : " + join(field_names(fields_of<document::CrossStitchParams>())) + " ; ";
-    out += "applique : " + join(field_names(fields_of<document::AppliqueParams>())) + ". ";
-    out += "Suffixe _mm = millimètres, _deg = degrés ; énumérations en chaîne";
+    out += "applique : " + join(field_names(fields_of<document::AppliqueParams>())) + " ; ";
+    out += "multicolor_gradient : " +
+           join(field_names(fields_of<document::MulticolorGradientParams>())) + " ; ";
+    out += "Suffixe _mm = millimètres, _deg = degrés ; énumérations en chaîne. Palette et "
+           "transition du fondu multicolore : commande dédiée, hors set_params";
     return out;
 }
 

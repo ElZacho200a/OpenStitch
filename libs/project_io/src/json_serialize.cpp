@@ -8,6 +8,8 @@
 #include <optional>
 #include <unordered_map>
 
+#include "openstitch/document/multi_blend.hpp"
+
 namespace openstitch::project_io::detail {
 
 namespace {
@@ -564,6 +566,62 @@ json params_to_json(const document::StitchParams& params) {
                      {"fullCross", p.full_cross},
                      {"passes", p.passes},
                      {"hiddenUnderpath", p.hidden_underpath}};
+            } else if constexpr (std::is_same_v<T, document::MulticolorGradientParams>) {
+                // Fondu multicolore (mission 2026-11-14) : ancre sans point propre. `palette` et
+                // `transition` sont la seule source de vérité documentaire ; les couches
+                // physiques (satin/tatami/directionnel tagués MultiBlendLink) sont régénérées,
+                // jamais relues pour reconstruire l'ancre (comme `density_stops`, jamais écrits
+                // ici : reconstruits par le moteur pour chaque couche).
+                json palette = json::array();
+                for (const auto& thread : p.palette) {
+                    json entry = {{"rgb", rgb_to_json(thread.rgb)}};
+                    if (thread.curve != document::DensityCurve::Linear) {
+                        entry["curve"] = static_cast<int>(thread.curve);
+                    }
+                    if (thread.thread) {
+                        entry["thread"] = {{"chart", thread.thread->chart_id},
+                                           {"code", thread.thread->code}};
+                    }
+                    palette.push_back(std::move(entry));
+                }
+                const auto& g = p.transition;
+                json transition = {{"fromX", g.from.x.value},
+                                   {"fromY", g.from.y.value},
+                                   {"toX", g.to.x.value},
+                                   {"toY", g.to.y.value},
+                                   {"spacingFrom", g.spacing_from.value},
+                                   {"spacingTo", g.spacing_to.value}};
+                if (g.interpolate_density) {
+                    transition["interpolateDensity"] = true;
+                }
+                if (g.curve != document::DensityCurve::Linear) {
+                    transition["curve"] = static_cast<int>(g.curve);
+                }
+                if (g.texture != document::DensityTexture::None) {
+                    transition["texture"] = static_cast<int>(g.texture);
+                    transition["textureStrength"] = std::clamp(g.texture_strength, 0.0, 1.0);
+                    transition["textureSeed"] = g.texture_seed;
+                }
+                if (g.geometry != document::DensityGeometry::Linear) {
+                    transition["geometry"] = static_cast<int>(g.geometry);
+                }
+                if (g.curve_bend != 0.0) {
+                    transition["bend"] = g.curve_bend;
+                }
+                j = {{"type", "multicolorGradient"},
+                     {"method", std::string(document::gradient_method_id(p.method))},
+                     {"palette", std::move(palette)},
+                     {"transition", std::move(transition)},
+                     {"complementary", p.complementary}};
+                if (p.satin_density.value != 400) {
+                    j["satinDensity"] = p.satin_density.value;
+                }
+                if (p.crosshatch_layers != 2) {
+                    j["crosshatchLayers"] = p.crosshatch_layers;
+                }
+                if (p.crosshatch_angle.radians != 0.0) {
+                    j["crosshatchAngle"] = p.crosshatch_angle.radians;
+                }
             }
             // HP-STI-033 : compensation du tirage (clés écrites seulement hors défaut).
             if constexpr (std::is_same_v<T, document::ContourFillParams> ||
@@ -1124,6 +1182,110 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.full_cross = j.value("fullCross", true);
         p.passes = std::clamp(j.value("passes", 1), 1, 3);
         p.hidden_underpath = j.value("hiddenUnderpath", true);
+        return document::StitchParams{p};
+    }
+    if (type == "multicolorGradient") {
+        // Ancre du fondu multicolore (mission 2026-11-14) : `method` obligatoire et persisté par
+        // nom (jamais par entier, comme `AutoSatinStrategy`) -- une méthode inconnue (fichier
+        // d'une version plus récente) est REFUSÉE, jamais substituée.
+        if (!j.contains("method") || !j.at("method").is_string()) {
+            return fail(ErrorCategory::InvalidFile, "multicolorGradient : « method » manquant");
+        }
+        const auto method = document::parse_gradient_method(j.at("method").get<std::string>());
+        if (!method) {
+            return fail(ErrorCategory::InvalidFile,
+                        "multicolorGradient : méthode « " + j.at("method").get<std::string>() +
+                            " » inconnue (fichier d'une version plus récente de OpenStitch)");
+        }
+        document::MulticolorGradientParams p;
+        p.method = *method;
+        p.complementary = j.value("complementary", true);
+        if (!j.contains("palette") || !j.at("palette").is_array() || j.at("palette").size() < 2 ||
+            j.at("palette").size() > 8) {
+            return fail(ErrorCategory::InvalidFile,
+                        "multicolorGradient : « palette » doit porter de 2 à 8 fils");
+        }
+        for (const auto& pj : j.at("palette")) {
+            if (!pj.is_object() || !pj.contains("rgb")) {
+                return fail(ErrorCategory::InvalidFile,
+                            "multicolorGradient : fil de palette mal formé");
+            }
+            document::GradientThread thread;
+            thread.rgb = rgb_from_json(pj.at("rgb"));
+            const int curve = pj.value("curve", 0);
+            if (curve < 0 || curve > static_cast<int>(document::DensityCurve::ConcaveConvex)) {
+                return fail(ErrorCategory::InvalidFile,
+                            "multicolorGradient : courbe de fil inconnue");
+            }
+            thread.curve = static_cast<document::DensityCurve>(curve);
+            if (pj.contains("thread")) {
+                const auto& tj = pj.at("thread");
+                if (!tj.is_object() || !tj.contains("chart") || !tj.contains("code")) {
+                    return fail(ErrorCategory::InvalidFile,
+                                "multicolorGradient : fil de nuancier mal formé");
+                }
+                thread.thread = thread_palette::ThreadKey{tj.at("chart").get<std::string>(),
+                                                          tj.at("code").get<std::string>()};
+            }
+            p.palette.push_back(std::move(thread));
+        }
+        if (j.contains("transition")) {
+            const auto& tj = j.at("transition");
+            for (const char* key : {"fromX", "fromY", "toX", "toY", "spacingFrom", "spacingTo"}) {
+                if (!tj.contains(key)) {
+                    return fail(ErrorCategory::InvalidFile,
+                                std::string("multicolorGradient : transition.") + key +
+                                    " manquant");
+                }
+            }
+            document::DensityGradient g;
+            g.from = Vec2um{Micrometers{tj.at("fromX").get<std::int32_t>()},
+                            Micrometers{tj.at("fromY").get<std::int32_t>()}};
+            g.to = Vec2um{Micrometers{tj.at("toX").get<std::int32_t>()},
+                          Micrometers{tj.at("toY").get<std::int32_t>()}};
+            g.spacing_from = Micrometers{tj.at("spacingFrom").get<std::int32_t>()};
+            g.spacing_to = Micrometers{tj.at("spacingTo").get<std::int32_t>()};
+            g.interpolate_density = tj.value("interpolateDensity", false);
+            if (tj.contains("curve")) {
+                const int curve = tj.at("curve").get<int>();
+                if (curve < 0 || curve > static_cast<int>(document::DensityCurve::ConcaveConvex)) {
+                    return fail(ErrorCategory::InvalidFile,
+                                "multicolorGradient : transition.curve inconnue");
+                }
+                g.curve = static_cast<document::DensityCurve>(curve);
+            }
+            if (tj.contains("texture")) {
+                const int texture = tj.at("texture").get<int>();
+                if (texture < 0 ||
+                    texture > static_cast<int>(document::DensityTexture::LongShort)) {
+                    return fail(ErrorCategory::InvalidFile,
+                                "multicolorGradient : transition.texture inconnue");
+                }
+                g.texture = static_cast<document::DensityTexture>(texture);
+                g.texture_strength =
+                    std::clamp(tj.value("textureStrength", g.texture_strength), 0.0, 1.0);
+                g.texture_seed = tj.value("textureSeed", g.texture_seed);
+            }
+            if (tj.contains("geometry")) {
+                const int geometry = tj.at("geometry").get<int>();
+                if (geometry < 0 ||
+                    geometry > static_cast<int>(document::DensityGeometry::Curved)) {
+                    return fail(ErrorCategory::InvalidFile,
+                                "multicolorGradient : transition.geometry inconnue");
+                }
+                g.geometry = static_cast<document::DensityGeometry>(geometry);
+            }
+            g.curve_bend = tj.value("bend", 0.0);
+            p.transition = g;
+        }
+        p.satin_density = Micrometers{std::clamp(j.value("satinDensity", 400), 100, 2'000)};
+        p.crosshatch_layers = std::clamp(j.value("crosshatchLayers", 2), 2, 3);
+        const double crosshatchAngle = j.value("crosshatchAngle", 0.0);
+        if (!std::isfinite(crosshatchAngle)) {
+            return fail(ErrorCategory::InvalidFile,
+                        "multicolorGradient : crosshatchAngle invalide");
+        }
+        p.crosshatch_angle = Angle{crosshatchAngle};
         return document::StitchParams{p};
     }
     return fail(ErrorCategory::InvalidFile, "Type de point inconnu : " + type);
@@ -2101,6 +2263,32 @@ Result<document::Project> project_from_json(const json& j) {
             }
 
             project.embroidery_objects.push_back(std::move(e));
+        }
+
+        // Rupture de compatibilité acceptée (mission 2026-11-14) : un fondu multicolore est
+        // désormais un objet ANCRE autonome (`MulticolorGradientParams`), jamais une propriété
+        // implicite de la première couche. Un groupe `multiBlend` dont l'ancre ne résout pas
+        // (projet d'avant cette refonte, ou fichier corrompu) est REFUSÉ explicitement -- jamais
+        // silencieusement tronqué ou rechargé comme orphelin. Les projets sans fondu multicolore
+        // ne sont pas concernés.
+        {
+            std::vector<ObjectId> seenGroups;
+            for (const auto& object : project.embroidery_objects) {
+                if (!object.multi_blend) {
+                    continue;
+                }
+                const ObjectId group = object.multi_blend->group;
+                if (std::find(seenGroups.begin(), seenGroups.end(), group) != seenGroups.end()) {
+                    continue;
+                }
+                seenGroups.push_back(group);
+                if (!document::find_gradient_group(project, object.id)) {
+                    return fail(ErrorCategory::InvalidFile,
+                                "Ce projet utilise un ancien format de fondu multicolore non pris "
+                                "en charge par cette version d'OpenStitch. Ouvrez-le avec une "
+                                "version antérieure, ou recréez le fondu multicolore.");
+                }
+            }
         }
 
         // Finitions (Lots E/F) : bloc absent = projet antérieur, aucune

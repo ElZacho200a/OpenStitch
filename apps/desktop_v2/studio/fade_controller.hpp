@@ -31,6 +31,10 @@ class FadeController : public QObject {
     Q_PROPERTY(bool complementary READ complementary NOTIFY changed)
     Q_PROPERTY(int texture READ texture NOTIFY changed)
     Q_PROPERTY(int geometry READ geometry NOTIFY changed)
+    Q_PROPERTY(int method READ method NOTIFY changed)
+    Q_PROPERTY(double satinDensityMm READ satinDensityMm NOTIFY changed)
+    Q_PROPERTY(int crosshatchLayers READ crosshatchLayers NOTIFY changed)
+    Q_PROPERTY(double crosshatchAngleDeg READ crosshatchAngleDeg NOTIFY changed)
     Q_PROPERTY(double angle READ angle NOTIFY changed)
     Q_PROPERTY(bool multiFade READ multiFade NOTIFY changed)
     Q_PROPERTY(bool satinTarget READ satinTarget NOTIFY changed)
@@ -39,6 +43,7 @@ class FadeController : public QObject {
     Q_PROPERTY(QString summary READ summary NOTIFY changed)
     Q_PROPERTY(QVariantMap axis READ axis NOTIFY changed)
     Q_PROPERTY(QVariantList curves READ curves CONSTANT)
+    Q_PROPERTY(QVariantList methods READ methods CONSTANT)
     Q_PROPERTY(QVariantList curveProfile READ curveProfile NOTIFY changed)
     Q_PROPERTY(QString message READ message NOTIFY messageChanged)
     Q_PROPERTY(bool lastOk READ lastOk NOTIFY messageChanged)
@@ -66,12 +71,23 @@ public:
     [[nodiscard]] int geometry() const {
         return multiSettings_ ? multiSettings_->geometry : settings_ ? settings_->geometry : 0;
     }
+    [[nodiscard]] int method() const { return multiSettings_ ? multiSettings_->method : 0; }
+    [[nodiscard]] double satinDensityMm() const {
+        return multiSettings_ ? multiSettings_->satinDensityMm : 0.4;
+    }
+    [[nodiscard]] int crosshatchLayers() const {
+        return multiSettings_ ? multiSettings_->crosshatchLayers : 2;
+    }
+    [[nodiscard]] double crosshatchAngleDeg() const {
+        return multiSettings_ ? multiSettings_->crosshatchAngleDeg : 0.0;
+    }
     [[nodiscard]] double angle() const;
     [[nodiscard]] QVariantList colors() const;
     [[nodiscard]] int curve() const;
     [[nodiscard]] QString summary() const;
     [[nodiscard]] QVariantMap axis() const { return axisMap(axis_); }
     [[nodiscard]] QVariantList curves() const;
+    [[nodiscard]] QVariantList methods() const;
     [[nodiscard]] QVariantList curveProfile() const;
     [[nodiscard]] QString message() const { return message_; }
     [[nodiscard]] bool lastOk() const { return ok_; }
@@ -85,6 +101,14 @@ public:
                                       int geometry);
     Q_INVOKABLE bool editMulticolor(const QVariantList& colors, bool complementary, int texture,
                                     int geometry);
+    Q_INVOKABLE bool createMulticolorAdvanced(const QVariantList& colors, bool complementary,
+                                              int texture, int geometry, int method,
+                                              double satinDensityMm, int crosshatchLayers,
+                                              double crosshatchAngleDeg);
+    Q_INVOKABLE bool editMulticolorAdvanced(const QVariantList& colors, bool complementary,
+                                            int texture, int geometry, int method,
+                                            double satinDensityMm, int crosshatchLayers,
+                                            double crosshatchAngleDeg);
     Q_INVOKABLE bool edit(const QColor& foreground, bool complementary);
     Q_INVOKABLE bool remove();
     // handle : 0 Start, 1 End, 2 Move, 3 Rotate. Aperçu = géométrie pure, aucun point régénéré.

@@ -22,6 +22,7 @@ Item {
     property bool advancedOpen: false
     property int selectedTexture: 0
     property int selectedGeometry: 0
+    property int selectedMethod: 0
     property bool selectedComplementary: true
     property var draftColors: []
     readonly property bool multiColors: draftColors.length > 2 || (ready && controller.multiFade)
@@ -93,6 +94,10 @@ Item {
             selectedComplementary = controller.complementary
             selectedTexture = controller.texture
             selectedGeometry = controller.geometry
+            selectedMethod = controller.method
+            satinDensity.text = Number(controller.satinDensityMm).toFixed(2)
+            crosshatchLayers.currentIndex = Math.max(0, controller.crosshatchLayers - 2)
+            crosshatchAngle.text = Number(controller.crosshatchAngleDeg).toFixed(1)
             if (selectedGeometry !== 1)
                 angleField.text = Number(controller.angle).toFixed(1)
             draftColors = controller.colors.slice(0)
@@ -104,6 +109,7 @@ Item {
         }
         if (!hasFade) {
             selectedGeometry = 0
+            selectedMethod = satinTarget ? 1 : 0
             const swatches = controller.colors
             const next = swatches.length >= 2 ? swatches.slice(0) : []
             // Tant que la transition n'existe pas, le champ texte est la
@@ -152,6 +158,40 @@ Item {
             y: 8
             width: Math.max(0, viewport.width - 16)
             spacing: 8
+
+            SectionLabel { text: qsTr("MÉTHODE DE BRODERIE") }
+            Flow {
+                Layout.fillWidth: true
+                spacing: 4
+                Repeater {
+                    model: root.ready ? root.controller.methods : []
+                    delegate: StudioButton {
+                        required property var modelData
+                        objectName: root.prefix + "Method" + modelData.id
+                        text: modelData.label
+                        checkable: true
+                        checked: root.selectedMethod === modelData.id
+                        enabled: root.ready && (root.hasFade || root.canCreate)
+                        onClicked: root.selectedMethod = modelData.id
+                    }
+                }
+            }
+            Text {
+                Layout.fillWidth: true
+                text: root.selectedMethod === 1
+                      ? qsTr("Entrelace les fils sur deux rails satin existants ou dérivés automatiquement du contour.")
+                      : root.selectedMethod === 2
+                        ? qsTr("Alterne des longueurs de points pour une transition picturale.")
+                        : root.selectedMethod === 3
+                          ? qsTr("Disperse les limites de densité de façon déterministe.")
+                          : root.selectedMethod === 4
+                            ? qsTr("Superpose deux ou trois directions de hachures.")
+                            : qsTr("Suit la direction du remplissage et module sa densité.")
+                color: Theme.faint
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.captionSize
+                wrapMode: Text.WordWrap
+            }
 
             SectionLabel { text: qsTr("FONDU DE COULEURS · FILS") }
 
@@ -347,13 +387,13 @@ Item {
             }
 
             SectionLabel {
-                text: root.satinTarget ? qsTr("SATIN ENTRELACÉ MULTICOLORE")
+                text: root.selectedMethod === 1 ? qsTr("SATIN ENTRELACÉ MULTICOLORE")
                                        : qsTr("TECHNIQUE DE FONDU")
             }
             Flow {
                 Layout.fillWidth: true
                 spacing: 4
-                visible: root.satinTarget
+                visible: root.selectedMethod === 1
                 StudioButton {
                     objectName: root.prefix + "SatinInterlaced"
                     text: qsTr("Entrelacé")
@@ -365,7 +405,7 @@ Item {
                 }
             }
             Text {
-                visible: root.satinTarget
+                visible: root.selectedMethod === 1
                 Layout.fillWidth: true
                 text: qsTr("Répartition des traversées du satin entre les fils, avec alternance "
                             + "déterministe. Chaque traversée conserve ses points de division.")
@@ -376,7 +416,7 @@ Item {
             }
             Text {
                 Layout.fillWidth: true
-                visible: !root.satinTarget
+                visible: root.selectedMethod !== 1
                 text: qsTr("Mélange optique entre fils distincts, différent du dégradé de densité d'un remplissage monochrome.")
                 color: Theme.faint
                 font.family: Theme.fontFamily
@@ -385,7 +425,7 @@ Item {
             }
             Text {
                 Layout.fillWidth: true
-                visible: !root.satinTarget
+                visible: root.selectedMethod !== 1
                 text: qsTr("Aspect de la transition")
                 color: Theme.foreground
                 font.family: Theme.fontFamily
@@ -394,7 +434,7 @@ Item {
             Flow {
                 Layout.fillWidth: true
                 spacing: 4
-                visible: !root.satinTarget
+                visible: root.selectedMethod !== 1
                 Repeater {
                     model: root.textures
                     delegate: StudioButton {
@@ -414,7 +454,7 @@ Item {
             }
             Text {
                 Layout.fillWidth: true
-                visible: !root.satinTarget
+                visible: root.selectedMethod !== 1
                 text: root.selectedTexture === 1
                       ? qsTr("Les limites de couleur s'imbriquent de façon irrégulière, sans bruit aléatoire.")
                       : root.selectedTexture === 2
@@ -429,7 +469,7 @@ Item {
             }
             Text {
                 Layout.fillWidth: true
-                visible: !root.satinTarget
+                visible: root.selectedMethod !== 1
                 text: qsTr("Géométrie de la transition")
                 color: Theme.foreground
                 font.family: Theme.fontFamily
@@ -438,7 +478,7 @@ Item {
             Flow {
                 Layout.fillWidth: true
                 spacing: 4
-                visible: !root.satinTarget
+                visible: root.selectedMethod !== 1
                 Repeater {
                     model: root.geometries
                     delegate: StudioButton {
@@ -458,7 +498,7 @@ Item {
             }
             Text {
                 Layout.fillWidth: true
-                visible: !root.satinTarget
+                visible: root.selectedMethod !== 1
                 text: qsTr("Répartition des couches")
                 color: Theme.foreground
                 font.family: Theme.fontFamily
@@ -466,7 +506,7 @@ Item {
             }
             Flow {
                 Layout.fillWidth: true
-                visible: !root.satinTarget
+                visible: root.selectedMethod !== 1
                 spacing: 4
                 StudioButton {
                     objectName: root.prefix + "ModeComplementary"
@@ -485,7 +525,7 @@ Item {
             }
             Text {
                 Layout.fillWidth: true
-                visible: !root.satinTarget
+                visible: root.selectedMethod !== 1
                 text: root.selectedComplementary
                       ? qsTr("Le premier fil s'espace progressivement pendant que le second se densifie.")
                       : qsTr("Le premier fil reste uniforme et le second vient en superposition.")
@@ -495,12 +535,51 @@ Item {
                 wrapMode: Text.WordWrap
             }
 
+            ColumnLayout {
+                Layout.fillWidth: true
+                visible: root.selectedMethod === 1
+                SectionLabel { text: qsTr("RÉGLAGES SATIN ENTRELACÉ") }
+                StudioTextField {
+                    id: satinDensity
+                    objectName: root.prefix + "SatinDensity"
+                    Layout.fillWidth: true
+                    text: "0.40"
+                    placeholderText: qsTr("Densité (mm)")
+                    invalid: !isFinite(root.numberFromInput(text))
+                             || root.numberFromInput(text) < 0.1
+                             || root.numberFromInput(text) > 5.0
+                    Accessible.name: qsTr("Densité du satin entrelacé en millimètres")
+                }
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                visible: root.selectedMethod === 4
+                SectionLabel { text: qsTr("RÉGLAGES HACHURES CROISÉES") }
+                StudioComboBox {
+                    id: crosshatchLayers
+                    objectName: root.prefix + "CrosshatchLayers"
+                    Layout.fillWidth: true
+                    model: [qsTr("2 directions · 90°"), qsTr("3 directions · 60°")]
+                    Accessible.name: qsTr("Nombre de directions de hachures")
+                }
+                StudioTextField {
+                    id: crosshatchAngle
+                    objectName: root.prefix + "CrosshatchAngle"
+                    Layout.fillWidth: true
+                    text: "0.0"
+                    placeholderText: qsTr("Angle de départ (°)")
+                    invalid: !isFinite(root.numberFromInput(text))
+                    Accessible.name: qsTr("Angle de départ des hachures en degrés")
+                }
+            }
+
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 6
                 StudioButton {
                     objectName: root.prefix + "Create"
-                    text: root.satinTarget ? qsTr("Créer le satin entrelacé")
+                    text: root.selectedMethod === 1 ? qsTr("Créer le satin entrelacé")
                                            : qsTr("Créer le fondu")
                     emphasized: true
                     visible: !root.hasFade
@@ -508,14 +587,18 @@ Item {
                                                                   : root.distinctColor)
                     Layout.fillWidth: true
                     onClicked: {
-                        if (root.satinTarget || root.multiColors || root.selectedGeometry !== 0)
-                            root.controller.createMulticolor(
+                        if (root.selectedMethod !== 0 || root.multiColors || root.selectedGeometry !== 0)
+                            root.controller.createMulticolorAdvanced(
                                 !root.multiColors
                                     ? [root.controller.background.toString(), colorField.text.trim()]
                                     : root.draftColors,
                                 root.selectedComplementary,
-                                root.satinTarget ? 0 : root.selectedTexture,
-                                root.satinTarget ? 0 : root.selectedGeometry)
+                                root.selectedMethod === 1 ? 0 : root.selectedTexture,
+                                root.selectedMethod === 1 ? 0 : root.selectedGeometry,
+                                root.selectedMethod,
+                                root.numberFromInput(satinDensity.text),
+                                crosshatchLayers.currentIndex + 2,
+                                root.numberFromInput(crosshatchAngle.text))
                         else
                             root.controller.createWithTexture(colorField.text.trim(),
                                 root.selectedComplementary, root.selectedTexture)
@@ -531,9 +614,12 @@ Item {
                     Layout.fillWidth: true
                     onClicked: {
                         if (root.multiColors)
-                            root.controller.editMulticolor(root.draftColors,
+                            root.controller.editMulticolorAdvanced(root.draftColors,
                                 root.selectedComplementary, root.selectedTexture,
-                                root.selectedGeometry)
+                                root.selectedGeometry, root.selectedMethod,
+                                root.numberFromInput(satinDensity.text),
+                                crosshatchLayers.currentIndex + 2,
+                                root.numberFromInput(crosshatchAngle.text))
                         else
                             root.controller.edit(colorField.text.trim(), root.selectedComplementary)
                     }
@@ -553,13 +639,13 @@ Item {
                 spacing: 7
 
                 SectionLabel {
-                    visible: !root.satinTarget
+                    visible: root.selectedMethod !== 1
                     text: qsTr("PROFIL DE TRANSITION")
                 }
                 Flow {
                     Layout.fillWidth: true
                     spacing: 4
-                    visible: !root.satinTarget
+                    visible: root.selectedMethod !== 1
                     Repeater {
                         model: root.ready ? root.controller.curves : []
                         delegate: StudioButton {
@@ -574,7 +660,7 @@ Item {
                 }
                 ColumnLayout {
                     Layout.fillWidth: true
-                    visible: root.hasFade && root.multiColors && !root.satinTarget
+                    visible: root.hasFade && root.multiColors && root.selectedMethod !== 1
                     spacing: 6
                     SectionLabel { text: qsTr("PROFIL INDIVIDUEL DE CHAQUE FIL") }
                     Text {
@@ -628,7 +714,7 @@ Item {
 
                 ColumnLayout {
                     Layout.fillWidth: true
-                    visible: !root.satinTarget && root.selectedGeometry !== 1
+                    visible: root.selectedMethod !== 1 && root.selectedGeometry !== 1
                     spacing: 5
                     SectionLabel { text: qsTr("ORIENTATION DU FONDU") }
                     Text {
@@ -677,7 +763,7 @@ Item {
 
                 StudioButton {
                     objectName: root.prefix + "Advanced"
-                    visible: !root.satinTarget
+                    visible: root.selectedMethod !== 1
                     text: root.advancedOpen ? qsTr("Masquer les coordonnées avancées")
                                            : qsTr("Coordonnées avancées…")
                     quiet: true
@@ -686,7 +772,7 @@ Item {
                 }
                 ColumnLayout {
                     Layout.fillWidth: true
-                    visible: root.advancedOpen && !root.satinTarget && !root.multiColors
+                    visible: root.advancedOpen && root.selectedMethod !== 1 && !root.multiColors
                              && root.selectedGeometry === 0
                     Text {
                         text: qsTr("Modifier l'axe dans le canevas ou saisir des positions en mm.")

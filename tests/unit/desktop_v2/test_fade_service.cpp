@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include "edit_batch.hpp"
 #include "fade_service.hpp"
 #include "inspector_model.hpp"
 #include "openstitch/project_ops/factory.hpp"
+#include "openstitch/project_ops/gradient_fill.hpp"
 
 using namespace openstitch;
 using namespace openstitch::desktop_v2;
@@ -79,4 +81,53 @@ TEST_CASE("fade requests that cannot work are refused with the engine's reason",
     const auto depth = g.session.undoNames().size();
     CHECK_FALSE(createFade(g.session, g.id, same).ok);
     CHECK(g.session.undoNames().size() == depth);
+}
+
+TEST_CASE("rail-less satin creates an autonomous interlaced gradient",
+          "[desktop_v2][fade][satin]") {
+    auto f = rectFill();
+    auto* object = f.session.projectForIdAllocation().findEmbroidery(ObjectId{f.id});
+    REQUIRE(object != nullptr);
+    object->params = document::SatinParams{};
+
+    // Régression PR #340 : choisir Satin ne doit ni afficher l'ancien diagnostic « tatami », ni
+    // exiger une saisie manuelle préalable. Les rails sont dérivés du contour par le moteur.
+    CHECK(fadeIncompatibility(f.session.project(), f.id).empty());
+    MultiFadeSettings settings;
+    settings.colors = {{255, 0, 0}, {0, 0, 255}};
+    settings.method = static_cast<int>(document::GradientMethod::SatinInterlaced);
+    const auto depth = f.session.undoNames().size();
+    REQUIRE(createMultiFade(f.session, f.id, settings).ok);
+    CHECK(f.session.undoNames().size() == depth + 1);
+
+    const auto spec =
+        project_ops::describe_multicolor_gradient(f.session.project(), ObjectId{f.id});
+    REQUIRE(spec.has_value());
+    CHECK(spec->method == document::GradientMethod::SatinInterlaced);
+    CHECK(spec->palette.size() == 2);
+}
+
+TEST_CASE("autonomous gradient method settings survive desktop edits", "[desktop_v2][fade]") {
+    auto f = rectFill();
+    MultiFadeSettings settings;
+    settings.colors = {{10, 20, 30}, {70, 80, 90}, {120, 130, 140}};
+    settings.method = static_cast<int>(document::GradientMethod::CrossHatching);
+    settings.crosshatchLayers = 3;
+    settings.crosshatchAngleDeg = 37.5;
+    REQUIRE(createMultiFade(f.session, f.id, settings).ok);
+
+    const auto read = readMultiFade(f.session.project(), f.id);
+    REQUIRE(read.has_value());
+    CHECK(read->method == settings.method);
+    CHECK(read->crosshatchLayers == 3);
+    CHECK(read->crosshatchAngleDeg == Catch::Approx(37.5));
+
+    auto edited = *read;
+    edited.method = static_cast<int>(document::GradientMethod::LongAndShort);
+    edited.geometry = 2;
+    REQUIRE(editMultiFade(f.session, f.id, edited).ok);
+    const auto after = readMultiFade(f.session.project(), f.id);
+    REQUIRE(after.has_value());
+    CHECK(after->method == static_cast<int>(document::GradientMethod::LongAndShort));
+    CHECK(after->geometry == 2);
 }

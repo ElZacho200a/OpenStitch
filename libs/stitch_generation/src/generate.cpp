@@ -1176,7 +1176,10 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
     std::deque<document::VectorObject> knockedSources; // adresses stables (HP-ENG-011)
     for (std::size_t idx = 0; idx < objects.size();) {
         const document::EmbroideryObject& object = objects[idx];
-        if (!object.visible) {
+        // L'ancre d'un fondu multicolore ne porte aucun point propre (ses couches
+        // physiques sont les AUTRES objets tagués vers elle par MultiBlendLink,
+        // déjà présents dans `objects` et générées normalement selon leur propre type).
+        if (!object.visible || object.is_multicolor_gradient()) {
             ++idx;
             continue;
         }

@@ -601,6 +601,88 @@ struct AppliqueParams {
     bool operator==(const AppliqueParams&) const = default;
 };
 
+// Méthode de génération d'un fondu multicolore (mission 2026-11-14 : le fondu devient un
+// type de broderie autonome, la méthode un simple paramètre de cet objet). Chaque méthode
+// réutilise un générateur existant par couche physique (cf. project_ops::gradient_fill) :
+// `Directional`/`LongAndShort`/`ControlledScatter` sont le même remplissage directionnel à
+// `DensityGradient` complémentaire, seule `texture` change ; `SatinInterlaced` entrelace des
+// colonnes satin sur les mêmes rails (réels ou dérivés du contour) ; `CrossHatching` superpose
+// des remplissages directionnels à guide droit, un angle par groupe de couches. Valeurs
+// persistées par NOM dans le .osp (jamais par entier), comme `AutoSatinStrategy`.
+enum class GradientMethod : std::uint8_t {
+    Directional = 0,
+    SatinInterlaced = 1,
+    LongAndShort = 2,
+    ControlledScatter = 3,
+    CrossHatching = 4,
+};
+
+[[nodiscard]] constexpr std::string_view gradient_method_id(GradientMethod method) {
+    switch (method) {
+    case GradientMethod::Directional:
+        return "directional";
+    case GradientMethod::SatinInterlaced:
+        return "satin_interlaced";
+    case GradientMethod::LongAndShort:
+        return "long_and_short";
+    case GradientMethod::ControlledScatter:
+        return "controlled_scatter";
+    case GradientMethod::CrossHatching:
+        return "cross_hatching";
+    }
+    return "directional";
+}
+
+[[nodiscard]] constexpr std::optional<GradientMethod> parse_gradient_method(std::string_view id) {
+    for (const auto m : {GradientMethod::Directional, GradientMethod::SatinInterlaced,
+                         GradientMethod::LongAndShort, GradientMethod::ControlledScatter,
+                         GradientMethod::CrossHatching}) {
+        if (id == gradient_method_id(m)) {
+            return m;
+        }
+    }
+    return std::nullopt;
+}
+
+// Un fil de la palette (HP : fondu multicolore autonome). `curve` : profil de densité propre
+// à cette couche ; `Linear` pour toutes = profil commun. `thread` facultatif : couleur libre si
+// absent (comme `EmbroideryObject::
+// thread`), jamais déduit d'une bibliothèque non chargée.
+struct GradientThread {
+    std::array<std::uint8_t, 3> rgb{};
+    std::optional<thread_palette::ThreadKey> thread;
+    DensityCurve curve{DensityCurve::Linear};
+
+    bool operator==(const GradientThread&) const = default;
+};
+
+// Paramètres du FONDU MULTICOLORE (mission 2026-11-14) : type de broderie autonome, distinct
+// d'un satin ou d'un tatami. Porté par un objet « ancre » sans point propre (exclu de la
+// génération, cf. `is_multicolor_gradient`) qui suit la géométrie de `source_vector` comme les
+// autres remplissages. La génération matérialise `palette.size()` COUCHES PHYSIQUES internes —
+// de vrais `EmbroideryObject` (satin/tatami/directionnel selon `method`), tagués vers cette
+// ancre par `MultiBlendLink` (`group` = id de l'ancre) — jamais exposées comme des objets
+// indépendants à éditer manuellement dans Studio (cf. docs/studio-fondus-camaieu-architecture.md).
+// Changer `method` régénère ces couches SANS toucher `palette` ni `transition`.
+struct MulticolorGradientParams {
+    GradientMethod method{GradientMethod::Directional};
+    // 2 à 8 fils, de l'arrière vers l'avant (ordre de couture). Validé par
+    // `project_ops::make_create_multicolor_gradient_object_command`, pas par le modèle.
+    std::vector<GradientThread> palette;
+    bool complementary{true}; // rampes de densité opposées (faux = fond uniforme + voiles)
+    // Axe, géométrie (linéaire/radiale/courbe), courbe et texture communs ; `density_stops` est
+    // reconstruit par le moteur pour chaque couche (ignoré ici, comme `templateGradient`).
+    DensityGradient transition;
+    // SatinInterlaced uniquement : espacement des barreaux (équivalent SatinParams::density).
+    Micrometers satin_density{400};
+    // CrossHatching uniquement : 2 (perpendiculaires) ou 3 (à 60°) groupes d'angle, et l'angle
+    // de la première couche ; les couches suivantes tournent de 180°/`crosshatch_layers`.
+    int crosshatch_layers{2};
+    Angle crosshatch_angle{0.0};
+
+    bool operator==(const MulticolorGradientParams&) const = default;
+};
+
 // Un objet de broderie porte un TYPE de point sous forme de variant. Chaque
 // type suit la géométrie d'un objet vectoriel source (contour pour running,
 // région pleine pour tatami) ou porte la sienne (satin). La séparation
@@ -611,7 +693,7 @@ using StitchParams =
     std::variant<RunningStitchParams, TatamiParams, SatinParams, DirectionalFillParams,
                  AutoSatinParams, BlanketStitchParams, ContourFillParams, MotifRunParams,
                  MotifFillParams, RadialFillParams, SpiralFillParams, CrosshatchFillParams,
-                 CrossStitchParams, AppliqueParams>;
+                 CrossStitchParams, AppliqueParams, MulticolorGradientParams>;
 
 // Type de point autorisé après retouche manuelle (Lot 8 MVP, §2 du cadrage) :
 // seule transition permise, Stitch <-> Jump — pas de Trim/ColorChange/Stop,
@@ -766,6 +848,12 @@ struct EmbroideryObject {
     }
     [[nodiscard]] bool is_cross_stitch() const {
         return std::holds_alternative<CrossStitchParams>(params);
+    }
+    // Ancre d'un fondu multicolore (mission 2026-11-14) : zéro point propre, exclue de la
+    // génération (cf. `stitch_generation::generate` et `effective_sequence`) ; ses couches
+    // physiques sont les AUTRES objets du projet tagués vers elle par `MultiBlendLink`.
+    [[nodiscard]] bool is_multicolor_gradient() const {
+        return std::holds_alternative<MulticolorGradientParams>(params);
     }
 };
 

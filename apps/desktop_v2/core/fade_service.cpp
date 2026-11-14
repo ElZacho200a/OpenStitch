@@ -114,13 +114,12 @@ bool rotate_gradient(document::DensityGradient& gradient, double degrees) {
 
 std::string fadeIncompatibility(const document::Project& project, std::uint64_t objectId) {
     const auto* emb = project.findEmbroidery(ObjectId{objectId});
-    if (emb && emb->is_satin() && !emb->multi_blend && !emb->color_blend) {
-        const auto* source = project.findObject(emb->source_vector);
-        const auto& satin = std::get<document::SatinParams>(emb->params);
-        if (source && !source->paths.empty() && satin.rail_a.nodes.size() >= 2 &&
-            satin.rail_b.nodes.size() >= 2) {
-            return {}; // Satin multicolore : création n-aire uniquement
-        }
+    if (emb && emb->is_satin()) {
+        // Contrairement à l'ancien fondu, le satin entrelacé autonome sait dériver ses rails
+        // depuis le contour source. C'est le correctif réel du diagnostic couvert par la PR #340 :
+        // le simple choix de Satin ne doit plus conduire à l'erreur trompeuse « tatami seulement ».
+        return project_ops::multicolor_gradient_incompatibility(
+            project, ObjectId{objectId}, document::GradientMethod::SatinInterlaced);
     }
     return project_ops::gradient_incompatibility(project, ObjectId{objectId});
 }
@@ -215,19 +214,28 @@ ServiceResult removeFade(DocumentSession& session, std::uint64_t objectId) {
 
 std::optional<MultiFadeSettings> readMultiFade(const document::Project& project,
                                                std::uint64_t objectId) {
-    const auto spec = project_ops::describe_multicolor_gradient_fill(project, ObjectId{objectId});
+    const auto spec = project_ops::describe_multicolor_gradient(project, ObjectId{objectId});
     if (!spec) {
         return std::nullopt;
     }
-    return MultiFadeSettings{spec->colors, spec->complementary,
-                             static_cast<int>(spec->gradient.texture),
-                             static_cast<int>(spec->gradient.geometry)};
+    MultiFadeSettings settings;
+    settings.colors.reserve(spec->palette.size());
+    for (const auto& thread : spec->palette) {
+        settings.colors.push_back(thread.rgb);
+    }
+    settings.complementary = spec->complementary;
+    settings.texture = static_cast<int>(spec->transition.texture);
+    settings.geometry = static_cast<int>(spec->transition.geometry);
+    settings.method = static_cast<int>(spec->method);
+    settings.satinDensityMm = static_cast<double>(spec->satin_density.value) / 1000.0;
+    settings.crosshatchLayers = spec->crosshatch_layers;
+    settings.crosshatchAngleDeg = spec->crosshatch_angle.radians * 180.0 / std::numbers::pi;
+    return settings;
 }
 
 std::optional<double> readFadeAngle(const document::Project& project, std::uint64_t objectId) {
-    if (const auto spec =
-            project_ops::describe_multicolor_gradient_fill(project, ObjectId{objectId})) {
-        return gradient_angle(spec->gradient);
+    if (const auto spec = project_ops::describe_multicolor_gradient(project, ObjectId{objectId})) {
+        return gradient_angle(spec->transition);
     }
     if (const auto spec = project_ops::describe_gradient_fill(project, ObjectId{objectId})) {
         return gradient_angle(spec->gradient);
@@ -237,15 +245,15 @@ std::optional<double> readFadeAngle(const document::Project& project, std::uint6
 
 ServiceResult setFadeAngle(DocumentSession& session, std::uint64_t objectId, double degrees) {
     if (auto spec =
-            project_ops::describe_multicolor_gradient_fill(session.project(), ObjectId{objectId})) {
-        const auto before = spec->gradient;
-        if (!rotate_gradient(spec->gradient, degrees)) {
+            project_ops::describe_multicolor_gradient(session.project(), ObjectId{objectId})) {
+        const auto before = spec->transition;
+        if (!rotate_gradient(spec->transition, degrees)) {
             return refuse("Angle invalide ou axe de fondu dégénéré.");
         }
-        if (spec->gradient == before) {
+        if (spec->transition == before) {
             return {true, {}};
         }
-        auto command = project_ops::make_edit_multicolor_gradient_fill_command(
+        auto command = project_ops::make_edit_multicolor_gradient_command(
             session.projectForIdAllocation(), ObjectId{objectId}, *spec);
         if (!command) {
             return refuse(command.error().message);
@@ -274,27 +282,39 @@ ServiceResult setFadeAngle(DocumentSession& session, std::uint64_t objectId, dou
 
 ServiceResult createMultiFade(DocumentSession& session, std::uint64_t objectId,
                               const MultiFadeSettings& settings) {
-    if (!valid_mode(settings.texture, settings.geometry)) {
+    if (!valid_mode(settings.texture, settings.geometry) || settings.method < 0 ||
+        settings.method > static_cast<int>(document::GradientMethod::CrossHatching)) {
         return refuse("Technique de fondu inconnue.");
     }
     const auto* base = findObject(session.project(), objectId);
     if (base == nullptr || settings.colors.size() < 2 || settings.colors.size() > 8) {
         return refuse("Choisissez un remplissage et entre 2 et 8 fils.");
     }
-    const auto initial = project_ops::default_gradient_fill(session.project(), ObjectId{objectId});
+    const auto initial =
+        project_ops::default_multicolor_gradient(session.project(), ObjectId{objectId});
     if (!initial) {
         return refuse("La forme n'est pas compatible avec un fondu.");
     }
-    project_ops::MultiGradientFillSpec spec;
-    spec.colors = settings.colors;
+    project_ops::MulticolorGradientSpec spec = *initial;
+    spec.method = static_cast<document::GradientMethod>(settings.method);
+    spec.palette.clear();
+    spec.palette.reserve(settings.colors.size());
+    for (const auto& rgb : settings.colors) {
+        spec.palette.push_back(
+            document::GradientThread{rgb, std::nullopt, document::DensityCurve::Linear});
+    }
     spec.complementary = settings.complementary;
-    spec.gradient = initial->gradient;
-    spec.gradient.texture = static_cast<document::DensityTexture>(settings.texture);
-    if (!setup_geometry(session.project(), ObjectId{objectId}, spec.gradient, settings.geometry,
+    spec.transition.texture = static_cast<document::DensityTexture>(settings.texture);
+    spec.satin_density = Micrometers{static_cast<std::int32_t>(
+        std::lround(std::clamp(settings.satinDensityMm, 0.1, 5.0) * 1000.0))};
+    spec.crosshatch_layers = std::clamp(settings.crosshatchLayers, 2, 3);
+    spec.crosshatch_angle =
+        Angle{std::remainder(settings.crosshatchAngleDeg, 360.0) * std::numbers::pi / 180.0};
+    if (!setup_geometry(session.project(), ObjectId{objectId}, spec.transition, settings.geometry,
                         settings.geometry != 0)) {
         return refuse("Forme incompatible avec cette géométrie.");
     }
-    auto command = project_ops::make_create_multicolor_gradient_fill_command(
+    auto command = project_ops::make_create_multicolor_gradient_command(
         session.projectForIdAllocation(), ObjectId{objectId}, spec);
     if (!command) {
         return refuse(command.error().message);
@@ -305,11 +325,11 @@ ServiceResult createMultiFade(DocumentSession& session, std::uint64_t objectId,
 
 ServiceResult editMultiFade(DocumentSession& session, std::uint64_t objectId,
                             const MultiFadeSettings& settings) {
-    if (!valid_mode(settings.texture, settings.geometry)) {
+    if (!valid_mode(settings.texture, settings.geometry) || settings.method < 0 ||
+        settings.method > static_cast<int>(document::GradientMethod::CrossHatching)) {
         return refuse("Technique de fondu inconnue.");
     }
-    auto spec =
-        project_ops::describe_multicolor_gradient_fill(session.project(), ObjectId{objectId});
+    auto spec = project_ops::describe_multicolor_gradient(session.project(), ObjectId{objectId});
     if (!spec) {
         // Conversion contrôlée et annulable de la relation binaire historique.
         const auto old = project_ops::describe_gradient_fill(session.project(), ObjectId{objectId});
@@ -317,22 +337,44 @@ ServiceResult editMultiFade(DocumentSession& session, std::uint64_t objectId,
             return refuse("Sélectionnez un fondu de fils existant.");
         }
         spec.emplace();
-        spec->gradient = old->gradient;
-        spec->colors = {old->background, old->foreground};
+        spec->transition = old->gradient;
+        spec->palette = {{old->background, std::nullopt, document::DensityCurve::Linear},
+                         {old->foreground, std::nullopt, document::DensityCurve::Linear}};
         spec->complementary = old->complementary;
+        switch (old->gradient.texture) {
+        case document::DensityTexture::LongShort:
+            spec->method = document::GradientMethod::LongAndShort;
+            break;
+        case document::DensityTexture::Stippled:
+            spec->method = document::GradientMethod::ControlledScatter;
+            break;
+        default:
+            spec->method = document::GradientMethod::Directional;
+            break;
+        }
     }
-    const bool geometryChanged = static_cast<int>(spec->gradient.geometry) != settings.geometry;
-    spec->colors = settings.colors;
-    if (!spec->layer_curves.empty()) {
-        spec->layer_curves.resize(spec->colors.size(), spec->gradient.curve);
+    const bool geometryChanged = static_cast<int>(spec->transition.geometry) != settings.geometry;
+    const auto commonCurve = spec->transition.curve;
+    const auto oldPalette = spec->palette;
+    spec->palette.clear();
+    spec->palette.reserve(settings.colors.size());
+    for (std::size_t i = 0; i < settings.colors.size(); ++i) {
+        const auto curve = i < oldPalette.size() ? oldPalette[i].curve : commonCurve;
+        spec->palette.push_back({settings.colors[i], std::nullopt, curve});
     }
     spec->complementary = settings.complementary;
-    spec->gradient.texture = static_cast<document::DensityTexture>(settings.texture);
-    if (geometryChanged && !setup_geometry(session.project(), ObjectId{objectId}, spec->gradient,
+    spec->method = static_cast<document::GradientMethod>(settings.method);
+    spec->transition.texture = static_cast<document::DensityTexture>(settings.texture);
+    spec->satin_density = Micrometers{static_cast<std::int32_t>(
+        std::lround(std::clamp(settings.satinDensityMm, 0.1, 5.0) * 1000.0))};
+    spec->crosshatch_layers = std::clamp(settings.crosshatchLayers, 2, 3);
+    spec->crosshatch_angle =
+        Angle{std::remainder(settings.crosshatchAngleDeg, 360.0) * std::numbers::pi / 180.0};
+    if (geometryChanged && !setup_geometry(session.project(), ObjectId{objectId}, spec->transition,
                                            settings.geometry, true)) {
         return refuse("Forme incompatible avec cette géométrie.");
     }
-    auto command = project_ops::make_edit_multicolor_gradient_fill_command(
+    auto command = project_ops::make_edit_multicolor_gradient_command(
         session.projectForIdAllocation(), ObjectId{objectId}, *spec);
     if (!command) {
         return refuse(command.error().message);
@@ -346,18 +388,16 @@ ServiceResult setMultiFadeLayerCurve(DocumentSession& session, std::uint64_t obj
     if (curve < 0 || curve > static_cast<int>(document::DensityCurve::ConcaveConvex)) {
         return refuse("Profil de densité inconnu.");
     }
-    auto spec =
-        project_ops::describe_multicolor_gradient_fill(session.project(), ObjectId{objectId});
-    if (!spec || spec->layer_curves.size() != spec->colors.size() ||
-        layerIndex >= spec->layer_curves.size()) {
+    auto spec = project_ops::describe_multicolor_gradient(session.project(), ObjectId{objectId});
+    if (!spec || layerIndex >= spec->palette.size()) {
         return refuse("Sélectionnez une couche de remplissage multicolore.");
     }
     const auto selected = static_cast<document::DensityCurve>(curve);
-    if (spec->layer_curves[layerIndex] == selected) {
+    if (spec->palette[layerIndex].curve == selected) {
         return {true, {}};
     }
-    spec->layer_curves[layerIndex] = selected;
-    auto command = project_ops::make_edit_multicolor_gradient_fill_command(
+    spec->palette[layerIndex].curve = selected;
+    auto command = project_ops::make_edit_multicolor_gradient_command(
         session.projectForIdAllocation(), ObjectId{objectId}, *spec);
     if (!command) {
         return refuse(command.error().message);
@@ -367,8 +407,8 @@ ServiceResult setMultiFadeLayerCurve(DocumentSession& session, std::uint64_t obj
 }
 
 ServiceResult removeMultiFade(DocumentSession& session, std::uint64_t objectId) {
-    auto command = project_ops::make_remove_multicolor_gradient_fill_command(session.project(),
-                                                                             ObjectId{objectId});
+    auto command =
+        project_ops::make_remove_multicolor_gradient_command(session.project(), ObjectId{objectId});
     if (!command) {
         return refuse(command.error().message);
     }
