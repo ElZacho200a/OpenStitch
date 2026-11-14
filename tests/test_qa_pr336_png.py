@@ -23,8 +23,8 @@ def chunk(kind, data):
 
 def png():
     ihdr = struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0)
-    pixels = zlib.compress(b"\\x00\\xff\\x00\\x00")
-    return b"\\x89PNG\\r\\n\\x1a\\n" + chunk(b"IHDR", ihdr) + chunk(b"IDAT", pixels) + chunk(b"IEND", b"")
+    pixels = zlib.compress(b"\x00\xff\x00\x00")
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IDAT", pixels) + chunk(b"IEND", b"")
 
 
 class TestPreviewPng(unittest.TestCase):
