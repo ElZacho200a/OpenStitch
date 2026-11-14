@@ -108,6 +108,28 @@ jobs:
             build/msvc/apps/mcp/Release/
             build/msvc/apps/desktop_v2/studio/Release/
 
+      # Un seul binaire fait foi : le CLI construit sur le SHA de cette PR,
+      # pas une ancienne archive téléchargée d'une CI précédente.
+      - name: QA fondu réel PR336 — 20 variantes / OSP / DST / previews
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 336
+        shell: pwsh
+        env:
+          PYTHONUTF8: "1"
+          OPENSTITCH_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          $env:OPENSTITCH_CLI = Join-Path $PWD "build/msvc/apps/cli/Release/openstitch-cli.exe"
+          python scripts/qa_pr336_gradients.py
+          if ($LASTEXITCODE -ne 0) { throw 'QA fondu : generation OSP/DST/PNG impossible' }
+
+      - name: Upload fondu PR336 — vrais projets, exports et previews
+        if: always() && github.event_name == 'pull_request' && github.event.pull_request.number == 336
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-pr336-current-commit
+          path: qa-gradient-results/
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Build and capture experimental Qt Quick Studio
         shell: pwsh
         run: |
@@ -139,7 +161,7 @@ jobs:
           path: dist/studio-screenshots/*.png
 
       - name: Test (Release)
-        run: ctest --preset msvc-release
+        run: ctest --preset msvc-release --output-on-failure
 
       - name: Package and smoke-test Windows MCP (Release)
         shell: pwsh
@@ -258,7 +280,7 @@ jobs:
           python3 scripts/qa/fuzz_osp.py --cli build/linux-core/apps/cli/openstitch-cli
 
       - name: Test
-        run: ctest --preset linux-core
+        run: ctest --preset linux-core --output-on-failure
 
       - name: Test Linux CLI installer
         run: bash tests/scripts/test-install-cli-linux.sh

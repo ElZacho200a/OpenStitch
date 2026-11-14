@@ -2,6 +2,9 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
+#include <array>
+#include <cmath>
 #include <filesystem>
 
 #include "openstitch/commands/color_blend_commands.hpp"
@@ -9,11 +12,13 @@
 #include "openstitch/commands/undo_stack.hpp"
 #include "openstitch/commands/vector_ops.hpp"
 #include "openstitch/document/color_blend.hpp"
+#include "openstitch/document/multi_blend.hpp"
 #include "openstitch/document/project.hpp"
 #include "openstitch/geometry/primitives.hpp"
 #include "openstitch/project_io/project_io.hpp"
 #include "openstitch/project_ops/gradient_fill.hpp"
 #include "openstitch/stitch_generation/color_blend.hpp"
+#include "openstitch/stitch_generation/generate.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
 
 using namespace openstitch;
@@ -339,4 +344,407 @@ TEST_CASE("gradient fill: the edit command applies exactly what the engine build
     stack.execute(std::move(*command), f.project);
     CHECK(f.project.embroidery_objects[0].params == built->first.params);
     CHECK(f.project.embroidery_objects[1].params == built->second.params);
+}
+
+TEST_CASE("multicolor: five physical thread layers are one undoable blend group",
+          "[project_ops][gradient][multicolor]") {
+    auto f = rectangle_fill();
+    const auto plain = f.project.embroidery_objects.front();
+    const auto initial = project_ops::default_gradient_fill(f.project, f.fill);
+    REQUIRE(initial);
+    project_ops::MultiGradientFillSpec spec;
+    spec.colors = {{12, 25, 80}, {24, 64, 130}, {57, 113, 165}, {91, 170, 205}, {180, 223, 238}};
+    spec.gradient = initial->gradient;
+    spec.gradient.texture = document::DensityTexture::Feathered;
+    spec.layer_curves = {document::DensityCurve::Linear, document::DensityCurve::Smooth,
+                         document::DensityCurve::Steep, document::DensityCurve::EaseIn,
+                         document::DensityCurve::EaseOut};
+    spec.complementary = true;
+
+    commands::UndoStack stack;
+    auto command =
+        project_ops::make_create_multicolor_gradient_fill_command(f.project, f.fill, spec);
+    REQUIRE(command);
+    stack.execute(std::move(*command), f.project);
+    REQUIRE(f.project.embroidery_objects.size() == 5);
+
+    const auto group = document::find_multi_blend(f.project, f.fill);
+    REQUIRE(group);
+    CHECK(group->layers.size() == 5);
+    CHECK(group->group == f.fill);
+    for (std::size_t i = 0; i < group->layers.size(); ++i) {
+        const auto* layer = f.project.findEmbroidery(group->layers[i]);
+        REQUIRE(layer);
+        CHECK(layer->rgb == spec.colors[i]);
+        REQUIRE(layer->multi_blend);
+        CHECK(layer->multi_blend->index == i);
+        const auto* params = std::get_if<document::DirectionalFillParams>(&layer->params);
+        REQUIRE(params);
+        REQUIRE(params->density_gradient);
+        CHECK(params->density_gradient->curve == spec.layer_curves[i]);
+        CHECK(params->density_gradient->density_stops.size() == 5);
+        CHECK(params->density_gradient->density_stops[i].weight == 1.0);
+        for (std::size_t j = 0; j < 5; ++j) {
+            double sum = 0.0;
+            for (const auto member : group->layers) {
+                const auto* other = f.project.findEmbroidery(member);
+                const auto& grad =
+                    *std::get<document::DirectionalFillParams>(other->params).density_gradient;
+                sum += grad.density_stops[j].weight;
+            }
+            CHECK(sum == Catch::Approx(1.0));
+        }
+    }
+    const auto stitched = stitch_generation::effective_sequence(f.project);
+    REQUIRE(stitched);
+    CHECK(stitched->commands.size() > 20);
+
+    // Même résultat après fermeture / réouverture.
+    const auto path =
+        std::filesystem::temp_directory_path() / "openstitch_multicolor_gradient_test.osp";
+    REQUIRE(project_io::save_project(path, f.project));
+    const auto reopened = project_io::load_project(path);
+    std::filesystem::remove(path);
+    REQUIRE(reopened);
+    CHECK(document::find_multi_blend(*reopened, f.fill));
+    const auto restored = project_ops::describe_multicolor_gradient_fill(*reopened, f.fill);
+    REQUIRE(restored);
+    CHECK(restored->colors == spec.colors);
+    CHECK(restored->layer_curves == spec.layer_curves);
+
+    REQUIRE(stack.undo(f.project));
+    REQUIRE(f.project.embroidery_objects.size() == 1);
+    CHECK(f.project.embroidery_objects.front().params == plain.params);
+    CHECK_FALSE(f.project.embroidery_objects.front().multi_blend);
+    REQUIRE(stack.redo(f.project));
+    REQUIRE(f.project.embroidery_objects.size() == 5);
+}
+
+TEST_CASE("multicolor: editing layer count, removing group and undo stay atomic",
+          "[project_ops][gradient][multicolor]") {
+    auto f = rectangle_fill();
+    commands::UndoStack stack;
+    auto initial = project_ops::default_gradient_fill(f.project, f.fill);
+    REQUIRE(initial);
+    project_ops::MultiGradientFillSpec spec;
+    spec.gradient = initial->gradient;
+    spec.colors = {{200, 5, 5}, {120, 40, 150}, {50, 30, 220}, {10, 120, 240}};
+    auto created =
+        project_ops::make_create_multicolor_gradient_fill_command(f.project, f.fill, spec);
+    REQUIRE(created);
+    stack.execute(std::move(*created), f.project);
+    const auto original = document::find_multi_blend(f.project, f.fill);
+    REQUIRE(original);
+
+    spec.colors.pop_back();
+    spec.gradient.geometry = document::DensityGeometry::Curved;
+    auto edited = project_ops::make_edit_multicolor_gradient_fill_command(f.project, f.fill, spec);
+    REQUIRE(edited);
+    stack.execute(std::move(*edited), f.project);
+    REQUIRE(f.project.embroidery_objects.size() == 3);
+    CHECK(project_ops::describe_multicolor_gradient_fill(f.project, f.fill)->colors == spec.colors);
+    REQUIRE(stack.undo(f.project));
+    REQUIRE(f.project.embroidery_objects.size() == 4);
+    CHECK(document::find_multi_blend(f.project, f.fill)->layers == original->layers);
+
+    auto remove = project_ops::make_remove_multicolor_gradient_fill_command(f.project, f.fill);
+    REQUIRE(remove);
+    stack.execute(std::move(*remove), f.project);
+    CHECK_FALSE(document::find_multi_blend(f.project, f.fill));
+    CHECK(f.project.embroidery_objects.size() == 1);
+    REQUIRE(stack.undo(f.project));
+    CHECK(document::find_multi_blend(f.project, f.fill));
+}
+
+TEST_CASE("multicolor: legacy two-color blend upgrades without losing undo",
+          "[project_ops][gradient][multicolor]") {
+    auto f = rectangle_fill();
+    commands::UndoStack stack;
+    const auto top = make_gradient(f, stack);
+    REQUIRE(document::find_color_blend(f.project, top));
+    auto spec = project_ops::describe_gradient_fill(f.project, top);
+    REQUIRE(spec);
+    project_ops::MultiGradientFillSpec multi;
+    multi.colors = {spec->background, {70, 100, 170}, spec->foreground};
+    multi.gradient = spec->gradient;
+    auto conversion =
+        project_ops::make_edit_multicolor_gradient_fill_command(f.project, top, multi);
+    REQUIRE(conversion);
+    stack.execute(std::move(*conversion), f.project);
+    REQUIRE(f.project.embroidery_objects.size() == 3);
+    CHECK_FALSE(document::find_color_blend(f.project, top));
+    CHECK(document::find_multi_blend(f.project, top));
+    REQUIRE(stack.undo(f.project));
+    REQUIRE(f.project.embroidery_objects.size() == 2);
+    CHECK(document::find_color_blend(f.project, top));
+    CHECK_FALSE(document::find_multi_blend(f.project, top));
+}
+
+TEST_CASE("multicolor directional: no long stitched bridges across inactive color zones",
+          "[project_ops][gradient][multicolor][routing]") {
+    for (int mode = 0; mode < 4; ++mode) {
+        const auto texture = static_cast<document::DensityTexture>(mode);
+        auto f = rectangle_fill();
+        commands::UndoStack stack;
+        const auto initial = project_ops::default_gradient_fill(f.project, f.fill);
+        REQUIRE(initial);
+        project_ops::MultiGradientFillSpec spec;
+        spec.gradient = initial->gradient;
+        spec.gradient.texture = texture;
+        spec.colors.push_back({24, 42, 99});
+        spec.colors.push_back({40, 83, 141});
+        spec.colors.push_back({76, 122, 179});
+        spec.colors.push_back({125, 171, 205});
+        spec.colors.push_back({183, 216, 229});
+        using project_ops::make_create_multicolor_gradient_fill_command;
+        auto command = make_create_multicolor_gradient_fill_command(f.project, f.fill, spec);
+        REQUIRE(command);
+        stack.execute(std::move(*command), f.project);
+        const auto result = stitch_generation::effective_sequence(f.project);
+        REQUIRE(result);
+        bool connected = false;
+        Vec2um last{};
+        double longest = 0.0;
+        for (const auto& command : result->commands) {
+            if (command.type != stitch::CommandType::Stitch) {
+                connected = false;
+                continue;
+            }
+            if (connected) {
+                const double dx = double(command.pos.x.value) - double(last.x.value);
+                const double dy = double(command.pos.y.value) - double(last.y.value);
+                longest = std::max(longest, std::hypot(dx, dy));
+            }
+            last = command.pos;
+            connected = true;
+        }
+        CAPTURE(static_cast<int>(texture), longest);
+        // Les raccords masqués doivent se transformer en sauts. Le générateur
+        // vise des points de 4 mm, 7 mm étant le plafond physique général.
+        CHECK(longest <= 7'000.0);
+    }
+}
+
+TEST_CASE("multicolor gradient: expanded density profiles persist and change stitch paths",
+          "[project_ops][gradient][multicolor][curves]") {
+    auto fixture = rectangle_fill();
+    commands::UndoStack undo;
+    project_ops::MultiGradientFillSpec spec;
+    spec.colors = {{24, 42, 99}, {86, 144, 197}, {232, 216, 162}};
+    const auto defaults = project_ops::default_gradient_fill(fixture.project, fixture.fill);
+    REQUIRE(defaults);
+    spec.gradient = defaults->gradient;
+    auto created = project_ops::make_create_multicolor_gradient_fill_command(fixture.project,
+                                                                             fixture.fill, spec);
+    REQUIRE(created);
+    undo.execute(std::move(*created), fixture.project);
+
+    const auto original = stitch_generation::effective_sequence(fixture.project);
+    REQUIRE(original);
+    for (const auto curve :
+         {document::DensityCurve::Convex, document::DensityCurve::Concave,
+          document::DensityCurve::ConvexConcave, document::DensityCurve::ConcaveConvex}) {
+        auto changed =
+            project_ops::describe_multicolor_gradient_fill(fixture.project, fixture.fill);
+        REQUIRE(changed);
+        changed->layer_curves.assign(changed->colors.size(), curve);
+        auto edit = project_ops::make_edit_multicolor_gradient_fill_command(fixture.project,
+                                                                            fixture.fill, *changed);
+        REQUIRE(edit);
+        undo.execute(std::move(*edit), fixture.project);
+
+        const auto applied =
+            project_ops::describe_multicolor_gradient_fill(fixture.project, fixture.fill);
+        REQUIRE(applied);
+        REQUIRE(applied->layer_curves.size() == applied->colors.size());
+        for (const auto v : applied->layer_curves) {
+            CHECK(v == curve);
+        }
+        const auto generated = stitch_generation::effective_sequence(fixture.project);
+        REQUIRE(generated);
+        CHECK(generated->commands != original->commands);
+    }
+
+    const auto file =
+        std::filesystem::temp_directory_path() / "openstitch_multicolor_extended_curves.osp";
+    REQUIRE(project_io::save_project(file, fixture.project).has_value());
+    auto reopened = project_io::load_project(file);
+    REQUIRE(reopened);
+    const auto persisted = project_ops::describe_multicolor_gradient_fill(*reopened, fixture.fill);
+    REQUIRE(persisted);
+    REQUIRE(persisted->layer_curves.size() == 3);
+    for (const auto curve : persisted->layer_curves) {
+        CHECK(curve == document::DensityCurve::ConcaveConvex);
+    }
+    std::filesystem::remove(file);
+}
+
+TEST_CASE("multicolor satin: all eight thread regions stay nonempty and reproducible",
+          "[project_ops][gradient][multicolor][satin]") {
+    auto f = rectangle_fill();
+    document::SatinParams satin;
+    satin.rail_a.closed = false;
+    satin.rail_b.closed = false;
+    satin.rail_a.nodes = {{pt(0, 0), geometry::NodeType::Corner, {}, {}},
+                          {pt(30'000, 0), geometry::NodeType::Corner, {}, {}}};
+    satin.rail_b.nodes = {{pt(0, 4'000), geometry::NodeType::Corner, {}, {}},
+                          {pt(30'000, 4'000), geometry::NodeType::Corner, {}, {}}};
+    satin.density = Micrometers{400};
+    f.project.embroidery_objects.front().params = satin;
+
+    project_ops::MultiGradientFillSpec spec;
+    spec.colors.push_back({24, 42, 99});
+    spec.colors.push_back({40, 83, 141});
+    spec.colors.push_back({76, 122, 179});
+    spec.colors.push_back({125, 171, 205});
+    spec.colors.push_back({183, 216, 229});
+    spec.colors.push_back({236, 231, 208});
+    spec.colors.push_back({241, 182, 134});
+    spec.colors.push_back({224, 105, 79});
+    commands::UndoStack stack;
+    auto created =
+        project_ops::make_create_multicolor_gradient_fill_command(f.project, f.fill, spec);
+    REQUIRE(created);
+    stack.execute(std::move(*created), f.project);
+    const auto group = document::find_multi_blend(f.project, f.fill);
+    REQUIRE(group);
+    REQUIRE(group->layers.size() == 8);
+
+    const auto stitched = stitch_generation::effective_sequence(f.project);
+    REQUIRE(stitched);
+    const auto repeated = stitch_generation::effective_sequence(f.project);
+    REQUIRE(repeated);
+    CHECK(stitched->commands == repeated->commands);
+
+    std::array<std::size_t, 8> counts{};
+    for (const auto& command : stitched->commands) {
+        if (command.type != stitch::CommandType::Stitch) {
+            continue;
+        }
+        for (std::size_t i = 0; i < group->layers.size(); ++i) {
+            if (command.source == group->layers[i]) {
+                ++counts[i];
+                break;
+            }
+        }
+    }
+    for (const std::size_t count : counts) {
+        CHECK(count > 0);
+    }
+
+    // La sauvegarde OSP doit préserver le routage satin et les huit fils :
+    // une réouverture ne doit pas modifier la séquence machine générée.
+    const auto satin_file =
+        std::filesystem::temp_directory_path() / "openstitch_multicolor_satin_eight.osp";
+    REQUIRE(project_io::save_project(satin_file, f.project).has_value());
+    const auto reopened_satin = project_io::load_project(satin_file);
+    REQUIRE(reopened_satin);
+    const auto reopened_group = document::find_multi_blend(*reopened_satin, f.fill);
+    REQUIRE(reopened_group);
+    CHECK(reopened_group->layers.size() == 8);
+    const auto reopened_stitches = stitch_generation::effective_sequence(*reopened_satin);
+    REQUIRE(reopened_stitches);
+    CHECK(reopened_stitches->commands == stitched->commands);
+    std::filesystem::remove(satin_file);
+
+    // Un satin multicolore ne doit pas se transformer en une suite de
+    // deplacements machine. Les sauts sont permis aux frontieres des fils,
+    // mais leur proportion doit rester bornee meme avec huit couleurs.
+    std::size_t satin_stitches = 0;
+    std::size_t satin_jumps = 0;
+    for (const auto& command : stitched->commands) {
+        if (command.type == stitch::CommandType::Stitch) {
+            ++satin_stitches;
+        } else if (command.type == stitch::CommandType::Jump) {
+            ++satin_jumps;
+        }
+    }
+    REQUIRE(satin_stitches > 0);
+    CAPTURE(satin_stitches, satin_jumps);
+    CHECK(satin_jumps * 3 <= satin_stitches);
+
+    // Une transition de couleur doit etre explicite dans le flux machine :
+    // aucune couture ne peut relier deux objets de fils differents.
+    bool has_previous_stitch = false;
+    ObjectId previous_source{};
+    for (const auto& command : stitched->commands) {
+        if (command.type != stitch::CommandType::Stitch) {
+            has_previous_stitch = false;
+            continue;
+        }
+        if (has_previous_stitch) {
+            CHECK(command.source == previous_source);
+        }
+        previous_source = command.source;
+        has_previous_stitch = true;
+    }
+
+    // Les transitions entre fils doivent rester des déplacements, pas des
+    // diagonales cousues. Un point cousu ne doit jamais dépasser 7 mm.
+    bool connected = false;
+    auto previous = stitched->commands.front().pos;
+    for (const auto& command : stitched->commands) {
+        if (command.type == stitch::CommandType::Stitch) {
+            if (connected) {
+                const double dx = static_cast<double>(command.pos.x.value - previous.x.value);
+                const double dy = static_cast<double>(command.pos.y.value - previous.y.value);
+                CHECK(std::hypot(dx, dy) <= 7'000.0);
+            }
+            previous = command.pos;
+            connected = true;
+        } else {
+            connected = false;
+        }
+    }
+}
+
+TEST_CASE("multicolor satin: distributed traverses create separate machine color blocks",
+          "[project_ops][gradient][multicolor][satin]") {
+    auto f = rectangle_fill();
+    document::SatinParams satin;
+    satin.rail_a.closed = false;
+    satin.rail_b.closed = false;
+    satin.rail_a.nodes = {{pt(0, 0), geometry::NodeType::Corner, {}, {}},
+                          {pt(30'000, 0), geometry::NodeType::Corner, {}, {}}};
+    satin.rail_b.nodes = {{pt(0, 4'000), geometry::NodeType::Corner, {}, {}},
+                          {pt(30'000, 4'000), geometry::NodeType::Corner, {}, {}}};
+    satin.density = Micrometers{400};
+    f.project.embroidery_objects.front().params = satin;
+
+    const auto original = stitch_generation::effective_sequence(f.project);
+    REQUIRE(original);
+    project_ops::MultiGradientFillSpec spec;
+    spec.colors = {{20, 30, 100}, {35, 105, 175}, {95, 180, 205}};
+    commands::UndoStack stack;
+    auto created =
+        project_ops::make_create_multicolor_gradient_fill_command(f.project, f.fill, spec);
+    REQUIRE(created);
+    stack.execute(std::move(*created), f.project);
+    const auto group = document::find_multi_blend(f.project, f.fill);
+    REQUIRE(group);
+    REQUIRE(group->layers.size() == 3);
+    for (const auto id : group->layers) {
+        const auto* object = f.project.findEmbroidery(id);
+        REQUIRE(object);
+        CHECK(object->is_satin());
+    }
+    const auto stitched = stitch_generation::effective_sequence(f.project);
+    REQUIRE(stitched);
+    CHECK(stitched->commands.size() > 10);
+
+    // Répartition exclusive par traverse : la quantité totale ne doit
+    // pas devenir triple sur le même ruban de satin.
+    CHECK(stitched->commands.size() < 2 * original->commands.size() + 20);
+
+    REQUIRE(stack.undo(f.project));
+    REQUIRE(f.project.embroidery_objects.size() == 1);
+    REQUIRE(stack.redo(f.project));
+    CHECK(document::find_multi_blend(f.project, f.fill));
+
+    auto remove = project_ops::make_remove_multicolor_gradient_fill_command(f.project, f.fill);
+    REQUIRE(remove);
+    stack.execute(std::move(*remove), f.project);
+    CHECK_FALSE(document::find_multi_blend(f.project, f.fill));
+    REQUIRE(f.project.embroidery_objects.size() == 1);
+    CHECK(f.project.embroidery_objects[0].is_satin());
 }

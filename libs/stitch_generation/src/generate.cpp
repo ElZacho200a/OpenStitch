@@ -269,6 +269,7 @@ void generate_running(stitch::StitchSequence& sequence, const document::VectorOb
 void generate_satin(stitch::StitchSequence& sequence, const document::EmbroideryObject& object,
                     const document::SatinParams& params) {
     SatinConfig config;
+    config.track_stations = object.multi_blend.has_value();
     config.density = params.density;
     config.pull_compensation = params.pull_compensation;
     config.center_underlay = params.center_underlay;
@@ -343,6 +344,15 @@ void generate_satin(stitch::StitchSequence& sequence, const document::Embroidery
         if (reversed < normal) {
             const std::size_t n = result.satin.size();
             std::reverse(result.satin.begin(), result.satin.end());
+            if (!result.station_ends.empty()) {
+                const auto oldEnds = result.station_ends;
+                result.station_ends.clear();
+                result.station_ends.reserve(oldEnds.size());
+                for (std::size_t i = oldEnds.size(); i-- > 0;) {
+                    const auto first = i == 0 ? 0 : oldEnds[i - 1];
+                    result.station_ends.push_back(n - first);
+                }
+            }
             // `jump_before[k]` marquait l'arête (i-1, i) comme sautée ; une
             // fois la séquence inversée, ce même point physique se retrouve
             // avant la nouvelle position de l'ancien point (i-1), soit
@@ -353,6 +363,99 @@ void generate_satin(stitch::StitchSequence& sequence, const document::Embroidery
             // total-order-ok: valeurs scalaires ou entiers : les egalites sont indiscernables
             std::sort(result.jump_before.begin(), result.jump_before.end());
         }
+    }
+
+    // Fondu SATIN multicolore : chaque traversée est attribuée à UN seul
+    // fil avec un hachage stable (graine = groupe logique + rang de traversée).
+    // Cela évite les surépaisseurs dues à N colonnes satins superposées.
+    // Une traversée est conservée EN ENTIER, avec tous ses split stitches ;
+    // aucune découpe arbitraire d'un fil long en milieu de colonne.
+    if (object.multi_blend && object.multi_blend->count >= 2 && object.multi_blend->count <= 8 &&
+        object.multi_blend->index < object.multi_blend->count && !result.station_ends.empty()) {
+        const auto link = *object.multi_blend;
+        const auto old = std::move(result.satin);
+        const auto oldBreaks = std::move(result.jump_before);
+        std::vector<Vec2um> selected;
+        std::vector<std::size_t> breaks;
+        selected.reserve(old.size() / link.count + 16);
+        std::size_t offset = 0;
+        std::size_t lastSelected = result.station_ends.size();
+        const std::size_t stations = result.station_ends.size();
+        for (std::size_t s = 0; s < stations; ++s) {
+            const std::size_t end = result.station_ends[s];
+            if (end <= offset || end > old.size()) {
+                break;
+            }
+            // Le melange d'une traverse sur deux cree une multitude
+            // d'ilots de satin et autant de sauts entre ses groupes de points.
+            // Dither par petites plages de trois traverses : on conserve
+            // l'alternance optique (typiquement 1,2 mm a 0,4 mm de densite)
+            // tout en gardant des plages consecutives pour chaque fil.
+            constexpr std::size_t kDitherStations = 3;
+            const std::size_t groupStart = (s / kDitherStations) * kDitherStations;
+            const std::size_t groupEnd = std::min(stations, groupStart + kDitherStations);
+            const double middle = static_cast<double>(groupStart + groupEnd - 1) * 0.5;
+            const double t = stations > 1 ? middle / static_cast<double>(stations - 1) : 0.0;
+            const double band = t * static_cast<double>(link.count - 1);
+            // Le centre de chaque fil occupe une plage continue. Seules les
+            // frontieres entre deux fils sont tramées (0,32 plage de couleur).
+            // Un tirage sur toute la longueur fragmentait chaque couleur en
+            // dizaines d'ilots et imposait trop de sauts/coupes satin.
+            const int lower =
+                std::clamp(static_cast<int>(band), 0, static_cast<int>(link.count) - 2);
+            const int upper = lower + 1;
+            const double position = (band - (static_cast<double>(lower) + 0.5)) / 0.32 + 0.5;
+            const double fraction = std::clamp(position, 0.0, 1.0);
+            const std::size_t groupIndex = s / kDitherStations;
+            std::uint64_t z = link.group.value ^ (groupIndex * 0x9E3779B97F4A7C15ull);
+            z ^= z >> 30;
+            z *= 0xBF58476D1CE4E5B9ull;
+            z ^= z >> 27;
+            z *= 0x94D049BB133111EBull;
+            z ^= z >> 31;
+            const double random = static_cast<double>(z >> 11) * (1.0 / 9007199254740992.0);
+            int chosen = random < (1.0 - fraction) ? lower : upper;
+            bool keep = chosen == static_cast<int>(link.index);
+            if (!link.complementary && link.index == 0) {
+                keep = true; // fond uniforme pour le mode superposition
+            } else if (!link.complementary && link.index > 0) {
+                // Indépendant du tirage complémentaire : un second hash
+                // décide de la probabilité du voile coloré. Réutiliser random
+                // forçait certains fils à disparaître dans toute une demi-zone.
+                double weight = 0.0;
+                if (lower == static_cast<int>(link.index)) {
+                    weight = 1.0 - fraction;
+                } else if (upper == static_cast<int>(link.index)) {
+                    weight = fraction;
+                }
+                std::uint64_t overlay = z ^ 0xD1B54A32D192ED03ull;
+                overlay ^= overlay >> 30;
+                overlay *= 0xBF58476D1CE4E5B9ull;
+                overlay ^= overlay >> 27;
+                overlay *= 0x94D049BB133111EBull;
+                overlay ^= overlay >> 31;
+                const double draw = static_cast<double>(overlay >> 11) / 9007199254740992.0;
+                keep = draw < weight * 0.25;
+            }
+            if (keep) {
+                if (!selected.empty() && lastSelected + 1 != s) {
+                    breaks.push_back(selected.size());
+                }
+                for (const std::size_t jump : oldBreaks) {
+                    if (jump >= offset && jump < end) {
+                        breaks.push_back(selected.size() + (jump - offset));
+                    }
+                }
+                selected.insert(selected.end(), old.begin() + offset, old.begin() + end);
+                lastSelected = s;
+            }
+            offset = end;
+        }
+        result.satin = std::move(selected);
+        // Les stations sont parcourues dans l'ordre, et oldBreaks est déjà
+        // ordonné. La liste est donc monotone sans tri supplémentaire.
+        breaks.erase(std::unique(breaks.begin(), breaks.end()), breaks.end());
+        result.jump_before = std::move(breaks);
     }
 
     // Sous-couches d'abord (passes distinctes), puis lock d'entrée, couche
@@ -873,7 +976,13 @@ void generate_directional(stitch::StitchSequence& sequence, const document::Vect
          fill_regions_in_sewing_order(sequence, source, params.inset)) {
         const auto underlay = directional_underlay(region, resolve_underlay(params, region));
         std::optional<FillLinker> linker;
-        if (params.hidden_underpath) {
+        // Les liaisons cachées seraient visibles au-dessus du tissu entre
+        // les ilots d'un fil dont le masque descend à densité nulle.
+        bool masked = false;
+        if (params.density_gradient) {
+            masked = !params.density_gradient->density_stops.empty();
+        }
+        if (params.hidden_underpath && !masked) {
             linker.emplace(region, params.stitch_length, params.underlay_inset);
         }
         for (const auto& up : underlay) {

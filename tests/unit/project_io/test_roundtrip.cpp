@@ -222,6 +222,43 @@ TEST_CASE("blend core: legacy JSON omits relation and keeps spacing interpolatio
     CHECK(project_io::detail::project_to_json(*loaded) == json);
 }
 
+TEST_CASE("fade textures roundtrip and legacy files retain the regular method", "[blend_core]") {
+    auto project = rich_project();
+    document::DirectionalFillParams params;
+    params.density_gradient = document::DensityGradient{um(0, 0), um(5'000, 0), Micrometers{400},
+                                                        Micrometers{1'600}, true};
+    project.embroidery_objects[1].params = params;
+    const auto regular = project_io::detail::project_to_json(project);
+    const auto& oldGradient = regular["embroideryObjects"][1]["params"]["densityGradient"];
+    CHECK_FALSE(oldGradient.contains("texture"));
+    CHECK_FALSE(oldGradient.contains("textureStrength"));
+    CHECK_FALSE(oldGradient.contains("textureSeed"));
+
+    for (const auto method :
+         {document::DensityTexture::Feathered, document::DensityTexture::Stippled,
+          document::DensityTexture::LongShort}) {
+        auto& gradient =
+            std::get<document::DirectionalFillParams>(project.embroidery_objects[1].params)
+                .density_gradient;
+        gradient->texture = method;
+        gradient->texture_strength = 0.48;
+        gradient->texture_seed = 971;
+        const auto encoded = project_io::detail::project_to_json(project);
+        const auto decoded = project_io::detail::project_from_json(encoded);
+        REQUIRE(decoded);
+        CHECK(decoded->embroidery_objects[1].params == project.embroidery_objects[1].params);
+        CHECK(project_io::detail::project_to_json(*decoded) == encoded);
+    }
+    auto malformed = project_io::detail::project_to_json(project);
+    malformed["embroideryObjects"][1]["params"]["densityGradient"]["texture"] = 999;
+    const auto fallback = project_io::detail::project_from_json(malformed);
+    REQUIRE(fallback);
+    const auto& fallbackParams =
+        std::get<document::DirectionalFillParams>(fallback->embroidery_objects[1].params);
+    REQUIRE(fallbackParams.density_gradient);
+    CHECK(fallbackParams.density_gradient->texture == document::DensityTexture::None);
+}
+
 TEST_CASE("density curve is persisted only when not linear", "[blend_core]") {
     auto project = rich_project();
     document::DirectionalFillParams params;

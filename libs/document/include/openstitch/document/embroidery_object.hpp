@@ -107,6 +107,40 @@ enum class DensityCurve : std::uint8_t {
     Steep = 2,
     EaseIn = 3,  // départ lent, arrivée rapide
     EaseOut = 4, // départ rapide, arrivée lente
+    // Transition cubique lente puis fortement croissante.
+    Convex = 5,
+    // Transition cubique rapide puis adoucie.
+    Concave = 6,
+    // Plateaux longs aux deux extremites.
+    ConvexConcave = 7,
+    // Transition rapide aux bords, plateau central.
+    ConcaveConvex = 8,
+};
+
+// Une texture modifie la position de la transition sans déplacer les points
+// à chaque interaction souris. Les deux fils utilisent le même champ spatial
+// déterministe, ce qui préserve leur complémentarité de densité.
+// None garde EXACTEMENT le comportement des anciens .osp.
+enum class DensityTexture : std::uint8_t {
+    None = 0,
+    Feathered = 1, // frontière lissée et irrégulière
+    Stippled = 2,  // tramage spatial à petites cellules
+    LongShort = 3, // passé empiétant : alternance de longueurs de points
+};
+
+enum class DensityGeometry : std::uint8_t {
+    Linear = 0,
+    Radial = 1,
+    Curved = 2,
+};
+
+// Noeuds d'une densité de fil normalisée le long de l'axe : 0 = aucune
+// couture, 1 = densité de référence. Cette série permet de décrire une rampe
+// montante puis descendante pour les couleurs INTERMEDIAIRES du camaïeu.
+struct DensityStop {
+    double position{0.0};
+    double weight{1.0};
+    bool operator==(const DensityStop&) const = default;
 };
 
 // Dégradé de densité d'un remplissage directionnel : l'écart entre lignes de
@@ -123,6 +157,15 @@ struct DensityGradient {
     // linéaire de son inverse (densité), pour des rampes de couleurs complémentaires.
     bool interpolate_density{false};
     DensityCurve curve{DensityCurve::Linear};
+    DensityTexture texture{DensityTexture::None};
+    // [0, 1], bornée à la lecture et au calcul ; mêmes paramètres sur les
+    // deux couches pour obtenir un fondu complémentaire.
+    double texture_strength{0.35};
+    std::uint32_t texture_seed{1};
+    // Absents dans les anciens projets : aucune modification de leur génération.
+    DensityGeometry geometry{DensityGeometry::Linear};
+    double curve_bend{0.0};
+    std::vector<DensityStop> density_stops;
 
     bool operator==(const DensityGradient&) const = default;
 };
@@ -629,6 +672,19 @@ struct ColorBlendLink {
     bool operator==(const ColorBlendLink&) const = default;
 };
 
+// Groupe de fils N-aire : un seul identifiant logique, une couche cousue
+// par fil, et un ordre stable dans la séquence machine. Les couleurs et les
+// profils de points restent la propriété des couches (pas de données doublées).
+// Pas de conversion automatique des anciens couples ColorBlendLink.
+struct MultiBlendLink {
+    ObjectId group;
+    std::uint8_t index{0};
+    std::uint8_t count{0};
+    bool complementary{true};
+
+    bool operator==(const MultiBlendLink&) const = default;
+};
+
 // Interprétation visuelle enregistrée dans le fichier OSP, non dans le nom utilisateur.
 struct SemanticAnnotation {
     std::string role;
@@ -673,6 +729,7 @@ struct EmbroideryObject {
     // l'affichage. Écrit/lu dans le .osp (schéma v6, champ `thread`).
     std::optional<thread_palette::ThreadKey> thread;
     std::optional<ColorBlendLink> color_blend;
+    std::optional<MultiBlendLink> multi_blend;
     std::optional<SemanticAnnotation> semantic; // reconnaissance persistée et facultative
 
     [[nodiscard]] bool is_tatami() const { return std::holds_alternative<TatamiParams>(params); }
