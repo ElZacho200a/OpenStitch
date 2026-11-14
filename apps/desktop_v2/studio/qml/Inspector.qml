@@ -14,6 +14,15 @@ Item {
     readonly property var ctl: typeof inspector !== "undefined" ? inspector : null
     readonly property var fadeCtl: typeof fade !== "undefined" ? fade : null
     property var layoutModel: []
+    // Transitional virtual entry: persisted gradient objects will replace this adapter.
+    property bool gradientEditorRequested: false
+    readonly property bool gradientSelected: fadeCtl !== null && fadeCtl.hasFade
+    readonly property var stitchTypeChoices: {
+        const choices = ctl ? ctl.types.slice(0) : []
+        choices.push({ id: "multicolor_gradient", label: qsTr("Fondu multicolore"),
+                       current: gradientSelected })
+        return choices
+    }
     // Folded sections by title; kept here so the state survives selection changes.
     property var collapsedSections: ({})
     readonly property bool searching: ctl !== null && ctl.query.trim().length > 0
@@ -82,23 +91,34 @@ Item {
                 id: typeBox
                 objectName: "typeBox"
                 Layout.fillWidth: true
-                model: root.ctl ? root.ctl.types : []
+                model: root.stitchTypeChoices
                 textRole: "label"
                 currentIndex: {
                     if (!root.ctl || root.ctl.typeMixed)
                         return -1;
-                    const t = root.ctl.types;
+                    const t = root.stitchTypeChoices;
                     for (let i = 0; i < t.length; ++i)
                         if (t[i].current)
                             return i;
                     return -1;
                 }
-                displayText: root.ctl && root.ctl.typeMixed ? qsTr("Types différents")
+                displayText: root.gradientEditorRequested || root.gradientSelected
+                             ? qsTr("Fondu multicolore")
+                             : root.ctl && root.ctl.typeMixed ? qsTr("Types différents")
                              : currentIndex >= 0 ? currentText : (root.ctl ? root.ctl.typeLabel : "")
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.bodySize
                 Accessible.name: qsTr("Type de points")
-                onActivated: index => root.ctl.setStitchType(root.ctl.types[index].id)
+                onActivated: index => {
+                    const type = root.stitchTypeChoices[index].id
+                    if (type === "multicolor_gradient") {
+                        root.gradientEditorRequested = true
+                        flick.contentY = Math.max(0, fadeInspector.y - 24)
+                    } else {
+                        root.gradientEditorRequested = false
+                        root.ctl.setStitchType(type)
+                    }
+                }
             }
 
             RowLayout {
@@ -184,6 +204,17 @@ Item {
             // Le fondu de FILS est une propriété de l'objet logique, pas un
             // type de point ni un "dégradé" de densité directionnelle.
             // Même éditeur que dans le tiroir Points, sans nested scrolling.
+            Text {
+                objectName: "inspectorGradientModeHelp"
+                Layout.fillWidth: true
+                visible: root.gradientEditorRequested && !root.gradientSelected
+                text: qsTr("Configurez les fils ci-dessous puis créez le fondu. "
+                           + "Le type de points sous-jacent reste inchangé avant la création.")
+                color: Theme.faint
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.smallSize
+                wrapMode: Text.WordWrap
+            }
             FadeProperties {
                 id: fadeInspector
                 objectName: "inspectorFadeSection"
