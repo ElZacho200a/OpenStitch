@@ -192,8 +192,11 @@ Item {
                 embedded: true
                 Layout.fillWidth: true
                 Layout.preferredHeight: implicitHeight
+                // Keep the editor visible for a single selected object even when
+                // the fade service rejects it. FadeProperties already displays
+                // fadeCtl.incompatibility and disables unsupported actions;
+                // hiding the entire section made supported techniques look absent.
                 visible: root.fadeCtl !== null && root.ctl !== null && root.ctl.count === 1
-                         && (root.fadeCtl.hasFade || root.fadeCtl.canCreate)
             }
             Text {
                 objectName: "inspectorFadeDistinction"
