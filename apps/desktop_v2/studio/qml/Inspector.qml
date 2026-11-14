@@ -98,7 +98,14 @@ Item {
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.bodySize
                 Accessible.name: qsTr("Type de points")
-                onActivated: index => root.ctl.setStitchType(root.ctl.types[index].id)
+                onActivated: index => {
+                    const type = root.ctl.types[index].id
+                    root.ctl.setStitchType(type)
+                    // Le fondu multicolore se crée immédiatement avec des réglages par défaut
+                    // (deux fils) : faire défiler jusqu'au panneau dédié pour les affiner.
+                    if (type === "multicolor_gradient")
+                        flick.contentY = Math.max(0, fadeInspector.y - 24)
+                }
             }
 
             RowLayout {
@@ -181,9 +188,9 @@ Item {
                 onAccepted: root.ctl.setColour(selectedColor.toString())
             }
 
-            // Le fondu de FILS est une propriété de l'objet logique, pas un
-            // type de point ni un "dégradé" de densité directionnelle.
-            // Même éditeur que dans le tiroir Points, sans nested scrolling.
+            // Le fondu multicolore (mission 2026-11-14) est un véritable type de points
+            // autonome (MulticolorGradientParams) ; ce panneau règle sa palette, sa méthode et
+            // sa transition une fois l'objet créé, sans jamais le recréer.
             FadeProperties {
                 id: fadeInspector
                 objectName: "inspectorFadeSection"

@@ -70,6 +70,27 @@ inspecteur. CLI : `set_stitch_type` avec `applique`, `set_params` (`placement_le
 et `openstitch-cli project applique-cut <osp> -o fichier.svg|dxf`. Reste : plusieurs tissus
 (HP-SPEC-002), couleur de fil propre à chaque étape.
 
+**Fondu multicolore** (`MulticolorGradientParams`, mission 2026-11-14, PR #341, dernière
+alternative du variant). Type de broderie **autonome** : contrairement aux autres alternatives,
+l'objet qui le porte (l'**ancre**) ne génère aucun point lui-même (`is_multicolor_gradient()`
+exclu de `effective_sequence`) — il porte la palette (2 à 8 fils), la transition (axe, courbe,
+géométrie, texture) et la méthode (`GradientMethod` : `Directional`, `SatinInterlaced`,
+`LongAndShort`, `ControlledScatter`, `CrossHatching`, persistées par nom). Les points réels sont
+produits par des `EmbroideryObject` **physiques** distincts (satin/tatami/directionnel selon la
+méthode), tagués vers l'ancre par `MultiBlendLink` (`document::find_gradient_group` résout le
+groupe depuis l'ancre ou n'importe quelle couche). Aucun nouvel algorithme de points : Directional/
+LongAndShort/ControlledScatter réutilisent le remplissage directionnel à `DensityGradient`
+complémentaire (texture `None`/`LongShort`/`Stippled`) ; SatinInterlaced réutilise le satin à
+rails, dérivés automatiquement du contour source (`stitch_generation::rails_from_contour`) quand
+aucun n'existe déjà ; CrossHatching superpose des remplissages directionnels à guide droit, un
+angle par groupe de couches. API : `project_ops::make_create/edit/remove_multicolor_gradient_
+command` (méthode explicite) ; `make_create/edit/remove_multicolor_gradient_fill_command` restent
+pour la compatibilité (méthode devinée depuis la texture). Rupture de compatibilité acceptée :
+un groupe `multiBlend` d'un projet antérieur à cette refonte (sans ancre) est refusé explicitement
+au chargement. Bureau : vraie entrée « Fondu multicolore » du sélecteur de type (inspecteur). Reste :
+panneau dédié (méthode/palette/géométrie/mélange/réglages spécifiques/optimisation/avancé), édition
+manuelle des rails satin entrelacés, isolement des couches physiques hors sélection/arbre d'objets.
+
 Le tableau reflète la **qualité métier**, pas seulement la présence de code : le
 running stitch est solide ; le tatami est fonctionnel, sa sous-couche et son
 underpath caché existent mais sont désactivés par défaut (l'auto-numérisation

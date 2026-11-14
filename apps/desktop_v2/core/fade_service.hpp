@@ -46,6 +46,10 @@ struct MultiFadeSettings {
     bool complementary{true};
     int texture{0};
     int geometry{0};
+    int method{0}; // document::GradientMethod
+    double satinDensityMm{0.4};
+    int crosshatchLayers{2};
+    double crosshatchAngleDeg{0.0};
 };
 
 [[nodiscard]] std::optional<MultiFadeSettings> readMultiFade(const document::Project& project,

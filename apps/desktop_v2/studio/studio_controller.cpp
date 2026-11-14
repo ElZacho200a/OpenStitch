@@ -267,6 +267,12 @@ void StudioController::rebuildScene() {
 QVariantList StudioController::objects() const {
     QVariantList list;
     for (const auto& object : session_.project().embroidery_objects) {
+        if (object.multi_blend) {
+            const auto* anchor = session_.project().findEmbroidery(object.multi_blend->group);
+            if (anchor != nullptr && anchor->is_multicolor_gradient()) {
+                continue; // couche physique interne : l'arbre expose uniquement l'ancre logique
+            }
+        }
         const Target target{TargetKind::EmbroideryObject, object.id.value};
         list.push_back(QVariantMap{
             {QStringLiteral("id"), QString::number(object.id.value)},
@@ -326,7 +332,15 @@ QVariantMap StudioController::toolInfo(std::string_view id) const {
 void StudioController::selectObject(const QString& id, bool toggle) {
     bool ok = false;
     const auto value = id.toULongLong(&ok);
-    const Target target{TargetKind::EmbroideryObject, value};
+    std::uint64_t logicalId = value;
+    if (const auto* object = session_.project().findEmbroidery(ObjectId{value});
+        object != nullptr && object->multi_blend) {
+        const auto* anchor = session_.project().findEmbroidery(object->multi_blend->group);
+        if (anchor != nullptr && anchor->is_multicolor_gradient()) {
+            logicalId = anchor->id.value;
+        }
+    }
+    const Target target{TargetKind::EmbroideryObject, logicalId};
     if (!ok || !session_.exists(target)) {
         return;
     }
