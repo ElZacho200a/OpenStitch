@@ -42,6 +42,15 @@ class TestPreviewPng(unittest.TestCase):
             path.write_bytes(corrupted)
             self.assertFalse(checker()(path))
 
+    def test_rejects_empty_image_data(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "empty.png"
+            ihdr = struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0)
+            path.write_bytes(b"\\x89PNG\\r\\n\\x1a\\n" + chunk(b"IHDR", ihdr)
+                             + chunk(b"IDAT", b"") + chunk(b"IEND", b""))
+            self.assertFalse(checker()(path))
+
 
 if __name__ == "__main__":
     unittest.main()
