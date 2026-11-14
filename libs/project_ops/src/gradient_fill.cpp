@@ -786,6 +786,31 @@ std::optional<MulticolorGradientSpec> describe_multicolor_gradient(const documen
     return spec;
 }
 
+std::optional<MulticolorGradientSpec> default_multicolor_gradient(const document::Project& project,
+                                                                  ObjectId fill) {
+    const auto* base = project.findEmbroidery(fill);
+    if (base == nullptr) {
+        return std::nullopt;
+    }
+    MulticolorGradientSpec spec;
+    if (base->is_satin()) {
+        spec.method = document::GradientMethod::SatinInterlaced;
+        spec.palette = {document::GradientThread{base->rgb},
+                        document::GradientThread{{255, 255, 255}}};
+        return spec;
+    }
+    const auto twoColor = default_gradient_fill(project, fill);
+    if (!twoColor) {
+        return std::nullopt;
+    }
+    spec.method = document::GradientMethod::Directional;
+    spec.palette = {document::GradientThread{twoColor->background, twoColor->background_thread},
+                    document::GradientThread{twoColor->foreground, twoColor->foreground_thread}};
+    spec.transition = twoColor->gradient;
+    spec.complementary = twoColor->complementary;
+    return spec;
+}
+
 std::string multicolor_gradient_incompatibility(const document::Project& project, ObjectId fill,
                                                 document::GradientMethod method) {
     const auto* base = project.findEmbroidery(fill);

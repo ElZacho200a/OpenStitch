@@ -14,16 +14,6 @@ Item {
     readonly property var ctl: typeof inspector !== "undefined" ? inspector : null
     readonly property var fadeCtl: typeof fade !== "undefined" ? fade : null
     property var layoutModel: []
-    // Transitional virtual entry: persisted gradient objects will replace this adapter.
-    property bool gradientEditorRequested: false
-    readonly property bool gradientSelected: fadeCtl !== null && fadeCtl.hasFade
-    onGradientSelectedChanged: if (gradientSelected) gradientEditorRequested = false
-    readonly property var stitchTypeChoices: {
-        const choices = ctl ? ctl.types.slice(0) : []
-        choices.push({ id: "multicolor_gradient", label: qsTr("Fondu multicolore"),
-                       current: gradientSelected })
-        return choices
-    }
     // Folded sections by title; kept here so the state survives selection changes.
     property var collapsedSections: ({})
     readonly property bool searching: ctl !== null && ctl.query.trim().length > 0
@@ -92,35 +82,29 @@ Item {
                 id: typeBox
                 objectName: "typeBox"
                 Layout.fillWidth: true
-                model: root.stitchTypeChoices
+                model: root.ctl ? root.ctl.types : []
                 textRole: "label"
                 currentIndex: {
                     if (!root.ctl || root.ctl.typeMixed)
                         return -1;
-                    if (root.gradientSelected)
-                        return root.stitchTypeChoices.length - 1;
-                    const t = root.stitchTypeChoices;
+                    const t = root.ctl.types;
                     for (let i = 0; i < t.length; ++i)
                         if (t[i].current)
                             return i;
                     return -1;
                 }
-                displayText: root.gradientEditorRequested || root.gradientSelected
-                             ? qsTr("Fondu multicolore")
-                             : root.ctl && root.ctl.typeMixed ? qsTr("Types différents")
+                displayText: root.ctl && root.ctl.typeMixed ? qsTr("Types différents")
                              : currentIndex >= 0 ? currentText : (root.ctl ? root.ctl.typeLabel : "")
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.bodySize
                 Accessible.name: qsTr("Type de points")
                 onActivated: index => {
-                    const type = root.stitchTypeChoices[index].id
-                    if (type === "multicolor_gradient") {
-                        root.gradientEditorRequested = true
+                    const type = root.ctl.types[index].id
+                    root.ctl.setStitchType(type)
+                    // Le fondu multicolore se crée immédiatement avec des réglages par défaut
+                    // (deux fils) : faire défiler jusqu'au panneau dédié pour les affiner.
+                    if (type === "multicolor_gradient")
                         flick.contentY = Math.max(0, fadeInspector.y - 24)
-                    } else {
-                        root.gradientEditorRequested = false
-                        root.ctl.setStitchType(type)
-                    }
                 }
             }
 
@@ -204,20 +188,9 @@ Item {
                 onAccepted: root.ctl.setColour(selectedColor.toString())
             }
 
-            // Le fondu de FILS est une propriété de l'objet logique, pas un
-            // type de point ni un "dégradé" de densité directionnelle.
-            // Même éditeur que dans le tiroir Points, sans nested scrolling.
-            Text {
-                objectName: "inspectorGradientModeHelp"
-                Layout.fillWidth: true
-                visible: root.gradientEditorRequested && !root.gradientSelected
-                text: qsTr("Configurez les fils ci-dessous puis créez le fondu. "
-                           + "Le type de points sous-jacent reste inchangé avant la création.")
-                color: Theme.faint
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.smallSize
-                wrapMode: Text.WordWrap
-            }
+            // Le fondu multicolore (mission 2026-11-14) est un véritable type de points
+            // autonome (MulticolorGradientParams) ; ce panneau règle sa palette, sa méthode et
+            // sa transition une fois l'objet créé, sans jamais le recréer.
             FadeProperties {
                 id: fadeInspector
                 objectName: "inspectorFadeSection"

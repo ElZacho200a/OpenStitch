@@ -66,7 +66,7 @@ const std::vector<SettableType>& settableStitchTypes() {
         {"spiral_fill", "Spirale"},       {"crosshatch_fill", "Croisé"},
         {"motif_fill", "À motif"},        {"motif_run", "Motif le long du contour"},
         {"blanket", "Boutonnière"},       {"cross_stitch", "Point de croix"},
-        {"applique", "Appliqué"}};
+        {"applique", "Appliqué"},         {"multicolor_gradient", "Fondu multicolore"}};
     return kTypes;
 }
 

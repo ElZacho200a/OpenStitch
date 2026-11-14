@@ -161,6 +161,13 @@ struct MulticolorGradientSpec {
 [[nodiscard]] std::optional<MulticolorGradientSpec>
 describe_multicolor_gradient(const document::Project& project, ObjectId anchorOrMember);
 
+// Fondu multicolore utilisable sans réglage (comme `default_gradient_fill`) : deux fils
+// distincts. `fill` satin -> méthode SatinInterlaced (rails dérivés automatiquement s'il n'en a
+// pas) ; sinon méthode Directional avec l'axe/les couleurs de `default_gradient_fill`. nullopt si
+// `fill` n'est pas un remplissage compatible ou si sa forme est vide/dégénérée.
+[[nodiscard]] std::optional<MulticolorGradientSpec>
+default_multicolor_gradient(const document::Project& project, ObjectId fill);
+
 // Raison courte et affichable pour laquelle `fill` ne peut pas devenir un fondu multicolore
 // autonome (déjà un fondu, source introuvable, type incompatible…). Vide si compatible. Pour
 // `SatinInterlaced` sans rails valides sur `fill`, compatible quand même : les rails sont dérivés

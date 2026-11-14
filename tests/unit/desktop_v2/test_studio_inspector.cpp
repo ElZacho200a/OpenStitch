@@ -20,6 +20,7 @@
 #include "inspector_model.hpp"
 #include "object_labels.hpp"
 #include "openstitch/commands/project_commands.hpp"
+#include "openstitch/document/multi_blend.hpp"
 #include "openstitch/formats/dst.hpp"
 #include "openstitch/project_io/project_io.hpp"
 #include "openstitch/project_ops/factory.hpp"
@@ -158,6 +159,7 @@ private slots:
     void colourOfTheSelectionIncludingMixedTypes();
     void resetToDefaults();
     void stitchTypeConversion();
+    void multicolorGradientType();
     void searchAndLevels();
     void machineOutputIsByteIdentical();
     void persistsInTheOspFile();
@@ -545,6 +547,57 @@ void StudioInspectorTest::stitchTypeConversion() {
     QVERIFY(inspector.setStitchType(QStringLiteral("contour_fill")).isEmpty());
     QCOMPARE(inspector.typeId(), QStringLiteral("contour_fill"));
     QVERIFY(inspector.fields().size() > 0); // concentric: its table is complete since family J
+}
+
+// Mission 2026-11-14 : « Fondu multicolore » est un véritable type de points dans le sélecteur,
+// pas un adaptateur virtuel QML (PR #341) ; le choisir crée réellement l'ancre
+// (MulticolorGradientParams) et ses couches physiques, en un seul pas d'annulation.
+void StudioInspectorTest::multicolorGradientType() {
+    DocumentSession session;
+    auto created = project_ops::create_empty_project({});
+    session.replaceProject(std::move(*created), true);
+    const auto id = addRect(session);
+    select(session, {id});
+    StudioController studio(session);
+    InspectorController inspector(studio);
+    QCOMPARE(inspector.typeId(), QStringLiteral("tatami"));
+
+    QVERIFY(std::ranges::any_of(settableStitchTypes(),
+                                [](const auto& t) { return t.id == "multicolor_gradient"; }));
+
+    const auto depth = session.undoNames().size();
+    QVERIFY(inspector.setStitchType(QStringLiteral("multicolor_gradient")).isEmpty());
+    QCOMPARE(session.undoNames().size(), depth + 1); // un seul pas, malgre l'ancre + N couches
+    QCOMPARE(inspector.typeId(), QStringLiteral("multicolor_gradient"));
+
+    const auto group = document::find_gradient_group(session.project(), ObjectId{id});
+    QVERIFY(group.has_value());
+    QCOMPARE(group->anchor.value, id);
+    QVERIFY(group->layers.size() >= 2);
+    const auto* anchor = session.project().findEmbroidery(ObjectId{id});
+    QVERIFY(anchor != nullptr);
+    QVERIFY(anchor->is_multicolor_gradient());
+    const auto& params = std::get<document::MulticolorGradientParams>(anchor->params);
+    QCOMPARE(params.palette.size(), group->layers.size());
+
+    // Choisir un AUTRE type retire reellement l'ancre et ses couches (jamais une conversion en
+    // place qui les laisserait orphelines) : un pas pour le retrait (l'ancre redevient le
+    // remplissage uni de sa premiere couche, ici "directional"), puis -- la cible ("tatami")
+    // differant de ce remplissage uni -- un second pas de conversion generique.
+    const auto depthAfterCreate = session.undoNames().size();
+    QVERIFY(inspector.setStitchType(QStringLiteral("tatami")).isEmpty());
+    QCOMPARE(session.undoNames().size(), depthAfterCreate + 2);
+    QCOMPARE(inspector.typeId(), QStringLiteral("tatami"));
+    QVERIFY(!document::find_gradient_group(session.project(), ObjectId{id}).has_value());
+
+    QVERIFY(session.undo()); // revient au remplissage directionnel uni (fin du retrait)
+    QCOMPARE(inspector.typeId(), QStringLiteral("directional"));
+    QVERIFY(!document::find_gradient_group(session.project(), ObjectId{id}).has_value());
+    QVERIFY(session.undo()); // revient au fondu multicolore
+    QCOMPARE(inspector.typeId(), QStringLiteral("multicolor_gradient"));
+    QVERIFY(session.undo()); // revient au tatami d'origine
+    QCOMPARE(inspector.typeId(), QStringLiteral("tatami"));
+    QCOMPARE(session.undoNames().size(), depth);
 }
 
 void StudioInspectorTest::searchAndLevels() {

@@ -8,11 +8,13 @@
 #include <optional>
 
 #include "document_services.hpp"
+#include "fade_service.hpp"
 #include "inspector_model.hpp"
 #include "object_labels.hpp"
 #include "openstitch/commands/composite_command.hpp"
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/commands/stitch_preset_commands.hpp"
+#include "openstitch/project_ops/gradient_fill.hpp"
 #include "openstitch/project_ops/operations.hpp"
 
 namespace openstitch::desktop_v2::studio {
@@ -762,13 +764,35 @@ QString InspectorController::resetAll() {
 }
 
 QString InspectorController::setStitchType(const QString& id) {
-    const auto s = selection();
+    auto s = selection();
     if (s.ids.empty()) {
         return finish(QStringLiteral("Sélectionnez au moins un objet."));
     }
     const std::string type = id.toStdString();
     if (!s.typeMixed && settableIdOf(s.typeId) == type) {
         return finish({}, QStringLiteral("Déjà de ce type."));
+    }
+    if (!s.typeMixed && settableIdOf(s.typeId) == "multicolor_gradient" &&
+        type != "multicolor_gradient") {
+        // Quitter le fondu multicolore par un AUTRE type du sélecteur : jamais une simple
+        // conversion de l'ancre en place (laisserait ses couches physiques orphelines, taguées
+        // vers une ancre qui ne serait plus `is_multicolor_gradient()`). Le retrait réel d'abord
+        // (un pas d'annulation), puis -- si la cible diffère du remplissage uni qui en résulte --
+        // la conversion générique ci-dessous, dans un second pas documenté ici.
+        if (s.ids.size() != 1) {
+            return finish(
+                QStringLiteral("Sélectionnez un seul objet pour quitter le fondu multicolore."));
+        }
+        auto removed = project_ops::make_remove_multicolor_gradient_command(
+            session_.project(), ObjectId{s.ids.front()});
+        if (!removed) {
+            return finish(u8(removed.error().message));
+        }
+        session_.execute(std::move(*removed));
+        s = selection();
+        if (settableIdOf(s.typeId) == type) {
+            return finish({}, QStringLiteral("Fondu multicolore retiré"));
+        }
     }
     if (type == "auto_satin") {
         // As in the Widgets inspector: the first method that builds columns wins; a refused
@@ -782,6 +806,27 @@ QString InspectorController::setStitchType(const QString& id) {
         const auto result = session_.applyBatch(batchAutoSatin(s.ids, last), "Type : satin");
         return finish(result.committed ? QString() : refusalOf(result.report),
                       QStringLiteral("Converti en satin"));
+    }
+    if (type == "multicolor_gradient") {
+        // Comme le satin, le fondu multicolore porte sa propre géométrie (palette, N couches
+        // physiques) : pas un simple `SetStitchTypeCommand`, une vraie création composite (mission
+        // 2026-11-14). Deux fils par défaut (comme le fondu à deux fils) ; la méthode, la palette
+        // et la transition se réglent ensuite dans le panneau dédié sans recréer l'objet.
+        if (s.ids.size() != 1) {
+            return finish(
+                QStringLiteral("Sélectionnez un seul objet pour créer un fondu multicolore."));
+        }
+        const auto defaults =
+            project_ops::default_gradient_fill(session_.project(), ObjectId{s.ids.front()});
+        if (!defaults) {
+            return finish(QStringLiteral("Cette forme ne peut pas porter de fondu multicolore."));
+        }
+        MultiFadeSettings settings;
+        settings.colors = {defaults->background, defaults->foreground};
+        settings.complementary = true;
+        const auto result = createMultiFade(session_, s.ids.front(), settings);
+        return finish(result.ok ? QString() : u8(result.message),
+                      QStringLiteral("Fondu multicolore créé"));
     }
     const auto json = batchSetStitchType(s.ids, type);
     if (json.empty()) {
