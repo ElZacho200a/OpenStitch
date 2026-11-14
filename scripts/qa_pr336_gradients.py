@@ -424,7 +424,9 @@ def build():
             quality_failures.append(entry["name"] + ": benchmark export failed")
         if not entry["png_valid"]:
             quality_failures.append(entry["name"] + ": benchmark preview missing/invalid")
-        elif entry["dst_quality"]["max_needle_step_mm"] > 7.0:
+        # A failed preview must not suppress the independent DST safety check.
+        # An empty DST quality result is already reported as an export failure.
+        if entry["dst_quality"] and entry["dst_quality"]["max_needle_step_mm"] > 7.0:
             quality_failures.append(entry["name"] + ": unsafe large-design needle step")
         if entry["name"].startswith("satin_8_x") and entry["dst_quality"]:
             stats = entry["dst_quality"]
