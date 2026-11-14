@@ -21,6 +21,7 @@ class QSGNode;
 namespace openstitch::desktop_v2::studio {
 
 struct RegionLayerData; // couche « regions » (layers/region_layer.hpp), immuable
+class VectorLayer;      // couche « vectors » (layers/vector_layer.hpp), immuable
 
 // Display-only layers drawn over the immutable scene (grid, guides, analysis maps, markers,
 // simulation cursor). Immutable once published: a change publishes a new instance and bumps the
@@ -88,8 +89,9 @@ struct CanvasRenderState {
     SourceImageView sourceImage; // couche « sourceImage » (espace Image), vide sinon
     // Couche « regions » (espace Segmentation) : données immuables publiées par révision.
     std::shared_ptr<const RegionLayerData> regions;
-    // Couche « vectors » : image des formes (mm scène), dessinée sous les points (espace Vecto).
-    std::shared_ptr<const OverlayImage> vectorImage;
+    // Couche « vectors » : formes (mm scène) dessinées sous les points (espace Vecto) ; triangles
+    // pour le backend GPU, image rastérisée à la demande pour le backend logiciel.
+    std::shared_ptr<const VectorLayer> vectorLayer;
 };
 
 struct CanvasRenderResult {

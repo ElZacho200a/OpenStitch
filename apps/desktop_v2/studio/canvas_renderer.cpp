@@ -21,6 +21,7 @@
 #include <span>
 
 #include "layers/region_layer.hpp"
+#include "layers/vector_layer.hpp"
 #include "thread_textures.hpp"
 
 namespace openstitch::desktop_v2::studio {
@@ -209,7 +210,7 @@ struct GeometryRoot : QSGNode {
     // Cached scene-graph layers are independent of the display-only overlay revision.
     // A visibility change must redraw even if the document, camera and overlays did not move.
     CanvasLayers displayedLayers;
-    std::shared_ptr<const OverlayImage> displayedVector;
+    std::shared_ptr<const VectorLayer> displayedVector;
     std::vector<OverlayImageKey> displayedImageKeys;
     GeometryRoot() {
         vector->setOpacity(0.0); // vector layer disabled until its space enables it
@@ -468,7 +469,7 @@ public:
             root->resources.observe(state.scene, state.selectionRevision, state.camera.revision());
         const bool overlayDirty = root->overlayRevision != state.overlayRevision;
         const bool layersChanged = root->displayedLayers != state.layers;
-        const bool vectorChanged = root->displayedVector != state.vectorImage;
+        const bool vectorChanged = root->displayedVector != state.vectorLayer;
         const CanvasOverlays defaults;
         const CanvasOverlays& overlays = state.overlays ? *state.overlays : defaults;
         syncRegionLayer(*root, state, window);
@@ -504,17 +505,13 @@ public:
                 applySimulation(*root, state.scene->vertices, overlays.visibleSegments);
             }
         }
-        // La texture des vecteurs dépend uniquement du snapshot vectoriel, ni de la caméra
-        // ni du curseur de simulation ni des autres images superposées.
+        // Les formes vectorielles sont des triangles en mm scène : la matrice de la caméra les
+        // place, nettes à tout zoom ; reconstruits seulement quand le calque change, jamais au
+        // pan/zoom ni au curseur de simulation.
         if (vectorChanged) {
             clearChildren(*root->vector);
-            if (state.vectorImage && !state.vectorImage->image.isNull()) {
-                const auto& v = *state.vectorImage;
-                auto* node = new QSGSimpleTextureNode;
-                node->setOwnsTexture(true);
-                node->setTexture(window.createTextureFromImage(v.image));
-                node->setRect(QRectF(v.x0, v.y0, v.widthMm, v.heightMm));
-                root->vector->appendChildNode(node);
+            if (state.vectorLayer) {
+                appendGeometry(*root->vector, state.vectorLayer->triangles());
             }
         }
         // Afficher/masquer n'est pas une modification de texture.
@@ -570,7 +567,7 @@ public:
         synchronizeSourceImage(*root, state, window);
         root->overlayRevision = state.overlayRevision;
         root->displayedLayers = state.layers;
-        root->displayedVector = state.vectorImage;
+        root->displayedVector = state.vectorLayer;
         CanvasRenderResult result{root, dirty.geometry && state.scene != nullptr, elapsed};
         synchronizeRealistic(*root, state, overlays, window, dirty, overlayDirty, result);
         return result;
@@ -627,7 +624,7 @@ struct SoftwareRoot : QSGSimpleTextureNode {
     double dpr{0};
     std::shared_ptr<const RegionLayerData> regions; // couche « regions » déjà rastérisée
     CanvasLayers displayedLayers;
-    std::shared_ptr<const OverlayImage> displayedVector;
+    std::shared_ptr<const VectorLayer> displayedVector;
     std::uint64_t overlayRevision{std::numeric_limits<std::uint64_t>::max()};
     std::uint64_t sourceData{std::numeric_limits<std::uint64_t>::max()};
     std::uint64_t sourceView{std::numeric_limits<std::uint64_t>::max()};
@@ -643,7 +640,7 @@ public:
             root->resources.observe(state.scene, state.selectionRevision, state.camera.revision());
         if (!dirty.geometry && !dirty.camera && !dirty.selection &&
             root->regions == (state.layers.regions ? state.regions : nullptr) &&
-            root->displayedLayers == state.layers && root->displayedVector == state.vectorImage &&
+            root->displayedLayers == state.layers && root->displayedVector == state.vectorLayer &&
             root->overlayRevision == state.overlayRevision && root->viewport == state.viewport &&
             root->sourceData == state.sourceImage.dataRevision &&
             root->sourceView == state.sourceImage.viewRevision &&
@@ -670,8 +667,10 @@ public:
         root->regions = state.layers.regions ? state.regions : nullptr;
         const CanvasOverlays defaults;
         const CanvasOverlays& overlays = state.overlays ? *state.overlays : defaults;
-        if (state.layers.vectors && state.vectorImage && !state.vectorImage->image.isNull()) {
-            const auto& v = *state.vectorImage;
+        // Backend logiciel : l'image des formes, rastérisée une seule fois par calque.
+        if (state.layers.vectors && state.vectorLayer &&
+            !state.vectorLayer->image().image.isNull()) {
+            const auto& v = state.vectorLayer->image();
             painter.drawImage(QRectF(v.x0, v.y0, v.widthMm, v.heightMm), v.image);
         }
         if (state.scene) {
@@ -754,7 +753,7 @@ public:
         root->dpr = state.devicePixelRatio;
         root->overlayRevision = state.overlayRevision;
         root->displayedLayers = state.layers;
-        root->displayedVector = state.vectorImage;
+        root->displayedVector = state.vectorLayer;
         root->sourceData = state.sourceImage.dataRevision;
         root->sourceView = state.sourceImage.viewRevision;
         return {root, dirty.geometry && state.scene != nullptr,

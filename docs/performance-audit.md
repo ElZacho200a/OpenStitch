@@ -523,3 +523,54 @@ segmentation et de séquence effective identiques sur les trois images, et avec 
 désormais. Un index 2D (grille parcourue le long du segment) à la place des bandes en y réduirait
 le nombre d'arêtes visitées par test sans changer le résultat (déduplication par marques, `ts`
 trié) ; non fait, à mesurer.
+
+## 12. Audit du 2026-11-14 : ce qui passe sur le GPU dans Studio
+
+**État des lieux.** Les points, le cadre, la grille, les repères, les sauts et le rendu réaliste
+sont déjà des géométries du scene graph (RHI D3D11). Banc natif `openstitch-studio-bench`
+(scène de 10 000 points) : scène construite en 2,7 ms, géométrie créée une seule fois, rendu
+GPU 1–2 ms par image ; `QSG_RENDER_TIMING=1` donne `time in renderer: total=0–2 ms`.
+
+**Le « bridage » à ~260 ms par image n'est pas la session.** Il apparaît en `sync=244–254 ms`
+(`render=2`, `swap=0`) : dans la boucle threadée, la phase « sync » inclut `beginFrame`, qui
+attend le swapchain. La machine était sans clavier ni souris depuis 66 min, écran en veille :
+Windows ne présente plus alors que ~4 images/s. Les relevés natifs du §10 (cadence témoin à
+262 ms) ont la même cause. Mesurer la cadence avec un écran allumé et actif ; à défaut, lire les
+temps `polish` (fil d'interface) et `render` (GPU), indépendants de la présentation.
+
+**Surcouches `Canvas` (QML, JavaScript) : laissées telles quelles.** Sélection dense de 10 000
+nœuds (`perfDenseNodeSelectionNative`, D3D11) : polish médian 2 ms, p95 5 ms grâce au niveau de
+détail du §10. Un portage en géométrie ne gagnerait que quelques millisecondes, sous le budget
+d'une image : non fait.
+
+**Couche vecteurs : triangles GPU au lieu d'une image rastérisée.** `VectorLayer::build`
+rastérisait toutes les formes au QPainter dans une image jusqu'à 4096 px de côté (12 px/mm au plus,
+floue au fort zoom) à chaque changement de géométrie. Désormais il triangule les remplissages
+pair-impair (`qTriangulate`, API privée de QtGui 6.8.3, isolée dans `layers/vector_layer.cpp`) et
+les contours (traits pleins ou pointillés `Qt::DashLine`, en quadrilatères), en mm scène ; le
+backend RHI les dessine avec la matrice de la caméra (lissage MSAA 4× du swapchain). Le backend
+logiciel garde exactement l'image d'avant, rastérisée à la demande et une seule fois par calque
+(`call_once`), dans le worker quand le canevas est logiciel.
+
+| Projet (formes) | Avant : construction + rastérisation | Après : construction + triangles |
+|---|---|---|
+| synthétique 1 000 carrés | 51 ms | **5,2 ms** |
+| `tentabrode` (158) | 91 ms | **5,9 ms** |
+| `Impossibke.osp` (496) | 244 ms | **16,5 ms** |
+| `RuieGothique.osp` (435) | 83 ms | **28 ms** |
+
+(Release, médianes de 5 passes, `perfVectorLayer` avec `OPENSTITCH_PERF=1` et
+`OPENSTITCH_PERF_OSP=<projet>`.) Le pick reste sur les chemins `QPainterPath`, inchangé.
+
+**Preuves.** `layerTrianglesCoverFillAndSkipRaster` : aire des triangles de remplissage = 84 mm²
+pour un carré de 10 mm troué de 4 mm, trou vide, couleur prémultipliée, aucune rastérisation tant
+que seul le GPU lit le calque. Suite `test_desktop_v2_studio_space_vector` rejouée sur D3D11 natif
+avec `OPENSTITCH_TEST_RHI=1 QT_ENABLE_HIGHDPI_SCALING=0` : 20/20, dont les tests de pixels (formes
+visibles, masquage, republication). Sans `QT_ENABLE_HIGHDPI_SCALING=0`, trois tests de pixels
+échouent aussi sur `main` à DPR 1,5 (coordonnées logiques contre image physique) : défaut des
+tests, pas du rendu.
+
+**Restent sur CPU, volontairement.** Image, segmentation et génération des points : un calcul GPU
+en virgule flottante varie selon le pilote et casserait le déterminisme octet pour octet. La
+couche régions (une passe sur les étiquettes à chaque changement de segmentation) et l'image
+source sont déjà des textures envoyées une fois par révision.
