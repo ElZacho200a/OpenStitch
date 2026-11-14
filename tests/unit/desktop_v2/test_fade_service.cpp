@@ -84,7 +84,11 @@ TEST_CASE("fade requests that cannot work are refused with the engine's reason",
 TEST_CASE("a satin without rails reports the missing geometry rather than a tatami-only error",
           "[desktop_v2][fade][satin]") {
     auto f = rectFill();
-    REQUIRE(f.session.applyBatch(batchSetStitchType({f.id}, "satin"), "Satin").committed);
+    // Reproduce a Satin stitch type without the rail geometry required by interlacing.
+    auto& project = f.session.projectForIdAllocation();
+    auto* object = project.findEmbroidery(ObjectId{f.id});
+    REQUIRE(object != nullptr);
+    object->params = document::SatinParams{};
     const auto* satin = f.session.project().findEmbroidery(ObjectId{f.id});
     REQUIRE(satin != nullptr);
     REQUIRE(satin->is_satin());
