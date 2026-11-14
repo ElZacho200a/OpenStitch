@@ -24,6 +24,7 @@
 #include "file_controller.hpp"
 #include "gpu_canvas.hpp"
 #include "inspector_controller.hpp"
+#include "openstitch/document/multi_blend.hpp"
 #include "openstitch/project_ops/factory.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
 #include "point_edit_controller.hpp"
@@ -370,6 +371,15 @@ void StudioDigitizeTest::multicolorFadeJourney() {
     QCOMPARE(rig.session.project().embroidery_objects.size(), std::size_t{5}); // ancre + 4 couches
     QCOMPARE(rig.steps(), depth + 1);
     QVERIFY(sequenceOf(rig.session).commands != original.commands);
+
+    // Les couches restent physiques pour la couture, mais ne sont jamais des objets éditables
+    // indépendants : arbre et clic canevas renvoient à l'ancre logique.
+    QCOMPARE(rig.studio.objects().size(), 1);
+    const auto group = document::find_gradient_group(rig.session.project(), ObjectId{rig.id});
+    QVERIFY(group.has_value());
+    QVERIFY(!group->layers.empty());
+    rig.studio.selectObject(QString::number(group->layers.front().value));
+    QCOMPARE(rig.studio.primarySelectionId(), QString::number(rig.id));
 
     // Profils individuels comme Hatch Multi Blend : modification isolée,
     // refus sans mutation, et réédition des couleurs sans perdre le choix.

@@ -8,10 +8,10 @@ et camaïeux*) est en grande partie **réalisée** par la PR #341 (branche
 `feat/studio-gradient-as-stitch-type`), avec une différence de vocabulaire : ce que ce document
 appelle `GradientBlendGroup` est implémenté comme une **ancre** (`document::MulticolorGradientParams`,
 un `EmbroideryObject` réel sans point propre, exclu de la génération) plutôt qu'un objet de
-métadonnées séparé — « La sélection d'une couche doit sélectionner le groupe logique » est donc
-vrai pour la sélection *initiale* dans le sélecteur Studio (l'ancre garde l'id de l'objet converti),
-mais les couches physiques restent, à ce stade, des `EmbroideryObject` individuellement sélectionnables
-sur le canevas (aucun filtrage de sélection/arbre n'a été ajouté — limite connue, non résolue).
+métadonnées séparé. Les couches restent des `EmbroideryObject` pour la couture et l'export, mais
+Studio les masque de l'arbre d'objets et redirige tout clic sur une couche vers l'ancre logique. Le
+cadre de sélection de l'ancre agrège les bornes de toutes les couches : aucune couche interne n'est
+donc éditable indépendamment depuis le desktop.
 
 Réalisé : type `MulticolorGradientParams` autonome dans `StitchParams` (`libs/document`), nouveau
 schéma OSP avec refus explicite d'un groupe `multiBlend` ancien sans ancre (`libs/project_io`), API
@@ -32,8 +32,8 @@ manuels est réellement créé grâce aux rails dérivés du contour, au lieu de
 diagnostic plus précis.
 
 Non fait (sections encore valables ci-dessous) : édition manuelle des rails satin entrelacés depuis
-l'UI ; isolement des couches physiques hors sélection/arbre d'objets ; assistant de camaïeu basé
-sur une bibliothèque de fils réels (toujours couleurs libres) ; mesures et recette textile.
+l'UI ; assistant de camaïeu basé sur une bibliothèque de fils réels (toujours couleurs libres) ;
+mesures et recette textile.
 
 ## État de la branche PR #336
 
