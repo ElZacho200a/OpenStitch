@@ -15,6 +15,11 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "qa-gradient-results"
 OUT.mkdir(parents=True, exist_ok=True)
+# Never accept OSP/DST/PNG left behind by an earlier local or CI execution.
+# In particular, a failed export must not be scored using a stale DST.
+for previous in OUT.iterdir():
+    if previous.is_file():
+        previous.unlink()
 CLI = Path(os.environ.get("OPENSTITCH_CLI", "openstitch-cli.exe")).resolve()
 LOG = []
 COLORS = [[24, 42, 99], [40, 83, 141], [76, 122, 179], [125, 171, 205],
@@ -250,10 +255,19 @@ def large_design_benchmarks():
             result = call(name + ".benchmark",
                           ["project", "export", target, "-o", dst], timeout=85)
             stats = dst_quality(dst) if result["rc"] == 0 and dst.is_file() else {}
+            preview = OUT / (name + ".png")
+            rendered = call(name + ".render",
+                            ["project", "render", target, "-o", preview,
+                             "--px-per-mm", "3", "--fabric", "#ece7df"], timeout=85)
+            png_valid = (rendered["rc"] == 0 and preview.is_file()
+                         and preview.stat().st_size >= 45
+                         and preview.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
+                         and preview.read_bytes().endswith(b"IEND\xaeB`\x82"))
             entry = {"name": name, "factor": factor, "width_mm": 40 * factor,
                      "height_mm": (3.2 if source == "satin_8" else 20) * factor,
                      "elapsed_ms": result["ms"],
-                     "return_code": result["rc"], "dst_quality": stats}
+                     "return_code": result["rc"], "dst_quality": stats,
+                     "render_return_code": rendered["rc"], "png_valid": png_valid}
             benchmarks.append(entry)
     (OUT / "benchmarks.json").write_text(
         json.dumps(benchmarks, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -357,7 +371,9 @@ def build():
             raise RuntimeError("Profile " + profile_name +
                                " gives the identical preview as linear fill")
     benchmarks = large_design_benchmarks()
-    results = {"pr":336,"source":str(CLI), "sha":os.environ.get("GITHUB_SHA"),
+    results = {"pr":336,"source":str(CLI),
+               "checkout_sha":os.environ.get("GITHUB_SHA"),
+               "pr_head_sha":os.environ.get("OPENSTITCH_PR_HEAD_SHA"),
                "sample":"40 x 20 mm rectangle + 30 x 3.2 mm satin rails",
                "cases":manifest, "benchmarks": benchmarks, "commands": LOG}
     (OUT/"report.json").write_text(json.dumps(results,indent=2,ensure_ascii=False),encoding="utf-8")
@@ -368,6 +384,8 @@ def build():
     for entry in benchmarks:
         if entry["return_code"] != 0 or not entry["dst_quality"]:
             quality_failures.append(entry["name"] + ": benchmark export failed")
+        if not entry["png_valid"]:
+            quality_failures.append(entry["name"] + ": benchmark preview missing/invalid")
         elif entry["dst_quality"]["max_needle_step_mm"] > 7.0:
             quality_failures.append(entry["name"] + ": unsafe large-design needle step")
         if entry["dst_quality"] and entry["dst_quality"]["diagonals_over_5mm"] > 0:

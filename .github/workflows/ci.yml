@@ -110,11 +110,12 @@ jobs:
 
       # Un seul binaire fait foi : le CLI construit sur le SHA de cette PR,
       # pas une ancienne archive téléchargée d'une CI précédente.
-      - name: QA fondu réel PR336 — 16 variantes / OSP / DST / previews
+      - name: QA fondu réel PR336 — 20 variantes / OSP / DST / previews
         if: github.event_name == 'pull_request' && github.event.pull_request.number == 336
         shell: pwsh
         env:
           PYTHONUTF8: "1"
+          OPENSTITCH_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           $env:OPENSTITCH_CLI = Join-Path $PWD "build/msvc/apps/cli/Release/openstitch-cli.exe"
           python scripts/qa_pr336_gradients.py
