@@ -489,3 +489,37 @@ graphique non bridée, fenêtre réellement présentée et dégagée.
 des instances GPU/QSG ne sera justifié qu'après profilage du nouveau chemin : le principal coût
 confirmé ici était la création et le transfert de milliers d'objets Qt, pas le calcul de leurs
 coordonnées.
+
+## 11. Audit du 2026-11-14 : liaisons cachées du tatami (`HiddenRouter`)
+
+**Constat.** `generate_sequence` était passé de 63 ms (§9) à ~160 ms sur `tentabrode.png`, et le
+plus gros objet modifié de 67 à 161 ms. Le cache chaud restant à 6,5 ms, tout le temps venait du
+seul fond tatami. Profil temporaire : `HiddenRouter::route` (#343, 96 points de passage au lieu de
+24) fait ~190 appels par génération et **5,6 M de tests de visibilité** sur le banc (~0,6 µs
+chacun), 70 % dans les liaisons réussies (A* : chaque nœud développé teste ses ~96 voisins).
+
+**Corrections** (`libs/stitch_generation/src/tatami.cpp`), toutes à sortie identique :
+
+- `connector_invalid` : rejet en x des arêtes (les bandes de l'index ne trient qu'en y ; marge
+  d'1 µm, très au-delà des tolérances paramétriques de 1e-9) et tampon `ts` réutilisé.
+- `in_region` : parités réutilisées et remises à zéro case par case, au lieu d'allouer un vecteur
+  par polygone à chaque milieu de sous-segment testé.
+- A* : un nœud dont la borne inférieure `dist + |v b|` dépasse le plafond (marge d'1 µm) n'est pas
+  testé ; visibilités depuis `a` et vers `b` paresseuses et mémoïsées ; candidats sélectionnés par
+  `nth_element` puis triés (ordre total, mêmes candidats).
+- Visibilité entre deux points de passage mémoïsée sur la vie du routeur (clé ordonnée, le test
+  n'étant pas exactement symétrique en virgule flottante ; 4 M d'entrées au plus).
+
+**Résultats** (Release, médianes à chaud, même machine, `main` contre la branche ; empreintes de
+segmentation et de séquence effective identiques sur les trois images, et avec `OPENSTITCH_THREADS=1`) :
+
+| Image | `generate_sequence` avant | après | empreinte |
+|---|---|---|---|
+| `tentabrode.png` | 161 ms | **79 ms** | `0e0ebfe85091dd02` |
+| `sample/0215a7e5…png` | 168 ms | **67 ms** | `b55ebf70db688425` |
+| `marine-synth-01/source.png` | 3,4 ms | **2,5 ms** | `d1f73e507e36b047` |
+
+**Hypothèse restante.** Les tests depuis les extrémités, propres à chaque liaison, dominent
+désormais. Un index 2D (grille parcourue le long du segment) à la place des bandes en y réduirait
+le nombre d'arêtes visitées par test sans changer le résultat (déduplication par marques, `ts`
+trié) ; non fait, à mesurer.
