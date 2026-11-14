@@ -240,6 +240,12 @@ FileController::FileController(StudioController& studio, ActionController* actio
     connect(&studio_, &StudioController::loadFinished, this, [this](bool ok) {
         if (!ok) {
             setMessage(studio_.status(), true);
+        } else if (message_.startsWith(QStringLiteral("Ouverture de "))) {
+            // loadFinished(true) also fires after every successful scene rebuild (any edit,
+            // not just opening a project) : only replace the specific "Ouverture de X…"
+            // message, which otherwise lingers up to 8 s after the document is already
+            // visible (QA-STUDIO-001 POP-015/UX-11), never another in-progress message.
+            setMessage(QStringLiteral("Projet ouvert."));
         }
     });
     attachTaskPump(tasks_, this);
