@@ -388,6 +388,15 @@ def build():
             quality_failures.append(entry["name"] + ": benchmark preview missing/invalid")
         elif entry["dst_quality"]["max_needle_step_mm"] > 7.0:
             quality_failures.append(entry["name"] + ": unsafe large-design needle step")
+        if entry["name"].startswith("satin_8_x") and entry["dst_quality"]:
+            stats = entry["dst_quality"]
+            # Large satin motifs must not silently regress to one jump per
+            # needle-down. Use a scale-independent ratio, not a fixed count.
+            if stats["stitches"] <= 0 or stats["jumps"] * 3 > stats["stitches"]:
+                quality_failures.append(
+                    entry["name"] + ": excessive satin travel (" +
+                    str(stats["jumps"]) + " jumps / " +
+                    str(stats["stitches"]) + " stitches; max 1/3)")
         if entry["dst_quality"] and entry["dst_quality"]["diagonals_over_5mm"] > 0:
             quality_failures.append(
                 entry["name"] + ": " + str(entry["dst_quality"]["diagonals_over_5mm"])
