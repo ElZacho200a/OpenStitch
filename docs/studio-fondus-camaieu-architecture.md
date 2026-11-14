@@ -1,6 +1,34 @@
 # Studio — Fondus de fils, camaïeux et dégradés de densité
 Date : 12 novembre 2026 — implémentation candidate dans la PR #336 (CI et validation textile non acquises).
 
+## Mise à jour 2026-11-14 — fondu multicolore devenu un type autonome (PR #341)
+
+L'« Architecture cible » décrite plus bas (section *Architecture cible / évolutions pour 3+ fils
+et camaïeux*) est en grande partie **réalisée** par la PR #341 (branche
+`feat/studio-gradient-as-stitch-type`), avec une différence de vocabulaire : ce que ce document
+appelle `GradientBlendGroup` est implémenté comme une **ancre** (`document::MulticolorGradientParams`,
+un `EmbroideryObject` réel sans point propre, exclu de la génération) plutôt qu'un objet de
+métadonnées séparé — « La sélection d'une couche doit sélectionner le groupe logique » est donc
+vrai pour la sélection *initiale* dans le sélecteur Studio (l'ancre garde l'id de l'objet converti),
+mais les couches physiques restent, à ce stade, des `EmbroideryObject` individuellement sélectionnables
+sur le canevas (aucun filtrage de sélection/arbre n'a été ajouté — limite connue, non résolue).
+
+Réalisé : type `MulticolorGradientParams` autonome dans `StitchParams` (`libs/document`), nouveau
+schéma OSP avec refus explicite d'un groupe `multiBlend` ancien sans ancre (`libs/project_io`), API
+`make_create/edit/remove_multicolor_gradient_command` à méthode EXPLICITE (`libs/project_ops`,
+`GradientMethod` : Directional, SatinInterlaced, LongAndShort, ControlledScatter, CrossHatching —
+les quatre premières réutilisent les générateurs de densité complémentaire de la PR #336,
+CrossHatching est nouveau), dérivation automatique des rails satin entrelacés depuis le contour
+quand aucun n'existe (`stitch_generation::rails_from_contour`), et une vraie entrée dans le
+sélecteur de type de Studio (`inspector_model.cpp`/`Inspector.qml`, remplace l'adaptateur virtuel
+transitoire de la PR #341 initiale).
+
+Non fait (sections encore valables ci-dessous) : panneau dédié dans l'ordre méthode/palette/
+géométrie/mélange/réglages spécifiques/optimisation/avancé demandé par la mission (`FadeProperties.
+qml` reste construit autour de l'ancien modèle texture/géométrie entier) ; édition manuelle des
+rails satin entrelacés depuis l'UI ; isolement des couches physiques hors sélection/arbre d'objets ;
+assistant de camaïeu basé sur une bibliothèque de fils réels (toujours couleurs libres).
+
 ## État de la branche PR #336
 
 La branche implémente désormais **un moteur n-aire candidat** (2 à 8 fils) pour
