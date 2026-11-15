@@ -50,6 +50,15 @@ struct MultiFadeSettings {
     double satinDensityMm{0.4};
     int crosshatchLayers{2};
     double crosshatchAngleDeg{0.0};
+    // Écart entre rangées des remplissages et hachures (mm) ; 0 = conserver l'écart actuel.
+    double spacingMm{0.0};
+    // Direction des points imposée (degrés), sinon perpendiculaire à l'axe du fondu.
+    bool customStitchAngle{false};
+    double stitchAngleDeg{0.0};
+    // Un seul fil : densité relative à l'arrivée, [0 ; 1].
+    double endDensity{0.15};
+
+    bool operator==(const MultiFadeSettings&) const = default;
 };
 
 [[nodiscard]] std::optional<MultiFadeSettings> readMultiFade(const document::Project& project,

@@ -88,8 +88,8 @@ struct GradientGroupLayers {
         return std::nullopt;
     }
     const auto& params = std::get<MulticolorGradientParams>(anchor->params);
-    const std::size_t n = params.palette.size();
-    if (n < 2 || n > 8) {
+    const std::size_t n = params.palette.size(); // 1 : dégradé d'un seul fil
+    if (n < 1 || n > 8) {
         return std::nullopt;
     }
     GradientGroupLayers result;

@@ -6,6 +6,7 @@
 #include <limits>
 #include <numbers>
 
+#include "openstitch/document/multi_blend.hpp"
 #include "openstitch/project_ops/gradient_fill.hpp"
 #include "thread_palette_service.hpp"
 
@@ -22,7 +23,7 @@ const document::EmbroideryObject* findObject(const document::Project& p, std::ui
 }
 
 bool valid_mode(int texture, int geometry) {
-    return texture >= 0 && texture <= 3 && geometry >= 0 && geometry <= 2;
+    return texture >= 0 && texture <= 3 && document::is_valid_density_geometry(geometry);
 }
 
 // Les coordonnées du champ sont définies une seule fois lors du changement
@@ -42,7 +43,8 @@ bool setup_geometry(const document::Project& project, ObjectId id,
         gradient.from = initial->gradient.from;
         gradient.to = initial->gradient.to;
     }
-    if (geometry == 1 && resetAxis) {
+    // Radial et spirale : centre de la boîte englobante, rayon jusqu'au coin.
+    if ((geometry == 1 || geometry == 3) && resetAxis) {
         double x0 = std::numeric_limits<double>::max();
         double y0 = x0;
         double x1 = std::numeric_limits<double>::lowest();
@@ -70,8 +72,26 @@ bool setup_geometry(const document::Project& project, ObjectId id,
                              gradient.from.y};
     }
     gradient.geometry = static_cast<document::DensityGeometry>(geometry);
-    gradient.curve_bend = geometry == 2 ? 0.35 : 0.0;
+    gradient.curve_bend = geometry == 2 ? 0.35 : geometry == 3 ? 0.5 : 0.0; // spirale : 2 tours
     return true;
+}
+
+// Écart, direction des points et densité d'arrivée (un seul fil) : communs à la création et à
+// la réédition. Un écart nul conserve celui de la spec ; le satin garde sa propre densité.
+void apply_fill_settings(project_ops::MulticolorGradientSpec& spec,
+                         const MultiFadeSettings& settings) {
+    if (settings.spacingMm > 0.0 && std::isfinite(settings.spacingMm) &&
+        spec.method != document::GradientMethod::SatinInterlaced) {
+        const Micrometers spacing{static_cast<std::int32_t>(
+            std::lround(std::clamp(settings.spacingMm, 0.1, 4.0) * 1000.0))};
+        spec.transition.spacing_from = spec.transition.spacing_to = spacing;
+    }
+    spec.stitch_angle = settings.customStitchAngle && std::isfinite(settings.stitchAngleDeg)
+                            ? std::optional{Angle{std::remainder(settings.stitchAngleDeg, 180.0) *
+                                                  std::numbers::pi / 180.0}}
+                            : std::nullopt;
+    spec.end_density =
+        std::isfinite(settings.endDensity) ? std::clamp(settings.endDensity, 0.0, 1.0) : 0.15;
 }
 
 // Fil de nuancier d'une couleur de la nouvelle palette : celui de la même couleur dans
@@ -248,6 +268,22 @@ std::optional<MultiFadeSettings> readMultiFade(const document::Project& project,
     settings.satinDensityMm = static_cast<double>(spec->satin_density.value) / 1000.0;
     settings.crosshatchLayers = spec->crosshatch_layers;
     settings.crosshatchAngleDeg = spec->crosshatch_angle.radians * 180.0 / std::numbers::pi;
+    settings.customStitchAngle = spec->stitch_angle.has_value();
+    settings.stitchAngleDeg =
+        spec->stitch_angle ? spec->stitch_angle->radians * 180.0 / std::numbers::pi : 0.0;
+    settings.endDensity = spec->end_density;
+    // Écart RÉELLEMENT cousu : celui de la première couche (les anciens fondus créés depuis un
+    // tatami n'enregistraient pas cet écart dans leur ancre).
+    settings.spacingMm = static_cast<double>(std::min(spec->transition.spacing_from.value,
+                                                      spec->transition.spacing_to.value)) /
+                         1000.0;
+    if (const auto group = document::find_gradient_group(project, ObjectId{objectId})) {
+        if (const auto* first = project.findEmbroidery(group->layers.front())) {
+            if (const auto* fill = std::get_if<document::DirectionalFillParams>(&first->params)) {
+                settings.spacingMm = static_cast<double>(fill->row_spacing.value) / 1000.0;
+            }
+        }
+    }
     return settings;
 }
 
@@ -333,8 +369,8 @@ ServiceResult createMultiFade(DocumentSession& session, std::uint64_t objectId,
         return refuse("Technique de fondu inconnue.");
     }
     const auto* base = findObject(session.project(), objectId);
-    if (base == nullptr || settings.colors.size() < 2 || settings.colors.size() > 8) {
-        return refuse("Choisissez un remplissage et entre 2 et 8 fils.");
+    if (base == nullptr || settings.colors.empty() || settings.colors.size() > 8) {
+        return refuse("Choisissez un remplissage et entre 1 et 8 fils.");
     }
     const auto initial =
         project_ops::default_multicolor_gradient(session.project(), ObjectId{objectId});
@@ -357,6 +393,7 @@ ServiceResult createMultiFade(DocumentSession& session, std::uint64_t objectId,
     spec.crosshatch_layers = std::clamp(settings.crosshatchLayers, 2, 3);
     spec.crosshatch_angle =
         Angle{std::remainder(settings.crosshatchAngleDeg, 360.0) * std::numbers::pi / 180.0};
+    apply_fill_settings(spec, settings);
     if (!setup_geometry(session.project(), ObjectId{objectId}, spec.transition, settings.geometry,
                         settings.geometry != 0)) {
         return refuse("Forme incompatible avec cette géométrie.");
@@ -418,6 +455,7 @@ ServiceResult editMultiFade(DocumentSession& session, std::uint64_t objectId,
     spec->crosshatch_layers = std::clamp(settings.crosshatchLayers, 2, 3);
     spec->crosshatch_angle =
         Angle{std::remainder(settings.crosshatchAngleDeg, 360.0) * std::numbers::pi / 180.0};
+    apply_fill_settings(*spec, settings);
     if (geometryChanged && !setup_geometry(session.project(), ObjectId{objectId}, spec->transition,
                                            settings.geometry, true)) {
         return refuse("Forme incompatible avec cette géométrie.");

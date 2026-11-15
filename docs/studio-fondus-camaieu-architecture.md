@@ -135,6 +135,42 @@ canevas, avec les mêmes numéros des deux côtés.
 Non fait : placer un fil ailleurs qu'à intervalle régulier (le moteur répartit les fils
 uniformément le long de l'axe), assistant « camaïeu depuis mes fils en stock ».
 
+## Types de fondu, direction des points et espacement (15 novembre 2026, suite)
+
+Retours d'utilisation : un tatami proposait de « passer en fondu », aucun réglage d'écart entre
+rangées, des types manquants.
+
+- **Type à part** : l'éditeur de fondu de l'inspecteur n'apparaît que sur un fondu existant
+  (`fadeCtl.hasFade`). On crée un fondu en choisissant « Fondu multicolore » dans le type de
+  points (`InspectorController::setStitchType`) ; un satin y devient un satin entrelacé
+  (méthode de `default_multicolor_gradient`, auparavant toujours « Directionnel »).
+- **Forme** (ligne visible, `DensityGeometry`) : Droite, Radiale, **Spirale** (3) et
+  **Contour** (4) ; la courbe reste dans « Plus de réglages ». Spirale : centre et rayon comme le
+  radial, `curve_bend` × 4 tours (2 par défaut), position en onde triangle de période 1 donc
+  continue au raccord des angles. Contour : distance au bord le plus proche (contour et trous)
+  rapportée à la plus grande distance intérieure, grille de distances calculée une fois par
+  couche (`ContourDistance`, propagation du germe le plus proche, déterministe) ; pas d'axe à
+  placer au canevas.
+- **Direction des points** (`MulticolorGradientParams::stitch_angle`, absent = perpendiculaire
+  à l'axe) : « Auto » ou « Angle » + valeur, indépendante de l'axe des couleurs. Les couches
+  partagent la grille de rangées (écart uniforme), donc
+  `align_guides_across_density_gradient` ne remplace pas ce guide.
+- **Dégradé d'un seul fil** : la palette accepte 1 fil (sauf satin entrelacé) ; la couche coud
+  la tranche `[0 ; poids)` avec un poids qui passe de 1 à `end_density` (15 % par défaut,
+  « Densité d'arrivée »), profil du fil. Retirer des fils jusqu'à un seul dans la barre suffit.
+- **Espacement des rangées** (« Espacement des rangées (mm) », 0,1 à 4) : écrit dans
+  `transition.spacing_from/to` de l'ancre. À la création, l'ancre enregistre l'écart réellement
+  cousu (celui du tatami d'origine) ; auparavant la première réédition retombait sur l'écart
+  nominal de l'axe (0,4 mm). Relu depuis la première couche, donc juste aussi pour les anciens
+  fondus.
+- **Correctif hachures croisées** : leurs couches gardaient l'écart variable 4 mm → 0,4 mm de
+  l'axe par défaut, si bien que le générateur remplaçait les guides croisés par un guide
+  perpendiculaire à l'axe (une seule direction). Écart désormais uniforme : les directions
+  croisées sont réellement cousues.
+
+Tests : `fade types: …` (`test_gradient_fill.cpp`, 6 cas), service desktop
+(`test_fade_service.cpp`) et parcours QML (`test_studio_digitize`). Non validé sur tissu.
+
 ## Deux notions, deux emplacements
 
 1. **Dégradé de densité du remplissage** : une unique couleur de fil peut passer

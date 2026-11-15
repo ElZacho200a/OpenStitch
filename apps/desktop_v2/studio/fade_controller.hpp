@@ -37,6 +37,10 @@ class FadeController : public QObject {
     Q_PROPERTY(int crosshatchLayers READ crosshatchLayers NOTIFY changed)
     Q_PROPERTY(double crosshatchAngleDeg READ crosshatchAngleDeg NOTIFY changed)
     Q_PROPERTY(double angle READ angle NOTIFY changed)
+    Q_PROPERTY(double spacingMm READ spacingMm NOTIFY changed)
+    Q_PROPERTY(bool customStitchAngle READ customStitchAngle NOTIFY changed)
+    Q_PROPERTY(double stitchAngleDeg READ stitchAngleDeg NOTIFY changed)
+    Q_PROPERTY(double endDensity READ endDensity NOTIFY changed)
     Q_PROPERTY(bool multiFade READ multiFade NOTIFY changed)
     Q_PROPERTY(bool satinTarget READ satinTarget NOTIFY changed)
     Q_PROPERTY(QVariantList colors READ colors NOTIFY changed)
@@ -93,6 +97,18 @@ public:
         return multiSettings_ ? multiSettings_->crosshatchAngleDeg : 0.0;
     }
     [[nodiscard]] double angle() const;
+    [[nodiscard]] double spacingMm() const {
+        return multiSettings_ ? multiSettings_->spacingMm : 0.0;
+    }
+    [[nodiscard]] bool customStitchAngle() const {
+        return multiSettings_ && multiSettings_->customStitchAngle;
+    }
+    [[nodiscard]] double stitchAngleDeg() const {
+        return multiSettings_ ? multiSettings_->stitchAngleDeg : 0.0;
+    }
+    [[nodiscard]] double endDensity() const {
+        return multiSettings_ ? multiSettings_->endDensity : 0.15;
+    }
     [[nodiscard]] QVariantList colors() const;
     [[nodiscard]] int curve() const;
     [[nodiscard]] QString summary() const;
@@ -143,6 +159,12 @@ public:
     Q_INVOKABLE bool setComplementary(bool complementary);
     Q_INVOKABLE bool setSatinDensity(double mm);
     Q_INVOKABLE bool setCrosshatch(int layers, double angleDeg);
+    // Écart entre rangées (mm, 0,1 à 4) des fondus remplis et hachurés.
+    Q_INVOKABLE bool setSpacing(double mm);
+    // `custom` faux : lignes perpendiculaires à l'axe du fondu ; vrai : angle imposé (degrés).
+    Q_INVOKABLE bool setStitchAngle(bool custom, double degrees);
+    // Fondu d'un seul fil : densité d'arrivée en pourcentage (0 à 100).
+    Q_INVOKABLE bool setEndDensity(double percent);
     // Barre de fils : chaque geste est UN pas d'annulation et désigne le fil concerné.
     // Ajoute après `after` un fil à mi-chemin de ses voisins (ou distinct du dernier).
     Q_INVOKABLE bool insertThread(int after);
