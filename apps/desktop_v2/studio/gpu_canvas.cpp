@@ -452,11 +452,11 @@ void GpuCanvas::setSourceImage(SourceImageView view) {
     update();
 }
 
-void GpuCanvas::setVectorLayer(std::shared_ptr<const OverlayImage> image) {
-    if (vectorImage_ == image) {
+void GpuCanvas::setVectorLayer(std::shared_ptr<const VectorLayer> layer) {
+    if (vectorLayer_ == layer) {
         return; // pas de texture à republier pour un snapshot identique
     }
-    vectorImage_ = std::move(image);
+    vectorLayer_ = std::move(layer);
     update(); // le backend suit séparément l'identité de l'image vectorielle
 }
 
@@ -723,7 +723,7 @@ QSGNode* GpuCanvas::updatePaintNode(QSGNode* oldNode, UpdatePaintNodeData*) {
                             layers_,
                             layers_.sourceImage ? sourceImage_ : SourceImageView{},
                             regionLayer_,
-                            layers_.vectors ? vectorImage_ : nullptr};
+                            layers_.vectors ? vectorLayer_ : nullptr};
     const auto result = backend.synchronize(oldNode, state, *window());
     // Render thread must never write QObject properties or read the live document. Queue
     // diagnostics.
