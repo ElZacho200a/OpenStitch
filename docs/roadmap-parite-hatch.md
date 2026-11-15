@@ -960,6 +960,11 @@ plus.
 - Modules : `libs/stitch_generation`.
 
 ### HP-STI-011 — Mélange de couleurs (color blending) [P2] — ◐ Partiel (action disponible)
+- 2026-11-15 : recette black-box actualisée pour les rangées partagées (triples
+  position/poids/début, profils échantillonnés, grille de surcouche à 60 %) et
+  réactivée sur les PR suivantes et `main`, au lieu de la seule PR #336 fermée.
+  CLI officiel `94768773` : 20 scénarios et 6 grands motifs OSP/DST/PNG réussis.
+  Reste : recette interactive et essais textiles ; statut ◐ conservé.
 - 2026-10-13 (intégration UI après PR #36) : dialogue avant mutation, aperçu
   schématique, couleurs manuelles sans raster et proposition depuis l'image,
   angle/écarts/inversion ; dessus inséré après le fond ; choix et édition des
@@ -4602,6 +4607,7 @@ ouvrant le lot (§0.1).
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-11-15 | Codex (reprise PR #336, QA après fusion) | **HP-STI-011 ◐** maintenu. Les fixtures multicolores utilisent la grille partagée introduite par #345 (profils à trois composantes, courbes échantillonnées, surcouche à 60 %). Matrice Windows réactivée pour toutes les PR et `main` ; tests des fixtures et test PNG inclus dans le workflow Python. Vérifié avec le CLI officiel `94768773` : 20/20 variantes + 6/6 grands motifs ; suite Python 144 tests, 1 ignoré prévu, test PNG réussi. Pas de validation textile. |
 | 2026-11-15 | Claude (types de fondu) | **HP-STI-011 ◐** (inchangé, validation textile en attente). Retours d'utilisation : (1) l'éditeur de fondu n'apparaît plus sur un tatami (`Inspector.qml`, `fadeCtl.hasFade`) ; création par le type « Fondu multicolore », un satin y devient un satin entrelacé ; (2) espacement des rangées réglable (`FadeController::setSpacing`, `transition.spacing_from/to`), enregistré à la création et conservé aux rééditions ; (3) types : `DensityGeometry::Spiral` et `Contour` (`ContourDistance` dans `directional_fill.cpp`), `MulticolorGradientParams::stitch_angle` (direction des points), palette d'un seul fil avec `end_density` (clés `.osp` `stitchAngle`, `endDensity`, géométries 3 et 4). Correctif : hachures croisées cousues dans une seule direction (écart variable hérité de l'axe). Tests : 6 cas `fade types` (project_ops), service et parcours QML. Notion non mis à jour dans cette session (mission ciblée). |
 | 2026-11-15 | Codex (F43-01, import en calques Studio) | HP-OBJ-024 reste partiel. Import d’un lot raster ou d’un document OpenRaster, préparation et segmentation par source, rattachement des formes et des points au calque, OSP v10. |
 | 2026-11-15 | Claude (fondus accessibles, PR #345) | **HP-STI-011 ◐** (inchangé, validation textile en attente). Éditeur du fondu simplifié d'après trois maquettes (barre de fils retenue, avec les fils numérotés du canevas) : barre de fils et carte du fil désigné (`selectedThread`, `threadLabels`, `insertThread`/`removeThread`/`moveThread`/`setThreadColor`, clavier), tuiles de style illustrées (`FadeStylePreview.qml`), flèches de direction, transition Douce / Moyenne / Nette (`softness`), « Plus de réglages » replié ; canevas : pastilles numérotées (`HandleItem::Kind::Stop`), clic = désigner, glisser un fil du milieu ou la ligne = déplacer sans saut. Reste : placement libre d'un fil, assistant camaïeu. |

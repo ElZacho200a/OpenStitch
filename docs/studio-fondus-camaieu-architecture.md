@@ -1,6 +1,28 @@
 # Studio — Fondus de fils, camaïeux et dégradés de densité
 Date : 12 novembre 2026 — implémentation candidate dans la PR #336 (CI et validation textile non acquises).
 
+## Vérification du 15 novembre 2026 — recette après fusion
+
+La PR #336 est intégrée (`46ce5841`) et les refontes #341/#345 sont présentes dans
+`main` (`94768773`). La CI `43740252593` a réussi les tests Linux et Windows Release,
+mais la recette spéciale des fondus était conditionnée au numéro de PR **336** : elle
+était sautée sur `main` et les PR suivantes.
+
+La recette `scripts/qa_pr336_gradients.py` couvre maintenant le moteur à rangées
+partagées pour les remplissages multicolores : `sharedRows`, arrêts
+`[position, poids, début de tranche]`, profils non linéaires échantillonnés et
+surcouches sur une grille à 60 %. Les trois couples historiques et les trois
+satins conservent leurs chemins spécifiques. La CI Windows lance cette matrice
+sur chaque PR et chaque push sur `main`, avec contrôle du SHA du checkout et
+conservation des OSP/DST/PNG ; les tests Python vérifient aussi les fixtures et
+l'intégrité PNG.
+
+Vérification locale avec le CLI Linux officiel du run ci-dessus (artefact
+`14172732908`, archive SHA256 vérifiée) : **20/20 scénarios et 6/6 grands motifs**
+réussis, aucun échec des critères DST/PNG existants. Ce contrôle ne mesure pas
+la qualité d'une broderie physique et ne remplace pas une recette interactive
+du panneau de Studio.
+
 ## Mise à jour 2026-11-14 — fondu multicolore devenu un type autonome (PR #341)
 
 L'« Architecture cible » décrite plus bas (section *Architecture cible / évolutions pour 3+ fils
