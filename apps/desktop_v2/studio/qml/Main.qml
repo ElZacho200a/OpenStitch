@@ -324,8 +324,11 @@ Window {
     // (nudge, delete, restack) must not fire behind it.
     readonly property bool keyboardOwnedByControl: {
         const item = window.activeFocusItem
+        // `ownsKeyboard` : un contrôle composé (barre de fils d'un fondu…) qui gère lui-même
+        // flèches, Début/Fin et Suppr ; sans lui, ces touches déplaceraient ou supprimeraient
+        // l'objet sélectionné.
         return !!item && (item.cursorPosition !== undefined || item.stepSize !== undefined ||
-                          item.popup !== undefined)
+                          item.popup !== undefined || item.ownsKeyboard === true)
     }
 
     Shortcut { sequence: "Ctrl+K"; onActivated: palette.openList() }

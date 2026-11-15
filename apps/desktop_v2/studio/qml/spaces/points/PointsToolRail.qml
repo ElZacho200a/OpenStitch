@@ -19,7 +19,6 @@ ColumnLayout {
         ["points", qsTr("Points"), "stitches", qsTr("Geste points : poser des points à la main"), "J"],
         ["satin", qsTr("Satin"), "satin", qsTr("Geste satin : tracer une colonne satin"), "S"],
         ["rungs", qsTr("Barreaux"), "rungs", qsTr("Barreaux d'un satin"), ""],
-        ["fade", qsTr("Fondu"), "fade", qsTr("Geste fondu : tracer l'axe d'un fondu"), "L"],
         ["guide", qsTr("Guide"), "guide", qsTr("Guide de direction du remplissage"), "D"],
         ["break", qsTr("Rupture"), "break", qsTr("Ligne de rupture du remplissage"), "Shift+D"]
     ]

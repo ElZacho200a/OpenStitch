@@ -2,7 +2,7 @@
 import QtQuick
 import "."
 
-// Hub « numérisation avancée » (satin, fondus, retouche des points, tirage, appliqué) : UN
+// Hub « numérisation avancée » (satin, retouche des points, tirage, appliqué) : UN
 // panneau à la fois, posé sur le bord droit du canevas. Les boutons et les gestes ne sont plus
 // flottants : l'espace « Points » les porte dans sa barre de panneaux et sa barre d'options
 // (`toolbarVisible: false`). Inerte si l'hôte ne fournit pas les adaptateurs.
@@ -19,7 +19,7 @@ Item {
     Loader {
         id: loader
         anchors.fill: parent
-        active: typeof satin !== "undefined" && typeof fade !== "undefined" && typeof pointEdit !== "undefined"
+        active: typeof satin !== "undefined" && typeof pointEdit !== "undefined"
         sourceComponent: Item {
             Loader {
                 active: hub.toolbarVisible
@@ -31,7 +31,6 @@ Item {
                     objectName: "digitizeToolbar"
                     spacing: 4
                     StudioButton { objectName: "satinPanelButton"; text: qsTr("Satin"); checkable: true; checked: hub.openPanel === "satin"; onClicked: hub.toggle("satin") }
-                    StudioButton { objectName: "fadePanelButton"; text: qsTr("Fondu"); checkable: true; checked: hub.openPanel === "fade"; onClicked: hub.toggle("fade") }
                     StudioButton { objectName: "pointEditPanelButton"; text: qsTr("Points"); checkable: true; checked: hub.openPanel === "points"; onClicked: hub.toggle("points") }
                     StudioButton { objectName: "pullPanelButton"; visible: typeof pull !== "undefined"; text: qsTr("Tirage"); checkable: true; checked: hub.openPanel === "pull"; onClicked: hub.toggle("pull") }
                     StudioButton { objectName: "fixPanelButton"; visible: typeof fix !== "undefined"; text: qsTr("Corriger"); checkable: true; checked: hub.openPanel === "fix"; onClicked: hub.toggle("fix") }
@@ -48,7 +47,7 @@ Item {
                     objectName: "gestureToolbar"
                     spacing: 4
                     Repeater {
-                        model: [["points", qsTr("Geste points")], ["fade", qsTr("Geste fondu")], ["satin", qsTr("Geste satin")],
+                        model: [["points", qsTr("Geste points")], ["satin", qsTr("Geste satin")],
                                 ["guide", qsTr("Guide")], ["break", qsTr("Rupture")], ["rungs", qsTr("Barreaux")]]
                         StudioButton {
                             objectName: "gesture_" + modelData[0]
@@ -80,7 +79,6 @@ Item {
                 x: hub.toolbarVisible ? 44 : parent.width - width - 12
                 width: Math.min(340, parent.width - (hub.toolbarVisible ? 90 : 24))
                 SatinPanel { anchors.fill: parent; visible: hub.openPanel === "satin"; controller: satin }
-                FadePanel { anchors.fill: parent; visible: hub.openPanel === "fade"; controller: fade }
                 PointEditPanel { anchors.fill: parent; visible: hub.openPanel === "points"; controller: pointEdit }
                 PullPanel { anchors.fill: parent; visible: hub.openPanel === "pull"; controller: typeof pull !== "undefined" ? pull : null }
                 AppliquePanel { anchors.fill: parent; visible: hub.openPanel === "applique"; controller: typeof applique !== "undefined" ? applique : null }

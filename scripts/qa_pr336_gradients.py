@@ -46,6 +46,9 @@ def call(label, args, timeout=85):
                     "layers": [
                         {"id": o.get("id"), "stitches": o.get("stitches", {}).get("total", 0)}
                         for o in payload.get("embroidery_objects", [])
+                        # The autonomous multicolour object is a logical anchor
+                        # without stitches; only its physical layers are scored.
+                        if o.get("stitches", {}).get("total", 0) > 0
                     ],
                 }
             except Exception as e:
@@ -148,9 +151,34 @@ def make_variant(doc, name, n, texture=0, geometry=0, comp=True, satin=False, le
     shape_box = bbox(doc)
     doc["embroideryObjects"] = []
     base_id = int(base["id"])
+    profile = {"multi_5_convex": 5, "multi_5_concave": 6,
+               "multi_5_convex_concave": 7, "multi_5_concave_convex": 8}
+    curve = profile.get(name, 0)
+    if not legacy:
+        method = ("satin_interlaced" if satin else
+                  "long_and_short" if texture == 3 else
+                  "controlled_scatter" if texture == 2 else "directional")
+        anchor = copy.deepcopy(base)
+        anchor["id"] = base_id
+        anchor["rgb"] = COLORS[0]
+        anchor["name"] = f"QA {name} : fondu {n} fils"
+        anchor.pop("colorBlend", None)
+        anchor.pop("multiBlend", None)
+        anchor.pop("thread", None)
+        anchor["params"] = {
+            "type": "multicolorGradient",
+            "method": method,
+            "palette": [
+                {"rgb": COLORS[i], **({"curve": curve} if curve else {})}
+                for i in range(n)
+            ],
+            "transition": gradient(shape_box, texture, geometry),
+            "complementary": comp,
+        }
+        doc["embroideryObjects"].append(anchor)
     for i in range(n):
         ob = copy.deepcopy(base)
-        ob["id"] = base_id + i
+        ob["id"] = base_id + i if legacy else base_id + i + 1
         ob["rgb"] = COLORS[i] if not legacy else [COLORS[0], COLORS[4]][i]
         ob["name"] = f"QA {name} : fil {i+1}/{n}"
         ob.pop("colorBlend", None)
@@ -188,10 +216,8 @@ def make_variant(doc, name, n, texture=0, geometry=0, comp=True, satin=False, le
             p["densityGradient"] = gradient(shape_box, texture, geometry,
                                             layer=None if legacy else i,
                                             n=n, comp=comp)
-            profile = {"multi_5_convex": 5, "multi_5_concave": 6,
-                       "multi_5_convex_concave": 7, "multi_5_concave_convex": 8}
-            if name in profile:
-                p["densityGradient"]["curve"] = profile[name]
+            if curve:
+                p["densityGradient"]["curve"] = curve
             if legacy:
                 p["densityGradient"].pop("densityStops", None)
                 p["densityGradient"]["spacingFrom"] = 420 if i == 0 else 4000
@@ -202,7 +228,7 @@ def make_variant(doc, name, n, texture=0, geometry=0, comp=True, satin=False, le
         else:
             ob["multiBlend"] = tag(base_id, i, n, comp)
         doc["embroideryObjects"].append(ob)
-    doc["objectIdLast"] = max(doc["objectIdLast"], base_id+n-1)
+    doc["objectIdLast"] = max(doc["objectIdLast"], base_id+n-1 if legacy else base_id+n)
 
 def dst_quality(path: Path):
     """Count actual needle-down records and diagonal connectors; DST coordinates in 0.1 mm."""
@@ -266,6 +292,8 @@ def scale_for_benchmark(document, factor):
     for obj in document["embroideryObjects"]:
         params = obj["params"]
         gradient = params.get("densityGradient")
+        if params.get("type") == "multicolorGradient":
+            gradient = params.get("transition")
         if gradient:
             for key in ("fromX", "fromY", "toX", "toY"):
                 gradient[key] = int(gradient[key] * factor)
@@ -504,7 +532,8 @@ def build():
     for entry in manifest:
         if entry.get("inspect_rc") != 0 or entry.get("inspect_parse"):
             quality_failures.append(entry["name"] + ": projet OSP non inspectable")
-        if entry.get("counts", {}).get("embroidery_objects") != entry["n"]:
+        expected_objects = entry["n"] + (0 if entry["legacy"] else 1)
+        if entry.get("counts", {}).get("embroidery_objects") != expected_objects:
             quality_failures.append(entry["name"] + ": nombre de couches OSP incorrect")
         if entry.get("sequence", {}).get("color_changes") != entry["n"] - 1:
             quality_failures.append(entry["name"] + ": changements de fil du moteur incorrects")

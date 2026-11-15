@@ -239,8 +239,8 @@ void GpuCanvas::setDigitize(DigitizeGestures* digitize) {
 }
 
 QVariantList GpuCanvas::handlesOverlay() const {
-    static const char* const kKinds[] = {"line",   "closed", "dots", "selected",
-                                         "handle", "active", "ghost"};
+    static const char* const kKinds[] = {"line",   "closed", "dots",  "selected",
+                                         "handle", "active", "ghost", "stop"};
     constexpr int kMaxDots = 8000;
     QVariantList out;
     if (!digitize_ || !digitize_->capturesMouse()) {
@@ -267,9 +267,18 @@ QVariantList GpuCanvas::handlesOverlay() const {
             pts << s.x << s.y;
         }
         if (!pts.isEmpty()) {
-            out.push_back(QVariantMap{
+            QVariantMap entry{
                 {QStringLiteral("kind"), QString::fromLatin1(kKinds[static_cast<int>(item.kind)])},
-                {QStringLiteral("pts"), pts}});
+                {QStringLiteral("pts"), pts}};
+            if (item.kind == HandleItem::Kind::Stop) {
+                QStringList colours;
+                for (const auto& c : item.colors) {
+                    colours.push_back(c);
+                }
+                entry.insert(QStringLiteral("colors"), colours);
+                entry.insert(QStringLiteral("selected"), item.selected);
+            }
+            out.push_back(entry);
         }
     };
     for (const auto& item : digitize_->staticItems()) {
@@ -443,11 +452,11 @@ void GpuCanvas::setSourceImage(SourceImageView view) {
     update();
 }
 
-void GpuCanvas::setVectorLayer(std::shared_ptr<const OverlayImage> image) {
-    if (vectorImage_ == image) {
+void GpuCanvas::setVectorLayer(std::shared_ptr<const VectorLayer> layer) {
+    if (vectorLayer_ == layer) {
         return; // pas de texture à republier pour un snapshot identique
     }
-    vectorImage_ = std::move(image);
+    vectorLayer_ = std::move(layer);
     update(); // le backend suit séparément l'identité de l'image vectorielle
 }
 
@@ -714,7 +723,7 @@ QSGNode* GpuCanvas::updatePaintNode(QSGNode* oldNode, UpdatePaintNodeData*) {
                             layers_,
                             layers_.sourceImage ? sourceImage_ : SourceImageView{},
                             regionLayer_,
-                            layers_.vectors ? vectorImage_ : nullptr};
+                            layers_.vectors ? vectorLayer_ : nullptr};
     const auto result = backend.synchronize(oldNode, state, *window());
     // Render thread must never write QObject properties or read the live document. Queue
     // diagnostics.

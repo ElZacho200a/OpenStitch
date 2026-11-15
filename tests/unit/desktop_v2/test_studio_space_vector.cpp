@@ -192,7 +192,12 @@ private:
 private slots:
     void initTestCase() {
         QQuickStyle::setStyle(QStringLiteral("Basic"));
-        QQuickWindow::setSceneGraphBackend(QStringLiteral("software"));
+        // Backend logiciel par défaut (CI, offscreen). OPENSTITCH_TEST_RHI=1 joue les mêmes tests
+        // de pixels sur le backend RHI natif, donc sur les triangles GPU de la couche vecteurs
+        // (lancer avec QT_ENABLE_HIGHDPI_SCALING=0 : les tests visent des pixels logiques).
+        if (qEnvironmentVariableIntValue("OPENSTITCH_TEST_RHI") != 1) {
+            QQuickWindow::setSceneGraphBackend(QStringLiteral("software"));
+        }
         qmlRegisterType<GpuCanvas>("OpenStitch.Studio", 1, 0, "GpuCanvas");
         qmlRegisterUncreatableType<StudioController>("OpenStitch.Studio", 1, 0, "StudioController",
                                                      QStringLiteral("Provided by the application"));
@@ -207,7 +212,7 @@ private slots:
         QCOMPARE(rig.stage.shapeCount(), 2);
         QVERIFY(!rig.canvas->layers().value("stitches").toBool());
         QVERIFY(rig.canvas->layers().value("vectors").toBool());
-        QVERIFY(rig.canvas->vectorImage() != nullptr);
+        QVERIFY(rig.canvas->vectorLayer() != nullptr);
         QVERIFY(rig.window->findChild<QObject*>(QStringLiteral("spaceUnderConstruction")) ==
                 nullptr);
         // Vrai rendu : la forme rouge à gauche, la bleue à droite, fond libre ailleurs.
@@ -231,7 +236,7 @@ private slots:
         Rig rig;
         open(rig);
         enterSpace(rig);
-        const auto vectorImage = rig.canvas->vectorImage();
+        const auto vectorImage = rig.canvas->vectorLayer();
         QVERIFY(vectorImage);
         const auto firstRevision = rig.canvas->overlayRevision();
 
@@ -258,7 +263,7 @@ private slots:
         Rig rig;
         open(rig);
         enterSpace(rig);
-        const auto background = rig.canvas->vectorImage();
+        const auto background = rig.canvas->vectorLayer();
         const int baseBuilds = rig.stage.layerBuildCount();
         QVERIFY(background);
         const QPoint left = at(rig, -2.5, 0.0);
@@ -269,7 +274,7 @@ private slots:
         QTest::mouseClick(rig.window, Qt::LeftButton, {}, left);
         QTRY_VERIFY_WITH_TIMEOUT(rig.session.selection().primary().has_value(), 3'000);
         QCOMPARE(rig.stage.layerBuildCount(), baseBuilds);
-        QVERIFY(rig.canvas->vectorImage() == background);
+        QVERIFY(rig.canvas->vectorLayer() == background);
         QCOMPARE(rig.window->grabWindow().pixelColor(left), leftBefore);
         QCOMPARE(rig.window->grabWindow().pixelColor(right), rightBefore);
 
@@ -277,7 +282,7 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(rig.session.selection().primary().has_value(), 3'000);
         QCOMPARE(rig.session.selection().primary()->kind, TargetKind::VectorObject);
         QCOMPARE(rig.stage.layerBuildCount(), baseBuilds);
-        QVERIFY(rig.canvas->vectorImage() == background);
+        QVERIFY(rig.canvas->vectorLayer() == background);
         QCOMPARE(rig.window->grabWindow().pixelColor(left), leftBefore);
         QCOMPARE(rig.window->grabWindow().pixelColor(right), rightBefore);
         QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
@@ -361,11 +366,11 @@ private slots:
         open(rig);
         enterSpace(rig);
         const int buildsBefore = rig.stage.layerBuildCount();
-        const auto base = rig.canvas->vectorImage();
+        const auto base = rig.canvas->vectorLayer();
         QTest::mouseClick(rig.window, Qt::LeftButton, {}, at(rig, 2.5, 0.0));
         // Selecting a vector changes the inspector, not the bitmap nor a second texture.
         QCOMPARE(rig.stage.layerBuildCount(), buildsBefore);
-        QVERIFY(rig.canvas->vectorImage() == base);
+        QVERIFY(rig.canvas->vectorLayer() == base);
         QTRY_VERIFY_WITH_TIMEOUT(rig.session.selection().primary().has_value(), 3'000);
         const auto target = *rig.session.selection().primary();
         QCOMPARE(target.kind, TargetKind::VectorObject);
@@ -387,7 +392,7 @@ private slots:
         open(rig);
         enterSpace(rig);
         const int initialBuilds = rig.stage.layerBuildCount();
-        const auto originalRaster = rig.canvas->vectorImage();
+        const auto originalRaster = rig.canvas->vectorLayer();
 
         const auto original = rig.session.snapshot();
         auto recolored = std::make_shared<document::Project>(*original);
@@ -396,7 +401,7 @@ private slots:
             "Recolorer une forme", original, recolored);
         rig.session.execute(std::move(recolorCommand));
         QCOMPARE(rig.stage.layerBuildCount(), initialBuilds + 1);
-        QVERIFY(rig.canvas->vectorImage() != originalRaster);
+        QVERIFY(rig.canvas->vectorLayer() != originalRaster);
 
         // A display-only name change does not repaint vector geometry.
         const auto colorProject = rig.session.snapshot();
@@ -421,7 +426,7 @@ private slots:
         Rig rig;
         open(rig);
         enterSpace(rig);
-        const auto originalRaster = rig.canvas->vectorImage();
+        const auto originalRaster = rig.canvas->vectorLayer();
         QCOMPARE(rig.stage.layerCacheHits(), 0);
 
         const auto original = rig.session.snapshot();
@@ -429,15 +434,15 @@ private slots:
         recolored->vector_objects.front().rgb = {10, 190, 40};
         rig.session.execute(std::make_unique<commands::ReplaceProjectCommand>("Recolorer une forme",
                                                                               original, recolored));
-        QVERIFY(rig.canvas->vectorImage() != originalRaster);
+        QVERIFY(rig.canvas->vectorLayer() != originalRaster);
         QCOMPARE(rig.stage.layerCacheHits(), 0); // premier passage : calcul réel
 
         QVERIFY(rig.session.undo()); // retour à l'état d'origine : servi depuis le cache
         QCOMPARE(rig.stage.layerCacheHits(), 1);
-        QVERIFY(rig.canvas->vectorImage() == originalRaster);
+        QVERIFY(rig.canvas->vectorLayer() == originalRaster);
         QVERIFY(rig.session.redo()); // retour à l'état recoloré : servi depuis le cache
         QCOMPARE(rig.stage.layerCacheHits(), 2);
-        QVERIFY(rig.canvas->vectorImage() != originalRaster);
+        QVERIFY(rig.canvas->vectorLayer() != originalRaster);
     }
 
     void stitchParameterChangesDoNotRerasterizeVectors() {
@@ -454,7 +459,7 @@ private slots:
         rig.session.replaceProject(std::move(project), false);
         QTRY_VERIFY_WITH_TIMEOUT(!rig.controller.busy(), 15'000);
         const int builds = rig.stage.layerBuildCount();
-        const auto base = rig.canvas->vectorImage();
+        const auto base = rig.canvas->vectorLayer();
         QVERIFY(base);
 
         // Changing stitch length invalidates the machine sequence, not the vector texture.
@@ -465,7 +470,7 @@ private slots:
             std::make_unique<commands::SetStitchParamsCommand>(id, params, "Longueur"));
         QTRY_VERIFY_WITH_TIMEOUT(!rig.controller.busy(), 15'000);
         QCOMPARE(rig.stage.layerBuildCount(), builds);
-        QVERIFY(rig.canvas->vectorImage() == base);
+        QVERIFY(rig.canvas->vectorLayer() == base);
 
         // Undo/redo have the same invalidation scope.
         QVERIFY(rig.session.undo());
@@ -474,14 +479,14 @@ private slots:
         QVERIFY(rig.session.redo());
         QTRY_VERIFY_WITH_TIMEOUT(!rig.controller.busy(), 15'000);
         QCOMPARE(rig.stage.layerBuildCount(), builds);
-        QVERIFY(rig.canvas->vectorImage() == base);
+        QVERIFY(rig.canvas->vectorLayer() == base);
 
         // A real move (semantic fingerprint itself is translation invariant) must redraw.
         const auto source = rig.session.project().vector_objects.front().id;
         rig.session.execute(std::make_unique<commands::TranslateVectorObjectCommand>(
             source, Vec2um{Micrometers{1'000}, Micrometers{0}}));
         QTRY_COMPARE(rig.stage.layerBuildCount(), builds + 1);
-        QVERIFY(rig.canvas->vectorImage() != base);
+        QVERIFY(rig.canvas->vectorLayer() != base);
         QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
     }
 
@@ -543,14 +548,14 @@ private slots:
         // Correction source : le rendu de la forme reste en cache tant que
         // l'utilisateur n'applique pas explicitement la revectorisation.
         const int initialBuilds = rig.stage.layerBuildCount();
-        const auto initialImage = rig.canvas->vectorImage();
+        const auto initialImage = rig.canvas->vectorLayer();
         rig.session.execute(
             std::make_unique<commands::MergeRegionsCommand>(RegionId{1}, RegionId{2}));
         QTRY_COMPARE_WITH_TIMEOUT(
             rig.workspace->space(QStringLiteral("vector")).value("state").toString(),
             QStringLiteral("stale"), 3'000);
         QCOMPARE(rig.stage.layerBuildCount(), initialBuilds);
-        QVERIFY(rig.canvas->vectorImage() == initialImage);
+        QVERIFY(rig.canvas->vectorLayer() == initialImage);
         const auto plan = rig.stage.updatePlan();
         QCOMPARE(plan.value("replace").toInt(), 1);
         QCOMPARE(plan.value("orphan").toInt(), 1);
@@ -686,6 +691,16 @@ private slots:
             }
             QVERIFY(layer);
             QCOMPARE(static_cast<int>(layer->shapes().size()), count);
+            // Rastérisation du backend logiciel, faite à la demande sur un calque neuf.
+            std::vector<double> rasters;
+            for (int run = 0; run < 5; ++run) {
+                const auto fresh = VectorLayer::build(project);
+                const auto t = Clock::now();
+                (void)fresh->image();
+                rasters.push_back(ms(t));
+            }
+            qInfo("[perf-vector] n=%d triangles=%zu raster logiciel p50=%.2fms", count,
+                  layer->triangles().size() / 3, pct(rasters, 0.5));
             std::vector<double> picks;
             std::uint32_t state = 4242;
             for (int i = 0; i < 4000; ++i) {
@@ -702,6 +717,26 @@ private slots:
                   "p99=%.2fus",
                   count, pct(builds, 0.5), pct(builds, 1.0), pct(picks, 0.5), pct(picks, 0.95),
                   pct(picks, 0.99));
+        }
+        // Projet réel facultatif (contours denses, courbes) : OPENSTITCH_PERF_OSP=chemin.osp.
+        if (const QString osp = qEnvironmentVariable("OPENSTITCH_PERF_OSP"); !osp.isEmpty()) {
+            const auto loaded = project_io::load_project(osp.toStdWString());
+            QVERIFY(loaded.has_value());
+            std::vector<double> builds;
+            std::vector<double> rasters;
+            std::shared_ptr<const VectorLayer> layer;
+            for (int run = 0; run < 5; ++run) {
+                auto t = Clock::now();
+                layer = VectorLayer::build(*loaded);
+                builds.push_back(ms(t));
+                t = Clock::now();
+                (void)layer->image();
+                rasters.push_back(ms(t));
+            }
+            qInfo("[perf-vector] osp formes=%zu triangles=%zu build p50=%.2fms | raster logiciel "
+                  "p50=%.2fms",
+                  layer->shapes().size(), layer->triangles().size() / 3, pct(builds, 0.5),
+                  pct(rasters, 0.5));
         }
         // Même surface que 1 000 formes mais 2 formes seulement : isole le coût de l'image.
         {
@@ -744,6 +779,57 @@ private slots:
         QVERIFY(here->image().image == there->image().image); // QImage::operator== : pixels
         QCOMPARE(here->image().widthMm, there->image().widthMm);
         QCOMPARE(here->image().x0, there->image().x0);
+    }
+
+    // Triangles du chemin GPU : ils couvrent exactement le remplissage pair-impair (le trou reste
+    // vide), portent la couleur prémultipliée de la forme, et l'image logicielle n'est jamais
+    // rastérisée tant que seul le chemin GPU les lit.
+    void layerTrianglesCoverFillAndSkipRaster() {
+        document::Project project;
+        project.object_ids.reset(1000);
+        document::VectorObject shape;
+        shape.id = project.object_ids.next();
+        shape.rgb = {200, 40, 40};
+        shape.source_region = RegionId{7}; // remplissage alpha 235, contour plein
+        geometry::PathSet set;
+        const auto square = [](geometry::Path& path, int x0, int y0, int side) {
+            for (const auto& [dx, dy] : {std::pair{0, 0}, {side, 0}, {side, side}, {0, side}}) {
+                path.nodes.push_back({Vec2um{Micrometers{x0 + dx}, Micrometers{y0 + dy}}});
+            }
+            path.closed = true;
+        };
+        square(set.outer, 0, 0, 10'000); // 10 x 10 mm
+        geometry::Path hole;
+        square(hole, 3'000, 3'000, 4'000); // trou de 4 x 4 mm
+        set.holes.push_back(std::move(hole));
+        shape.paths.push_back(std::move(set));
+        project.vector_objects.push_back(std::move(shape));
+
+        const auto layer = VectorLayer::build(project);
+        QVERIFY(layer);
+        const auto& t = layer->triangles();
+        QVERIFY(!t.empty());
+        QCOMPARE(t.size() % 3, std::size_t{0});
+        double fillArea = 0.0;
+        bool holeCovered = false;
+        for (std::size_t i = 0; i + 2 < t.size(); i += 3) {
+            const auto& a = t[i];
+            const auto& b = t[i + 1];
+            const auto& c = t[i + 2];
+            if (a.a != 235) {
+                continue; // contour (opaque)
+            }
+            QCOMPARE(int(a.r), 200 * 235 / 255);
+            fillArea += std::abs((b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y)) / 2.0;
+            const float cx = (a.x + b.x + c.x) / 3.0f;
+            const float cy = (a.y + b.y + c.y) / 3.0f;
+            holeCovered = holeCovered || (cx > 3.0f && cx < 7.0f && cy < -3.0f && cy > -7.0f);
+        }
+        QVERIFY2(std::abs(fillArea - 84.0) < 0.01, qPrintable(QString::number(fillArea)));
+        QVERIFY(!holeCovered);
+        QCOMPARE(layer->bytes(), static_cast<qint64>(t.size() * sizeof(StudioVertex)));
+        QVERIFY(!layer->image().image.isNull()); // le backend logiciel l'obtient à la demande
+        QVERIFY(layer->bytes() > static_cast<qint64>(t.size() * sizeof(StudioVertex)));
     }
 
     // Au-delà de kSyncShapeLimit la rasterisation quitte le fil d'interface ; une modification

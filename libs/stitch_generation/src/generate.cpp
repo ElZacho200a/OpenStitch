@@ -980,7 +980,7 @@ void generate_directional(stitch::StitchSequence& sequence, const document::Vect
         // les ilots d'un fil dont le masque descend à densité nulle.
         bool masked = false;
         if (params.density_gradient) {
-            masked = !params.density_gradient->density_stops.empty();
+            masked = density_mask_is_sparse(*params.density_gradient);
         }
         if (params.hidden_underpath && !masked) {
             linker.emplace(region, params.stitch_length, params.underlay_inset);
@@ -1176,7 +1176,10 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
     std::deque<document::VectorObject> knockedSources; // adresses stables (HP-ENG-011)
     for (std::size_t idx = 0; idx < objects.size();) {
         const document::EmbroideryObject& object = objects[idx];
-        if (!object.visible) {
+        // L'ancre d'un fondu multicolore ne porte aucun point propre (ses couches
+        // physiques sont les AUTRES objets tagués vers elle par MultiBlendLink,
+        // déjà présents dans `objects` et générées normalement selon leur propre type).
+        if (!object.visible || object.is_multicolor_gradient()) {
             ++idx;
             continue;
         }

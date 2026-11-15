@@ -209,7 +209,7 @@ void VectorSpaceController::rememberLayer(const std::vector<std::uint64_t>& keys
     qint64 bytes = 0;
     std::size_t kept = 0;
     for (const auto& entry : layerCache_) {
-        bytes += entry.layer->image().image.sizeInBytes();
+        bytes += entry.layer->bytes();
         if (kept >= kLayerCacheEntries || (kept > 0 && bytes > kLayerCacheBytes)) {
             break;
         }
@@ -232,7 +232,7 @@ void VectorSpaceController::publishLayer(std::shared_ptr<const VectorLayer> laye
     renderedVisualKeys_ = std::move(keys);
     ++builds_;
     if (canvas_) {
-        canvas_->setVectorLayer(std::shared_ptr<const OverlayImage>(layer_, &layer_->image()));
+        canvas_->setVectorLayer(layer_);
     }
 }
 
@@ -244,13 +244,20 @@ void VectorSpaceController::startAsyncBuild(std::vector<std::uint64_t> keys) {
     // Copie immuable des seules formes : le worker ne touche jamais au document vivant.
     auto shapes = std::make_shared<const std::vector<document::VectorObject>>(
         studio_.session().project().vector_objects);
+    // Le GPU dessine les triangles ; seul le backend logiciel (ou un canevas pas encore affiché)
+    // a besoin de l'image.
+    const bool software = !canvas_ || !canvas_->rhiBackend();
     tasks_.submit<std::shared_ptr<const VectorLayer>>(
         "studio.vector-layer",
-        [shapes](const TaskContext& task) -> Result<std::shared_ptr<const VectorLayer>> {
+        [shapes, software](const TaskContext& task) -> Result<std::shared_ptr<const VectorLayer>> {
             if (task.cancelled()) {
                 return cancelled_error();
             }
-            return VectorLayer::build(*shapes);
+            auto layer = VectorLayer::build(*shapes);
+            if (software) {
+                (void)layer->image(); // backend logiciel : rastériser ici, pas pendant la synchro
+            }
+            return layer;
         },
         [this, request,
          keys = std::move(keys)](Result<std::shared_ptr<const VectorLayer>>&& result) mutable {
@@ -357,7 +364,7 @@ void VectorSpaceController::attach(QObject* canvas) {
         pickAt(x, y, tolerance, toggle);
     });
     if (layer_) {
-        canvas_->setVectorLayer(std::shared_ptr<const OverlayImage>(layer_, &layer_->image()));
+        canvas_->setVectorLayer(layer_);
     }
 }
 

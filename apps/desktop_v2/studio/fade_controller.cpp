@@ -2,6 +2,8 @@
 #include "fade_controller.hpp"
 
 #include <algorithm>
+#include <cmath>
+#include <iterator>
 
 #include "openstitch/project_ops/gradient_fill.hpp"
 
@@ -17,6 +19,37 @@ QVariantMap pt(const PointMm& p) {
 
 QColor colour(const std::array<std::uint8_t, 3>& c) {
     return QColor(c[0], c[1], c[2]);
+}
+} // namespace
+
+namespace {
+std::optional<MultiFadeSettings> multiSettingsOf(const QVariantList& inputs, bool complementary,
+                                                 int texture, int geometry) {
+    if (inputs.size() < 2 || inputs.size() > 8) {
+        return std::nullopt;
+    }
+    MultiFadeSettings settings;
+    settings.complementary = complementary;
+    settings.texture = texture;
+    settings.geometry = geometry;
+    for (const auto& value : inputs) {
+        const QString raw = value.toString().trimmed();
+        if (raw.size() != 7 || !raw.startsWith(QLatin1Char('#'))) {
+            return std::nullopt;
+        }
+        const QColor chosen(raw);
+        if (!chosen.isValid()) {
+            return std::nullopt;
+        }
+        const std::array<std::uint8_t, 3> rgb{static_cast<std::uint8_t>(chosen.red()),
+                                              static_cast<std::uint8_t>(chosen.green()),
+                                              static_cast<std::uint8_t>(chosen.blue())};
+        if (!settings.colors.empty() && rgb == settings.colors.back()) {
+            return std::nullopt;
+        }
+        settings.colors.push_back(rgb);
+    }
+    return settings;
 }
 } // namespace
 
@@ -44,7 +77,9 @@ void FadeController::refresh() {
             ++count;
         }
     }
+    const auto previousId = id_;
     id_ = count == 1 ? id : 0;
+    threadLabels_.clear();
     settings_.reset();
     multiSettings_.reset();
     multiCurve_ = 0;
@@ -52,16 +87,20 @@ void FadeController::refresh() {
     incompat_.clear();
     if (id_ != 0) {
         const auto& project = studio_.session().project();
-        settings_ = readFade(project, id_);
-        if (settings_) {
-            axis_ = fadeAxisView(project, id_);
-        } else {
-            multiSettings_ = readMultiFade(project, id_);
+        // Axe éditable au canevas pour TOUT fondu à axe (multicolore ou ancien couple).
+        axis_ = fadeAxisView(project, id_);
+        multiSettings_ = readMultiFade(project, id_);
+        if (!multiSettings_) {
+            settings_ = readFade(project, id_); // ancien couple à deux fils
+        }
+        if (!settings_) {
             if (multiSettings_) {
-                const auto spec =
-                    project_ops::describe_multicolor_gradient_fill(project, ObjectId{id_});
+                const auto spec = project_ops::describe_multicolor_gradient(project, ObjectId{id_});
                 if (spec) {
-                    multiCurve_ = static_cast<int>(spec->gradient.curve);
+                    multiCurve_ = static_cast<int>(spec->transition.curve);
+                }
+                for (const auto& label : readFadeThreadLabels(project, id_)) {
+                    threadLabels_.push_back(q(label));
                 }
             } else {
                 incompat_ = q(fadeIncompatibility(project, id_));
@@ -70,7 +109,150 @@ void FadeController::refresh() {
     } else {
         incompat_ = QStringLiteral("Sélectionnez un seul remplissage.");
     }
+    const int threadCount = static_cast<int>(colors().size());
+    const int clamped =
+        id_ != previousId ? 0 : std::clamp(selectedThread_, 0, std::max(0, threadCount - 1));
+    const bool selectionMoved = clamped != selectedThread_;
+    selectedThread_ = clamped;
     emit changed();
+    if (selectionMoved) {
+        emit selectedThreadChanged();
+    }
+}
+
+void FadeController::setSelectedThread(int index) {
+    const int count = static_cast<int>(colors().size());
+    const int clamped = std::clamp(index, 0, std::max(0, count - 1));
+    if (clamped == selectedThread_) {
+        return;
+    }
+    selectedThread_ = clamped;
+    emit selectedThreadChanged();
+}
+
+int FadeController::softness() const {
+    switch (static_cast<FadeCurve>(curve())) {
+    case FadeCurve::Linear:
+        return 0;
+    case FadeCurve::Smooth:
+        return 1;
+    case FadeCurve::Steep:
+        return 2;
+    default:
+        return -1;
+    }
+}
+
+bool FadeController::setSoftness(int softness) {
+    static constexpr FadeCurve kCurves[] = {FadeCurve::Linear, FadeCurve::Smooth, FadeCurve::Steep};
+    if (softness < 0 || softness > 2) {
+        return refuse(QStringLiteral("Transition inconnue."));
+    }
+    return setCurve(static_cast<int>(kCurves[softness]));
+}
+
+namespace {
+bool hasRepeatedNeighbour(const std::vector<std::array<std::uint8_t, 3>>& colors) {
+    for (std::size_t i = 1; i < colors.size(); ++i) {
+        if (colors[i] == colors[i - 1]) {
+            return true;
+        }
+    }
+    return false;
+}
+} // namespace
+
+bool FadeController::insertThread(int after) {
+    const auto base = current();
+    if (!base) {
+        return refuse(QStringLiteral("Sélectionnez un fondu."));
+    }
+    auto next = *base;
+    const int count = static_cast<int>(next.colors.size());
+    if (count >= 8) {
+        return refuse(QStringLiteral("Un fondu compte au plus 8 fils."));
+    }
+    const auto at = static_cast<std::size_t>(std::clamp(after, 0, count - 1));
+    const auto a = next.colors[at];
+    std::array<std::uint8_t, 3> added{};
+    if (at + 1 < next.colors.size()) {
+        // Teinte intermédiaire : un point de départ lisible, à remplacer par un vrai fil.
+        const auto b = next.colors[at + 1];
+        for (std::size_t c = 0; c < 3; ++c) {
+            added[c] = static_cast<std::uint8_t>((a[c] + b[c] + 1) / 2);
+        }
+    } else {
+        for (std::size_t c = 0; c < 3; ++c) {
+            added[c] = static_cast<std::uint8_t>(a[c] > 127 ? a[c] / 2 : a[c] + (255 - a[c]) / 2);
+        }
+    }
+    next.colors.insert(next.colors.begin() + static_cast<std::ptrdiff_t>(at) + 1, added);
+    if (hasRepeatedNeighbour(next.colors)) {
+        next.colors[at + 1][0] = static_cast<std::uint8_t>(next.colors[at + 1][0] ^ 0x20);
+    }
+    const int position = static_cast<int>(at) + 1;
+    if (!apply(next, QStringLiteral("Fil %1 ajouté : choisissez sa couleur.").arg(position + 1))) {
+        return false;
+    }
+    setSelectedThread(position);
+    return true;
+}
+
+bool FadeController::removeThread(int index) {
+    const auto base = current();
+    if (!base) {
+        return refuse(QStringLiteral("Sélectionnez un fondu."));
+    }
+    auto next = *base;
+    const int count = static_cast<int>(next.colors.size());
+    if (index < 0 || index >= count) {
+        return refuse(QStringLiteral("Fil inconnu."));
+    }
+    if (count <= 2) {
+        return refuse(QStringLiteral("Un fondu garde au moins 2 fils."));
+    }
+    next.colors.erase(next.colors.begin() + index);
+    if (hasRepeatedNeighbour(next.colors)) {
+        return refuse(QStringLiteral("Retirer ce fil collerait deux fils identiques."));
+    }
+    if (!apply(next, QStringLiteral("Fil %1 retiré.").arg(index + 1))) {
+        return false;
+    }
+    setSelectedThread(std::min(index, count - 2));
+    return true;
+}
+
+bool FadeController::moveThread(int index, int offset) {
+    const auto base = current();
+    if (!base) {
+        return refuse(QStringLiteral("Sélectionnez un fondu."));
+    }
+    auto next = *base;
+    const int count = static_cast<int>(next.colors.size());
+    const int target = index + offset;
+    if ((offset != -1 && offset != 1) || index < 0 || index >= count || target < 0 ||
+        target >= count) {
+        return refuse(QStringLiteral("Ce fil est déjà au bout du fondu."));
+    }
+    std::swap(next.colors[static_cast<std::size_t>(index)],
+              next.colors[static_cast<std::size_t>(target)]);
+    if (hasRepeatedNeighbour(next.colors)) {
+        return refuse(QStringLiteral("Deux fils identiques se suivraient."));
+    }
+    if (!apply(next, QStringLiteral("Fil déplacé en position %1.").arg(target + 1))) {
+        return false;
+    }
+    setSelectedThread(target);
+    return true;
+}
+
+bool FadeController::setThreadColor(int index, const QString& hex) {
+    auto list = colors();
+    if (index < 0 || index >= list.size()) {
+        return refuse(QStringLiteral("Fil inconnu."));
+    }
+    list[index] = hex.trimmed();
+    return setColors(list);
 }
 
 QString FadeController::objectId() const {
@@ -78,6 +260,10 @@ QString FadeController::objectId() const {
 }
 
 bool FadeController::satinTarget() const {
+    if (multiSettings_) {
+        return multiSettings_->method ==
+               static_cast<int>(document::GradientMethod::SatinInterlaced);
+    }
     if (id_ == 0) {
         return false;
     }
@@ -164,6 +350,150 @@ QVariantList FadeController::curves() const {
                         {QStringLiteral("label"), q(fadeCurveLabel(static_cast<FadeCurve>(i)))}});
     }
     return list;
+}
+
+QVariantList FadeController::methods() const {
+    return {QVariantMap{{QStringLiteral("id"), 0},
+                        {QStringLiteral("label"), QStringLiteral("Directionnel")}},
+            QVariantMap{{QStringLiteral("id"), 1},
+                        {QStringLiteral("label"), QStringLiteral("Satin entrelacé")}},
+            QVariantMap{{QStringLiteral("id"), 2},
+                        {QStringLiteral("label"), QStringLiteral("Passé empiétant")}},
+            QVariantMap{{QStringLiteral("id"), 3},
+                        {QStringLiteral("label"), QStringLiteral("Dispersion contrôlée")}},
+            QVariantMap{{QStringLiteral("id"), 4},
+                        {QStringLiteral("label"), QStringLiteral("Hachures croisées")}}};
+}
+
+namespace {
+struct StyleDef {
+    int method;
+    int texture;
+    const char* label;
+};
+// Une seule liste « Technique » : la méthode de génération et l'aspect de la transition
+// étaient deux réglages concurrents (texture « Tramé » = méthode « Dispersion »…).
+constexpr StyleDef kStyles[] = {
+    {0, 0, "Directionnel lisse"},   {0, 1, "Bords irréguliers"}, {2, 3, "Passé empiétant"},
+    {3, 2, "Dispersion contrôlée"}, {4, 0, "Hachures croisées"}, {1, 0, "Satin entrelacé"},
+};
+constexpr int kStyleCount = static_cast<int>(std::size(kStyles));
+} // namespace
+
+int FadeController::style() const {
+    const auto settings = current();
+    if (!settings) {
+        return satinTarget() ? kStyleCount - 1 : 0;
+    }
+    for (int i = 0; i < kStyleCount; ++i) {
+        const auto& def = kStyles[i];
+        if (def.method == settings->method &&
+            (def.method != 0 || def.texture == settings->texture)) {
+            return i;
+        }
+    }
+    return 0;
+}
+
+QVariantList FadeController::styles() const {
+    QVariantList list;
+    for (int i = 0; i < kStyleCount; ++i) {
+        list.push_back(QVariantMap{{QStringLiteral("id"), i},
+                                   {QStringLiteral("label"), QString::fromUtf8(kStyles[i].label)}});
+    }
+    return list;
+}
+
+std::optional<MultiFadeSettings> FadeController::current() const {
+    if (multiSettings_) {
+        return multiSettings_;
+    }
+    if (!settings_) {
+        return std::nullopt;
+    }
+    const QColor back = background();
+    MultiFadeSettings settings;
+    settings.colors = {{static_cast<std::uint8_t>(back.red()),
+                        static_cast<std::uint8_t>(back.green()),
+                        static_cast<std::uint8_t>(back.blue())},
+                       settings_->foreground};
+    settings.complementary = settings_->complementary;
+    settings.texture = settings_->texture;
+    settings.geometry = settings_->geometry;
+    settings.method = settings_->texture == 3 ? 2 : settings_->texture == 2 ? 3 : 0;
+    return settings;
+}
+
+bool FadeController::apply(const MultiFadeSettings& next, const QString& success) {
+    if (id_ == 0 || !hasFade()) {
+        return refuse(QStringLiteral("Sélectionnez un fondu."));
+    }
+    if (multiSettings_ && multiSettings_->colors == next.colors &&
+        multiSettings_->complementary == next.complementary &&
+        multiSettings_->texture == next.texture && multiSettings_->geometry == next.geometry &&
+        multiSettings_->method == next.method &&
+        multiSettings_->satinDensityMm == next.satinDensityMm &&
+        multiSettings_->crosshatchLayers == next.crosshatchLayers &&
+        multiSettings_->crosshatchAngleDeg == next.crosshatchAngleDeg) {
+        return true; // aucune commande pour un réglage inchangé
+    }
+    return report(editMultiFade(studio_.session(), id_, next), success);
+}
+
+bool FadeController::setColors(const QVariantList& colors) {
+    const auto base = current();
+    if (!base) {
+        return refuse(QStringLiteral("Sélectionnez un fondu."));
+    }
+    const auto parsed = multiSettingsOf(colors, base->complementary, base->texture, base->geometry);
+    if (!parsed) {
+        return refuse(
+            QStringLiteral("Choisissez entre 2 et 8 fils #rrggbb, chacun différent du précédent."));
+    }
+    auto next = *base;
+    next.colors = parsed->colors;
+    return apply(next, QStringLiteral("Fils du fondu modifiés."));
+}
+
+bool FadeController::setStyle(int style) {
+    if (style < 0 || style >= kStyleCount) {
+        return refuse(QStringLiteral("Technique de fondu inconnue."));
+    }
+    auto next = current();
+    if (!next) {
+        return refuse(QStringLiteral("Sélectionnez un fondu."));
+    }
+    next->method = kStyles[style].method;
+    next->texture = kStyles[style].texture;
+    return apply(*next, QStringLiteral("Technique du fondu modifiée."));
+}
+
+bool FadeController::setComplementary(bool complementary) {
+    auto next = current();
+    if (!next) {
+        return refuse(QStringLiteral("Sélectionnez un fondu."));
+    }
+    next->complementary = complementary;
+    return apply(*next, QStringLiteral("Répartition des fils modifiée."));
+}
+
+bool FadeController::setSatinDensity(double mm) {
+    auto next = current();
+    if (!next || !std::isfinite(mm) || mm < 0.1 || mm > 5.0) {
+        return refuse(QStringLiteral("Densité satin entre 0,1 et 5 mm."));
+    }
+    next->satinDensityMm = mm;
+    return apply(*next, QStringLiteral("Densité du satin entrelacé modifiée."));
+}
+
+bool FadeController::setCrosshatch(int layers, double angleDeg) {
+    auto next = current();
+    if (!next || layers < 2 || layers > 3 || !std::isfinite(angleDeg)) {
+        return refuse(QStringLiteral("Hachures : 2 ou 3 directions et un angle valide."));
+    }
+    next->crosshatchLayers = layers;
+    next->crosshatchAngleDeg = angleDeg;
+    return apply(*next, QStringLiteral("Hachures croisées modifiées."));
 }
 
 QVariantList FadeController::curveProfile() const {
@@ -265,65 +595,62 @@ bool FadeController::setAngle(double degrees) {
                   QStringLiteral("Angle du fondu modifié."));
 }
 
-namespace {
-std::optional<MultiFadeSettings> multiSettingsOf(const QVariantList& inputs, bool complementary,
-                                                 int texture, int geometry) {
-    if (inputs.size() < 2 || inputs.size() > 8) {
-        return std::nullopt;
-    }
-    MultiFadeSettings settings;
-    settings.complementary = complementary;
-    settings.texture = texture;
-    settings.geometry = geometry;
-    for (const auto& value : inputs) {
-        const QString raw = value.toString().trimmed();
-        if (raw.size() != 7 || !raw.startsWith(QLatin1Char('#'))) {
-            return std::nullopt;
-        }
-        const QColor chosen(raw);
-        if (!chosen.isValid()) {
-            return std::nullopt;
-        }
-        const std::array<std::uint8_t, 3> rgb{static_cast<std::uint8_t>(chosen.red()),
-                                              static_cast<std::uint8_t>(chosen.green()),
-                                              static_cast<std::uint8_t>(chosen.blue())};
-        if (!settings.colors.empty() && rgb == settings.colors.back()) {
-            return std::nullopt;
-        }
-        settings.colors.push_back(rgb);
-    }
-    return settings;
-}
-} // namespace
-
 bool FadeController::createMulticolor(const QVariantList& colors, bool complementary, int texture,
                                       int geometry) {
+    return createMulticolorAdvanced(colors, complementary, texture, geometry, satinTarget() ? 1 : 0,
+                                    0.4, 2, 0.0);
+}
+
+bool FadeController::createMulticolorAdvanced(const QVariantList& colors, bool complementary,
+                                              int texture, int geometry, int method,
+                                              double satinDensityMm, int crosshatchLayers,
+                                              double crosshatchAngleDeg) {
     if (!canCreate()) {
         return refuse(QStringLiteral("Sélectionnez un remplissage compatible."));
     }
-    const auto settings = multiSettingsOf(colors, complementary, texture, geometry);
+    auto settings = multiSettingsOf(colors, complementary, texture, geometry);
     if (!settings) {
         return refuse(
             QStringLiteral("Choisissez entre 2 et 8 fils #rrggbb consécutifs distincts."));
     }
+    settings->method = method;
+    settings->satinDensityMm = satinDensityMm;
+    settings->crosshatchLayers = crosshatchLayers;
+    settings->crosshatchAngleDeg = crosshatchAngleDeg;
     return report(createMultiFade(studio_.session(), id_, *settings),
                   QStringLiteral("Camaïeu multicolore créé."));
 }
 
 bool FadeController::editMulticolor(const QVariantList& colors, bool complementary, int texture,
                                     int geometry) {
+    return editMulticolorAdvanced(colors, complementary, texture, geometry, method(),
+                                  satinDensityMm(), crosshatchLayers(), crosshatchAngleDeg());
+}
+
+bool FadeController::editMulticolorAdvanced(const QVariantList& colors, bool complementary,
+                                            int texture, int geometry, int method,
+                                            double satinDensityMm, int crosshatchLayers,
+                                            double crosshatchAngleDeg) {
     if (!hasFade()) {
         return refuse(QStringLiteral("Sélectionnez un fondu existant."));
     }
-    const auto settings = multiSettingsOf(colors, complementary, texture, geometry);
+    auto settings = multiSettingsOf(colors, complementary, texture, geometry);
     if (!settings) {
         return refuse(
             QStringLiteral("Choisissez entre 2 et 8 fils #rrggbb consécutifs distincts."));
     }
+    settings->method = method;
+    settings->satinDensityMm = satinDensityMm;
+    settings->crosshatchLayers = crosshatchLayers;
+    settings->crosshatchAngleDeg = crosshatchAngleDeg;
     if (multiSettings_ && settings->colors == multiSettings_->colors &&
         settings->texture == multiSettings_->texture &&
         settings->complementary == multiSettings_->complementary &&
-        settings->geometry == multiSettings_->geometry) {
+        settings->geometry == multiSettings_->geometry &&
+        settings->method == multiSettings_->method &&
+        settings->satinDensityMm == multiSettings_->satinDensityMm &&
+        settings->crosshatchLayers == multiSettings_->crosshatchLayers &&
+        settings->crosshatchAngleDeg == multiSettings_->crosshatchAngleDeg) {
         return true; // aucune commande pour un clic Appliquer sans changement
     }
     return report(editMultiFade(studio_.session(), id_, *settings),
@@ -381,22 +708,6 @@ bool FadeController::reverse() {
     if (id_ == 0 || !hasFade()) {
         return refuse(QStringLiteral("Aucun fondu à inverser."));
     }
-    if (multiSettings_) {
-        auto spec = project_ops::describe_multicolor_gradient_fill(studio_.session().project(),
-                                                                   ObjectId{id_});
-        if (!spec) {
-            return refuse(QStringLiteral("Camaïeu introuvable."));
-        }
-        std::reverse(spec->colors.begin(), spec->colors.end());
-        std::reverse(spec->layer_curves.begin(), spec->layer_curves.end());
-        auto command = project_ops::make_edit_multicolor_gradient_fill_command(
-            studio_.session().projectForIdAllocation(), ObjectId{id_}, *spec);
-        if (!command) {
-            return refuse(q(command.error().message));
-        }
-        studio_.session().execute(std::move(*command));
-        return report(ServiceResult{true, {}}, QStringLiteral("Ordre des couleurs inversé."));
-    }
     return report(reverseFade(studio_.session(), id_), QStringLiteral("Sens du fondu inversé."));
 }
 
@@ -405,11 +716,11 @@ int FadeController::layerCurve(int layer) const {
         return -1;
     }
     const auto spec =
-        project_ops::describe_multicolor_gradient_fill(studio_.session().project(), ObjectId{id_});
-    if (!spec || static_cast<std::size_t>(layer) >= spec->layer_curves.size()) {
+        project_ops::describe_multicolor_gradient(studio_.session().project(), ObjectId{id_});
+    if (!spec || static_cast<std::size_t>(layer) >= spec->palette.size()) {
         return -1;
     }
-    return static_cast<int>(spec->layer_curves[static_cast<std::size_t>(layer)]);
+    return static_cast<int>(spec->palette[static_cast<std::size_t>(layer)].curve);
 }
 
 bool FadeController::setLayerCurve(int layer, int curve) {
@@ -429,24 +740,25 @@ bool FadeController::setCurve(int curve) {
         return refuse(QStringLiteral("Courbe inconnue ou aucun fondu."));
     }
     if (multiSettings_) {
-        auto spec = project_ops::describe_multicolor_gradient_fill(studio_.session().project(),
-                                                                   ObjectId{id_});
+        auto spec =
+            project_ops::describe_multicolor_gradient(studio_.session().project(), ObjectId{id_});
         if (!spec) {
             return refuse(QStringLiteral("Camaïeu introuvable."));
         }
         const auto selected = static_cast<document::DensityCurve>(curve);
-        const bool allSelected =
-            spec->layer_curves.size() == spec->colors.size() &&
-            std::all_of(spec->layer_curves.begin(), spec->layer_curves.end(),
-                        [&](document::DensityCurve value) { return value == selected; });
+        const bool allSelected = std::all_of(
+            spec->palette.begin(), spec->palette.end(),
+            [&](const document::GradientThread& thread) { return thread.curve == selected; });
         if (curve == multiCurve_ && allSelected) {
             return true;
         }
-        spec->gradient.curve = selected;
+        spec->transition.curve = selected;
         // Le profil global reste un préréglage cohérent : il s'applique à
         // toutes les couches, avant les éventuelles retouches individuelles.
-        spec->layer_curves.assign(spec->colors.size(), spec->gradient.curve);
-        auto command = project_ops::make_edit_multicolor_gradient_fill_command(
+        for (auto& thread : spec->palette) {
+            thread.curve = selected;
+        }
+        auto command = project_ops::make_edit_multicolor_gradient_command(
             studio_.session().projectForIdAllocation(), ObjectId{id_}, *spec);
         if (!command) {
             return refuse(q(command.error().message));

@@ -103,7 +103,8 @@ ToolRegistry ToolRegistry::builtin() {
     // Édition directe des nœuds du contour (poignées, glisser, insertion par double-clic).
     r.add({"node.edit", "Nœuds du contour", "B", static_cast<std::uint8_t>(D | N), Gesture::Pick,
            ""});
-    // Axe d'un fondu de deux fils : début et fin de la transition, déplacement, rotation.
+    // Axe d'un fondu : début et fin de la transition, déplacement, rotation (bouton
+    // « Ajuster l'axe au canevas » de l'inspecteur).
     r.add({"fade.axis", "Axe du fondu", "L", static_cast<std::uint8_t>(D | N), Gesture::Pick, ""});
     // Correction de la segmentation après numérisation : choisir, supprimer, fusionner des régions.
     r.add({"region.edit", "Régions", "X", Z, Gesture::Pick, ""});

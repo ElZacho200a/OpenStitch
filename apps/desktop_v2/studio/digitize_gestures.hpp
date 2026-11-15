@@ -27,9 +27,13 @@ namespace openstitch::desktop_v2::studio {
 
 // Élément de surcouche (mm scène).
 struct HandleItem {
-    enum class Kind { Line, Closed, Dots, Selected, Handle, Active, Ghost };
+    // Stop : poignées numérotées des fils d'un fondu, une couleur par point (`colors`), le fil
+    // désigné dans `selected`.
+    enum class Kind { Line, Closed, Dots, Selected, Handle, Active, Ghost, Stop };
     Kind kind{Kind::Line};
     std::vector<ScenePoint> points;
+    std::vector<QString> colors{};
+    int selected{-1};
 };
 
 class DigitizeGestures : public QObject {
@@ -92,6 +96,10 @@ private:
     [[nodiscard]] std::optional<Grip> gripAt(PointMm p) const;
     [[nodiscard]] int fadeHandleAt(PointMm p) const;
     [[nodiscard]] static PointMm fadeHandlePos(const QVariantMap& axis, int handle);
+    // Position du fil `index` sur `count` : régulièrement réparti du début à la fin de l'axe.
+    [[nodiscard]] static PointMm fadeStopPos(const QVariantMap& axis, int index, int count);
+    [[nodiscard]] int fadeStopAt(PointMm p) const;
+    [[nodiscard]] bool nearFadeLine(const QVariantMap& axis, PointMm p) const;
     bool insertRailNodeAt(PointMm p);
     void rebuildStatic();
     void rebuildDynamic();
@@ -118,6 +126,8 @@ private:
     std::vector<PointMm> stroke_;
     std::vector<std::pair<PointMm, PointMm>> rungs_;
     QVariantMap fadePreview_;
+    // Décalage centre − point saisi : déplacer le fondu par un fil ou la ligne, sans saut.
+    PointMm fadeOffset_{};
 
     std::vector<HandleItem> static_;
     std::vector<HandleItem> dynamic_;

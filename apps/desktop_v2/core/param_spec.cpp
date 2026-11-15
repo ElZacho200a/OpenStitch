@@ -38,6 +38,9 @@ constexpr std::string_view kBlanketSide = "left|Gauche;right|Droite;center|Centr
 constexpr std::string_view kMotif =
     "wave|Vague;zigzag|Zigzag;leaf|Feuille;heart|Coeur;diamond|Losange;scallop|Feston";
 constexpr std::string_view kTack = "straight|Droit;zigzag|Zigzag;blanket|Boutonnière";
+constexpr std::string_view kGradientMethod =
+    "directional|Directionnel;satin_interlaced|Satin entrelacé;long_and_short|Passé empiétant;"
+    "controlled_scatter|Dispersion contrôlée;cross_hatching|Hachures croisées";
 
 // type, clé, libellé, nature, min, max, pas, unité[, options]
 const std::vector<ParamSpec>& table() {
@@ -274,6 +277,17 @@ std::vector<ParamSpec> completeTable() {
     add({"applique", "tack", "Point de maintien", K::Choice, 0, 2, 1, "", kTack});
     add({"applique", "cut_offset_mm", "Décalage du contour de découpe", K::Number, -5.0, 5.0, 0.25,
          "mm"});
+    // Fondu multicolore (mission 2026-11-14). `palette` et `transition` restent hors de cette
+    // table (commande dédiée du panneau de fondu, pas un champ numérique simple) -- comme
+    // `rail_a`/`rail_b` pour le satin.
+    add({"multicolor_gradient", "method", "Méthode", K::Choice, 0, 4, 1, "", kGradientMethod});
+    add({"multicolor_gradient", "complementary", "Rampes complémentaires", K::Bool, 0, 1, 1, ""});
+    add({"multicolor_gradient", "satin_density_mm", "Densité du satin entrelacé", K::Number, 0.1,
+         2.0, 0.05, "mm"});
+    add({"multicolor_gradient", "crosshatch_layers", "Couches (hachures croisées)", K::Integer, 2,
+         3, 1, ""});
+    add({"multicolor_gradient", "crosshatch_angle_deg", "Angle (hachures croisées)", K::Number,
+         -360.0, 360.0, 5.0, "°"});
     return t;
 }
 
@@ -333,7 +347,7 @@ const std::vector<std::string_view>& paramTypeIds() {
     static const std::vector<std::string_view> kIds{
         "running", "tatami",       "satin",        "directional", "auto_satin",
         "blanket", "contour_fill", "motif_run",    "motif_fill",  "radial",
-        "spiral",  "crosshatch",   "cross_stitch", "applique"};
+        "spiral",  "crosshatch",   "cross_stitch", "applique",    "multicolor_gradient"};
     return kIds;
 }
 
@@ -692,6 +706,18 @@ Opt readP(const document::CrossStitchParams& p, std::string_view key) {
     PS_B("full_cross", full_cross);
     PS_N("passes", passes);
     PS_B("hidden_underpath", hidden_underpath);
+    return std::nullopt;
+}
+
+Opt readP(const document::MulticolorGradientParams& p, std::string_view key) {
+    // Palette/transition ne sont pas des champs numériques simples (édition par la commande
+    // dédiée du panneau de fondu, pas le glisser-valeur générique) ; `method` reste un simple
+    // choix comme les autres énumérations de ce fichier.
+    PS_E("method", method);
+    PS_B("complementary", complementary);
+    PS_MM("satin_density_mm", satin_density);
+    PS_N("crosshatch_layers", crosshatch_layers);
+    PS_DEG("crosshatch_angle_deg", crosshatch_angle);
     return std::nullopt;
 }
 

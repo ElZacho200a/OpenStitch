@@ -59,6 +59,15 @@ trace_directional_streamlines(const geometry::PathSet& region,
 directional_stitch_lines(const geometry::PathSet& region,
                          const document::DirectionalFillParams& params);
 
+// Couche de fondu qui ne couvre pas toute la forme (densité masquée ou tranche partielle
+// d'une grille partagée) : liaisons courtes seulement, aucun trajet caché sous des zones
+// où ce fil est absent. Faux pour un dégradé d'écart simple ou une couche pleine.
+[[nodiscard]] bool density_mask_is_sparse(const document::DensityGradient& gradient);
+
+// Profil de transition `curve` évalué en t ∈ [0 ; 1] (monotone, 0 → 0, 1 → 1) : la même
+// formule que le moteur, pour les arrêts échantillonnés et les aperçus d'interface.
+[[nodiscard]] double shape_density_curve(document::DensityCurve curve, double t);
+
 // Remplissage complet (couche supérieure), même vocabulaire que le tatami
 // (`FillStitch` : point cousu, saut, ou déplacement cousu caché).
 [[nodiscard]] std::vector<FillStitch>
