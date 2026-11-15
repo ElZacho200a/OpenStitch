@@ -54,6 +54,10 @@ struct MultiFadeSettings {
 
 [[nodiscard]] std::optional<MultiFadeSettings> readMultiFade(const document::Project& project,
                                                              std::uint64_t objectId);
+// Fil de nuancier de chaque couleur d'un fondu multicolore, dans l'ordre de couture :
+// « Marque code · nom », ou chaîne vide pour une couleur libre. Vide si l'objet n'en porte pas.
+[[nodiscard]] std::vector<std::string> readFadeThreadLabels(const document::Project& project,
+                                                            std::uint64_t objectId);
 // Orientation de l'axe from->to en degrés modèle (-180..180), commune aux fondus binaires et
 // n-aires. Le radial conserve son axe interne mais l'UI ne présente pas cet angle comme un réglage.
 [[nodiscard]] std::optional<double> readFadeAngle(const document::Project& project,

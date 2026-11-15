@@ -7,6 +7,7 @@
 #include <numbers>
 
 #include "openstitch/project_ops/gradient_fill.hpp"
+#include "thread_palette_service.hpp"
 
 namespace openstitch::desktop_v2 {
 
@@ -248,6 +249,34 @@ std::optional<MultiFadeSettings> readMultiFade(const document::Project& project,
     settings.crosshatchLayers = spec->crosshatch_layers;
     settings.crosshatchAngleDeg = spec->crosshatch_angle.radians * 180.0 / std::numbers::pi;
     return settings;
+}
+
+std::vector<std::string> readFadeThreadLabels(const document::Project& project,
+                                              std::uint64_t objectId) {
+    std::vector<std::string> labels;
+    const auto spec = project_ops::describe_multicolor_gradient(project, ObjectId{objectId});
+    if (!spec) {
+        return labels;
+    }
+    labels.reserve(spec->palette.size());
+    for (const auto& thread : spec->palette) {
+        std::string label;
+        if (thread.thread) {
+            const auto& key = *thread.thread;
+            label = key.chart_id + " " + key.code;
+            for (const auto& match : searchThreads(key.chart_id, key.code)) {
+                if (match.chartId == key.chart_id && match.code == key.code) {
+                    label = (match.brand.empty() ? key.chart_id : match.brand) + " " + key.code;
+                    if (!match.name.empty()) {
+                        label += " · " + match.name;
+                    }
+                    break;
+                }
+            }
+        }
+        labels.push_back(std::move(label));
+    }
+    return labels;
 }
 
 std::optional<double> readFadeAngle(const document::Project& project, std::uint64_t objectId) {

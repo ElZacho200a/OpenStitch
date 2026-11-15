@@ -6,10 +6,13 @@ import QtQuick.Layouts
 import "."
 
 // Éditeur UNIQUE du fondu de fils, dans l'inspecteur de l'objet sélectionné.
-// Ordre : fils → technique → répartition → transition → avancé. Chaque réglage d'un fondu
-// existant s'applique immédiatement en UN pas d'annulation (pas de bouton « Appliquer »).
-// L'axe se règle au canevas (« Ajuster l'axe ») ou par l'orientation ; la densité et la
-// direction des points restent dans les réglages du remplissage.
+// 1. Barre de fils : les fils numérotés dans l'ordre de couture (mêmes numéros que les poignées
+//    du canevas) ; un fil désigné se règle dans la carte en dessous.
+// 2. Style en tuiles illustrées, 3. direction en flèches, 4. transition Douce / Moyenne / Nette.
+// Le reste (géométrie courbe, angle exact, profils détaillés) est replié dans « Plus de
+// réglages ». Chaque réglage d'un fondu existant s'applique immédiatement en UN pas
+// d'annulation. Clavier : la barre se parcourt aux flèches, Ctrl+flèche déplace le fil, Suppr le
+// retire, Entrée ouvre sa couleur, + en ajoute un.
 Item {
     id: root
     property var controller
@@ -18,57 +21,60 @@ Item {
     readonly property bool ready: controller !== null && controller !== undefined
     readonly property bool hasFade: ready && controller.hasFade
     readonly property bool canCreate: ready && controller.canCreate
+    readonly property bool editing: hasFade || canCreate
     readonly property bool satinStyle: ready && controller.style === 5
     readonly property bool crosshatchStyle: ready && controller.style === 4
     readonly property bool hasGestures: typeof digitizer !== "undefined" && digitizer !== null
     // Brouillon des fils avant création ; ensuite la palette vient du document.
     property var draftColors: []
+    property int draftSelected: 0
     readonly property var colors: hasFade ? controller.colors : draftColors
+    readonly property var labels: hasFade ? controller.threadLabels : []
+    readonly property int selected: Math.max(0, Math.min(colors.length - 1,
+                                                         hasFade ? controller.selectedThread : draftSelected))
     readonly property bool paletteValid: colors.length >= 2 && colors.length <= 8
         && colors.every(function(value, i) {
             return root.isHex(value) && (i === 0 || value.toLowerCase() !== colors[i - 1].toLowerCase())
         })
     property bool advancedOpen: false
+    // Vocabulaire montré à l'utilisateur ; le nom technique reste dans la description accessible.
+    readonly property var styleTexts: [
+        { name: qsTr("Lisse"), help: qsTr("Les fils se mêlent rangée par rangée : transition fondue, la plus courante.") },
+        { name: qsTr("Dentelé"), help: qsTr("Limite irrégulière entre les fils, plus naturelle sur les grandes surfaces.") },
+        { name: qsTr("Peint"), help: qsTr("Points de longueurs variées qui s'imbriquent, effet peinture à l'aiguille.") },
+        { name: qsTr("Moucheté"), help: qsTr("Fils dispersés en petits points : transition granuleuse.") },
+        { name: qsTr("Hachuré"), help: qsTr("Couches croisées dans plusieurs directions, effet gravure.") },
+        { name: qsTr("Satin"), help: qsTr("Colonnes satin dont les fils alternent : pour colonnes et lettres.") }
+    ]
+    readonly property var directions: [
+        { angle: 0, glyph: "→", name: qsTr("De gauche à droite") },
+        { angle: 45, glyph: "↗", name: qsTr("Vers le haut à droite") },
+        { angle: 90, glyph: "↑", name: qsTr("De bas en haut") },
+        { angle: 135, glyph: "↖", name: qsTr("Vers le haut à gauche") }
+    ]
+    readonly property var softnessTexts: [
+        { name: qsTr("Douce"), help: qsTr("Les fils se mêlent sur toute la longueur de la transition") },
+        { name: qsTr("Moyenne"), help: qsTr("Mélange resserré au milieu de chaque transition") },
+        { name: qsTr("Nette"), help: qsTr("Passage rapide d'un fil au suivant") }
+    ]
     readonly property var geometries: [
-        { id: 0, label: qsTr("Linéaire") },
-        { id: 1, label: qsTr("Radial") },
+        { id: 0, label: qsTr("Droite") },
+        { id: 1, label: qsTr("Radiale") },
         { id: 2, label: qsTr("Courbe") }
     ]
     implicitHeight: fields.implicitHeight + 16
 
     function isHex(value) { return /^#[0-9a-fA-F]{6}$/.test(String(value).trim()) }
-    function withColor(index, value) {
-        const next = colors.slice(0)
-        next[index] = String(value).trim()
-        return next
+    function hexOf(c) {
+        const part = v => ("0" + Math.round(Math.max(0, Math.min(1, v)) * 255).toString(16)).slice(-2)
+        return "#" + part(c.r) + part(c.g) + part(c.b)
     }
-    // Teinte proposée pour un nouveau fil : distincte du dernier, sans prétendre être un fil réel.
-    function proposedColor(last) {
-        const options = ["#2468a0", "#c9816c", "#6b9bd1", "#d9b44a"] // lint-ok: couleurs de fil proposées, pas couleurs du thème
-        for (let i = 0; i < options.length; ++i)
-            if (options[i] !== String(last).toLowerCase())
-                return options[i]
-        return "#808080" // lint-ok: couleur de fil proposée
+    function threadName(index) {
+        const label = index < labels.length ? labels[index] : ""
+        return label.length > 0 ? label : qsTr("Couleur libre")
     }
-    function commitColors(next) {
-        if (root.hasFade)
-            root.controller.setColors(next)
-        else
-            root.draftColors = next
-    }
-    function addColor() {
-        if (colors.length >= 8)
-            return
-        const next = colors.slice(0)
-        next.push(proposedColor(next[next.length - 1]))
-        commitColors(next)
-    }
-    function removeColor(index) {
-        if (colors.length <= 2)
-            return
-        const next = colors.slice(0)
-        next.splice(index, 1)
-        commitColors(next)
+    function threadTitle(index) {
+        return qsTr("Fil %1 · %2").arg(index + 1).arg(threadName(index))
     }
     function numberFromInput(value) {
         const normalized = String(value).trim().replace(",", ".")
@@ -77,13 +83,90 @@ Item {
         const parsed = Number(normalized)
         return isFinite(parsed) ? parsed : NaN
     }
+
+    // --- Opérations sur les fils : document si le fondu existe, brouillon sinon -------------
+    function select(index) {
+        const clamped = Math.max(0, Math.min(colors.length - 1, index))
+        if (hasFade)
+            controller.selectedThread = clamped
+        else
+            draftSelected = clamped
+    }
+    function setColorAt(index, value) {
+        if (!isHex(value))
+            return
+        if (hasFade) {
+            controller.setThreadColor(index, String(value).trim())
+            return
+        }
+        const next = draftColors.slice(0)
+        next[index] = String(value).trim()
+        draftColors = next
+    }
+    function insertAfter(index) {
+        if (colors.length >= 8)
+            return
+        if (hasFade) {
+            controller.insertThread(index)
+            return
+        }
+        const next = draftColors.slice(0)
+        const a = Qt.color(next[index])
+        const b = index + 1 < next.length ? Qt.color(next[index + 1]) : Qt.color(a.hslLightness > 0.5 ? "#202020" : "#f0f0f0") // lint-ok: teinte de départ d'un fil ajouté
+        next.splice(index + 1, 0, hexOf(Qt.rgba((a.r + b.r) / 2, (a.g + b.g) / 2, (a.b + b.b) / 2, 1)))
+        draftColors = next
+        draftSelected = index + 1
+    }
+    function removeAt(index) {
+        if (colors.length <= 2)
+            return
+        if (hasFade) {
+            controller.removeThread(index)
+            return
+        }
+        const next = draftColors.slice(0)
+        next.splice(index, 1)
+        draftColors = next
+        draftSelected = Math.min(index, next.length - 1)
+    }
+    function moveBy(index, offset) {
+        const target = index + offset
+        if (target < 0 || target >= colors.length)
+            return
+        if (hasFade) {
+            controller.moveThread(index, offset)
+            return
+        }
+        const next = draftColors.slice(0)
+        const kept = next[index]
+        next[index] = next[target]
+        next[target] = kept
+        draftColors = next
+        draftSelected = target
+    }
+    function openColor(index) {
+        colorDialog.colorIndex = index
+        colorDialog.selectedColor = colors[index]
+        colorDialog.open()
+    }
+    function chooseDirection(angle) {
+        if (controller.geometry === 1)
+            controller.setGeometry(0)
+        controller.setAngle(angle)
+    }
+    function directionChecked(angle) {
+        return ready && hasFade && controller.geometry !== 1 && Math.abs(controller.angle - angle) < 0.5
+    }
+
     function refresh() {
         if (!ready)
             return
         if (!hasFade) {
             const start = controller.colors
-            if (draftColors.length < 2 || draftColors[0] !== start[0])
+            if (draftColors.length < 2 || draftColors[0] !== start[0]) {
                 draftColors = start.length >= 2 ? start.slice(0) : []
+                draftSelected = 0
+            }
         }
         if (hasFade && controller.geometry !== 1 && !angleField.activeFocus)
             angleField.text = Number(controller.angle).toFixed(1)
@@ -99,10 +182,10 @@ Item {
         id: colorDialog
         property int colorIndex: -1
         objectName: root.prefix + "ColorDialog"
-        title: qsTr("Couleur du fil")
+        title: qsTr("Couleur du fil %1").arg(colorIndex + 1)
         onAccepted: {
             if (colorIndex >= 0)
-                root.commitColors(root.withColor(colorIndex, selectedColor.toString()))
+                root.setColorAt(colorIndex, selectedColor.toString())
             colorIndex = -1
         }
     }
@@ -135,111 +218,235 @@ Item {
                 font.pixelSize: Theme.smallSize
                 wrapMode: Text.WordWrap
                 text: !root.ready ? qsTr("Outil indisponible.")
-                      : root.hasFade ? qsTr("%1 fils, cousus dans l'ordre de la liste.").arg(root.colors.length)
-                      : root.canCreate ? qsTr("Transition entre plusieurs fils réels sur cette forme.")
+                      : root.hasFade ? qsTr("%1 fils, cousus du n° 1 au n° %1.").arg(root.colors.length)
+                      : root.canCreate ? qsTr("Passez d'un fil à l'autre sur cette forme : choisissez les fils, puis créez le fondu.")
                       : root.controller.incompatibility
             }
 
-            // --- Fils ------------------------------------------------------------------
+            // --- 1. Barre de fils ------------------------------------------------------------
             // Repère des couleurs seulement : pas une simulation des points ni du tissu.
             Item {
-                id: ramp
-                objectName: root.prefix + "Ramp"
-                visible: (root.hasFade || root.canCreate) && root.paletteValid
+                id: threadBar
+                objectName: root.prefix + "ThreadBar"
+                visible: root.editing && root.colors.length >= 2
                 Layout.fillWidth: true
-                Layout.preferredHeight: 18
-                Accessible.name: qsTr("Aperçu des couleurs du fondu")
+                Layout.preferredHeight: 40
+                activeFocusOnTab: true
+                // Flèches, Début/Fin, Suppr : pour la barre, pas pour l'objet (cf. Main.qml).
+                readonly property bool ownsKeyboard: true
+                readonly property real stopSize: 28
+                Accessible.role: Accessible.List
+                Accessible.name: qsTr("Fils du fondu : %1 fils. Fil désigné : %2.")
+                                     .arg(root.colors.length).arg(root.threadTitle(root.selected))
+                Accessible.description: qsTr("Flèches : changer de fil. Ctrl+flèches : déplacer le fil. Entrée : sa couleur. Suppr : le retirer. Plus : ajouter un fil.")
+                Keys.onPressed: event => {
+                    const ctrl = (event.modifiers & Qt.ControlModifier) !== 0
+                    if (event.key === Qt.Key_Left || event.key === Qt.Key_Right) {
+                        const step = event.key === Qt.Key_Left ? -1 : 1
+                        if (ctrl)
+                            root.moveBy(root.selected, step)
+                        else
+                            root.select(root.selected + step)
+                    } else if (event.key === Qt.Key_Home) {
+                        root.select(0)
+                    } else if (event.key === Qt.Key_End) {
+                        root.select(root.colors.length - 1)
+                    } else if (event.key === Qt.Key_Delete || event.key === Qt.Key_Backspace) {
+                        root.removeAt(root.selected)
+                    } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                        root.openColor(root.selected)
+                    } else if (event.key === Qt.Key_Plus || event.key === Qt.Key_Insert) {
+                        root.insertAfter(root.selected)
+                    } else {
+                        return
+                    }
+                    event.accepted = true
+                }
+
+                Rectangle {
+                    anchors.fill: parent
+                    radius: Theme.radius
+                    color: "transparent"
+                    border.width: threadBar.activeFocus ? 2 : 0
+                    border.color: Theme.accent
+                }
+                Item {
+                    id: ramp
+                    objectName: root.prefix + "Ramp"
+                    x: threadBar.stopSize / 2
+                    width: parent.width - threadBar.stopSize
+                    height: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                    Repeater {
+                        model: Math.max(0, root.colors.length - 1)
+                        delegate: Rectangle {
+                            required property int index
+                            x: index * width
+                            width: ramp.width / Math.max(1, root.colors.length - 1)
+                            height: ramp.height
+                            gradient: Gradient {
+                                orientation: Gradient.Horizontal
+                                GradientStop { position: 0; color: root.isHex(root.colors[index]) ? root.colors[index] : Theme.raised }
+                                GradientStop { position: 1; color: root.isHex(root.colors[index + 1]) ? root.colors[index + 1] : Theme.raised }
+                            }
+                        }
+                    }
+                }
                 Repeater {
-                    model: Math.max(0, root.colors.length - 1)
-                    delegate: Rectangle {
+                    model: root.colors.length
+                    delegate: Controls.AbstractButton {
+                        id: stop
                         required property int index
-                        x: index * width
-                        width: ramp.width / Math.max(1, root.colors.length - 1)
-                        height: ramp.height
-                        gradient: Gradient {
-                            orientation: Gradient.Horizontal
-                            GradientStop { position: 0; color: root.colors[index] }
-                            GradientStop { position: 1; color: root.colors[index + 1] }
+                        readonly property bool current: index === root.selected
+                        readonly property color fill: root.isHex(root.colors[index]) ? root.colors[index] : Theme.raised
+                        objectName: root.prefix + "Thread" + index
+                        width: threadBar.stopSize
+                        height: threadBar.stopSize
+                        anchors.verticalCenter: parent.verticalCenter
+                        x: root.colors.length > 1 ? index * (threadBar.width - width) / (root.colors.length - 1) : 0
+                        focusPolicy: Qt.NoFocus
+                        hoverEnabled: true
+                        onClicked: { root.select(index); threadBar.forceActiveFocus() }
+                        onDoubleClicked: root.openColor(index)
+                        Accessible.role: Accessible.ListItem
+                        Accessible.name: root.threadTitle(index)
+                        Accessible.selected: current
+                        StudioToolTip { text: root.threadTitle(index) + "\n" + root.colors[index] }
+                        background: Rectangle {
+                            radius: width / 2
+                            color: stop.fill
+                            border.width: stop.current ? 3 : 2
+                            border.color: stop.current ? Theme.accent : Theme.foreground
+                        }
+                        contentItem: Text {
+                            text: String(stop.index + 1)
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.smallSize
+                            font.weight: Font.DemiBold
+                            // Numéro lisible sur n'importe quel fil.
+                            color: 0.2126 * stop.fill.r + 0.7152 * stop.fill.g + 0.0722 * stop.fill.b > 0.55
+                                   ? "#141821" : "#ffffff" // lint-ok: contraste du numéro sur la couleur du fil
                         }
                     }
                 }
             }
-            ColumnLayout {
+
+            // Carte du fil désigné.
+            Rectangle {
+                objectName: root.prefix + "ThreadCard"
+                visible: threadBar.visible
                 Layout.fillWidth: true
-                spacing: 4
-                visible: root.hasFade || root.canCreate
-                Repeater {
-                    model: root.colors.length
-                    delegate: RowLayout {
-                        id: colorRow
-                        required property int index
+                implicitHeight: card.implicitHeight + 16
+                radius: Theme.radius
+                color: Theme.surface
+                border.color: Theme.divider
+                ColumnLayout {
+                    id: card
+                    x: 8
+                    y: 8
+                    width: parent.width - 16
+                    spacing: 6
+                    RowLayout {
                         Layout.fillWidth: true
-                        spacing: 5
-                        Rectangle {
-                            objectName: root.prefix + "Swatch" + colorRow.index
-                            Layout.preferredWidth: 24
-                            Layout.preferredHeight: 24
-                            radius: 4
-                            border.color: Theme.outline
-                            color: root.isHex(root.colors[colorRow.index]) ? root.colors[colorRow.index] : Theme.raised
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    colorDialog.colorIndex = colorRow.index
-                                    colorDialog.selectedColor = root.colors[colorRow.index]
-                                    colorDialog.open()
-                                }
-                            }
+                        spacing: 8
+                        Controls.AbstractButton {
+                            objectName: root.prefix + "Swatch"
+                            Layout.preferredWidth: 36
+                            Layout.preferredHeight: 36
+                            focusPolicy: Qt.StrongFocus
+                            onClicked: root.openColor(root.selected)
                             Accessible.role: Accessible.Button
-                            Accessible.name: qsTr("Choisir la couleur du fil %1").arg(colorRow.index + 1)
-                        }
-                        StudioTextField {
-                            objectName: root.prefix + "Color" + colorRow.index
-                            Layout.fillWidth: true
-                            text: root.colors[colorRow.index]
-                            placeholderText: "#rrggbb"
-                            invalid: !root.isHex(text)
-                            onEditingFinished: {
-                                if (root.isHex(text) && text.trim().toLowerCase() !== String(root.colors[colorRow.index]).toLowerCase())
-                                    root.commitColors(root.withColor(colorRow.index, text))
+                            Accessible.name: qsTr("Changer la couleur du fil %1").arg(root.selected + 1)
+                            background: Rectangle {
+                                radius: Theme.radius
+                                color: root.isHex(root.colors[root.selected]) ? root.colors[root.selected] : Theme.raised
+                                border.width: parent.activeFocus ? 2 : 1
+                                border.color: parent.activeFocus ? Theme.accent : Theme.outline
                             }
-                            Accessible.name: qsTr("Couleur hexadécimale du fil %1").arg(colorRow.index + 1)
                         }
-                        StudioButton {
-                            objectName: root.prefix + "RemoveColor" + colorRow.index
-                            text: qsTr("×")
-                            quiet: true
-                            enabled: root.colors.length > 2
-                            tooltip: qsTr("Retirer ce fil")
-                            onClicked: root.removeColor(colorRow.index)
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+                            Text {
+                                objectName: root.prefix + "ThreadTitle"
+                                Layout.fillWidth: true
+                                text: root.threadTitle(root.selected)
+                                color: Theme.foreground
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.bodySize
+                                font.weight: Font.DemiBold
+                                elide: Text.ElideRight
+                            }
+                            StudioTextField {
+                                id: colorField
+                                objectName: root.prefix + "SelectedColor"
+                                Layout.fillWidth: true
+                                text: root.colors.length > 0 ? root.colors[root.selected] : ""
+                                placeholderText: "#rrggbb"
+                                invalid: !root.isHex(text)
+                                onEditingFinished: {
+                                    if (root.isHex(text) && text.trim().toLowerCase() !== String(root.colors[root.selected]).toLowerCase())
+                                        root.setColorAt(root.selected, text)
+                                }
+                                Accessible.name: qsTr("Code couleur du fil %1, au format #rrggbb").arg(root.selected + 1)
+                            }
                         }
                     }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 4
+                        StudioButton {
+                            objectName: root.prefix + "MoveLeft"
+                            text: "◀"
+                            enabled: root.selected > 0
+                            tooltip: qsTr("Coudre ce fil plus tôt (Ctrl+←)")
+                            onClicked: root.moveBy(root.selected, -1)
+                        }
+                        StudioButton {
+                            objectName: root.prefix + "MoveRight"
+                            text: "▶"
+                            enabled: root.selected < root.colors.length - 1
+                            tooltip: qsTr("Coudre ce fil plus tard (Ctrl+→)")
+                            onClicked: root.moveBy(root.selected, 1)
+                        }
+                        StudioButton {
+                            objectName: root.prefix + "AddColor"
+                            Layout.fillWidth: true
+                            text: qsTr("+ Fil")
+                            enabled: root.colors.length < 8 && root.paletteValid
+                            tooltip: qsTr("Ajouter un fil après le n° %1 (touche +)").arg(root.selected + 1)
+                            onClicked: root.insertAfter(root.selected)
+                        }
+                        StudioButton {
+                            objectName: root.prefix + "RemoveThread"
+                            Layout.fillWidth: true
+                            text: qsTr("Retirer")
+                            enabled: root.colors.length > 2
+                            disabledReason: qsTr("Un fondu garde au moins 2 fils")
+                            tooltip: qsTr("Retirer le fil %1 (Suppr)").arg(root.selected + 1)
+                            onClicked: root.removeAt(root.selected)
+                        }
+                    }
+                    Text {
+                        visible: root.hasFade
+                        Layout.fillWidth: true
+                        text: qsTr("Pour un fil de nuancier, choisissez-le dans le panneau Fils : le fondu garde sa référence.")
+                        color: Theme.faint
+                        wrapMode: Text.WordWrap
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.captionSize
+                    }
                 }
-                StudioButton {
-                    objectName: root.prefix + "AddColor"
-                    text: qsTr("+ Ajouter un fil")
-                    Layout.fillWidth: true
-                    enabled: root.colors.length < 8 && root.paletteValid
-                    onClicked: root.addColor()
-                }
-                Text {
-                    visible: !root.paletteValid
-                    Layout.fillWidth: true
-                    text: qsTr("Chaque fil doit avoir un code #rrggbb, différent du précédent.")
-                    color: Theme.warning
-                    wrapMode: Text.WordWrap
-                    font.pixelSize: Theme.smallSize
-                }
-                Text {
-                    visible: root.hasFade
-                    Layout.fillWidth: true
-                    text: qsTr("Fil de nuancier : choisissez-le pour cette couleur dans le panneau Fils ; le fondu conserve la référence.")
-                    color: Theme.faint
-                    wrapMode: Text.WordWrap
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.captionSize
-                }
+            }
+            Text {
+                visible: root.editing && !root.paletteValid
+                Layout.fillWidth: true
+                text: qsTr("Chaque fil doit avoir un code #rrggbb, différent du précédent.")
+                color: Theme.warning
+                wrapMode: Text.WordWrap
+                font.pixelSize: Theme.smallSize
             }
 
             StudioButton {
@@ -259,15 +466,71 @@ Item {
                 spacing: 8
                 visible: root.hasFade
 
-                StudioLabel { text: qsTr("Technique") }
-                StudioComboBox {
-                    objectName: root.prefix + "Style"
+                // 2. Style
+                StudioLabel { text: qsTr("Style") }
+                GridLayout {
+                    id: styleGrid
+                    objectName: root.prefix + "StyleGrid"
                     Layout.fillWidth: true
-                    model: root.ready ? root.controller.styles : []
-                    textRole: "label"
-                    currentIndex: root.ready ? root.controller.style : 0
-                    onActivated: index => root.controller.setStyle(index)
-                    Accessible.name: qsTr("Technique de broderie du fondu")
+                    columns: 3
+                    columnSpacing: 4
+                    rowSpacing: 4
+                    Repeater {
+                        model: root.ready ? root.controller.styles : []
+                        delegate: Controls.AbstractButton {
+                            id: tile
+                            required property int index
+                            required property var modelData
+                            readonly property bool current: root.ready && root.controller.style === index
+                            objectName: root.prefix + "Style" + index
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 58
+                            checkable: false
+                            focusPolicy: Qt.StrongFocus
+                            hoverEnabled: true
+                            onClicked: root.controller.setStyle(index)
+                            Accessible.role: Accessible.RadioButton
+                            Accessible.checked: current
+                            Accessible.name: root.styleTexts[index].name
+                            Accessible.description: root.styleTexts[index].help + " (" + modelData.label + ")"
+                            StudioToolTip { text: root.styleTexts[index].help }
+                            background: Rectangle {
+                                radius: Theme.radius
+                                color: tile.current ? Theme.accentSoft : tile.hovered ? Theme.hover : Theme.raised
+                                border.width: tile.current || tile.activeFocus ? 2 : 1
+                                border.color: tile.current || tile.activeFocus ? Theme.accent : Theme.outline
+                            }
+                            contentItem: ColumnLayout {
+                                spacing: 3
+                                FadeStylePreview {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: 26
+                                    styleIndex: tile.index
+                                    first: root.colors.length > 0 ? root.colors[0] : Theme.raised
+                                    last: root.colors.length > 0 ? root.colors[root.colors.length - 1] : Theme.foreground
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: root.styleTexts[tile.index].name
+                                    horizontalAlignment: Text.AlignHCenter
+                                    color: tile.current ? Theme.accent : Theme.foreground
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: Theme.smallSize
+                                    font.weight: tile.current ? Font.DemiBold : Font.Normal
+                                    elide: Text.ElideRight
+                                }
+                            }
+                        }
+                    }
+                }
+                Text {
+                    objectName: root.prefix + "StyleHelp"
+                    Layout.fillWidth: true
+                    text: root.ready ? root.styleTexts[Math.max(0, root.controller.style)].help : ""
+                    color: Theme.faint
+                    wrapMode: Text.WordWrap
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.captionSize
                 }
 
                 RowLayout {
@@ -275,12 +538,12 @@ Item {
                     visible: root.satinStyle
                     StudioLabel { text: qsTr("Densité satin (mm)") }
                     StudioTextField {
-                        id: satinDensityField
                         objectName: root.prefix + "SatinDensity"
                         Layout.fillWidth: true
                         text: root.ready ? Number(root.controller.satinDensityMm).toFixed(2) : ""
                         invalid: isNaN(root.numberFromInput(text))
                         onEditingFinished: root.controller.setSatinDensity(root.numberFromInput(text))
+                        Accessible.name: qsTr("Écart entre les points satin, en millimètres")
                     }
                 }
                 RowLayout {
@@ -292,6 +555,7 @@ Item {
                         text: "2"
                         checkable: true
                         checked: root.ready && root.controller.crosshatchLayers === 2
+                        tooltip: qsTr("Deux directions croisées")
                         onClicked: root.controller.setCrosshatch(2, root.controller.crosshatchAngleDeg)
                     }
                     StudioButton {
@@ -299,6 +563,7 @@ Item {
                         text: "3"
                         checkable: true
                         checked: root.ready && root.controller.crosshatchLayers === 3
+                        tooltip: qsTr("Trois directions croisées")
                         onClicked: root.controller.setCrosshatch(3, root.controller.crosshatchAngleDeg)
                     }
                     StudioTextField {
@@ -312,131 +577,177 @@ Item {
                     }
                 }
 
-                StudioLabel { text: qsTr("Répartition des fils") }
+                // Fils côte à côte ou superposés.
+                StudioLabel { text: qsTr("Les fils sont…") }
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 4
                     StudioButton {
                         objectName: root.prefix + "ModeComplementary"
                         Layout.fillWidth: true
-                        text: qsTr("Complémentaire")
+                        text: qsTr("Côte à côte")
                         checkable: true
                         checked: root.ready && root.controller.complementary
-                        tooltip: qsTr("Chaque rangée est cousue par un seul fil : couverture régulière, sans surépaisseur")
+                        tooltip: qsTr("Côte à côte (complémentaire) : chaque rangée est cousue par un seul fil, couverture régulière")
                         onClicked: root.controller.setComplementary(true)
                     }
                     StudioButton {
                         objectName: root.prefix + "ModeOverlay"
                         Layout.fillWidth: true
-                        text: qsTr("Superposition")
+                        text: qsTr("Superposés")
                         checkable: true
                         checked: root.ready && !root.controller.complementary
-                        tooltip: qsTr("Premier fil plein, les suivants cousus par-dessus à 60 % de densité")
+                        tooltip: qsTr("Superposés : premier fil plein, les suivants cousus par-dessus à 60 % de densité")
                         onClicked: root.controller.setComplementary(false)
                     }
                 }
 
-                // --- Transition (sans objet pour le satin, qui suit ses rails) ---------------
+                // 3. Direction et 4. transition (sans objet pour le satin, qui suit ses rails).
                 ColumnLayout {
                     Layout.fillWidth: true
                     spacing: 6
                     visible: !root.satinStyle
 
-                    SectionLabel { text: qsTr("TRANSITION") }
+                    StudioLabel { text: qsTr("Direction") }
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 4
                         Repeater {
-                            model: root.geometries
+                            model: root.directions
                             delegate: StudioButton {
                                 required property var modelData
-                                objectName: root.prefix + "Geometry" + modelData.id
+                                objectName: root.prefix + "Direction" + modelData.angle
                                 Layout.fillWidth: true
-                                text: modelData.label
+                                text: modelData.glyph
                                 checkable: true
-                                checked: root.ready && root.controller.geometry === modelData.id
-                                onClicked: root.controller.setGeometry(modelData.id)
+                                checked: root.directionChecked(modelData.angle)
+                                tooltip: modelData.name
+                                onClicked: root.chooseDirection(modelData.angle)
                             }
                         }
-                    }
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 4
-                        visible: root.ready && root.controller.geometry !== 1
-                        StudioLabel { text: qsTr("Orientation (°)") }
-                        StudioTextField {
-                            id: angleField
-                            objectName: root.prefix + "Angle"
-                            Layout.fillWidth: true
-                            invalid: isNaN(root.numberFromInput(text))
-                            onEditingFinished: {
-                                const value = root.numberFromInput(text)
-                                if (!isNaN(value) && Math.abs(value - root.controller.angle) > 1e-6)
-                                    root.controller.setAngle(value)
-                            }
-                            Accessible.name: qsTr("Orientation du fondu en degrés, 0 = horizontal")
-                        }
-                        Repeater {
-                            model: [0, 45, 90]
-                            delegate: StudioButton {
-                                required property int modelData
-                                objectName: root.prefix + "Angle" + modelData
-                                text: modelData + "°"
-                                quiet: true
-                                onClicked: root.controller.setAngle(modelData)
-                            }
-                        }
-                    }
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 4
-                        StudioLabel { text: qsTr("Profil") }
-                        StudioComboBox {
-                            objectName: root.prefix + "Curve"
-                            Layout.fillWidth: true
-                            model: root.ready ? root.controller.curves : []
-                            textRole: "label"
-                            currentIndex: root.ready ? root.controller.curve : 0
-                            onActivated: index => root.controller.setCurve(index)
-                            Accessible.name: qsTr("Profil des transitions entre fils")
-                        }
-                    }
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 4
                         StudioButton {
-                            objectName: root.prefix + "EditAxis"
+                            objectName: root.prefix + "Radial"
                             Layout.fillWidth: true
-                            visible: root.hasGestures
-                            text: qsTr("Ajuster l'axe au canevas")
+                            text: "◎"
                             checkable: true
-                            checked: root.hasGestures && digitizer.mode === "fade"
-                            tooltip: qsTr("Poignées sur le canevas : début, fin, déplacement et rotation de la transition")
-                            onClicked: digitizer.mode = checked ? "fade" : ""
+                            checked: root.ready && root.controller.geometry === 1
+                            tooltip: qsTr("Du centre vers le bord (radial)")
+                            onClicked: root.controller.setGeometry(1)
                         }
                         StudioButton {
                             objectName: root.prefix + "Reverse"
                             Layout.fillWidth: true
-                            text: qsTr("Inverser")
+                            text: "⇄"
                             tooltip: qsTr("Inverser le sens du fondu (en radial : l'ordre des fils)")
                             onClicked: root.controller.reverse()
                         }
                     }
 
+                    StudioLabel { text: qsTr("Transition") }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 4
+                        Repeater {
+                            model: root.softnessTexts
+                            delegate: StudioButton {
+                                required property int index
+                                required property var modelData
+                                objectName: root.prefix + "Softness" + index
+                                Layout.fillWidth: true
+                                text: modelData.name
+                                checkable: true
+                                checked: root.ready && root.controller.softness === index
+                                tooltip: modelData.name + " : " + modelData.help
+                                onClicked: root.controller.setSoftness(index)
+                            }
+                        }
+                    }
+                    Text {
+                        visible: root.ready && root.controller.softness < 0
+                        Layout.fillWidth: true
+                        text: qsTr("Profil personnalisé : voir « Plus de réglages ».")
+                        color: Theme.faint
+                        wrapMode: Text.WordWrap
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.captionSize
+                    }
+
+                    StudioButton {
+                        objectName: root.prefix + "EditAxis"
+                        Layout.fillWidth: true
+                        visible: root.hasGestures
+                        text: qsTr("Régler sur le canevas")
+                        checkable: true
+                        checked: root.hasGestures && digitizer.mode === "fade"
+                        tooltip: qsTr("Fils numérotés sur la forme : glissez le premier ou le dernier pour placer la transition")
+                        onClicked: digitizer.mode = checked ? "fade" : ""
+                    }
+
                     StudioButton {
                         objectName: root.prefix + "Advanced"
-                        visible: root.colors.length > 2 || root.advancedOpen
-                        text: root.advancedOpen ? qsTr("▾ Profil de chaque transition")
-                                                : qsTr("▸ Profil de chaque transition")
+                        Layout.fillWidth: true
+                        text: root.advancedOpen ? qsTr("▾ Plus de réglages") : qsTr("▸ Plus de réglages")
                         quiet: true
+                        Accessible.checked: root.advancedOpen
                         onClicked: root.advancedOpen = !root.advancedOpen
                     }
                     ColumnLayout {
+                        objectName: root.prefix + "AdvancedSection"
                         Layout.fillWidth: true
-                        spacing: 4
+                        spacing: 6
                         visible: root.advancedOpen
+
+                        StudioLabel { text: qsTr("Forme de la transition") }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 4
+                            Repeater {
+                                model: root.geometries
+                                delegate: StudioButton {
+                                    required property var modelData
+                                    objectName: root.prefix + "Geometry" + modelData.id
+                                    Layout.fillWidth: true
+                                    text: modelData.label
+                                    checkable: true
+                                    checked: root.ready && root.controller.geometry === modelData.id
+                                    onClicked: root.controller.setGeometry(modelData.id)
+                                }
+                            }
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 4
+                            visible: root.ready && root.controller.geometry !== 1
+                            StudioLabel { text: qsTr("Angle exact (°)") }
+                            StudioTextField {
+                                id: angleField
+                                objectName: root.prefix + "Angle"
+                                Layout.fillWidth: true
+                                invalid: isNaN(root.numberFromInput(text))
+                                onEditingFinished: {
+                                    const value = root.numberFromInput(text)
+                                    if (!isNaN(value) && Math.abs(value - root.controller.angle) > 1e-6)
+                                        root.controller.setAngle(value)
+                                }
+                                Accessible.name: qsTr("Orientation du fondu en degrés, 0 = de gauche à droite")
+                            }
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 4
+                            StudioLabel { text: qsTr("Profil") }
+                            StudioComboBox {
+                                objectName: root.prefix + "Curve"
+                                Layout.fillWidth: true
+                                model: root.ready ? root.controller.curves : []
+                                textRole: "label"
+                                currentIndex: root.ready ? root.controller.curve : 0
+                                onActivated: index => root.controller.setCurve(index)
+                                Accessible.name: qsTr("Profil de toutes les transitions entre fils")
+                            }
+                        }
                         Repeater {
-                            model: root.hasFade ? Math.max(0, root.colors.length - 1) : 0
+                            model: root.hasFade && root.colors.length > 2 ? root.colors.length - 1 : 0
                             delegate: RowLayout {
                                 id: transitionRow
                                 required property int index
@@ -450,6 +761,8 @@ Item {
                                     textRole: "label"
                                     currentIndex: Math.max(0, root.controller.layerCurve(transitionRow.index + 1))
                                     onActivated: index => root.controller.setLayerCurve(transitionRow.index + 1, index)
+                                    Accessible.name: qsTr("Profil de la transition du fil %1 au fil %2")
+                                                         .arg(transitionRow.index + 1).arg(transitionRow.index + 2)
                                 }
                             }
                         }
@@ -473,6 +786,8 @@ Item {
                 color: root.ready && root.controller.lastOk ? Theme.faint : Theme.warning
                 wrapMode: Text.WordWrap
                 font.pixelSize: Theme.smallSize
+                Accessible.role: Accessible.StaticText
+                Accessible.name: text
             }
         }
     }

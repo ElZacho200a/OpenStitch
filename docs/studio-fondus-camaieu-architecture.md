@@ -106,6 +106,35 @@ Audit mesuré (fil cousu par bande d'un rectangle, rapporté à un remplissage u
 Reste : validation sur tissu (pièce-test), rails satin entrelacés éditables, détection
 automatique des fondus dans la numérisation.
 
+## Éditeur accessible (15 novembre 2026)
+
+Trois maquettes comparées (barre de fils, assistant en trois étapes, réglage direct sur le
+canevas) ; retenu : la **barre de fils** dans l'inspecteur et les **fils numérotés** sur le
+canevas, avec les mêmes numéros des deux côtés.
+
+- **Barre de fils** (`FadeProperties.qml`) : dégradé repère et une pastille numérotée par fil,
+  dans l'ordre de couture. Le fil désigné (`FadeController::selectedThread`, partagé avec le
+  canevas) se règle dans une carte : nom et code du fil de nuancier (`threadLabels`, lus par
+  `readFadeThreadLabels`) ou « Couleur libre », code #rrggbb, ◀ ▶ pour changer l'ordre,
+  « + Fil » (teinte intermédiaire), « Retirer ». Clavier : flèches, Début/Fin, Ctrl+flèche
+  (déplacer), Entrée (couleur), Suppr, +. Chaque geste est un pas d'annulation
+  (`insertThread`, `removeThread`, `moveThread`, `setThreadColor`).
+- **Style** en six tuiles illustrées (`FadeStylePreview.qml`, vignette déterministe dessinée
+  avec le premier et le dernier fil) : Lisse, Dentelé, Peint, Moucheté, Hachuré, Satin ; le nom
+  technique reste dans la description accessible et l'aide sous les tuiles.
+- **Direction** en flèches (→ ↗ ↑ ↖, ◎ radial, ⇄ inverser) et **transition** Douce / Moyenne /
+  Nette (`softness` : profils linéaire, lissé, raide). Géométrie courbe, angle exact, profil
+  détaillé et profil de chaque transition sont repliés dans « Plus de réglages ».
+- **Canevas** (« Régler sur le canevas ») : pastilles numérotées de la couleur de chaque fil
+  (`HandleItem::Kind::Stop`), anneau d'accent sur le fil désigné. Un clic désigne un fil sans
+  rien modifier ; glisser le premier ou le dernier place la transition ; glisser un fil du milieu
+  ou la ligne déplace tout le fondu (sans saut sous le curseur) ; le carré au bout du bras tourne.
+- Numéros en noir ou blanc selon la luminance du fil ; focus visible sur la barre, les tuiles et
+  les boutons ; aucune information portée par la couleur seule (numéro, nom, code).
+
+Non fait : placer un fil ailleurs qu'à intervalle régulier (le moteur répartit les fils
+uniformément le long de l'axe), assistant « camaïeu depuis mes fils en stock ».
+
 ## Deux notions, deux emplacements
 
 1. **Dégradé de densité du remplissage** : une unique couleur de fil peut passer

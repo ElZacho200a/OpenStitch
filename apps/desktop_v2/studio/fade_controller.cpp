@@ -77,7 +77,9 @@ void FadeController::refresh() {
             ++count;
         }
     }
+    const auto previousId = id_;
     id_ = count == 1 ? id : 0;
+    threadLabels_.clear();
     settings_.reset();
     multiSettings_.reset();
     multiCurve_ = 0;
@@ -97,6 +99,9 @@ void FadeController::refresh() {
                 if (spec) {
                     multiCurve_ = static_cast<int>(spec->transition.curve);
                 }
+                for (const auto& label : readFadeThreadLabels(project, id_)) {
+                    threadLabels_.push_back(q(label));
+                }
             } else {
                 incompat_ = q(fadeIncompatibility(project, id_));
             }
@@ -104,7 +109,150 @@ void FadeController::refresh() {
     } else {
         incompat_ = QStringLiteral("Sélectionnez un seul remplissage.");
     }
+    const int threadCount = static_cast<int>(colors().size());
+    const int clamped =
+        id_ != previousId ? 0 : std::clamp(selectedThread_, 0, std::max(0, threadCount - 1));
+    const bool selectionMoved = clamped != selectedThread_;
+    selectedThread_ = clamped;
     emit changed();
+    if (selectionMoved) {
+        emit selectedThreadChanged();
+    }
+}
+
+void FadeController::setSelectedThread(int index) {
+    const int count = static_cast<int>(colors().size());
+    const int clamped = std::clamp(index, 0, std::max(0, count - 1));
+    if (clamped == selectedThread_) {
+        return;
+    }
+    selectedThread_ = clamped;
+    emit selectedThreadChanged();
+}
+
+int FadeController::softness() const {
+    switch (static_cast<FadeCurve>(curve())) {
+    case FadeCurve::Linear:
+        return 0;
+    case FadeCurve::Smooth:
+        return 1;
+    case FadeCurve::Steep:
+        return 2;
+    default:
+        return -1;
+    }
+}
+
+bool FadeController::setSoftness(int softness) {
+    static constexpr FadeCurve kCurves[] = {FadeCurve::Linear, FadeCurve::Smooth, FadeCurve::Steep};
+    if (softness < 0 || softness > 2) {
+        return refuse(QStringLiteral("Transition inconnue."));
+    }
+    return setCurve(static_cast<int>(kCurves[softness]));
+}
+
+namespace {
+bool hasRepeatedNeighbour(const std::vector<std::array<std::uint8_t, 3>>& colors) {
+    for (std::size_t i = 1; i < colors.size(); ++i) {
+        if (colors[i] == colors[i - 1]) {
+            return true;
+        }
+    }
+    return false;
+}
+} // namespace
+
+bool FadeController::insertThread(int after) {
+    const auto base = current();
+    if (!base) {
+        return refuse(QStringLiteral("Sélectionnez un fondu."));
+    }
+    auto next = *base;
+    const int count = static_cast<int>(next.colors.size());
+    if (count >= 8) {
+        return refuse(QStringLiteral("Un fondu compte au plus 8 fils."));
+    }
+    const auto at = static_cast<std::size_t>(std::clamp(after, 0, count - 1));
+    const auto a = next.colors[at];
+    std::array<std::uint8_t, 3> added{};
+    if (at + 1 < next.colors.size()) {
+        // Teinte intermédiaire : un point de départ lisible, à remplacer par un vrai fil.
+        const auto b = next.colors[at + 1];
+        for (std::size_t c = 0; c < 3; ++c) {
+            added[c] = static_cast<std::uint8_t>((a[c] + b[c] + 1) / 2);
+        }
+    } else {
+        for (std::size_t c = 0; c < 3; ++c) {
+            added[c] = static_cast<std::uint8_t>(a[c] > 127 ? a[c] / 2 : a[c] + (255 - a[c]) / 2);
+        }
+    }
+    next.colors.insert(next.colors.begin() + static_cast<std::ptrdiff_t>(at) + 1, added);
+    if (hasRepeatedNeighbour(next.colors)) {
+        next.colors[at + 1][0] = static_cast<std::uint8_t>(next.colors[at + 1][0] ^ 0x20);
+    }
+    const int position = static_cast<int>(at) + 1;
+    if (!apply(next, QStringLiteral("Fil %1 ajouté : choisissez sa couleur.").arg(position + 1))) {
+        return false;
+    }
+    setSelectedThread(position);
+    return true;
+}
+
+bool FadeController::removeThread(int index) {
+    const auto base = current();
+    if (!base) {
+        return refuse(QStringLiteral("Sélectionnez un fondu."));
+    }
+    auto next = *base;
+    const int count = static_cast<int>(next.colors.size());
+    if (index < 0 || index >= count) {
+        return refuse(QStringLiteral("Fil inconnu."));
+    }
+    if (count <= 2) {
+        return refuse(QStringLiteral("Un fondu garde au moins 2 fils."));
+    }
+    next.colors.erase(next.colors.begin() + index);
+    if (hasRepeatedNeighbour(next.colors)) {
+        return refuse(QStringLiteral("Retirer ce fil collerait deux fils identiques."));
+    }
+    if (!apply(next, QStringLiteral("Fil %1 retiré.").arg(index + 1))) {
+        return false;
+    }
+    setSelectedThread(std::min(index, count - 2));
+    return true;
+}
+
+bool FadeController::moveThread(int index, int offset) {
+    const auto base = current();
+    if (!base) {
+        return refuse(QStringLiteral("Sélectionnez un fondu."));
+    }
+    auto next = *base;
+    const int count = static_cast<int>(next.colors.size());
+    const int target = index + offset;
+    if ((offset != -1 && offset != 1) || index < 0 || index >= count || target < 0 ||
+        target >= count) {
+        return refuse(QStringLiteral("Ce fil est déjà au bout du fondu."));
+    }
+    std::swap(next.colors[static_cast<std::size_t>(index)],
+              next.colors[static_cast<std::size_t>(target)]);
+    if (hasRepeatedNeighbour(next.colors)) {
+        return refuse(QStringLiteral("Deux fils identiques se suivraient."));
+    }
+    if (!apply(next, QStringLiteral("Fil déplacé en position %1.").arg(target + 1))) {
+        return false;
+    }
+    setSelectedThread(target);
+    return true;
+}
+
+bool FadeController::setThreadColor(int index, const QString& hex) {
+    auto list = colors();
+    if (index < 0 || index >= list.size()) {
+        return refuse(QStringLiteral("Fil inconnu."));
+    }
+    list[index] = hex.trimmed();
+    return setColors(list);
 }
 
 QString FadeController::objectId() const {

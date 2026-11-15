@@ -239,8 +239,8 @@ void GpuCanvas::setDigitize(DigitizeGestures* digitize) {
 }
 
 QVariantList GpuCanvas::handlesOverlay() const {
-    static const char* const kKinds[] = {"line",   "closed", "dots", "selected",
-                                         "handle", "active", "ghost"};
+    static const char* const kKinds[] = {"line",   "closed", "dots",  "selected",
+                                         "handle", "active", "ghost", "stop"};
     constexpr int kMaxDots = 8000;
     QVariantList out;
     if (!digitize_ || !digitize_->capturesMouse()) {
@@ -267,9 +267,18 @@ QVariantList GpuCanvas::handlesOverlay() const {
             pts << s.x << s.y;
         }
         if (!pts.isEmpty()) {
-            out.push_back(QVariantMap{
+            QVariantMap entry{
                 {QStringLiteral("kind"), QString::fromLatin1(kKinds[static_cast<int>(item.kind)])},
-                {QStringLiteral("pts"), pts}});
+                {QStringLiteral("pts"), pts}};
+            if (item.kind == HandleItem::Kind::Stop) {
+                QStringList colours;
+                for (const auto& c : item.colors) {
+                    colours.push_back(c);
+                }
+                entry.insert(QStringLiteral("colors"), colours);
+                entry.insert(QStringLiteral("selected"), item.selected);
+            }
+            out.push_back(entry);
         }
     };
     for (const auto& item : digitize_->staticItems()) {

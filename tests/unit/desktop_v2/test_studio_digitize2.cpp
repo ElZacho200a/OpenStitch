@@ -134,6 +134,7 @@ private slots:
     void initTestCase();
     void pointGesturesByMouse();
     void fadeHandlesByMouse();
+    void fadeThreadStopsByMouse();
     void satinHandlesAndRungsByMouse();
     void guideStrokeByMouse();
     void pullAndCalibration();
@@ -303,6 +304,89 @@ void StudioDigitize2Test::fadeHandlesByMouse() {
              axis.value("start").toMap().value("y").toDouble());
     QVERIFY(rig.session.undo());
     QVERIFY(dstBytes(rig.session) == base);
+}
+
+// Poignées numérotées des fils (piste « barre de fils » + canevas) : un clic désigne le fil sans
+// muter ; glisser un fil du milieu déplace tout le fondu, sans saut, en UN pas.
+void StudioDigitize2Test::fadeThreadStopsByMouse() {
+    Rig rig;
+    open(rig);
+    QVERIFY(rig.fade.createMulticolor(
+        {QStringLiteral("#c81e1e"), QStringLiteral("#e8b43a"), QStringLiteral("#2a6fb8")}, true, 0,
+        0));
+    QTRY_VERIFY(rig.fade.multiFade());
+    rig.digitizer.setMode(QStringLiteral("fade"));
+    const auto axis = rig.fade.axis();
+    QVERIFY(!axis.isEmpty());
+    const auto findStops = [&]() -> QVariantMap {
+        for (const auto& item : rig.canvas->handlesOverlay()) {
+            const auto map = item.toMap();
+            if (map.value("kind").toString() == QStringLiteral("stop")) {
+                return map;
+            }
+        }
+        return {};
+    };
+    auto stops = findStops();
+    QCOMPARE(stops.value("colors").toStringList().size(), 3);
+    QCOMPARE(stops.value("colors").toStringList().at(1), QStringLiteral("#e8b43a"));
+    QCOMPARE(stops.value("selected").toInt(), 0);
+
+    const auto start = axis.value("start").toMap();
+    const auto end = axis.value("end").toMap();
+    const double mx = (start.value("x").toDouble() + end.value("x").toDouble()) / 2.0;
+    const double my = (start.value("y").toDouble() + end.value("y").toDouble()) / 2.0;
+    const auto base = dstBytes(rig.session);
+    const auto depth = rig.steps();
+    QTest::mouseClick(rig.window, Qt::LeftButton, {}, at(rig, mx, my));
+    QTRY_COMPARE(rig.fade.selectedThread(), 1);
+    QCOMPARE(rig.steps(), depth); // désigner n'est pas une modification
+    QVERIFY(dstBytes(rig.session) == base);
+    QTRY_COMPARE(findStops().value("selected").toInt(), 1);
+    // Le dernier fil est l'extrémité de la transition.
+    QTest::mouseClick(rig.window, Qt::LeftButton, {},
+                      at(rig, end.value("x").toDouble(), end.value("y").toDouble()));
+    QTRY_COMPARE(rig.fade.selectedThread(), 2);
+    QCOMPARE(rig.steps(), depth);
+
+    // Resserrer la transition (glisser le dernier fil), puis glisser le fil du milieu de 2 mm :
+    // l'axe entier suit, sans sauter sous le curseur.
+    drag(rig, at(rig, end.value("x").toDouble(), end.value("y").toDouble()),
+         at(rig, end.value("x").toDouble() - 6.0, end.value("y").toDouble()));
+    QCOMPARE(rig.steps(), depth + 1);
+    const auto narrowed = rig.fade.axis();
+    const auto ns = narrowed.value("start").toMap();
+    const auto ne = narrowed.value("end").toMap();
+    const double nx = (ns.value("x").toDouble() + ne.value("x").toDouble()) / 2.0;
+    const double ny = (ns.value("y").toDouble() + ne.value("y").toDouble()) / 2.0;
+    drag(rig, at(rig, nx + 0.4, ny), at(rig, nx + 2.4, ny)); // saisi à côté du centre exact
+    QVERIFY2(rig.steps() == depth + 2, qPrintable(rig.fade.message()));
+    const auto moved = rig.fade.axis();
+    QVERIFY(std::abs(moved.value("start").toMap().value("x").toDouble() -
+                     (ns.value("x").toDouble() + 2.0)) < 0.3);
+    QVERIFY(rig.session.undo());
+    QVERIFY(rig.session.undo());
+    QVERIFY(dstBytes(rig.session) == base);
+
+    // Gestes de la barre de fils : un pas chacun, annulés exactement.
+    QVERIFY(rig.fade.insertThread(0));
+    QCOMPARE(rig.fade.colors().size(), 4);
+    QCOMPARE(rig.fade.selectedThread(), 1);
+    QCOMPARE(rig.steps(), depth + 1);
+    QVERIFY(rig.fade.moveThread(1, 1));
+    QCOMPARE(rig.fade.colors().at(1).toString(), QStringLiteral("#e8b43a"));
+    QVERIFY(!rig.fade.moveThread(3, 1)); // déjà au bout : refusé sans mutation
+    QCOMPARE(rig.steps(), depth + 2);
+    QVERIFY(rig.fade.setThreadColor(0, QStringLiteral("#101010")));
+    QVERIFY(rig.fade.removeThread(2));
+    QVERIFY(rig.fade.setSoftness(1));
+    QCOMPARE(rig.fade.curve(), 1);
+    QCOMPARE(rig.steps(), depth + 5);
+    for (int i = 0; i < 5; ++i) {
+        QVERIFY(rig.session.undo());
+    }
+    QVERIFY(dstBytes(rig.session) == base);
+    QCOMPARE(rig.fade.colors().size(), 3);
 }
 
 void StudioDigitize2Test::satinHandlesAndRungsByMouse() {

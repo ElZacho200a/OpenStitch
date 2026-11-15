@@ -741,21 +741,24 @@ void StudioDigitizeTest::mainQmlHostsDigitizePanels() {
     QTRY_VERIFY(inlineFade->isVisible());
     QTRY_VERIFY(fade.canCreate());
     auto* inlineCreate = named(window, "inspectorFadeCreate");
-    QTRY_VERIFY(named(window, "inspectorFadeColor1") != nullptr);
-    auto* arrival = named(window, "inspectorFadeColor1");
+    // Barre de fils : les fils numérotés du brouillon, le fil désigné se règle dans la carte.
+    QTRY_VERIFY(named(window, "inspectorFadeThread1") != nullptr);
+    QVERIFY(press(window, "inspectorFadeThread1"));
+    auto* arrival = named(window, "inspectorFadeSelectedColor");
     QVERIFY(inlineCreate && arrival);
     QTRY_VERIFY(inlineCreate->isEnabled());
     QVERIFY(arrival->setProperty("text", QStringLiteral("#ZZZZZZ")));
     QVERIFY(arrival->property("invalid").toBool());
     QVERIFY(arrival->setProperty("text", QStringLiteral("#3388aa")));
     QVERIFY(QMetaObject::invokeMethod(arrival, "editingFinished"));
-    QVERIFY(press(window, "inspectorFadeAddColor"));
-    QTRY_VERIFY(named(window, "inspectorFadeColor2") != nullptr);
+    QVERIFY(press(window, "inspectorFadeAddColor")); // après le fil 2 : devient le fil 3
+    QTRY_VERIFY(named(window, "inspectorFadeThread2") != nullptr);
     QVERIFY(press(window, "inspectorFadeCreate"));
     QTRY_VERIFY(fade.multiFade());
     QCOMPARE(fade.colors().size(), 3);
     QCOMPARE(fade.colors().at(1).toString(), QStringLiteral("#3388aa"));
     QCOMPARE(session.project().embroidery_objects.size(), std::size_t{4}); // ancre + 3 couches
+    QCOMPARE(fade.threadLabels().size(), 3); // couleurs libres : libellés vides, jamais absents
     // L'axe est éditable au canevas pour un fondu multicolore.
     QVERIFY(!fade.axis().isEmpty());
     QVERIFY(named(window, "inspectorFadeEditAxis"));
@@ -765,39 +768,94 @@ void StudioDigitizeTest::mainQmlHostsDigitizePanels() {
     QVERIFY(press(window, "inspectorFadeModeOverlay"));
     QTRY_VERIFY(!fade.complementary());
     QCOMPARE(stepDepth(), fadeDepth + 1);
+    // Style en tuiles : « Peint » = passé empiétant, réellement appliqué depuis le QML.
     fadeDepth = stepDepth();
-    QVERIFY(press(window, "inspectorFadeGeometry2"));
-    QTRY_COMPARE(fade.geometry(), 2);
-    QCOMPARE(stepDepth(), fadeDepth + 1);
-    auto* style = named(window, "inspectorFadeStyle");
-    QVERIFY(style);
-    QVERIFY(QMetaObject::invokeMethod(style, "activated", Q_ARG(int, 2)));
-    QTRY_COMPARE(fade.method(), 2); // passé empiétant réellement appliqué depuis le QML
+    QVERIFY(press(window, "inspectorFadeStyle2"));
+    QTRY_COMPARE(fade.method(), 2);
     QCOMPARE(fade.style(), 2);
-    auto* curveBox = named(window, "inspectorFadeCurve");
-    QVERIFY(curveBox);
-    QVERIFY(QMetaObject::invokeMethod(curveBox, "activated", Q_ARG(int, 2)));
-    QTRY_COMPARE(fade.curve(), 2);
-
-    auto* angleField = named(window, "inspectorFadeAngle");
-    QVERIFY(angleField);
-    QTRY_VERIFY(angleField->isVisible());
+    QCOMPARE(stepDepth(), fadeDepth + 1);
+    // Transition simplifiée : « Nette » = profil raide, un pas.
     fadeDepth = stepDepth();
-    QVERIFY(angleField->setProperty("text", QStringLiteral("90")));
-    QVERIFY(QMetaObject::invokeMethod(angleField, "editingFinished"));
+    QVERIFY(press(window, "inspectorFadeSoftness2"));
+    QTRY_COMPARE(fade.curve(), 2);
+    QCOMPARE(fade.softness(), 2);
+    QCOMPARE(stepDepth(), fadeDepth + 1);
+    // Direction en flèches : vers le haut = 90°, un pas, annulable exactement.
+    fadeDepth = stepDepth();
+    QVERIFY(press(window, "inspectorFadeDirection90"));
     QTRY_VERIFY(std::abs(fade.angle() - 90.0) < 0.01);
     QCOMPARE(stepDepth(), fadeDepth + 1);
+    QTRY_VERIFY(named(window, "inspectorFadeDirection90")->property("checked").toBool());
     QVERIFY(session.undo());
     QTRY_VERIFY(std::abs(fade.angle()) < 0.01);
     QVERIFY(session.redo());
     QTRY_VERIFY(std::abs(fade.angle() - 90.0) < 0.01);
 
+    // Plus de réglages : géométrie courbe, angle exact, profil détaillé.
+    QVERIFY(!named(window, "inspectorFadeAdvancedSection")->isVisible());
+    QVERIFY(press(window, "inspectorFadeAdvanced"));
+    QTRY_VERIFY(named(window, "inspectorFadeAdvancedSection")->isVisible());
+    fadeDepth = stepDepth();
+    QVERIFY(press(window, "inspectorFadeGeometry2"));
+    QTRY_COMPARE(fade.geometry(), 2);
+    QCOMPARE(stepDepth(), fadeDepth + 1);
+    auto* curveBox = named(window, "inspectorFadeCurve");
+    QVERIFY(curveBox);
+    QVERIFY(QMetaObject::invokeMethod(curveBox, "activated", Q_ARG(int, 3)));
+    QTRY_COMPARE(fade.curve(), 3);
+    QCOMPARE(fade.softness(), -1); // profil hors des trois choix simples
+    auto* angleField = named(window, "inspectorFadeAngle");
+    QVERIFY(angleField);
+    QTRY_VERIFY(angleField->isVisible());
+    fadeDepth = stepDepth();
+    QVERIFY(angleField->setProperty("text", QStringLiteral("30")));
+    QVERIFY(QMetaObject::invokeMethod(angleField, "editingFinished"));
+    QTRY_VERIFY(std::abs(fade.angle() - 30.0) < 0.01);
+    QCOMPARE(stepDepth(), fadeDepth + 1);
+
+    // Carte du fil : ajouter, déplacer, retirer ; chaque geste est un pas et désigne le fil.
+    QVERIFY(press(window, "inspectorFadeThread0"));
+    QTRY_COMPARE(fade.selectedThread(), 0);
+    QVERIFY(!named(window, "inspectorFadeMoveLeft")->isEnabled());
+    fadeDepth = stepDepth();
     QVERIFY(press(window, "inspectorFadeAddColor"));
     QTRY_COMPARE(fade.colors().size(), 4);
+    QCOMPARE(fade.selectedThread(), 1);
+    QCOMPARE(stepDepth(), fadeDepth + 1);
     QCOMPARE(session.project().embroidery_objects.size(), std::size_t{5}); // ancre + 4 couches
-    QVERIFY(press(window, "inspectorFadeRemoveColor0"));
+    const auto added = fade.colors().at(1).toString();
+    QVERIFY(press(window, "inspectorFadeMoveRight"));
+    QTRY_COMPARE(fade.colors().at(2).toString(), added);
+    QCOMPARE(fade.selectedThread(), 2);
+    QVERIFY(press(window, "inspectorFadeRemoveThread"));
     QTRY_COMPARE(fade.colors().size(), 3);
+    QVERIFY(!fade.colors().contains(QVariant(added)));
+    QVERIFY(press(window, "inspectorFadeThread0"));
+    QVERIFY(press(window, "inspectorFadeRemoveThread"));
+    QTRY_COMPARE(fade.colors().size(), 2);
     QCOMPARE(fade.colors().at(0).toString(), QStringLiteral("#3388aa"));
+    QVERIFY(!named(window, "inspectorFadeRemoveThread")->isEnabled()); // 2 fils au minimum
+    // Clavier : la barre se parcourt aux flèches, Ctrl+flèche déplace le fil (un pas).
+    auto* bar = named(window, "inspectorFadeThreadBar");
+    QVERIFY(bar);
+    bar->forceActiveFocus();
+    QTRY_VERIFY(bar->hasActiveFocus());
+    QTest::keyClick(window, Qt::Key_Home);
+    QTRY_COMPARE(fade.selectedThread(), 0);
+    QTest::keyClick(window, Qt::Key_Right);
+    QTRY_COMPARE(fade.selectedThread(), 1);
+    fadeDepth = stepDepth();
+    QTest::keyClick(window, Qt::Key_Left, Qt::ControlModifier);
+    QTRY_COMPARE(fade.colors().at(1).toString(), QStringLiteral("#3388aa"));
+    QCOMPARE(fade.selectedThread(), 0);
+    QCOMPARE(stepDepth(), fadeDepth + 1);
+    // Suppr dans la barre ne supprime jamais l'objet (2 fils : refusé, rien ne change).
+    fadeDepth = stepDepth();
+    QTest::keyClick(window, Qt::Key_Delete);
+    QCOMPARE(stepDepth(), fadeDepth);
+    QVERIFY(fade.hasFade());
+    QVERIFY(session.undo());
+    QTRY_COMPARE(fade.colors().at(0).toString(), QStringLiteral("#3388aa"));
     // Inverser retourne l'axe (géométrie courbe ici) sans changer l'ordre de couture.
     const double beforeReverse = fade.angle();
     QVERIFY(press(window, "inspectorFadeReverse"));
