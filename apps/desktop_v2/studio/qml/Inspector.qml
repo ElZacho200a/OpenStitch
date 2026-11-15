@@ -420,39 +420,11 @@ Item {
 
             Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }
 
-            // Stitch recipes (STCH-CROS-01): built-in hand-embroidery stitches; one undo step.
-            SectionLabel { text: qsTr("RECETTES DE POINTS") }
-            RowLayout {
+            // Stitch recipes (STCH-CROS-01): illustrated catalogue, one undo step per apply.
+            RecipeCatalog {
+                objectName: "recipeCatalog"
                 Layout.fillWidth: true
-                spacing: 8
-                StudioComboBox {
-                    id: recipeBox
-                    objectName: "recipeBox"
-                    Layout.fillWidth: true
-                    model: root.ctl ? root.ctl.recipes : []
-                    textRole: "label"
-                    valueRole: "id"
-                    Accessible.name: qsTr("Recette de points")
-                }
-                StudioButton {
-                    objectName: "applyRecipe"
-                    text: qsTr("Appliquer")
-                    tooltip: qsTr("Remplace le type et les réglages de la sélection")
-                    enabled: recipeBox.currentIndex >= 0
-                    onClicked: root.ctl.applyRecipe(recipeBox.currentValue)
-                }
-            }
-            Text {
-                readonly property var recipe: root.ctl && recipeBox.currentIndex >= 0
-                                              ? root.ctl.recipes[recipeBox.currentIndex] : null
-                Layout.fillWidth: true
-                objectName: "recipeNote"
-                visible: recipe !== null
-                text: recipe ? (recipe.approximation ? qsTr("Simulation : ") : "") + recipe.note : ""
-                color: recipe && recipe.approximation ? Theme.warning : Theme.muted
-                wrapMode: Text.WordWrap
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.captionSize
+                ctl: root.ctl
             }
         }
     }

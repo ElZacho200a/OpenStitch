@@ -2,6 +2,7 @@
 #include "inspector_controller.hpp"
 
 #include <QColor>
+#include <QQmlEngine>
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -17,6 +18,7 @@
 #include "openstitch/document/stitch_recipes.hpp"
 #include "openstitch/project_ops/gradient_fill.hpp"
 #include "openstitch/project_ops/operations.hpp"
+#include "recipe_swatch_provider.hpp"
 
 namespace openstitch::desktop_v2::studio {
 
@@ -552,16 +554,30 @@ QVariantList InspectorController::recipes() const {
     QVariantList out;
     for (const auto& r : document::stitch_recipes()) {
         const bool outline = r.target == document::RecipeTarget::Outline;
-        out.push_back(
-            QVariantMap{{QStringLiteral("id"), u8(std::string(r.id))},
-                        {QStringLiteral("label"),
-                         u8(std::string(r.name_fr)) + (outline ? QStringLiteral(" · contour")
-                                                               : QStringLiteral(" · remplissage"))},
-                        {QStringLiteral("note"), u8(std::string(r.note))},
-                        {QStringLiteral("approximation"),
-                         r.fidelity == document::RecipeFidelity::Approximation}});
+        out.push_back(QVariantMap{
+            {QStringLiteral("id"), u8(std::string(r.id))},
+            {QStringLiteral("name"), u8(std::string(r.name_fr))},
+            {QStringLiteral("nameEn"), u8(std::string(r.name_en))},
+            {QStringLiteral("target"), u8(std::string(document::recipe_target_id(r.target)))},
+            {QStringLiteral("label"),
+             u8(std::string(r.name_fr)) +
+                 (outline ? QStringLiteral(" · contour") : QStringLiteral(" · remplissage"))},
+            {QStringLiteral("note"), u8(std::string(r.note))},
+            {QStringLiteral("approximation"),
+             r.fidelity == document::RecipeFidelity::Approximation}});
     }
     return out;
+}
+
+bool InspectorController::installRecipeSwatches(QObject* item) const {
+    auto* engine = item != nullptr ? qmlEngine(item) : nullptr;
+    if (engine == nullptr) {
+        return false;
+    }
+    if (engine->imageProvider(QStringLiteral("recipe")) == nullptr) {
+        engine->addImageProvider(QStringLiteral("recipe"), new RecipeSwatchProvider);
+    }
+    return true;
 }
 
 QString InspectorController::applyRecipe(const QString& id) {

@@ -815,17 +815,40 @@ void StudioInspectorTest::recipesApplyThroughControllerAndQml() {
     auto* root = qobject_cast<QQuickItem*>(item.get());
     QVERIFY(root != nullptr);
     root->setParentItem(window.contentItem());
-    root->setSize({320, 900});
-    QTRY_VERIFY(findItem(root, QStringLiteral("recipeBox")) != nullptr);
-    auto* box = findItem(root, QStringLiteral("recipeBox"));
-    const auto split = std::ranges::find_if(document::stitch_recipes(), [](const auto& r) {
-        return r.fidelity == document::RecipeFidelity::Approximation;
-    });
-    QVERIFY(split != document::stitch_recipes().end());
-    box->setProperty("currentIndex", static_cast<int>(split - document::stitch_recipes().begin()));
+    root->setSize({320, 1600});
+    QTRY_VERIFY(findItem(root, QStringLiteral("recipeCatalog")) != nullptr);
+    auto* catalog = findItem(root, QStringLiteral("recipeCatalog"));
+    // One OpenStitch-rendered tile per recipe.
+    for (const auto& r : document::stitch_recipes()) {
+        QTRY_VERIFY(findItem(root, QStringLiteral("recipeTile_") + QString::fromUtf8(r.id)) !=
+                    nullptr);
+    }
+    // Filters and search narrow the tiles (presentation only).
+    catalog->setProperty("filter", QStringLiteral("approximation"));
+    QTRY_VERIFY(findItem(root, QStringLiteral("recipeTile_cross-stitch")) == nullptr);
+    QVERIFY(findItem(root, QStringLiteral("recipeTile_split-stitch")) != nullptr);
+    catalog->setProperty("filter", QStringLiteral("all"));
+    auto* search = findItem(root, QStringLiteral("recipeSearch"));
+    QVERIFY(search != nullptr);
+    search->setProperty("text", QStringLiteral("BAYEUX"));
+    QTRY_VERIFY(findItem(root, QStringLiteral("recipeTile_cross-stitch")) == nullptr);
+    QVERIFY(findItem(root, QStringLiteral("recipeTile_bayeux-stitch")) != nullptr);
+    search->setProperty("text", QString());
+    // Optional visual proof (no pixel assertion): OPENSTITCH_CAPTURE_DIR=<dir> saves the catalogue.
+    if (const QByteArray dir = qgetenv("OPENSTITCH_CAPTURE_DIR"); !dir.isEmpty()) {
+        window.resize(320, 1600);
+        window.show();
+        QTest::qWait(1500); // asynchronous thumbnails
+        window.grabWindow().save(QString::fromLocal8Bit(dir) +
+                                 QStringLiteral("/recipe-catalog.png"));
+    }
+    // Selecting a simulation shows its warning; Apply converts the selection.
+    const auto* split = document::find_stitch_recipe("split-stitch");
+    QVERIFY(split != nullptr && split->fidelity == document::RecipeFidelity::Approximation);
+    catalog->setProperty("selectedId", QStringLiteral("split-stitch"));
     auto* note = findItem(root, QStringLiteral("recipeNote"));
     QVERIFY(note != nullptr);
-    QTRY_VERIFY(note->property("text").toString().startsWith(QStringLiteral("Simulation")));
+    QTRY_VERIFY(note->property("text").toString().contains(QStringLiteral("Simulation")));
     QMetaObject::invokeMethod(findItem(root, QStringLiteral("applyRecipe")), "clicked");
     QVERIFY(object(session, id).params == split->params);
 }

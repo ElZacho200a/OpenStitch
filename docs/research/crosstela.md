@@ -101,6 +101,21 @@ traversent la grille ajourée et se voient : la recette les désactive.
 Architecture : [ADR 0007](../adr/0007-recettes-de-points.md) — catalogue intégré compilé en
 `StitchParams`, appliqué par la commande de préréglage existante, sans champ nouveau dans l'OSP.
 
+## Différés argumentés
+
+- **Or nué** (D) : des fils d'or posés par paires, couchés par des soies de couleur dont la
+  densité dessine l'image. Une recette mono-objet n'en donnerait qu'une texture trompeuse.
+  Conception proposée : un mode « couchage seul » de `TatamiParams` (sans couche posée) pour
+  coucher, dans une autre couleur, un tatami doré ; puis une densité de couchage modulée par un
+  `DensityGradient` existant. À faire seulement avec un cas d'usage réel et un essai textile.
+- **Dégradé en briques** (C) : point de brique + fondu multicolore. Il réutilisera le fondu
+  d'E19 ; en attente de la PR #355 (fondus), à ne pas modifier ici.
+- **Routage des graines** : le seuil de coupe par défaut (3 mm, `FinishingSettings`) égale
+  l'écart des graines de la recette ; un ordre de couture par voisinage gagnerait peu. Les
+  leviers réels sont un semis plus serré (moins de coupes, plus de points) ou un seuil de coupe
+  projet plus haut (sauts flottants plus longs) : choix d'usage, à mesurer avec
+  `scripts/recipe_bench.py` et à trancher sur pièce-test.
+
 ## Limites de cet inventaire
 
 - Classement par règles (famille, structure) puis exceptions fiche par fiche : les 140 fiches C

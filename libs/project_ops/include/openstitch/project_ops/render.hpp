@@ -4,6 +4,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <string_view>
 #include <vector>
 
 #include "openstitch/core/error.hpp"
@@ -37,5 +38,12 @@ struct RenderResult {
 // Déterministe : mêmes entrées, mêmes octets.
 [[nodiscard]] Result<RenderResult> render_realistic_png(const document::Project& project,
                                                         const RenderOptions& options = {});
+
+// Vignette d'une recette de points (STCH-CROS-01, catalogue Studio) : la recette appliquée à une
+// forme témoin (octogone 18 x 14 mm pour un remplissage, tracé ondulé ouvert pour un contour),
+// fil bleu sur fond lin, rendue par `render_realistic_png`. Toujours rendue par OpenStitch, jamais
+// une illustration de la source. Déterministe ; erreur si la recette est inconnue.
+[[nodiscard]] Result<RenderResult> render_recipe_swatch(std::string_view recipe_id,
+                                                        double px_per_mm = 4.0);
 
 } // namespace openstitch::project_ops
