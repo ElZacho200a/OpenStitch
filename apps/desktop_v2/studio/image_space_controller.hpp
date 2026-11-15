@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
+#include "openstitch/core/ids.hpp"
+
 #include <QObject>
 #include <QPointF>
 #include <QPointer>
@@ -123,6 +125,7 @@ private:
     bool hadSegmentation_{false};
     bool imageChanged_{false};
     std::size_t lastOpCount_{0};
+    ObjectId observedImageSource_;
     std::uint64_t observedRevision_{std::numeric_limits<std::uint64_t>::max()};
     // Identité des images SOURCE, avant la réduction potentiellement coûteuse à 4096 px.
     bool imageKeysSet_{false};

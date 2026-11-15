@@ -24,7 +24,7 @@ namespace {
 constexpr double kIslandMaxDeltaE = 25.0; // un îlot ne fusionne que dans une couleur assez proche
 
 [[nodiscard]] const segmentation::Segmentation* segmentationOf(const document::Project& p) {
-    return p.segmentation ? &*p.segmentation : nullptr;
+    return p.imageSource().segmentation ? &*p.imageSource().segmentation : nullptr;
 }
 
 struct HoleFix {
@@ -101,7 +101,7 @@ public:
     explicit FillSmallHolesCommand(std::vector<HoleFix> holes) : holes_(std::move(holes)) {}
 
     void apply(document::Project& project) override {
-        auto& seg = *project.segmentation;
+        auto& seg = *project.imageSource().segmentation;
         for (const auto& hole : holes_) {
             for (const auto pixel : hole.pixels) {
                 seg.labels[pixel] = static_cast<std::uint32_t>(hole.target.value);
@@ -110,7 +110,7 @@ public:
         }
     }
     void revert(document::Project& project) override {
-        auto& seg = *project.segmentation;
+        auto& seg = *project.imageSource().segmentation;
         for (const auto& hole : holes_) {
             for (const auto pixel : hole.pixels) {
                 seg.labels[pixel] = 0;
@@ -144,7 +144,7 @@ public:
     }
 
     void apply(document::Project& project) override {
-        auto& seg = *project.segmentation;
+        auto& seg = *project.imageSource().segmentation;
         const std::uint32_t to = erase_ ? 0 : target_;
         for (const auto& p : pixels_) {
             seg.labels[p.index] = to;
@@ -152,7 +152,7 @@ public:
         adjust(seg, +1);
     }
     void revert(document::Project& project) override {
-        auto& seg = *project.segmentation;
+        auto& seg = *project.imageSource().segmentation;
         for (const auto& p : pixels_) {
             seg.labels[p.index] = p.before;
         }
@@ -340,8 +340,8 @@ std::vector<std::uint64_t> objectsOfRegions(const document::Project& project,
                                             const std::vector<std::uint64_t>& regionIds) {
     std::vector<std::uint64_t> vectors;
     for (const auto& v : project.vector_objects) {
-        if (v.source_region && std::find(regionIds.begin(), regionIds.end(),
-                                         v.source_region->value) != regionIds.end()) {
+        if (project.fromActiveImage(v) && std::find(regionIds.begin(), regionIds.end(),
+                                                    v.source_region->value) != regionIds.end()) {
             vectors.push_back(v.id.value);
         }
     }
@@ -366,7 +366,7 @@ std::vector<std::uint64_t> regionsOfObjects(const document::Project& project,
         }
         const auto v = std::find_if(project.vector_objects.begin(), project.vector_objects.end(),
                                     [&](const auto& o) { return o.id == e->source_vector; });
-        if (v == project.vector_objects.end() || !v->source_region) {
+        if (v == project.vector_objects.end() || !project.fromActiveImage(*v)) {
             continue;
         }
         const auto region = v->source_region->value;
@@ -687,7 +687,7 @@ Result<Regeneration> regenerateObjects(std::shared_ptr<const document::Project> 
                                        std::uint64_t revision, const image::Image& working,
                                        const project_ops::DigitizeSettings& settings,
                                        const TaskContext& task) {
-    if (!project || !project->segmentation) {
+    if (!project || !project->imageSource().segmentation) {
         return fail(ErrorCategory::OperationImpossible, "Pas de segmentation à régénérer",
                     "Numérisez d'abord une image.");
     }
@@ -700,7 +700,7 @@ Result<Regeneration> regenerateObjects(std::shared_ptr<const document::Project> 
     out.revision = revision;
 
     // Même règle de fond que la numérisation : région candidate recommandée, ou choix explicite.
-    const auto candidate = segmentation::background_candidate(*copy->segmentation);
+    const auto candidate = segmentation::background_candidate(*copy->imageSource().segmentation);
     const bool skipLargest = settings.skip_background < 0 ? (candidate && candidate->recommended)
                                                           : (settings.skip_background != 0);
 
@@ -709,13 +709,13 @@ Result<Regeneration> regenerateObjects(std::shared_ptr<const document::Project> 
     std::vector<document::VectorObject> keptVectors;
     std::vector<document::EmbroideryObject> keptEmbroideries;
     for (auto& v : copy->vector_objects) {
-        if (!v.source_region) {
+        if (!copy->fromActiveImage(v)) {
             keptVectors.push_back(v);
         }
     }
     for (auto& e : copy->embroidery_objects) {
-        const bool keep = std::any_of(keptVectors.begin(), keptVectors.end(),
-                                      [&](const auto& v) { return v.id == e.source_vector; });
+        const auto* vector = copy->findObject(e.source_vector);
+        const bool keep = vector == nullptr || !copy->fromActiveImage(*vector);
         if (keep) {
             keptEmbroideries.push_back(e);
         } else if (!e.overrides.empty()) {
@@ -724,7 +724,8 @@ Result<Regeneration> regenerateObjects(std::shared_ptr<const document::Project> 
     }
     copy->vector_objects.clear();
     copy->embroidery_objects.clear();
-    const project_ops::DigitizeSource source{&*copy->segmentation, &working, copy->mm_per_px};
+    const project_ops::DigitizeSource source{&*copy->imageSource().segmentation, &working,
+                                             copy->imageSource().mm_per_px};
     auto produced = project_ops::digitize_objects(source, copy->object_ids, settings, skipLargest);
     if (!produced) {
         return std::unexpected(produced.error());
@@ -741,7 +742,7 @@ Result<Regeneration> regenerateObjects(std::shared_ptr<const document::Project> 
     std::map<std::uint64_t, std::vector<const document::VectorObject*>> oldVectorsByRegion;
     std::map<std::uint64_t, std::vector<const document::EmbroideryObject*>> oldThreadsByVector;
     for (const auto& vector : project->vector_objects) {
-        if (vector.source_region) {
+        if (project->fromActiveImage(vector)) {
             oldVectorsByRegion[vector.source_region->value].push_back(&vector);
         }
     }
@@ -752,9 +753,11 @@ Result<Regeneration> regenerateObjects(std::shared_ptr<const document::Project> 
     std::set<std::uint64_t> matchedVectors;
     std::set<std::uint64_t> matchedThreads;
     for (auto& vector : produced->objects.vectors) {
+        vector.calque = project->imageSourceId();
         if (!vector.source_region) {
             continue;
         }
+        vector.source_image = project->imageSourceId();
         const auto previous = oldVectorsByRegion.find(vector.source_region->value);
         if (previous == oldVectorsByRegion.end()) {
             continue;
@@ -840,7 +843,7 @@ Result<Regeneration> resegmentObjects(std::shared_ptr<const document::Project> p
                     "Essayez un autre nombre de couleurs.");
     }
     auto copy = std::make_shared<document::Project>(*project);
-    copy->segmentation = std::move(*seg);
+    copy->imageSource().segmentation = std::move(*seg);
     auto regenerated = regenerateObjects(copy, revision, working, settings, task);
     if (regenerated) {
         regenerated->objectsBefore = project->embroidery_objects.size();
@@ -882,7 +885,7 @@ HandEdits countHandEdits(const document::Project& project) {
     for (const auto& e : project.embroidery_objects) {
         const auto v = std::find_if(project.vector_objects.begin(), project.vector_objects.end(),
                                     [&](const auto& o) { return o.id == e.source_vector; });
-        const bool fromRegion = v != project.vector_objects.end() && v->source_region.has_value();
+        const bool fromRegion = v != project.vector_objects.end() && project.fromActiveImage(*v);
         if (!fromRegion) {
             ++out.handDrawnObjects;
         } else if (!e.overrides.empty()) {

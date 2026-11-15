@@ -21,8 +21,10 @@
 #include "digitize_pipeline.hpp"
 #include "export_settings.hpp"
 #include "file_io.hpp"
+#include "openstitch/commands/calque_commands.hpp"
 #include "openstitch/formats/svg.hpp"
 #include "openstitch/image/image.hpp"
+#include "openstitch/project_io/openraster.hpp"
 #include "openstitch/project_ops/factory.hpp"
 #include "openstitch/stitch_analysis/placement_template.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
@@ -468,6 +470,14 @@ void FileController::openUrl(const QUrl& url) {
 }
 
 void FileController::openDropped(const QVariantList& urls) {
+    if (urls.size() > 1 && std::ranges::all_of(urls, [](const auto& value) {
+            const auto url = value.toUrl();
+            const auto suffix = lowerSuffix(url.toLocalFile());
+            return url.isLocalFile() && (isImageSuffix(suffix) || suffix == QLatin1String("ora"));
+        })) {
+        importImageLayers(urls);
+        return;
+    }
     for (const auto& value : urls) {
         const QUrl url = value.toUrl();
         if (url.isLocalFile()) {
@@ -488,6 +498,8 @@ void FileController::openPath(const QString& path) {
         guarded(QStringLiteral("ouvrir"), [this, path] { doOpenOsp(path); });
     } else if (isMachineDesignFile(toPath(path))) {
         guarded(QStringLiteral("ouvrir"), [this, path] { doOpenMachine(path); });
+    } else if (suffix == QLatin1String("ora")) {
+        importImageLayers({QUrl::fromLocalFile(path)});
     } else if (isImageSuffix(suffix)) {
         // Opening a raster image starts in the Image space. Segmentation,
         // vectorization and stitch generation are separate, explicit steps.
@@ -496,7 +508,7 @@ void FileController::openPath(const QString& path) {
         importVector(path);
     } else {
         setMessage(QStringLiteral("Format non pris en charge : .%1 (OSP, DST, PES, JEF, EXP, "
-                                  "image, SVG ou DXF attendus)")
+                                  "image, ORA, SVG ou DXF attendus)")
                        .arg(suffix),
                    true);
     }
@@ -561,6 +573,103 @@ QVariantMap FileController::imageImportDefaults() const {
     // Physical scale is a document property. Colour count, region smoothing and
     // stitch type are intentionally NOT import settings in the four-space Studio.
     return {{QStringLiteral("heightMm"), 100.0}};
+}
+
+void FileController::importImageLayers(const QVariantList& urls) {
+    if (urls.empty()) {
+        return;
+    }
+    std::vector<std::pair<std::filesystem::path, std::string>> files;
+    for (const auto& value : urls) {
+        const auto url = value.toUrl();
+        const QFileInfo info(url.toLocalFile());
+        const auto suffix = info.suffix().toLower();
+        if (!url.isLocalFile() || !info.isFile() ||
+            (!isImageSuffix(suffix) && suffix != QLatin1String("ora"))) {
+            setMessage(tr("Image locale non prise en charge : %1").arg(url.toDisplayString()),
+                       true);
+            return;
+        }
+        files.emplace_back(toPath(info.filePath()), toUtf8(info.fileName()));
+    }
+
+    using Entry = commands::ImportImageLayersCommand::Entry;
+    auto& session = studio_.session();
+    const auto revision = session.revision();
+    const auto scale = session.project().hasActiveImage()
+                           ? session.project().imageSource().mm_per_px
+                           : Millimeters{0};
+    runJob<std::vector<Entry>>(
+        tr("Chargement des images"),
+        [files = std::move(files), scale](const TaskContext& task) -> Result<std::vector<Entry>> {
+            std::vector<Entry> entries;
+            entries.reserve(files.size());
+            auto mmPerPx = scale;
+            const auto append = [&](project_io::OpenRasterLayer layer) {
+                if (mmPerPx.value <= 0) {
+                    mmPerPx = Millimeters{100.0 / static_cast<double>(layer.image.height)};
+                }
+                Entry entry;
+                entry.calque.name = std::move(layer.name);
+                entry.calque.visible = layer.visible;
+                entry.source.mm_per_px = mmPerPx;
+                entry.source.original = std::move(layer.image);
+                entries.push_back(std::move(entry));
+            };
+            for (const auto& [file, name] : files) {
+                if (task.cancelled()) {
+                    return cancelled_error();
+                }
+                if (lowerSuffix(fromPath(file)) == QLatin1String("ora")) {
+                    auto layers = project_io::load_openraster(file);
+                    if (!layers) {
+                        auto error = layers.error();
+                        error.message = name + " : " + error.message;
+                        return std::unexpected(std::move(error));
+                    }
+                    for (auto& layer : *layers) {
+                        append(std::move(layer));
+                    }
+                    continue;
+                }
+                auto image = image::load_image(file);
+                if (!image) {
+                    auto error = image.error();
+                    error.message = name + " : " + error.message;
+                    return std::unexpected(std::move(error));
+                }
+                if (image->empty() || image->height <= 0) {
+                    return fail(ErrorCategory::InvalidFile, "Dimensions invalides : " + name);
+                }
+                append({name, std::move(*image), true});
+            }
+            return entries;
+        },
+        [this, revision](std::vector<Entry>&& entries) {
+            auto& current = studio_.session();
+            if (current.revision() != revision) {
+                setMessage(tr("Le document a changé pendant l'import. Relancez l'import."), true);
+                return;
+            }
+            const auto& project = current.project();
+            const auto background =
+                project.calques.empty() &&
+                        (!project.vector_objects.empty() || !project.embroidery_objects.empty() ||
+                         project.hasActiveImage())
+                    ? current.allocateObjectId()
+                    : ObjectId{};
+            for (auto& entry : entries) {
+                entry.calque.id = current.allocateObjectId();
+            }
+            const auto first = entries.front().calque.id;
+            const auto count = static_cast<int>(entries.size());
+            current.execute(std::make_unique<commands::ImportImageLayersCommand>(std::move(entries),
+                                                                                 background));
+            current.selectImageSource(first);
+            emit imageImported();
+            setMessage(tr("%n image(s) importée(s) en calques.", nullptr, count));
+        },
+        tr("Chargement des images impossible : "));
 }
 
 void FileController::importImage(const QString& path, const QVariantMap& options) {

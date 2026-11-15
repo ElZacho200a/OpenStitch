@@ -19,6 +19,7 @@ struct VectorObject {
     ObjectId id;
     std::string name;
     std::optional<RegionId> source_region; // lien conservé vers la région d'origine
+    ObjectId source_image; // calque de la source, invalide pour la source historique
     std::array<std::uint8_t, 3> rgb{};
     std::vector<geometry::PathSet> paths; // plusieurs morceaux possibles
     bool visible{true};

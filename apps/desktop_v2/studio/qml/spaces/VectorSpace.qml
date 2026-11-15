@@ -233,6 +233,18 @@ Item {
                 anchors.fill: parent
                 anchors.margins: 2
                 spacing: 0
+                StudioComboBox {
+                    objectName: "vectorImageLayerSelector"
+                    enabled: !studio.busy
+                    Layout.fillWidth: true
+                    Layout.margins: Theme.panelPadding
+                    readonly property bool ready: typeof imageTools !== "undefined"
+                    visible: ready && imageTools.imageLayers.length > 1
+                    model: ready ? imageTools.imageLayers : []
+                    currentIndex: ready ? imageTools.imageLayerIndex : -1
+                    Accessible.name: qsTr("Calque à vectoriser")
+                    onActivated: index => imageTools.selectImageLayer(index)
+                }
                 VectorShapePanel {
                     id: shapePanel
                     Layout.fillWidth: true

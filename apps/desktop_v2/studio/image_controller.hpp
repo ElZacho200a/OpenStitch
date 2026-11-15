@@ -51,6 +51,8 @@ private:
 class ImageController : public QObject {
     Q_OBJECT
     Q_PROPERTY(bool hasImage READ hasImage NOTIFY changed)
+    Q_PROPERTY(QStringList imageLayers READ imageLayers NOTIFY changed)
+    Q_PROPERTY(int imageLayerIndex READ imageLayerIndex NOTIFY changed)
     Q_PROPERTY(int imageWidth READ imageWidth NOTIFY changed)
     // Taille physique d'un pixel de travail (mm) : place l'aperçu de segmentation sur le canevas.
     Q_PROPERTY(double mmPerPx READ mmPerPx NOTIFY changed)
@@ -84,6 +86,9 @@ public:
     }
 
     [[nodiscard]] bool hasImage() const;
+    [[nodiscard]] QStringList imageLayers() const;
+    [[nodiscard]] int imageLayerIndex() const;
+    Q_INVOKABLE void selectImageLayer(int index);
     [[nodiscard]] int imageWidth() const { return width_; }
     [[nodiscard]] double mmPerPx() const;
     [[nodiscard]] int imageHeight() const { return height_; }
@@ -153,6 +158,7 @@ private:
     QStringList ops_;
     std::vector<image::ImageOp> lastOps_;
     std::uint64_t lastOriginalKey_{0};
+    ObjectId observedImageSource_;
     int imageRevision_{0};
     bool busy_{false};
     QString busyLabel_;

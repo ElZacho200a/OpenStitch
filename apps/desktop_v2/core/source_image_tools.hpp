@@ -5,8 +5,8 @@
 // couleur devient un objet brodé) et zones de détail (masque qui préserve les petites formes à la
 // segmentation). Chaque action est UNE `ICommand` annulable. Sans Qt.
 //
-// Repère image : centrée sur l'origine du modèle, `project.mm_per_px` millimètres par pixel, Y vers
-// le bas (c'est celui des mm « écran » de l'aperçu) -- le même que l'ancien desktop.
+// Repère image : centrée sur l'origine du modèle, `project.imageSource().mm_per_px` millimètres par
+// pixel, Y vers le bas (c'est celui des mm « écran » de l'aperçu) -- le même que l'ancien desktop.
 
 #include <cstdint>
 #include <optional>

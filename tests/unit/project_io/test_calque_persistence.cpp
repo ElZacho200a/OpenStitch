@@ -7,6 +7,8 @@
 
 #include <filesystem>
 
+#include "archive.hpp"
+#include "openstitch/project_io/openraster.hpp"
 #include "openstitch/project_io/project_io.hpp"
 
 using namespace openstitch;
@@ -74,4 +76,38 @@ TEST_CASE("calques : un document sans calque garde sa version et se relit sans c
     REQUIRE(loaded.has_value());
     CHECK(info.fileVersion == project_io::kSchemaVersion); // lisible par les versions antérieures
     CHECK(loaded->calques.empty());
+}
+
+TEST_CASE("OpenRaster preserves layer order, name, visibility and canvas alignment") {
+    const auto path = fs::temp_directory_path() / "openstitch_openraster_layers.ora";
+    const auto text_blob = [](std::string_view text) {
+        return project_io::detail::Blob(text.begin(), text.end());
+    };
+    const auto png = image::encode_png({2, 1, true, {10, 20, 30, 255, 40, 50, 60, 255}});
+    REQUIRE(png.has_value());
+    constexpr auto stack = R"xml(<image version="0.0.6" w="4" h="3"><stack>
+        <stack visibility="hidden"><layer name="Detail" src="data/piece.png" x="2" y="1"/></stack>
+        <layer name="Fond" src="data/piece.png" x="-1"/>
+        </stack></image>)xml";
+    REQUIRE(project_io::detail::write_zip(path, {{"mimetype", text_blob("image/openraster")},
+                                                 {"stack.xml", text_blob(stack)},
+                                                 {"data/piece.png", *png}})
+                .has_value());
+    const auto loaded = project_io::load_openraster(path);
+    fs::remove(path);
+    REQUIRE(loaded.has_value());
+    REQUIRE(loaded->size() == 2);
+    const auto& bottom = loaded->at(0);
+    const auto& top = loaded->at(1);
+    CHECK(bottom.name == "Fond");
+    CHECK(bottom.visible);
+    CHECK(bottom.image.width == 4);
+    CHECK(bottom.image.height == 3);
+    CHECK(bottom.image.rgba.at(0) == 40);
+    CHECK(bottom.image.rgba.at(7) == 0);
+    CHECK(top.name == "Detail");
+    CHECK_FALSE(top.visible);
+    CHECK(top.image.rgba.at(0) == 0);
+    CHECK(top.image.rgba.at(24) == 10);
+    CHECK(top.image.rgba.at(31) == 255);
 }

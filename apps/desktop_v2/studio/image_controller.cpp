@@ -49,7 +49,7 @@ QImage toQImage(const image::Image& img) {
 
 std::uint64_t originalKey(const document::Project& project) {
     // Empreinte légère de l'image source : taille + quelques octets échantillonnés.
-    const auto& o = project.original;
+    const auto& o = project.imageSource().original;
     std::uint64_t key = (static_cast<std::uint64_t>(o.width) << 32) ^
                         static_cast<std::uint64_t>(o.height) ^ o.rgba.size();
     const std::size_t step = std::max<std::size_t>(1, o.rgba.size() / 61);
@@ -101,7 +101,7 @@ ServiceResult runPrep(DocumentSession& session, const QString& kind, const QVari
         request.h = static_cast<int>(numberOr(p, "h", 0));
     } else if (kind == QLatin1String("median") || kind == QLatin1String("bilateral") ||
                kind == QLatin1String("flatten")) {
-        if (!session.project().hasImage()) {
+        if (!session.project().hasActiveImage()) {
             return refuse("Le projet n'a pas d'image source.");
         }
         const double raw = numberOr(p, "strength", 1.0);
@@ -119,7 +119,7 @@ ServiceResult runPrep(DocumentSession& session, const QString& kind, const QVari
         session.execute(std::make_unique<commands::AppendImageOpCommand>(std::move(op)));
         return {true, {}};
     } else if (kind == QLatin1String("quantize")) {
-        if (!session.project().hasImage()) {
+        if (!session.project().hasActiveImage()) {
             return refuse("Le projet n'a pas d'image source.");
         }
         const double raw = numberOr(p, "colors", 8.0);
@@ -209,12 +209,25 @@ ImageController::ImageController(StudioController& studio, QObject* parent)
     refreshTimer_.setInterval(0);
     connect(&refreshTimer_, &QTimer::timeout, this, [this] { refreshNow(); });
     token_ = studio_.session().subscribe([this](ChangeKind kind) {
-        if (kind == ChangeKind::Replaced) {
+        const auto source = studio_.session().project().imageSourceId();
+        if (kind == ChangeKind::Replaced || source != observedImageSource_) {
+            observedImageSource_ = source;
             lastOriginalKey_ = 0;
             lastOps_.clear();
-            prepPreview_ = false;
-            segPreview_ = false;
-            segInfo_.clear();
+            if (refreshTask_ != 0) {
+                (void)tasks_.cancel(refreshTask_);
+                refreshTask_ = 0;
+            }
+            const bool hadImage = width_ > 0 && height_ > 0;
+            width_ = height_ = 0;
+            images_->set(QStringLiteral("before"), {});
+            images_->set(QStringLiteral("after"), {});
+            clearPrepPreview();
+            cancelSegmentationPreview();
+            if (hadImage) {
+                ++imageRevision_;
+                emit imagesChanged();
+            }
         }
         scheduleRefresh();
     });
@@ -227,24 +240,74 @@ ImageController::~ImageController() {
 }
 
 bool ImageController::hasImage() const {
-    return studio_.session().project().hasImage();
+    return studio_.session().project().hasActiveImage();
+}
+
+QStringList ImageController::imageLayers() const {
+    const auto& project = studio_.session().project();
+    QStringList layers;
+    if (!project.original.empty()) {
+        layers.append(tr("Image source"));
+    }
+    for (const auto& calque : project.calques) {
+        if (project.findImageSource(calque.id) != nullptr) {
+            layers.append(fromUtf8(calque.name));
+        }
+    }
+    return layers;
+}
+
+int ImageController::imageLayerIndex() const {
+    const auto& project = studio_.session().project();
+    const auto selected = project.imageSourceId();
+    int index = project.original.empty() ? 0 : 1;
+    if (!selected.valid()) {
+        return index == 0 ? -1 : 0;
+    }
+    for (const auto& calque : project.calques) {
+        if (calque.id == selected) {
+            return index;
+        }
+        if (project.findImageSource(calque.id) != nullptr) {
+            ++index;
+        }
+    }
+    return -1;
+}
+
+void ImageController::selectImageLayer(int index) {
+    if (index < 0) {
+        return;
+    }
+    auto& session = studio_.session();
+    const auto& project = session.project();
+    if (!project.original.empty() && index-- == 0) {
+        session.selectImageSource({});
+        return;
+    }
+    for (const auto& calque : project.calques) {
+        if (project.findImageSource(calque.id) != nullptr && index-- == 0) {
+            session.selectImageSource(calque.id);
+            return;
+        }
+    }
 }
 
 bool ImageController::hasSegmentation() const {
-    return studio_.session().project().segmentation.has_value();
+    return studio_.session().project().imageSource().segmentation.has_value();
 }
 
 int ImageController::regionCount() const {
-    const auto& seg = studio_.session().project().segmentation;
+    const auto& seg = studio_.session().project().imageSource().segmentation;
     return seg ? static_cast<int>(seg->region_count()) : 0;
 }
 
 double ImageController::mmPerPx() const {
-    return studio_.session().project().mm_per_px.value;
+    return studio_.session().project().imageSource().mm_per_px.value;
 }
 
 int ImageController::colorCount() const {
-    const auto& seg = studio_.session().project().segmentation;
+    const auto& seg = studio_.session().project().imageSource().segmentation;
     if (!seg) {
         return 0;
     }
@@ -328,20 +391,20 @@ void ImageController::trackOps() {
 
 void ImageController::refreshNow() {
     const auto& project = studio_.session().project();
-    const std::uint64_t key = project.hasImage() ? originalKey(project) : 0;
-    const bool same = key == lastOriginalKey_ && project.ops == lastOps_;
+    const std::uint64_t key = project.hasActiveImage() ? originalKey(project) : 0;
+    const bool same = key == lastOriginalKey_ && project.imageSource().ops == lastOps_;
     trackOps();
     if (same) {
         emit changed();
         return;
     }
     lastOriginalKey_ = key;
-    lastOps_ = project.ops;
+    lastOps_ = project.imageSource().ops;
     if (refreshTask_ != 0) {
         (void)tasks_.cancel(refreshTask_);
         refreshTask_ = 0;
     }
-    if (!project.hasImage()) {
+    if (!project.hasActiveImage()) {
         width_ = height_ = 0;
         images_->set(QStringLiteral("before"), {});
         images_->set(QStringLiteral("after"), {});
@@ -361,7 +424,7 @@ void ImageController::refreshNow() {
             if (task.cancelled()) {
                 return cancelled_error();
             }
-            return ImagePair{toQImage(snapshot->original), toQImage(*after)};
+            return ImagePair{toQImage(snapshot->imageSource().original), toQImage(*after)};
         },
         [this](Result<ImagePair>&& r) {
             refreshTask_ = 0;

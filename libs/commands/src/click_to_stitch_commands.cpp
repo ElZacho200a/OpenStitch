@@ -76,6 +76,7 @@ ClickToStitchResult make_click_to_stitch_command(IdGenerator<ObjectId>& ids,
     for (auto& vec : digitized->vectors) {
         vec.name = "Zone cliquée";
         vec.rgb = region.mean_rgb;
+        vec.calque = options.calque;
         vec.source_region = std::nullopt; // la région est jetable : elle ne vit pas dans le projet
     }
     for (auto& emb : digitized->embroideries) {

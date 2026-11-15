@@ -171,12 +171,18 @@ Result<void> save_project(const std::filesystem::path& path, const document::Pro
     parallel_for(3, [&](std::size_t task) {
         if (task == 0) {
             nlohmann::json root;
-            root["schemaVersion"] = schema_version_for(
-                project.embroidery_objects, project.text_objects, !project.calques.empty());
+            const bool imageLayers = !project.image_sources.empty() ||
+                                     std::ranges::any_of(project.vector_objects, [](const auto& v) {
+                                         return v.source_region && v.source_image.valid();
+                                     });
+            root["schemaVersion"] =
+                imageLayers ? kSchemaVersionImageSources
+                            : schema_version_for(project.embroidery_objects, project.text_objects,
+                                                 !project.calques.empty());
             root["document"] = detail::project_to_json(project);
             jsonText = root.dump(2);
         } else if (task == 1) {
-            if (project.hasImage()) {
+            if (!project.original.empty()) {
                 png = cached_png(project.original);
             }
         } else if (project.segmentation) {
@@ -197,6 +203,23 @@ Result<void> save_project(const std::filesystem::path& path, const document::Pro
     }
     if (project.detail_mask.any_detail()) {
         entries.emplace(kDetailMaskEntry, detail_mask_to_bytes(project.detail_mask));
+    }
+
+    for (const auto& layer : project.image_sources) {
+        const auto prefix = "images/" + std::to_string(layer.calque.value) + "/";
+        auto encoded = image::encode_png(layer.source.original);
+        if (!encoded) {
+            return std::unexpected(encoded.error());
+        }
+        entries.emplace(prefix + kImageEntry, std::move(*encoded));
+        if (layer.source.segmentation) {
+            entries.emplace(prefix + kLabelsEntry,
+                            labels_to_bytes(layer.source.segmentation->labels));
+        }
+        if (layer.source.detail_mask.any_detail()) {
+            entries.emplace(prefix + kDetailMaskEntry,
+                            detail_mask_to_bytes(layer.source.detail_mask));
+        }
     }
 
     // Écriture atomique et durable (HP-QA-021) : primitive commune de libs/core.
@@ -227,6 +250,40 @@ Result<void> backup_before_migrated_save(const std::filesystem::path& path, int 
 }
 
 namespace {
+
+Result<void> read_source_entries(const std::map<std::string, detail::Blob>& entries,
+                                 const std::string& prefix, document::ImageSource& source) {
+    if (const auto imgIt = entries.find(prefix + kImageEntry); imgIt != entries.end()) {
+        auto img = image::decode_image(imgIt->second);
+        if (!img) {
+            return std::unexpected(img.error());
+        }
+        source.original = std::move(*img);
+    } else if (!prefix.empty()) {
+        return fail(ErrorCategory::InvalidFile, "Image de calque manquante");
+    }
+
+    if (const auto maskIt = entries.find(prefix + kDetailMaskEntry); maskIt != entries.end()) {
+        source.detail_mask = detail_mask_from_bytes(maskIt->second);
+    }
+
+    if (source.segmentation) {
+        const auto labelsIt = entries.find(prefix + kLabelsEntry);
+        if (labelsIt == entries.end()) {
+            return fail(ErrorCategory::InvalidFile,
+                        "Segmentation présente mais carte des labels manquante");
+        }
+        source.segmentation->labels = labels_from_bytes(labelsIt->second);
+        const std::size_t expected = static_cast<std::size_t>(source.segmentation->width) *
+                                     static_cast<std::size_t>(source.segmentation->height);
+        if (source.segmentation->labels.size() != expected) {
+            return fail(ErrorCategory::InvalidFile,
+                        "Carte de segmentation incohérente avec ses dimensions");
+        }
+    }
+
+    return {};
+}
 
 Result<document::Project> load_project_impl(const std::filesystem::path& path, LoadInfo* info) {
     auto entries = detail::read_zip(path);
@@ -282,30 +339,16 @@ Result<document::Project> load_project_impl(const std::filesystem::path& path, L
         return std::unexpected(project.error());
     }
 
-    if (const auto imgIt = entries->find(kImageEntry); imgIt != entries->end()) {
-        auto img = image::decode_image(imgIt->second);
-        if (!img) {
-            return std::unexpected(img.error());
-        }
-        project->original = std::move(*img);
+    if (auto read = read_source_entries(*entries, "", *project); !read) {
+        return std::unexpected(read.error());
     }
-
-    if (const auto maskIt = entries->find(kDetailMaskEntry); maskIt != entries->end()) {
-        project->detail_mask = detail_mask_from_bytes(maskIt->second);
-    }
-
-    if (project->segmentation) {
-        const auto labelsIt = entries->find(kLabelsEntry);
-        if (labelsIt == entries->end()) {
-            return fail(ErrorCategory::InvalidFile,
-                        "Segmentation présente mais carte des labels manquante");
+    for (auto& layer : project->image_sources) {
+        if (project->findCalque(layer.calque) == nullptr) {
+            return fail(ErrorCategory::InvalidFile, "Image rattachée à un calque inconnu");
         }
-        project->segmentation->labels = labels_from_bytes(labelsIt->second);
-        const std::size_t expected = static_cast<std::size_t>(project->segmentation->width) *
-                                     static_cast<std::size_t>(project->segmentation->height);
-        if (project->segmentation->labels.size() != expected) {
-            return fail(ErrorCategory::InvalidFile,
-                        "Carte de segmentation incohérente avec ses dimensions");
+        const auto prefix = "images/" + std::to_string(layer.calque.value) + "/";
+        if (auto read = read_source_entries(*entries, prefix, layer.source); !read) {
+            return std::unexpected(read.error());
         }
     }
 

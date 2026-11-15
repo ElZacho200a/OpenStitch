@@ -42,30 +42,32 @@ struct Fresh {
 Fresh revectorize(const document::Project& project, double simplifyMm, bool curves,
                   double curveTolerancePx) {
     Fresh out;
-    if (!project.segmentation) {
+    if (!project.imageSource().segmentation) {
         return out;
     }
     std::vector<RegionId> ids;
-    for (const auto& slot : project.segmentation->region_slots) {
+    for (const auto& slot : project.imageSource().segmentation->region_slots) {
         if (slot) {
             ids.push_back(slot->id);
         }
     }
     const vectorization::VectorizeOptions options{
-        .mm_per_px = project.mm_per_px,
+        .mm_per_px = project.imageSource().mm_per_px,
         .simplify_tolerance = to_micrometers(Millimeters{simplifyMm}),
-        .curve_tolerance = curves ? Micrometers{static_cast<std::int32_t>(std::lround(
-                                        curveTolerancePx * project.mm_per_px.value * 1000.0))}
-                                  : Micrometers{0},
-        .detail_mask = &project.detail_mask};
-    const auto results = vectorization::vectorize_regions(*project.segmentation, ids, options);
+        .curve_tolerance =
+            curves ? Micrometers{static_cast<std::int32_t>(std::lround(
+                         curveTolerancePx * project.imageSource().mm_per_px.value * 1000.0))}
+                   : Micrometers{0},
+        .detail_mask = &project.imageSource().detail_mask};
+    const auto results =
+        vectorization::vectorize_regions(*project.imageSource().segmentation, ids, options);
     for (std::size_t i = 0; i < ids.size(); ++i) {
         if (!results[i]) {
             continue;
         }
         const document::VectorObject* existing = nullptr;
         for (const auto& shape : project.vector_objects) {
-            if (shape.source_region && *shape.source_region == ids[i]) {
+            if (project.fromActiveImage(shape) && *shape.source_region == ids[i]) {
                 existing = &shape;
                 break;
             }
@@ -80,13 +82,18 @@ Fresh revectorize(const document::Project& project, double simplifyMm, bool curv
             document::VectorObject shape;
             shape.name = "Région " + std::to_string(ids[i].value);
             shape.source_region = ids[i];
-            shape.rgb = project.segmentation->find(ids[i])->rgb;
+            shape.source_image = project.imageSourceId();
+            shape.calque = !shape.source_image.valid() && !project.image_sources.empty()
+                               ? project.calques.front().id
+                               : shape.source_image;
+            shape.rgb = project.imageSource().segmentation->find(ids[i])->rgb;
             shape.paths = *results[i];
             out.add.push_back(std::move(shape));
         }
     }
     for (const auto& shape : project.vector_objects) {
-        if (shape.source_region && project.segmentation->find(*shape.source_region) == nullptr) {
+        if (project.fromActiveImage(shape) &&
+            project.imageSource().segmentation->find(*shape.source_region) == nullptr) {
             ++out.orphan;
         }
     }
@@ -173,7 +180,7 @@ std::vector<std::uint64_t> VectorSpaceController::selectedShapeIds() const {
             break;
         case TargetKind::Region:
             for (const auto& shape : project.vector_objects) {
-                if (shape.source_region && shape.source_region->value == target.id) {
+                if (project.fromActiveImage(shape) && shape.source_region->value == target.id) {
                     add(shape.id.value);
                 }
             }
@@ -439,8 +446,9 @@ QVariantMap VectorSpaceController::selectedShape() const {
     }
     const bool hasSource = shape->source_region.has_value();
     const auto regionId = hasSource ? shape->source_region->value : 0;
-    const bool regionExists =
-        hasSource && project.segmentation && project.segmentation->find(*shape->source_region);
+    const auto* source = project.findImageSource(shape->source_image);
+    const bool regionExists = hasSource && source != nullptr && source->segmentation &&
+                              source->segmentation->find(*shape->source_region) != nullptr;
     const auto* object = embroideryOf(project, ids.back());
     return {{QStringLiteral("id"), QString::number(shape->id.value)},
             {QStringLiteral("name"), QString::fromStdString(shape->name)},
@@ -464,10 +472,13 @@ bool VectorSpaceController::selectOriginRegion() {
         return false;
     }
     const auto& project = studio_.session().project();
-    if (!project.segmentation || project.segmentation->find(*shape->source_region) == nullptr) {
+    const auto* source = project.findImageSource(shape->source_image);
+    if (source == nullptr || !source->segmentation ||
+        !source->segmentation->find(*shape->source_region)) {
         say(tr("La région d'origine n'existe plus (fusionnée ou supprimée)."));
         return false;
     }
+    studio_.session().selectImageSource(shape->source_image);
     studio_.session().selection().replace(
         {Target{TargetKind::Region, shape->source_region->value}});
     return true;
@@ -507,7 +518,7 @@ QVariantMap VectorSpaceController::updatePlan() const {
 
 bool VectorSpaceController::updateFromSegmentation() {
     auto& session = studio_.session();
-    if (!session.project().segmentation) {
+    if (!session.project().imageSource().segmentation) {
         say(tr("Aucune segmentation : rien à vectoriser."));
         return false;
     }

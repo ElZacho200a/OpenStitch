@@ -1,5 +1,6 @@
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(minizip-ng CONFIG REQUIRED)
+find_package(pugixml CONFIG REQUIRED)
 
 add_library(openstitch_project_io
     src/json_serialize.cpp
@@ -7,6 +8,7 @@ add_library(openstitch_project_io
     src/project_io.cpp
     src/migrations.cpp
     src/machine_file.cpp
+    src/openraster.cpp
     src/thread_chart_io.cpp
 )
 add_library(openstitch::project_io ALIAS openstitch_project_io)
@@ -16,5 +18,5 @@ target_include_directories(openstitch_project_io PUBLIC include)
 target_link_libraries(openstitch_project_io
     PUBLIC openstitch::core openstitch::document openstitch::image
            openstitch::stitch_generation openstitch::stitch_analysis openstitch::formats
-    PRIVATE nlohmann_json::nlohmann_json MINIZIP::minizip-ng openstitch::warnings
+    PRIVATE nlohmann_json::nlohmann_json MINIZIP::minizip-ng pugixml::pugixml openstitch::warnings
 )

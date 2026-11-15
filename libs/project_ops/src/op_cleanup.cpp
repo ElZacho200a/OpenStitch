@@ -115,7 +115,7 @@ std::string hex(const Rgb& c) {
 }
 
 OpStatus need_segmentation(const OpContext& ctx) {
-    if (!ctx.project.segmentation) {
+    if (!ctx.project.imageSource().segmentation) {
         return refused("le projet n'a pas de segmentation",
                        "lancez d'abord `segment_image` (ou importez une image segmentée)");
     }
@@ -129,7 +129,7 @@ OpStatus read_region(const OpContext& ctx, const char* key, RegionId& out) {
                      "voir `project inspect --json` : segmentation.regions");
     }
     const RegionId id{it->get<std::uint32_t>()};
-    if (ctx.project.segmentation->find(id) == nullptr) {
+    if (ctx.project.imageSource().segmentation->find(id) == nullptr) {
         return OpStatus::failure(code::kUnknownObject,
                                  "région " + std::to_string(id.value) + " introuvable",
                                  "voir `project inspect --json` : segmentation.regions");
@@ -181,7 +181,7 @@ OpStatus op_seg_merge_colors(OpContext& ctx) {
     if (auto st = read_flag(ctx, "merge_adjacent", true, adjacent); !st.ok) {
         return st;
     }
-    const auto classes = segmentation::color_classes(*ctx.project.segmentation);
+    const auto classes = segmentation::color_classes(*ctx.project.imageSource().segmentation);
     for (const Rgb& s : sources) {
         const bool exists =
             std::any_of(classes.begin(), classes.end(), [&](const auto& c) { return c.rgb == s; });
@@ -191,8 +191,9 @@ OpStatus op_seg_merge_colors(OpContext& ctx) {
                                      "voir `project inspect --json` : segmentation.regions");
         }
     }
-    return run_color_plan(
-        ctx, segmentation::plan_merge_colors(*ctx.project.segmentation, sources, target, adjacent));
+    return run_color_plan(ctx,
+                          segmentation::plan_merge_colors(*ctx.project.imageSource().segmentation,
+                                                          sources, target, adjacent));
 }
 
 OpStatus op_seg_reduce_colors(OpContext& ctx) {
@@ -223,7 +224,7 @@ OpStatus op_seg_reduce_colors(OpContext& ctx) {
         return st;
     }
     return run_color_plan(ctx, segmentation::plan_reduce_colors(
-                                   *ctx.project.segmentation,
+                                   *ctx.project.imageSource().segmentation,
                                    static_cast<std::size_t>(has_colors ? max_colors : 0),
                                    has_distance ? max_distance : 0.0, adjacent,
                                    has_ignored ? std::optional<Rgb>{ignored} : std::nullopt));
@@ -251,7 +252,7 @@ OpStatus op_seg_clean_islands(OpContext& ctx) {
         static_cast<std::size_t>(min_px), has_ignored ? std::optional<Rgb>{ignored} : std::nullopt,
         max_delta_e);
     const auto* raw = command.get();
-    const std::size_t before = ctx.project.segmentation->region_count();
+    const std::size_t before = ctx.project.imageSource().segmentation->region_count();
     ctx.stack.execute(std::move(command), ctx.project);
     const std::size_t merged = raw->merges();
     if (merged == 0) {
@@ -260,9 +261,10 @@ OpStatus op_seg_clean_islands(OpContext& ctx) {
         return refused("aucun îlot sous " + std::to_string(static_cast<std::size_t>(min_px)) +
                        " pixels n'a pu être fusionné");
     }
-    return OpStatus::success(json{{"merged_regions", merged},
-                                  {"regions_before", before},
-                                  {"regions_after", ctx.project.segmentation->region_count()}});
+    return OpStatus::success(
+        json{{"merged_regions", merged},
+             {"regions_before", before},
+             {"regions_after", ctx.project.imageSource().segmentation->region_count()}});
 }
 
 OpStatus op_seg_merge_regions(OpContext& ctx) {
@@ -316,7 +318,7 @@ OpStatus op_seg_recolor_region(OpContext& ctx) {
 // --- Phase image ----------------------------------------------------------------------
 
 OpStatus op_image_denoise(OpContext& ctx) {
-    if (!ctx.project.hasImage()) {
+    if (!ctx.project.hasActiveImage()) {
         return refused("le projet n'a pas d'image source");
     }
     std::string method = "median";
@@ -353,7 +355,7 @@ OpStatus op_image_denoise(OpContext& ctx) {
 }
 
 OpStatus op_segment_image(OpContext& ctx) {
-    if (!ctx.project.hasImage()) {
+    if (!ctx.project.hasActiveImage()) {
         return refused("le projet n'a pas d'image source");
     }
     double max_colors = 8.0;
@@ -372,8 +374,8 @@ OpStatus op_segment_image(OpContext& ctx) {
         return st;
     }
     // Image de travail = image d'origine + pile de prétraitements (comme le bureau).
-    image::Image working = ctx.project.original;
-    for (const auto& op : ctx.project.ops) {
+    image::Image working = ctx.project.imageSource().original;
+    for (const auto& op : ctx.project.imageSource().ops) {
         auto next = image::apply_op(working, op);
         if (!next) {
             return refused("prétraitement impossible : " + next.error().message);

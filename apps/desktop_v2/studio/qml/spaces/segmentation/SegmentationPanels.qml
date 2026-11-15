@@ -22,6 +22,17 @@ Rectangle {
         anchors.fill: parent
         anchors.margins: 8
         spacing: 6
+        StudioComboBox {
+            objectName: "segmentationLayerSelector"
+            enabled: !studio.busy
+            Layout.fillWidth: true
+            readonly property bool ready: typeof imageTools !== "undefined"
+            visible: ready && imageTools.imageLayers.length > 0
+            model: ready ? imageTools.imageLayers : []
+            currentIndex: ready ? imageTools.imageLayerIndex : -1
+            Accessible.name: qsTr("Calque à segmenter")
+            onActivated: index => imageTools.selectImageLayer(index)
+        }
         Row {
             spacing: 4
             Repeater {

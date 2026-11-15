@@ -24,8 +24,12 @@
 #include "edit_controller.hpp"
 #include "file_controller.hpp"
 #include "gpu_canvas.hpp"
+#include "image_controller.hpp"
+#include "image_space_controller.hpp"
 #include "openstitch/project_io/project_io.hpp"
+#include "openstitch/stitch_generation/overrides.hpp"
 #include "studio_controller.hpp"
+#include "vector_space_controller.hpp"
 
 using namespace openstitch;
 using namespace openstitch::desktop_v2;
@@ -146,9 +150,138 @@ private slots:
     void documentExportsWriteRealFiles();
     void exportOptionsAreOneUndoStepAndRefusedWhenInvalid();
     void imageAndVectorImports();
+    void imagesStayIndependentThroughStitchesAndSave();
     void autosaveRecoveryAndDiscard();
     void hoopMachineAndUserHoops();
 };
+
+void StudioFilesTest::imagesStayIndependentThroughStitchesAndSave() {
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    QImage image(80, 80, QImage::Format_ARGB32);
+    const auto red = url(dir, "fond.png");
+    const auto blue = url(dir, "dessus.png");
+    image.fill(Qt::transparent);
+    {
+        QPainter painter(&image);
+        painter.fillRect(12, 10, 50, 42, Qt::red);
+    }
+    QVERIFY(image.save(red.toLocalFile()));
+    image.fill(Qt::transparent);
+    {
+        QPainter painter(&image);
+        painter.fillRect(17, 30, 45, 38, Qt::blue);
+    }
+    QVERIFY(image.save(blue.toLocalFile()));
+
+    Rig rig;
+    const auto existing = osp(dir, "existant.osp", studioFixture());
+    QVERIFY(!existing.isEmpty());
+    rig.load(existing);
+    ImageController images(rig.studio);
+    ImageSpaceController imageSpace(rig.studio, images);
+    VectorSpaceController vectors(rig.studio);
+    QQmlApplicationEngine engine;
+    auto* context = engine.rootContext();
+    context->setContextProperty(QStringLiteral("studio"), &rig.studio);
+    context->setContextProperty(QStringLiteral("editor"), &rig.editor);
+    context->setContextProperty(QStringLiteral("actions"), &rig.actions);
+    context->setContextProperty(QStringLiteral("files"), rig.files.get());
+    context->setContextProperty(QStringLiteral("imageTools"), &images);
+    context->setContextProperty(QStringLiteral("imageSpace"), &imageSpace);
+    engine.load(QUrl(QStringLiteral("qrc:/studio/qml/Main.qml")));
+    QVERIFY(!engine.rootObjects().empty());
+    auto* window = engine.rootObjects().front();
+    QSignalSpy imported(rig.files.get(), &FileController::imageImported);
+    const auto broken = url(dir, "corrompu.png");
+    {
+        QFile file(broken.toLocalFile());
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        QCOMPARE(file.write("not a png"), qint64{9});
+    }
+    rig.files->importImageLayers({red, broken});
+    QVERIFY(rig.waitIdle());
+    QVERIFY(rig.files->messageIsError());
+    QVERIFY(rig.session.project().image_sources.empty());
+    QCOMPARE(rig.session.historySize(), std::size_t{0});
+    QCOMPARE(imported.count(), 0);
+    rig.files->importImageLayers({red, blue});
+    QTRY_COMPARE_WITH_TIMEOUT(imported.count(), 1, 15'000);
+    const auto& project = rig.session.project();
+    QCOMPARE(rig.studio.path(), existing);
+    QCOMPARE(project.image_sources.size(), std::size_t{2});
+    QCOMPARE(project.embroidery_objects.size(), std::size_t{2});
+    const auto lower = project.image_sources[0].calque;
+    const auto upper = project.image_sources[1].calque;
+    QCOMPARE(rig.session.historySize(), std::size_t{1});
+    QVERIFY(rig.session.undo());
+    QVERIFY(project.image_sources.empty());
+    QVERIFY(rig.session.redo());
+    QCOMPARE(project.image_sources.size(), std::size_t{2});
+    QVERIFY(rig.session.selectImageSource(lower));
+
+    QCOMPARE(images.applyPrep(QStringLiteral("flip_h"), {}), QString());
+    QTRY_VERIFY_WITH_TIMEOUT(window->findChild<QObject*>(QStringLiteral("imageLayerSelector")),
+                             5'000);
+    auto* picker = window->findChild<QObject*>(QStringLiteral("imageLayerSelector"));
+    QTRY_COMPARE_WITH_TIMEOUT(picker->property("currentText").toString(),
+                              QStringLiteral("fond.png"), 5'000);
+    QVERIFY(QMetaObject::invokeMethod(picker, "activated", Q_ARG(int, 1)));
+    QCOMPARE(picker->property("model").toStringList().size(), 2);
+    QVERIFY(project.imageSourceId() == upper);
+    QVERIFY(rig.session.undo());
+    QVERIFY(project.findImageSource(lower)->ops.empty());
+    QVERIFY(rig.session.redo());
+    QCOMPARE(project.findImageSource(lower)->ops.size(), std::size_t{1});
+    QVERIFY(project.findImageSource(upper)->ops.empty());
+    QVERIFY(project.imageSourceId() == upper);
+
+    for (const ObjectId layer : {lower, upper}) {
+        QVERIFY(rig.session.selectImageSource(layer));
+        images.applySegmentation({});
+        QTRY_VERIFY_WITH_TIMEOUT(images.hasSegmentation() && !images.busy(), 15'000);
+        QVERIFY(vectors.updateFromSegmentation());
+    }
+    QVERIFY(vectors.convertToEmbroidery());
+    for (const ObjectId layer : {lower, upper}) {
+        QVERIFY(std::ranges::any_of(project.embroidery_objects, [&](const auto& object) {
+            const auto* shape = project.findObject(object.source_vector);
+            return shape && shape->source_image == layer && shape->calque == layer;
+        }));
+    }
+    const auto sewLayers = [](const document::Project& doc) {
+        std::vector<ObjectId> order;
+        if (const auto sequence = stitch_generation::effective_sequence(doc); sequence) {
+            for (const auto& command : sequence->commands) {
+                const auto* object = doc.findEmbroidery(command.source);
+                const auto* shape =
+                    object == nullptr ? nullptr : doc.findObject(object->source_vector);
+                if (command.type == stitch::CommandType::Stitch && shape &&
+                    shape->source_image.valid() &&
+                    (order.empty() || order.back() != shape->source_image)) {
+                    order.push_back(shape->source_image);
+                }
+            }
+        }
+        return order;
+    };
+    QVERIFY(sewLayers(project) == (std::vector<ObjectId>{lower, upper}));
+
+    const auto path = osp(dir, "calques.osp", project);
+    QVERIFY(!path.isEmpty());
+    const auto saved = project_io::load_project(std::filesystem::path(path.toStdWString()));
+    QVERIFY(saved.has_value());
+    QCOMPARE(saved->image_sources.size(), std::size_t{2});
+    QCOMPARE(saved->findImageSource(lower)->ops.size(), std::size_t{1});
+    QVERIFY(sewLayers(*saved) == (std::vector<ObjectId>{lower, upper}));
+    for (const ObjectId layer : {lower, upper}) {
+        const auto* source = saved->findImageSource(layer);
+        QVERIFY(source && source->segmentation);
+        QVERIFY(source->original.rgba == project.findImageSource(layer)->original.rgba);
+        QVERIFY(source->segmentation->labels ==
+                project.findImageSource(layer)->segmentation->labels);
+    }
+}
 
 void StudioFilesTest::initTestCase() {
     QQuickStyle::setStyle(QStringLiteral("Basic"));

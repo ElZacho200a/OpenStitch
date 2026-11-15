@@ -28,13 +28,13 @@ public:
     explicit AppendImageOpCommand(image::ImageOp op) : op_(std::move(op)) {}
 
     void apply(document::Project& project) override {
-        project.ops.push_back(op_);
-        stashedSegmentation_ = std::move(project.segmentation);
-        project.segmentation.reset();
+        project.imageSource().ops.push_back(op_);
+        stashedSegmentation_ = std::move(project.imageSource().segmentation);
+        project.imageSource().segmentation.reset();
     }
     void revert(document::Project& project) override {
-        project.ops.pop_back();
-        project.segmentation = std::move(stashedSegmentation_);
+        project.imageSource().ops.pop_back();
+        project.imageSource().segmentation = std::move(stashedSegmentation_);
         stashedSegmentation_.reset();
     }
     [[nodiscard]] std::string name() const override { return image::op_name(op_); }
@@ -59,13 +59,13 @@ public:
     // (audit perf 2026-09, docs/performance-audit.md). `revert` rend
     // `next_` pour un `redo` ultérieur.
     void apply(document::Project& project) override {
-        previous_ = std::move(project.segmentation);
-        project.segmentation = std::move(next_);
+        previous_ = std::move(project.imageSource().segmentation);
+        project.imageSource().segmentation = std::move(next_);
         next_.reset();
     }
     void revert(document::Project& project) override {
-        next_ = std::move(project.segmentation);
-        project.segmentation = std::move(previous_);
+        next_ = std::move(project.imageSource().segmentation);
+        project.imageSource().segmentation = std::move(previous_);
         previous_.reset();
     }
     [[nodiscard]] std::string name() const override { return "Segmenter l'image"; }
@@ -88,21 +88,23 @@ public:
           erase_(erase), hardness_(hardness) {}
 
     void apply(document::Project& project) override {
-        wasEmpty_ = project.detail_mask.empty();
+        wasEmpty_ = project.imageSource().detail_mask.empty();
         changes_.clear();
         for (const auto& [cx, cy] : centers_) {
-            auto step = segmentation::paint_detail_disc(project.detail_mask, width_, height_, cx,
-                                                        cy, radius_, erase_ ? 0 : 255, hardness_);
+            auto step =
+                segmentation::paint_detail_disc(project.imageSource().detail_mask, width_, height_,
+                                                cx, cy, radius_, erase_ ? 0 : 255, hardness_);
             changes_.insert(changes_.end(), step.begin(), step.end());
         }
     }
     void revert(document::Project& project) override {
         // Ordre inverse : un pixel touché par plusieurs disques retrouve sa valeur d'origine.
         for (auto it = changes_.rbegin(); it != changes_.rend(); ++it) {
-            project.detail_mask.weights[it->index] = it->before;
+            project.imageSource().detail_mask.weights[it->index] = it->before;
         }
         if (wasEmpty_) {
-            project.detail_mask = {}; // le masque a été créé par ce trait : on le retire
+            project.imageSource()
+                .detail_mask = {}; // le masque a été créé par ce trait : on le retire
         }
     }
     [[nodiscard]] std::string name() const override {
@@ -126,11 +128,11 @@ private:
 class ClearDetailMaskCommand final : public ICommand {
 public:
     void apply(document::Project& project) override {
-        previous_ = std::move(project.detail_mask);
-        project.detail_mask = {};
+        previous_ = std::move(project.imageSource().detail_mask);
+        project.imageSource().detail_mask = {};
     }
     void revert(document::Project& project) override {
-        project.detail_mask = std::move(previous_);
+        project.imageSource().detail_mask = std::move(previous_);
         previous_ = {};
     }
     [[nodiscard]] std::string name() const override { return "Effacer les zones de détail"; }
@@ -148,13 +150,13 @@ public:
     MergeRegionsCommand(RegionId keep, RegionId absorb) : keep_(keep), absorb_(absorb) {}
 
     void apply(document::Project& project) override {
-        auto& seg = *project.segmentation;
+        auto& seg = *project.imageSource().segmentation;
         absorbedRegion_ = *seg.find(absorb_);
         auto changed = segmentation::merge_regions(seg, keep_, absorb_);
         changed_ = changed ? std::move(*changed) : std::vector<std::uint32_t>{};
     }
     void revert(document::Project& project) override {
-        auto& seg = *project.segmentation;
+        auto& seg = *project.imageSource().segmentation;
         for (const std::uint32_t idx : changed_) {
             seg.labels[idx] = static_cast<std::uint32_t>(absorb_.value);
         }
@@ -177,7 +179,7 @@ public:
     explicit RemoveRegionCommand(RegionId id) : id_(id) {}
 
     void apply(document::Project& project) override {
-        auto& seg = *project.segmentation;
+        auto& seg = *project.imageSource().segmentation;
         removedRegion_ = *seg.find(id_);
         auto result = segmentation::remove_region(seg, id_);
         if (result) {
@@ -186,7 +188,7 @@ public:
         }
     }
     void revert(document::Project& project) override {
-        auto& seg = *project.segmentation;
+        auto& seg = *project.imageSource().segmentation;
         for (const std::uint32_t idx : changed_) {
             seg.labels[idx] = static_cast<std::uint32_t>(id_.value);
         }
@@ -217,7 +219,7 @@ public:
           boundaryWeight_(boundary_weight) {}
 
     void apply(document::Project& project) override {
-        auto& seg = *project.segmentation;
+        auto& seg = *project.imageSource().segmentation;
         const std::vector<std::uint32_t> before = seg.labels;
         slots_ = seg.region_slots;
         merges_ =
@@ -233,7 +235,7 @@ public:
         }
     }
     void revert(document::Project& project) override {
-        auto& seg = *project.segmentation;
+        auto& seg = *project.imageSource().segmentation;
         for (std::size_t k = 0; k < changed_.size(); ++k) {
             seg.labels[changed_[k]] = oldLabels_[k];
         }
@@ -264,7 +266,7 @@ public:
     explicit MergeColorsCommand(segmentation::ColorMergePlan plan) : plan_(std::move(plan)) {}
 
     void apply(document::Project& project) override {
-        auto& seg = *project.segmentation;
+        auto& seg = *project.imageSource().segmentation;
         const std::vector<std::uint32_t> before = seg.labels;
         slots_ = seg.region_slots;
         applied_ = segmentation::apply_color_merge(seg, plan_).has_value();
@@ -278,7 +280,7 @@ public:
         }
     }
     void revert(document::Project& project) override {
-        auto& seg = *project.segmentation;
+        auto& seg = *project.imageSource().segmentation;
         for (std::size_t k = 0; k < changed_.size(); ++k) {
             seg.labels[changed_[k]] = oldLabels_[k];
         }
@@ -304,13 +306,14 @@ public:
     RecolorRegionCommand(RegionId id, std::array<std::uint8_t, 3> rgb) : id_(id), rgb_(rgb) {}
 
     void apply(document::Project& project) override {
-        if (auto old = segmentation::recolor_region(*project.segmentation, id_, rgb_)) {
+        if (auto old =
+                segmentation::recolor_region(*project.imageSource().segmentation, id_, rgb_)) {
             oldRgb_ = *old;
         }
     }
     void revert(document::Project& project) override {
         [[maybe_unused]] auto restored =
-            segmentation::recolor_region(*project.segmentation, id_, oldRgb_);
+            segmentation::recolor_region(*project.imageSource().segmentation, id_, oldRgb_);
     }
     [[nodiscard]] std::string name() const override { return "Recolorer une région"; }
     [[nodiscard]] bool affectsEmbroidery() const override { return false; }

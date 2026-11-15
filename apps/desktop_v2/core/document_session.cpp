@@ -29,19 +29,38 @@ bool DocumentSession::exists(const Target& target) const {
         return std::ranges::any_of(project_.vector_objects,
                                    [&](const auto& o) { return o.id.value == target.id; });
     case TargetKind::Region:
-        if (!project_.segmentation) {
+        if (!project_.imageSource().segmentation) {
             return false;
         }
-        return project_.segmentation->find(RegionId{target.id}) != nullptr;
+        return project_.imageSource().segmentation->find(RegionId{target.id}) != nullptr;
     }
     return false;
 }
 
 void DocumentSession::changed(ChangeKind kind) {
     ++revision_;
+    const auto source = project_.imageSourceId();
+    const bool sourceChanged = source != observedImageSource_;
+    observedImageSource_ = source;
     // La sélection ne doit jamais pointer un objet disparu (undo d'une création, remplacement…).
-    selection_.prune([this](const Target& t) { return exists(t); });
+    selection_.prune([this, sourceChanged](const Target& t) {
+        return !(sourceChanged && t.kind == TargetKind::Region) && exists(t);
+    });
     notify(kind);
+}
+
+bool DocumentSession::selectImageSource(ObjectId calque) {
+    const auto* source = project_.findImageSource(calque);
+    if (source == nullptr || source->original.empty()) {
+        return false;
+    }
+    if (project_.imageSourceId() != calque) {
+        project_.active_image_source = calque;
+        lastChangeAffectsEmbroidery_ = false;
+        lastChangeAffectsSegmentation_ = true;
+        changed(ChangeKind::ImageSelected);
+    }
+    return true;
 }
 
 void DocumentSession::notify(ChangeKind kind) {
