@@ -78,6 +78,14 @@ int main(int argc, char** argv) {
              "virgules : vue, fils, analyse, satin, fondu, points, tirage, applique, corriger, "
              "inspecteur ; un seul panneau à la fois par groupe, le dernier gagne)"),
          QStringLiteral("liste")});
+    parser.addOption({QStringLiteral("realistic"),
+                      QStringLiteral("Force le rendu réaliste (déjà le défaut hors --software)")});
+    parser.addOption({QStringLiteral("flat"),
+                      QStringLiteral("Démarre en rendu filaire au lieu du rendu réaliste")});
+    parser.addOption(
+        {QStringLiteral("window-size"),
+         QStringLiteral("Recette : taille logique de la fenêtre, LARGEURxHAUTEUR (ex. 1280x720)"),
+         QStringLiteral("taille")});
     parser.addOption(
         {QStringLiteral("frame-stats"),
          QStringLiteral("Mesure les frames de la vraie fenêtre, écrit ce JSON, quitte"),
@@ -228,6 +236,23 @@ int main(int argc, char** argv) {
             }
         }
     }
+    if (parser.isSet(QStringLiteral("window-size"))) {
+        // Captures aux largeurs de référence (1280x720, 1920x1200…) : la taille minimale de la
+        // fenêtre reste appliquée par Qt.
+        const auto parts =
+            parser.value(QStringLiteral("window-size")).toLower().split(QLatin1Char('x'));
+        const int w = parts.size() == 2 ? parts[0].toInt() : 0;
+        const int h = parts.size() == 2 ? parts[1].toInt() : 0;
+        if (w > 0 && h > 0) {
+            window->resize(w, h);
+        }
+    }
+    // Le rendu réaliste (fil en relief sur tissu clair) est le visage par défaut de Studio. Le
+    // repli CPU étant coûteux, --software démarre en filaire ; --flat le force, --realistic aussi.
+    if (parser.isSet(QStringLiteral("realistic")) ||
+        (!parser.isSet(QStringLiteral("flat")) && !parser.isSet(QStringLiteral("software")))) {
+        view.setRealistic(true);
+    }
     if (parser.isSet(QStringLiteral("open-space"))) {
         if (auto* workspace = window->findChild<WorkspaceController*>()) {
             workspace->setCurrent(parser.value(QStringLiteral("open-space")));
@@ -276,6 +301,7 @@ int main(int argc, char** argv) {
     }
     QTimer capture;
     bool capturePrimed = false;
+    int captureSettleTicks = 0;
     if (parser.isSet(QStringLiteral("screenshot"))) {
         const auto output = parser.value(QStringLiteral("screenshot"));
         QObject::connect(&controller, &StudioController::loadFinished, &app, [&app](bool success) {
@@ -305,6 +331,12 @@ int main(int argc, char** argv) {
                 canvas && canvas->layerFlags().stitches && canvas->geometryBuildCount() == 0;
             if (!capturePrimed || (controller.scene() && waitsForStitches)) {
                 capturePrimed = true;
+                window->update();
+                return;
+            }
+            // Laisse finir les transitions d'interface (pastille d'étape, messages) : la capture
+            // montre l'état posé, pas une image intermédiaire.
+            if (++captureSettleTicks < 14) {
                 window->update();
                 return;
             }

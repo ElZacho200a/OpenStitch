@@ -22,6 +22,29 @@
 **Hors périmètre :** galerie multithèmes, animations configurables, personnalisation, rendu GPU, moteur et workflow.
 
 
+## Composition (lot du 2026-11-14)
+
+Constat sur captures reelles (2160 x 1350, sombre) : trois barres empilees avant le contenu
+(marque 66 px, document 42 px, onglets), tous les boutons contournes du meme poids, slogan et
+compteurs techniques dans le chrome.
+
+- **Un seul en-tete** de 52 px (`studioHeader` dans `Main.qml`) : marque, titre du document,
+  indicateur « Modifie » (visible seulement quand il y a quelque chose a enregistrer), puis les
+  actions. Gain mesure : 57 px de hauteur rendus au canevas (motif ajuste a 5,69 px/mm contre 5,12).
+- **Trois niveaux de bouton** dans `StudioButton` : plein (`emphasized`) pour l'action principale,
+  aplat tonal (defaut, sans contour), discret (`quiet`). Le contour n'apparait qu'au survol et au
+  focus clavier (anneau accent 2 px inchange). Une seule action pleine par zone : « Enregistrer »
+  quand le document est modifie, « Convertir en broderie » dans Vecteurs, « Appliquer » ailleurs.
+- **Paliers de largeur** de l'en-tete : >= 1400 px libelles complets et raccourcis ; < 1400 px
+  Annuler/Retablir en icones ; < 1280 px « Ouvrir » masque (reste dans Fichier et Ctrl+O) ;
+  < 1180 px Historique et Enregistrer en icones, « STUDIO » masque.
+- **Retire du chrome** : slogan des onglets, compteur de commandes, compteur « Geometrie »
+  (diagnostic de developpement). Le moteur de rendu reste affiche, en couleur attenuee.
+
+Garde-fou : `compositionHierarchyContract` dans `test_desktop_v2_studio_design`.
+**Non verifie** : rendu aux largeurs 1000 a 1400 px (aucune option de taille de fenetre pour les
+captures), theme clair (hors priorite).
+
 ## D1 - Systeme de design et contrastes (garde-fous automatiques)
 
 Constat (capture reelle, Release, theme sombre) : champs et cases blancs avec texte sombre,

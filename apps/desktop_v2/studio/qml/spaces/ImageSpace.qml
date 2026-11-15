@@ -58,7 +58,12 @@ Item {
 
     Item {
         id: viewport
-        anchors.fill: parent
+        // Le canevas s'arrête au bord du panneau : l'image n'est jamais cachée dessous.
+        anchors.left: parent.left
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        anchors.right: sidePanel.visible ? sidePanel.left : parent.right
+        anchors.margins: Theme.gap
         clip: true
 
         GpuCanvas {
@@ -85,14 +90,14 @@ Item {
         // Barre d'outils de l'image : avant/après, ajuster, recadrer.
         Rectangle {
             objectName: "imageToolbar"
-            x: 12
-            y: 12
-            width: Math.min(parent.width - 24, toolRow.implicitWidth + 16)
+            x: 0
+            y: 0
+            width: Math.min(parent.width, toolRow.implicitWidth + 16)
             clip: true
             height: Theme.controlHeight + 12
-            radius: Theme.radius
+            radius: Theme.cardRadius
             color: Theme.panel
-            border.color: Theme.border
+            border.color: Theme.divider
             visible: root.hasImage
             // Never clip actions silently: the toolbar remains scrollable on narrow canvases.
             Flickable {
@@ -151,9 +156,9 @@ Item {
             anchors.centerIn: parent
             width: Math.min(420, parent.width - 64)
             height: emptyColumn.implicitHeight + 36
-            radius: Theme.radius
-            color: Theme.surface
-            border.color: Theme.border
+            radius: Theme.cardRadius
+            color: Theme.panel
+            border.color: Theme.divider
             ColumnLayout {
                 id: emptyColumn
                 anchors.centerIn: parent
@@ -183,42 +188,41 @@ Item {
             canvasItem: spaceCanvas
         }
 
-        // Panneau de l'espace : prétraitements (ImagePrepSection existant) + pile d'opérations.
-        Rectangle {
-            id: sidePanel
-            objectName: "imageSidePanel"
-            visible: root.hasImage && root.prepReady
-            anchors.right: parent.right
-            anchors.top: parent.top
-            anchors.bottom: parent.bottom
-            anchors.topMargin: 100
-            width: Math.min(340, Math.max(180, parent.width * 0.38))
-            color: Theme.panel
-            border.color: Theme.border
-            Controls.ScrollView {
-                anchors.fill: parent
-                anchors.margins: 8
-                contentWidth: availableWidth
-                clip: true
-                ColumnLayout {
-                    width: Math.max(0, sidePanel.width - 28)
-                    spacing: 10
-                    ImageSizeSection {
-                        Layout.fillWidth: true
-                        space: root.space
+    }
+
+    // Panneau de l'espace : prétraitements (ImagePrepSection existant) + pile d'opérations.
+    StudioCard {
+        id: sidePanel
+        objectName: "imageSidePanel"
+        visible: root.hasImage && root.prepReady
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        anchors.margins: Theme.gap
+        width: Math.min(340, Math.max(180, root.width * 0.38))
+        Controls.ScrollView {
+            anchors.fill: parent
+            anchors.margins: 8
+            contentWidth: availableWidth
+            clip: true
+            ColumnLayout {
+                width: Math.max(0, sidePanel.width - 28)
+                spacing: 10
+                ImageSizeSection {
+                    Layout.fillWidth: true
+                    space: root.space
+                }
+                Loader {
+                    Layout.fillWidth: true
+                    active: root.prepReady
+                    sourceComponent: ImagePrepSection {
+                        showThumbnails: false
+                        showHistory: false
                     }
-                    Loader {
-                        Layout.fillWidth: true
-                        active: root.prepReady
-                        sourceComponent: ImagePrepSection {
-                            showThumbnails: false
-                            showHistory: false
-                        }
-                    }
-                    ImageOpStack {
-                        Layout.fillWidth: true
-                        space: root.space
-                    }
+                }
+                ImageOpStack {
+                    Layout.fillWidth: true
+                    space: root.space
                 }
             }
         }

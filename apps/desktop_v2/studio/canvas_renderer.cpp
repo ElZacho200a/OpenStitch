@@ -18,6 +18,7 @@
 #include <limits>
 #include <map>
 #include <memory>
+#include <numbers>
 #include <span>
 
 #include "layers/region_layer.hpp"
@@ -45,6 +46,78 @@ void border(Vertices& out, const stitch_render::RectMm& r, double width, QColor 
     rectangle(out, r.x0, r.y1 - width, r.x1, r.y1, color);
     rectangle(out, r.x0, r.y0, r.x0 + width, r.y1, color);
     rectangle(out, r.x1 - width, r.y0, r.x1, r.y1, color);
+}
+
+// --- Tambour de broderie (affichage seulement) ----------------------------------------------
+// Le cadre du projet est dessiné comme un tambour : anneau clair à coins arrondis, patte de
+// serrage en haut, et fond de tissu sombre à l'intérieur (recouvert par le tissu clair du rendu
+// réaliste quand il est actif). Rien ici n'entre dans le document ni dans les points.
+struct HoopLook {
+    double ring;   // épaisseur de l'anneau (mm)
+    double radius; // rayon extérieur des coins (mm)
+    double tabW;   // patte de serrage
+    double tabH;
+};
+
+const QColor kHoopRing(198, 206, 219);
+const QColor kHoopEdge(143, 153, 170);
+const QColor kHoopFabric(27, 32, 44);
+
+HoopLook hoopLook(const stitch_render::RectMm& h) {
+    const double side = std::min(h.width(), h.height());
+    const double ring = std::clamp(side * 0.035, 1.5, 6.0);
+    return {ring, ring * 2.4, std::clamp(h.width() * 0.10, 6.0, 30.0), ring * 1.5};
+}
+
+// Rectangle arrondi plein, en éventail autour de son centre (sommets non indexés).
+void roundedRectangle(Vertices& out, double x0, double y0, double x1, double y1, double radius,
+                      QColor color) {
+    constexpr int kArc = 8; // segments par coin
+    const double r = std::min({radius, (x1 - x0) / 2.0, (y1 - y0) / 2.0});
+    const double cx = (x0 + x1) / 2.0;
+    const double cy = (y0 + y1) / 2.0;
+    struct Corner {
+        double x, y, start;
+    };
+    const double pi = std::numbers::pi;
+    const Corner corners[4] = {{x1 - r, y0 + r, -pi / 2.0},
+                               {x1 - r, y1 - r, 0.0},
+                               {x0 + r, y1 - r, pi / 2.0},
+                               {x0 + r, y0 + r, pi}};
+    std::vector<std::pair<double, double>> ring;
+    ring.reserve(4 * (kArc + 1));
+    for (const auto& c : corners) {
+        for (int i = 0; i <= kArc; ++i) {
+            const double a = c.start + (pi / 2.0) * i / kArc;
+            ring.emplace_back(c.x + r * std::cos(a), c.y + r * std::sin(a));
+        }
+    }
+    const auto vertex = [color](double x, double y) {
+        return StudioVertex{static_cast<float>(x),
+                            static_cast<float>(y),
+                            static_cast<std::uint8_t>(color.red()),
+                            static_cast<std::uint8_t>(color.green()),
+                            static_cast<std::uint8_t>(color.blue()),
+                            255};
+    };
+    for (std::size_t i = 0; i < ring.size(); ++i) {
+        const auto& a = ring[i];
+        const auto& b = ring[(i + 1) % ring.size()];
+        out.insert(out.end(),
+                   {vertex(cx, cy), vertex(a.first, a.second), vertex(b.first, b.second)});
+    }
+}
+
+void appendHoop(Vertices& out, const stitch_render::RectMm& h) {
+    const auto look = hoopLook(h);
+    const double cx = (h.x0 + h.x1) / 2.0;
+    // Patte de serrage, derrière l'anneau.
+    roundedRectangle(out, cx - look.tabW / 2.0, h.y0 - look.ring - look.tabH, cx + look.tabW / 2.0,
+                     h.y0, look.ring * 0.5, kHoopEdge);
+    roundedRectangle(out, h.x0 - look.ring, h.y0 - look.ring, h.x1 + look.ring, h.y1 + look.ring,
+                     look.radius, kHoopRing);
+    rectangle(out, h.x0, h.y0, h.x1, h.y1, kHoopFabric);
+    border(out, h, std::max(0.2, look.ring * 0.08), kHoopEdge);
 }
 
 void appendGeometry(QSGNode& parent, const Vertices& vertices) {
@@ -481,7 +554,7 @@ public:
             root->stitches.batches.clear();
             if (state.scene) {
                 Vertices frame;
-                border(frame, state.scene->hoop, 0.25, QColor(92, 96, 106));
+                appendHoop(frame, state.scene->hoop);
                 appendGeometry(*root->frame, frame);
                 const auto& vertices = state.scene->vertices;
                 for (std::size_t first = 0; first < vertices.size(); first += kBatchVertices) {
@@ -677,8 +750,23 @@ public:
         if (state.scene) {
             const auto& h = state.scene->hoop;
             if (overlays.showHoop) {
-                painter.setPen(QPen(QColor(92, 96, 106), 0.25));
+                // Même tambour que le chemin GPU (appendHoop), peint au lieu d'être triangulé.
+                const auto look = hoopLook(h);
+                const double cx = (h.x0 + h.x1) / 2.0;
+                painter.setPen(Qt::NoPen);
+                painter.setBrush(kHoopEdge);
+                painter.drawRoundedRect(QRectF(cx - look.tabW / 2.0, h.y0 - look.ring - look.tabH,
+                                               look.tabW, look.ring + look.tabH),
+                                        look.ring * 0.5, look.ring * 0.5);
+                painter.setBrush(kHoopRing);
+                painter.drawRoundedRect(QRectF(h.x0 - look.ring, h.y0 - look.ring,
+                                               h.width() + 2 * look.ring,
+                                               h.height() + 2 * look.ring),
+                                        look.radius, look.radius);
+                painter.setBrush(kHoopFabric);
+                painter.setPen(QPen(kHoopEdge, std::max(0.2, look.ring * 0.08)));
                 painter.drawRect(QRectF(h.x0, h.y0, h.width(), h.height()));
+                painter.setBrush(Qt::NoBrush);
             }
             QPen pen;
             pen.setWidthF(state.scene->threadWidthMm);

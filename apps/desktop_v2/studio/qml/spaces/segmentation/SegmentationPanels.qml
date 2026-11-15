@@ -15,7 +15,8 @@ Rectangle {
     readonly property var segmentationOptions: segSection.options
     readonly property var tabLabels: [qsTr("Segmentation"), qsTr("Régions"), qsTr("IA")]
     color: Theme.panel
-    border.color: Theme.border
+    radius: Theme.cardRadius
+    border.color: Theme.divider
 
     ColumnLayout {
         anchors.fill: parent

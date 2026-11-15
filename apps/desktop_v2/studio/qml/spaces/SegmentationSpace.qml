@@ -79,6 +79,7 @@ Item {
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         anchors.right: panelLoader.active ? panelLoader.left : parent.right
+        anchors.margins: Theme.gap
         clip: true
 
         GpuCanvas {
@@ -211,9 +212,9 @@ Item {
             visible: root.seg !== null && !root.seg.hasSegmentation
             width: Math.min(380, parent.width - 64)
             height: emptyColumn.implicitHeight + 36
-            radius: Theme.radius
-            color: Theme.surface
-            border.color: Theme.border
+            radius: Theme.cardRadius
+            color: Theme.panel
+            border.color: Theme.divider
             ColumnLayout {
                 id: emptyColumn
                 anchors.centerIn: parent
@@ -244,7 +245,6 @@ Item {
             id: controlsLoader
             anchors.left: parent.left
             anchors.bottom: parent.bottom
-            anchors.margins: 12
             active: root.seg !== null
             sourceComponent: RegionLayerControls {
                 seg: root.seg
@@ -270,6 +270,8 @@ Item {
         anchors.right: parent.right
         anchors.top: parent.top
         anchors.bottom: parent.bottom
+        anchors.margins: Theme.gap
+        anchors.leftMargin: 0
         width: Math.min(340, Math.max(180, root.width * 0.38))
         active: root.hasTools
         sourceComponent: SegmentationPanels {}
