@@ -125,7 +125,8 @@ Item {
         nameFilters: {
             var filters = [qsTr("Tous les fichiers pris en charge (*.osp *.svg *.dxf *.png *.jpg *.jpeg *.bmp *.tif *.tiff *.webp *.ora *.dst *.pes *.jef *.exp *.vp3)"),
                            qsTr("Projet OpenStitch (*.osp)"),
-                           qsTr("Image ou OpenRaster (*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.webp *.ora)"),
+                           qsTr("Images (*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.webp *.ora)"),
+                           qsTr("OpenRaster (*.ora)"),
                            qsTr("Vecteur (*.svg *.dxf)")]
             if (panel.ctl) {
                 var f = panel.ctl.readableFilters

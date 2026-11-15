@@ -133,6 +133,7 @@ class StudioFilesTest : public QObject {
     Q_OBJECT
 private slots:
     void initTestCase();
+    void openDialogListsOpenRaster();
     void fileMenuEntriesCloseAfterRealMouseClick();
     void fileMenuStaysReachableInAShortWindow();
     void comboPopupOpensAboveAtWindowBottom();
@@ -289,6 +290,17 @@ void StudioFilesTest::initTestCase() {
     qmlRegisterType<GpuCanvas>("OpenStitch.Studio", 1, 0, "GpuCanvas");
     qmlRegisterUncreatableType<StudioController>("OpenStitch.Studio", 1, 0, "StudioController",
                                                  QStringLiteral("Provided by the application"));
+}
+
+void StudioFilesTest::openDialogListsOpenRaster() {
+    Rig rig({}, true);
+    QVERIFY(rig.window);
+    auto* dialog = rig.window->findChild<QObject*>(QStringLiteral("openAnyDialog"));
+    QVERIFY(dialog);
+    const auto filters = dialog->property("nameFilters").toStringList();
+    QVERIFY(!filters.isEmpty());
+    QVERIFY(filters.front().contains(QStringLiteral("*.ora")));
+    QVERIFY(filters.contains(QStringLiteral("OpenRaster (*.ora)")));
 }
 
 void StudioFilesTest::fileMenuEntriesCloseAfterRealMouseClick() {
