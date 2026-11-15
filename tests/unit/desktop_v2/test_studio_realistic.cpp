@@ -432,7 +432,9 @@ void StudioRealisticTest::gpuPathBuildsOncePerRevisionAndMatchesCpuReference() {
     rig.wait();
     QTRY_COMPARE_WITH_TIMEOUT(rig.canvas.realisticBuildCount(), 3, 15'000);
 
-    // Comparaison de statistiques avec la référence CPU (render_preview).
+    // Comparaison de statistiques avec la référence CPU (render_preview). Le tambour (anneau clair
+    // de #349) n'existe pas dans la référence et serait compté comme de l'encre : on le masque.
+    rig.view.setLayerHoop(false);
     rig.canvas.fitDesign();
     QTest::qWait(100);
     const QImage gpu = window.grabWindow();

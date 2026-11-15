@@ -9,10 +9,13 @@
 
 #include "coherent_lines.hpp"
 #include "mat_convert.hpp"
+#include "openstitch/core/parallel.hpp"
 
 namespace openstitch::image {
 
 namespace {
+
+using openstitch::parallel_for;
 
 using detail::image_from_mat_rgba;
 using detail::mat_view_rgba;
@@ -77,16 +80,25 @@ Result<Image> apply_brightness_contrast(const Image& in, const BrightnessContras
     const double c = std::clamp(op.contrast, -100.0, 100.0);
     const double k = (c >= 0.0) ? 1.0 + c / 50.0 : 1.0 + c / 100.0; // pente 0..3
 
-    const cv::Mat src = mat_view_rgba(in);
-    std::vector<cv::Mat> planes;
-    cv::split(src, planes);
-    for (int i = 0; i < 3; ++i) { // l'alpha n'est pas touché
-        planes[static_cast<std::size_t>(i)].convertTo(planes[static_cast<std::size_t>(i)], -1, k,
-                                                      128.0 * (1.0 - k) + b);
+    // La transformation ne dépend que de la valeur du canal : on la calcule une fois sur
+    // les 256 valeurs (même convertTo, donc mêmes arrondis), puis une table de
+    // correspondance l'applique à l'image (l'alpha n'est pas touché).
+    cv::Mat identity(1, 256, CV_8U);
+    for (int v = 0; v < 256; ++v) {
+        identity.at<std::uint8_t>(v) = static_cast<std::uint8_t>(v);
     }
-    cv::Mat dst;
-    cv::merge(planes, dst);
-    return image_from_mat_rgba(dst, in.source_had_alpha);
+    cv::Mat mapped;
+    identity.convertTo(mapped, -1, k, 128.0 * (1.0 - k) + b);
+    cv::Mat lut;
+    cv::merge(std::vector<cv::Mat>{mapped, mapped, mapped, identity}, lut);
+    Image out;
+    out.width = in.width;
+    out.height = in.height;
+    out.source_had_alpha = in.source_had_alpha;
+    out.rgba.resize(in.rgba.size());
+    cv::Mat dst(in.height, in.width, CV_8UC4, out.rgba.data());
+    cv::LUT(mat_view_rgba(in), lut, dst);
+    return out;
 }
 
 Result<Image> apply_median_denoise(const Image& in, const MedianDenoiseOp& op) {
@@ -94,10 +106,30 @@ Result<Image> apply_median_denoise(const Image& in, const MedianDenoiseOp& op) {
         return fail(ErrorCategory::UserInput, "Force de débruitage invalide (1 ou 2)");
     }
     const int ksize = (op.strength == 1) ? 3 : 5;
+    const int halo = ksize / 2;
+    // cv::medianBlur est mono-fil : on filtre des bandes de lignes en parallèle, chacune
+    // avec `halo` lignes de voisinage (bord répliqué aux seuls bords de l'image, comme
+    // l'appel entier). Chaque tâche écrit ses propres lignes : sortie identique octet pour
+    // octet à un seul appel, quel que soit le nombre de fils.
+    constexpr int kBandRows = 64;
     const cv::Mat src = mat_view_rgba(in);
-    cv::Mat dst;
-    cv::medianBlur(src, dst, ksize);
-    return image_from_mat_rgba(dst, in.source_had_alpha);
+    Image out;
+    out.width = in.width;
+    out.height = in.height;
+    out.source_had_alpha = in.source_had_alpha;
+    out.rgba.resize(in.rgba.size());
+    cv::Mat dst(in.height, in.width, CV_8UC4, out.rgba.data());
+    const auto bands = static_cast<std::size_t>((in.height + kBandRows - 1) / kBandRows);
+    parallel_for(bands, [&](std::size_t band) {
+        const int y0 = static_cast<int>(band) * kBandRows;
+        const int y1 = std::min(in.height, y0 + kBandRows);
+        const int top = std::max(0, y0 - halo);
+        const int bottom = std::min(in.height, y1 + halo);
+        cv::Mat filtered;
+        cv::medianBlur(src.rowRange(top, bottom), filtered, ksize);
+        filtered.rowRange(y0 - top, y1 - top).copyTo(dst.rowRange(y0, y1));
+    });
+    return out;
 }
 
 Result<Image> apply_bilateral_denoise(const Image& in, const BilateralDenoiseOp& op) {
@@ -215,26 +247,30 @@ Result<Image> apply_quantize(const Image& in, const QuantizeOp& op) {
         cv::kmeans(samples, k, labels, criteria, 3, cv::KMEANS_PP_CENTERS, centers);
     }
 
-    // Affecte chaque pixel au centre le plus proche.
+    // Affecte chaque pixel au centre le plus proche (lignes en parallèle : chaque pixel ne
+    // dépend que de lui-même et des centres, sortie identique).
     Image out = in;
-    for (std::size_t i = 0; i < pixelCount; ++i) {
-        std::uint8_t* px = out.rgba.data() + i * 4;
-        int best = 0;
-        float bestDist = std::numeric_limits<float>::max();
-        for (int c = 0; c < k; ++c) {
-            const float dr = centers.at<float>(c, 0) - static_cast<float>(px[0]);
-            const float dg = centers.at<float>(c, 1) - static_cast<float>(px[1]);
-            const float db = centers.at<float>(c, 2) - static_cast<float>(px[2]);
-            const float d = dr * dr + dg * dg + db * db;
-            if (d < bestDist) {
-                bestDist = d;
-                best = c;
+    const auto width = static_cast<std::size_t>(in.width);
+    parallel_for(static_cast<std::size_t>(in.height), [&](std::size_t row) {
+        for (std::size_t i = row * width; i < (row + 1) * width; ++i) {
+            std::uint8_t* px = out.rgba.data() + i * 4;
+            int best = 0;
+            float bestDist = std::numeric_limits<float>::max();
+            for (int c = 0; c < k; ++c) {
+                const float dr = centers.at<float>(c, 0) - static_cast<float>(px[0]);
+                const float dg = centers.at<float>(c, 1) - static_cast<float>(px[1]);
+                const float db = centers.at<float>(c, 2) - static_cast<float>(px[2]);
+                const float d = dr * dr + dg * dg + db * db;
+                if (d < bestDist) {
+                    bestDist = d;
+                    best = c;
+                }
             }
+            px[0] = static_cast<std::uint8_t>(std::lround(centers.at<float>(best, 0)));
+            px[1] = static_cast<std::uint8_t>(std::lround(centers.at<float>(best, 1)));
+            px[2] = static_cast<std::uint8_t>(std::lround(centers.at<float>(best, 2)));
         }
-        px[0] = static_cast<std::uint8_t>(std::lround(centers.at<float>(best, 0)));
-        px[1] = static_cast<std::uint8_t>(std::lround(centers.at<float>(best, 1)));
-        px[2] = static_cast<std::uint8_t>(std::lround(centers.at<float>(best, 2)));
-    }
+    });
     return out;
 }
 

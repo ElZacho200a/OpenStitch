@@ -214,9 +214,11 @@ private slots:
         {
             // Fenêtre basse : le panneau déborde et son défilement doit rester immobile pendant la
             // molette sur le champ (la molette règle la valeur, elle ne fait pas défiler).
+            // 360 px : depuis l'en-tête unique de 52 px (#349), le panneau tient sans défiler à
+            // 480 px (contenu de 350 px pour 356 px de hauteur).
             const auto originalSize = window->size();
-            window->resize(1440, 480);
-            QTRY_COMPARE(window->height(), 480);
+            window->resize(1440, 360);
+            QTRY_COMPARE(window->height(), 360);
             auto* sidePanel = named(window, QStringLiteral("imageSidePanel"));
             QQuickItem* scroller = nullptr;
             QTRY_VERIFY_WITH_TIMEOUT(
