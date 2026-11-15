@@ -4,10 +4,14 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <list>
 #include <map>
+#include <memory>
+#include <mutex>
 #include <numbers>
 #include <unordered_map>
 
+#include "chunk_cache.hpp"
 #include "openstitch/geometry/offset.hpp"
 #include "openstitch/stitch_generation/adaptive_pull.hpp"
 #include "openstitch/stitch_generation/running_stitch.hpp"
@@ -1057,19 +1061,18 @@ bool RegionSegmentTester::stays_inside(Vec2um a, Vec2um b, Micrometers edge_tole
     return !connector_invalid(impl_->index, pa, pb, std::max(0.0, double(edge_tolerance.value)));
 }
 
-struct HiddenRouter::Impl {
-    // Au plus ce nombre de points de passage (les moins dÃ©tournÃ©s) sont retenus par trajet :
-    // le graphe de visibilitÃ© reste petit mÃªme sur une forme criblÃ©e de trous. 24 ne gardait
-    // qu'un amas serré autour du segment direct, insuffisant pour contourner un obstacle
-    // (mesure sur `sample/`, coupes : 334 avec 24, 268 avec 48, 229 avec 96).
-    static constexpr std::size_t kMaxCandidates = 96;
-
-    Impl(const geometry::PathSet& region_, Micrometers inset_, double cap_um)
-        : region(region_), inset(inset_), tester(region_), cap(cap_um) {}
+// État coûteux d'un routeur, fonction de la seule géométrie (région, retrait) : index des arêtes,
+// points de passage (contour rentré par Clipper) et visibilités déjà testées entre eux. Il est
+// gardé d'une génération à l'autre (cf. `RouterCache`) : régler la densité ou l'angle d'un objet
+// le régénère avec la même géométrie, et ces tests ne sont pas refaits. Résultat inchangé :
+// ce ne sont que des valeurs pures de la géométrie.
+struct RouterState {
+    RouterState(const geometry::PathSet& region_, Micrometers inset_)
+        : region(region_), inset(inset_), tester(region_) {}
 
     // Points de passage, calculÃ©s au premier besoin seulement : un trajet droit suffit dans la
     // plupart des cas et le dÃ©calage du contour (Clipper) coÃ»te plus cher que le test.
-    void ensure_waypoints() const {
+    void ensure_waypoints() {
         if (ready) {
             return;
         }
@@ -1100,21 +1103,11 @@ struct HiddenRouter::Impl {
         }
     }
 
-    geometry::PathSet region;
-    Micrometers inset;
-    RegionSegmentTester tester;
-    double cap;
-    mutable bool ready{false};
-    mutable std::vector<Vec2um> waypoints;
-    mutable std::vector<Vec2um> boundary;
-    // Visibilité stricte entre deux points de passage, mémoïsée sur toute la vie du routeur : les
-    // liaisons successives d'une région explorent largement les mêmes paires (5,6 M de tests pour
-    // le fond de tentabrode). Clé (ensemble, i, j) ORDONNÉE : le test n'est pas exactement
-    // symétrique en virgule flottante. Recherche exacte seulement, l'ordre n'est jamais parcouru.
-    mutable std::unordered_map<std::uint64_t, bool> visibility;
-    static constexpr std::size_t kMaxVisibilityEntries = 4'000'000;
-
-    bool visible(int set, std::size_t i, std::size_t j, Vec2um p, Vec2um q) const {
+    // Visibilité stricte entre deux points de passage, mémoïsée : les liaisons successives d'une
+    // région explorent largement les mêmes paires (5,6 M de tests pour le fond de tentabrode).
+    // Clé (ensemble, i, j) ORDONNÉE : le test n'est pas exactement symétrique en virgule
+    // flottante. Recherche exacte seulement, l'ordre n'est jamais parcouru.
+    bool visible(int set, std::size_t i, std::size_t j, Vec2um p, Vec2um q) {
         const std::uint64_t key = (std::uint64_t(set) << 62) | (std::uint64_t(i) << 31) | j;
         if (const auto it = visibility.find(key); it != visibility.end()) {
             return it->second;
@@ -1125,6 +1118,111 @@ struct HiddenRouter::Impl {
         }
         return v;
     }
+
+    // Mémoire estimée (octets), pour le budget du cache.
+    [[nodiscard]] std::size_t bytes() const {
+        std::size_t nodes = region.outer.nodes.size();
+        for (const auto& hole : region.holes) {
+            nodes += hole.nodes.size();
+        }
+        return sizeof(RouterState) + nodes * (sizeof(geometry::PathNode) + 96) +
+               (waypoints.size() + boundary.size()) * sizeof(Vec2um) + visibility.size() * 48;
+    }
+
+    static constexpr std::size_t kMaxVisibilityEntries = 4'000'000;
+    geometry::PathSet region;
+    Micrometers inset;
+    RegionSegmentTester tester;
+    bool ready{false};
+    std::vector<Vec2um> waypoints;
+    std::vector<Vec2um> boundary;
+    std::unordered_map<std::uint64_t, bool> visibility;
+};
+
+namespace {
+
+// États de routeur libres, du plus récemment rendu au plus ancien, sous un budget mémoire. Un
+// routeur EMPRUNTE l'état de sa géométrie (clé exacte : région entière et retrait) et le rend à
+// sa destruction : deux fils ne partagent jamais un état. Suit l'activation du cache de points.
+struct RouterCache {
+    static constexpr std::size_t kBudgetBytes = 64U * 1024U * 1024U;
+    std::mutex mutex;
+    std::list<std::unique_ptr<RouterState>> free;
+    std::size_t bytes{0};
+};
+
+RouterCache& router_cache() {
+    static RouterCache instance;
+    return instance;
+}
+
+std::unique_ptr<RouterState> take_router_state(const geometry::PathSet& region, Micrometers inset) {
+    if (chunk_cache_enabled()) {
+        RouterCache& c = router_cache();
+        const std::lock_guard<std::mutex> lock(c.mutex);
+        for (auto it = c.free.begin(); it != c.free.end(); ++it) {
+            if ((*it)->inset == inset && (*it)->region == region) {
+                auto state = std::move(*it);
+                c.bytes -= std::min(c.bytes, state->bytes());
+                c.free.erase(it);
+                return state;
+            }
+        }
+    }
+    return std::make_unique<RouterState>(region, inset);
+}
+
+void give_router_state(std::unique_ptr<RouterState> state) {
+    if (!state || !chunk_cache_enabled()) {
+        return;
+    }
+    const std::size_t size = state->bytes();
+    if (size > RouterCache::kBudgetBytes) {
+        return;
+    }
+    RouterCache& c = router_cache();
+    const std::lock_guard<std::mutex> lock(c.mutex);
+    c.free.push_front(std::move(state));
+    c.bytes += size;
+    while (c.bytes > RouterCache::kBudgetBytes && c.free.size() > 1) {
+        c.bytes -= std::min(c.bytes, c.free.back()->bytes());
+        c.free.pop_back();
+    }
+}
+
+} // namespace
+
+void clear_router_cache() {
+    RouterCache& c = router_cache();
+    const std::lock_guard<std::mutex> lock(c.mutex);
+    c.free.clear();
+    c.bytes = 0;
+}
+
+struct HiddenRouter::Impl {
+    // Au plus ce nombre de points de passage (les moins dÃ©tournÃ©s) sont retenus par trajet :
+    // le graphe de visibilitÃ© reste petit mÃªme sur une forme criblÃ©e de trous. 24 ne gardait
+    // qu'un amas serré autour du segment direct, insuffisant pour contourner un obstacle
+    // (mesure sur `sample/`, coupes : 334 avec 24, 268 avec 48, 229 avec 96).
+    static constexpr std::size_t kMaxCandidates = 96;
+
+    Impl(const geometry::PathSet& region_, Micrometers inset_, double cap_um)
+        : state(take_router_state(region_, inset_)), tester(state->tester),
+          waypoints(state->waypoints), boundary(state->boundary), cap(cap_um) {}
+    ~Impl() { give_router_state(std::move(state)); }
+    Impl(const Impl&) = delete;
+    Impl& operator=(const Impl&) = delete;
+
+    void ensure_waypoints() const { state->ensure_waypoints(); }
+    bool visible(int set, std::size_t i, std::size_t j, Vec2um p, Vec2um q) const {
+        return state->visible(set, i, j, p, q);
+    }
+
+    std::unique_ptr<RouterState> state; // emprunté au cache, rendu à la destruction
+    const RegionSegmentTester& tester;
+    const std::vector<Vec2um>& waypoints;
+    const std::vector<Vec2um>& boundary;
+    double cap;
 };
 
 namespace {

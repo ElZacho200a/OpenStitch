@@ -2,14 +2,20 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <set>
 
 #include "digitize_pipeline.hpp"
 #include "document_session.hpp"
 #include "openstitch/image/image.hpp"
+#include "openstitch/project_io/project_io.hpp"
+#include "openstitch/stitch_generation/overrides.hpp"
 #include "region_edit.hpp"
+#include "source_image_tools.hpp"
 
 using namespace openstitch;
 using namespace openstitch::desktop_v2;
@@ -565,4 +571,67 @@ TEST_CASE("re-segmenting with other settings replaces the objects in one undo st
     const auto stale = *result;
     REQUIRE(recolorRegion(d.session, allRegionIds(d.session.project()).front(), {1, 2, 3}).ok);
     CHECK_FALSE(applyRegeneration(d.session, stale).ok);
+}
+
+// Banc (masqué, `[.perf]`) du geste « retoucher une région puis Mettre à jour » : un trait de
+// pinceau dans une région, régénération des objets, puis séquence effective (scène Points).
+// Projet réel facultatif : OPENSTITCH_PERF_OSP=chemin.osp ; sinon tentabrode numérisé.
+TEST_CASE("perf: regeneration after a one-region paint stroke", "[.perf][desktop_v2][regions]") {
+    using Clock = std::chrono::steady_clock;
+    const auto ms = [](Clock::time_point t) {
+        return std::chrono::duration<double, std::milli>(Clock::now() - t).count();
+    };
+    DocumentSession session;
+    image::Image working;
+    project_ops::DigitizeSettings settings;
+    if (const char* osp = std::getenv("OPENSTITCH_PERF_OSP"); osp != nullptr && *osp != '\0') {
+        auto loaded = project_io::load_project(fs::path(osp));
+        REQUIRE(loaded.has_value());
+        session.replaceProject(std::move(*loaded), true);
+        auto img = processedImage(session.project());
+        REQUIRE(img.has_value());
+        working = std::move(*img);
+    } else {
+        Digitized d;
+        session.replaceProject(*d.session.snapshot(), true);
+        working = d.working;
+        settings = d.settings;
+    }
+    // Mise en régime : une première régénération normalise les identifiants (comme un projet
+    // déjà régénéré une fois) et remplit les caches de points.
+    auto warm = regenerateObjects(session.snapshot(), session.revision(), working, settings, {});
+    REQUIRE(warm.has_value());
+    REQUIRE(applyRegeneration(session, *warm).ok);
+    (void)stitch_generation::effective_sequence(*session.snapshot());
+
+    const auto regions = listRegions(session.project());
+    REQUIRE(regions.size() >= 2);
+    const auto& target = regions[regions.size() / 2]; // région moyenne
+    const auto& seg = *session.project().segmentation;
+    // Un trait court sur le premier pixel de la région ciblée.
+    std::vector<std::pair<double, double>> stroke;
+    for (int y = 0; y < seg.height && stroke.empty(); ++y) {
+        for (int x = 0; x < seg.width && stroke.empty(); ++x) {
+            if (const auto hit = regionAtPixel(session.project(), x, y); hit && *hit == target.id) {
+                stroke = {{x + 0.5, y + 0.5}, {x + 3.5, y + 0.5}};
+            }
+        }
+    }
+    REQUIRE(!stroke.empty());
+    REQUIRE(paintRegionStroke(session, target.id, stroke, 3.0, false).ok);
+
+    auto t = Clock::now();
+    auto regen = regenerateObjects(session.snapshot(), session.revision(), working, settings, {});
+    const double regenMs = ms(t);
+    REQUIRE(regen.has_value());
+    t = Clock::now();
+    REQUIRE(applyRegeneration(session, *regen).ok);
+    const double applyMs = ms(t);
+    t = Clock::now();
+    const auto seq = stitch_generation::effective_sequence(*session.snapshot());
+    const double seqMs = ms(t);
+    REQUIRE(seq.has_value());
+    std::printf("[perf-regen] regions=%zu objets=%zu reutilises=%zu | regenerateObjects=%.0f ms "
+                "applyRegeneration=%.0f ms effective_sequence=%.0f ms\n",
+                regions.size(), regen->objectsAfter, regen->reused, regenMs, applyMs, seqMs);
 }

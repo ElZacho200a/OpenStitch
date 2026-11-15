@@ -120,6 +120,11 @@ void clear_chunk_cache() {
     c.total_bytes = 0;
     c.hits = 0;
     c.misses = 0;
+    clear_router_cache();
+}
+
+bool chunk_cache_enabled() {
+    return enabled_flag().load(std::memory_order_relaxed);
 }
 
 void set_chunk_cache_enabled(bool enabled) {
