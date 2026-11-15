@@ -19,11 +19,11 @@ ServiceResult refuse(std::string why) {
 } // namespace
 
 Result<image::Image> processedImage(const document::Project& project) {
-    if (project.original.empty()) {
+    if (project.imageSource().original.empty()) {
         return fail(ErrorCategory::OperationImpossible, "Ce projet n'a pas d'image source",
                     "Importez une image (Fichier > Ouvrir) pour utiliser cet outil.");
     }
-    return image::apply_pipeline(project.original, project.ops);
+    return image::apply_pipeline(project.imageSource().original, project.imageSource().ops);
 }
 
 std::optional<PixelPoint> pixelUnder(const image::Image& img, double mmPerPx, double x, double y) {
@@ -47,7 +47,7 @@ std::pair<double, double> pixelCentreMm(const image::Image& img, double mmPerPx,
 
 ClickResult clickToStitch(DocumentSession& session, const image::Image& processed, double x,
                           double y, int tolerance, ClickKind kind) {
-    const double mmPerPx = session.project().mm_per_px.value;
+    const double mmPerPx = session.project().imageSource().mm_per_px.value;
     const auto pixel = pixelUnder(processed, mmPerPx, x, y);
     if (!pixel) {
         return {false, "Cliquez sur l'image (affichez-la avec Affichage > Image source).", 0};
@@ -60,7 +60,8 @@ ClickResult clickToStitch(DocumentSession& session, const image::Image& processe
         return {false, region.error().message, 0};
     }
     commands::ClickToStitchOptions options;
-    options.mm_per_px = session.project().mm_per_px;
+    options.mm_per_px = session.project().imageSource().mm_per_px;
+    options.calque = session.project().imageSourceId();
     switch (kind) {
     case ClickKind::Fill:
         options.kind = commands::ClickToStitchKind::Fill;
@@ -88,7 +89,7 @@ ClickResult clickToStitch(DocumentSession& session, const image::Image& processe
 ServiceResult paintDetail(DocumentSession& session, const image::Image& processed,
                           const std::vector<std::pair<double, double>>& centres, double radiusMm,
                           bool erase) {
-    const double mmPerPx = session.project().mm_per_px.value;
+    const double mmPerPx = session.project().imageSource().mm_per_px.value;
     if (processed.empty()) {
         return refuse("Ce projet n'a pas d'image source.");
     }
@@ -111,7 +112,7 @@ ServiceResult paintDetail(DocumentSession& session, const image::Image& processe
 }
 
 ServiceResult clearDetail(DocumentSession& session) {
-    if (session.project().detail_mask.empty()) {
+    if (session.project().imageSource().detail_mask.empty()) {
         return refuse("Aucune zone de détail à effacer.");
     }
     session.execute(std::make_unique<commands::ClearDetailMaskCommand>());
@@ -120,13 +121,13 @@ ServiceResult clearDetail(DocumentSession& session) {
 
 int detailWeightAt(const document::Project& project, const image::Image& processed, double x,
                    double y) {
-    const auto p = pixelUnder(processed, project.mm_per_px.value, x, y);
-    if (!p || !project.detail_mask.matches(processed.width, processed.height)) {
+    const auto p = pixelUnder(processed, project.imageSource().mm_per_px.value, x, y);
+    if (!p || !project.imageSource().detail_mask.matches(processed.width, processed.height)) {
         return 0;
     }
-    return project.detail_mask
-        .weights[static_cast<std::size_t>(p->y) * static_cast<std::size_t>(processed.width) +
-                 static_cast<std::size_t>(p->x)];
+    return project.imageSource().detail_mask.weights[static_cast<std::size_t>(p->y) *
+                                                         static_cast<std::size_t>(processed.width) +
+                                                     static_cast<std::size_t>(p->x)];
 }
 
 } // namespace openstitch::desktop_v2

@@ -15,6 +15,14 @@ Un projet `.osp` est une **archive ZIP** (via minizip-ng) contenant :
 Le JSON et le binaire sont séparés pour ne pas alourdir le JSON (la carte des
 labels peut faire plusieurs mégaoctets).
 
+Le schéma **v10** ajoute `document.imageSources`. Chaque entrée référence un
+calque et stocke sa résolution, sa pile d’opérations et les métadonnées de sa
+segmentation. Ses données binaires sont sous `images/<id-du-calque>/` avec les
+mêmes noms qu’à la racine, dont `detail_mask.u8` si un masque existe. Sur une forme
+dérivée, `sourceImage` désigne le calque image et `sourceRegion` identifie la
+région dans cette source. Déplacer la forme dans la pile de couture conserve
+son lien d’origine. Les anciennes archives à image unique restent lisibles.
+
 Compression (2026-10) : l'image PNG, déjà compressée, est stockée telle quelle dans le ZIP ; le JSON et les étiquettes sont en DEFLATE niveau rapide. Le fichier reste un ZIP standard, lisible par les versions précédentes.
 
 ## Contenu de `project.json`

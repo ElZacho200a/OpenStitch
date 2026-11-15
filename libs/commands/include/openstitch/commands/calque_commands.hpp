@@ -16,6 +16,53 @@
 
 namespace openstitch::commands {
 
+class ImportImageLayersCommand final : public ICommand {
+public:
+    struct Entry {
+        document::Calque calque;
+        document::ImageSource source;
+    };
+
+    explicit ImportImageLayersCommand(std::vector<Entry> entries, ObjectId background = {})
+        : entries_(std::move(entries)), background_(background) {}
+
+    void apply(document::Project& project) override {
+        project.calques.reserve(project.calques.size() + entries_.size() + background_.valid());
+        project.image_sources.reserve(project.image_sources.size() + entries_.size());
+        if (background_.valid()) {
+            project.calques.push_back({background_, "Calque 1", true, false});
+        }
+        for (auto& entry : entries_) {
+            project.calques.push_back(entry.calque);
+            project.image_sources.push_back({entry.calque.id, std::move(entry.source)});
+        }
+    }
+
+    void revert(document::Project& project) override {
+        for (auto entry = entries_.rbegin(); entry != entries_.rend(); ++entry) {
+            entry->source = std::move(project.image_sources.back().source);
+            project.image_sources.pop_back();
+            project.calques.pop_back();
+        }
+        if (background_.valid()) {
+            project.calques.pop_back();
+        }
+        if (project.findImageSource(project.active_image_source) == nullptr) {
+            project.active_image_source = {};
+        }
+        if (project.findCalque(project.active_calque) == nullptr) {
+            project.active_calque = {};
+        }
+    }
+
+    std::string name() const override { return "Importer des images en calques"; }
+    bool affectsEmbroidery() const override { return false; }
+
+private:
+    std::vector<Entry> entries_;
+    ObjectId background_;
+};
+
 // Ajoute un calque au-dessus de tous les autres. Sur un document sans calque, le calque implicite
 // du fond (« Calque 1 ») est matérialisé d'abord : toutes les formes existantes y restent.
 // Les identifiants sont fournis par l'appelant (project.object_ids) AVANT la commande, pour que
@@ -73,6 +120,13 @@ public:
         }
         index_ = static_cast<std::size_t>(it - list.begin());
         removed_ = *it;
+        const auto image =
+            std::ranges::find(project.image_sources, id_, &document::ImageSourceLayer::calque);
+        if (image != project.image_sources.end()) {
+            imageIndex_ = image - project.image_sources.begin();
+            removedImage_ = std::move(*image);
+            project.image_sources.erase(image);
+        }
         const ObjectId target = index_ > 0 ? list[index_ - 1].id : list[1].id;
         for (auto& shape : project.vector_objects) {
             if (shape.calque == id_) {
@@ -93,6 +147,11 @@ public:
         }
         project.calques.insert(project.calques.begin() + static_cast<std::ptrdiff_t>(index_),
                                removed_);
+        if (removedImage_) {
+            project.image_sources.insert(project.image_sources.begin() + imageIndex_,
+                                         std::move(*removedImage_));
+            removedImage_.reset();
+        }
         for (const ObjectId shapeId : moved_) {
             if (auto* shape = project.findObject(shapeId)) {
                 shape->calque = id_;
@@ -109,6 +168,8 @@ private:
     ObjectId id_;
     std::size_t index_{};
     document::Calque removed_{};
+    std::optional<document::ImageSourceLayer> removedImage_;
+    std::ptrdiff_t imageIndex_{};
     std::vector<ObjectId> moved_;
     bool wasActive_{false};
     bool applied_{false};

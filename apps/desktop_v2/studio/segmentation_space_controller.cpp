@@ -64,11 +64,11 @@ void SegmentationSpaceController::setContours(bool value) {
 }
 
 bool SegmentationSpaceController::hasSegmentation() const {
-    return studio_.session().project().segmentation.has_value();
+    return studio_.session().project().imageSource().segmentation.has_value();
 }
 
 int SegmentationSpaceController::regionCount() const {
-    const auto& seg = studio_.session().project().segmentation;
+    const auto& seg = studio_.session().project().imageSource().segmentation;
     return seg ? static_cast<int>(seg->region_count()) : 0;
 }
 
@@ -217,9 +217,9 @@ void SegmentationSpaceController::refresh() {
     }
     const QRectF fillRectMm = regionLayerRect(project);
     QRectF highlightRectMm;
-    if (project.segmentation && highlightBoundsPx_.isValid()) {
-        const auto& seg = *project.segmentation;
-        const double mm = project.mm_per_px.value;
+    if (project.imageSource().segmentation && highlightBoundsPx_.isValid()) {
+        const auto& seg = *project.imageSource().segmentation;
+        const double mm = project.imageSource().mm_per_px.value;
         const double x = (highlightBoundsPx_.x() - seg.width / 2.0) * mm;
         const double y = (highlightBoundsPx_.y() - seg.height / 2.0) * mm;
         const double w = highlightBoundsPx_.width() * mm;

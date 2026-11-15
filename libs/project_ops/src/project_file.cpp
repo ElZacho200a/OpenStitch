@@ -56,8 +56,9 @@ std::vector<std::string> check_integrity(const document::Project& project) {
             note("identifiant d'objet vectoriel en double : " + std::to_string(v.id.value));
         }
         seen.push_back(v.id.value);
-        if (v.source_region && project.segmentation &&
-            project.segmentation->find(*v.source_region) == nullptr) {
+        const auto* source = project.findImageSource(v.source_image);
+        if (v.source_region && source != nullptr && source->segmentation &&
+            source->segmentation->find(*v.source_region) == nullptr) {
             note("objet vectoriel " + std::to_string(v.id.value) + " : région source " +
                  std::to_string(v.source_region->value) + " absente de la segmentation");
         }

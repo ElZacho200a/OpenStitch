@@ -22,10 +22,11 @@ bool inRange(double v, double lo, double hi) {
 } // namespace
 
 PixelSize workingImageSize(const document::Project& project) {
-    if (!project.hasImage()) {
+    if (!project.hasActiveImage()) {
         return {};
     }
-    const auto img = image::apply_pipeline(project.original, project.ops);
+    const auto img =
+        image::apply_pipeline(project.imageSource().original, project.imageSource().ops);
     if (!img) {
         return {};
     }
@@ -34,14 +35,14 @@ PixelSize workingImageSize(const document::Project& project) {
 
 std::vector<std::string> imagePrepNames(const document::Project& project) {
     std::vector<std::string> names;
-    for (const auto& op : project.ops) {
+    for (const auto& op : project.imageSource().ops) {
         names.push_back(image::op_name(op));
     }
     return names;
 }
 
 ServiceResult applyImagePrep(DocumentSession& session, const PrepRequest& r) {
-    if (!session.project().hasImage()) {
+    if (!session.project().hasActiveImage()) {
         return refuse("Le projet n'a pas d'image source.");
     }
     image::ImageOp op;

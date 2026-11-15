@@ -118,7 +118,7 @@ OpStatus import_svg(OpContext& ctx) {
         // Même classification que l'auto-numérisation : tatami pour les zones, contour pour
         // les petites formes.
         autodigitize::AutoOptions options;
-        options.mm_per_px = ctx.project.mm_per_px;
+        options.mm_per_px = ctx.project.imageSource().mm_per_px;
         auto built = autodigitize::auto_digitize_vectors(vectors, ctx.project.object_ids, options);
         if (!built) {
             return OpStatus::failure(code::kRefused, "numérisation des formes impossible : " +
@@ -676,14 +676,14 @@ public:
         : image_(std::move(image)), mm_per_px_(mm_per_px) {}
 
     void apply(document::Project& project) override {
-        previous_image_ = std::move(project.original);
-        previous_mm_per_px_ = project.mm_per_px;
-        project.original = image_;
-        project.mm_per_px = Millimeters{mm_per_px_};
+        previous_image_ = std::move(project.imageSource().original);
+        previous_mm_per_px_ = project.imageSource().mm_per_px;
+        project.imageSource().original = image_;
+        project.imageSource().mm_per_px = Millimeters{mm_per_px_};
     }
     void revert(document::Project& project) override {
-        project.original = std::move(previous_image_);
-        project.mm_per_px = previous_mm_per_px_;
+        project.imageSource().original = std::move(previous_image_);
+        project.imageSource().mm_per_px = previous_mm_per_px_;
         previous_image_ = image::Image{};
     }
     [[nodiscard]] std::string name() const override { return "Définir l'image source"; }

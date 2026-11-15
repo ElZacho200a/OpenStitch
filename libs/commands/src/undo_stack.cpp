@@ -1,9 +1,56 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "openstitch/commands/undo_stack.hpp"
 
+#include <algorithm>
+
 namespace openstitch::commands {
 
+namespace {
+
+// Le calque affiché peut changer entre l'exécution et l'annulation.
+class ImageBoundCommand final : public ICommand {
+public:
+    ImageBoundCommand(std::unique_ptr<ICommand> command, ObjectId source)
+        : command_(std::move(command)), source_(source) {}
+
+    void apply(document::Project& project) override { run(project, &ICommand::apply); }
+    void revert(document::Project& project) override { run(project, &ICommand::revert); }
+    std::string name() const override { return command_->name(); }
+    bool affectsEmbroidery() const override { return command_->affectsEmbroidery(); }
+    bool affectsSegmentation() const override { return command_->affectsSegmentation(); }
+    std::string mergeKey() const override { return command_->mergeKey(); }
+    bool mergeWith(const ICommand& newer) override {
+        const auto* bound = dynamic_cast<const ImageBoundCommand*>(&newer);
+        return bound != nullptr && source_ == bound->source_ &&
+               command_->mergeWith(*bound->command_);
+    }
+
+private:
+    void run(document::Project& project, void (ICommand::*action)(document::Project&)) {
+        struct RestoreSource {
+            document::Project& project;
+            ObjectId selected;
+            ~RestoreSource() {
+                project.active_image_source =
+                    project.findImageSource(selected) != nullptr ? selected : ObjectId{};
+            }
+        } restore{project, project.active_image_source};
+        project.active_image_source = source_;
+        const auto lastId = project.object_ids.last();
+        (command_.get()->*action)(project);
+        project.object_ids.reset(std::max(lastId, project.object_ids.last()));
+    }
+
+    std::unique_ptr<ICommand> command_;
+    ObjectId source_;
+};
+
+} // namespace
+
 void UndoStack::execute(std::unique_ptr<ICommand> command, document::Project& project) {
+    if (!project.image_sources.empty()) {
+        command = std::make_unique<ImageBoundCommand>(std::move(command), project.imageSourceId());
+    }
     lastChangeAffectsEmbroidery_ = command->affectsEmbroidery();
     lastChangeAffectsSegmentation_ = command->affectsSegmentation();
     command->apply(project);

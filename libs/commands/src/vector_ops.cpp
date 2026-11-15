@@ -333,9 +333,11 @@ PasteResult make_paste_command(document::Project& project, const document::Objec
         document::VectorObject copy = source;
         copy.id = project.object_ids.next();
         copy.text_owner.reset();
-        if (copy.source_region &&
-            (!project.segmentation || project.segmentation->find(*copy.source_region) == nullptr)) {
+        const auto* imageSource = project.findImageSource(copy.source_image);
+        if (copy.source_region && (imageSource == nullptr || !imageSource->segmentation ||
+                                   !imageSource->segmentation->find(*copy.source_region))) {
             copy.source_region.reset();
+            copy.source_image = {};
         }
         remap.emplace_back(source.id, copy.id);
         out.pasted.push_back(copy.id);

@@ -90,6 +90,7 @@ public:
     // --- Imports ----------------------------------------------------------------------------
     Q_INVOKABLE [[nodiscard]] QVariantMap imageImportDefaults() const;
     Q_INVOKABLE void importImage(const QString& path, const QVariantMap& options);
+    Q_INVOKABLE void importImageLayers(const QVariantList& urls);
     Q_INVOKABLE void importVector(const QString& path, const QString& stitchType = {});
 
     // --- Exports ----------------------------------------------------------------------------

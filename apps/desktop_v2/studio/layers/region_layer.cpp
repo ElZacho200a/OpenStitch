@@ -41,10 +41,10 @@ QSGSimpleTextureNode* textureNode(QQuickWindow& window, const QImage& image, con
 } // namespace
 
 std::vector<RegionPixelBounds> buildRegionBounds(const document::Project& project) {
-    if (!project.segmentation) {
+    if (!project.imageSource().segmentation) {
         return {};
     }
-    const auto& seg = *project.segmentation;
+    const auto& seg = *project.imageSource().segmentation;
     const auto w = static_cast<std::size_t>(std::max(0, seg.width));
     const auto h = static_cast<std::size_t>(std::max(0, seg.height));
     std::vector<RegionPixelBounds> bounds(seg.region_slots.size() + 1);
@@ -68,10 +68,10 @@ std::vector<RegionPixelBounds> buildRegionBounds(const document::Project& projec
 }
 
 std::uint64_t segmentationFingerprint(const document::Project& project) {
-    if (!project.segmentation) {
+    if (!project.imageSource().segmentation) {
         return 0;
     }
-    const auto& seg = *project.segmentation;
+    const auto& seg = *project.imageSource().segmentation;
     std::uint64_t h = kFnvOffset;
     mix(h, static_cast<std::uint64_t>(seg.width));
     mix(h, static_cast<std::uint64_t>(seg.height));
@@ -89,21 +89,21 @@ std::uint64_t segmentationFingerprint(const document::Project& project) {
 }
 
 QRectF regionLayerRect(const document::Project& project) {
-    if (!project.segmentation) {
+    if (!project.imageSource().segmentation) {
         return {};
     }
-    const double mm = project.mm_per_px.value;
-    const double w = project.segmentation->width * mm;
-    const double h = project.segmentation->height * mm;
+    const double mm = project.imageSource().mm_per_px.value;
+    const double w = project.imageSource().segmentation->width * mm;
+    const double h = project.imageSource().segmentation->height * mm;
     return {-w / 2.0, -h / 2.0, w, h};
 }
 
 bool scenePointToPixel(const document::Project& project, double xMm, double yMm, int& px, int& py) {
-    if (!project.segmentation || project.mm_per_px.value <= 0.0) {
+    if (!project.imageSource().segmentation || project.imageSource().mm_per_px.value <= 0.0) {
         return false;
     }
-    const auto& seg = *project.segmentation;
-    const double mm = project.mm_per_px.value;
+    const auto& seg = *project.imageSource().segmentation;
+    const double mm = project.imageSource().mm_per_px.value;
     const double fx = xMm / mm + seg.width / 2.0;
     const double fy = yMm / mm + seg.height / 2.0;
     if (fx < 0.0 || fy < 0.0 || fx >= seg.width || fy >= seg.height) {
@@ -115,10 +115,10 @@ bool scenePointToPixel(const document::Project& project, double xMm, double yMm,
 }
 
 QImage buildRegionFill(const document::Project& project, bool contours) {
-    if (!project.segmentation) {
+    if (!project.imageSource().segmentation) {
         return {};
     }
-    const auto& seg = *project.segmentation;
+    const auto& seg = *project.imageSource().segmentation;
     const auto w = static_cast<std::size_t>(std::max(0, seg.width));
     const auto h = static_cast<std::size_t>(std::max(0, seg.height));
     if (w == 0 || h == 0 || seg.labels.size() < w * h) {
@@ -152,10 +152,10 @@ QImage buildRegionFill(const document::Project& project, bool contours) {
 RegionHighlight buildRegionHighlight(const document::Project& project,
                                      const std::vector<std::uint64_t>& selected,
                                      const std::vector<RegionPixelBounds>& bounds) {
-    if (!project.segmentation || selected.empty()) {
+    if (!project.imageSource().segmentation || selected.empty()) {
         return {};
     }
-    const auto& seg = *project.segmentation;
+    const auto& seg = *project.imageSource().segmentation;
     const auto w = static_cast<std::size_t>(std::max(0, seg.width));
     const auto h = static_cast<std::size_t>(std::max(0, seg.height));
     if (w == 0 || h == 0 || seg.labels.size() < w * h) {

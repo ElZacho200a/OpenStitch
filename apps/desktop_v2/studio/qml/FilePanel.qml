@@ -123,9 +123,10 @@ Item {
         title: qsTr("Ouvrir ou importer un fichier")
         fileMode: FileDialog.OpenFile
         nameFilters: {
-            var filters = [qsTr("Tous les fichiers pris en charge (*.osp *.svg *.dxf *.png *.jpg *.jpeg *.bmp *.tif *.tiff *.webp *.dst *.pes *.jef *.exp *.vp3)"),
+            var filters = [qsTr("Tous les fichiers pris en charge (*.osp *.svg *.dxf *.png *.jpg *.jpeg *.bmp *.tif *.tiff *.webp *.ora *.dst *.pes *.jef *.exp *.vp3)"),
                            qsTr("Projet OpenStitch (*.osp)"),
-                           qsTr("Image (*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.webp)"),
+                           qsTr("Images (*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.webp *.ora)"),
+                           qsTr("OpenRaster (*.ora)"),
                            qsTr("Vecteur (*.svg *.dxf)")]
             if (panel.ctl) {
                 var f = panel.ctl.readableFilters
@@ -138,9 +139,10 @@ Item {
     }
     FileDialog {
         id: imageDialog
-        title: qsTr("Choisir une image source")
-        nameFilters: [qsTr("Image (*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.webp)")]
-        onAccepted: if (panel.ctl) panel.ctl.openUrl(selectedFile)
+        title: qsTr("Importer des images en calques")
+        fileMode: FileDialog.OpenFiles
+        nameFilters: [qsTr("Image ou OpenRaster (*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.webp *.ora)")]
+        onAccepted: if (panel.ctl) panel.ctl.importImageLayers(selectedFiles)
     }
     FileDialog {
         id: vectorDialog
@@ -280,7 +282,7 @@ Item {
                 onClicked: panel.ctl.clearRecent()
             }
             SectionLabel { text: qsTr("IMPORTER") }
-            Entry { text: qsTr("Une image (espace Image)…"); onClicked: panel.importImageDialog() }
+            Entry { text: qsTr("Images en calques…"); onClicked: panel.importImageDialog() }
             Entry { text: qsTr("Un SVG ou un DXF…"); onClicked: panel.importVectorDialog() }
             Entry { text: qsTr("Une broderie machine…"); onClicked: panel.importMachineDialog() }
             SectionLabel { text: qsTr("EXPORTER") }

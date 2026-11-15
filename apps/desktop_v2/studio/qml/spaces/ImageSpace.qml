@@ -207,6 +207,16 @@ Item {
             clip: true
             ColumnLayout {
                 width: Math.max(0, sidePanel.width - 28)
+                StudioComboBox {
+                    objectName: "imageLayerSelector"
+                    enabled: !studio.busy
+                    Layout.fillWidth: true
+                    visible: root.prepReady && imageTools.imageLayers.length > 0
+                    model: root.prepReady ? imageTools.imageLayers : []
+                    currentIndex: root.prepReady ? imageTools.imageLayerIndex : -1
+                    Accessible.name: qsTr("Calque image actif")
+                    onActivated: index => imageTools.selectImageLayer(index)
+                }
                 spacing: 10
                 ImageSizeSection {
                     Layout.fillWidth: true

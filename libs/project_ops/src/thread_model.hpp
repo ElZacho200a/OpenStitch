@@ -37,8 +37,8 @@ struct ThreadModel {
     [[nodiscard]] std::size_t rank_of(std::uint32_t id) const; // rang dans le document, ou SIZE_MAX
 };
 
-// Image de travail : `original` passée par `project.ops` (vide si l'étape échoue). Repère de tous
-// les outils d'analyse, comme la segmentation.
+// Image de travail : `original` passée par `project.imageSource().ops` (vide si l'étape échoue).
+// Repère de tous les outils d'analyse, comme la segmentation.
 [[nodiscard]] image::Image working_image(const document::Project& project);
 
 [[nodiscard]] Result<ThreadModel> build_thread_model(const document::Project& project);

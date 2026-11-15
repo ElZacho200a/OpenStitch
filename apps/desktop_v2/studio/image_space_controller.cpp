@@ -51,10 +51,12 @@ class SetMmPerPxCommand final : public commands::ICommand {
 public:
     explicit SetMmPerPxCommand(double mmPerPx) : next_(mmPerPx) {}
     void apply(document::Project& project) override {
-        previous_ = project.mm_per_px.value;
-        project.mm_per_px.value = next_;
+        previous_ = project.imageSource().mm_per_px.value;
+        project.imageSource().mm_per_px.value = next_;
     }
-    void revert(document::Project& project) override { project.mm_per_px.value = previous_; }
+    void revert(document::Project& project) override {
+        project.imageSource().mm_per_px.value = previous_;
+    }
     [[nodiscard]] std::string name() const override { return "Redimensionner l'image"; }
 
 private:
@@ -68,14 +70,16 @@ class RemoveImageOpCommand final : public commands::ICommand {
 public:
     explicit RemoveImageOpCommand(std::size_t index) : index_(index) {}
     void apply(document::Project& project) override {
-        removed_ = project.ops.at(index_);
-        project.ops.erase(project.ops.begin() + static_cast<std::ptrdiff_t>(index_));
-        stashed_ = std::move(project.segmentation);
-        project.segmentation.reset();
+        removed_ = project.imageSource().ops.at(index_);
+        project.imageSource().ops.erase(project.imageSource().ops.begin() +
+                                        static_cast<std::ptrdiff_t>(index_));
+        stashed_ = std::move(project.imageSource().segmentation);
+        project.imageSource().segmentation.reset();
     }
     void revert(document::Project& project) override {
-        project.ops.insert(project.ops.begin() + static_cast<std::ptrdiff_t>(index_), removed_);
-        project.segmentation = std::move(stashed_);
+        project.imageSource().ops.insert(
+            project.imageSource().ops.begin() + static_cast<std::ptrdiff_t>(index_), removed_);
+        project.imageSource().segmentation = std::move(stashed_);
         stashed_.reset();
     }
     [[nodiscard]] std::string name() const override {
@@ -94,13 +98,13 @@ public:
     SwapImageOpsCommand(std::size_t a, std::size_t b, std::string label)
         : a_(a), b_(b), label_(std::move(label)) {}
     void apply(document::Project& project) override {
-        std::swap(project.ops.at(a_), project.ops.at(b_));
-        stashed_ = std::move(project.segmentation);
-        project.segmentation.reset();
+        std::swap(project.imageSource().ops.at(a_), project.imageSource().ops.at(b_));
+        stashed_ = std::move(project.imageSource().segmentation);
+        project.imageSource().segmentation.reset();
     }
     void revert(document::Project& project) override {
-        std::swap(project.ops.at(a_), project.ops.at(b_));
-        project.segmentation = std::move(stashed_);
+        std::swap(project.imageSource().ops.at(a_), project.imageSource().ops.at(b_));
+        project.imageSource().segmentation = std::move(stashed_);
         stashed_.reset();
     }
     [[nodiscard]] std::string name() const override {
@@ -134,11 +138,11 @@ ImageSpaceController::ImageSpaceController(StudioController& studio, ImageContro
 ImageSpaceController::~ImageSpaceController() = default;
 
 bool ImageSpaceController::hasImage() const {
-    return studio_.session().project().hasImage();
+    return studio_.session().project().hasActiveImage();
 }
 
 double ImageSpaceController::mmPerPx() const {
-    return studio_.session().project().mm_per_px.value;
+    return studio_.session().project().imageSource().mm_per_px.value;
 }
 
 double ImageSpaceController::imageWidthMm() const {
@@ -151,7 +155,7 @@ double ImageSpaceController::imageHeightMm() const {
 
 bool ImageSpaceController::canResize() const {
     const auto& project = studio_.session().project();
-    return project.hasImage() && project.embroidery_objects.empty();
+    return project.hasActiveImage() && project.embroidery_objects.empty();
 }
 
 QString ImageSpaceController::scaleImage(double percent) {
@@ -263,7 +267,7 @@ QString ImageSpaceController::stageDetail() const {
     const QString size = tr("%1 × %2 px, %3 traitement(s)")
                              .arg(images_.imageWidth())
                              .arg(images_.imageHeight())
-                             .arg(studio_.session().project().ops.size());
+                             .arg(studio_.session().project().imageSource().ops.size());
     return imageChanged_ ? tr("L'image a changé : segmentation à refaire. ") + size : size;
 }
 
@@ -355,8 +359,8 @@ void ImageSpaceController::publishLayer() {
 
 void ImageSpaceController::trackSegmentation() {
     const auto& project = studio_.session().project();
-    const bool seg = project.segmentation.has_value();
-    const std::size_t count = project.ops.size();
+    const bool seg = project.imageSource().segmentation.has_value();
+    const std::size_t count = project.imageSource().ops.size();
     if (seg) {
         imageChanged_ = false;
     } else if (hadSegmentation_ && count != lastOpCount_) {
@@ -372,6 +376,16 @@ void ImageSpaceController::refresh() {
         return; // sélection, progression et statut : les opérations d'image n'ont pas changé
     }
     observedRevision_ = revision;
+    const auto source = studio_.session().project().imageSourceId();
+    if (observedImageSource_ != source) {
+        observedImageSource_ = source;
+        imageChanged_ = false;
+        hadSegmentation_ = false;
+        if (cropActive_) {
+            cropActive_ = false;
+            emit cropChanged();
+        }
+    }
     trackSegmentation();
     publishLayer(); // une annulation d'échelle change mm/pixel sans signal d'image
     emit changed();
@@ -384,7 +398,7 @@ void ImageSpaceController::setMessage(const QString& text) {
 
 QString ImageSpaceController::removeOp(int index) {
     auto& session = studio_.session();
-    const auto& ops = session.project().ops;
+    const auto& ops = session.project().imageSource().ops;
     if (index < 0 || static_cast<std::size_t>(index) >= ops.size()) {
         const auto text = tr("Ce traitement n'existe plus.");
         setMessage(text);
@@ -392,7 +406,7 @@ QString ImageSpaceController::removeOp(int index) {
     }
     auto next = ops;
     next.erase(next.begin() + index);
-    const auto& original = session.project().original;
+    const auto& original = session.project().imageSource().original;
     if (!dimensionsAfter(next, original.width, original.height)) {
         const auto text = tr("Impossible : un recadrage suivant sortirait de l'image.");
         setMessage(text);
@@ -405,7 +419,7 @@ QString ImageSpaceController::removeOp(int index) {
 
 QString ImageSpaceController::moveOp(int index, int delta) {
     auto& session = studio_.session();
-    const auto& ops = session.project().ops;
+    const auto& ops = session.project().imageSource().ops;
     const int other = index + delta;
     if (index < 0 || other < 0 || static_cast<std::size_t>(index) >= ops.size() ||
         static_cast<std::size_t>(other) >= ops.size() || delta == 0) {
@@ -415,7 +429,7 @@ QString ImageSpaceController::moveOp(int index, int delta) {
     }
     auto next = ops;
     std::swap(next[static_cast<std::size_t>(index)], next[static_cast<std::size_t>(other)]);
-    const auto& original = session.project().original;
+    const auto& original = session.project().imageSource().original;
     if (!dimensionsAfter(next, original.width, original.height)) {
         const auto text = tr("Impossible : l'ordre demandé ferait sortir un recadrage de l'image.");
         setMessage(text);

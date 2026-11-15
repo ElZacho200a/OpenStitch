@@ -81,13 +81,15 @@ void v7_to_v8(json&) {}
 // v8 -> v9 : calques (`calques`, `calque`). Absents = un seul calque implicite : rien à réécrire.
 void v8_to_v9(json&) {}
 
+void v9_to_v10(json&) {}
+
 struct Step {
     int from;
     const char* description;
     void (*apply)(json&);
 };
 
-constexpr std::array<Step, 8> kSteps{{
+constexpr std::array<Step, 9> kSteps{{
     {1, "satin: barreaux (rungs) et cadre (canvas) par defaut", &v1_to_v2},
     {2, "retouches manuelles: absence = objet Clean", &v2_to_v3},
     {3, "satin: maxWidthHard absent = 48 mm", &v3_to_v4},
@@ -96,6 +98,7 @@ constexpr std::array<Step, 8> kSteps{{
     {6, "methode d'auto-satin: absence = squelette", &v6_to_v7},
     {7, "typographie des textes: absence = pas de crenage manuel ni de ligatures", &v7_to_v8},
     {8, "calques du document: absence = un seul calque implicite", &v8_to_v9},
+    {9, "sources image par calque: absence = source historique", &v9_to_v10},
 }};
 
 // La table doit couvrir exactement 1 .. kMaxReadableSchemaVersion-1, sans trou.

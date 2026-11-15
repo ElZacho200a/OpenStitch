@@ -128,8 +128,8 @@ struct FabricRiskReport {
 [[nodiscard]] Result<FabricRiskReport> measure_fabric_risk(const document::Project& project,
                                                            const FabricRiskOptions& options = {});
 
-// Dimensions (px) de l'image de travail (source passée par `project.ops`) : le repère de la
-// segmentation et de tous les outils d'analyse. {0, 0} sans image.
+// Dimensions (px) de l'image de travail (source passée par `project.imageSource().ops`) : le repère
+// de la segmentation et de tous les outils d'analyse. {0, 0} sans image.
 [[nodiscard]] std::pair<int, int> working_size(const document::Project& project);
 
 // --- Qui a cousu ce point ? -------------------------------------------------------------------

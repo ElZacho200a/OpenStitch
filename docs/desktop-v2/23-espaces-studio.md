@@ -7,10 +7,20 @@ chacun) mais **liés** (un changement amont a une incidence visible sur l'aval).
 
 ## Import d'image : entrée dans le workflow (Studio)
 
-**Ouvrir / importer une image raster** (`Fichier > Une image…`, `Ctrl+O`, dépôt d'un
-fichier ou accueil) ne doit charger **que l'original** dans un nouveau document :
-`Project::original`, échelle par défaut de 100 mm de hauteur, pile `ops` vide. Le
-contrôleur utilise un worker annulable et protège les modifications non enregistrées.
+**Fichier → Images en calques…** ajoute une sélection de fichiers au document
+courant en une seule étape d’annulation. Chaque raster crée un calque nommé
+d’après le fichier. Un document OpenRaster (`.ora`) fournit directement ses
+calques PNG et leurs positions. Studio conserve leurs noms, leur ordre et leur
+visibilité. Les groupes sont dépliés et les effets de composition ne sont pas
+appliqués. Ouvrir directement une seule image raster suit le parcours historique
+de création de document.
+
+Studio applique une échelle commune au lot, celle de l'image active s'il y en a
+une ou celle qui donne 100 mm de hauteur à la première toile. Les fichiers
+séparés sont centrés. Dans un `.ora`, la toile commune conserve l'alignement
+des calques et les zones transparentes. La préparation et la segmentation
+s'appliquent au calque choisi dans le panneau de chaque espace. Les vecteurs
+issus de ce calque y sont ajoutés, puis les points suivent la pile de couture.
 
 Quand l'import réussit, le Studio active automatiquement **Image** (`Ctrl+1`). L'ouverture
 ne doit déclencher **aucun** traitement de segmentation, vectorisation, génération de
@@ -46,9 +56,11 @@ Main.qml (fenêtre, raccourcis globaux, dialogues, palette, barre d'état)
 - **Un seul espace est instancié à la fois** : donc un seul `GpuCanvas`. Changer d'espace détruit le
   précédent. Un espace ne garde AUCUN état qui doit survivre à son démontage : cet état va dans un
   contrôleur de contexte, dans le document (via `DocumentSession`), ou dans `workspace`.
-- Le **document est unique** : image originale intacte + pile `ops` ; `segmentation` (remise à vide
-  par toute nouvelle op d'image) ; `vector_objects` (lien `source_region`) ; `embroidery_objects`
-  (lien `source_vector`) ; les points sont recalculés à la volée par `effective_sequence`.
+- Le **document est unique** : chaque source garde son original, ses opérations et
+  sa segmentation. Une nouvelle opération invalide seulement la segmentation de
+  la source modifiée. Les vecteurs gardent le lien vers leur source et leur région.
+  Les objets de broderie restent liés aux vecteurs et les points sont recalculés par
+  `effective_sequence`.
 - La **sélection** vit dans `DocumentSession::selection()` : elle traverse les espaces sans copie.
 - La **caméra** (centre en mm de scène, zoom en px/mm) est sauvegardée par l'hôte avant la bascule
   (`GpuCanvas.viewState()` → `workspace.saveView`) et restaurée à l'arrivée
