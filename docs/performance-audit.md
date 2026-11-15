@@ -622,3 +622,45 @@ auto-satin et golden (175 cas), puis `ctest` Release complet.
 **Reste.** Le rognage reste le premier poste (~0,7 s sur 1 s en monofil pour tentabrode) : le pas
 de 40 µm et la dichotomie à 10 niveaux fixent le nombre de tests ; les réduire changerait les
 traversées, donc la broderie : à traiter comme un changement de comportement, mesuré sur la qualité.
+
+## 14. Audit du 2026-11-15 : régénération, gros objet troué et état des routeurs
+
+**« Mettre à jour » après retouche d'une région** (banc `[.perf]` de `test_region_edit.cpp`, #348) :
+19 + 1 + 3 ms sur tentabrode, 33 + 1 + 23 ms sur `Impossibke.osp` (1 395 régions, 494 objets sur
+496 réutilisés), 27 + 1 + 16 ms sur `RuieGothique.osp`. La mise à jour région par région notée dans
+PERF-STUDIO-001 n'est plus justifiée.
+
+**Gros objet troué.** Sur `Impossibke.osp`, un seul tatami (« Remplissage Région 26112 », 37 trous,
+1 372 nœuds) fait ~370 ms des ~600 ms d'une génération complète en monofil, et ~320 ms quand on le
+modifie dans Studio (étape « le plus gros objet modifié »). Presque tout est dans les liaisons
+cachées de `HiddenRouter` : 2,78 M tests de visibilité entre points de passage et 0,53 M depuis les
+extrémités pour 8 générations du banc.
+
+Hypothèses écartées, mesurées sans instrumentation et en alternance A/B :
+
+- Grille 2D des arêtes pour collecter les intersections : 6,5× moins d'arêtes visitées (437 M → 67 M)
+  mais aucun gain mesurable (monofil 536 contre 530 ms) ; le coût est par appel, pas par arête.
+- A* paresseux à résultat identique (validation de la visibilité au choix du nœud) : −34 % de tests
+  seulement, aucun gain ; avec 37 trous, la plupart des candidats sont invisibles et doivent être
+  validés un à un.
+
+**Correction retenue : état du routeur gardé d'une génération à l'autre.** L'index des arêtes, les
+points de passage (contour rentré par Clipper) et le mémo des visibilités ne dépendent que de la
+géométrie (région, retrait). `RouterState` est emprunté à un cache à clé exacte (région entière et
+retrait comparés) à la construction du routeur et rendu à sa destruction : jamais deux fils sur le
+même état, budget de 64 Mio, éviction du plus ancien. Il suit `set_chunk_cache_enabled` et
+`clear_chunk_cache` (les étapes historiques du banc restent comparables). Résultat inchangé :
+valeurs pures de la géométrie.
+
+| `Impossibke.osp`, Release, 16 fils | Avant | Après |
+|---|---|---|
+| le plus gros objet modifié (`row_spacing`) | ~320 ms | **~130–140 ms** |
+| génération complète, cache désactivé | ~310 ms | ~310 ms (inchangé) |
+| pic mémoire du banc | 88 Mo | 116 Mo |
+
+Empreintes de séquence identiques à `main` sur les 5 entrées habituelles. Test :
+« etat du routeur reutilise entre deux reglages » (tatami percé de 9 trous, trois réglages
+successifs, comparés à un calcul à neuf).
+
+**Reste.** La première génération du gros objet (ouverture du projet) garde son coût : réduire les
+candidats (`kMaxCandidates`) ou le pas de recherche changerait les liaisons, donc la broderie.
