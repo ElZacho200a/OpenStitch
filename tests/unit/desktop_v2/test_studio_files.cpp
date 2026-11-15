@@ -153,6 +153,7 @@ class StudioFilesTest : public QObject {
 private slots:
     void initTestCase();
     void openDialogListsOpenRaster();
+    void openingAnotherProjectClearsLayerAndObjectSelection();
     void fileMenuEntriesCloseAfterRealMouseClick();
     void fileMenuStaysReachableInAShortWindow();
     void comboPopupOpensAboveAtWindowBottom();
@@ -394,6 +395,50 @@ void StudioFilesTest::openDialogListsOpenRaster() {
     QVERIFY(!filters.isEmpty());
     QVERIFY(filters.front().contains(QStringLiteral("*.ora")));
     QVERIFY(filters.contains(QStringLiteral("OpenRaster (*.ora)")));
+}
+
+void StudioFilesTest::openingAnotherProjectClearsLayerAndObjectSelection() {
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    auto first = studioFixture();
+    first.calques = {{ObjectId{201}, "Premier fond"}, {ObjectId{202}, "Premier dessus"}};
+    auto second = studioFixture();
+    second.calques = {{ObjectId{301}, "Nouveau fond"}, {ObjectId{302}, "Nouveau dessus"}};
+    const auto firstPath = osp(dir, "un.osp", first);
+    const auto secondPath = osp(dir, "deux.osp", second);
+    QVERIFY(!firstPath.isEmpty() && !secondPath.isEmpty());
+
+    Rig rig({}, true);
+    QVERIFY(rig.window);
+    rig.load(firstPath);
+    auto* layerPanel = rig.window->findChild<QObject*>(QStringLiteral("layerPanel"));
+    QVERIFY(layerPanel);
+    auto* tree = layerPanel->findChild<QObject*>(QStringLiteral("objectTree"));
+    auto* rename = layerPanel->findChild<QObject*>(QStringLiteral("layerRenameField"));
+    QVERIFY(tree && rename);
+    QVERIFY(tree->setProperty("currentLayer", QStringLiteral("201")));
+    QVERIFY(rename->setProperty("text", QStringLiteral("Ancien brouillon")));
+    QVERIFY(rename->setProperty("visible", true));
+    const Target selected{TargetKind::EmbroideryObject, firstId};
+    rig.studio.selectObject(QString::number(firstId));
+    QVERIFY(rig.session.selection().contains(selected));
+    QVERIFY(second.findEmbroidery(ObjectId{firstId}));
+
+    auto* dialog = rig.window->findChild<QObject*>(QStringLiteral("openAnyDialog"));
+    QVERIFY(dialog);
+    QTest::keyClick(rig.window, Qt::Key_O, Qt::ControlModifier);
+    QTRY_VERIFY_WITH_TIMEOUT(dialog->property("visible").toBool(), 5'000);
+    QVERIFY(dialog->setProperty("selectedFile", QUrl::fromLocalFile(secondPath)));
+    QCOMPARE(dialog->property("selectedFile").toUrl(), QUrl::fromLocalFile(secondPath));
+    QVERIFY(QMetaObject::invokeMethod(dialog, "accepted"));
+    QVERIFY(QMetaObject::invokeMethod(dialog, "close"));
+    QTRY_VERIFY_WITH_TIMEOUT(
+        rig.studio.path() == secondPath && !rig.studio.busy() && rig.studio.scene(), 15'000);
+    QVERIFY(rig.session.selection().targets().empty());
+    QCOMPARE(tree->property("currentLayer").toString(), QString());
+    QCOMPARE(layerPanel->property("layerId").toString(), QStringLiteral("302"));
+    QVERIFY(!rename->property("visible").toBool());
+    QVERIFY(rename->property("text").toString().isEmpty());
 }
 
 void StudioFilesTest::fileMenuEntriesCloseAfterRealMouseClick() {

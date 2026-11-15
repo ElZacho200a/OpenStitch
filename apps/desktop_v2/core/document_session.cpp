@@ -42,10 +42,14 @@ void DocumentSession::changed(ChangeKind kind) {
     const auto source = project_.imageSourceId();
     const bool sourceChanged = source != observedImageSource_;
     observedImageSource_ = source;
-    // La sélection ne doit jamais pointer un objet disparu (undo d'une création, remplacement…).
-    selection_.prune([this, sourceChanged](const Target& t) {
-        return !(sourceChanged && t.kind == TargetKind::Region) && exists(t);
-    });
+    if (kind == ChangeKind::Replaced) {
+        // Les identifiants ont une portée locale au document.
+        selection_.clear();
+    } else {
+        selection_.prune([this, sourceChanged](const Target& t) {
+            return !(sourceChanged && t.kind == TargetKind::Region) && exists(t);
+        });
+    }
     notify(kind);
 }
 
