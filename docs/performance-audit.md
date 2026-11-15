@@ -534,8 +534,12 @@ GPU 1–2 ms par image ; `QSG_RENDER_TIMING=1` donne `time in renderer: total=0�
 **Le « bridage » à ~260 ms par image n'est pas la session.** Il apparaît en `sync=244–254 ms`
 (`render=2`, `swap=0`) : dans la boucle threadée, la phase « sync » inclut `beginFrame`, qui
 attend le swapchain. La machine était sans clavier ni souris depuis 66 min, écran en veille :
-Windows ne présente plus alors que ~4 images/s. Les relevés natifs du §10 (cadence témoin à
-262 ms) ont la même cause. Mesurer la cadence avec un écran allumé et actif ; à défaut, lire les
+Windows ne présente plus alors que ~4 images/s. Preuve indépendante de Studio :
+`DwmGetCompositionTimingInfo` compte 0 à 1 rafraîchissement en 3 s pour trois écrans déclarés à
+60 Hz, et le même plafond apparaît sur le GPU intégré AMD (`QT_D3D_ADAPTER_INDEX=1`). Ni
+`SetThreadExecutionState(ES_DISPLAY_REQUIRED)`, ni une entrée souris simulée, ni
+`SC_MONITORPOWER` ne rallument ces écrans : une action physique est nécessaire. Les relevés
+natifs du §10 (cadence témoin à 262 ms) ont la même cause. Mesurer la cadence avec un écran allumé et actif ; à défaut, lire les
 temps `polish` (fil d'interface) et `render` (GPU), indépendants de la présentation.
 
 **Surcouches `Canvas` (QML, JavaScript) : laissées telles quelles.** Sélection dense de 10 000
