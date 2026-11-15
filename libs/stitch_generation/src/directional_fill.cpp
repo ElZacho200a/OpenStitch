@@ -638,6 +638,9 @@ struct SpacingField {
     document::DensityGeometry geometry{document::DensityGeometry::Linear};
     double curveBend{0.0};
     std::vector<document::DensityStop> densityStops;
+    // Grille partagée d'un fondu : écart uniforme, les arrêts décrivent la tranche
+    // de rangées possédée par la couche (cf. `DensityGradient::shared_rows`).
+    bool sharedRows{false};
 
     // Hash de coordonnées de grille : aucune allocation, état ou RNG global.
     // Un même point donne le même déplacement dans toutes les couches.
@@ -679,7 +682,7 @@ struct SpacingField {
     }
 
     [[nodiscard]] bool uniform() const {
-        return densityStops.empty() && (invLen2 == 0.0 || from == to);
+        return (densityStops.empty() || sharedRows) && (invLen2 == 0.0 || from == to);
     }
 
     // Remappe t ∈ [0 ; 1] ; monotone, 0 → 0 et 1 → 1 : les écarts restent entre
@@ -734,7 +737,9 @@ struct SpacingField {
             const double lateral = cross(delta, axis) * invLen2;
             t += curveBend * lateral * lateral;
         }
-        return shaped(curve, std::clamp(t + textureAt(p), 0.0, 1.0));
+        const double clamped = std::clamp(t + textureAt(p), 0.0, 1.0);
+        // Grille partagée : les profils de transition sont déjà échantillonnés dans les arrêts.
+        return sharedRows ? clamped : shaped(curve, clamped);
     }
 
     // Recherche sur 2..8 arrêts : pas d'allocation par point évalué.
@@ -758,7 +763,43 @@ struct SpacingField {
     }
 
     [[nodiscard]] bool active(P2 p) const {
-        return densityStops.empty() || densityWeight(p) >= 0.025;
+        return densityStops.empty() || sharedRows || densityWeight(p) >= 0.025;
+    }
+
+    // Tranche [lower ; lower + weight) de la couche à la position de `p`.
+    [[nodiscard]] std::pair<double, double> band(P2 p) const {
+        if (densityStops.empty()) {
+            return {0.0, 1.0};
+        }
+        const double t = positionAt(p);
+        const auto it =
+            std::lower_bound(densityStops.begin(), densityStops.end(), t,
+                             [](const auto& stop, double v) { return stop.position < v; });
+        if (it == densityStops.begin()) {
+            return {it->lower, it->weight};
+        }
+        if (it == densityStops.end()) {
+            return {densityStops.back().lower, densityStops.back().weight};
+        }
+        const auto& left = *(it - 1);
+        const double u = (t - left.position) / (it->position - left.position);
+        return {left.lower + (it->lower - left.lower) * u,
+                left.weight + (it->weight - left.weight) * u};
+    }
+
+    // La couche coud-elle, en `p`, la rangée de seuil `threshold` ∈ [0 ; 1) ?
+    // Tranches jointives entre couches : exactement une couche par rangée.
+    [[nodiscard]] bool owns(P2 p, double threshold) const {
+        const auto [lower, weight] = band(p);
+        constexpr double kEps = 1e-9;
+        return threshold >= lower - kEps && threshold < lower + weight - kEps;
+    }
+
+    // Couche qui ne possède pas toutes les rangées partout (sinon : remplissage plein).
+    [[nodiscard]] bool partial() const {
+        return std::any_of(densityStops.begin(), densityStops.end(), [](const auto& stop) {
+            return stop.lower > 1e-9 || stop.weight < 1.0 - 1e-9;
+        });
     }
 
     [[nodiscard]] double at(P2 p) const {
@@ -805,6 +846,7 @@ SpacingField make_spacing_field(const document::DirectionalFillParams& p) {
     f.geometry = g.geometry;
     f.curveBend = std::isfinite(g.curve_bend) ? std::clamp(g.curve_bend, -1.0, 1.0) : 0.0;
     f.densityStops = g.density_stops;
+    f.sharedRows = g.shared_rows && !g.density_stops.empty();
     f.densityFrom = 1.0 / f.from;
     f.densityTo = 1.0 / f.to;
     f.lo = std::min(f.from, f.to);
@@ -813,7 +855,10 @@ SpacingField make_spacing_field(const document::DirectionalFillParams& p) {
     f.axis = to_p2(g.to) - f.origin;
     const double len2 = dot(f.axis, f.axis);
     f.invLen2 = len2 > 1.0 ? 1.0 / len2 : 0.0;
-    if (!f.densityStops.empty()) {
+    if (f.sharedRows) {
+        f.to = f.from; // grille commune : écart uniforme pour toutes les couches
+        f.lo = f.hi = f.from;
+    } else if (!f.densityStops.empty()) {
         // Le poids peut s'approcher de zéro : garder un rayon de voisinage
         // borné, et désactiver les zones vides plutôt que semer des fils rares.
         f.lo = f.from;
@@ -1888,6 +1933,54 @@ std::vector<P2> pull_compensated(const std::vector<P2>& pts, std::int32_t pullUm
     return out;
 }
 
+// Seuil de chaque rangée d'une grille partagée : rang spatial le long de l'axe du fondu,
+// puis suite de Weyl du nombre d'or. Toute fenêtre de rangées voisines répartit ses
+// seuils presque uniformément dans [0 ; 1) : une tranche de largeur w y retient ≈ w des
+// rangées. Fonction pure des lignes, identiques dans toutes les couches du fondu.
+std::vector<double> row_thresholds(const std::vector<Traced>& traced, const SpacingField& field) {
+    const double len = std::sqrt(dot(field.axis, field.axis));
+    const P2 unit = len > 1.0 ? field.axis * (1.0 / len) : P2{1.0, 0.0};
+    std::vector<std::pair<double, std::size_t>> keys;
+    keys.reserve(traced.size());
+    for (std::size_t li = 0; li < traced.size(); ++li) {
+        P2 sum{};
+        for (const P2 p : traced[li].pts) {
+            sum = sum + p;
+        }
+        const double n = std::max<std::size_t>(1, traced[li].pts.size());
+        keys.push_back({dot(sum * (1.0 / n), unit), li});
+    }
+    std::sort(keys.begin(), keys.end());
+    std::vector<double> result(traced.size(), 0.0);
+    constexpr double kGolden = 0.6180339887498949;
+    for (std::size_t rank = 0; rank < keys.size(); ++rank) {
+        const double v = static_cast<double>(rank) * kGolden;
+        result[keys[rank].second] = v - std::floor(v);
+    }
+    return result;
+}
+
+// Morceaux d'une ligne de pénétrations possédés par la couche : un segment appartient à
+// la couche dont la tranche contient le seuil de la rangée en son milieu.
+void append_owned_runs(const std::vector<P2>& pts, const SpacingField& field, double threshold,
+                       std::vector<std::vector<P2>>& out) {
+    std::vector<P2> run;
+    for (std::size_t k = 1; k < pts.size(); ++k) {
+        if (field.owns((pts[k - 1] + pts[k]) * 0.5, threshold)) {
+            if (run.empty()) {
+                run.push_back(pts[k - 1]);
+            }
+            run.push_back(pts[k]);
+        } else if (!run.empty()) {
+            out.push_back(std::move(run));
+            run.clear();
+        }
+    }
+    if (run.size() >= 2) {
+        out.push_back(std::move(run));
+    }
+}
+
 struct SectorLines {
     std::vector<Traced> traced;
     std::vector<std::vector<P2>> stitched; // lignes retenues (≥ 2 pénétrations)
@@ -1898,6 +1991,8 @@ std::vector<SectorLines> compute_lines(const std::vector<Sector>& sectors,
                                        bool withStitches) {
     std::vector<SectorLines> result;
     const SpacingField spacing = make_spacing_field(params);
+    // Grille partagée : mêmes rangées dans toutes les couches, chacune garde sa tranche.
+    const bool partition = spacing.sharedRows && spacing.partial();
     StitchPlan plan;
     plan.target = static_cast<double>(params.stitch_length.value);
     plan.stagger = params.stagger;
@@ -1915,11 +2010,18 @@ std::vector<SectorLines> compute_lines(const std::vector<Sector>& sectors,
         sl.traced = tracer.run();
         regularize_lines(sl.traced, sectors[si], spacing, params.spacing_regularity);
         if (withStitches) {
+            const auto thresholds =
+                partition ? row_thresholds(sl.traced, spacing) : std::vector<double>{};
             for (std::size_t li = 0; li < sl.traced.size(); ++li) {
                 const auto key =
                     static_cast<std::int64_t>(si) * 1'000'000 + static_cast<std::int64_t>(li);
                 auto pts = place_stitches(sl.traced[li], plan, key, sectors[si].trace);
-                if (pts.size() >= 2) {
+                if (pts.size() < 2) {
+                    continue;
+                }
+                if (partition) {
+                    append_owned_runs(pts, spacing, thresholds[li], sl.stitched);
+                } else {
                     sl.stitched.push_back(std::move(pts));
                 }
             }
@@ -1930,6 +2032,22 @@ std::vector<SectorLines> compute_lines(const std::vector<Sector>& sectors,
 }
 
 } // namespace
+
+double shape_density_curve(document::DensityCurve curve, double t) {
+    return SpacingField::shaped(curve, std::isfinite(t) ? std::clamp(t, 0.0, 1.0) : 0.0);
+}
+
+bool density_mask_is_sparse(const document::DensityGradient& gradient) {
+    if (gradient.density_stops.empty()) {
+        return false;
+    }
+    if (!gradient.shared_rows) {
+        return true;
+    }
+    return std::any_of(
+        gradient.density_stops.begin(), gradient.density_stops.end(),
+        [](const auto& stop) { return stop.lower > 1e-9 || stop.weight < 1.0 - 1e-9; });
+}
 
 std::vector<DirectionalStreamline>
 trace_directional_streamlines(const geometry::PathSet& region,
@@ -1987,7 +2105,7 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
     // 4 × l'écart MAXIMAL traverserait la zone dense (long fil parasite).
     const SpacingField field = make_spacing_field(params);
     const auto& gradient = params.density_gradient;
-    const bool masked = gradient && !gradient->density_stops.empty();
+    const bool masked = gradient && density_mask_is_sparse(*gradient);
     // Dans un fondu N-aire, un fil devient rare hors de sa zone. Le rayon
     // de semis peut être 4 mm à ces endroits, mais ce n'est PAS une permission
     // de coudre un long fil diagonal entre deux lignes isolées.

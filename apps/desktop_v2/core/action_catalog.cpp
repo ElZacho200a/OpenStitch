@@ -534,15 +534,15 @@ std::vector<ActionDef> makeCatalog() {
         out.push_back(std::move(a));
     }
 
-    // --- Fondu de deux fils (ICommand : `run`, pas de lot JSON) ----------------------------
+    // --- Fondu de fils (ICommand : `run`, pas de lot JSON) ; même moteur que l'inspecteur ------
     {
         ActionDef a;
         a.id = "fade.create";
-        a.label = "Fondu de deux fils…";
+        a.label = "Fondu de fils…";
         a.group = "Fondu";
         a.needsSelection = true;
-        a.fields = {textField("foreground", "Fil du dessus (#RRGGBB)", "#FF8800", true),
-                    boolField("complementary", "Rampes de densité opposées", true)};
+        a.fields = {textField("foreground", "Fil d'arrivée (#RRGGBB)", "#FF8800", true),
+                    boolField("complementary", "Répartition complémentaire", true)};
         a.run = [](DocumentSession& session, const Values& v, const ActionContext& c) {
             const std::string& hex = v.at("foreground");
             unsigned channel[3] = {0, 0, 0};
@@ -553,7 +553,7 @@ std::vector<ActionDef> makeCatalog() {
                 valid = ec == std::errc() && end == begin + 2;
             }
             if (!valid) {
-                return ServiceResult{false, "Fil du dessus : couleur au format #RRGGBB attendue."};
+                return ServiceResult{false, "Fil d'arrivée : couleur au format #RRGGBB attendue."};
             }
             const unsigned r = channel[0];
             const unsigned g = channel[1];

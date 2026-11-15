@@ -980,7 +980,7 @@ void generate_directional(stitch::StitchSequence& sequence, const document::Vect
         // les ilots d'un fil dont le masque descend à densité nulle.
         bool masked = false;
         if (params.density_gradient) {
-            masked = !params.density_gradient->density_stops.empty();
+            masked = density_mask_is_sparse(*params.density_gradient);
         }
         if (params.hidden_underpath && !masked) {
             linker.emplace(region, params.stitch_length, params.underlay_inset);

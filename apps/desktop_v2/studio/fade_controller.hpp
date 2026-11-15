@@ -9,6 +9,7 @@
 #include <QColor>
 #include <QObject>
 #include <QString>
+#include <QStringList>
 #include <QVariantList>
 #include <QVariantMap>
 #include <cstdint>
@@ -44,7 +45,17 @@ class FadeController : public QObject {
     Q_PROPERTY(QVariantMap axis READ axis NOTIFY changed)
     Q_PROPERTY(QVariantList curves READ curves CONSTANT)
     Q_PROPERTY(QVariantList methods READ methods CONSTANT)
+    // Technique unique présentée à l'utilisateur : méthode + aspect (cf. `styles`).
+    Q_PROPERTY(int style READ style NOTIFY changed)
+    Q_PROPERTY(QVariantList styles READ styles CONSTANT)
     Q_PROPERTY(QVariantList curveProfile READ curveProfile NOTIFY changed)
+    // Fil de nuancier de chaque couleur (« Marque code · nom », vide pour une couleur libre).
+    Q_PROPERTY(QStringList threadLabels READ threadLabels NOTIFY changed)
+    // Fil désigné, partagé par la barre de fils de l'inspecteur et les poignées du canevas.
+    Q_PROPERTY(
+        int selectedThread READ selectedThread WRITE setSelectedThread NOTIFY selectedThreadChanged)
+    // Transition simplifiée : 0 douce (linéaire), 1 moyenne (lissée), 2 nette ; -1 autre profil.
+    Q_PROPERTY(int softness READ softness NOTIFY changed)
     Q_PROPERTY(QString message READ message NOTIFY messageChanged)
     Q_PROPERTY(bool lastOk READ lastOk NOTIFY messageChanged)
 public:
@@ -88,7 +99,13 @@ public:
     [[nodiscard]] QVariantMap axis() const { return axisMap(axis_); }
     [[nodiscard]] QVariantList curves() const;
     [[nodiscard]] QVariantList methods() const;
+    [[nodiscard]] int style() const;
+    [[nodiscard]] QVariantList styles() const;
     [[nodiscard]] QVariantList curveProfile() const;
+    [[nodiscard]] QStringList threadLabels() const { return threadLabels_; }
+    [[nodiscard]] int selectedThread() const { return selectedThread_; }
+    void setSelectedThread(int index);
+    [[nodiscard]] int softness() const;
     [[nodiscard]] QString message() const { return message_; }
     [[nodiscard]] bool lastOk() const { return ok_; }
 
@@ -119,12 +136,31 @@ public:
     Q_INVOKABLE bool setLayerCurve(int layer, int curve);
     // Inverse le sens du fondu (début <-> fin) : une étape d'annulation.
     Q_INVOKABLE bool reverse();
+    // Réglages appliqués IMMÉDIATEMENT (un pas d'annulation chacun), sans bouton « Appliquer ».
+    // Un ancien fondu à deux fils est converti au fondu multicolore à sa première modification.
+    Q_INVOKABLE bool setColors(const QVariantList& colors);
+    Q_INVOKABLE bool setStyle(int style);
+    Q_INVOKABLE bool setComplementary(bool complementary);
+    Q_INVOKABLE bool setSatinDensity(double mm);
+    Q_INVOKABLE bool setCrosshatch(int layers, double angleDeg);
+    // Barre de fils : chaque geste est UN pas d'annulation et désigne le fil concerné.
+    // Ajoute après `after` un fil à mi-chemin de ses voisins (ou distinct du dernier).
+    Q_INVOKABLE bool insertThread(int after);
+    Q_INVOKABLE bool removeThread(int index);
+    // Échange le fil `index` avec son voisin (`offset` = -1 ou +1) dans l'ordre de couture.
+    Q_INVOKABLE bool moveThread(int index, int offset);
+    Q_INVOKABLE bool setThreadColor(int index, const QString& hex);
+    Q_INVOKABLE bool setSoftness(int softness);
 signals:
     void changed();
     void messageChanged();
+    void selectedThreadChanged();
 
 private:
     void refresh();
+    // Réglages multicolores actuels, y compris ceux déduits d'un ancien fondu à deux fils.
+    [[nodiscard]] std::optional<MultiFadeSettings> current() const;
+    bool apply(const MultiFadeSettings& next, const QString& success);
     bool report(const ServiceResult& result, const QString& success);
     bool refuse(const QString& why);
     [[nodiscard]] static QVariantMap axisMap(const std::optional<FadeAxisView>& view);
@@ -138,6 +174,8 @@ private:
     int multiCurve_{0};
     std::optional<FadeAxisView> axis_;
     QString incompat_;
+    QStringList threadLabels_;
+    int selectedThread_{0};
     QString message_;
     bool ok_{true};
 };

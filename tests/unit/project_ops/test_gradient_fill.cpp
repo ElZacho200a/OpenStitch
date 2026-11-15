@@ -449,17 +449,31 @@ TEST_CASE("multicolor: five physical thread layers are one undoable blend group"
         REQUIRE(params);
         REQUIRE(params->density_gradient);
         CHECK(params->density_gradient->curve == spec.layer_curves[i]);
-        CHECK(params->density_gradient->density_stops.size() == 5);
-        CHECK(params->density_gradient->density_stops[i].weight == 1.0);
-        for (std::size_t j = 0; j < 5; ++j) {
+        // Grille partagée : mêmes arrêts pour toutes les couches (profils échantillonnés),
+        // le fil i est seul à sa position nominale i/4, et les tranches sont jointives.
+        CHECK(params->density_gradient->shared_rows);
+        const auto& stops = params->density_gradient->density_stops;
+        CHECK(stops.size() > 5);
+        const auto own = std::find_if(stops.begin(), stops.end(), [&](const auto& stop) {
+            return stop.position == Catch::Approx(static_cast<double>(i) / 4.0);
+        });
+        REQUIRE(own != stops.end());
+        CHECK(own->weight == Catch::Approx(1.0));
+        for (std::size_t j = 0; j < stops.size(); ++j) {
             double sum = 0.0;
-            for (const auto member : group->layers) {
-                const auto* other = f.project.findEmbroidery(member);
+            double below = 0.0;
+            for (std::size_t k = 0; k < group->layers.size(); ++k) {
+                const auto* other = f.project.findEmbroidery(group->layers[k]);
                 const auto& grad =
                     *std::get<document::DirectionalFillParams>(other->params).density_gradient;
+                REQUIRE(grad.density_stops.size() == stops.size());
+                if (k < i) {
+                    below += grad.density_stops[j].weight;
+                }
                 sum += grad.density_stops[j].weight;
             }
             CHECK(sum == Catch::Approx(1.0));
+            CHECK(stops[j].lower == Catch::Approx(below).margin(1e-9));
         }
     }
     const auto stitched = stitch_generation::effective_sequence(f.project);
@@ -982,4 +996,158 @@ TEST_CASE("multicolor gradient object: cross hatching layers all stitch at their
     const auto repeated = stitch_generation::effective_sequence(f.project);
     REQUIRE(repeated);
     CHECK(stitched->commands == repeated->commands);
+}
+
+// --- Grille de rangées partagée (couverture exacte des fondus multicolores) -------------------
+
+namespace {
+
+// Longueur cousue (mm) par bloc de couleur et par bande verticale de la forme 30 × 20 mm
+// (axe du fondu horizontal) : mesure directe de la séquence effective.
+std::vector<std::vector<double>> sewn_by_band(const document::Project& project, int bands) {
+    const auto sequence = stitch_generation::effective_sequence(project);
+    REQUIRE(sequence);
+    std::vector<std::vector<double>> perColor(1, std::vector<double>(bands, 0.0));
+    bool connected = false;
+    Vec2um last{};
+    for (const auto& command : sequence->commands) {
+        if (command.type == stitch::CommandType::ColorChange) {
+            perColor.emplace_back(bands, 0.0);
+            connected = false;
+            continue;
+        }
+        if (command.type != stitch::CommandType::Stitch) {
+            connected = false;
+            continue;
+        }
+        if (connected) {
+            const double mid = 0.5 * (double(command.pos.x.value) + double(last.x.value));
+            const int band = std::clamp(static_cast<int>(mid / 30'000.0 * bands), 0, bands - 1);
+            perColor.back()[static_cast<std::size_t>(band)] +=
+                std::hypot(double(command.pos.x.value) - last.x.value,
+                           double(command.pos.y.value) - last.y.value) /
+                1000.0;
+        }
+        last = command.pos;
+        connected = true;
+    }
+    return perColor;
+}
+
+project_ops::MulticolorGradientSpec palette_spec(const document::Project& project, ObjectId fill,
+                                                 std::size_t count, bool complementary) {
+    auto spec = project_ops::default_multicolor_gradient(project, fill);
+    REQUIRE(spec);
+    const std::array<std::array<std::uint8_t, 3>, 5> colors{
+        {{200, 30, 30}, {240, 200, 40}, {30, 120, 200}, {40, 160, 60}, {120, 40, 160}}};
+    spec->palette.clear();
+    for (std::size_t i = 0; i < count; ++i) {
+        spec->palette.push_back(document::GradientThread{colors[i]});
+    }
+    spec->complementary = complementary;
+    return *spec;
+}
+
+} // namespace
+
+TEST_CASE("shared rows: complementary blends cover the shape like one plain fill",
+          "[project_ops][gradient][multicolor][coverage]") {
+    constexpr int kBands = 6;
+    auto plain = rectangle_fill();
+    const auto reference = sewn_by_band(plain.project, kBands);
+    REQUIRE(reference.size() == 1);
+    for (const std::size_t count : {std::size_t{2}, std::size_t{3}, std::size_t{5}}) {
+        for (const bool mixedCurves : {false, true}) {
+            auto f = rectangle_fill();
+            commands::UndoStack stack;
+            auto spec = palette_spec(f.project, f.fill, count, true);
+            if (mixedCurves) {
+                // Profils différents d'une transition à l'autre : la somme des fils reste 1.
+                for (std::size_t i = 0; i < spec.palette.size(); ++i) {
+                    spec.palette[i].curve =
+                        i % 2 == 0 ? document::DensityCurve::EaseIn : document::DensityCurve::Steep;
+                }
+            }
+            auto command =
+                project_ops::make_create_multicolor_gradient_command(f.project, f.fill, spec);
+            REQUIRE(command);
+            stack.execute(std::move(*command), f.project);
+            const auto sewn = sewn_by_band(f.project, kBands);
+            CHECK(sewn.size() == count);
+            for (int band = 0; band < kBands; ++band) {
+                double total = 0.0;
+                for (const auto& color : sewn) {
+                    total += color[static_cast<std::size_t>(band)];
+                }
+                const double ratio = total / reference[0][static_cast<std::size_t>(band)];
+                CAPTURE(count, mixedCurves, band, ratio);
+                // Avant la grille partagée : de 73 % à 191 % selon la bande.
+                CHECK(ratio > 0.88);
+                CHECK(ratio < 1.12);
+            }
+            // Le premier fil domine la bande de départ, le dernier celle d'arrivée.
+            for (std::size_t c = 1; c < sewn.size(); ++c) {
+                CHECK(sewn.front()[0] > sewn[c][0]);
+                CHECK(sewn.back()[kBands - 1] > sewn[c - 1][kBands - 1]);
+            }
+        }
+    }
+}
+
+TEST_CASE("shared rows: overlay mode keeps a full base and reaches the arrival thread",
+          "[project_ops][gradient][multicolor][coverage]") {
+    constexpr int kBands = 6;
+    auto plain = rectangle_fill();
+    const auto reference = sewn_by_band(plain.project, kBands);
+    auto f = rectangle_fill();
+    commands::UndoStack stack;
+    auto command = project_ops::make_create_multicolor_gradient_command(
+        f.project, f.fill, palette_spec(f.project, f.fill, 3, false));
+    REQUIRE(command);
+    stack.execute(std::move(*command), f.project);
+    const auto sewn = sewn_by_band(f.project, kBands);
+    REQUIRE(sewn.size() == 3);
+    for (int band = 0; band < kBands; ++band) {
+        const auto b = static_cast<std::size_t>(band);
+        CAPTURE(band);
+        CHECK(sewn[0][b] > 0.9 * reference[0][b]); // fond plein partout
+        CHECK(sewn[0][b] + sewn[1][b] + sewn[2][b] < 1.75 * reference[0][b]);
+    }
+    // Avant : le dernier fil plafonnait à 30 % ; la surcouche atteint maintenant ~60 %.
+    CHECK(sewn[2][kBands - 1] > 0.45 * reference[0][kBands - 1]);
+    CHECK(sewn[2][0] < 0.05 * reference[0][0]);
+}
+
+TEST_CASE("shared rows: generation is deterministic and survives a file round trip",
+          "[project_ops][gradient][multicolor][io]") {
+    auto f = rectangle_fill();
+    commands::UndoStack stack;
+    auto spec = palette_spec(f.project, f.fill, 4, true);
+    spec.palette[2].curve = document::DensityCurve::Smooth;
+    auto command = project_ops::make_create_multicolor_gradient_command(f.project, f.fill, spec);
+    REQUIRE(command);
+    stack.execute(std::move(*command), f.project);
+    const auto first = stitch_generation::effective_sequence(f.project);
+    const auto second = stitch_generation::effective_sequence(f.project);
+    REQUIRE(first);
+    REQUIRE(second);
+    CHECK(first->commands == second->commands);
+
+    const auto file = std::filesystem::temp_directory_path() / "openstitch_shared_rows.osp";
+    REQUIRE(project_io::save_project(file, f.project).has_value());
+    auto reopened = project_io::load_project(file);
+    std::filesystem::remove(file);
+    REQUIRE(reopened);
+    const auto reloaded = stitch_generation::effective_sequence(*reopened);
+    REQUIRE(reloaded);
+    CHECK(reloaded->commands == first->commands);
+    bool sawShared = false;
+    for (const auto& object : reopened->embroidery_objects) {
+        if (const auto* p = std::get_if<document::DirectionalFillParams>(&object.params);
+            p != nullptr && p->density_gradient && p->density_gradient->shared_rows) {
+            sawShared = true;
+            CHECK(p->density_gradient->density_stops.size() > 4); // profil courbe échantillonné
+        }
+    }
+    CHECK(sawShared);
 }
