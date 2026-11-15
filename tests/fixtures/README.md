@@ -1,5 +1,11 @@
 # Fixtures d'intégration
 
+## `motif-calques.ora`
+
+Document OpenRaster synthétique avec deux calques PNG transparents, Feuilles et
+Fleur, décalés sur une toile commune. Le test Studio l'ouvre, segmente et
+vectorise chaque calque, puis vérifie l'ordre et la visibilité des points.
+
 ## `tentabrode.png`
 
 Image complexe fournie par l'utilisateur comme motif de référence fonctionnel.
