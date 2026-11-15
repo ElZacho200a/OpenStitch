@@ -236,10 +236,9 @@ recopiée, 30 tirages × 4 seuils, masques `bool`/`uint8`, masques vides.
 
 ## 5. Problèmes restants, par impact
 
-1. **Auto-satin sur jonctions à haut degré** : ~14 s sur deux régions de
-   tentabrode (génération de candidats de coupe de `split_region`, puis
-   oracle de couverture). Correctif architectural déjà identifié dans
-   `satin_plan.hpp`, hors périmètre.
+1. ~~**Auto-satin sur jonctions à haut degré**~~ : le chemin `split_region`
+   (`satin_planning`) a été retiré en août 2026 ; le coût restant de l'essai de
+   satin venait du rognage aux cellules, traité le 2026-11-15 (§13).
 2. **Régénération complète à chaque mutation** : ~110 ms (tentabrode) à
    ~180 ms (sample) restent pour une modification locale. Un cache par
    objet est possible (tatami/directionnel dépendent de la seule forme et
@@ -489,3 +488,48 @@ graphique non bridée, fenêtre réellement présentée et dégagée.
 des instances GPU/QSG ne sera justifié qu'après profilage du nouveau chemin : le principal coût
 confirmé ici était la création et le transfert de milliers d'objets Qt, pas le calcul de leurs
 coordonnées.
+
+## 13. Audit du 2026-11-15 : rognage aux cellules de l'auto-satin
+
+**Constat.** Avec « Satin automatique », l'essai de satin de chaque région
+(`choose_satin` → `generate_skeleton_satin` avec mesure de couverture) faisait
+presque tout le temps de `auto_digitize` : 2,3 s sur 2,3 s pour tentabrode en monofil.
+Une seule région (n° 95, 1 241 mm², jonctions) prenait 882 ms et bornait le temps en
+parallèle (968 ms). Profil temporaire par phase : `sample_axis` 1 908 ms, dont la quasi-totalité
+dans `clip_to_cell` ; l'analyse raster et le squelette ne pèsent que ~120 ms. Pour chaque
+traversée, le rognage avance le long de la corde par pas de 40 µm (avec dichotomie), soit
+557 000 tests `inside()` pour 8 681 traversées. Chaque test mesurait la distance exacte du point
+à toute la polyligne de son morceau (axe échantillonné tous les 50 µm, jusqu'à 3 223 points) et
+parcourait tous les autres morceaux (jusqu'à 69 sur sample).
+
+**Corrections** (`libs/auto_satin/src/skeleton_satin.cpp`), toutes à résultat identique :
+
+- Arbre de boîtes par polyligne de morceau (feuilles de 8 segments consécutifs) : la distance au
+  morceau ne visite que les nœuds plus proches que le meilleur déjà trouvé, avec une marge d'1e-6 µm
+  contre l'arrondi ; le minimum ne dépend pas de l'ordre de parcours, donc même valeur. Le segment le
+  plus proche au point précédent sert de borne initiale (les points avancent de 40 µm).
+- Pour chaque traversée, liste des morceaux voisins qui peuvent compter : la limite d − biais vaut au
+  plus d(p) + |t| sur toute la corde (inégalité triangulaire) ; un morceau dont la boîte est plus loin
+  que cette borne de la boîte de la corde serait écarté à chaque point par le test exact.
+- Filtres de boîtes sans racine carrée, qui n'écartent que ce que le test exact écarte.
+
+Deux essais intermédiaires mesurés puis remplacés : blocs plats de 8 segments triés par distance
+(plus lent : 2 557 ms, le tri coûte plus qu'il ne rapporte) et blocs plats sans tri (1 747 ms :
+62 M de boîtes parcourues, 112 par appel en moyenne).
+
+**Résultats** (Release, `--satin-bands`, médianes, 16 fils ; `main` contre la branche, même machine) :
+
+| Entrée | `auto_digitize` avant | après | empreinte de séquence |
+|---|---|---|---|
+| `tentabrode.png` | 963 ms | **231 ms** | `66a0e13ef20e3a3e` |
+| `sample/0215a7e5…png` | 684 ms | **304 ms** | `5de2d277161421b0` |
+| `marine-synth-01/source.png` | 99 ms | **44 ms** | `7ba378266ebee199` |
+
+En monofil, tentabrode passe de 2 300 à 1 010 ms et la région 95 de 882 à 173 ms ; sample de
+2 755 à 1 553 ms (région 91 : 435 → 223 ms). Empreintes également identiques pour
+`Impossibke.osp` et `RuieGothique.osp` régénérés depuis le projet (`--from-osp`). Tests : suites
+auto-satin et golden (175 cas), puis `ctest` Release complet.
+
+**Reste.** Le rognage reste le premier poste (~0,7 s sur 1 s en monofil pour tentabrode) : le pas
+de 40 µm et la dichotomie à 10 niveaux fixent le nombre de tests ; les réduire changerait les
+traversées, donc la broderie : à traiter comme un changement de comportement, mesuré sur la qualité.
