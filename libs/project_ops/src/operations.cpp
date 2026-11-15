@@ -328,7 +328,9 @@ BatchReport run(document::Project& project, std::string_view text, const BatchOp
     json doc;
     try {
         doc = json::parse(text);
-    } catch (const json::parse_error& e) {
+    } catch (const json::exception& e) {
+        // `parse_error`, mais aussi `out_of_range` (nombre hors plage, ex. 1e+3086) : un lot
+        // illisible est refusé, jamais propagé en exception.
         return global_error(code::kSchema, std::string("JSON illisible : ") + e.what(), dry);
     }
 

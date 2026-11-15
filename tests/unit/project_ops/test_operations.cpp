@@ -163,6 +163,17 @@ TEST_CASE("apply_recipe sets the recipe stitch params and refuses an unknown rec
     CHECK(untouched.findEmbroidery(ObjectId{2})->is_tatami());
 }
 
+TEST_CASE("a batch with an out of range number is refused, never thrown", "[project_ops][ops]") {
+    auto project = make_project();
+    const auto before = serialize(project);
+    const auto report = project_ops::apply_batch(
+        project,
+        R"({"schema":"openstitch.batch/1","operations":[{"op":"rename","object":1e+3086}]})");
+    CHECK_FALSE(report.ok);
+    CHECK(report.error_code == project_ops::code::kSchema);
+    CHECK(serialize(project) == before);
+}
+
 TEST_CASE("ops batch applies operations in order and reports each one", "[project_ops][ops]") {
     auto project = make_project();
     const auto report = project_ops::apply_batch(
