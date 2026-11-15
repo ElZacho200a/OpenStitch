@@ -3,6 +3,7 @@
 // octet, avec ou sans cache ; seul l'objet modifie est regenere.
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <atomic>
 #include <cstdlib>
 #include <stop_token>
@@ -238,4 +239,46 @@ TEST_CASE("task control : une annulation renvoie Cancelled et ne pollue pas le c
     const auto after = generate_sequence(project);
     REQUIRE(after.has_value());
     CHECK(after->commands == reference.commands);
+}
+
+// Routeur des liaisons cachées : son état (index, points de passage, visibilités) est gardé d'une
+// génération à l'autre pour la même géométrie. Changer les réglages d'un tatami troué (liaisons
+// qui contournent les trous) puis le régénérer donne exactement la séquence d'un calcul à neuf.
+TEST_CASE("chunk cache : etat du routeur reutilise entre deux reglages, sequence identique") {
+    document::Project project;
+    document::VectorObject vec;
+    vec.id = project.object_ids.next();
+    geometry::PathSet set{square_at(0, 40'000), {}};
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) {
+            geometry::Path hole = square_at(6'000 + i * 12'000, 4'000);
+            for (auto& node : hole.nodes) {
+                node.pos.y = Micrometers{node.pos.y.value + 6'000 + j * 12'000};
+            }
+            std::reverse(hole.nodes.begin(), hole.nodes.end());
+            set.holes.push_back(std::move(hole));
+        }
+    }
+    vec.paths.push_back(std::move(set));
+    project.vector_objects.push_back(vec);
+    document::EmbroideryObject emb;
+    emb.id = project.object_ids.next();
+    emb.name = "fond troue";
+    emb.source_vector = vec.id;
+    document::TatamiParams tatami;
+    tatami.hidden_underpath = true;
+    tatami.underlay_parallel = true;
+    emb.params = tatami;
+    project.embroidery_objects.push_back(emb);
+
+    clear_chunk_cache();
+    REQUIRE(generate_sequence(project).has_value()); // état du routeur mis en cache
+    auto& params = std::get<document::TatamiParams>(project.embroidery_objects[0].params);
+    for (const std::int32_t spacing : {550, 700, 400}) {
+        params.row_spacing = Micrometers{spacing};
+        params.angle = Angle{params.angle.radians + 0.4};
+        const auto warm = generate_sequence(project);
+        REQUIRE(warm.has_value());
+        CHECK(warm->commands == uncached(project).commands);
+    }
 }
