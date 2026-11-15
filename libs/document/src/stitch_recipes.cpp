@@ -132,6 +132,27 @@ std::vector<StitchRecipe> build() {
             p.row_spacing = Micrometers{3'000};
             return p;
         }());
+    add("brick-stitch", "Point de brique", "Brick stitch", Fill, F,
+        "https://crosstela.com/fr/learn/stitches/brick-stitch/",
+        "Points de même longueur, décalés d'une demi-longueur d'une rangée à l'autre.", [] {
+            TatamiParams p;
+            p.stitch_length = Micrometers{4'000};
+            p.row_spacing = Micrometers{450};
+            p.stagger = 2;
+            return p;
+        }());
+    // STCH-CROS-01 : couche posée (points longs) puis fils de couchage attachés.
+    add("bayeux-stitch", "Point de Bayeux", "Bayeux stitch", Fill, F,
+        "https://crosstela.com/fr/learn/stitches/bayeux-stitch/",
+        "Aplat de longs points posés, traversé de fils de couchage attachés tous les 3 mm.", [] {
+            TatamiParams p;
+            p.stitch_length = Micrometers{7'000};
+            p.row_spacing = Micrometers{450};
+            p.couching_spacing = Micrometers{4'000};
+            p.couching_tie_spacing = Micrometers{3'000};
+            p.hidden_underpath = true;
+            return p;
+        }());
     // STCH-CROS-01 L2 : fils posés en grille, attachés à chaque croisement (`tie_down`).
     const auto trellis = [](Angle angle, int spacing) {
         CrosshatchFillParams p;

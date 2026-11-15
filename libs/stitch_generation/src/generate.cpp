@@ -23,6 +23,7 @@
 #include "openstitch/stitch_generation/blanket_stitch.hpp"
 #include "openstitch/stitch_generation/border_satin.hpp"
 #include "openstitch/stitch_generation/contour_fill.hpp"
+#include "openstitch/stitch_generation/couching.hpp"
 #include "openstitch/stitch_generation/cross_stitch.hpp"
 #include "openstitch/stitch_generation/crosshatch_fill.hpp"
 #include "openstitch/stitch_generation/directional_fill.hpp"
@@ -960,6 +961,11 @@ void generate_tatami(stitch::StitchSequence& sequence, const document::VectorObj
         }
         emit_fill(sequence, fill_tatami(region, resolve_pull_compensation(params, region)),
                   object.id, linker ? &*linker : nullptr);
+        // Couchage (STCH-CROS-01) : fils de couchage attachés, cousus SUR la couche posée.
+        if (params.couching_spacing.value > 0) {
+            emit_fill(sequence, couching_pass(region, params), object.id,
+                      linker ? &*linker : nullptr);
+        }
         if (params.edge_outline) {
             emit_edge_outline(sequence, region, object.id, params.underlay_inset);
         }

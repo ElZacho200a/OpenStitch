@@ -14,8 +14,8 @@ ou vidéo n'est copié. Classement, correspondance et justification sont une ana
 | Classe | Sens | Fiches |
 | --- | --- | --- |
 | A | couverte par un type existant, tel quel | 13 |
-| B | réglage (recette) de types existants | 27 |
-| C | primitive ou extension de générateur nécessaire | 140 |
+| B | réglage (recette) de types existants | 28 |
+| C | primitive ou extension de générateur nécessaire | 139 |
 | D | simulation visuelle seulement | 110 |
 | E | inadaptée au point noué | 72 |
 
@@ -31,7 +31,7 @@ marquée `Approximation`. Les techniques fondées sur un matériau ou une manipu
 
 | Famille | A | B | C | D | E | Remarque |
 | --- | --- | --- | --- | --- | --- | --- |
-| canvas (70) | | 4 | 60 | 4 | 2 | points comptés sur canevas : tuiles de motif sur grille |
+| canvas (70) | | 5 | 59 | 4 | 2 | points comptés sur canevas : tuiles de motif sur grille |
 | cross (27) | 2 | 1 | 24 | | | variantes de croix : grille à cellules non carrées, croix doubles |
 | pulled (26) | | | | | 26 | l'effet vient de la tension |
 | chain (22) | | | | 22 | | boucles |
@@ -82,7 +82,11 @@ tent, upright-cross, diamond-lattice. Le passé plat reste la conversion satin e
 L2 (primitives) : trellis-filling et trellis-couching **livrés** (primitive `CrosshatchFillParams::tie_down` :
 barre diagonale cousue à chaque croisement des deux premières couches, reliée à la suivante le
 long du fil posé ; `tieDown` dans l'OSP, `tie_down_mm` dans `set_params` et l'inspecteur) ;
-bayeux et brick-shading restent à faire. L3 : seeding, or-nue (simulation).
+L3a (livré) : couchage du tatami (`TatamiParams::couching_spacing` / `couching_tie_spacing` :
+fils perpendiculaires à la couche posée, attachés à chaque pénétration) → recette
+`bayeux-stitch` ; `brick-stitch` reclassé B (quinconce du tatami à `stagger` 2, d'où B 28 / C 139
+depuis l'inventaire initial). Restent brick-shading (briques + fondu multicolore), seeding et
+or-nue (simulation).
 
 Mesure (ellipse 40 x 30 mm, recette `trellis-filling-stitch`, Debug) : 415 points, 11 coupes,
 15 sauts. Avec les liaisons cachées du croisé, 355 points et 1 coupe, mais les liaisons cousues

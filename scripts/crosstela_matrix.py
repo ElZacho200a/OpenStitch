@@ -116,9 +116,9 @@ OVERRIDES: dict[str, tuple[str, str, str]] = {
     "trellis-filling-stitch": ("C", "CrosshatchFillParams + attaches aux intersections", "P1-D : treillis attaché"),
     "trellis-couching": ("C", "CrosshatchFillParams + attaches aux intersections", "treillis couché"),
     "jacobean-trellis-stitch": ("C", "CrosshatchFillParams angle=45° + attaches en croix", "treillis jacobéen (attache en croix au lieu du nœud)"),
-    "bayeux-stitch": ("C", "Tatami posé + traverses + attaches (3 passes)", "P1-B : couchage à trois passes"),
+    "bayeux-stitch": ("C", "TatamiParams couching_spacing / couching_tie_spacing", "P1-B : couche posée + fils de couchage attachés (primitive livrée)"),
     "brick-shading-stitch": ("C", "Tatami/directionnel à phase en briques + fondu", "P1-C : alternance de longueurs en quinconce"),
-    "brick-stitch": ("C", "TatamiParams phase en briques", "briques verticales décalées d'une demi-hauteur"),
+    "brick-stitch": ("B", "TatamiParams stagger=2", "décalage d'une demi-longueur par rangée = quinconce du tatami à stagger 2"),
     "seeding-stitch": ("C", "nouveau semis déterministe", "P2-A : semis à exclusion spatiale"),
     "dot-stitch": ("C", "semis déterministe (paires)", "semis de points doublés"),
     "granito-stitch": ("C", "semis déterministe (amas dans les mêmes trous)", "amas de points superposés"),
@@ -162,7 +162,7 @@ PILOTS = {
     "zigzag-row": "L1", "laid-work": "L1", "tent-stitch": "L1", "cross-stitch": "L1", "half-cross-stitch": "L1", "upright-cross": "L1",
     "blanket-stitch": "L1", "darning-stitch": "L1", "split-stitch": "L1",
     "long-and-short-stitch": "L1", "diamond-lattice": "L1",
-    "trellis-filling-stitch": "L2", "trellis-couching": "L2", "bayeux-stitch": "L2", "brick-shading-stitch": "L2",
+    "trellis-filling-stitch": "L2", "trellis-couching": "L2", "brick-stitch": "L2", "bayeux-stitch": "L2", "brick-shading-stitch": "L2",
     "seeding-stitch": "L3", "or-nue": "L3",
 }
 PRIORITY = {"trellis-filling-stitch": "P1", "bayeux-stitch": "P1", "brick-shading-stitch": "P1",
@@ -171,7 +171,8 @@ PRIORITY = {"trellis-filling-stitch": "P1", "bayeux-stitch": "P1", "brick-shadin
 
 def status(slug: str) -> str:
     lot = PILOTS.get(slug)
-    if lot == "L1" or slug in ("trellis-filling-stitch", "trellis-couching"):
+    if lot == "L1" or slug in ("trellis-filling-stitch", "trellis-couching", "bayeux-stitch",
+                               "brick-stitch"):
         return "recette intégrée (openstitch-cli recipes)"
     return "planifié" if lot else "non planifié"
 

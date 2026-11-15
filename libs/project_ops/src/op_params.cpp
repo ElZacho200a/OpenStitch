@@ -883,6 +883,8 @@ template <> const std::vector<Field<document::TatamiParams>>& fields_of<document
         v.push_back(mm_field<P>("row_end_clip_mm", &P::row_end_clip, 0.0, 5.0));
         v.push_back(bool_field<P>("edge_outline", &P::edge_outline));
         v.push_back(point_field<P>("entry_point_mm", &P::entry_point));
+        v.push_back(mm_field<P>("couching_spacing_mm", &P::couching_spacing, 0.0, 20.0));
+        v.push_back(mm_field<P>("couching_tie_spacing_mm", &P::couching_tie_spacing, 1.0, 7.0));
         return v;
     }();
     return fields;

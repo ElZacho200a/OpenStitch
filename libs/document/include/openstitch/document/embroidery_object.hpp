@@ -92,6 +92,12 @@ struct TatamiParams {
     // Passe de contour cousue PAR-DESSUS le remplissage (point droit le long du bord et des
     // trous) : masque les bouts de rangées. Faux = aucune (historique).
     bool edge_outline{false};
+    // Couchage (STCH-CROS-01, point de Bayeux) : le tatami devient la couche POSÉE, traversée
+    // perpendiculairement par des fils de couchage espacés de `couching_spacing` (0 = aucun,
+    // historique ; borné à [2 ; 20] mm) et attachés tous les `couching_tie_spacing` (3 mm,
+    // borné à [1 ; 7] mm) par un petit point en travers. Cf. `stitch_generation::couching_pass`.
+    Micrometers couching_spacing{0};
+    Micrometers couching_tie_spacing{3'000};
 
     bool operator==(const TatamiParams&) const = default;
 };

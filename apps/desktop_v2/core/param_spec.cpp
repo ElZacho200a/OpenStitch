@@ -62,6 +62,10 @@ const std::vector<ParamSpec>& table() {
         {"tatami", "row_end_clip_mm", "Raccourcissement des fins de rangée", K::Number, 0.0, 5.0,
          0.1, "mm"},
         {"tatami", "edge_outline", "Contour de bordure", K::Bool, 0, 1, 1, ""},
+        {"tatami", "couching_spacing_mm", "Couchage : écart des fils (Bayeux)", K::Number, 0.0,
+         20.0, 0.5, "mm"},
+        {"tatami", "couching_tie_spacing_mm", "Couchage : écart des attaches", K::Number, 1.0, 7.0,
+         0.1, "mm"},
         {"directional", "stagger", "Décalage des rangées (motif en quinconce)", K::Integer, 1, 8, 1,
          ""},
         {"directional", "spacing_regularity", "Régularité de l'écart", K::Number, 0.0, 1.0, 0.05,
@@ -535,6 +539,8 @@ Opt readP(const document::TatamiParams& p, std::string_view key) {
     PS_MM("row_end_clip_mm", row_end_clip);
     PS_B("edge_outline", edge_outline);
     PS_PT("entry_point_mm", entry_point);
+    PS_MM("couching_spacing_mm", couching_spacing);
+    PS_MM("couching_tie_spacing_mm", couching_tie_spacing);
     return std::nullopt;
 }
 

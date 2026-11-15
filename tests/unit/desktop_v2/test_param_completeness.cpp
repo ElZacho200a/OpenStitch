@@ -36,7 +36,7 @@ MemberCounts memberCounts() {
     using namespace document;
     // Chaque ligne ne compile que si le nombre de noms est exactement celui des membres.
     OS_COUNT_MEMBERS(RunningStitchParams, a, b, c, d, e)
-    OS_COUNT_MEMBERS(TatamiParams, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q)
+    OS_COUNT_MEMBERS(TatamiParams, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s)
     OS_COUNT_MEMBERS(DirectionalFillParams, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s,
                      t, u, v, w)
     OS_COUNT_MEMBERS(SatinParams, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v,
@@ -54,7 +54,7 @@ MemberCounts memberCounts() {
     OS_COUNT_MEMBERS(AppliqueParams, a, b, c, d, e, f, g, h)
     OS_COUNT_MEMBERS(MulticolorGradientParams, a, b, c, d, e, f, g)
     return {{{"running", 5},
-             {"tatami", 17},
+             {"tatami", 19},
              {"directional", 23},
              {"satin", 35},
              {"auto_satin", 33},
@@ -209,7 +209,7 @@ TEST_CASE("every engine parameter field is exposed by param_spec or excluded wit
     // Le recensement chiffré (consigné dans le CSV de la famille J).
     CHECK(exposed + excluded == engineFields);
     CHECK(excluded == 6);  // rail_a, rail_b, topology, border, palette, transition
-    CHECK(exposed == 182); // + crosshatch tie_down_mm (STCH-CROS-01)
+    CHECK(exposed == 184); // + tie_down_mm, couching_*_mm (STCH-CROS-01)
 }
 
 TEST_CASE("every table row reads back from a default object, inside its own range",

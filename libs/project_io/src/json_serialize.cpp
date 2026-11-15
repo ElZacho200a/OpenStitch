@@ -239,6 +239,10 @@ json params_to_json(const document::StitchParams& params) {
                 if (p.edge_outline) {
                     j["edgeOutline"] = true;
                 }
+                if (p.couching_spacing.value != 0) {
+                    j["couchingSpacing"] = p.couching_spacing.value;
+                    j["couchingTieSpacing"] = p.couching_tie_spacing.value;
+                }
                 if (p.entry_point) {
                     j["entryPoint"] = {{"x", p.entry_point->x.value},
                                        {"y", p.entry_point->y.value}};
@@ -697,6 +701,9 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.underlay_zigzag = j.value("underlayZigzag", false);
         p.row_end_clip = Micrometers{std::clamp(j.value("rowEndClip", 0), 0, 5'000)};
         p.edge_outline = j.value("edgeOutline", false);
+        p.couching_spacing = Micrometers{std::clamp(j.value("couchingSpacing", 0), 0, 20'000)};
+        p.couching_tie_spacing =
+            Micrometers{std::clamp(j.value("couchingTieSpacing", 3'000), 1'000, 7'000)};
         if (j.contains("entryPoint")) {
             p.entry_point = Vec2um{Micrometers{j.at("entryPoint").at("x")},
                                    Micrometers{j.at("entryPoint").at("y")}};
