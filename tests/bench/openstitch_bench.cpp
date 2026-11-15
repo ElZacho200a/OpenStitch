@@ -98,6 +98,15 @@ std::uint64_t fnv(const std::vector<std::uint32_t>& v) {
     return h;
 }
 
+std::uint64_t image_fingerprint(const image::Image& img) {
+    std::uint64_t h = 1469598103934665603ull;
+    for (const std::uint8_t x : img.rgba) {
+        h ^= x;
+        h *= 1099511628211ull;
+    }
+    return h;
+}
+
 double dist(Vec2um a, Vec2um b) {
     return length_um(a - b);
 }
@@ -271,6 +280,28 @@ int main(int argc, char** argv) {
                 [&] { (void)image::apply_pipeline(img, quantOps); });
         measure("apply_pipeline (median+bright/contrast)", reps,
                 [&] { (void)image::apply_pipeline(img, mixOps); });
+        const std::vector<image::ImageOp> median3{image::MedianDenoiseOp{1}};
+        const std::vector<image::ImageOp> median5{image::MedianDenoiseOp{2}};
+        const std::vector<image::ImageOp> brightOps{image::BrightnessContrastOp{10.0, 10.0}};
+        measure("apply_pipeline (median 3)", reps,
+                [&] { (void)image::apply_pipeline(img, median3); });
+        measure("apply_pipeline (median 5)", reps,
+                [&] { (void)image::apply_pipeline(img, median5); });
+        measure("apply_pipeline (bright/contrast)", reps,
+                [&] { (void)image::apply_pipeline(img, brightOps); });
+        std::printf("  empreinte median+bright/contrast : %016llx\n",
+                    static_cast<unsigned long long>(
+                        image_fingerprint(*image::apply_pipeline(img, mixOps))));
+        std::printf("  empreinte median 5 : %016llx\n",
+                    static_cast<unsigned long long>(
+                        image_fingerprint(*image::apply_pipeline(img, median5))));
+        std::printf("  empreinte quantize 8 : %016llx\n",
+                    static_cast<unsigned long long>(
+                        image_fingerprint(*image::apply_pipeline(img, quantOps))));
+        const std::vector<image::ImageOp> darkOps{image::BrightnessContrastOp{-40.0, -30.0}};
+        std::printf("  empreinte bright/contrast -40/-30 : %016llx\n",
+                    static_cast<unsigned long long>(
+                        image_fingerprint(*image::apply_pipeline(img, darkOps))));
 
         segmentation::Segmentation seg;
         measure("segment (8 coul, min 16, lissage 0)", reps, [&] {

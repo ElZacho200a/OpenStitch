@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <set>
+#include <vector>
 
 #include "openstitch/image/ops.hpp"
 
@@ -251,4 +252,48 @@ TEST_CASE("contraste local et nettete : changent l'image, alpha intact, parametr
     CHECK(apply_op(img, SharpenOp{0.0})->rgba == img.rgba);
     CHECK_FALSE(apply_op(img, ClaheOp{0.5}).has_value());
     CHECK_FALSE(apply_op(img, SharpenOp{3.5}).has_value());
+}
+
+TEST_CASE("debruitage median par bandes : identique a une mediane naive, bords et jonctions") {
+    // Image haute (plusieurs bandes de 64 lignes, dernière incomplète), pixels pseudo-aléatoires :
+    // chaque jonction de bandes doit voir ses vraies voisines, les bords de l'image répliqués.
+    Image img;
+    img.width = 23;
+    img.height = 151;
+    img.source_had_alpha = true;
+    img.rgba.resize(static_cast<std::size_t>(img.width) * static_cast<std::size_t>(img.height) * 4);
+    std::uint32_t state = 12345;
+    for (auto& v : img.rgba) {
+        state = state * 1664525U + 1013904223U;
+        v = static_cast<std::uint8_t>(state >> 24);
+    }
+    for (int strength = 1; strength <= 2; ++strength) {
+        const int r = strength; // noyau 3 ou 5
+        const auto out = apply_op(img, MedianDenoiseOp{strength});
+        REQUIRE(out.has_value());
+        bool same = true;
+        std::vector<std::uint8_t> window;
+        for (int y = 0; y < img.height && same; ++y) {
+            for (int x = 0; x < img.width && same; ++x) {
+                for (int ch = 0; ch < 4; ++ch) {
+                    window.clear();
+                    for (int dy = -r; dy <= r; ++dy) {
+                        for (int dx = -r; dx <= r; ++dx) {
+                            const int sx = std::clamp(x + dx, 0, img.width - 1);
+                            const int sy = std::clamp(y + dy, 0, img.height - 1);
+                            window.push_back(pixel(img, sx, sy)[ch]);
+                        }
+                    }
+                    std::nth_element(window.begin(), window.begin() + window.size() / 2,
+                                     window.end());
+                    if (pixel(*out, x, y)[ch] != window[window.size() / 2]) {
+                        same = false;
+                        UNSCOPED_INFO("force " << strength << " x=" << x << " y=" << y << " canal "
+                                               << ch);
+                    }
+                }
+            }
+        }
+        CHECK(same);
+    }
 }

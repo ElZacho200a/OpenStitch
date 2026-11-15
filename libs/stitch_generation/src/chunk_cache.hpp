@@ -31,4 +31,11 @@ void chunk_cache_store(ObjectId id, const document::StitchParams& params,
                        const std::vector<geometry::PathSet>& paths,
                        std::shared_ptr<const stitch::StitchSequence> chunk);
 
+// Vrai si les caches de régénération sont actifs (cf. set_chunk_cache_enabled) : le cache des
+// routeurs de liaisons cachées (tatami.cpp) suit le même réglage.
+[[nodiscard]] bool chunk_cache_enabled();
+
+// Vide le cache des états de routeur (défini dans tatami.cpp) ; appelé par clear_chunk_cache.
+void clear_router_cache();
+
 } // namespace openstitch::stitch_generation

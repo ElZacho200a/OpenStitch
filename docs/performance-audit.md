@@ -654,3 +654,75 @@ multicolore) est refusé par les deux versions.
 
 **Reste.** La lecture vaut maintenant l'enregistrement. Le zip (19 ms) et le PNG (22 ms) sont
 séquentiels et indépendants de l'analyse du JSON (36 ms) : les recouvrir gagnerait encore ~20 ms.
+## 15. Audit du 2026-11-15 : opérations d'image (`apply_pipeline`)
+
+`cv::medianBlur` ne tourne que sur un fil, et luminosité/contraste ainsi que l'affectation des
+pixels de la quantification parcouraient l'image en une seule boucle séquentielle. Trois changements,
+sortie identique octet pour octet :
+
+- **Débruitage médian** : bandes de 64 lignes filtrées en parallèle (`parallel_for`), chacune avec
+  `ksize / 2` lignes de voisinage lues dans l'image ; le bord répliqué ne s'applique qu'aux vrais bords
+  de l'image, comme l'appel entier. Chaque tâche écrit ses propres lignes de la sortie. Test
+  `debruitage median par bandes` : 151 lignes (trois jonctions, dernière bande incomplète), noyaux 3
+  et 5, comparés à une médiane naïve.
+- **Luminosité/contraste** : la fonction ne dépend que de la valeur du canal ; le même `convertTo` est
+  appliqué une fois aux 256 valeurs, puis `cv::LUT` (alpha identité) remplace `split`/`merge`.
+- **Quantification** : affectation au centre le plus proche ligne par ligne en parallèle (le k-means
+  sur l'échantillon est inchangé).
+
+**Résultats** (Release, `openstitch-bench tentabrode.png --reps 9`, 1117 × 1408, médianes, 16 fils) :
+
+| Pipeline | avant | après | empreinte de l'image |
+|---|---:|---:|---|
+| médiane 3 + luminosité/contraste | 63 ms | **11 ms** | `6a5786d520733673` |
+| médiane 3 seule | 55 ms | **9 ms** | — |
+| médiane 5 seule | 56 ms | **10 ms** | `a7cfcaa5aede66d4` |
+| luminosité/contraste seul | 9 ms | **2 ms** | `67e7266b9376b54a` (−40/−30) |
+| quantification 8 couleurs | 25 ms | **9 ms** | `ce49d00a44412900` |
+
+Empreintes relevées sur l'ancien et le nouveau code (même binaire de banc, `ops.cpp` permuté). Le banc
+mesure désormais chaque opération séparément et imprime ces empreintes.
+
+**Reste.** La quantification passe l'essentiel de ses 9 ms dans `cv::kmeans` (20 000 échantillons,
+3 essais) ; le reste du pipeline (bilatéral, aplat, CLAHE, netteté) n'est pas sur le chemin par défaut.
+## 14. Audit du 2026-11-15 : régénération, gros objet troué et état des routeurs
+
+**« Mettre à jour » après retouche d'une région** (banc `[.perf]` de `test_region_edit.cpp`, #348) :
+19 + 1 + 3 ms sur tentabrode, 33 + 1 + 23 ms sur `Impossibke.osp` (1 395 régions, 494 objets sur
+496 réutilisés), 27 + 1 + 16 ms sur `RuieGothique.osp`. La mise à jour région par région notée dans
+PERF-STUDIO-001 n'est plus justifiée.
+
+**Gros objet troué.** Sur `Impossibke.osp`, un seul tatami (« Remplissage Région 26112 », 37 trous,
+1 372 nœuds) fait ~370 ms des ~600 ms d'une génération complète en monofil, et ~320 ms quand on le
+modifie dans Studio (étape « le plus gros objet modifié »). Presque tout est dans les liaisons
+cachées de `HiddenRouter` : 2,78 M tests de visibilité entre points de passage et 0,53 M depuis les
+extrémités pour 8 générations du banc.
+
+Hypothèses écartées, mesurées sans instrumentation et en alternance A/B :
+
+- Grille 2D des arêtes pour collecter les intersections : 6,5× moins d'arêtes visitées (437 M → 67 M)
+  mais aucun gain mesurable (monofil 536 contre 530 ms) ; le coût est par appel, pas par arête.
+- A* paresseux à résultat identique (validation de la visibilité au choix du nœud) : −34 % de tests
+  seulement, aucun gain ; avec 37 trous, la plupart des candidats sont invisibles et doivent être
+  validés un à un.
+
+**Correction retenue : état du routeur gardé d'une génération à l'autre.** L'index des arêtes, les
+points de passage (contour rentré par Clipper) et le mémo des visibilités ne dépendent que de la
+géométrie (région, retrait). `RouterState` est emprunté à un cache à clé exacte (région entière et
+retrait comparés) à la construction du routeur et rendu à sa destruction : jamais deux fils sur le
+même état, budget de 64 Mio, éviction du plus ancien. Il suit `set_chunk_cache_enabled` et
+`clear_chunk_cache` (les étapes historiques du banc restent comparables). Résultat inchangé :
+valeurs pures de la géométrie.
+
+| `Impossibke.osp`, Release, 16 fils | Avant | Après |
+|---|---|---|
+| le plus gros objet modifié (`row_spacing`) | ~320 ms | **~130–140 ms** |
+| génération complète, cache désactivé | ~310 ms | ~310 ms (inchangé) |
+| pic mémoire du banc | 88 Mo | 116 Mo |
+
+Empreintes de séquence identiques à `main` sur les 5 entrées habituelles. Test :
+« etat du routeur reutilise entre deux reglages » (tatami percé de 9 trous, trois réglages
+successifs, comparés à un calcul à neuf).
+
+**Reste.** La première génération du gros objet (ouverture du projet) garde son coût : réduire les
+candidats (`kMaxCandidates`) ou le pas de recherche changerait les liaisons, donc la broderie.
