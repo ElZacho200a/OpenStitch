@@ -2,9 +2,13 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <memory>
+
 #include "edit_batch.hpp"
 #include "fade_service.hpp"
 #include "inspector_model.hpp"
+#include "openstitch/commands/thread_commands.hpp"
+#include "openstitch/document/multi_blend.hpp"
 #include "openstitch/project_ops/factory.hpp"
 #include "openstitch/project_ops/gradient_fill.hpp"
 
@@ -130,4 +134,72 @@ TEST_CASE("autonomous gradient method settings survive desktop edits", "[desktop
     REQUIRE(after.has_value());
     CHECK(after->method == static_cast<int>(document::GradientMethod::LongAndShort));
     CHECK(after->geometry == 2);
+}
+
+TEST_CASE("fade edits keep the thread references of unchanged colours",
+          "[desktop_v2][fade][threads]") {
+    auto f = rectFill();
+    MultiFadeSettings settings;
+    settings.colors = {{200, 30, 30}, {30, 120, 200}, {240, 200, 40}};
+    REQUIRE(createMultiFade(f.session, f.id, settings).ok);
+    auto spec = project_ops::describe_multicolor_gradient(f.session.project(), ObjectId{f.id});
+    REQUIRE(spec);
+    // Fil de nuancier choisi pour le 2e fil (comme depuis le panneau des fils).
+    spec->palette[1].thread = thread_palette::ThreadKey{"madeira_polyneon", "1747"};
+    auto command = project_ops::make_edit_multicolor_gradient_command(
+        f.session.projectForIdAllocation(), ObjectId{f.id}, *spec);
+    REQUIRE(command);
+    f.session.execute(std::move(*command));
+    const auto threadOf = [&](std::size_t i) {
+        return project_ops::describe_multicolor_gradient(f.session.project(), ObjectId{f.id})
+            ->palette[i]
+            .thread;
+    };
+    REQUIRE(threadOf(1).has_value());
+
+    // Technique, géométrie, ordre : la référence suit sa couleur.
+    settings.texture = 1;
+    settings.geometry = 2;
+    REQUIRE(editMultiFade(f.session, f.id, settings).ok);
+    CHECK(threadOf(1) == thread_palette::ThreadKey{"madeira_polyneon", "1747"});
+    settings.colors = {{240, 200, 40}, {30, 120, 200}, {200, 30, 30}};
+    REQUIRE(editMultiFade(f.session, f.id, settings).ok);
+    CHECK(threadOf(1) == thread_palette::ThreadKey{"madeira_polyneon", "1747"});
+    // Une couleur remplacée redevient libre : jamais un fil de nuancier pour une autre teinte.
+    settings.colors[1] = {10, 10, 10};
+    REQUIRE(editMultiFade(f.session, f.id, settings).ok);
+    CHECK_FALSE(threadOf(1).has_value());
+}
+
+TEST_CASE("the two-thread entry points use the multicolour engine", "[desktop_v2][fade]") {
+    auto f = rectFill();
+    REQUIRE(createFade(f.session, f.id, FadeSettings{{250, 120, 10}, true}).ok);
+    const auto spec =
+        project_ops::describe_multicolor_gradient(f.session.project(), ObjectId{f.id});
+    REQUIRE(spec);
+    CHECK(spec->palette.size() == 2);
+    CHECK_FALSE(project_ops::describe_gradient_fill(f.session.project(), ObjectId{f.id}));
+}
+
+TEST_CASE("a chart thread set on a fade layer survives the next fade edit",
+          "[desktop_v2][fade][threads]") {
+    auto f = rectFill();
+    MultiFadeSettings settings;
+    settings.colors = {{200, 30, 30}, {30, 120, 200}};
+    REQUIRE(createMultiFade(f.session, f.id, settings).ok);
+    const auto group = document::find_gradient_group(f.session.project(), ObjectId{f.id});
+    REQUIRE(group);
+    // Comme le panneau Fils : la couche physique reçoit un fil de nuancier et sa couleur.
+    const thread_palette::ThreadKey key{"madeira_polyneon", "1747"};
+    const std::array<std::uint8_t, 3> chartRgb{20, 90, 170};
+    f.session.execute(std::make_unique<commands::SetObjectThreadCommand>(
+        std::vector<commands::ObjectThreadAssignment>{{group->layers[1], key, chartRgb}}));
+    settings.colors = {{200, 30, 30}, chartRgb};
+    settings.geometry = 2;
+    REQUIRE(editMultiFade(f.session, f.id, settings).ok);
+    const auto spec =
+        project_ops::describe_multicolor_gradient(f.session.project(), ObjectId{f.id});
+    REQUIRE(spec);
+    CHECK(spec->palette[1].rgb == chartRgb);
+    CHECK(spec->palette[1].thread == key);
 }

@@ -15,8 +15,8 @@ Rectangle {
     readonly property var vw: typeof view !== "undefined" ? view : null
     readonly property bool compact: width < 1100
     readonly property string openName: digitizeHub.openPanel !== "" ? digitizeHub.openPanel : viewHub.openPanel
-    color: Theme.panel
-    implicitHeight: Theme.controlHeight + 12
+    color: "transparent" // posée dans une carte (StudioCard) qui porte le fond
+    implicitHeight: Theme.controlHeight + 10
 
     component Tab: StudioButton {
         quiet: true
@@ -51,7 +51,6 @@ Rectangle {
             Layout.rightMargin: 4
         }
         Tab { objectName: "satinPanelButton"; visible: bar.digitizeHub.ready; iconName: "satin"; text: bar.label(qsTr("Satin")); tooltip: qsTr("Réglages du satin"); checked: bar.digitizeHub.openPanel === "satin"; onClicked: bar.digitizeHub.toggle("satin") }
-        Tab { objectName: "fadePanelButton"; visible: bar.digitizeHub.ready; iconName: "fade"; text: bar.label(qsTr("Fondu")); tooltip: qsTr("Fondu de fils : transition entre deux couleurs (distinct du dégradé de densité)"); checked: bar.digitizeHub.openPanel === "fade"; onClicked: bar.digitizeHub.toggle("fade") }
         Tab { objectName: "pointEditPanelButton"; visible: bar.digitizeHub.ready; iconName: "stitches"; text: bar.label(qsTr("Retouche")); tooltip: qsTr("Retouche point à point"); checked: bar.digitizeHub.openPanel === "points"; onClicked: bar.digitizeHub.toggle("points") }
         Tab { objectName: "pullPanelButton"; visible: bar.digitizeHub.ready && typeof pull !== "undefined"; iconName: "pull"; text: bar.label(qsTr("Tirage")); tooltip: qsTr("Compensation du tirage du tissu"); checked: bar.digitizeHub.openPanel === "pull"; onClicked: bar.digitizeHub.toggle("pull") }
         Tab { objectName: "fixPanelButton"; visible: bar.digitizeHub.ready && typeof fix !== "undefined"; iconName: "analysis"; text: bar.label(qsTr("Corriger")); tooltip: qsTr("Corriger les problèmes, réduire les fils"); checked: bar.digitizeHub.openPanel === "fix"; onClicked: bar.digitizeHub.toggle("fix") }
@@ -74,5 +73,5 @@ Rectangle {
         Tab { objectName: "simulationButton"; visible: bar.viewHub.ready; iconName: "play"; text: bar.label(qsTr("Simulation")); shortcutLabel: "Ctrl+L"; showShortcutLabel: false; tooltip: qsTr("Simulation de la couture"); checked: bar.vw !== null && bar.vw.simActive; enabled: bar.vw !== null && bar.vw.simReady; onClicked: bar.vw.simActive ? bar.vw.stopSimulation() : bar.vw.startSimulation() }
         }
     }
-    Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.divider }
+    Rectangle { anchors.bottom: parent.bottom; x: 12; width: parent.width - 24; height: 1; color: Theme.divider }
 }

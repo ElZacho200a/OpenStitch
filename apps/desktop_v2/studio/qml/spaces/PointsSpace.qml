@@ -116,45 +116,50 @@ Item {
     Component.onCompleted: { if (active) activate() }
     Component.onDestruction: deactivate()
 
+    // Tout l'habillage est fait de cartes flottantes (StudioCard) posées sur le plan de travail :
+    // rail, barre de panneaux, bobines, objets, réglages. Le canevas, transparent, occupe le reste.
     RowLayout {
         anchors.fill: parent
-        spacing: 0
+        anchors.margins: Theme.gap
+        spacing: Theme.gap
 
-        Rectangle {
-            Layout.preferredWidth: Theme.controlHeight + 24
-            Layout.fillHeight: true
-            color: Theme.panel
+        StudioCard {
+            objectName: "pointsRailCard"
+            Layout.alignment: Qt.AlignTop
+            Layout.preferredWidth: Theme.controlHeight + 16
+            Layout.preferredHeight: Math.min(pointsRail.implicitHeight + 16, root.height - 2 * Theme.gap)
             PointsToolRail {
+                id: pointsRail
                 workspaceActive: root.active
                 anchors.top: parent.top
                 anchors.horizontalCenter: parent.horizontalCenter
-                anchors.topMargin: 12
+                anchors.topMargin: 8
                 canvas: spaceCanvas
             }
-            Text {
-                anchors.bottom: parent.bottom
-                anchors.bottomMargin: 16
-                anchors.horizontalCenter: parent.horizontalCenter
-                text: "mm"
-                color: Theme.faint
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.captionSize
-            }
         }
-
-        Rectangle { Layout.preferredWidth: 1; Layout.fillHeight: true; color: Theme.divider }
 
         ColumnLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            spacing: 0
+            spacing: Theme.gap
 
-            PointsPanelBar {
+            StudioCard {
+                objectName: "pointsBarsCard"
+                z: 2
                 Layout.fillWidth: true
-                digitizeHub: digitizeHub
-                viewHub: viewHub
+                Layout.preferredHeight: pointsBars.implicitHeight
+                ColumnLayout {
+                    id: pointsBars
+                    anchors.fill: parent
+                    spacing: 0
+                    PointsPanelBar {
+                        Layout.fillWidth: true
+                        digitizeHub: digitizeHub
+                        viewHub: viewHub
+                    }
+                    PointsOptionsBar { Layout.fillWidth: true }
+                }
             }
-            PointsOptionsBar { Layout.fillWidth: true }
 
             Item {
                 id: viewport
@@ -344,28 +349,41 @@ Item {
                 }
             }
 
-            Rectangle {
+            StudioCard {
                 id: threadStrip
                 objectName: "pointsThreadStrip"
                 visible: swatches.count > 0
                 Layout.fillWidth: true
-                implicitHeight: 48
-                color: Theme.panel
-                border.color: Theme.divider
+                implicitHeight: 52
+
+                // Chiffres utiles du motif, à droite des bobines.
+                Text {
+                    id: stripStats
+                    objectName: "pointsStripStats"
+                    anchors.right: parent.right
+                    anchors.rightMargin: 16
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: threadStrip.width >= 520
+                    text: qsTr("%1 objets · %2 fils").arg(studio.objects.length).arg(swatches.count)
+                    color: Theme.muted
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.smallSize
+                }
 
                 ListView {
                     id: swatches
                     anchors.fill: parent
-                    anchors.margins: 6
+                    anchors.margins: 12
+                    anchors.rightMargin: stripStats.visible ? stripStats.width + 32 : 12
                     orientation: ListView.Horizontal
                     boundsBehavior: Flickable.StopAtBounds
                     clip: true
-                    spacing: 4
+                    spacing: 8
                     model: root.threadController ? root.threadController.entries : []
                     property int dragFrom: -1
                     property int dropIndex: -1
                     property real pointerX: 0
-                    readonly property int tileWidth: 32
+                    readonly property int tileWidth: 28
                     onModelChanged: {
                         if (stripMouse)
                             stripMouse.pressedIndex = -1
@@ -406,7 +424,7 @@ Item {
                         objectName: "pointsThreadSwatch" + modelData.index
                         width: swatches.tileWidth
                         height: 28
-                        radius: 4
+                        radius: height / 2 // bobine ronde
                         color: modelData.color
                         opacity: modelData.visible && swatches.dragFrom !== modelData.index ? 1 : 0.5
                         border.width: modelData.selected || activeFocus || swatches.dropIndex === modelData.index ? 2 : 1
@@ -490,40 +508,46 @@ Item {
             }
         }
 
-        Rectangle { Layout.preferredWidth: 1; Layout.fillHeight: true; color: Theme.divider }
-
-        // UN inspecteur contextuel : objets de broderie en haut, type et réglages du point en bas.
-        Rectangle {
+        // Deux cartes : objets de broderie en haut, type et réglages du point en bas.
+        ColumnLayout {
+            // Un Layout remplit par défaut : largeur fixée explicitement, le canevas prend le reste.
+            Layout.fillWidth: false
             Layout.preferredWidth: root.width < 1180 ? 270 : Theme.inspectorWidth + 16
+            Layout.maximumWidth: Layout.preferredWidth
             Layout.fillHeight: true
-            color: Theme.panel
+            spacing: Theme.gap
 
-            ColumnLayout {
-                anchors.fill: parent
-                spacing: 0
-
+            StudioCard {
+                objectName: "pointsObjectsCard"
+                Layout.fillWidth: true
+                Layout.fillHeight: !inspectorArea.active
+                // When EditBar is open, allocate enough room for its own scroll area
+                // and the object tree. The point inspector remains independently scrollable.
+                Layout.minimumHeight: inspectorArea.active ? (root.workspace.editOpen ? 275 : 180) : 0
+                Layout.preferredHeight: inspectorArea.active
+                                        ? Math.min(580, root.height * (root.workspace.editOpen ? 0.62 : 0.38))
+                                        : -1
                 PointsObjectsPanel {
                     workspace: root.workspace
-                    Layout.fillWidth: true
-                    Layout.fillHeight: !inspectorArea.active
-                    // When EditBar is open, allocate enough room for its own scroll area
-                    // and the object tree. The point inspector remains independently scrollable.
-                    Layout.minimumHeight: inspectorArea.active ? (root.workspace.editOpen ? 275 : 180) : 0
-                    Layout.preferredHeight: inspectorArea.active
-                                            ? Math.min(580, root.height * (root.workspace.editOpen ? 0.62 : 0.38))
-                                            : -1
+                    anchors.fill: parent
+                    anchors.margins: 2
                 }
+            }
 
-                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }
+            StudioCard {
+                objectName: "pointsInspectorCard"
+                Layout.fillWidth: true
+                Layout.fillHeight: inspectorArea.active
+                Layout.minimumHeight: inspectorArea.active ? 150 : 0
+                Layout.preferredHeight: inspectorArea.active
+                                        ? -1 : inspectorHint.implicitHeight + 2 * Theme.panelPadding
 
                 Item {
                     id: inspectorArea
                     objectName: "inspectorArea"
                     readonly property bool active: inspectorPanel.active
-                    Layout.fillWidth: true
-                    Layout.fillHeight: active
-                    Layout.minimumHeight: active ? 150 : 0
-                    Layout.preferredHeight: active ? -1 : 0
+                    anchors.fill: parent
+                    anchors.margins: 2
                     visible: active
                     clip: true
                     Inspector {
@@ -533,9 +557,10 @@ Item {
                 }
 
                 ColumnLayout {
+                    id: inspectorHint
                     visible: !inspectorArea.active
-                    Layout.fillWidth: true
-                    Layout.margins: Theme.panelPadding
+                    anchors.fill: parent
+                    anchors.margins: Theme.panelPadding
                     spacing: 6
                     SectionLabel { text: qsTr("TYPE DE POINTS") }
                     Text {

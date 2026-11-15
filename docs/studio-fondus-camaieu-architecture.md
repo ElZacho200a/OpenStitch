@@ -83,6 +83,58 @@ sont des options de calcul pour les remplissages, pas des filtres RGB.
   sur tissu réel est indispensable. Les tests automatiques valident des
   invariants structurels, pas la qualité esthétique du tissu.
 
+## Refonte du 14 novembre 2026 (après PR #341)
+
+Audit mesuré (fil cousu par bande d'un rectangle, rapporté à un remplissage uni) puis corrigé :
+
+- **Moteur** : grille de rangées partagée entre les couches d'un fondu (voir
+  `docs/source/directional-fill.md` § « Grille partagée »). Couverture 88–112 % au lieu de
+  73–191 % ; superposition à 60 % ; profil par transition dont la somme des poids reste 1.
+- **Fils** : la palette est relue depuis les couches physiques (le panneau Fils fait foi) et
+  toute réédition conserve le fil de nuancier d'une couleur inchangée.
+- **Canevas** : axe, zone, profil et inversion fonctionnent sur les fondus multicolores.
+- **Interface** : un seul éditeur, dans l'inspecteur. Ordre : fils (liste éditable, aperçu des
+  couleurs) → technique (méthode et aspect fusionnés) → répartition → transition (géométrie,
+  orientation, profil, « Ajuster l'axe au canevas », inverser) → profil de chaque transition.
+  Chaque réglage est appliqué immédiatement en un pas d'annulation ; plus de bouton
+  « Appliquer ». Le tiroir « Fondu » (barre de panneaux et hub) et l'outil « Geste fondu » sont
+  retirés : ils dupliquaient l'inspecteur.
+- **Un seul moteur** : les points d'entrée « deux fils » (`createFade`, action « Fondu de
+  fils… ») créent un fondu multicolore à deux fils ; un ancien couple `ColorBlendLink` est
+  converti à sa première modification.
+
+Reste : validation sur tissu (pièce-test), rails satin entrelacés éditables, détection
+automatique des fondus dans la numérisation.
+
+## Éditeur accessible (15 novembre 2026)
+
+Trois maquettes comparées (barre de fils, assistant en trois étapes, réglage direct sur le
+canevas) ; retenu : la **barre de fils** dans l'inspecteur et les **fils numérotés** sur le
+canevas, avec les mêmes numéros des deux côtés.
+
+- **Barre de fils** (`FadeProperties.qml`) : dégradé repère et une pastille numérotée par fil,
+  dans l'ordre de couture. Le fil désigné (`FadeController::selectedThread`, partagé avec le
+  canevas) se règle dans une carte : nom et code du fil de nuancier (`threadLabels`, lus par
+  `readFadeThreadLabels`) ou « Couleur libre », code #rrggbb, ◀ ▶ pour changer l'ordre,
+  « + Fil » (teinte intermédiaire), « Retirer ». Clavier : flèches, Début/Fin, Ctrl+flèche
+  (déplacer), Entrée (couleur), Suppr, +. Chaque geste est un pas d'annulation
+  (`insertThread`, `removeThread`, `moveThread`, `setThreadColor`).
+- **Style** en six tuiles illustrées (`FadeStylePreview.qml`, vignette déterministe dessinée
+  avec le premier et le dernier fil) : Lisse, Dentelé, Peint, Moucheté, Hachuré, Satin ; le nom
+  technique reste dans la description accessible et l'aide sous les tuiles.
+- **Direction** en flèches (→ ↗ ↑ ↖, ◎ radial, ⇄ inverser) et **transition** Douce / Moyenne /
+  Nette (`softness` : profils linéaire, lissé, raide). Géométrie courbe, angle exact, profil
+  détaillé et profil de chaque transition sont repliés dans « Plus de réglages ».
+- **Canevas** (« Régler sur le canevas ») : pastilles numérotées de la couleur de chaque fil
+  (`HandleItem::Kind::Stop`), anneau d'accent sur le fil désigné. Un clic désigne un fil sans
+  rien modifier ; glisser le premier ou le dernier place la transition ; glisser un fil du milieu
+  ou la ligne déplace tout le fondu (sans saut sous le curseur) ; le carré au bout du bras tourne.
+- Numéros en noir ou blanc selon la luminance du fil ; focus visible sur la barre, les tuiles et
+  les boutons ; aucune information portée par la couleur seule (numéro, nom, code).
+
+Non fait : placer un fil ailleurs qu'à intervalle régulier (le moteur répartit les fils
+uniformément le long de l'axe), assistant « camaïeu depuis mes fils en stock ».
+
 ## Deux notions, deux emplacements
 
 1. **Dégradé de densité du remplissage** : une unique couleur de fil peut passer

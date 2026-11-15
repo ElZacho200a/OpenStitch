@@ -247,6 +247,34 @@ private slots:
         QVERIFY(!host.contains(QStringLiteral("étape bloquée")));
     }
 
+    // Composition contract (docs/desktop-v2/21-studio-neo-theme.md, « Composition ») : one header
+    // bar, one filled action, no decorative filler in the chrome.
+    void compositionHierarchyContract() {
+        const auto dir = QStringLiteral(OPENSTITCH_STUDIO_QML_DIR "/");
+        const auto main = readFile(dir + QStringLiteral("Main.qml"));
+        const auto host = readFile(dir + QStringLiteral("spaces/SpaceHost.qml"));
+        const auto button = readFile(dir + QStringLiteral("StudioButton.qml"));
+        const auto vector = readFile(dir + QStringLiteral("spaces/vector/VectorShapePanel.qml"));
+        QVERIFY2(!main.isEmpty() && !host.isEmpty() && !button.isEmpty() && !vector.isEmpty(),
+                 "Required Studio QML sources are missing");
+        // A single header bar holds brand, document and actions.
+        QCOMPARE(main.count(QStringLiteral("objectName: \"studioHeader\"")), 1);
+        QVERIFY(main.contains(QStringLiteral("objectName: \"documentTitle\"")));
+        QVERIFY(main.contains(QStringLiteral("objectName: \"dirtyIndicator\"")));
+        // Save is the only filled header action, and only when there is something to save.
+        QVERIFY(main.contains(QStringLiteral("emphasized: studio.dirty")));
+        // Debug counters and the slogan do not belong to the chrome.
+        QVERIFY(!main.contains(QStringLiteral("qsTr(\" commandes\")")));
+        QVERIFY(!main.contains(QStringLiteral("qsTr(\"Géométrie · \")")));
+        QVERIFY(!host.contains(QStringLiteral("qsTr(\"UN DOCUMENT")));
+        // Default buttons are tonal: the outline is reserved for hover and keyboard focus.
+        QVERIFY(
+            button.contains(QStringLiteral("button.hovered && button.enabled && !button.quiet")));
+        QVERIFY(button.contains(QStringLiteral("border.width: button.activeFocus ? 2")));
+        // The vector space exposes its main action as the filled one.
+        QVERIFY(vector.contains(QStringLiteral("emphasized: enabled")));
+    }
+
     void activeStudioButtonStateIsAccessible() {
         const auto button = readFile(QStringLiteral(OPENSTITCH_STUDIO_QML_DIR "/StudioButton.qml"));
         QVERIFY2(!button.isEmpty(), "StudioButton.qml is missing");

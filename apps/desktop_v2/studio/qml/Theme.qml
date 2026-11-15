@@ -54,6 +54,15 @@ QtObject {
     readonly property int controlHeight: Math.round(38 * densityScale)
     readonly property int rowHeight: Math.round(42 * densityScale)
     readonly property int radius: 8
+    // Cartes flottantes (StudioCard) : rayon, écart entre cartes et avec les bords, ombre portée.
+    readonly property int cardRadius: 14
+    readonly property int gap: 10
+    readonly property color shadow: "#000000"
+    readonly property real shadowOpacity: light ? 0.07 : 0.20
+    readonly property int shadowOffset: 4
+    // Plan de travail : semis de points discret derrière les cartes et le canevas.
+    readonly property color deskDot: light ? "#d5d9e2" : "#262d3b"
+    readonly property int deskStep: 24
     readonly property int animationMs: reducedMotion ? 0 : 150
     readonly property int feedbackFastMs: reducedMotion ? 0 : 90
     readonly property int feedbackSlowMs: reducedMotion ? 0 : 200

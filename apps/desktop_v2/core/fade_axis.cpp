@@ -81,7 +81,40 @@ constexpr double kMaxCoordMm = 1000.0;
     return document::DensityCurve::Linear;
 }
 
-[[nodiscard]] FadeAxisView viewOf(const project_ops::GradientFillSpec& spec,
+// Axe éditable d'un fondu, qu'il soit multicolore (ancre + couches) ou un ancien couple à
+// deux fils : les poignées du canevas agissent sur les deux de la même façon.
+struct AxisSource {
+    document::DensityGradient gradient;
+    std::array<std::uint8_t, 3> background{};
+    std::array<std::uint8_t, 3> foreground{};
+    std::optional<project_ops::MulticolorGradientSpec> multi;
+    std::optional<project_ops::GradientFillSpec> legacy;
+};
+
+[[nodiscard]] std::optional<AxisSource> axisSource(const document::Project& project,
+                                                   std::uint64_t objectId) {
+    AxisSource source;
+    if (auto multi = project_ops::describe_multicolor_gradient(project, ObjectId{objectId})) {
+        if (multi->method == document::GradientMethod::SatinInterlaced) {
+            return std::nullopt; // le satin entrelacé suit ses rails, pas un axe
+        }
+        source.gradient = multi->transition;
+        source.background = multi->palette.front().rgb;
+        source.foreground = multi->palette.back().rgb;
+        source.multi = std::move(multi);
+        return source;
+    }
+    if (auto legacy = project_ops::describe_gradient_fill(project, ObjectId{objectId})) {
+        source.gradient = legacy->gradient;
+        source.background = legacy->background;
+        source.foreground = legacy->foreground;
+        source.legacy = std::move(legacy);
+        return source;
+    }
+    return std::nullopt;
+}
+
+[[nodiscard]] FadeAxisView viewOf(const AxisSource& spec,
                                   const std::vector<geometry::PathSet>& shape) {
     FadeAxisView view;
     view.start = toMm(spec.gradient.from);
@@ -129,7 +162,7 @@ constexpr double kMaxCoordMm = 1000.0;
 } // namespace
 
 std::optional<FadeAxisView> fadeAxisView(const document::Project& project, std::uint64_t objectId) {
-    const auto spec = project_ops::describe_gradient_fill(project, ObjectId{objectId});
+    const auto spec = axisSource(project, objectId);
     const auto* shape = shapeOf(project, objectId);
     if (!spec || shape == nullptr) {
         return std::nullopt;
@@ -143,7 +176,7 @@ std::optional<FadeAxisView> previewFadeDrag(const document::Project& project,
     if (!inRange(pointer)) {
         return std::nullopt;
     }
-    auto spec = project_ops::describe_gradient_fill(project, ObjectId{objectId});
+    auto spec = axisSource(project, objectId);
     const auto* shape = shapeOf(project, objectId);
     if (!spec || shape == nullptr) {
         return std::nullopt;
@@ -162,10 +195,10 @@ ServiceResult dragFadeHandle(DocumentSession& session, std::uint64_t objectId, F
     if (!inRange(pointer)) {
         return {false, "Position hors de la zone de travail."};
     }
-    auto spec = project_ops::describe_gradient_fill(session.project(), ObjectId{objectId});
+    auto spec = axisSource(session.project(), objectId);
     const auto* shape = shapeOf(session.project(), objectId);
     if (!spec || shape == nullptr) {
-        return {false, "Cet objet ne porte pas de fondu."};
+        return {false, "Cet objet ne porte pas de fondu à axe."};
     }
     const auto moved = project_ops::drag_gradient_handle(
         *shape, spec->gradient, engineHandle(handle), toUm(pointer), symmetric);
@@ -175,9 +208,16 @@ ServiceResult dragFadeHandle(DocumentSession& session, std::uint64_t objectId, F
     if (*moved == spec->gradient) {
         return {true, {}}; // rien n'a bougé : aucun pas d'annulation inutile
     }
-    spec->gradient = *moved;
-    auto command =
-        project_ops::make_edit_gradient_fill_command(session.project(), ObjectId{objectId}, *spec);
+    auto command = [&]() -> Result<std::unique_ptr<commands::ICommand>> {
+        if (spec->multi) {
+            spec->multi->transition = *moved;
+            return project_ops::make_edit_multicolor_gradient_command(
+                session.projectForIdAllocation(), ObjectId{objectId}, *spec->multi);
+        }
+        spec->legacy->gradient = *moved;
+        return project_ops::make_edit_gradient_fill_command(session.project(), ObjectId{objectId},
+                                                            *spec->legacy);
+    }();
     if (!command) {
         return {false, command.error().message};
     }
@@ -186,6 +226,25 @@ ServiceResult dragFadeHandle(DocumentSession& session, std::uint64_t objectId, F
 }
 
 ServiceResult reverseFade(DocumentSession& session, std::uint64_t objectId) {
+    if (auto multi =
+            project_ops::describe_multicolor_gradient(session.project(), ObjectId{objectId})) {
+        // Inverser le SENS : l'axe est retourné et l'ordre de couture des fils est conservé.
+        // Un champ radial (centre -> rayon) ou un satin n'a pas de sens d'axe : l'ordre
+        // des fils s'inverse.
+        if (multi->transition.geometry == document::DensityGeometry::Radial ||
+            multi->method == document::GradientMethod::SatinInterlaced) {
+            std::reverse(multi->palette.begin(), multi->palette.end());
+        } else {
+            std::swap(multi->transition.from, multi->transition.to);
+        }
+        auto command = project_ops::make_edit_multicolor_gradient_command(
+            session.projectForIdAllocation(), ObjectId{objectId}, *multi);
+        if (!command) {
+            return {false, command.error().message};
+        }
+        session.execute(std::move(*command));
+        return {true, {}};
+    }
     auto spec = project_ops::describe_gradient_fill(session.project(), ObjectId{objectId});
     if (!spec) {
         return {false, "Cet objet ne porte pas de fondu."};
@@ -274,6 +333,28 @@ std::vector<double> fadeCurveProfile(FadeCurve curve, int samples) {
 }
 
 ServiceResult setFadeCurve(DocumentSession& session, std::uint64_t objectId, FadeCurve curve) {
+    if (auto multi =
+            project_ops::describe_multicolor_gradient(session.project(), ObjectId{objectId})) {
+        const auto selected = engineCurve(curve);
+        const bool same = multi->transition.curve == selected &&
+                          std::all_of(multi->palette.begin(), multi->palette.end(),
+                                      [&](const auto& thread) { return thread.curve == selected; });
+        if (same) {
+            return {true, {}};
+        }
+        // Profil global : préréglage de toutes les transitions.
+        multi->transition.curve = selected;
+        for (auto& thread : multi->palette) {
+            thread.curve = selected;
+        }
+        auto command = project_ops::make_edit_multicolor_gradient_command(
+            session.projectForIdAllocation(), ObjectId{objectId}, *multi);
+        if (!command) {
+            return {false, command.error().message};
+        }
+        session.execute(std::move(*command));
+        return {true, {}};
+    }
     auto spec = project_ops::describe_gradient_fill(session.project(), ObjectId{objectId});
     if (!spec) {
         return {false, "Cet objet ne porte pas de fondu."};

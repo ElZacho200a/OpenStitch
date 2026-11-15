@@ -71,18 +71,22 @@ Item {
         }
     }
 
+    // Même habillage que l'espace Points : cartes flottantes sur le plan de travail.
     RowLayout {
         anchors.fill: parent
-        spacing: 0
+        anchors.margins: Theme.gap
+        spacing: Theme.gap
 
-        Rectangle {
-            Layout.preferredWidth: Theme.railWidth
-            Layout.fillHeight: true
-            color: Theme.panel
+        StudioCard {
+            objectName: "vectorRailCard"
+            Layout.alignment: Qt.AlignTop
+            Layout.preferredWidth: Theme.controlHeight + 16
+            Layout.preferredHeight: Math.min(vectorRail.implicitHeight + 16, root.height - 2 * Theme.gap)
             ColumnLayout {
+                id: vectorRail
                 anchors.top: parent.top
                 anchors.horizontalCenter: parent.horizontalCenter
-                anchors.topMargin: 12
+                anchors.topMargin: 8
                 spacing: 6
                 StudioButton {
                     objectName: "vectorSelectToolButton"
@@ -131,21 +135,18 @@ Item {
             }
         }
 
-        Rectangle { Layout.preferredWidth: 1; Layout.fillHeight: true; color: Theme.divider }
-
         ColumnLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
             spacing: 0
 
-            Rectangle {
+            Item {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 43
-                color: Theme.background
+                Layout.preferredHeight: 34
                 RowLayout {
                     anchors.fill: parent
-                    anchors.leftMargin: 20
-                    anchors.rightMargin: 20
+                    anchors.leftMargin: 8
+                    anchors.rightMargin: 8
                     SectionLabel { text: qsTr("FORMES VECTORIELLES") }
                     Item { Layout.fillWidth: true }
                     Text {
@@ -224,14 +225,13 @@ Item {
             }
         }
 
-        Rectangle { Layout.preferredWidth: 1; Layout.fillHeight: true; color: Theme.divider }
-
-        Rectangle {
+        StudioCard {
+            objectName: "vectorSideCard"
             Layout.preferredWidth: 320
             Layout.fillHeight: true
-            color: Theme.panel
             ColumnLayout {
                 anchors.fill: parent
+                anchors.margins: 2
                 spacing: 0
                 VectorShapePanel {
                     id: shapePanel
@@ -255,7 +255,7 @@ Item {
                     property int currentIndex: 0
                     Layout.fillWidth: true
                     Layout.preferredHeight: Theme.controlHeight + 12
-                    color: Theme.panel
+                    color: "transparent"
                     RowLayout {
                         anchors.fill: parent
                         anchors.leftMargin: 12

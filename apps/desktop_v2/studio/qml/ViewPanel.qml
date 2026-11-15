@@ -99,15 +99,25 @@ Item {
               active: hub.toolbarVisible
               anchors.top: parent.top
               anchors.right: parent.right
-              anchors.margins: 10
-              sourceComponent: Row {
+              // Fond de carte : la barre reste lisible au-dessus d'une image claire.
+              sourceComponent: Rectangle {
+                implicitWidth: viewToolbarRow.implicitWidth + 12
+                implicitHeight: viewToolbarRow.implicitHeight + 12
+                radius: Theme.cardRadius
+                color: Theme.panel
+                border.color: Theme.divider
+               Row {
+                id: viewToolbarRow
                 objectName: "viewToolbar"
+                x: 6
+                y: 6
                 spacing: 4
                 StudioButton { objectName: "realisticButton2"; text: qsTr("Réaliste"); shortcutLabel: "Ctrl+Shift+T"; tooltip: qsTr("Rendu réaliste (fils en relief, ombre, tissu)"); checkable: true; checked: view.realistic; onClicked: view.toggleRealistic() }
                 StudioButton { objectName: "viewPanelButton"; text: qsTr("Vue"); checkable: true; checked: hub.openPanel === "view"; onClicked: hub.toggle("view") }
                 StudioButton { objectName: "threadsPanelButton"; text: qsTr("Fils"); checkable: true; checked: hub.openPanel === "threads"; onClicked: hub.toggle("threads") }
                 StudioButton { objectName: "analysisPanelButton"; text: qsTr("Analyse"); checkable: true; checked: hub.openPanel === "analysis"; onClicked: hub.toggle("analysis") }
                 StudioButton { objectName: "simulationButton"; text: qsTr("Simulation"); shortcutLabel: "Ctrl+L"; checkable: true; checked: view.simActive; enabled: view.simReady; onClicked: view.simActive ? view.stopSimulation() : view.startSimulation() }
+               }
               }
             }
 
@@ -124,12 +134,12 @@ Item {
                 Behavior on scale { NumberAnimation { duration: Theme.feedbackSlowMs; easing.type: Easing.OutCubic } }
                 anchors.top: parent.top
                 anchors.right: parent.right
-                anchors.topMargin: hub.toolbarVisible ? 54 : 12
-                anchors.rightMargin: hub.toolbarVisible ? 10 : 12
-                anchors.bottomMargin: hub.toolbarVisible ? 70 : 12
+                anchors.topMargin: hub.toolbarVisible ? Theme.controlHeight + 12 + Theme.gap : 0
+                anchors.rightMargin: 0
+                anchors.bottomMargin: hub.toolbarVisible ? 70 : 0
                 anchors.bottom: parent.bottom
                 width: Math.min(340, parent.width - 40)
-                radius: Theme.radius
+                radius: Theme.cardRadius
                 color: Theme.panel
                 border.color: Theme.divider
 

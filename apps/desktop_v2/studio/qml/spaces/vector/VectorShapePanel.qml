@@ -153,6 +153,8 @@ ColumnLayout {
         objectName: "vectorConvertButton"
         Layout.fillWidth: true
         text: qsTr("Convertir en broderie")
+        // Action principale de l'espace : la seule pleine du panneau.
+        emphasized: enabled
         tooltip: qsTr("Crée les objets de broderie des formes qui n'en ont pas encore")
         enabled: panel.stage !== null && panel.stage.shapeCount > 0
         onClicked: panel.stage.convertToEmbroidery()

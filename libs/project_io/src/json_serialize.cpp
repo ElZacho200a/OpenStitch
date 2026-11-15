@@ -405,9 +405,16 @@ json params_to_json(const document::StitchParams& params) {
                     if (!g.density_stops.empty()) {
                         auto stops = json::array();
                         for (const auto& stop : g.density_stops) {
-                            stops.push_back(json::array({stop.position, stop.weight}));
+                            // Grille partagée : [position, poids, début de tranche].
+                            stops.push_back(
+                                g.shared_rows
+                                    ? json::array({stop.position, stop.weight, stop.lower})
+                                    : json::array({stop.position, stop.weight}));
                         }
                         j["densityGradient"]["densityStops"] = std::move(stops);
+                        if (g.shared_rows) {
+                            j["densityGradient"]["sharedRows"] = true;
+                        }
                     }
                 }
             } else if constexpr (std::is_same_v<T, document::AutoSatinParams>) {
@@ -876,23 +883,30 @@ Result<document::StitchParams> params_from_json(const json& j) {
             grad.curve_bend = std::isfinite(bend) ? std::clamp(bend, -1.0, 1.0) : 0.0;
             if (g.contains("densityStops")) {
                 const auto& stops = g.at("densityStops");
-                if (!stops.is_array() || stops.size() < 2 || stops.size() > 12) {
+                grad.shared_rows = g.value("sharedRows", false);
+                // Jusqu'à 7 transitions × 8 échantillons + 1 arrêts (profils courbes).
+                const std::size_t maxStops = 64;
+                const std::size_t arity = grad.shared_rows ? 3 : 2;
+                if (!stops.is_array() || stops.size() < 2 || stops.size() > maxStops) {
                     return fail(ErrorCategory::InvalidFile, "Fondu : profil de densité invalide.");
                 }
                 double previous = -1.0;
                 for (const auto& point : stops) {
-                    if (!point.is_array() || point.size() != 2 || !point[0].is_number() ||
-                        !point[1].is_number()) {
+                    if (!point.is_array() || point.size() != arity || !point[0].is_number() ||
+                        !point[1].is_number() || (arity == 3 && !point[2].is_number())) {
                         return fail(ErrorCategory::InvalidFile,
                                     "Fondu : arrêt de densité invalide.");
                     }
                     const double position = point[0].get<double>();
                     const double weight = point[1].get<double>();
-                    if (!std::isfinite(position) || !std::isfinite(weight) || position < 0.0 ||
-                        position > 1.0 || weight < 0.0 || weight > 1.0 || position <= previous) {
+                    const double lower = arity == 3 ? point[2].get<double>() : 0.0;
+                    if (!std::isfinite(position) || !std::isfinite(weight) ||
+                        !std::isfinite(lower) || position < 0.0 || position > 1.0 || weight < 0.0 ||
+                        weight > 1.0 || lower < 0.0 || lower + weight > 1.0 + 1e-6 ||
+                        position <= previous) {
                         return fail(ErrorCategory::InvalidFile, "Fondu : poids hors limites.");
                     }
-                    grad.density_stops.push_back({position, weight});
+                    grad.density_stops.push_back({position, weight, lower});
                     previous = position;
                 }
             }
