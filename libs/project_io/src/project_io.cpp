@@ -321,13 +321,9 @@ Result<document::Project> load_project_impl(const std::filesystem::path& path, L
     }
 
     // Migrations versionnées v(n) -> v(n+1) (HP-FMT-021) avant la lecture du document.
-    {
-        auto migrated = migrate_project_json(std::string_view(
-            reinterpret_cast<const char*>(jsonIt->second.data()), jsonIt->second.size()));
-        if (!migrated) {
-            return std::unexpected(migrated.error());
-        }
-        root = nlohmann::json::parse(*migrated);
+    // L'arbre déjà lu est migré sur place : ni relecture ni réécriture du texte.
+    if (auto migrated = detail::migrate_project_json_in_place(root); !migrated) {
+        return std::unexpected(migrated.error());
     }
 
     if (!root.contains("document")) {
@@ -398,11 +394,9 @@ Result<document::ObjectFragment> fragment_from_json(std::string_view text) {
         // HP-FILE-012 : mêmes migrations que le `.osp` (le fragment partage son schéma).
         // Un fragment sans version déclarée est lu tel quel (comportement historique).
         if (root.contains("schemaVersion")) {
-            auto migrated = migrate_project_json(text);
-            if (!migrated) {
+            if (auto migrated = detail::migrate_project_json_in_place(root); !migrated) {
                 return std::unexpected(migrated.error());
             }
-            root = nlohmann::json::parse(*migrated);
         }
         auto carrier = detail::project_from_json(root.at("document"));
         if (!carrier) {

@@ -18,4 +18,8 @@ namespace openstitch::project_io::detail {
 // Reconstruit le document depuis le JSON (labels de segmentation à part).
 [[nodiscard]] Result<document::Project> project_from_json(const nlohmann::json& j);
 
+// Migrations de `migrate_project_json` appliquées directement à l'arbre déjà lu (même
+// contrôle de version, mêmes erreurs) : évite de relire et de réécrire le texte JSON.
+[[nodiscard]] Result<void> migrate_project_json_in_place(nlohmann::json& root);
+
 } // namespace openstitch::project_io::detail
