@@ -77,7 +77,7 @@ OVERRIDES: dict[str, tuple[str, str, str]] = {
     "stem-stitch": ("A", f"{R} style=Stem", "style point tige existant"),
     "outline-stitch": ("A", f"{R} style=Stem", "point de contour = point tige décalé de l'autre côté"),
     "holbein-stitch": ("A", f"{R} style=Run repeats=2", "double point droit aller-retour"),
-    "satin-stitch": ("A", "SatinParams", "colonne satin"),
+    "satin-stitch": ("A", "AutoSatinParams (opération auto_satin)", "colonne satin ; pas une recette : conversion planifiée"),
     "slanted-satin-stitch": ("A", "SatinParams (barreaux inclinés)", "satin avec guides inclinés"),
     "cross-stitch": ("A", "CrossStitchParams full_cross=true", "croix complète sur grille"),
     "half-cross-stitch": ("A", "CrossStitchParams full_cross=false", "demi-croix existante"),
@@ -90,7 +90,7 @@ OVERRIDES: dict[str, tuple[str, str, str]] = {
     "continental-tent-stitch": ("B", "CrossStitchParams full_cross=false", "même aspect que la demi-croix"),
     "basketweave-tent-stitch": ("B", "CrossStitchParams full_cross=false", "même aspect ; ordre de couture différent sans effet visible"),
     "reversed-tent": ("B", "CrossStitchParams full_cross=false grid_angle=90°", "demi-croix inversée"),
-    "split-stitch": ("B", f"{R} style=Stem stem_offset=0 stitch_length=2 mm", "point fendu ≈ point tige sans décalage, points courts"),
+    "split-stitch": ("B", f"{R} style=Backstitch stitch_length=1,5 mm", "approximation : points courts qui reviennent sur le précédent, sans fendre le fil"),
     "darning-stitch": ("B", "TatamiParams stitch_length long, row_spacing large", "reprisage = rangées droites espacées"),
     "japanese-darning-stitch": ("B", "TatamiParams rangées espacées, phase décalée", "rangées de reprisage décalées"),
     "double-darning-stitch": ("B", "TatamiParams rangées espacées", "reprisage double"),
@@ -159,7 +159,7 @@ OVERRIDES: dict[str, tuple[str, str, str]] = {
 # Recettes pilotes retenues pour L1/L2 (rang de priorité ; ordre de livraison).
 PILOTS = {
     "running-stitch": "L1", "backstitch": "L1", "stem-stitch": "L1", "holbein-stitch": "L1",
-    "satin-stitch": "L1", "cross-stitch": "L1", "half-cross-stitch": "L1", "upright-cross": "L1",
+    "zigzag-row": "L1", "laid-work": "L1", "tent-stitch": "L1", "cross-stitch": "L1", "half-cross-stitch": "L1", "upright-cross": "L1",
     "blanket-stitch": "L1", "darning-stitch": "L1", "split-stitch": "L1",
     "long-and-short-stitch": "L1", "diamond-lattice": "L1",
     "trellis-filling-stitch": "L2", "bayeux-stitch": "L2", "brick-shading-stitch": "L2",
@@ -167,6 +167,13 @@ PILOTS = {
 }
 PRIORITY = {"trellis-filling-stitch": "P1", "bayeux-stitch": "P1", "brick-shading-stitch": "P1",
             "long-and-short-stitch": "P1", "seeding-stitch": "P2", "holbein-stitch": "P2", "or-nue": "P2"}
+
+
+def status(slug: str) -> str:
+    lot = PILOTS.get(slug)
+    if lot == "L1":
+        return "recette intégrée (openstitch-cli recipes)"
+    return "planifié" if lot else "non planifié"
 
 
 def fetch(url: str) -> str:
@@ -234,7 +241,7 @@ def main() -> int:
                         INDEX_EN + slug + "/", family, at.get("data-t", ""), at.get("data-u", ""),
                         " ".join(structure), at.get("data-l", ""), cls, mapping, why,
                         PRIORITY.get(slug, "P3" if cls in "DE" else "P2" if cls == "C" else "P2"),
-                        PILOTS.get(slug, ""), "planifié" if slug in PILOTS else "non planifié"])
+                        PILOTS.get(slug, ""), status(slug)])
     print(f"{len(fr)} fiches -> {out}")
     return 0
 

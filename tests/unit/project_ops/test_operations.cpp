@@ -15,6 +15,7 @@
 #include <nlohmann/json.hpp>
 
 #include "openstitch/document/project.hpp"
+#include "openstitch/document/stitch_recipes.hpp"
 #include "openstitch/project_io/project_io.hpp"
 #include "openstitch/project_ops/errors.hpp"
 #include "openstitch/project_ops/operations.hpp"
@@ -127,6 +128,39 @@ TEST_CASE("spiral_fill is a native stitch type with a shared configurable center
         invalid, batch(R"({"op":"set_stitch_type","object":2,"type":"spiral_wrong"})"));
     CHECK_FALSE(refused.ok);
     CHECK(invalid.findEmbroidery(ObjectId{2})->is_tatami());
+}
+
+TEST_CASE("apply_recipe sets the recipe stitch params and refuses an unknown recipe",
+          "[project_ops][recipes]") {
+    auto project = make_project();
+    const auto report = project_ops::apply_batch(
+        project, batch(R"({"op":"apply_recipe","object":2,"recipe":"stem-stitch"})"));
+    REQUIRE(report.ok);
+    REQUIRE(report.applied);
+    const auto* object = project.findEmbroidery(ObjectId{2});
+    REQUIRE(object != nullptr);
+    CHECK(object->params == document::find_stitch_recipe("stem-stitch")->params);
+    REQUIRE(report.outcomes.size() == 1);
+    const auto result = json::parse(report.outcomes.front().result_json);
+    CHECK(result.at("fidelity") == "faithful");
+    CHECK(result.at("to") == "running");
+
+    // Passé empiétant : graine propre à l'objet, le reste comme la recette.
+    REQUIRE(
+        project_ops::apply_batch(
+            project, batch(R"({"op":"apply_recipe","object":2,"recipe":"long-and-short-stitch"})"))
+            .ok);
+    const auto* dir =
+        std::get_if<document::DirectionalFillParams>(&project.findEmbroidery(ObjectId{2})->params);
+    REQUIRE(dir != nullptr);
+    CHECK(dir->handmade);
+    CHECK(dir->seed == 2U);
+
+    auto untouched = make_project();
+    const auto refused = project_ops::apply_batch(
+        untouched, batch(R"({"op":"apply_recipe","object":2,"recipe":"no-such-recipe"})"));
+    CHECK_FALSE(refused.ok);
+    CHECK(untouched.findEmbroidery(ObjectId{2})->is_tatami());
 }
 
 TEST_CASE("ops batch applies operations in order and reports each one", "[project_ops][ops]") {

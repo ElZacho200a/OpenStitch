@@ -50,8 +50,8 @@ ruptures, dégradés de densité, textures Feathered/Stippled/LongShort, aspect 
 auto-satin, feston/zigzag, concentrique, motif le long d'un tracé et en remplissage (Wave,
 Zigzag, Leaf, Heart, Diamond, Scallop), radial, spirale, croisé (2 ou 3 couches), point de croix,
 appliqué, fondu multicolore (Directional, SatinInterlaced, LongAndShort, ControlledScatter,
-CrossHatching). Les préréglages nommés (`document::StitchPreset`) et
-`commands::ApplyStitchPresetCommand` existent déjà.
+CrossHatching). Les préréglages nommés (`document::StitchPreset`) et la conversion de type
+(`set_stitch_type`, `ConvertFillGroupCommand`) existent déjà.
 
 Constats :
 - Le croisé (`CrosshatchFillParams`) superpose des couches de rangées sans attache aux
@@ -75,8 +75,10 @@ Constats :
 
 ## Recettes pilotes
 
-L1 (types existants, recettes B/A) : running, backstitch, stem, holbein, satin, cross, half-cross,
-upright-cross, blanket, darning, split, long-and-short, diamond-lattice.
+L1 (types existants, recettes A/B, **livrées** : `openstitch-cli recipes`, opération
+`apply_recipe`, inspecteur Studio « Recettes de points ») : running, backstitch, stem, holbein,
+split (simulation), blanket, zigzag-row, long-and-short, laid-work, darning, cross, half-cross,
+tent, upright-cross, diamond-lattice. Le passé plat reste la conversion satin existante.
 L2 (primitives) : trellis-filling, bayeux, brick-shading. L3 : seeding, or-nue (simulation).
 
 Architecture : [ADR 0007](../adr/0007-recettes-de-points.md) — catalogue intégré compilé en

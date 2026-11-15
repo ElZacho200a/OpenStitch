@@ -21,6 +21,7 @@
 #include "object_labels.hpp"
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/document/multi_blend.hpp"
+#include "openstitch/document/stitch_recipes.hpp"
 #include "openstitch/formats/dst.hpp"
 #include "openstitch/project_io/project_io.hpp"
 #include "openstitch/project_ops/factory.hpp"
@@ -164,6 +165,7 @@ private slots:
     void machineOutputIsByteIdentical();
     void persistsInTheOspFile();
     void presetsLifecycle();
+    void recipesApplyThroughControllerAndQml();
     void qmlInspectorEditsThroughTheController();
     void sliderWheelRequiresFocusAndOtherwiseScrollsThePanel();
 };
@@ -782,6 +784,50 @@ void StudioInspectorTest::presetsLifecycle() {
     QVERIFY(inspector.removePreset(0).isEmpty());
     QCOMPARE(session.project().stitch_presets.size(), static_cast<std::size_t>(1));
     QVERIFY(!inspector.removePreset(7).isEmpty());
+}
+
+void StudioInspectorTest::recipesApplyThroughControllerAndQml() {
+    DocumentSession session;
+    auto created = project_ops::create_empty_project({});
+    session.replaceProject(std::move(*created), true);
+    const auto id = addRect(session);
+    StudioController studio(session);
+    InspectorController inspector(studio);
+    QVERIFY(!inspector.applyRecipe(QStringLiteral("stem-stitch")).isEmpty()); // no selection
+    select(session, {id});
+    const auto recipes = inspector.recipes();
+    QCOMPARE(recipes.size(), static_cast<qsizetype>(document::stitch_recipes().size()));
+    QVERIFY(!inspector.applyRecipe(QStringLiteral("no-such-recipe")).isEmpty());
+    const auto depth = session.undoNames().size();
+    QVERIFY(inspector.applyRecipe(QStringLiteral("cross-stitch")).isEmpty());
+    QCOMPARE(session.undoNames().size(), depth + 1); // one undo step
+    QVERIFY(object(session, id).params == document::find_stitch_recipe("cross-stitch")->params);
+    QVERIFY(session.undo());
+    QVERIFY(object(session, id).is_tatami());
+
+    // The Studio inspector exposes the catalogue: choose, read the note, apply.
+    QQmlEngine engine;
+    engine.rootContext()->setContextProperty(QStringLiteral("inspector"), &inspector);
+    QQmlComponent component(&engine, QUrl(QStringLiteral("qrc:/studio/qml/Inspector.qml")));
+    QVERIFY2(component.status() == QQmlComponent::Ready, qPrintable(component.errorString()));
+    QQuickWindow window;
+    std::unique_ptr<QObject> item(component.create());
+    auto* root = qobject_cast<QQuickItem*>(item.get());
+    QVERIFY(root != nullptr);
+    root->setParentItem(window.contentItem());
+    root->setSize({320, 900});
+    QTRY_VERIFY(findItem(root, QStringLiteral("recipeBox")) != nullptr);
+    auto* box = findItem(root, QStringLiteral("recipeBox"));
+    const auto split = std::ranges::find_if(document::stitch_recipes(), [](const auto& r) {
+        return r.fidelity == document::RecipeFidelity::Approximation;
+    });
+    QVERIFY(split != document::stitch_recipes().end());
+    box->setProperty("currentIndex", static_cast<int>(split - document::stitch_recipes().begin()));
+    auto* note = findItem(root, QStringLiteral("recipeNote"));
+    QVERIFY(note != nullptr);
+    QTRY_VERIFY(note->property("text").toString().startsWith(QStringLiteral("Simulation")));
+    QMetaObject::invokeMethod(findItem(root, QStringLiteral("applyRecipe")), "clicked");
+    QVERIFY(object(session, id).params == split->params);
 }
 
 void StudioInspectorTest::qmlInspectorEditsThroughTheController() {

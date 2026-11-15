@@ -28,6 +28,7 @@
 #include "openstitch/commands/thread_commands.hpp"
 #include "openstitch/document/hoop_library.hpp"
 #include "openstitch/document/machine_profile.hpp"
+#include "openstitch/document/stitch_recipes.hpp"
 #include "openstitch/geometry/boolean.hpp"
 #include "openstitch/optimization/order.hpp"
 #include "openstitch/stitch/sequence.hpp"
@@ -1584,6 +1585,57 @@ OpSpec op_set_stitch_type() {
     return s;
 }
 
+// STCH-CROS-01 / ADR 0007 : recette du catalogue intégré. Même conversion qu'un changement de
+// type (groupe de sections compris), un seul pas d'annulation ; seuls les paramètres restent.
+OpSpec op_apply_recipe() {
+    OpSpec s;
+    s.name = "apply_recipe";
+    s.summary = "Applique une recette de points du catalogue intégré (point de tige, Holbein, "
+                "point de croix, passé empiétant…) : type et réglages de l'objet sont remplacés. "
+                "Liste : openstitch-cli recipes.";
+    s.args = {arg("object", "object_id", "objet de broderie", true),
+              arg("recipe", "string", "identifiant de recette (openstitch-cli recipes)", true)};
+    s.example = R"({"op":"apply_recipe","object":2,"recipe":"stem-stitch"})";
+    s.apply = guarded([](OpContext& ctx) {
+        const auto& emb = need_emb(ctx, "object");
+        const ObjectId id = emb.id;
+        const std::string name = need_string(ctx.args, "recipe");
+        const auto* recipe = document::find_stitch_recipe(name);
+        if (recipe == nullptr) {
+            refuse(code::kOutOfRange, "recette « " + name + " » inconnue",
+                   "openstitch-cli recipes liste les identifiants");
+        }
+        if (emb.is_multicolor_gradient() || emb.multi_blend) {
+            refuse(code::kRefused, "objet d'un fondu multicolore",
+                   "retirez d'abord le fondu (remove_multicolor_gradient)");
+        }
+        const auto* source = ctx.project.findObject(emb.source_vector);
+        if (source == nullptr || source->paths.empty()) {
+            refuse(code::kRefused, "aucun contour source pour la recette");
+        }
+        document::StitchParams params = recipe->params;
+        if (auto* directional = std::get_if<document::DirectionalFillParams>(&params)) {
+            // Graine de l'aspect fait main propre à l'objet, comme `set_stitch_type`.
+            directional->seed = static_cast<std::uint32_t>(id.value);
+        }
+        const std::string from = stitch_type_name(emb.params);
+        const std::size_t before = ctx.project.embroidery_objects.size();
+        ctx.stack.execute(std::make_unique<commands::ConvertFillGroupCommand>(
+                              id, std::move(params), "Recette : " + std::string(recipe->name_fr)),
+                          ctx.project);
+        const auto* after = ctx.project.findEmbroidery(id);
+        return OpStatus::success(
+            {{"id", id.value},
+             {"recipe", std::string(recipe->id)},
+             {"version", recipe->version},
+             {"fidelity", std::string(document::recipe_fidelity_id(recipe->fidelity))},
+             {"from", from},
+             {"to", after != nullptr ? stitch_type_name(after->params) : from},
+             {"removed_sections", before - ctx.project.embroidery_objects.size()}});
+    });
+    return s;
+}
+
 OpSpec op_directional_guides() {
     OpSpec s;
     s.name = "directional_guides";
@@ -2224,6 +2276,7 @@ void register_param_ops(std::vector<OpSpec>& out) {
     out.push_back(op_set_join());
     out.push_back(op_set_connector());
     out.push_back(op_set_stitch_type());
+    out.push_back(op_apply_recipe());
     out.push_back(op_directional_guides());
     out.push_back(op_set_params());
     out.push_back(op_set_order());

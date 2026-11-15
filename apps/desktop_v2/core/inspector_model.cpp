@@ -5,6 +5,7 @@
 #include <cstdio>
 
 #include "object_labels.hpp"
+#include "openstitch/document/stitch_recipes.hpp"
 
 namespace openstitch::desktop_v2 {
 
@@ -117,6 +118,17 @@ std::string batchSetStitchType(const std::vector<std::uint64_t>& ids, std::strin
     }
     return batchOf(ids,
                    R"({"op":"set_stitch_type","object":#,"type":")" + std::string(type) + R"("})");
+}
+
+std::string batchApplyRecipe(const std::vector<std::uint64_t>& ids, std::string_view recipeId) {
+    // L'identifiant vient du catalogue (minuscules, chiffres et tirets) : jamais de « # » ni de
+    // guillemet à échapper.
+    const auto* recipe = document::find_stitch_recipe(recipeId);
+    if (recipe == nullptr) {
+        return {};
+    }
+    return batchOf(ids, R"({"op":"apply_recipe","object":#,"recipe":")" + std::string(recipe->id) +
+                            R"("})");
 }
 
 namespace {

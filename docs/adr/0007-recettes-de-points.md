@@ -13,9 +13,9 @@ visuelle (D) et 72 sont inadaptés (E). Les classes C se regroupent en peu de pr
 aux intersections (treillis, couchage), phase en briques, semis, croisement central du satin,
 tuiles de motif sur grille, rayons vers un centre.
 
-Le document sait déjà nommer et appliquer un jeu de paramètres : `document::StitchPreset`
-(HP-ENG-013) et `commands::ApplyStitchPresetCommand`, qui remplace les `StitchParams` d'une
-sélection en une seule étape d'annulation. Studio les expose dans l'inspecteur.
+Le document sait déjà nommer un jeu de paramètres (`document::StitchPreset`, HP-ENG-013) et
+changer le type d'un objet (`set_stitch_type` → `commands::ConvertFillGroupCommand`, un pas
+d'annulation). Studio expose les deux dans l'inspecteur.
 
 ## Options
 
@@ -23,17 +23,18 @@ sélection en une seule étape d'annulation. Studio les expose dans l'inspecteur
 | --- | --- | --- |
 | Un type `StitchParams` par fiche | Fidélité nominale maximale | 362 alternatives de variant, sérialisation, inspecteur et tests à maintenir ; la plupart dupliquent un générateur existant |
 | Moteur générique `RecipeDefinition → RecipeCompiler → StitchPlan` | Composition libre de passes | Nouveau format persistant et nouveau pipeline avant d'avoir une seule recette utile ; risque de doubler sous-couches, compensation et routage |
-| **Catalogue intégré de recettes compilées en `StitchParams`** | Réutilise générateurs, sérialisation, inspecteur et la commande d'application ; aucune migration OSP | Une recette multi-passes doit d'abord devenir une primitive d'un type existant (C) |
+| **Catalogue intégré de recettes compilées en `StitchParams`** | Réutilise générateurs, sérialisation, inspecteur et la conversion de type ; aucune migration OSP | Une recette multi-passes doit d'abord devenir une primitive d'un type existant (C) |
 
 ## Décision
 
 1. Une recette est une entrée **en lecture seule et versionnée** d'un catalogue livré avec le
    moteur (`document::stitch_recipes()`) : identifiant stable (identifiant d'URL Crosstela),
-   version, noms FR/EN, cible (contour, remplissage, colonne), fidélité (`Faithful` ou
+   version, noms FR/EN, cible (contour ou remplissage), fidélité (`Faithful` ou
    `Approximation`), source et `StitchParams` produits.
-2. Appliquer une recette réutilise `ApplyStitchPresetCommand` : même annulation, même chemin
-   pour Studio et le CLI. Le document ne garde que les paramètres obtenus ; ils restent
-   modifiables dans l'inspecteur. **Pas de champ `recipe_id` dans l'OSP** : un fichier reste
+2. Appliquer une recette passe par l'opération de lot `apply_recipe` (`project_ops`), qui
+   exécute `ConvertFillGroupCommand` comme `set_stitch_type` : même conversion (groupe de
+   sections satin compris), un pas d'annulation, même chemin pour Studio, le CLI et le MCP.
+   Le document ne garde que les paramètres obtenus ; ils restent modifiables dans l'inspecteur. **Pas de champ `recipe_id` dans l'OSP** : un fichier reste
    lisible par une version sans catalogue, et une recette révisée ne modifie jamais un projet
    déjà enregistré.
 3. Une classe C devient d'abord une **primitive d'un type existant** (champ optionnel, défaut
@@ -49,4 +50,6 @@ sélection en une seule étape d'annulation. Studio les expose dans l'inspecteur
 - Déterminisme et performance inchangés : les recettes passent par les générateurs actuels.
 - Le moteur générique reste possible plus tard si plusieurs recettes exigent des passes
   hétérogènes (Bayeux : posé + traverses + attaches) ; il partirait alors des primitives créées ici.
-- Un test garde l'unicité des identifiants et la validité des paramètres de chaque recette.
+- Un test garde l'unicité des identifiants et la génération de chaque recette sur sa forme cible.
+- Le satin n'est pas une recette : sur une forme, il exige la planification de l'opération
+  `auto_satin` (refus explicite si aucune colonne), pas une affectation de paramètres.

@@ -2,6 +2,7 @@ add_library(openstitch_document
     src/image_placement.cpp
     src/vector_object.cpp
     src/footprint.cpp
+    src/stitch_recipes.cpp
 )
 add_library(openstitch::document ALIAS openstitch_document)
 

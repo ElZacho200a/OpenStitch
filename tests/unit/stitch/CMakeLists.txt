@@ -11,6 +11,7 @@ add_executable(test_stitch
     test_tatami.cpp
     test_directional_fill.cpp
     test_blanket_stitch.cpp
+    test_stitch_recipes.cpp
     test_satin.cpp
     test_satin_guides.cpp
     test_satin_pairing_metrics.cpp
