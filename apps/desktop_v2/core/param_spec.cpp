@@ -272,6 +272,8 @@ std::vector<ParamSpec> completeTable() {
     add({"crosshatch", "pull_compensation_mm", "Compensation de tirage", K::Number, 0.0, 3.0, 0.05,
          "mm"});
     add({"crosshatch", "pull_mode", "Mode de compensation", K::Choice, 0, 3, 1, "", kPull});
+    add({"crosshatch", "tie_down_mm", "Attaches aux croisements (treillis)", K::Number, 0.0, 4.0,
+         0.1, "mm"});
     // Point de croix et appliqué (complètent les lignes de base).
     add({"cross_stitch", "hidden_underpath", "Liaisons cachées", K::Bool, 0, 1, 1, ""});
     add({"applique", "tack", "Point de maintien", K::Choice, 0, 2, 1, "", kTack});
@@ -697,6 +699,7 @@ Opt readP(const document::CrosshatchFillParams& p, std::string_view key) {
     PS_B("hidden_underpath", hidden_underpath);
     PS_MM("pull_compensation_mm", pull_compensation);
     PS_E("pull_mode", pull_mode);
+    PS_MM("tie_down_mm", tie_down);
     return std::nullopt;
 }
 

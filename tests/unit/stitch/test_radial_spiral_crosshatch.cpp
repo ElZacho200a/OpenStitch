@@ -237,3 +237,52 @@ TEST_CASE("crosshatch fill: out of range settings are clamped") {
     const auto s = fill_crosshatch(square(20), p);
     CHECK(!s.empty());
 }
+
+// STCH-CROS-01 L2 : treillis attaché (attaches aux croisements du croisé).
+TEST_CASE("crosshatch tie_down: a diagonal tack at every crossing, legacy output as prefix") {
+    document::CrosshatchFillParams p;
+    p.row_spacing = Micrometers{4'000};
+    p.inset = Micrometers{0};
+    const auto region = square(20);
+    const auto legacy = fill_crosshatch(region, p);
+    p.tie_down = Micrometers{1'600};
+    const auto tied = fill_crosshatch(region, p);
+    REQUIRE(tied.size() > legacy.size());
+    CHECK(std::equal(legacy.begin(), legacy.end(), tied.begin()));
+    CHECK(fill_crosshatch(region, p) == tied); // deterministic
+
+    // Tack = p -> p + h·u -> p - h·u -> p, u = (1, 1)/√2 for 0° and 90° layers.
+    int tacks = 0;
+    for (std::size_t i = legacy.size() + 2; i < tied.size(); ++i) {
+        const auto& a = tied[i - 2].pos;
+        const auto& b = tied[i - 1].pos;
+        const auto& c = tied[i].pos;
+        if (tied[i - 1].jump || tied[i].jump) {
+            continue;
+        }
+        const int dx = b.x.value - a.x.value;
+        const int dy = b.y.value - a.y.value;
+        if (std::abs(dx - 566) <= 2 && std::abs(dy - 566) <= 2 &&
+            std::abs((c.x.value - b.x.value) + 2 * dx) <= 3 &&
+            std::abs((c.y.value - b.y.value) + 2 * dy) <= 3) {
+            ++tacks;
+            CHECK(a.x.value > 0);
+            CHECK(a.x.value < 20'000);
+            CHECK(a.y.value > 0);
+            CHECK(a.y.value < 20'000);
+        }
+    }
+    CHECK(tacks >= 16); // 4 to 5 rows per layer inside a 20 mm square
+    for (std::size_t i = legacy.size(); i < tied.size(); ++i) {
+        CHECK_FALSE(tied[i].travel);
+    }
+}
+
+TEST_CASE("crosshatch tie_down: none below 1 mm row spacing, none when zero") {
+    document::CrosshatchFillParams p;
+    p.row_spacing = Micrometers{800};
+    const auto region = square(10);
+    const auto legacy = fill_crosshatch(region, p);
+    p.tie_down = Micrometers{1'600};
+    CHECK(fill_crosshatch(region, p) == legacy);
+}

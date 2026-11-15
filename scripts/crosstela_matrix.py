@@ -162,7 +162,7 @@ PILOTS = {
     "zigzag-row": "L1", "laid-work": "L1", "tent-stitch": "L1", "cross-stitch": "L1", "half-cross-stitch": "L1", "upright-cross": "L1",
     "blanket-stitch": "L1", "darning-stitch": "L1", "split-stitch": "L1",
     "long-and-short-stitch": "L1", "diamond-lattice": "L1",
-    "trellis-filling-stitch": "L2", "bayeux-stitch": "L2", "brick-shading-stitch": "L2",
+    "trellis-filling-stitch": "L2", "trellis-couching": "L2", "bayeux-stitch": "L2", "brick-shading-stitch": "L2",
     "seeding-stitch": "L3", "or-nue": "L3",
 }
 PRIORITY = {"trellis-filling-stitch": "P1", "bayeux-stitch": "P1", "brick-shading-stitch": "P1",
@@ -171,7 +171,7 @@ PRIORITY = {"trellis-filling-stitch": "P1", "bayeux-stitch": "P1", "brick-shadin
 
 def status(slug: str) -> str:
     lot = PILOTS.get(slug)
-    if lot == "L1":
+    if lot == "L1" or slug in ("trellis-filling-stitch", "trellis-couching"):
         return "recette intégrée (openstitch-cli recipes)"
     return "planifié" if lot else "non planifié"
 

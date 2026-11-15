@@ -1096,6 +1096,7 @@ fields_of<document::CrosshatchFillParams>() {
         v.push_back(bool_field<P>("hidden_underpath", &P::hidden_underpath));
         v.push_back(mm_field<P>("pull_compensation_mm", &P::pull_compensation, 0.0, 3.0));
         v.push_back(enum_field<P>("pull_mode", &P::pull_mode, pull_mode_table()));
+        v.push_back(mm_field<P>("tie_down_mm", &P::tie_down, 0.0, 4.0));
         return v;
     }();
     return fields;

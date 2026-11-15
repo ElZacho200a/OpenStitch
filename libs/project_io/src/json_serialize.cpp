@@ -566,6 +566,9 @@ json params_to_json(const document::StitchParams& params) {
                      {"stitchLength", p.stitch_length.value},
                      {"inset", p.inset.value},
                      {"hiddenUnderpath", p.hidden_underpath}};
+                if (p.tie_down.value != 0) {
+                    j["tieDown"] = p.tie_down.value;
+                }
             } else if constexpr (std::is_same_v<T, document::CrossStitchParams>) {
                 j = {{"type", "crossStitch"},
                      {"cell", p.cell.value},
@@ -1182,6 +1185,7 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.stitch_length = Micrometers{std::clamp(j.value("stitchLength", 3'000), 1'000, 7'000)};
         p.inset = Micrometers{std::clamp(j.value("inset", 200), 0, 10'000)};
         p.hidden_underpath = j.value("hiddenUnderpath", true);
+        p.tie_down = Micrometers{std::clamp(j.value("tieDown", 0), 0, 4'000)};
         read_simple_pull(j, p);
         return document::StitchParams{p};
     }

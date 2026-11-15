@@ -132,6 +132,28 @@ std::vector<StitchRecipe> build() {
             p.row_spacing = Micrometers{3'000};
             return p;
         }());
+    // STCH-CROS-01 L2 : fils posés en grille, attachés à chaque croisement (`tie_down`).
+    const auto trellis = [](Angle angle, int spacing) {
+        CrosshatchFillParams p;
+        p.layers = 2;
+        p.angle = angle;
+        p.row_spacing = Micrometers{spacing};
+        p.stitch_length = Micrometers{6'000};
+        p.tie_down = Micrometers{1'600};
+        // Grille ajourée : une liaison cousue « cachée » resterait visible ; des coupes à la place.
+        p.hidden_underpath = false;
+        return p;
+    };
+    add("trellis-filling-stitch", "Remplissage en treillis", "Trellis filling stitch", Fill, F,
+        "https://crosstela.com/fr/learn/stitches/trellis-filling-stitch/",
+        "Grille diagonale de fils posés, attachée à chaque croisement par une petite barre ; "
+        "les bouts de rangées restent reliés le long du bord.",
+        trellis(kQuarterTurn, 4'000));
+    add("trellis-couching", "Couchage en treillis", "Trellis couching", Fill, F,
+        "https://crosstela.com/fr/learn/stitches/trellis-couching/",
+        "Grille droite de fils posés, attachée aux croisements ; à poser sur un aplat pour un "
+        "effet de couchage.",
+        trellis(Angle{0.0}, 5'000));
     return out;
 }
 

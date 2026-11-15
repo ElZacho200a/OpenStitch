@@ -571,6 +571,10 @@ struct CrosshatchFillParams {
     bool hidden_underpath{true};
     Micrometers pull_compensation{0};     // HP-STI-033 : depassement du contour, 0-3 mm (defaut 0)
     PullMode pull_mode{PullMode::Manual}; // HP-STI-033 : Manual ou Auto
+    // Treillis attaché (STCH-CROS-01) : longueur de la petite barre diagonale cousue à chaque
+    // croisement des deux premières couches, qui maintient le fil posé. 0 = aucune (historique) ;
+    // bornée à [1,2 ; 4] mm, ignorée si `row_spacing` < 1 mm.
+    Micrometers tie_down{0};
 
     bool operator==(const CrosshatchFillParams&) const = default;
 };

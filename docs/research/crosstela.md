@@ -79,7 +79,14 @@ L1 (types existants, recettes A/B, **livrées** : `openstitch-cli recipes`, opé
 `apply_recipe`, inspecteur Studio « Recettes de points ») : running, backstitch, stem, holbein,
 split (simulation), blanket, zigzag-row, long-and-short, laid-work, darning, cross, half-cross,
 tent, upright-cross, diamond-lattice. Le passé plat reste la conversion satin existante.
-L2 (primitives) : trellis-filling, bayeux, brick-shading. L3 : seeding, or-nue (simulation).
+L2 (primitives) : trellis-filling et trellis-couching **livrés** (primitive `CrosshatchFillParams::tie_down` :
+barre diagonale cousue à chaque croisement des deux premières couches, reliée à la suivante le
+long du fil posé ; `tieDown` dans l'OSP, `tie_down_mm` dans `set_params` et l'inspecteur) ;
+bayeux et brick-shading restent à faire. L3 : seeding, or-nue (simulation).
+
+Mesure (ellipse 40 x 30 mm, recette `trellis-filling-stitch`, Debug) : 415 points, 11 coupes,
+15 sauts. Avec les liaisons cachées du croisé, 355 points et 1 coupe, mais les liaisons cousues
+traversent la grille ajourée et se voient : la recette les désactive.
 
 Architecture : [ADR 0007](../adr/0007-recettes-de-points.md) — catalogue intégré compilé en
 `StitchParams`, appliqué par la commande de préréglage existante, sans champ nouveau dans l'OSP.
