@@ -27,6 +27,9 @@ QString dataUrl(const std::string& png) {
 }
 } // namespace
 
+CompanionController::CompanionController(StudioController& studio)
+    : CompanionController(studio, Options{}) {}
+
 CompanionController::CompanionController(StudioController& studio, Options options, QObject* parent)
     : QObject(parent), studio_(studio), options_(std::move(options)) {
     token_ = studio_.session().subscribe([this](ChangeKind kind) {

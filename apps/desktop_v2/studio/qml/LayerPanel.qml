@@ -16,6 +16,16 @@ ColumnLayout {
                                       ? objectTree.currentLayer
                                       : (editor.layers.length > 0 ? editor.layers[0].id : "")
 
+    Connections {
+        target: studio
+        function onDocumentReplaced() {
+            objectTree.currentLayer = ""
+            objectTree.dragActive = false
+            renameField.visible = false
+            renameField.text = ""
+        }
+    }
+
     Flow {
         objectName: "layerActionsFlow"
         Layout.fillWidth: true

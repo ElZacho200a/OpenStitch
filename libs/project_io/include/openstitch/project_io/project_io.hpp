@@ -49,7 +49,8 @@ inline constexpr int kSchemaVersionTextTypography = 8;
 inline constexpr int kSchemaVersionCalques = 9;
 
 // Plus récente version que cette version sait lire.
-inline constexpr int kMaxReadableSchemaVersion = kSchemaVersionCalques;
+inline constexpr int kSchemaVersionImageSources = 10;
+inline constexpr int kMaxReadableSchemaVersion = kSchemaVersionImageSources;
 
 // Enregistre le projet dans une archive .osp (ZIP : project.json + image
 // originale PNG + carte de segmentation binaire). Écriture atomique :

@@ -46,15 +46,17 @@ std::array<StageStatus, 4> computeStageStatus(const document::Project& project,
     std::array<StageStatus, 4> out;
 
     // --- image -------------------------------------------------------------------------------
-    const bool hasImage = !project.original.empty();
-    out[0] = hasImage ? make(StageId::Image, StageState::UpToDate,
-                             "Image de travail : " + std::to_string(project.original.width) +
-                                 " x " + std::to_string(project.original.height) + " px, " +
-                                 std::to_string(project.ops.size()) + " retouche(s)")
-                      : make(StageId::Image, StageState::Empty, "Aucune image dans le projet");
+    const bool hasImage = !project.imageSource().original.empty();
+    out[0] =
+        hasImage
+            ? make(StageId::Image, StageState::UpToDate,
+                   "Image de travail : " + std::to_string(project.imageSource().original.width) +
+                       " x " + std::to_string(project.imageSource().original.height) + " px, " +
+                       std::to_string(project.imageSource().ops.size()) + " retouche(s)")
+            : make(StageId::Image, StageState::Empty, "Aucune image dans le projet");
 
     // --- segmentation ------------------------------------------------------------------------
-    const bool hasSegmentation = project.segmentation.has_value();
+    const bool hasSegmentation = project.imageSource().segmentation.has_value();
     const std::string reason =
         inputs.dirtyReason.empty() ? "des régions ont été retouchées" : inputs.dirtyReason;
     const bool segmentationStale = hasSegmentation && inputs.segmentationDirty;
@@ -67,16 +69,18 @@ std::array<StageStatus, 4> computeStageStatus(const document::Project& project,
         out[1] = make(StageId::Segmentation, StageState::Stale,
                       "Segmentation obsolète : " + reason + ", formes pas à jour");
     } else {
-        out[1] = make(StageId::Segmentation, StageState::UpToDate,
-                      std::to_string(project.segmentation->region_count()) + " région(s)");
+        out[1] =
+            make(StageId::Segmentation, StageState::UpToDate,
+                 std::to_string(project.imageSource().segmentation->region_count()) + " région(s)");
     }
 
     // --- vectorisation -----------------------------------------------------------------------
     const auto& vectors = project.vector_objects;
     std::size_t orphans = 0;
     for (const auto& vector : vectors) {
-        if (vector.source_region &&
-            (!hasSegmentation || project.segmentation->find(*vector.source_region) == nullptr)) {
+        const auto* source = project.findImageSource(vector.source_image);
+        if (vector.source_region && (source == nullptr || !source->segmentation ||
+                                     !source->segmentation->find(*vector.source_region))) {
             ++orphans;
         }
     }

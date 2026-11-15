@@ -27,6 +27,7 @@ struct ClickToStitchOptions {
     Millimeters mm_per_px{25.4 / 96.0}; // résolution de l'image dont vient la région
     Micrometers simplify_tolerance{200};
     ClickToStitchKind kind{ClickToStitchKind::Auto};
+    ObjectId calque;
 };
 
 struct ClickToStitchResult {

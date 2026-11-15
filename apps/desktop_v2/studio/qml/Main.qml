@@ -131,14 +131,6 @@ Window {
             filePanel.requestOpen()
     }
 
-    FileDialog {
-        id: projectDialog
-        title: qsTr("Ouvrir un projet OpenStitch")
-        fileMode: FileDialog.OpenFile
-        nameFilters: [qsTr("Projet OpenStitch (*.osp)")]
-        onAccepted: filePanel.openUrl(selectedFile)
-    }
-
     function saveProject() {
         if (studio.hasPath())
             confirmSave(studio.saveProject())
@@ -527,7 +519,7 @@ Window {
                     visible: headerCard.wide
                     text: qsTr("Ouvrir")
                     quiet: true
-                    tooltip: qsTr("Ouvrir un projet .osp")
+                    tooltip: qsTr("Ouvrir un projet, une broderie machine ou une image")
                     shortcutLabel: "Ctrl+O"
                     showShortcutLabel: false
                     enabled: !studio.busy

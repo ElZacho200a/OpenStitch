@@ -2,11 +2,11 @@
 
 - **PDF** : `docs/build/OpenStitch-Studio-Documentation.pdf`
 - **Existe** : oui
-- **Pages** : 278
-- **Taille** : 2228.7 Kio (2282197 octets)
+- **Pages** : 312
+- **Taille** : 2348.0 Kio (2404316 octets)
 - **Chaîne** : python-markdown -> HTML/CSS -> xhtml2pdf (reportlab), SVG via svglib
 - **Commande** : `docs\scripts\build-docs.ps1` (ou `python docs/scripts/build-docs.py`)
-- **Chapitres produits** : 46
+- **Chapitres produits** : 47
 
 ## Chapitres
 - À propos de ce document
@@ -39,7 +39,7 @@
 - Analyse et validation
 - Fiche de production
 - Format DST (Tajima)
-- Formats PES, JEF et EXP
+- formats-pes-jef-exp
 - Format de projet `.osp`
 - Architecture logicielle
 - Référence des modules
@@ -50,6 +50,7 @@
 - Tests
 - Guide de contribution
 - Dépannage
+- Journal d'usage local (KPI)
 - Limitations et état des fonctionnalités
 - Roadmap
 - Glossaire
@@ -57,4 +58,8 @@
 - Annexe — Audit du dépôt
 
 ## Contrôles de cohérence
-- ✅ Aucun problème bloquant (liens d'images, fichiers source, marqueurs TODO_DOC, secrets, chapitres vides).
+**Problèmes (bloquants) :**
+- ⛔ Lien vers un chapitre inconnu (index.md) : mcp.md
+- ⛔ Lien vers un chapitre inconnu (index.md) : ai-companion.md
+- ⛔ Lien vers un chapitre inconnu (index.md) : i18n.md
+- ⛔ Lien vers un chapitre inconnu (licenses.md) : ai-companion.md

@@ -1701,9 +1701,70 @@ document::TextObject text_from_json(const json& j) {
 
 } // namespace
 
+namespace {
+
+void write_image_source(json& j, const document::ImageSource& source) {
+    j["mmPerPx"] = source.mm_per_px.value;
+    j["ops"] = json::array();
+    for (const auto& op : source.ops) {
+        j["ops"].push_back(op_to_json(op));
+    }
+
+    if (source.segmentation) {
+        const auto& seg = *source.segmentation;
+        json s;
+        s["width"] = seg.width;
+        s["height"] = seg.height;
+        s["regions"] = json::array();
+        for (const auto& slot : seg.region_slots) {
+            if (slot) {
+                s["regions"].push_back({{"id", slot->id.value},
+                                        {"rgb", rgb_to_json(slot->rgb)},
+                                        {"pixels", slot->pixel_count}});
+            } else {
+                s["regions"].push_back(nullptr);
+            }
+        }
+        j["segmentation"] = s;
+    }
+}
+
+Result<void> read_image_source(const json& j, document::ImageSource& source) {
+    source.mm_per_px = Millimeters{j.at("mmPerPx").get<double>()};
+    for (const auto& op : j.at("ops")) {
+        auto parsed = op_from_json(op);
+        if (!parsed) {
+            return std::unexpected(parsed.error());
+        }
+        source.ops.push_back(std::move(*parsed));
+    }
+
+    if (j.contains("segmentation")) {
+        const auto& s = j.at("segmentation");
+        segmentation::Segmentation seg;
+        seg.width = s.at("width");
+        seg.height = s.at("height");
+        for (const auto& r : s.at("regions")) {
+            if (r.is_null()) {
+                seg.region_slots.push_back(std::nullopt);
+            } else {
+                segmentation::Region region;
+                region.id = RegionId{r.at("id").get<std::uint64_t>()};
+                region.rgb = rgb_from_json(r.at("rgb"));
+                region.pixel_count = r.at("pixels").get<std::size_t>();
+                seg.region_slots.push_back(region);
+            }
+        }
+        // labels remplis plus tard par project_io (binaire).
+        source.segmentation = std::move(seg);
+    }
+    return {};
+}
+
+} // namespace
+
 json project_to_json(const document::Project& project) {
     json j;
-    j["mmPerPx"] = project.mm_per_px.value;
     j["objectIdLast"] = project.object_ids.last();
     j["canvas"] = {{"width", project.canvas.width.value}, {"height", project.canvas.height.value}};
     if (project.canvas.margin.value > 0) {
@@ -1722,27 +1783,14 @@ json project_to_json(const document::Project& project) {
         j["machine"] = project.machine_id;
     }
 
-    j["ops"] = json::array();
-    for (const auto& op : project.ops) {
-        j["ops"].push_back(op_to_json(op));
-    }
-
-    if (project.segmentation) {
-        const auto& seg = *project.segmentation;
-        json s;
-        s["width"] = seg.width;
-        s["height"] = seg.height;
-        s["regions"] = json::array();
-        for (const auto& slot : seg.region_slots) {
-            if (slot) {
-                s["regions"].push_back({{"id", slot->id.value},
-                                        {"rgb", rgb_to_json(slot->rgb)},
-                                        {"pixels", slot->pixel_count}});
-            } else {
-                s["regions"].push_back(nullptr);
-            }
+    write_image_source(j, project);
+    if (!project.image_sources.empty()) {
+        j["imageSources"] = json::array();
+        for (const auto& layer : project.image_sources) {
+            json source = {{"calque", layer.calque.value}};
+            write_image_source(source, layer.source);
+            j["imageSources"].push_back(std::move(source));
         }
-        j["segmentation"] = s;
     }
 
     if (!project.calques.empty()) {
@@ -1833,6 +1881,9 @@ json project_to_json(const document::Project& project) {
         }
         if (v.source_region) {
             vo["sourceRegion"] = v.source_region->value;
+            if (v.source_image.valid()) {
+                vo["sourceImage"] = v.source_image.value;
+            }
         }
         if (v.text_owner) {
             vo["textOwner"] = v.text_owner->value;
@@ -1979,7 +2030,6 @@ json project_to_json(const document::Project& project) {
 Result<document::Project> project_from_json(const json& j) {
     document::Project project;
     try {
-        project.mm_per_px = Millimeters{j.at("mmPerPx").get<double>()};
         project.object_ids.reset(j.value("objectIdLast", std::uint64_t{0}));
         // Cadre : optionnel (les projets antérieurs n'en avaient pas -> 100x100).
         if (j.contains("canvas")) {
@@ -2017,32 +2067,23 @@ Result<document::Project> project_from_json(const json& j) {
         }
         project.machine_id = j.value("machine", std::string());
 
-        for (const auto& op : j.at("ops")) {
-            auto parsed = op_from_json(op);
-            if (!parsed) {
-                return std::unexpected(parsed.error());
-            }
-            project.ops.push_back(std::move(*parsed));
+        if (auto read = read_image_source(j, project); !read) {
+            return std::unexpected(read.error());
         }
 
-        if (j.contains("segmentation")) {
-            const auto& s = j.at("segmentation");
-            segmentation::Segmentation seg;
-            seg.width = s.at("width");
-            seg.height = s.at("height");
-            for (const auto& r : s.at("regions")) {
-                if (r.is_null()) {
-                    seg.region_slots.push_back(std::nullopt);
-                } else {
-                    segmentation::Region region;
-                    region.id = RegionId{r.at("id").get<std::uint64_t>()};
-                    region.rgb = rgb_from_json(r.at("rgb"));
-                    region.pixel_count = r.at("pixels").get<std::size_t>();
-                    seg.region_slots.push_back(region);
+        if (j.contains("imageSources")) {
+            for (const auto& entry : j.at("imageSources")) {
+                document::ImageSourceLayer layer;
+                layer.calque = ObjectId{entry.at("calque").get<std::uint64_t>()};
+                if (auto read = read_image_source(entry, layer.source); !read) {
+                    return std::unexpected(read.error());
                 }
+                if (!layer.calque.valid() || project.findImageSource(layer.calque) != nullptr) {
+                    return fail(ErrorCategory::InvalidFile,
+                                "Identifiant de source image invalide ou duplique");
+                }
+                project.image_sources.push_back(std::move(layer));
             }
-            // labels remplis plus tard par project_io (binaire).
-            project.segmentation = std::move(seg);
         }
 
         if (j.contains("groups")) {
@@ -2132,6 +2173,7 @@ Result<document::Project> project_from_json(const json& j) {
             v.locked = vo.value("locked", false);
             if (vo.contains("sourceRegion")) {
                 v.source_region = RegionId{vo.at("sourceRegion").get<std::uint64_t>()};
+                v.source_image = ObjectId{vo.value("sourceImage", std::uint64_t{0})};
             }
             if (vo.contains("textOwner")) {
                 v.text_owner = ObjectId{vo.at("textOwner").get<std::uint64_t>()};

@@ -91,6 +91,7 @@ void InsertDesignCommand::apply(document::Project& project) {
             vector_map[shape.id] = fresh;
             shape.id = fresh;
             shape.source_region.reset();
+            shape.source_image = {};
             shape.calque = calque_ok ? project.active_calque : ObjectId{};
             if (shape.text_owner) {
                 const auto it = text_map.find(*shape.text_owner);

@@ -23,7 +23,7 @@
 
 namespace openstitch::desktop_v2 {
 
-enum class ChangeKind : std::uint8_t { Edited, Undone, Redone, Replaced };
+enum class ChangeKind : std::uint8_t { Edited, Undone, Redone, Replaced, ImageSelected };
 
 class DocumentSession {
 public:
@@ -69,6 +69,7 @@ public:
 
     // --- Mutations --------------------------------------------------------------------------
     void execute(std::unique_ptr<commands::ICommand> command);
+    bool selectImageSource(ObjectId calque);
     bool undo();
     bool redo();
     // Jump within the existing history. Reject invalid positions before touching the project;
@@ -116,6 +117,7 @@ private:
     commands::UndoStack undo_;
     SelectionModel selection_;
     std::uint64_t revision_{1};
+    ObjectId observedImageSource_;
     bool lastChangeAffectsEmbroidery_{true};
     bool lastChangeAffectsSegmentation_{true};
     mutable std::shared_ptr<const document::Project> cachedSnapshot_;

@@ -7,6 +7,7 @@
 #include <QVariantList>
 #include <QVariantMap>
 #include <cstdint>
+#include <map>
 #include <vector>
 
 #include "image_controller.hpp"
@@ -127,6 +128,8 @@ private:
     QVariantList regions_;
     int mapRevision_{0};
     std::uint64_t observedDocumentRevision_{0};
+    ObjectId observedImageSource_;
+    std::map<ObjectId, QString> staleSources_;
     std::vector<std::uint64_t> selected_;
     bool stale_{false};
     QString staleReason_;

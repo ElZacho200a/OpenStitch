@@ -248,8 +248,8 @@ Item {
                         Layout.topMargin: 7
                         emphasized: true
                         iconName: "open"
-                        text: qsTr("Ouvrir un projet .osp")
-                        tooltip: qsTr("Ouvrir un projet OpenStitch existant")
+                        text: qsTr("Ouvrir un fichier…")
+                        tooltip: qsTr("Ouvrir un projet, une broderie machine ou une image")
                         onClicked: actions.runCommand("cmd.file.open")
                     }
                     RowLayout {

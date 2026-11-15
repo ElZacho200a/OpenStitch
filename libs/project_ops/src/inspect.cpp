@@ -592,17 +592,17 @@ Result<json> build_project_doc(const document::Project& project, const InspectOp
     doc["schema"] = kInspectSchema;
     doc["osp_schema_version"] = project_io::kSchemaVersion;
     doc["canvas"] = canvas_json(project);
-    const double mmPerPx = project.mm_per_px.value;
+    const double mmPerPx = project.imageSource().mm_per_px.value;
     doc["resolution"] = json{{"mm_per_px", mmPerPx}, {"dpi", mmPerPx > 0.0 ? 25.4 / mmPerPx : 0.0}};
-    doc["image"] = json{{"present", project.hasImage()},
-                        {"width_px", project.original.width},
-                        {"height_px", project.original.height}};
+    doc["image"] = json{{"present", project.hasActiveImage()},
+                        {"width_px", project.imageSource().original.width},
+                        {"height_px", project.imageSource().original.height}};
     doc["finishing"] = finishing_json(project.finishing);
     doc["imported_design"] = project.imported_design.has_value();
 
     json regions = json::array();
-    if (project.segmentation) {
-        for (const auto& slot : project.segmentation->region_slots) {
+    if (project.imageSource().segmentation) {
+        for (const auto& slot : project.imageSource().segmentation->region_slots) {
             if (slot) {
                 regions.push_back(json{{"id", slot->id.value},
                                        {"color", rgb_json(slot->rgb)},

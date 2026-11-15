@@ -6,6 +6,7 @@
 #include <numeric>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "openstitch/core/ids.hpp"
@@ -26,16 +27,10 @@
 
 namespace openstitch::document {
 
-// État du document : une image source intacte, une résolution de travail,
-// une pile de transformations rejouables et l'éventuelle segmentation de
-// l'image de travail. L'image de travail est TOUJOURS recalculée
-// (image::apply_pipeline), jamais stockée comme vérité.
-// Ce type grandira (calques, objets, palette…) au fil des phases.
-struct Project {
+// Chaque source possède son échelle, ses retouches et sa segmentation.
+struct ImageSource {
     image::Image original;              // jamais modifiée après l'import
     Millimeters mm_per_px{25.4 / 96.0}; // résolution de travail
-    Canvas canvas;                      // cadre de broderie (défaut 100x100 mm)
-    std::string machine_id;             // HP-HOOP-002 : profil machine (vide = aucun)
     std::vector<image::ImageOp> ops;    // pile de prétraitements
 
     // Segmentation de l'image de travail. Invalidée (remise à nullopt) par
@@ -46,6 +41,19 @@ struct Project {
     // Elles pilotent le lissage et le nettoyage de la segmentation (`SegmentationOptions::
     // detail_mask`) ; modifiées par `PaintDetailMaskCommand`, enregistrées dans le projet.
     segmentation::DetailMask detail_mask;
+};
+
+struct ImageSourceLayer {
+    ObjectId calque;
+    ImageSource source;
+};
+
+// La source historique est conservée dans le document racine des archives OSP.
+struct Project : ImageSource {
+    Canvas canvas;
+    std::string machine_id;
+    std::vector<ImageSourceLayer> image_sources;
+    ObjectId active_image_source; // état d'interface, distinct du calque de dessin
 
     // Objets vectoriels (Phase 5). Contrairement à la segmentation, ils
     // survivent aux retouches d'image : leur géométrie est indépendante.
@@ -95,7 +103,42 @@ struct Project {
     // depuis `embroidery_objects`).
     std::optional<ImportedDesign> imported_design;
 
+    [[nodiscard]] const ImageSource* findImageSource(ObjectId id) const {
+        if (!id.valid()) {
+            return this;
+        }
+        for (const auto& entry : image_sources) {
+            if (entry.calque == id) {
+                return &entry.source;
+            }
+        }
+        return nullptr;
+    }
+    [[nodiscard]] ObjectId imageSourceId() const {
+        if (active_image_source.valid() && findImageSource(active_image_source) != nullptr) {
+            return active_image_source;
+        }
+        if (!original.empty()) {
+            return {};
+        }
+        for (const auto& calque : calques) {
+            if (findImageSource(calque.id) != nullptr) {
+                return calque.id;
+            }
+        }
+        return {};
+    }
+    [[nodiscard]] const ImageSource& imageSource() const {
+        return *findImageSource(imageSourceId());
+    }
+    [[nodiscard]] ImageSource& imageSource() {
+        return const_cast<ImageSource&>(std::as_const(*this).imageSource());
+    }
     [[nodiscard]] bool hasImage() const { return !original.empty(); }
+    [[nodiscard]] bool hasActiveImage() const { return !imageSource().original.empty(); }
+    [[nodiscard]] bool fromActiveImage(const VectorObject& shape) const {
+        return shape.source_region && shape.source_image == imageSourceId();
+    }
 
     // ---- Calques (HP-OBJ-024) ----------------------------------------------------------------
     [[nodiscard]] const Calque* findCalque(ObjectId id) const {

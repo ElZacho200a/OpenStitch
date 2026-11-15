@@ -56,9 +56,16 @@ RegionController::RegionController(StudioController& studio, ImageController& im
     token_ = studio_.session().subscribe([this](ChangeKind kind) {
         const auto& session = studio_.session();
         const auto revision = session.revision();
+        const auto source = session.project().imageSourceId();
         if (kind == ChangeKind::Replaced) {
+            staleSources_.clear();
+        }
+        if (kind == ChangeKind::Replaced || source != observedImageSource_) {
+            observedImageSource_ = source;
             selected_.clear();
-            setStale(false);
+            const auto stale = staleSources_.find(source);
+            setStale(stale != staleSources_.end(),
+                     stale != staleSources_.end() ? stale->second : QString{});
         }
         if (revision == observedDocumentRevision_) {
             return; // sauvegarde ou signal de statut sans mutation
@@ -81,17 +88,17 @@ RegionController::~RegionController() {
 }
 
 int RegionController::mapWidth() const {
-    const auto& seg = studio_.session().project().segmentation;
+    const auto& seg = studio_.session().project().imageSource().segmentation;
     return seg ? seg->width : 0;
 }
 
 int RegionController::mapHeight() const {
-    const auto& seg = studio_.session().project().segmentation;
+    const auto& seg = studio_.session().project().imageSource().segmentation;
     return seg ? seg->height : 0;
 }
 
 bool RegionController::hasSegmentation() const {
-    return studio_.session().project().segmentation.has_value();
+    return studio_.session().project().imageSource().segmentation.has_value();
 }
 
 QVariantList RegionController::selected() const {
@@ -115,6 +122,11 @@ void RegionController::setMessage(const QString& text, bool error) {
 }
 
 void RegionController::setStale(bool stale, const QString& reason) {
+    if (stale) {
+        staleSources_.insert_or_assign(observedImageSource_, reason);
+    } else {
+        staleSources_.erase(observedImageSource_);
+    }
     if (stale_ == stale && staleReason_ == reason) {
         return;
     }
@@ -158,11 +170,12 @@ void RegionController::refresh() {
     // Élague la sélection : une région fusionnée ou supprimée n'existe plus.
     const auto before = selected_.size();
     std::erase_if(selected_, [&](std::uint64_t id) {
-        return !project.segmentation || !project.segmentation->find(RegionId{id});
+        return !project.imageSource().segmentation ||
+               !project.imageSource().segmentation->find(RegionId{id});
     });
-    if (project.segmentation && project.segmentation->width > 0 &&
-        project.segmentation->height > 0) {
-        const auto& seg = *project.segmentation;
+    if (project.imageSource().segmentation && project.imageSource().segmentation->width > 0 &&
+        project.imageSource().segmentation->height > 0) {
+        const auto& seg = *project.imageSource().segmentation;
         // Le panneau n'affiche que 170 px de haut : ne jamais générer une
         // seconde carte RGBA plein format pour sa miniature.
         constexpr int maxSide = 512;
@@ -213,7 +226,7 @@ void RegionController::refresh() {
 
 void RegionController::selectRegion(double id, const QString& mode) {
     const auto region = idOf(id);
-    const auto& seg = studio_.session().project().segmentation;
+    const auto& seg = studio_.session().project().imageSource().segmentation;
     if (!seg || region == 0 || !seg->find(RegionId{region})) {
         return;
     }

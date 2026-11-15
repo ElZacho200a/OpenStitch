@@ -629,6 +629,16 @@ bool validate_palette(const std::vector<document::GradientThread>& palette) {
     return true;
 }
 
+std::string invalid_fill_options(const MulticolorGradientSpec& spec) {
+    if (!std::isfinite(spec.end_density) || spec.end_density < 0.0 || spec.end_density > 1.0) {
+        return "La densité d'arrivée doit être comprise entre 0 et 100 %.";
+    }
+    if (spec.stitch_angle && !std::isfinite(spec.stitch_angle->radians)) {
+        return "La direction des points doit être un angle fini.";
+    }
+    return {};
+}
+
 // Ligne guide droite traversant `shape` à `angle` (modèle, Y vers le haut), centrée sur sa boîte
 // englobante et prolongée bien au-delà -- pour forcer un remplissage directionnel à cet angle
 // EXACT (guides vide = repli sur l'axe principal, cf. `DirectionalFillParams::guides`). Réutilise
@@ -929,6 +939,9 @@ std::string multicolor_gradient_incompatibility(const document::Project& project
 Result<std::unique_ptr<commands::ICommand>>
 make_create_multicolor_gradient_command(document::Project& project, ObjectId fill,
                                         const MulticolorGradientSpec& spec) {
+    if (const auto why = invalid_fill_options(spec); !why.empty()) {
+        return fail(ErrorCategory::UserInput, why);
+    }
     if (!validate_palette(spec.palette)) {
         return fail(ErrorCategory::OperationImpossible,
                     "Choisissez entre 1 et 8 fils, deux voisins distincts.");
@@ -948,6 +961,9 @@ make_create_multicolor_gradient_command(document::Project& project, ObjectId fil
 Result<std::unique_ptr<commands::ICommand>>
 make_edit_multicolor_gradient_command(document::Project& project, ObjectId anchorOrMember,
                                       const MulticolorGradientSpec& spec) {
+    if (const auto why = invalid_fill_options(spec); !why.empty()) {
+        return fail(ErrorCategory::UserInput, why);
+    }
     if (!validate_palette(spec.palette)) {
         return fail(ErrorCategory::OperationImpossible,
                     "Choisissez entre 1 et 8 fils, deux voisins distincts.");

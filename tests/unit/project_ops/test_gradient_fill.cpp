@@ -6,6 +6,7 @@
 #include <array>
 #include <cmath>
 #include <filesystem>
+#include <limits>
 
 #include "openstitch/commands/color_blend_commands.hpp"
 #include "openstitch/commands/project_commands.hpp"
@@ -1362,4 +1363,80 @@ TEST_CASE("fade types: crosshatch layers keep their crossed directions",
     }
     REQUIRE(guides.size() == 2);
     CHECK(guides[0] != guides[1]);
+}
+
+TEST_CASE("fade types: invalid end density and stitch angle do not mutate the document",
+          "[project_ops][gradient][multicolor][types]") {
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const double infinity = std::numeric_limits<double>::infinity();
+    for (const bool editing : {false, true}) {
+        for (int invalid = 0; invalid < 6; ++invalid) {
+            auto f = rectangle_fill();
+            commands::UndoStack stack;
+            auto spec = typed_spec(f, {{24, 42, 99}});
+            if (editing) {
+                run(f, stack,
+                    project_ops::make_create_multicolor_gradient_command(f.project, f.fill, spec));
+            }
+            const auto before = project_ops::describe_multicolor_gradient(f.project, f.fill);
+            const auto lastId = f.project.object_ids.last();
+            const auto objects = f.project.embroidery_objects.size();
+            if (invalid < 4) {
+                const double values[] = {-0.1, 1.1, nan, infinity};
+                spec.end_density = values[invalid];
+            } else {
+                spec.stitch_angle = Angle{invalid == 4 ? nan : infinity};
+            }
+            CAPTURE(editing, invalid);
+            const auto command =
+                editing
+                    ? project_ops::make_edit_multicolor_gradient_command(f.project, f.fill, spec)
+                    : project_ops::make_create_multicolor_gradient_command(f.project, f.fill, spec);
+            REQUIRE_FALSE(command.has_value());
+            CHECK(f.project.object_ids.last() == lastId);
+            CHECK(f.project.embroidery_objects.size() == objects);
+            CHECK(project_ops::describe_multicolor_gradient(f.project, f.fill) == before);
+        }
+    }
+}
+
+TEST_CASE("fade types: spiral and contour preserve their edited settings and stitches in OSP",
+          "[project_ops][gradient][multicolor][types][io]") {
+    for (const auto geometry :
+         {document::DensityGeometry::Spiral, document::DensityGeometry::Contour}) {
+        auto f = rectangle_fill();
+        std::get<document::TatamiParams>(f.project.embroidery_objects.back().params).row_spacing =
+            Micrometers{700};
+        commands::UndoStack stack;
+        auto spec = typed_spec(f, {{24, 42, 99}});
+        spec.transition.geometry = geometry;
+        spec.transition.from = pt(15'000, 10'000);
+        spec.transition.to = pt(33'000, 10'000);
+        spec.transition.curve_bend = 0.5;
+        spec.stitch_angle = Angle{0.37};
+        spec.end_density = 0.27;
+        run(f, stack,
+            project_ops::make_create_multicolor_gradient_command(f.project, f.fill, spec));
+        spec.transition.spacing_from = Micrometers{900};
+        spec.transition.spacing_to = Micrometers{900};
+        spec.stitch_angle = Angle{0.61};
+        spec.end_density = 0.43;
+        run(f, stack, project_ops::make_edit_multicolor_gradient_command(f.project, f.fill, spec));
+        const auto stored = project_ops::describe_multicolor_gradient(f.project, f.fill);
+        REQUIRE(stored);
+        const auto before = stitch_generation::effective_sequence(f.project);
+        REQUIRE(before);
+        REQUIRE_FALSE(before->empty());
+        const auto file =
+            std::filesystem::temp_directory_path() /
+            ("openstitch_fade_geometry_" + std::to_string(static_cast<int>(geometry)) + ".osp");
+        REQUIRE(project_io::save_project(file, f.project));
+        auto reopened = project_io::load_project(file);
+        std::filesystem::remove(file);
+        REQUIRE(reopened);
+        CHECK(project_ops::describe_multicolor_gradient(*reopened, f.fill) == stored);
+        const auto after = stitch_generation::effective_sequence(*reopened);
+        REQUIRE(after);
+        CHECK(after->commands == before->commands);
+    }
 }

@@ -28,7 +28,7 @@ OpSpec op_convert_vectors() {
     s.example = R"({"op":"convert_vectors"})";
     s.apply = [](OpContext& ctx) -> OpStatus {
         autodigitize::AutoOptions options;
-        options.mm_per_px = ctx.project.mm_per_px;
+        options.mm_per_px = ctx.project.imageSource().mm_per_px;
         auto next_ids = ctx.project.object_ids;
         auto built = autodigitize::convert_vectors_to_embroidery(ctx.project, next_ids, options);
         if (!built) {
