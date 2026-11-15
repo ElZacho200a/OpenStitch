@@ -253,7 +253,7 @@ void StudioToolsTest::open(Rig& rig) {
     rig.session.replaceProject(anchorProject(), true);
     settle(rig);
     // Le canevas de l'espace Vecteurs ne construit pas de points : prêt = formes publiées.
-    QTRY_VERIFY_WITH_TIMEOUT(rig.canvas->vectorImage() != nullptr && rig.canvas->width() > 0,
+    QTRY_VERIFY_WITH_TIMEOUT(rig.canvas->vectorLayer() != nullptr && rig.canvas->width() > 0,
                              10'000);
     rig.tools.setSnapVertices(false);
 }

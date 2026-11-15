@@ -51,7 +51,9 @@ target_include_directories(openstitch_studio_ui PUBLIC ${CMAKE_CURRENT_SOURCE_DI
 target_link_libraries(openstitch_studio_ui PUBLIC openstitch::desktop_v2_core
     openstitch::ai_segmentation openstitch::companion_backends
     openstitch::desktop_v2_live Qt6::Network Qt6::Quick
-    Qt6::QuickControls2 PRIVATE openstitch::warnings)
+    Qt6::QuickControls2 PRIVATE openstitch::warnings
+    # qTriangulate (layers/vector_layer.cpp) : formes vectorielles en triangles pour le GPU.
+    Qt6::GuiPrivate)
 
 set(studio_qml_files
     qml/Main.qml qml/HistoryPanel.qml qml/Theme.qml qml/StudioButton.qml qml/StudioIcon.qml
