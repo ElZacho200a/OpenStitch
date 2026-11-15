@@ -25,6 +25,10 @@ ColumnLayout {
             quiet: true
             tooltip: modelData.label
             shortcutLabel: modelData.shortcut
+            // Le raccourci reste dans l'infobulle : le rail ne montre que le pictogramme.
+            showShortcutLabel: false
+            textSize: Theme.headingSize
+            implicitWidth: Theme.controlHeight
             active: rail.toolCtl && rail.toolCtl.activeTool === modelData.id
             Accessible.description: active ? qsTr("Outil actif") : modelData.label
             onClicked: rail.toolCtl.activeTool = active ? "select" : modelData.id

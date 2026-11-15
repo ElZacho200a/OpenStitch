@@ -15,8 +15,8 @@ Rectangle {
     readonly property var vw: typeof view !== "undefined" ? view : null
     readonly property bool compact: width < 1100
     readonly property string openName: digitizeHub.openPanel !== "" ? digitizeHub.openPanel : viewHub.openPanel
-    color: Theme.panel
-    implicitHeight: Theme.controlHeight + 12
+    color: "transparent" // posée dans une carte (StudioCard) qui porte le fond
+    implicitHeight: Theme.controlHeight + 10
 
     component Tab: StudioButton {
         quiet: true
@@ -73,5 +73,5 @@ Rectangle {
         Tab { objectName: "simulationButton"; visible: bar.viewHub.ready; iconName: "play"; text: bar.label(qsTr("Simulation")); shortcutLabel: "Ctrl+L"; showShortcutLabel: false; tooltip: qsTr("Simulation de la couture"); checked: bar.vw !== null && bar.vw.simActive; enabled: bar.vw !== null && bar.vw.simReady; onClicked: bar.vw.simActive ? bar.vw.stopSimulation() : bar.vw.startSimulation() }
         }
     }
-    Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.divider }
+    Rectangle { anchors.bottom: parent.bottom; x: 12; width: parent.width - 24; height: 1; color: Theme.divider }
 }

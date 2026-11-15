@@ -13,15 +13,16 @@ Rectangle {
     property alias showSource: sourceSwitch.checked
     signal segmentRequested()
     color: Theme.panel
-    border.color: Theme.border
-    radius: Theme.radius
-    implicitWidth: 300
-    implicitHeight: column.implicitHeight + 16
+    border.color: Theme.divider
+    radius: Theme.cardRadius
+    // Assez large pour ses deux boutons : rien ne déborde de la carte.
+    implicitWidth: Math.max(300, actionsRow.implicitWidth + 24)
+    implicitHeight: column.implicitHeight + 24
 
     ColumnLayout {
         id: column
         anchors.fill: parent
-        anchors.margins: 8
+        anchors.margins: 12
         spacing: 6
         Text {
             objectName: "segmentationSummary"
@@ -64,6 +65,7 @@ Rectangle {
             onToggled: controls.seg.contours = checked
         }
         RowLayout {
+            id: actionsRow
             Layout.fillWidth: true
             StudioButton {
                 objectName: "segmentImageButton"
@@ -86,6 +88,7 @@ Rectangle {
             implicitHeight: confirmColumn.implicitHeight + 16
             color: Theme.accentSoft
             border.color: Theme.accent
+            radius: Theme.radius
             ColumnLayout {
                 id: confirmColumn
                 anchors.fill: parent

@@ -139,8 +139,13 @@ private slots:
         // QA-STUDIO-001 SPACE-020: the toggle used to float over the canvas with hard-coded
         // margins and covered the tool rails; it must stay in the header, above the space tabs,
         // and never over the space content (SpaceHost).
-        QVERIFY(toggle->mapRectToScene(toggle->boundingRect()).bottom() <=
-                spaceTabs->mapRectToScene(spaceTabs->boundingRect()).top() + 1.0);
+        // Depuis le parcours en étapes, les onglets vivent dans l'en-tête à côté du bouton : la
+        // garde porte donc sur l'en-tête lui-même.
+        auto* header = visual(window->contentItem(), QStringLiteral("studioHeader"));
+        QVERIFY(header);
+        const auto headerRect = header->mapRectToScene(header->boundingRect());
+        QVERIFY(headerRect.contains(toggle->mapRectToScene(toggle->boundingRect())));
+        QVERIFY(headerRect.contains(spaceTabs->mapRectToScene(spaceTabs->boundingRect())));
         QTest::mouseClick(
             window, Qt::LeftButton, {},
             toggle->mapToScene(QPointF(toggle->width() / 2, toggle->height() / 2)).toPoint());

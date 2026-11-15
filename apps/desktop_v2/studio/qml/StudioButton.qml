@@ -14,6 +14,7 @@ Controls.AbstractButton {
     property bool quiet: false
     property bool active: false
     property bool showShortcutLabel: true
+    property int textSize: Theme.bodySize
     property color contentColor: !enabled ? Theme.faint
                                        : emphasized ? Theme.accentInk
                                        : checked || active ? Theme.accent
@@ -44,7 +45,10 @@ Controls.AbstractButton {
                : button.down ? Theme.raised
                : button.hovered ? Theme.hover
                : button.quiet ? "transparent" : Theme.raised
-        border.width: button.activeFocus ? 2 : (!button.quiet && !button.emphasized ? 1 : 0)
+        // Hiérarchie : plein (emphasized) > aplat tonal (défaut) > discret (quiet). Le contour
+        // n'apparaît qu'au survol ou au focus, pour que l'écran ne soit pas une grille de cadres.
+        border.width: button.activeFocus ? 2
+                      : (button.hovered && button.enabled && !button.quiet && !button.emphasized ? 1 : 0)
         border.color: button.activeFocus ? Theme.accent : Theme.outline
         opacity: button.enabled ? (button.down ? 0.88 : 1) : 0.55
         Behavior on border.color { ColorAnimation { duration: Theme.feedbackFastMs } }
@@ -77,7 +81,7 @@ Controls.AbstractButton {
                 visible: text.length > 0
                 color: button.contentColor
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.bodySize
+                font.pixelSize: button.textSize
                 font.weight: button.emphasized || button.active || button.checked ? Font.DemiBold : Font.Normal
                 anchors.verticalCenter: parent.verticalCenter
             }

@@ -21,8 +21,8 @@ Rectangle {
             return toolCtl.hint
         return qsTr("Cliquez sur un fil ou choisissez un objet dans la liste.")
     }
-    color: Theme.background
-    implicitHeight: Theme.controlHeight + 6
+    color: "transparent" // posée dans une carte (StudioCard) qui porte le fond
+    implicitHeight: Theme.controlHeight
 
     RowLayout {
         anchors.fill: parent
@@ -69,5 +69,4 @@ Rectangle {
             Accessible.name: bar.spaceCtl ? bar.spaceCtl.summary : text
         }
     }
-    Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.divider }
 }
