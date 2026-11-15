@@ -6,6 +6,7 @@
 #include <exception>
 #include <nlohmann/json.hpp>
 
+#include "json_serialize.hpp"
 #include "openstitch/project_io/project_io.hpp"
 
 namespace openstitch::project_io {
@@ -135,7 +136,23 @@ Result<std::string> migrate_project_json(std::string_view jsonText) {
         if (root.is_discarded() || !root.is_object()) {
             return fail(ErrorCategory::InvalidFile, "project.json illisible");
         }
-        const int version = declared_schema_version(jsonText);
+        if (auto migrated = detail::migrate_project_json_in_place(root); !migrated) {
+            return std::unexpected(migrated.error());
+        }
+        return root.dump();
+    } catch (const std::exception& ex) {
+        return fail(ErrorCategory::InvalidFile, "Migration du projet impossible", ex.what());
+    }
+}
+
+Result<void> detail::migrate_project_json_in_place(json& root) {
+    try {
+        if (!root.is_object()) {
+            return fail(ErrorCategory::InvalidFile, "project.json illisible");
+        }
+        const auto versionIt = root.find("schemaVersion");
+        const int version =
+            (versionIt != root.end() && versionIt->is_number_integer()) ? versionIt->get<int>() : 0;
         if (version > kMaxReadableSchemaVersion) {
             return fail(ErrorCategory::UnsupportedFormat,
                         "Ce projet a été créé par une version plus récente d'OpenStitch "
@@ -152,7 +169,7 @@ Result<std::string> migrate_project_json(std::string_view jsonText) {
             kSteps[static_cast<std::size_t>(v - 1)].apply(root);
         }
         root["schemaVersion"] = kMaxReadableSchemaVersion;
-        return root.dump();
+        return {};
     } catch (const std::exception& ex) {
         return fail(ErrorCategory::InvalidFile, "Migration du projet impossible", ex.what());
     }
