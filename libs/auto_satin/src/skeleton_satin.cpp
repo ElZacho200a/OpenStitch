@@ -657,6 +657,79 @@ std::vector<double> bend_cuts(const Axis& axis, double window, double threshold_
     return cuts;
 }
 
+// Arbre de boîtes sur les segments consécutifs d'une polyligne de cellule : chaque nœud couvre
+// une plage de segments et leur boîte englobante. Le rognage aux cellules mesure des centaines
+// de distances point-polyligne par traversée, sur des axes échantillonnés tous les 50 µm (jusqu'à
+// plusieurs milliers de points) : une requête ne visite que les nœuds assez proches.
+struct SegmentNode {
+    P2 min{};
+    P2 max{};
+    std::uint32_t first{0}; // segments [first, last) : de pts[i] à pts[i + 1]
+    std::uint32_t last{0};
+    std::int32_t left{-1}; // enfants (-1 : feuille)
+    std::int32_t right{-1};
+};
+constexpr std::size_t kSegmentsPerLeaf = 8;
+// Marge (µm) avant d'écarter un nœud : la distance calculée à un segment de la boîte ne peut
+// pas lui être inférieure de plus d'un arrondi, très en deçà ; les résultats restent exacts.
+constexpr double kBoxSlack = 1e-6;
+
+std::int32_t build_segment_tree(const std::vector<P2>& pts, std::size_t first, std::size_t last,
+                                std::vector<SegmentNode>& out) {
+    SegmentNode node;
+    node.first = static_cast<std::uint32_t>(first);
+    node.last = static_cast<std::uint32_t>(last);
+    node.min = node.max = pts[first];
+    for (std::size_t i = first + 1; i <= last; ++i) {
+        node.min = {std::min(node.min.x, pts[i].x), std::min(node.min.y, pts[i].y)};
+        node.max = {std::max(node.max.x, pts[i].x), std::max(node.max.y, pts[i].y)};
+    }
+    const auto index = static_cast<std::int32_t>(out.size());
+    out.push_back(node);
+    if (last - first > kSegmentsPerLeaf) {
+        const std::size_t mid = first + (last - first) / 2;
+        const std::int32_t l = build_segment_tree(pts, first, mid, out);
+        const std::int32_t r = build_segment_tree(pts, mid, last, out);
+        out[static_cast<std::size_t>(index)].left = l;
+        out[static_cast<std::size_t>(index)].right = r;
+    }
+    return index;
+}
+
+std::vector<SegmentNode> segment_tree(const std::vector<P2>& pts) {
+    std::vector<SegmentNode> nodes;
+    if (pts.size() >= 2) {
+        nodes.reserve(2 * (pts.size() / kSegmentsPerLeaf + 1));
+        build_segment_tree(pts, 0, pts.size() - 1, nodes);
+    }
+    return nodes;
+}
+
+double distance_to_box(P2 lo, P2 hi, P2 q) {
+    const double dx = std::max({lo.x - q.x, 0.0, q.x - hi.x});
+    const double dy = std::max({lo.y - q.y, 0.0, q.y - hi.y});
+    return std::hypot(dx, dy);
+}
+
+double box_distance2(P2 lo, P2 hi, P2 q) {
+    const double dx = std::max({lo.x - q.x, 0.0, q.x - hi.x});
+    const double dy = std::max({lo.y - q.y, 0.0, q.y - hi.y});
+    return dx * dx + dy * dy;
+}
+
+// Vrai si la boîte est à plus de `limit` (+ marge) de q ; sans racine (filtre rapide).
+bool box_beyond(P2 lo, P2 hi, P2 q, double limit) {
+    const double r = limit + kBoxSlack;
+    return box_distance2(lo, hi, q) > r * r;
+}
+
+double distance_to_segment(const std::vector<P2>& pts, std::size_t i, P2 q) {
+    const P2 ab = pts[i + 1] - pts[i];
+    const double len2 = detail::dot(ab, ab);
+    const double t = len2 > 1e-12 ? std::clamp(detail::dot(q - pts[i], ab) / len2, 0.0, 1.0) : 0.0;
+    return detail::norm(q - (pts[i] + ab * t));
+}
+
 // Morceau de colonne entre deux coudes, support d'une cellule.
 struct Piece {
     Axis axis;
@@ -664,36 +737,91 @@ struct Piece {
     double chain_offset{0.0};
     bool extend_start{false};
     bool extend_end{false};
-    std::vector<P2> site; // polyligne de la cellule
+    std::vector<P2> site;          // polyligne de la cellule
+    std::vector<SegmentNode> tree; // arbre de boîtes de `site`, cf. segment_tree
     P2 bbox_min{};
     P2 bbox_max{};
 };
 
-double distance_to_polyline(const std::vector<P2>& pts, P2 q) {
-    double best = std::numeric_limits<double>::max();
-    for (std::size_t i = 0; i + 1 < pts.size(); ++i) {
-        const P2 ab = pts[i + 1] - pts[i];
-        const double len2 = detail::dot(ab, ab);
-        const double t =
-            len2 > 1e-12 ? std::clamp(detail::dot(q - pts[i], ab) / len2, 0.0, 1.0) : 0.0;
-        best = std::min(best, detail::norm(q - (pts[i] + ab * t)));
+void nearest_in_tree(const Piece& p, std::int32_t index, P2 q, double& best, std::size_t& hint) {
+    const SegmentNode& node = p.tree[static_cast<std::size_t>(index)];
+    if (box_beyond(node.min, node.max, q, best)) {
+        return;
     }
+    if (node.left < 0) {
+        for (std::size_t i = node.first; i < node.last; ++i) {
+            const double d = distance_to_segment(p.site, i, q);
+            if (d < best) {
+                best = d;
+                hint = i;
+            }
+        }
+        return;
+    }
+    // Le côté le plus proche d'abord : sa borne écarte plus souvent l'autre.
+    const SegmentNode& l = p.tree[static_cast<std::size_t>(node.left)];
+    const SegmentNode& r = p.tree[static_cast<std::size_t>(node.right)];
+    const bool leftFirst = box_distance2(l.min, l.max, q) <= box_distance2(r.min, r.max, q);
+    nearest_in_tree(p, leftFirst ? node.left : node.right, q, best, hint);
+    nearest_in_tree(p, leftFirst ? node.right : node.left, q, best, hint);
+}
+
+// Distance de q à la polyligne `p.site` (minimum sur ses segments). Le minimum ne dépend pas
+// de l'ordre de parcours, et un nœud écarté est prouvé plus loin que le meilleur déjà trouvé :
+// même valeur qu'un parcours complet. `hint` (segment le plus proche au dernier appel) donne
+// d'emblée une bonne borne, les points testés avançant de 40 µm le long d'une corde.
+double distance_to_site(const Piece& p, P2 q, std::size_t& hint) {
+    double best = std::numeric_limits<double>::max();
+    if (p.tree.empty()) {
+        return best;
+    }
+    if (hint + 1 < p.site.size()) {
+        best = distance_to_segment(p.site, hint, q);
+    }
+    nearest_in_tree(p, 0, q, best, hint);
     return best;
 }
 
-double distance_to_bbox(const Piece& p, P2 q) {
-    const double dx = std::max({p.bbox_min.x - q.x, 0.0, q.x - p.bbox_max.x});
-    const double dy = std::max({p.bbox_min.y - q.y, 0.0, q.y - p.bbox_max.y});
-    return std::hypot(dx, dy);
+bool within_in_tree(const Piece& p, std::int32_t index, P2 q, double limit) {
+    const SegmentNode& node = p.tree[static_cast<std::size_t>(index)];
+    if (box_beyond(node.min, node.max, q, limit)) {
+        return false;
+    }
+    if (node.left < 0) {
+        for (std::size_t i = node.first; i < node.last; ++i) {
+            if (distance_to_segment(p.site, i, q) < limit) {
+                return true;
+            }
+        }
+        return false;
+    }
+    return within_in_tree(p, node.left, q, limit) || within_in_tree(p, node.right, q, limit);
 }
 
-// Vrai si une autre cellule est strictement plus proche de q que `limit`.
-bool other_cell_closer(const std::vector<Piece>& pieces, std::size_t own, P2 q, double limit) {
-    for (std::size_t k = 0; k < pieces.size(); ++k) {
-        if (k == own || distance_to_bbox(pieces[k], q) >= limit) {
+// Vrai si un segment de `p.site` est strictement à moins de `limit` de q (même résultat que
+// « distance à p.site < limit »).
+bool site_within(const Piece& p, P2 q, double limit) {
+    return !p.tree.empty() && within_in_tree(p, 0, q, limit);
+}
+
+double distance_to_bbox(const Piece& p, P2 q) {
+    return distance_to_box(p.bbox_min, p.bbox_max, q);
+}
+
+// Vrai si une cellule parmi `candidates` (morceaux autres que celui de q) est strictement plus
+// proche de q que `limit`.
+bool other_cell_closer(const std::vector<Piece>& pieces, const std::vector<std::size_t>& candidates,
+                       P2 q, double limit) {
+    if (!(limit > 0.0)) {
+        return false; // aucune distance n'est < limit <= 0 (le test ci-dessous écarte tout)
+    }
+    for (const std::size_t k : candidates) {
+        // Filtre sans racine d'abord : il n'écarte que des morceaux que le test exact écarte.
+        if (box_beyond(pieces[k].bbox_min, pieces[k].bbox_max, q, limit) ||
+            distance_to_bbox(pieces[k], q) >= limit) {
             continue;
         }
-        if (distance_to_polyline(pieces[k].site, q) < limit) {
+        if (site_within(pieces[k], q, limit)) {
             return true;
         }
     }
@@ -707,10 +835,40 @@ std::optional<ChordInterval> clip_to_cell(const std::vector<Piece>& pieces, std:
                                           P2 u, const ChordInterval& raw, double bias) {
     constexpr double kStep = 40.0;
     constexpr int kRefine = 10;
+    std::size_t hint = 0; // segment le plus proche au dernier point testé
+    // Morceaux qui peuvent compter pour cette corde. Tous les points testés sont sur le segment
+    // p + t·u, t dans [-tb, tf] ; en chacun, la distance à sa propre cellule vaut au plus
+    // d(p) + |t| (inégalité triangulaire), donc la limite d - bias au plus `reach`. Un morceau
+    // dont la boîte est plus loin que `reach` de la boîte de ce segment serait écarté à chaque
+    // point par le test exact : on ne le parcourt pas. Même résultat, beaucoup moins de boîtes.
+    const double tf = std::max(0.0, raw.t_hi);
+    const double tb = std::max(0.0, -raw.t_lo);
+    const P2 qa = p + u * tf;
+    const P2 qb = p + u * -tb;
+    const P2 lo{std::min({p.x, qa.x, qb.x}), std::min({p.y, qa.y, qb.y})};
+    const P2 hi{std::max({p.x, qa.x, qb.x}), std::max({p.y, qa.y, qb.y})};
+    const double d0 = distance_to_site(pieces[own], p, hint);
+    const double reach = d0 + std::max(tf, tb) - bias + 1e-3; // marge d'arrondi (µm)
+    thread_local std::vector<std::size_t> candidates;
+    candidates.clear();
+    if (reach > 0.0) {
+        for (std::size_t k = 0; k < pieces.size(); ++k) {
+            if (k == own) {
+                continue;
+            }
+            const double gx =
+                std::max({pieces[k].bbox_min.x - hi.x, 0.0, lo.x - pieces[k].bbox_max.x});
+            const double gy =
+                std::max({pieces[k].bbox_min.y - hi.y, 0.0, lo.y - pieces[k].bbox_max.y});
+            if (gx * gx + gy * gy <= reach * reach) {
+                candidates.push_back(k);
+            }
+        }
+    }
     const auto inside = [&](double t) {
         const P2 q = p + u * t;
-        const double d = distance_to_polyline(pieces[own].site, q);
-        return !other_cell_closer(pieces, own, q, d - bias);
+        const double d = distance_to_site(pieces[own], q, hint);
+        return !other_cell_closer(pieces, candidates, q, d - bias);
     };
     if (!inside(0.0)) {
         return std::nullopt;
@@ -1042,6 +1200,9 @@ Result<SkeletonSatinResult> finish_from_chains(const geometry::PathSet& region,
         }
         chainAxes.push_back(std::move(axis));
         chainPieces.push_back({first, pieces.size()});
+    }
+    for (Piece& piece : pieces) {
+        piece.tree = segment_tree(piece.site);
     }
     diag.pieces = static_cast<int>(pieces.size());
 
