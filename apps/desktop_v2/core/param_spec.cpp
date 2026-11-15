@@ -288,6 +288,8 @@ std::vector<ParamSpec> completeTable() {
          3, 1, ""});
     add({"multicolor_gradient", "crosshatch_angle_deg", "Angle (hachures croisées)", K::Number,
          -360.0, 360.0, 5.0, "°"});
+    add({"multicolor_gradient", "end_density", "Densité d'arrivée (un seul fil)", K::Number, 0.0,
+         1.0, 0.05, ""});
     return t;
 }
 
@@ -718,6 +720,8 @@ Opt readP(const document::MulticolorGradientParams& p, std::string_view key) {
     PS_MM("satin_density_mm", satin_density);
     PS_N("crosshatch_layers", crosshatch_layers);
     PS_DEG("crosshatch_angle_deg", crosshatch_angle);
+    if (key == "end_density")
+        return p.end_density;
     return std::nullopt;
 }
 

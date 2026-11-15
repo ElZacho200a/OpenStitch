@@ -824,6 +824,12 @@ QString InspectorController::setStitchType(const QString& id) {
         MultiFadeSettings settings;
         settings.colors = {defaults->background, defaults->foreground};
         settings.complementary = true;
+        // Un satin devient un satin entrelacé (méthode par défaut de
+        // `default_multicolor_gradient`).
+        if (const auto spec = project_ops::default_multicolor_gradient(session_.project(),
+                                                                       ObjectId{s.ids.front()})) {
+            settings.method = static_cast<int>(spec->method);
+        }
         const auto result = createMultiFade(session_, s.ids.front(), settings);
         return finish(result.ok ? QString() : u8(result.message),
                       QStringLiteral("Fondu multicolore créé"));

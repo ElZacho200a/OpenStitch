@@ -1130,6 +1130,7 @@ fields_of<document::MulticolorGradientParams>() {
         v.push_back(mm_field<P>("satin_density_mm", &P::satin_density, 0.1, 2.0));
         v.push_back(int_field<P>("crosshatch_layers", &P::crosshatch_layers, 2, 3));
         v.push_back(deg_field<P>("crosshatch_angle_deg", &P::crosshatch_angle, -360.0, 360.0));
+        v.push_back(ratio_field<P>("end_density", &P::end_density, 0.0, 1.0));
         return v;
     }();
     return fields;

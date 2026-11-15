@@ -49,7 +49,7 @@ void remap_color_blend_links(std::vector<document::EmbroideryObject>& copies,
         if (copy.multi_blend) {
             const auto tag = *copy.multi_blend;
             std::vector<bool> found(tag.count, false);
-            bool valid = tag.count >= 2 && tag.count <= 8;
+            bool valid = tag.count >= 1 && tag.count <= 8;
             if (valid) {
                 for (const auto& other : copies) {
                     if (!other.multi_blend || other.multi_blend->group != tag.group) {

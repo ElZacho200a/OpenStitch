@@ -629,6 +629,12 @@ json params_to_json(const document::StitchParams& params) {
                 if (p.crosshatch_angle.radians != 0.0) {
                     j["crosshatchAngle"] = p.crosshatch_angle.radians;
                 }
+                if (p.stitch_angle) {
+                    j["stitchAngle"] = p.stitch_angle->radians;
+                }
+                if (p.end_density != 0.15) {
+                    j["endDensity"] = p.end_density;
+                }
             }
             // HP-STI-033 : compensation du tirage (clés écrites seulement hors défaut).
             if constexpr (std::is_same_v<T, document::ContourFillParams> ||
@@ -876,9 +882,9 @@ Result<document::StitchParams> params_from_json(const json& j) {
                 grad.texture_seed = *textureSeed;
             }
             const int geometry = g.value("geometry", 0);
-            grad.geometry = geometry == 1   ? document::DensityGeometry::Radial
-                            : geometry == 2 ? document::DensityGeometry::Curved
-                                            : document::DensityGeometry::Linear;
+            grad.geometry = document::is_valid_density_geometry(geometry)
+                                ? static_cast<document::DensityGeometry>(geometry)
+                                : document::DensityGeometry::Linear;
             const double bend = g.value("bend", 0.0);
             grad.curve_bend = std::isfinite(bend) ? std::clamp(bend, -1.0, 1.0) : 0.0;
             if (g.contains("densityStops")) {
@@ -1214,10 +1220,10 @@ Result<document::StitchParams> params_from_json(const json& j) {
         document::MulticolorGradientParams p;
         p.method = *method;
         p.complementary = j.value("complementary", true);
-        if (!j.contains("palette") || !j.at("palette").is_array() || j.at("palette").size() < 2 ||
+        if (!j.contains("palette") || !j.at("palette").is_array() || j.at("palette").empty() ||
             j.at("palette").size() > 8) {
             return fail(ErrorCategory::InvalidFile,
-                        "multicolorGradient : « palette » doit porter de 2 à 8 fils");
+                        "multicolorGradient : « palette » doit porter de 1 à 8 fils");
         }
         for (const auto& pj : j.at("palette")) {
             if (!pj.is_object() || !pj.contains("rgb")) {
@@ -1282,8 +1288,7 @@ Result<document::StitchParams> params_from_json(const json& j) {
             }
             if (tj.contains("geometry")) {
                 const int geometry = tj.at("geometry").get<int>();
-                if (geometry < 0 ||
-                    geometry > static_cast<int>(document::DensityGeometry::Curved)) {
+                if (!document::is_valid_density_geometry(geometry)) {
                     return fail(ErrorCategory::InvalidFile,
                                 "multicolorGradient : transition.geometry inconnue");
                 }
@@ -1300,6 +1305,16 @@ Result<document::StitchParams> params_from_json(const json& j) {
                         "multicolorGradient : crosshatchAngle invalide");
         }
         p.crosshatch_angle = Angle{crosshatchAngle};
+        if (j.contains("stitchAngle")) {
+            const double stitchAngle = j.at("stitchAngle").get<double>();
+            if (!std::isfinite(stitchAngle)) {
+                return fail(ErrorCategory::InvalidFile,
+                            "multicolorGradient : stitchAngle invalide");
+            }
+            p.stitch_angle = Angle{stitchAngle};
+        }
+        const double endDensity = j.value("endDensity", 0.15);
+        p.end_density = std::isfinite(endDensity) ? std::clamp(endDensity, 0.0, 1.0) : 0.15;
         return document::StitchParams{p};
     }
     return fail(ErrorCategory::InvalidFile, "Type de point inconnu : " + type);
@@ -2202,7 +2217,7 @@ Result<document::Project> project_from_json(const json& j) {
                 }
                 const int index = link["index"].get<int>();
                 const int count = link["count"].get<int>();
-                if (*group == 0 || count < 2 || count > 8 || index < 0 || index >= count) {
+                if (*group == 0 || count < 1 || count > 8 || index < 0 || index >= count) {
                     return fail(ErrorCategory::InvalidFile,
                                 "Indices de fondu multicolore invalides.");
                 }
