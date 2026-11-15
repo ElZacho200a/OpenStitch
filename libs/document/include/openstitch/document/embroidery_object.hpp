@@ -499,7 +499,8 @@ struct ContourFillParams {
 
 // Motifs de base (HP-STI-002 / HP-STI-006) : petites séquences normalisées définies dans
 // `stitch_generation::motif_pattern`. Ajouter en fin seulement (valeur persistée dans le .osp).
-enum class MotifId : std::uint8_t { Wave, Zigzag, Leaf, Heart, Diamond, Scallop };
+// `Seed` (STCH-CROS-01) : point de semis, un court point droit cousu trois fois.
+enum class MotifId : std::uint8_t { Wave, Zigzag, Leaf, Heart, Diamond, Scallop, Seed };
 
 // Motif le long d'un chemin (« motif run », HP-STI-002) : le motif est répété par abscisse
 // curviligne le long de chaque contour de la source, orienté selon la tangente.
@@ -528,6 +529,10 @@ struct MotifFillParams {
     bool hidden_underpath{true};          // liaisons longues cousues cachées (au lieu de sauts)
     Micrometers pull_compensation{0};     // HP-STI-033 : depassement du contour, 0-3 mm (defaut 0)
     PullMode pull_mode{PullMode::Manual}; // HP-STI-033 : Manual ou Auto
+    // Dispersion (STCH-CROS-01, semis) : chaque instance est déplacée d'au plus
+    // `scatter` x pas / 2 sur chaque axe et tournée d'au plus `scatter` x 180°, par un hachage
+    // déterministe de sa cellule (aucune graine stockée). [0 ; 1], 0 = grille régulière.
+    double scatter{0.0};
 
     bool operator==(const MotifFillParams&) const = default;
 };

@@ -46,7 +46,7 @@ MemberCounts memberCounts() {
     OS_COUNT_MEMBERS(BlanketStitchParams, a, b, c, d)
     OS_COUNT_MEMBERS(ContourFillParams, a, b, c, d, e, f, g, h)
     OS_COUNT_MEMBERS(MotifRunParams, a, b, c, d, e, f)
-    OS_COUNT_MEMBERS(MotifFillParams, a, b, c, d, e, f, g, h, i, j, k)
+    OS_COUNT_MEMBERS(MotifFillParams, a, b, c, d, e, f, g, h, i, j, k, l)
     OS_COUNT_MEMBERS(RadialFillParams, a, b, c, d, e, f, g, h)
     OS_COUNT_MEMBERS(SpiralFillParams, a, b, c, d, e, f, g, h, i)
     OS_COUNT_MEMBERS(CrosshatchFillParams, a, b, c, d, e, f, g, h, i)
@@ -61,7 +61,7 @@ MemberCounts memberCounts() {
              {"blanket", 4},
              {"contour_fill", 8},
              {"motif_run", 6},
-             {"motif_fill", 11},
+             {"motif_fill", 12},
              {"radial", 8},
              {"spiral", 9},
              {"crosshatch", 9},
@@ -209,7 +209,7 @@ TEST_CASE("every engine parameter field is exposed by param_spec or excluded wit
     // Le recensement chiffré (consigné dans le CSV de la famille J).
     CHECK(exposed + excluded == engineFields);
     CHECK(excluded == 6);  // rail_a, rail_b, topology, border, palette, transition
-    CHECK(exposed == 184); // + tie_down_mm, couching_*_mm (STCH-CROS-01)
+    CHECK(exposed == 185); // + tie_down_mm, couching_*_mm, scatter (STCH-CROS-01)
 }
 
 TEST_CASE("every table row reads back from a default object, inside its own range",

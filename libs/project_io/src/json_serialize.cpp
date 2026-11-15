@@ -546,6 +546,9 @@ json params_to_json(const document::StitchParams& params) {
                      {"stitchLength", p.stitch_length.value},
                      {"minLength", p.min_length.value},
                      {"hiddenUnderpath", p.hidden_underpath}};
+                if (p.scatter != 0.0) {
+                    j["scatter"] = p.scatter;
+                }
             } else if constexpr (std::is_same_v<T, document::RadialFillParams> ||
                                  std::is_same_v<T, document::SpiralFillParams>) {
                 // HP-STI-008 / 009 : mêmes clés, `type` distinct.
@@ -1124,7 +1127,7 @@ Result<document::StitchParams> params_from_json(const json& j) {
         // Motif le long d'un chemin (HP-STI-002) : clés optionnelles, valeurs bornées.
         document::MotifRunParams p;
         const int motif = j.value("motif", static_cast<int>(p.motif));
-        if (motif < 0 || motif > static_cast<int>(document::MotifId::Scallop)) {
+        if (motif < 0 || motif > static_cast<int>(document::MotifId::Seed)) {
             return fail(ErrorCategory::InvalidFile, "motifRun : motif inconnu");
         }
         p.motif = static_cast<document::MotifId>(motif);
@@ -1140,7 +1143,7 @@ Result<document::StitchParams> params_from_json(const json& j) {
         // Remplissage à motif (HP-STI-006) : clés optionnelles, valeurs bornées.
         document::MotifFillParams p;
         const int motif = j.value("motif", static_cast<int>(p.motif));
-        if (motif < 0 || motif > static_cast<int>(document::MotifId::Scallop)) {
+        if (motif < 0 || motif > static_cast<int>(document::MotifId::Seed)) {
             return fail(ErrorCategory::InvalidFile, "motifFill : motif inconnu");
         }
         p.motif = static_cast<document::MotifId>(motif);
@@ -1153,6 +1156,8 @@ Result<document::StitchParams> params_from_json(const json& j) {
             Micrometers{std::clamp(j.value("stitchLength", p.stitch_length.value), 1'000, 7'000)};
         p.min_length = Micrometers{std::clamp(j.value("minLength", p.min_length.value), 0, 7'000)};
         p.hidden_underpath = j.value("hiddenUnderpath", p.hidden_underpath);
+        const double scatter = j.value("scatter", 0.0);
+        p.scatter = std::isfinite(scatter) ? std::clamp(scatter, 0.0, 1.0) : 0.0;
         read_simple_pull(j, p);
         return document::StitchParams{p};
     }

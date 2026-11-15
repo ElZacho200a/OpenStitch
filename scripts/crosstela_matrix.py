@@ -119,7 +119,7 @@ OVERRIDES: dict[str, tuple[str, str, str]] = {
     "bayeux-stitch": ("C", "TatamiParams couching_spacing / couching_tie_spacing", "P1-B : couche posée + fils de couchage attachés (primitive livrée)"),
     "brick-shading-stitch": ("C", "Tatami/directionnel à phase en briques + fondu", "P1-C : alternance de longueurs en quinconce"),
     "brick-stitch": ("B", "TatamiParams stagger=2", "décalage d'une demi-longueur par rangée = quinconce du tatami à stagger 2"),
-    "seeding-stitch": ("C", "nouveau semis déterministe", "P2-A : semis à exclusion spatiale"),
+    "seeding-stitch": ("C", "MotifFillParams motif=Seed scatter", "P2-A : semis dispersé déterministe (primitive livrée) ; liaisons cousues visibles, donc recette Approximation"),
     "dot-stitch": ("C", "semis déterministe (paires)", "semis de points doublés"),
     "granito-stitch": ("C", "semis déterministe (amas dans les mêmes trous)", "amas de points superposés"),
     "chevron-stitch": ("C", "MotifRunParams nouveau motif", "chevron = motif périodique"),
@@ -172,7 +172,7 @@ PRIORITY = {"trellis-filling-stitch": "P1", "bayeux-stitch": "P1", "brick-shadin
 def status(slug: str) -> str:
     lot = PILOTS.get(slug)
     if lot == "L1" or slug in ("trellis-filling-stitch", "trellis-couching", "bayeux-stitch",
-                               "brick-stitch"):
+                               "brick-stitch", "seeding-stitch"):
         return "recette intégrée (openstitch-cli recipes)"
     return "planifié" if lot else "non planifié"
 

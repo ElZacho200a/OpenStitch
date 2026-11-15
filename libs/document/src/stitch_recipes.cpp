@@ -141,6 +141,21 @@ std::vector<StitchRecipe> build() {
             p.stagger = 2;
             return p;
         }());
+    add("seeding-stitch", "Point de semis", "Seeding stitch", Fill, A,
+        "https://crosstela.com/fr/learn/stitches/seeding-stitch/",
+        "Petits points dispersés et orientés au hasard (reproductible). Chaque graine est "
+        "isolée : beaucoup de coupes, et les sauts courts non coupés laissent un fil flottant.",
+        [] {
+            MotifFillParams p;
+            p.motif = MotifId::Seed;
+            p.size = Micrometers{1'500};
+            p.spacing = Micrometers{3'000};
+            p.scatter = 0.8;
+            // Des liaisons cousues entre graines se verraient sur le tissu nu et effaceraient
+            // l'effet de semis (mesuré) : sauts et coupes à la place.
+            p.hidden_underpath = false;
+            return p;
+        }());
     // STCH-CROS-01 : couche posée (points longs) puis fils de couchage attachés.
     add("bayeux-stitch", "Point de Bayeux", "Bayeux stitch", Fill, F,
         "https://crosstela.com/fr/learn/stitches/bayeux-stitch/",

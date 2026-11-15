@@ -27,6 +27,8 @@ constexpr std::array<P, 11> kHeart{P{0, 0},     P{500, -500}, P{850, 100}, P{850
                                    P{150, 100}, P{500, -500}, P{1000, 0}};
 constexpr std::array<P, 6> kDiamond{P{0, 0},      P{500, 500}, P{1000, 0},
                                     P{500, -500}, P{0, 0},     P{1000, 0}};
+// Graine : court point droit cousu trois fois (aller, retour, aller), en relief.
+constexpr std::array<P, 4> kSeed{P{0, 0}, P{1000, 0}, P{0, 0}, P{1000, 0}};
 constexpr std::array<P, 7> kScallop{P{0, 0},     P{100, 310}, P{250, 450}, P{500, 500},
                                     P{750, 450}, P{900, 310}, P{1000, 0}};
 
@@ -52,6 +54,8 @@ std::span<const MotifPoint> motif_pattern(document::MotifId id) {
         return kDiamond;
     case MotifId::Scallop:
         return kScallop;
+    case MotifId::Seed:
+        return kSeed;
     case MotifId::Wave:
         break;
     }

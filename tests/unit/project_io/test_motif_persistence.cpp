@@ -53,7 +53,8 @@ TEST_CASE("motif run: osp round-trip keeps every setting") {
 TEST_CASE("motif fill: osp round-trip keeps every setting") {
     document::Project project = base_project();
     document::MotifFillParams params;
-    params.motif = document::MotifId::Scallop;
+    params.motif = document::MotifId::Seed; // STCH-CROS-01 : dernier motif, avec dispersion
+    params.scatter = 0.65;
     params.size = Micrometers{5'500};
     params.spacing = Micrometers{6'500};
     params.angle = Angle{0.75};

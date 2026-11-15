@@ -85,8 +85,14 @@ long du fil posé ; `tieDown` dans l'OSP, `tie_down_mm` dans `set_params` et l'i
 L3a (livré) : couchage du tatami (`TatamiParams::couching_spacing` / `couching_tie_spacing` :
 fils perpendiculaires à la couche posée, attachés à chaque pénétration) → recette
 `bayeux-stitch` ; `brick-stitch` reclassé B (quinconce du tatami à `stagger` 2, d'où B 28 / C 139
-depuis l'inventaire initial). Restent brick-shading (briques + fondu multicolore), seeding et
-or-nue (simulation).
+depuis l'inventaire initial). L3b (livré) : semis — motif `Seed` (court point cousu trois fois) et
+`MotifFillParams::scatter` (déplacement et rotation de chaque instance par hachage déterministe
+de sa cellule, sans graine stockée) → recette `seeding-stitch`, marquée *approximation* : la main passe d'une graine à l'autre
+par l'envers, la machine non. Avec liaisons cousues, elles dominent le rendu ; la recette les
+désactive, d'où des graines isolées mais 55 coupes et 95 sauts sur une ellipse 40 x 30 mm
+(3 538 coupes sur 240 x 240 mm, voir [banc](recipe-benchmark.md) : inutilisable en grand aplat en l'état). Piste : router les graines par
+proximité pour raccourcir les sauts sous le seuil de coupe. Restent
+brick-shading (briques + fondu multicolore) et or-nue (simulation).
 
 Mesure (ellipse 40 x 30 mm, recette `trellis-filling-stitch`, Debug) : 415 points, 11 coupes,
 15 sauts. Avec les liaisons cachées du croisé, 355 points et 1 coupe, mais les liaisons cousues
