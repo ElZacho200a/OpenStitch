@@ -244,6 +244,11 @@ int main(int argc, char** argv) {
         project = std::move(*loaded);
         std::printf("projet %s : objets vectoriels %zu | objets brodés %zu\n", fromOsp.c_str(),
                     project.vector_objects.size(), project.embroidery_objects.size());
+        // Réécrit le projet tel que chargé : comparer les octets valide un changement de lecture.
+        if (!saveOsp.empty() && !project_io::save_project(saveOsp, project)) {
+            std::fprintf(stderr, "écriture de %s impossible\n", saveOsp.c_str());
+            return 1;
+        }
     } else {
         image::Image img;
         measure("load_image", reps, [&] {

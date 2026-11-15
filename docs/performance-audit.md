@@ -622,3 +622,35 @@ auto-satin et golden (175 cas), puis `ctest` Release complet.
 **Reste.** Le rognage reste le premier poste (~0,7 s sur 1 s en monofil pour tentabrode) : le pas
 de 40 µm et la dichotomie à 10 niveaux fixent le nombre de tests ; les réduire changerait les
 traversées, donc la broderie : à traiter comme un changement de comportement, mesuré sur la qualité.
+
+## 16. Audit du 2026-11-15 : lecture des projets (`load_project`)
+
+Sur de vrais projets, la lecture coûtait 2 à 4 fois l'enregistrement (Impossibke 215 ms, RuieGothique
+395 ms). Mesure par étape (RuieGothique, sondes temporaires) : zip 19 ms, première lecture du JSON
+36 ms, **migration 137 ms**, deuxième lecture du JSON 49 ms, `project_from_json` 14 ms, PNG 22 ms,
+labels 3 ms. `project.json` était lu quatre fois et réécrit une fois : `load_project_impl` le lisait,
+`migrate_project_json` le relisait, `declared_schema_version` le relisait encore, puis `dump()`, puis
+`load_project_impl` relisait le texte migré. C'était le cas même pour un fichier déjà à la dernière
+version, où aucune étape ne s'applique.
+
+**Changement.** `detail::migrate_project_json_in_place` applique les mêmes contrôles de version et les
+mêmes étapes à l'arbre déjà lu ; `migrate_project_json` (API texte, inchangée) l'enveloppe ;
+`load_project_impl` et `fragment_from_json` l'appellent directement. Le document obtenu est le même :
+les lecteurs de `json_serialize.cpp` acceptent indifféremment entiers signés et non signés (seule
+différence possible entre une valeur insérée par une étape et la même valeur relue), et les réels
+sortent identiques d'un aller-retour `dump`/`parse`.
+
+**Preuve d'équivalence.** Les 17 projets de `Documents\Broderie` sont chargés puis réenregistrés
+(`openstitch-bench --from-osp p --save-osp q`, option ajoutée) avec l'ancien et le nouveau code :
+SHA-256 identiques pour les 16 projets lisibles ; `TheyAskedForIT.osp` (ancien format de fondu
+multicolore) est refusé par les deux versions.
+
+**Résultats** (Release, `--reps 7`, médianes) :
+
+| Projet | `load_project` avant | après | `save_project` |
+|---|---:|---:|---:|
+| Impossibke.osp (1,9 Mo) | 215 ms | **63 ms** | 55 ms |
+| RuieGothique.osp (2,4 Mo) | 395 ms | **105 ms** | 98 ms |
+
+**Reste.** La lecture vaut maintenant l'enregistrement. Le zip (19 ms) et le PNG (22 ms) sont
+séquentiels et indépendants de l'analyse du JSON (36 ms) : les recouvrir gagnerait encore ~20 ms.
