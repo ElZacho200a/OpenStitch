@@ -1,115 +1,28 @@
 // SPDX-License-Identifier: Apache-2.0
 import QtQuick
-import QtQuick.Layouts
 import "../.."
 
-// Rail des OUTILS DE POINTS (l'espace « Points » ne porte plus les outils de dessin vectoriel) :
-// sélection et déplacement de la vue, gestes de numérisation (points, fondu, satin, guide de
-// direction, ligne de rupture, barreaux), ajustement du motif. Les raccourcis sont des `Shortcut`
-// QML indépendants du focus. Tolérant à l'absence du contexte `digitizer`.
-ColumnLayout {
+// Barre latérale de l'espace Points sur la barre commune : gestes de numérisation (points, satin,
+// barreaux, guide de direction, ligne de rupture). L'espace « Points » ne porte pas les outils de
+// dessin vectoriel. Tolérant à l'absence du contexte `digitizer`.
+CanvasToolRail {
     id: rail
     objectName: "pointsToolRail"
-    required property var canvas
-    property bool workspaceActive: true
     readonly property var toolCtl: typeof tools !== "undefined" ? tools : null
     readonly property var digitizeCtl: typeof digitizer !== "undefined" ? digitizer : null
-    // [mode, libellé, icône, infobulle, raccourci]
-    readonly property var gestures: [
-        ["points", qsTr("Points"), "stitches", qsTr("Geste points : poser des points à la main"), "J"],
-        ["satin", qsTr("Satin"), "satin", qsTr("Geste satin : tracer une colonne satin"), "S"],
-        ["rungs", qsTr("Barreaux"), "rungs", qsTr("Barreaux d'un satin"), ""],
-        ["guide", qsTr("Guide"), "guide", qsTr("Guide de direction du remplissage"), "D"],
-        ["break", qsTr("Rupture"), "break", qsTr("Ligne de rupture du remplissage"), "Shift+D"]
-    ]
-    spacing: 6
-
-    function toggleMode(mode) {
-        if (!digitizeCtl)
-            return
-        canvas.panMode = false
-        digitizeCtl.mode = digitizeCtl.mode === mode ? "" : mode
+    toolPrefix: "gesture_"
+    fitTooltip: qsTr("Ajuster le motif à la fenêtre")
+    entries: rail.digitizeCtl ? [
+        { id: "points", icon: "stitches", label: qsTr("Geste points : poser des points à la main"), shortcut: "J", group: "gestes" },
+        { id: "satin", icon: "satin", label: qsTr("Geste satin : tracer une colonne satin"), shortcut: "S", group: "gestes" },
+        { id: "rungs", icon: "rungs", label: qsTr("Barreaux d'un satin"), shortcut: "", group: "gestes" },
+        { id: "guide", icon: "guide", label: qsTr("Guide de direction du remplissage"), shortcut: "D", group: "remplissage" },
+        { id: "break", icon: "break", label: qsTr("Ligne de rupture du remplissage"), shortcut: "Shift+D", group: "remplissage" }
+    ] : []
+    activeTool: rail.digitizeCtl ? rail.digitizeCtl.mode : ""
+    onToolTriggered: id => {
+        if (rail.digitizeCtl) rail.digitizeCtl.mode = id
+        if (rail.toolCtl) rail.toolCtl.activeTool = "select"
     }
-
-    StudioButton {
-        objectName: "selectToolButton"
-        iconName: "select"
-        tooltip: studio.selectionTool.label
-        shortcutLabel: studio.selectionTool.shortcut
-        quiet: true
-        active: !rail.canvas.panMode && (!rail.digitizeCtl || rail.digitizeCtl.mode === "")
-        onClicked: {
-            rail.canvas.panMode = false
-            if (rail.digitizeCtl) rail.digitizeCtl.mode = ""
-            if (rail.toolCtl) rail.toolCtl.activeTool = "select"
-        }
-    }
-    StudioButton {
-        objectName: "panToolButton"
-        iconName: "pan"
-        tooltip: studio.panTool.label
-        shortcutLabel: studio.panTool.shortcut
-        quiet: true
-        active: rail.canvas.panMode
-        onClicked: {
-            rail.canvas.panMode = true
-            if (rail.digitizeCtl) rail.digitizeCtl.mode = ""
-            if (rail.toolCtl) rail.toolCtl.activeTool = "select"
-        }
-    }
-
-    Rectangle {
-        visible: rail.digitizeCtl !== null
-        Layout.alignment: Qt.AlignHCenter
-        Layout.topMargin: 4
-        Layout.bottomMargin: 4
-        implicitWidth: 24
-        implicitHeight: 1
-        color: Theme.divider
-    }
-    Repeater {
-        model: rail.digitizeCtl ? rail.gestures : []
-        delegate: StudioButton {
-            required property var modelData
-            objectName: "gesture_" + modelData[0]
-            iconName: modelData[2]
-            quiet: true
-            checkable: true
-            checked: rail.digitizeCtl !== null && rail.digitizeCtl.mode === modelData[0]
-            tooltip: modelData[3]
-            shortcutLabel: modelData[4]
-            Layout.alignment: Qt.AlignHCenter
-            onClicked: rail.toggleMode(modelData[0])
-        }
-    }
-
-    Rectangle {
-        Layout.alignment: Qt.AlignHCenter
-        Layout.topMargin: 4
-        Layout.bottomMargin: 4
-        implicitWidth: 24
-        implicitHeight: 1
-        color: Theme.divider
-    }
-    StudioButton {
-        objectName: "fitToolButton"
-        iconName: "fit"
-        tooltip: qsTr("Ajuster le motif à la fenêtre")
-        shortcutLabel: "F"
-        quiet: true
-        onClicked: rail.canvas.fitDesign()
-    }
-
-    Repeater {
-        model: rail.digitizeCtl ? rail.gestures : []
-        delegate: Item {
-            id: holder
-            required property var modelData
-            Shortcut {
-                sequence: holder.modelData[4]
-                enabled: rail.workspaceActive && sequence !== ""
-                onActivated: rail.toggleMode(holder.modelData[0])
-            }
-        }
-    }
+    onFitRequested: if (rail.canvas) rail.canvas.fitDesign()
 }

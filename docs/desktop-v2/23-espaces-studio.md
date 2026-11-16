@@ -120,6 +120,32 @@ préférences, aide, compagnon, barre d'état (indicateur de rendu GPU/CPU, « R
 Spécifique au centre historique et donc dans `PointsSpace.qml` : gestes de numérisation (famille I :
 `digitize: root.digitizeController`, `HandlesOverlay`), `DigitizeHub`, `ViewPanel` (bascule réaliste).
 
+### Barre latérale commune (`CanvasToolRail.qml`)
+
+Chaque espace pose à gauche du canevas la même barre latérale. **Règle : elle ne porte que des
+outils modaux**, ceux qui changent ce que fait un clic sur le canevas. Les actions ponctuelles
+(fusionner, simplifier, recolorer, nettoyer…) restent dans le panneau, la barre d'édition ou le
+menu contextuel. Ordre fixe : **Sélection** et **Main**, puis les outils de l'espace séparés par
+groupe, puis **Ajuster** (`F`). Recliquer l'outil actif ou son raccourci revient à la sélection ;
+les raccourcis ne sont actifs que dans l'espace visible.
+
+| Espace | Outils (raccourci) | Source de l'état |
+|---|---|---|
+| Image | Recadrer (`C`), Règle (`M`), Fond transparent (`Maj+I`) | `imageSpace.tool` |
+| Segmentation | Pinceau de frontière (`U`), Gomme (`Maj+U`) | `regionTools.tool` |
+| Vecteurs | Formes, Tracés, Édition (registre d'outils) | `tools.activeTool` |
+| Points | Gestes points, satin, barreaux, guide, rupture | `digitizer.mode` |
+
+Les options de l'outil actif s'affichent sur le canevas, à côté de la barre (rayon du pinceau et
+dernier message en Segmentation ; tolérance, zone contiguë ou longueur réelle en Image).
+
+**Documents multi-calques** (`.ora`, lot d'images) : les calques partagent une toile et une
+échelle communes. La **règle** et la taille de l'image changent l'échelle de **tous** les calques
+du même facteur. Le **recadrage** s'applique, en une étape, à tous les calques dont l'image de
+travail a la taille du calque actif (la toile commune d'un `.ora`) ; les autres ne bougent pas.
+Le **fond transparent** (`image::ColorToAlphaOp`, non destructif, empilé avec les autres
+traitements) agit sur le **calque actif** seulement, car chaque calque a son propre fond.
+
 ### Sous-composants et CMake
 
 Les sous-composants vont dans `qml/spaces/<x>/…` (minuscule) et se déclarent dans

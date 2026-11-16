@@ -1,47 +1,31 @@
 // SPDX-License-Identifier: Apache-2.0
 import QtQuick
 import QtQml
-import QtQuick.Layouts
 import "."
 
-// Rail des outils de dessin et d'édition vectorielle : libellés, raccourcis et ordre viennent du
-// ToolRegistry (via ToolController.tools). Tolérant à l'absence du contexte `tools`.
-ColumnLayout {
+// Barre latérale de l'espace Vecteurs : outils de dessin et d'édition vectorielle sur la barre
+// commune. Libellés, raccourcis, groupes et ordre viennent du ToolRegistry (via
+// ToolController.tools) ; seule l'icône est choisie ici. Tolérant à l'absence du contexte `tools`.
+CanvasToolRail {
     id: rail
     objectName: "toolRail"
-    property bool workspaceActive: true
     readonly property var toolCtl: typeof tools !== "undefined" ? tools : null
-    visible: toolCtl !== null
-    spacing: 6
-
-    function shortcutOf(text) { return text.replace("Maj+", "Shift+") }
-
-    Repeater {
-        model: rail.toolCtl ? rail.toolCtl.tools : []
-        delegate: StudioButton {
-            required property var modelData
-            objectName: "tool_" + modelData.id
-            text: modelData.glyph
-            quiet: true
-            tooltip: modelData.label
-            shortcutLabel: modelData.shortcut
-            // Le raccourci reste dans l'infobulle : le rail ne montre que le pictogramme.
-            showShortcutLabel: false
-            textSize: Theme.headingSize
-            implicitWidth: Theme.controlHeight
-            active: rail.toolCtl && rail.toolCtl.activeTool === modelData.id
-            Accessible.description: active ? qsTr("Outil actif") : modelData.label
-            onClicked: rail.toolCtl.activeTool = active ? "select" : modelData.id
-        }
+    readonly property var icons: ({
+        "draw.rectangle": "rectangle", "draw.ellipse": "ellipse", "draw.polygon": "polygon",
+        "draw.polygon-regular": "regular", "draw.bezier": "bezier", "draw.freeform": "freeform",
+        "node.edit": "node", "knife": "knife", "warp-brush": "warp", "bucket": "bucket"
+    })
+    fitTooltip: qsTr("Ajuster le motif à la fenêtre")
+    toolPrefix: "tool_"
+    entries: {
+        if (!rail.toolCtl)
+            return []
+        return rail.toolCtl.tools.map(t => ({
+            id: t.id, icon: rail.icons[t.id] || "edit", label: t.label, shortcut: t.shortcut,
+            group: t.group
+        }))
     }
-
-    Instantiator {
-        model: rail.toolCtl ? rail.toolCtl.tools : []
-        delegate: Shortcut {
-            required property var modelData
-            sequence: rail.shortcutOf(modelData.shortcut)
-            enabled: rail.workspaceActive && sequence !== ""
-            onActivated: rail.toolCtl.activeTool = rail.toolCtl.activeTool === modelData.id ? "select" : modelData.id
-        }
-    }
+    activeTool: rail.toolCtl && rail.toolCtl.activeTool !== "select" ? rail.toolCtl.activeTool : ""
+    onToolTriggered: id => { if (rail.toolCtl) rail.toolCtl.activeTool = id === "" ? "select" : id }
+    onFitRequested: if (rail.canvas) rail.canvas.fitDesign()
 }

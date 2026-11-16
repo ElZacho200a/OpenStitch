@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "image_space_controller.hpp"
 
+#include <QColor>
+#include <QImage>
 #include <QVariantMap>
 #include <algorithm>
 #include <cmath>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include "gpu_canvas.hpp"
@@ -12,6 +15,7 @@
 #include "image_prep.hpp"
 #include "openstitch/commands/command.hpp"
 #include "openstitch/document/project.hpp"
+#include "openstitch/image/ops.hpp"
 #include "studio_controller.hpp"
 
 namespace openstitch::desktop_v2::studio {
@@ -45,23 +49,87 @@ std::optional<std::pair<int, int>> dimensionsAfter(const std::vector<image::Imag
     return std::pair{w, h};
 }
 
-// Change l'échelle physique de l'image source (mm par pixel). Les pixels, la segmentation et les
-// traitements ne bougent pas ; son propre inverse par revert().
+// Identifiants de toutes les sources image du document (racine historique comprise), dans
+// l'ordre du document : la base des opérations qui doivent garder les calques alignés.
+std::vector<ObjectId> imageSourceIds(const document::Project& project) {
+    std::vector<ObjectId> ids;
+    if (!project.original.empty()) {
+        ids.push_back(ObjectId{});
+    }
+    for (const auto& entry : project.image_sources) {
+        if (!entry.source.original.empty()) {
+            ids.push_back(entry.calque);
+        }
+    }
+    return ids;
+}
+
+document::ImageSource& sourceOf(document::Project& project, ObjectId id) {
+    return *const_cast<document::ImageSource*>(project.findImageSource(id));
+}
+
+// Change l'échelle physique (mm par pixel) de TOUTES les sources image d'un même facteur, pour
+// que les calques d'une composition (un `.ora`, un lot importé ensemble) restent alignés. Les
+// pixels, la segmentation et les traitements ne bougent pas ; son propre inverse par revert().
 class SetMmPerPxCommand final : public commands::ICommand {
 public:
-    explicit SetMmPerPxCommand(double mmPerPx) : next_(mmPerPx) {}
+    explicit SetMmPerPxCommand(double factor) : factor_(factor) {}
     void apply(document::Project& project) override {
-        previous_ = project.imageSource().mm_per_px.value;
-        project.imageSource().mm_per_px.value = next_;
+        previous_.clear();
+        for (const auto id : imageSourceIds(project)) {
+            auto& source = sourceOf(project, id);
+            previous_.emplace_back(id, source.mm_per_px.value);
+            source.mm_per_px.value *= factor_;
+        }
     }
     void revert(document::Project& project) override {
-        project.imageSource().mm_per_px.value = previous_;
+        for (const auto& [id, value] : previous_) {
+            if (project.findImageSource(id) != nullptr) {
+                sourceOf(project, id).mm_per_px.value = value;
+            }
+        }
     }
     [[nodiscard]] std::string name() const override { return "Redimensionner l'image"; }
 
 private:
-    double next_;
-    double previous_{0.0};
+    double factor_;
+    std::vector<std::pair<ObjectId, double>> previous_;
+};
+
+// Ajoute la même opération à plusieurs sources nommées (recadrage commun des calques alignés,
+// ou une seule source). Les sources sont fixées à la construction : changer de calque actif
+// entre l'action et son annulation ne déplace pas l'annulation sur un autre calque.
+class AppendOpToSourcesCommand final : public commands::ICommand {
+public:
+    AppendOpToSourcesCommand(std::vector<ObjectId> sources, image::ImageOp op)
+        : sources_(std::move(sources)), op_(std::move(op)) {}
+    void apply(document::Project& project) override {
+        stashed_.clear();
+        for (const auto id : sources_) {
+            auto& source = sourceOf(project, id);
+            source.ops.push_back(op_);
+            stashed_.push_back(std::move(source.segmentation));
+            source.segmentation.reset();
+        }
+    }
+    void revert(document::Project& project) override {
+        for (std::size_t i = sources_.size(); i-- > 0;) {
+            auto& source = sourceOf(project, sources_[i]);
+            source.ops.pop_back();
+            source.segmentation = std::move(stashed_[i]);
+        }
+        stashed_.clear();
+    }
+    [[nodiscard]] std::string name() const override {
+        return sources_.size() > 1 ? image::op_name(op_) + " (tous les calques)"
+                                   : image::op_name(op_);
+    }
+    [[nodiscard]] bool affectsEmbroidery() const override { return false; }
+
+private:
+    std::vector<ObjectId> sources_;
+    image::ImageOp op_;
+    std::vector<std::optional<segmentation::Segmentation>> stashed_;
 };
 
 // Retire l'opération `index` de la pile. Invalide la segmentation (l'image de travail change) et
@@ -127,7 +195,9 @@ ImageSpaceController::ImageSpaceController(StudioController& studio, ImageContro
         imageChanged_ = false;
         hadSegmentation_ = false;
         cropActive_ = false;
+        tool_.clear();
         lastOpCount_ = 0;
+        emit toolChanged();
         refresh();
     });
     connect(&images_, &ImageController::imagesChanged, this, [this] { publishLayer(); });
@@ -182,7 +252,7 @@ QString ImageSpaceController::scaleImage(double percent) {
     if (std::abs(next - mmPerPx()) < 1e-12) {
         return {};
     }
-    studio_.session().execute(std::make_unique<SetMmPerPxCommand>(next));
+    studio_.session().execute(std::make_unique<SetMmPerPxCommand>(next / mmPerPx()));
     publishLayer();
     emit changed();
     setMessage(tr("Image redimensionnée à %1 × %2 mm (Ctrl+Z pour annuler).")
@@ -454,7 +524,9 @@ void ImageSpaceController::beginCrop() {
     cw_ = std::round(w * 0.8);
     ch_ = std::round(h * 0.8);
     cropActive_ = true;
+    tool_.clear();
     emit cropChanged();
+    emit toolChanged();
 }
 
 void ImageSpaceController::cancelCrop() {
@@ -463,6 +535,7 @@ void ImageSpaceController::cancelCrop() {
     }
     cropActive_ = false;
     emit cropChanged();
+    emit toolChanged();
 }
 
 void ImageSpaceController::setCrop(double x, double y, double w, double h) {
@@ -484,15 +557,140 @@ QString ImageSpaceController::applyCrop() {
     if (!cropActive_) {
         return tr("Aucun cadre de recadrage.");
     }
-    const auto refusal = images_.applyPrep(QStringLiteral("crop"), {{QStringLiteral("x"), cx_},
-                                                                    {QStringLiteral("y"), cy_},
-                                                                    {QStringLiteral("w"), cw_},
-                                                                    {QStringLiteral("h"), ch_}});
-    if (refusal.isEmpty()) {
-        cropActive_ = false;
-        emit cropChanged();
+    // Validation commune (bornes, cadre plein) par le service, sur le calque actif.
+    const int x = static_cast<int>(cx_), y = static_cast<int>(cy_);
+    const int w = static_cast<int>(cw_), h = static_cast<int>(ch_);
+    const int iw = images_.imageWidth(), ih = images_.imageHeight();
+    if (w < 8 || h < 8 || x < 0 || y < 0 || x + w > iw || y + h > ih) {
+        const auto text = tr("Le recadrage doit rester dans l'image (%1 × %2 px) et mesurer 8 px "
+                             "au moins.")
+                              .arg(iw)
+                              .arg(ih);
+        setMessage(text);
+        return text;
     }
-    return refusal;
+    if (x == 0 && y == 0 && w == iw && h == ih) {
+        const auto text = tr("Le recadrage couvre toute l'image : rien à faire.");
+        setMessage(text);
+        return text;
+    }
+    // Calques alignés : même taille de travail que le calque actif (toile commune d'un `.ora`).
+    auto& project = studio_.session().project();
+    const auto active = project.imageSourceId();
+    std::vector<ObjectId> targets;
+    for (const auto id : imageSourceIds(project)) {
+        const auto& source = *project.findImageSource(id);
+        const auto size =
+            dimensionsAfter(source.ops, source.original.width, source.original.height);
+        if (id == active || (size && size->first == iw && size->second == ih)) {
+            targets.push_back(id);
+        }
+    }
+    studio_.session().execute(
+        std::make_unique<AppendOpToSourcesCommand>(targets, image::CropOp{x, y, w, h}));
+    cropActive_ = false;
+    emit cropChanged();
+    emit toolChanged();
+    setMessage(targets.size() > 1
+                   ? tr("Recadrage appliqué aux %1 calques alignés (Ctrl+Z pour annuler).")
+                         .arg(targets.size())
+                   : tr("Image recadrée (Ctrl+Z pour annuler)."));
+    return {};
+}
+
+QString ImageSpaceController::tool() const {
+    return cropActive_ ? QStringLiteral("crop") : tool_;
+}
+
+void ImageSpaceController::setTool(const QString& tool) {
+    const QString next = tool == QLatin1String("crop") || tool == QLatin1String("pick") ||
+                                 tool == QLatin1String("measure")
+                             ? tool
+                             : QString();
+    if (next == this->tool()) {
+        return;
+    }
+    tool_ = next == QLatin1String("crop") ? QString() : next;
+    if (next == QLatin1String("crop")) {
+        beginCrop();
+    } else {
+        cancelCrop();
+    }
+    emit toolChanged();
+}
+
+void ImageSpaceController::setPickTolerance(int tolerance) {
+    const int next = std::clamp(tolerance, 0, 255);
+    if (next != pickTolerance_) {
+        pickTolerance_ = next;
+        emit toolChanged();
+    }
+}
+
+void ImageSpaceController::setPickContiguous(bool contiguous) {
+    if (contiguous != pickContiguous_) {
+        pickContiguous_ = contiguous;
+        emit toolChanged();
+    }
+}
+
+int ImageSpaceController::imageLayerCount() const {
+    return static_cast<int>(imageSourceIds(studio_.session().project()).size());
+}
+
+QString ImageSpaceController::colorAt(double sx, double sy) const {
+    const auto after = images_.images()->get(QStringLiteral("after"));
+    const auto p = screenToImage(sx, sy);
+    const int iw = images_.imageWidth();
+    const int ih = images_.imageHeight();
+    if (after.isNull() || iw <= 0 || ih <= 0 || p.x() < 0.0 || p.y() < 0.0 || p.x() >= iw ||
+        p.y() >= ih) {
+        return {};
+    }
+    // L'image publiée peut être réduite (très grandes images) : on y échantillonne au prorata.
+    const int x = std::min(after.width() - 1, static_cast<int>(p.x() * after.width() / iw));
+    const int y = std::min(after.height() - 1, static_cast<int>(p.y() * after.height() / ih));
+    return after.pixelColor(x, y).name(QColor::HexRgb);
+}
+
+QString ImageSpaceController::makeTransparentAt(double sx, double sy) {
+    if (!hasImage()) {
+        const auto text = tr("Importez d'abord une image.");
+        setMessage(text);
+        return text;
+    }
+    const auto hex = colorAt(sx, sy);
+    if (hex.isEmpty()) {
+        const auto text = tr("Cliquez dans l'image pour choisir la couleur du fond.");
+        setMessage(text);
+        return text;
+    }
+    const QColor color(hex);
+    const auto p = screenToImage(sx, sy);
+    const image::ColorToAlphaOp op{static_cast<std::uint8_t>(color.red()),
+                                   static_cast<std::uint8_t>(color.green()),
+                                   static_cast<std::uint8_t>(color.blue()),
+                                   pickTolerance_,
+                                   pickContiguous_,
+                                   static_cast<int>(std::floor(p.x())),
+                                   static_cast<int>(std::floor(p.y()))};
+    const auto active = studio_.session().project().imageSourceId();
+    studio_.session().execute(
+        std::make_unique<AppendOpToSourcesCommand>(std::vector<ObjectId>{active}, op));
+    setMessage(tr("%1 rendu transparent sur ce calque (Ctrl+Z pour annuler).").arg(hex));
+    return {};
+}
+
+QString ImageSpaceController::scaleFromMeasure(double lengthPx, double realMm) {
+    if (!(lengthPx >= 1.0) || !(realMm > 0.0) || !std::isfinite(lengthPx + realMm)) {
+        const auto text = tr("Mesurez un segment dans l'image puis indiquez sa longueur réelle.");
+        setMessage(text);
+        return text;
+    }
+    if (mmPerPx() <= 0.0) {
+        return tr("Importez d'abord une image.");
+    }
+    return scaleImage(realMm / lengthPx / mmPerPx() * 100.0);
 }
 
 QPointF ImageSpaceController::imageToScreen(double px, double py) const {

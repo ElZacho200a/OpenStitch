@@ -25,6 +25,7 @@
 #include "gpu_canvas.hpp"
 #include "image_controller.hpp"
 #include "image_space_controller.hpp"
+#include "openstitch/image/ops.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
 #include "region_controller.hpp"
 #include "segmentation_space_controller.hpp"
@@ -344,7 +345,7 @@ private slots:
         canvas->zoomAt(1.2, 100, 100);
         QCOMPARE(canvas->sourceImage().dataRevision, dataRevision);
         QCOMPARE(imageSpace.layerRevision(), layerRevision);
-        press(window, QStringLiteral("imageFit"));
+        press(window, QStringLiteral("fitToolButton"));
 
         // --- 2. une opération d'image : aperçu non destructif puis application ----------------
         const auto opsBase = session.project().ops;
@@ -439,7 +440,7 @@ private slots:
             QStringLiteral("upToDate"), 5'000);
 
         // --- 5. recadrage au canevas ------------------------------------------------------------
-        QVERIFY(press(window, QStringLiteral("imageCropTool")));
+        QVERIFY(press(window, QStringLiteral("imageTool_crop")));
         QVERIFY(imageSpace.cropActive());
         auto* cropOverlay = named(window, QStringLiteral("cropOverlay"));
         QVERIFY(cropOverlay && cropOverlay->isVisible());
@@ -462,9 +463,9 @@ private slots:
         QVERIFY(session.undo());
         QTRY_COMPARE_WITH_TIMEOUT(images.imageWidth(), w, 10'000);
         // Échap abandonne le cadre sans toucher au document.
-        QVERIFY(press(window, QStringLiteral("imageCropTool")));
+        QVERIFY(press(window, QStringLiteral("imageTool_crop")));
         QVERIFY(imageSpace.cropActive());
-        QVERIFY(press(window, QStringLiteral("imageCropTool")));
+        QVERIFY(press(window, QStringLiteral("imageTool_crop")));
         QVERIFY(!imageSpace.cropActive());
         QCOMPARE(session.project().ops == opsBase, true);
 
@@ -582,6 +583,151 @@ private slots:
         QTRY_COMPARE(images.imageWidth(), 50);
         QVERIFY(session.undo());
         QTRY_COMPARE(images.imageWidth(), width);
+    }
+
+    // Document à deux calques image alignés (même toile, comme un `.ora`) : le recadrage et
+    // l'échelle s'appliquent aux deux en UNE étape, l'annulation les restaure ensemble.
+    void multiLayerCropAndScaleKeepLayersAligned() {
+        DocumentSession session;
+        StudioController studio(session);
+        ImageController images(studio);
+        ImageSpaceController imageSpace(studio, images);
+        QTemporaryDir dir;
+        auto project = digitizedProject(writeImage(dir.path()));
+        project.embroidery_objects.clear(); // l'échelle n'est libre que sans objets brodés
+        document::ImageSourceLayer second;
+        second.calque = ObjectId{9001};
+        second.source.original = project.original;
+        second.source.mm_per_px = project.mm_per_px;
+        project.calques.push_back(document::Calque{ObjectId{9001}, "Calque 2"});
+        project.image_sources.push_back(std::move(second));
+        session.replaceProject(std::move(project), true);
+        QTRY_VERIFY_WITH_TIMEOUT(images.imageWidth() > 0, 10'000);
+        QCOMPARE(imageSpace.imageLayerCount(), 2);
+        const auto& p = session.project();
+        const double mm = p.mm_per_px.value;
+
+        // Échelle : les deux calques changent du même facteur.
+        const auto depth = session.undoNames().size();
+        QCOMPARE(imageSpace.scaleImage(200.0), QString());
+        QCOMPARE(session.undoNames().size(), depth + 1);
+        QCOMPARE(p.mm_per_px.value, mm * 2.0);
+        QCOMPARE(p.image_sources.front().source.mm_per_px.value, mm * 2.0);
+        // Règle : 100 px mesurés valent 50 mm, donc 0,5 mm/px pour tous les calques.
+        QCOMPARE(imageSpace.scaleFromMeasure(100.0, 50.0), QString());
+        QVERIFY(std::abs(p.mm_per_px.value - 0.5) < 1e-9);
+        QVERIFY(std::abs(p.image_sources.front().source.mm_per_px.value - 0.5) < 1e-9);
+        QVERIFY(!imageSpace.scaleFromMeasure(0.0, 50.0).isEmpty());
+        QVERIFY(session.undo());
+        QVERIFY(session.undo());
+        QCOMPARE(p.mm_per_px.value, mm);
+        QCOMPARE(p.image_sources.front().source.mm_per_px.value, mm);
+
+        // Recadrage par la barre : les deux piles reçoivent le même cadre, une seule étape.
+        imageSpace.setTool(QStringLiteral("crop"));
+        QVERIFY(imageSpace.cropActive());
+        QCOMPARE(imageSpace.tool(), QStringLiteral("crop"));
+        imageSpace.setCrop(10.0, 10.0, 50.0, 40.0);
+        QCOMPARE(imageSpace.applyCrop(), QString());
+        QCOMPARE(imageSpace.tool(), QString());
+        QCOMPARE(session.undoNames().size(), depth + 1);
+        QVERIFY(QString::fromStdString(session.undoNames().back()).contains("tous les calques"));
+        QCOMPARE(p.ops.size(), std::size_t{1});
+        QCOMPARE(p.image_sources.front().source.ops.size(), std::size_t{1});
+        QVERIFY(std::get<image::CropOp>(p.image_sources.front().source.ops.front()) ==
+                (image::CropOp{10, 10, 50, 40}));
+        QVERIFY(session.undo());
+        QVERIFY(p.ops.empty());
+        QVERIFY(p.image_sources.front().source.ops.empty());
+    }
+
+    // Barre latérale de l'espace Image sur Main.qml : outils exclusifs, pipette « fond
+    // transparent » sur le calque actif (une étape), Échap rend la sélection.
+    void imageRailPickToolMakesTheBackgroundTransparent() {
+        DocumentSession session;
+        StudioController studio(session);
+        ActionController actions(studio);
+        EditController editor(studio);
+        ImageController images(studio);
+        ImageSpaceController imageSpace(studio, images);
+        QTemporaryDir dir;
+        QQmlApplicationEngine engine;
+        QStringList warnings;
+        connect(&engine, &QQmlApplicationEngine::warnings, this,
+                [&](const QList<QQmlError>& errors) {
+                    for (const auto& e : errors) {
+                        warnings.push_back(e.toString());
+                    }
+                });
+        engine.addImageProvider(QStringLiteral("prepare"), images.createProvider());
+        auto* ctx = engine.rootContext();
+        ctx->setContextProperty(QStringLiteral("studio"), &studio);
+        ctx->setContextProperty(QStringLiteral("actions"), &actions);
+        ctx->setContextProperty(QStringLiteral("editor"), &editor);
+        ctx->setContextProperty(QStringLiteral("imageTools"), &images);
+        ctx->setContextProperty(QStringLiteral("imageSpace"), &imageSpace);
+        session.replaceProject(digitizedProject(writeImage(dir.path())), true);
+        engine.load(QUrl(QStringLiteral("qrc:/studio/qml/Main.qml")));
+        QVERIFY2(!engine.rootObjects().isEmpty(), qPrintable(warnings.join('\n')));
+        auto* window = qobject_cast<QQuickWindow*>(engine.rootObjects().front());
+        QVERIFY(window);
+        auto* workspace = window->findChild<WorkspaceController*>();
+        QVERIFY(workspace);
+        QTRY_VERIFY_WITH_TIMEOUT(!studio.busy() && images.imageWidth() > 0, 20'000);
+        QTRY_VERIFY_WITH_TIMEOUT(window->isExposed(), 5'000);
+        workspace->setCurrent(QStringLiteral("image"));
+        QTRY_VERIFY_WITH_TIMEOUT(named(window, QStringLiteral("imageRailCard")) != nullptr, 5'000);
+        auto* canvas = qobject_cast<GpuCanvas*>(named(window, QStringLiteral("imageCanvas")));
+        QVERIFY(canvas);
+        QTRY_VERIFY_WITH_TIMEOUT(canvas->sourceImage().data != nullptr, 5'000);
+        for (const char* name : {"selectToolButton", "panToolButton", "fitToolButton",
+                                 "imageTool_crop", "imageTool_measure", "imageTool_pick"}) {
+            QVERIFY2(named(window, QString::fromLatin1(name)), name);
+        }
+        QCOMPARE(imageSpace.imageLayerCount(), 1);
+
+        QVERIFY(press(window, QStringLiteral("imageTool_pick")));
+        QCOMPARE(imageSpace.tool(), QStringLiteral("pick"));
+        QTRY_VERIFY(named(window, QStringLiteral("imageToolOverlay"))->isVisible());
+        // Le recadrage remplace la pipette (outils exclusifs), puis on y revient.
+        QVERIFY(press(window, QStringLiteral("imageTool_crop")));
+        QVERIFY(imageSpace.cropActive());
+        QVERIFY(press(window, QStringLiteral("imageTool_pick")));
+        QVERIFY(!imageSpace.cropActive());
+        QCOMPARE(imageSpace.tool(), QStringLiteral("pick"));
+
+        // Clic dans l'aplat rouge (haut-gauche) : seule la zone rouge devient transparente.
+        const auto ops = session.project().ops.size();
+        const auto depth = session.undoNames().size();
+        const QPointF red = imageSpace.imageToScreen(10, 10);
+        QCOMPARE(imageSpace.colorAt(red.x(), red.y()), QColor(200, 30, 40).name());
+        QCOMPARE(imageSpace.makeTransparentAt(red.x(), red.y()), QString());
+        QCOMPARE(session.undoNames().size(), depth + 1);
+        QCOMPARE(session.project().ops.size(), ops + 1);
+        QVERIFY(QString::fromStdString(session.undoNames().back()).contains("Fond transparent"));
+        const auto work = image::apply_pipeline(session.project().original, session.project().ops);
+        QVERIFY(work.has_value());
+        const auto alpha = [&](int x, int y) {
+            return static_cast<int>(
+                work->rgba[(static_cast<std::size_t>(y) * work->width + x) * 4 + 3]);
+        };
+        QCOMPARE(alpha(10, 10), 0);
+        QCOMPARE(alpha(120, 10), 255); // vert : intact
+        QCOMPARE(alpha(10, 100), 255); // bleu : intact
+        // Hors de l'image : refus lisible, aucune étape.
+        QVERIFY(!imageSpace.makeTransparentAt(-500, -500).isEmpty());
+        QCOMPARE(session.undoNames().size(), depth + 1);
+        QVERIFY(session.undo());
+        QCOMPARE(session.project().ops.size(), ops);
+
+        // Échap rend la sélection ; recliquer l'outil actif aussi.
+        QTest::keyClick(window, Qt::Key_Escape);
+        QCOMPARE(imageSpace.tool(), QString());
+        QVERIFY(press(window, QStringLiteral("imageTool_measure")));
+        QCOMPARE(imageSpace.tool(), QStringLiteral("measure"));
+        QVERIFY(press(window, QStringLiteral("imageTool_measure")));
+        QCOMPARE(imageSpace.tool(), QString());
+        QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join('\n')));
     }
 };
 

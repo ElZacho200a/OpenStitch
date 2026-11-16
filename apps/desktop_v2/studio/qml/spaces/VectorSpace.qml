@@ -82,56 +82,13 @@ Item {
             Layout.alignment: Qt.AlignTop
             Layout.preferredWidth: Theme.controlHeight + 16
             Layout.preferredHeight: Math.min(vectorRail.implicitHeight + 16, root.height - 2 * Theme.gap)
-            ColumnLayout {
+            ToolRail {
                 id: vectorRail
                 anchors.top: parent.top
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.topMargin: 8
-                spacing: 6
-                StudioButton {
-                    objectName: "vectorSelectToolButton"
-                    iconName: "select"
-                    tooltip: studio.selectionTool.label
-                    shortcutLabel: studio.selectionTool.shortcut
-                    quiet: true
-                    active: !spaceCanvas.panMode && (!root.toolController || root.toolController.activeTool === "select")
-                    onClicked: { spaceCanvas.panMode = false; if (root.toolController) root.toolController.activeTool = "select" }
-                }
-                StudioButton {
-                    objectName: "vectorPanToolButton"
-                    iconName: "pan"
-                    tooltip: studio.panTool.label
-                    shortcutLabel: studio.panTool.shortcut
-                    quiet: true
-                    active: spaceCanvas.panMode
-                    onClicked: { spaceCanvas.panMode = true; if (root.toolController) root.toolController.activeTool = "select" }
-                }
-                Rectangle {
-                    Layout.alignment: Qt.AlignHCenter
-                    Layout.topMargin: 4
-                    Layout.bottomMargin: 4
-                    implicitWidth: 24
-                    implicitHeight: 1
-                    color: Theme.divider
-                }
-                ToolRail { Layout.alignment: Qt.AlignHCenter; workspaceActive: root.active }
-                Rectangle {
-                    visible: root.toolController !== null
-                    Layout.alignment: Qt.AlignHCenter
-                    Layout.topMargin: 4
-                    Layout.bottomMargin: 4
-                    implicitWidth: 24
-                    implicitHeight: 1
-                    color: Theme.divider
-                }
-                StudioButton {
-                    objectName: "vectorFitToolButton"
-                    iconName: "fit"
-                    tooltip: qsTr("Ajuster le motif à la fenêtre")
-                    shortcutLabel: "F"
-                    quiet: true
-                    onClicked: spaceCanvas.fitDesign()
-                }
+                canvas: spaceCanvas
+                workspaceActive: root.active
             }
         }
 
