@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "region_controller.hpp"
 
+#include "segmentation_settings.hpp"
 #include "task_pump.hpp"
 
 #include <QColor>
@@ -34,16 +35,6 @@ std::uint64_t idOf(double value) {
     return value < 0.0 ? 0 : static_cast<std::uint64_t>(value);
 }
 
-double numberOr(const QVariantMap& map, const char* key, double fallback) {
-    const auto found = map.find(QLatin1String(key));
-    if (found == map.end()) {
-        return fallback;
-    }
-    bool ok = false;
-    const double value = found->toDouble(&ok);
-    return ok ? value : fallback;
-}
-
 } // namespace
 
 RegionController::RegionController(StudioController& studio, ImageController& images,
@@ -62,6 +53,10 @@ RegionController::RegionController(StudioController& studio, ImageController& im
         }
         if (kind == ChangeKind::Replaced || source != observedImageSource_) {
             observedImageSource_ = source;
+            // Une confirmation en attente a été calculée pour l'ancien document ou l'ancienne
+            // source : l'exécuter ici remplacerait des retouches jamais comptées.
+            cancelConfirmation();
+            setMergeTargetMode(false);
             selected_.clear();
             const auto stale = staleSources_.find(source);
             setStale(stale != staleSources_.end(),
@@ -350,21 +345,24 @@ void RegionController::clearSelection() {
 
 bool RegionController::adoptSessionSelection() {
     const auto& seg = studio_.session().project().imageSource().segmentation;
-    if (!seg) {
+    const auto& shared = studio_.session().selection();
+    if (!seg || adoptedSelectionRevision_ == shared.revision()) {
         return false;
     }
+    adoptedSelectionRevision_ = shared.revision();
     std::vector<std::uint64_t> wanted;
-    for (const auto& target : studio_.session().selection().targets()) {
+    for (const auto& target : shared.targets()) {
         if (target.kind == TargetKind::Region && seg->find(RegionId{target.id}) &&
             std::find(wanted.begin(), wanted.end(), target.id) == wanted.end()) {
             wanted.push_back(target.id);
         }
     }
-    if (wanted.empty() || wanted == adopted_) {
-        adopted_ = std::move(wanted);
+    if (wanted.empty()) {
         return false;
     }
-    adopted_ = wanted;
+    // Une autre région devient la source : un choix de cible resté ouvert la fusionnerait au
+    // prochain clic.
+    setMergeTargetMode(false);
     if (wanted != selected_) {
         selected_ = std::move(wanted);
         emit selectionChanged();
@@ -566,17 +564,12 @@ void RegionController::regenerate(bool resegment, bool confirmed, const QVariant
         task_ = 0;
     }
     project_ops::DigitizeSettings digitize;
-    // Mêmes clés et mêmes bornes que `ImageController::optionsFrom` : « Re-segmenter » doit
-    // donner la segmentation que l'aperçu vient de montrer (le lissage était ignoré, la clé lue
-    // ici n'étant pas celle envoyée par le panneau).
-    digitize.max_colors =
-        std::clamp(static_cast<int>(numberOr(settings, "max_colors", digitize.max_colors)), 2, 64);
-    digitize.min_region_px = std::clamp(
-        static_cast<int>(numberOr(settings, "min_region_px", digitize.min_region_px)), 1, 100000);
-    digitize.smoothing_px = std::clamp(
-        static_cast<int>(numberOr(settings, "smoothing_radius_px",
-                                  numberOr(settings, "smoothing_px", digitize.smoothing_px))),
-        0, 10);
+    // Mêmes clés et mêmes bornes que l'aperçu (`segmentationSettingsFrom`).
+    const auto chosen = segmentationSettingsFrom(
+        settings, {digitize.max_colors, digitize.min_region_px, digitize.smoothing_px});
+    digitize.max_colors = chosen.max_colors;
+    digitize.min_region_px = chosen.min_region_px;
+    digitize.smoothing_px = chosen.smoothing_radius_px;
     const auto snapshot = studio_.session().snapshot();
     const auto revision = studio_.session().revision();
     const image::Image image = std::move(*working);

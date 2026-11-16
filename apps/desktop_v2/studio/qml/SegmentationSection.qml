@@ -31,7 +31,9 @@ ColumnLayout {
         objectName: "segLiveTimer"
         interval: 350
         onTriggered: {
-            if (!section.liveEnabled || !imageTools.hasImage)
+            // Hors de son onglet (section masquée), l'aperçu ne part pas : il recouvrirait les
+            // régions que l'on retouche.
+            if (!section.liveEnabled || !imageTools.hasImage || !section.visible)
                 return
             if (imageTools.busy)
                 livePreview.restart() // attend la fin du calcul en cours
