@@ -103,10 +103,12 @@ const std::vector<LiveExtraTool> kExtraTools = {
      "medial_axis (copies isolées), choisit la meilleure variante non rejetée, JUSTIFIE chaque "
      "refus "
      "(le tatami est conservé), saute verrouillés/masqués/déjà satin, et prépare le lot "
-     "(auto_satin + pull_mode=predicted par défaut) validé en simulation. N'applique rien.",
+     "(auto_satin + pull_mode=predicted par défaut) validé en simulation. N'applique rien. "
+     "Donne la largeur de colonne (width_mm) de chaque cible et refuse les formes trop larges "
+     "(moyenne > 6 mm ou max > 9 mm) sauf allow_wide=true.",
      R"({"type":"object","properties":{"objects":{"type":"array","items":{"type":"integer",)"
      R"("minimum":1},"minItems":1,"maxItems":20},"pull_mode":{"enum":["predicted","adaptive",)"
-     R"("auto","manual","none"]}},"required":["objects"]})"},
+     R"("auto","manual","none"]},"allow_wide":{"type":"boolean"}},"required":["objects"]})"},
     {"live_preview",
      "Aperçu AVANT/APRÈS d'un lot d'opérations sur une copie : rapport du lot, points, sauts, "
      "coupes, constats qualité, risque textile (avant, après, écart) et rendu de l'état après. Le "

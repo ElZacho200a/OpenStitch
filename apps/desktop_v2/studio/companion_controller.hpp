@@ -131,6 +131,9 @@ public:
 
 signals:
     void changed();
+    // L'agent va appliquer un lot dont l'effet se voit dans l'espace `space`
+    // ("image"|"segmentation"|"vector"|"points") : la fenêtre y bascule (suivi en direct).
+    void stageRequested(const QString& space);
     void proposalChanged();
 
 private:

@@ -13,6 +13,7 @@
 #include <nlohmann/json.hpp>
 
 #include "op_registry.hpp"
+#include "openstitch/autodigitize/autodigitize.hpp"
 #include "openstitch/commands/composite_command.hpp"
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/image/ops.hpp"
@@ -23,10 +24,17 @@ namespace openstitch::project_ops {
 
 RevectorizePlan revectorize(const document::Project& project, const RevectorizeOptions& opt) {
     RevectorizePlan out;
-    if (!project.hasActiveImage() || !project.imageSource().segmentation) {
+    const ObjectId sourceId = opt.image_source.value_or(project.imageSourceId());
+    const auto* found = opt.image_source           ? project.findImageSource(sourceId)
+                        : project.hasActiveImage() ? &project.imageSource()
+                                                   : nullptr;
+    if (found == nullptr || !found->segmentation) {
         return out;
     }
-    const auto& source = project.imageSource();
+    const auto& source = *found;
+    const auto fromSource = [&](const document::VectorObject& shape) {
+        return shape.source_region && shape.source_image == sourceId;
+    };
     std::vector<RegionId> ids;
     for (const auto& slot : source.segmentation->region_slots) {
         if (slot) {
@@ -48,7 +56,7 @@ RevectorizePlan revectorize(const document::Project& project, const RevectorizeO
         }
         const document::VectorObject* existing = nullptr;
         for (const auto& shape : project.vector_objects) {
-            if (project.fromActiveImage(shape) && *shape.source_region == ids[i]) {
+            if (fromSource(shape) && *shape.source_region == ids[i]) {
                 existing = &shape;
                 break;
             }
@@ -63,7 +71,7 @@ RevectorizePlan revectorize(const document::Project& project, const RevectorizeO
             document::VectorObject shape;
             shape.name = "Région " + std::to_string(ids[i].value);
             shape.source_region = ids[i];
-            shape.source_image = project.imageSourceId();
+            shape.source_image = sourceId;
             shape.calque = !shape.source_image.valid() && !project.image_sources.empty()
                                ? project.calques.front().id
                                : shape.source_image;
@@ -73,8 +81,7 @@ RevectorizePlan revectorize(const document::Project& project, const RevectorizeO
         }
     }
     for (const auto& shape : project.vector_objects) {
-        if (project.fromActiveImage(shape) &&
-            source.segmentation->find(*shape.source_region) == nullptr) {
+        if (fromSource(shape) && source.segmentation->find(*shape.source_region) == nullptr) {
             ++out.orphan;
         }
     }
@@ -367,6 +374,41 @@ OpStatus op_vectorize_segmentation(OpContext& ctx) {
     return OpStatus::success(std::move(result));
 }
 
+// --- overlap_fills -------------------------------------------------------------------------
+
+OpStatus op_overlap_fills(OpContext& ctx) {
+    double overlap_mm = 0.5;
+    if (auto st = number_arg(ctx, "overlap_mm", 0.1, 2.0, overlap_mm); !st.ok) {
+        return st;
+    }
+    auto changes =
+        autodigitize::plan_fill_overlap(ctx.project, to_micrometers(Millimeters{overlap_mm}));
+    json result{{"overlap_mm", overlap_mm}, {"tatami_widened", changes.size()}};
+    if (changes.empty()) {
+        // Pas un refus : sans segmentation (SVG importé) il n'y a simplement aucun voisinage, et
+        // Studio enchaîne cette opération après chaque conversion.
+        result["note"] = "aucun tatami à élargir (pas de segmentation, déjà fait, verrouillés "
+                         "ou sans voisin brodé)";
+        return OpStatus::success(std::move(result));
+    }
+    auto group = std::make_unique<commands::CompositeCommand>(
+        "Faire déborder les tatamis sous leurs voisins");
+    json objects = json::array();
+    for (auto& change : changes) {
+        const auto* emb = ctx.project.findEmbroidery(change.embroidery);
+        auto params = emb->params;
+        std::get<document::TatamiParams>(params).inset = Micrometers{0};
+        group->add(std::make_unique<commands::SetVectorPathsCommand>(
+            change.vector, std::move(change.paths), "Élargir sous les voisins"));
+        group->add(std::make_unique<commands::SetStitchParamsCommand>(
+            change.embroidery, std::move(params), "Retrait"));
+        objects.push_back(change.embroidery.value);
+    }
+    ctx.stack.execute(std::move(group), ctx.project);
+    result["objects"] = std::move(objects);
+    return OpStatus::success(std::move(result));
+}
+
 } // namespace
 
 void register_step_ops(std::vector<OpSpec>& out) {
@@ -415,6 +457,15 @@ void register_step_ops(std::vector<OpSpec>& out) {
           false, ""}},
         R"({"op":"vectorize_segmentation","precision_mm":0.2})",
         op_vectorize_segmentation});
+    out.push_back(OpSpec{
+        "overlap_fills",
+        "Étape Points : fait déborder chaque tatami issu de l'image sous ses voisins brodés "
+        "(±overlap_mm autour des frontières), pour qu'aucun tissu ne se voie entre deux zones ; "
+        "bords extérieurs inchangés. À lancer après convert_vectors.",
+        {{"overlap_mm", "number", "mm", "débord sous les voisins (défaut 0,5)", false,
+          "[0.1 ; 2]"}},
+        R"({"op":"overlap_fills","overlap_mm":0.5})",
+        op_overlap_fills});
 }
 
 } // namespace detail

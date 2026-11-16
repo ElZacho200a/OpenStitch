@@ -97,6 +97,9 @@ LiveCompanion& CompanionController::ensureCompanion() {
         companion_->setHostActions(std::move(host));
         // Même règle que askApproval : en mode automatique, lots et numérisation passent sans
         // carte, donc sans aperçu avant/après (quatre passes complètes du moteur évitées).
+        companion_->setOnStage([this](StageId stage) {
+            emit stageRequested(QString::fromLatin1(stageIdName(stage).data()));
+        });
         companion_->setPreviewWanted([this](const std::string& tool) {
             const bool undoable = tool == "project_apply" || tool == "project_digitize";
             return !(undoable && autoApply() && !fullyDisabled());

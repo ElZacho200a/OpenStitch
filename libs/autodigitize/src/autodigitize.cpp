@@ -767,4 +767,76 @@ Result<AutoResult> auto_digitize_vectors(const std::vector<document::VectorObjec
     return result;
 }
 
+std::vector<FillOverlapChange> plan_fill_overlap(const document::Project& project,
+                                                 Micrometers overlap) {
+    std::vector<FillOverlapChange> out;
+    if (overlap.value <= 0 || !project.hasActiveImage() || !project.imageSource().segmentation) {
+        return out;
+    }
+    const auto& seg = *project.imageSource().segmentation;
+    // Région -> forme PRINCIPALE (la première issue de l'image active), comme le pipeline.
+    std::map<std::uint64_t, const document::VectorObject*> regionVector;
+    for (const auto& vec : project.vector_objects) {
+        if (project.fromActiveImage(vec) && seg.find(*vec.source_region) != nullptr) {
+            regionVector.try_emplace(vec.source_region->value, &vec);
+        }
+    }
+    std::map<std::uint64_t, std::vector<std::uint64_t>> neighbours;
+    for (const auto& b : segmentation::region_adjacency(seg)) {
+        if (regionVector.contains(b.a.value) && regionVector.contains(b.b.value)) {
+            neighbours[b.a.value].push_back(b.b.value);
+            neighbours[b.b.value].push_back(b.a.value);
+        }
+    }
+    // Même bande que `overlap_neighbor_fills` : ±overlap autour de la vraie frontière (les
+    // contours passent par les centres des pixels de bord, d'où le demi-pixel).
+    const Micrometers grow{overlap.value +
+                           static_cast<std::int32_t>(std::lround(
+                               to_micrometers(project.imageSource().mm_per_px).value / 2.0))};
+    for (const auto& emb : project.embroidery_objects) {
+        if (!emb.is_tatami() || emb.locked) {
+            continue;
+        }
+        const auto& params = std::get<document::TatamiParams>(emb.params);
+        if (params.inset.value == 0) {
+            continue; // déjà élargi (débord posé, retrait remis à zéro) : idempotent
+        }
+        const document::VectorObject* vec = project.findObject(emb.source_vector);
+        if (vec == nullptr || !vec->source_region || vec->locked ||
+            !regionVector.contains(vec->source_region->value) ||
+            regionVector.at(vec->source_region->value) != vec) {
+            continue;
+        }
+        const auto it = neighbours.find(vec->source_region->value);
+        if (it == neighbours.end()) {
+            continue;
+        }
+        std::vector<geometry::PathSet> around;
+        for (const std::uint64_t n : it->second) {
+            const auto& np = regionVector.at(n)->paths;
+            around.insert(around.end(), np.begin(), np.end());
+        }
+        const auto band =
+            geometry::intersect_polygons(dilate(vec->paths, grow), dilate(around, grow));
+        if (!band || band->empty()) {
+            continue;
+        }
+        std::vector<geometry::PathSet> parts;
+        for (const auto& set : vec->paths) {
+            if (auto in = geometry::inset_path_set(set, params.inset); in && !in->empty()) {
+                parts.insert(parts.end(), in->begin(), in->end());
+            } else {
+                parts.push_back(set);
+            }
+        }
+        parts.insert(parts.end(), band->begin(), band->end());
+        auto merged = geometry::union_polygons(parts);
+        if (!merged || merged->empty()) {
+            continue;
+        }
+        out.push_back({vec->id, emb.id, std::move(*merged)});
+    }
+    return out;
+}
+
 } // namespace openstitch::autodigitize

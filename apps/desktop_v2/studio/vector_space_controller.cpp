@@ -12,8 +12,11 @@
 #include <algorithm>
 
 #include "gpu_canvas.hpp"
+#include "openstitch/autodigitize/autodigitize.hpp"
+#include "openstitch/autodigitize/vector_convert.hpp"
 #include "openstitch/commands/composite_command.hpp"
 #include "openstitch/commands/project_commands.hpp"
+#include "openstitch/core/units.hpp"
 #include "openstitch/project_ops/revectorize.hpp"
 #include "openstitch/vectorization/vectorize.hpp"
 #include "stage_status.hpp"
@@ -82,6 +85,7 @@ VectorSpaceController::VectorSpaceController(StudioController& studio, QObject* 
             &VectorSpaceController::layerChanged);
     connect(&studio_, &StudioController::changed, this, &VectorSpaceController::refresh);
     attachTaskPump(tasks_, this);
+    attachTaskPump(convertTasks_, this);
     refresh();
 }
 
@@ -196,11 +200,14 @@ void VectorSpaceController::startAsyncBuild(std::vector<std::uint64_t> keys) {
     const bool software = !canvas_ || !canvas_->rhiBackend();
     tasks_.submit<std::shared_ptr<const VectorLayer>>(
         "studio.vector-layer",
-        [shapes, software](const TaskContext& task) -> Result<std::shared_ptr<const VectorLayer>> {
+        [shapes, software, workerKeys = pendingVisualKeys_,
+         previous = layer_](const TaskContext& task) -> Result<std::shared_ptr<const VectorLayer>> {
             if (task.cancelled()) {
                 return cancelled_error();
             }
-            auto layer = VectorLayer::build(*shapes);
+            // Incrémental : seules les formes modifiées sont retriangulées (un déplacement ne
+            // retriangule plus les centaines de formes du motif).
+            auto layer = VectorLayer::build(*shapes, workerKeys, previous.get());
             if (software) {
                 (void)layer->image(); // backend logiciel : rastériser ici, pas pendant la synchro
             }
@@ -309,7 +316,7 @@ void VectorSpaceController::attach(QObject* canvas) {
     }
     canvas_->setVectorPicker(
         [this](double x, double y, double tolerance, bool toggle, bool keepSelected) {
-            pickAt(x, y, tolerance, toggle, keepSelected);
+            return pickAt(x, y, tolerance, toggle, keepSelected);
         });
     if (layer_) {
         canvas_->setVectorLayer(layer_);
@@ -494,18 +501,138 @@ bool VectorSpaceController::updateFromSegmentation() {
     return true;
 }
 
-bool VectorSpaceController::convertToEmbroidery() {
-    const auto result = studio_.session().applyBatch(
-        R"({"schema":"openstitch.batch/1","operations":[{"op":"convert_vectors"}]})",
-        "Convertir les formes en broderie");
-    if (!result.committed) {
-        const auto& outcomes = result.report.outcomes;
-        say(tr("Conversion refusée : %1")
-                .arg(outcomes.empty() ? tr("aucun effet")
-                                      : QString::fromStdString(outcomes.back().message)));
+namespace {
+std::vector<ObjectId> segmentedSources(const document::Project& project) {
+    std::vector<ObjectId> out;
+    if (!project.original.empty() && project.segmentation) {
+        out.push_back(ObjectId{}); // image d'origine
+    }
+    for (const auto& entry : project.image_sources) {
+        if (entry.source.segmentation) {
+            out.push_back(entry.calque);
+        }
+    }
+    return out;
+}
+} // namespace
+
+int VectorSpaceController::segmentedLayerCount() const {
+    return static_cast<int>(segmentedSources(studio_.session().project()).size());
+}
+
+bool VectorSpaceController::updateAllLayersFromSegmentation() {
+    auto& session = studio_.session();
+    const auto sources = segmentedSources(session.project());
+    if (sources.empty()) {
+        say(tr("Aucun calque segmenté : rien à vectoriser."));
         return false;
     }
-    say(tr("Formes converties en objets de broderie."));
+    auto group = std::make_unique<commands::CompositeCommand>(
+        "Mettre à jour les formes de tous les calques");
+    std::size_t replaced = 0;
+    std::size_t added = 0;
+    for (const auto source : sources) {
+        auto fresh =
+            project_ops::revectorize(session.project(), {.precision_mm = precisionMm_,
+                                                         .curves = curves_,
+                                                         .curve_tolerance_px = curveTolerancePx_,
+                                                         .image_source = source});
+        replaced += fresh.replace.size();
+        added += fresh.add.size();
+        for (auto& [id, paths] : fresh.replace) {
+            group->add(std::make_unique<commands::SetVectorPathsCommand>(
+                id, std::move(paths), "Mettre à jour une forme"));
+        }
+        for (auto& shape : fresh.add) {
+            shape.id = session.allocateObjectId();
+            group->add(std::make_unique<commands::AddVectorObjectCommand>(std::move(shape)));
+        }
+    }
+    if (replaced + added == 0) {
+        say(tr("Les formes de tous les calques suivent déjà la segmentation."));
+        return false;
+    }
+    session.execute(std::move(group));
+    say(tr("%1 calque(s) : %2 forme(s) remplacée(s), %3 ajoutée(s).")
+            .arg(sources.size())
+            .arg(replaced)
+            .arg(added));
+    return true;
+}
+
+bool VectorSpaceController::convertToEmbroidery() {
+    if (converting_) {
+        return false;
+    }
+    // La classification de chaque forme (tatami, contour…) est longue sur un gros motif : elle
+    // tourne sur un instantané, hors du fil d'interface ; seul l'ajout du lot (une commande
+    // annulable) se fait ici, et seulement si le document n'a pas changé entre-temps.
+    auto snapshot = studio_.session().snapshot();
+    const auto revision = studio_.session().revision();
+    converting_ = true;
+    emit convertingChanged();
+    say(tr("Conversion en broderie…"));
+    convertTasks_.submit<autodigitize::VectorConversion>(
+        "studio.convert-vectors",
+        [snapshot](const TaskContext& task) -> Result<autodigitize::VectorConversion> {
+            if (task.cancelled()) {
+                return cancelled_error();
+            }
+            autodigitize::AutoOptions options;
+            options.mm_per_px = snapshot->imageSource().mm_per_px;
+            auto ids = snapshot->object_ids; // copie : les vrais identifiants sont pris au retour
+            return autodigitize::convert_vectors_to_embroidery(*snapshot, ids, options);
+        },
+        [this, revision](Result<autodigitize::VectorConversion>&& result) {
+            converting_ = false;
+            emit convertingChanged();
+            if (!result) {
+                say(tr("Conversion refusée : %1")
+                        .arg(QString::fromStdString(result.error().message)));
+                return;
+            }
+            auto& session = studio_.session();
+            if (session.revision() != revision) {
+                say(tr("Le document a changé pendant la conversion : relancez-la."));
+                return;
+            }
+            if (result->embroideries.empty()) {
+                say(tr("Conversion refusée : aucun objet de broderie produit"));
+                return;
+            }
+            for (auto& embroidery : result->embroideries) {
+                embroidery.id = session.allocateObjectId();
+            }
+            const auto count = result->embroideries.size();
+            // Un seul pas d'annulation pour tout le lot : l'ajout des broderies et le débord sous
+            // les voisins (ci-dessous) sont simulés sur une copie avant d'être rejoués une seule
+            // fois pour de vrai, dans le même `CompositeCommand`.
+            auto batch =
+                std::make_unique<commands::CompositeCommand>("Numériser les formes vectorielles");
+            auto addCmd = std::make_unique<commands::AddObjectBatchCommand>(
+                std::vector<document::VectorObject>{}, std::move(result->embroideries),
+                "Numériser les formes vectorielles");
+            document::Project scratch = session.project();
+            addCmd->apply(scratch);
+            batch->add(std::move(addCmd));
+            // Sans débord, contours tracés par les centres des pixels + retrait du tatami
+            // laissent un liseré de tissu nu à chaque frontière (même règle que l'op
+            // `overlap_fills` : op_convert.cpp, project_ops).
+            constexpr double kOverlapMm = 0.5;
+            auto overlapChanges =
+                autodigitize::plan_fill_overlap(scratch, to_micrometers(Millimeters{kOverlapMm}));
+            for (auto& change : overlapChanges) {
+                const auto* emb = scratch.findEmbroidery(change.embroidery);
+                auto params = emb->params;
+                std::get<document::TatamiParams>(params).inset = Micrometers{0};
+                batch->add(std::make_unique<commands::SetVectorPathsCommand>(
+                    change.vector, std::move(change.paths), "Élargir sous les voisins"));
+                batch->add(std::make_unique<commands::SetStitchParamsCommand>(
+                    change.embroidery, std::move(params), "Retrait"));
+            }
+            session.execute(std::move(batch));
+            say(tr("%1 forme(s) converties en objets de broderie.").arg(count));
+        });
     return true;
 }
 

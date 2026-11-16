@@ -221,7 +221,8 @@ ce que tu fais, puis ce que le contrôle a montré.
 
 ## 4. Points
 - `convert_vectors` : chaque forme devient un objet de broderie (tatami pour les zones, contour
-  pour les petites formes).
+  pour les petites formes) et les tatamis débordent de 0,5 mm sous leurs voisins (`overlap_mm`),
+  pour qu'aucun tissu nu ne se voie entre deux zones. Ne passe pas `overlap_mm: 0`.
 - Applique l'intention : bandes étroites → satin (`live_plan_satin` compare les trois stratégies,
   puis le lot proposé) ; types et réglages par `set_stitch_type` / `set_params` ; ordre fond →
   sujets → détails par `optimize_order` ou `set_order` ; `set_finishing` pour coupes et arrêts.
@@ -283,7 +284,10 @@ description: Convertir des formes en satin avec compensation de tirage Predicted
 
 1. `live_target({"query":"orange"})` ; si `ambiguous`, `live_ask_user`.
 2. `live_plan_satin({"objects":[12,15]})` (20 IDs max) : lis `targets[].verdict` ;
-   `refused` reste en tatami, `skipped` = verrouillé, masqué ou déjà satin.
+   `refused` reste en tatami, `skipped` = verrouillé, masqué ou déjà satin. Lis `width_mm` : un
+   satin se pose sur une BANDE (pétale fin, nervure, tige, bordure) de 1 à 6 mm ; une tache large
+   (reflet, fond de feuille) reste en tatami. Le refus « trop large » est voulu : ne force
+   `allow_wide` que sur demande explicite de l'utilisateur.
 3. Passe le lot retourné dans `live_preview({"operations":[...]})`
    (la valeur de `batch.operations` est placée sous la clé `operations`)
    et compare points, sauts, constats et risque textile.

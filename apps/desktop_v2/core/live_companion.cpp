@@ -12,6 +12,15 @@ public:
     explicit Gate(LiveCompanion& owner) : owner_(owner) {}
 
     bool approve(const mcp::ApprovalRequest& request) override {
+        if (owner_.onStage_) {
+            std::vector<std::string> operations;
+            for (const auto& item : request.items) {
+                operations.push_back(item.text.substr(0, item.text.find(' ')));
+            }
+            if (const auto stage = stageForLiveTool(request.tool, operations)) {
+                owner_.onStage_(*stage);
+            }
+        }
         CompanionEvent event;
         event.tool = request.tool;
         event.label = request.label;

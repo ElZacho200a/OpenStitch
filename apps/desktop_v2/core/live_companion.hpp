@@ -16,6 +16,7 @@
 
 #include "document_session.hpp"
 #include "openstitch/mcp/live.hpp"
+#include "stage_status.hpp"
 
 namespace openstitch::desktop_v2 {
 
@@ -60,6 +61,10 @@ public:
         previewWanted_ = std::move(fn);
     }
 
+    // Appelé (fil GUI) juste avant chaque demande d'application, avec l'espace où son effet se
+    // voit : l'interface y bascule pour que l'utilisateur suive l'agent étape par étape.
+    void setOnStage(std::function<void(StageId)> fn) { onStage_ = std::move(fn); }
+
     // L'application se ferme ou désactive le pont : plus aucun appel d'agent ne peut aboutir.
     void close();
 
@@ -75,6 +80,7 @@ private:
     std::vector<CompanionEvent> events_;
     std::function<void()> onChanged_;
     std::function<bool(const std::string&)> previewWanted_;
+    std::function<void(StageId)> onStage_;
 };
 
 } // namespace openstitch::desktop_v2

@@ -4,11 +4,14 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <cmath>
 #include <cstdint>
 #include <string>
 #include <vector>
 
 #include "openstitch/document/project.hpp"
+#include "openstitch/geometry/boolean.hpp"
+#include "openstitch/geometry/path.hpp"
 #include "openstitch/project_ops/errors.hpp"
 #include "openstitch/project_ops/operations.hpp"
 #include "openstitch/project_ops/revectorize.hpp"
@@ -114,4 +117,54 @@ TEST_CASE("step ops: image_prep crop and refusals", "[project_ops][steps]") {
     document::Project empty;
     CHECK_FALSE(run(empty, R"({"op":"image_prep","kind":"grayscale"})").ok);
     CHECK_FALSE(run(empty, R"({"op":"vectorize_segmentation"})").ok);
+    // Sans segmentation : rien à faire, mais pas d'échec (Studio l'enchaîne à chaque conversion).
+    CHECK(run(empty, R"({"op":"overlap_fills"})").ok);
+}
+
+TEST_CASE("step ops: overlap_fills closes the gap between neighbouring tatamis",
+          "[project_ops][steps]") {
+    auto project = two_color_project();
+    REQUIRE(run(project, R"({"op":"image_size","width_mm":80})").ok);
+    REQUIRE(run(project, R"({"op":"segment_image","max_colors":2,"min_region_px":4})").ok);
+    REQUIRE(run(project, R"({"op":"vectorize_segmentation"})").ok);
+    REQUIRE(run(project, R"({"op":"convert_vectors","overlap_mm":0})").ok); // écart brut
+    REQUIRE(project.vector_objects.size() == 2);
+    for (const auto& e : project.embroidery_objects) {
+        REQUIRE(e.is_tatami());
+    }
+    const auto overlap_area = [&project] {
+        const auto both = geometry::intersect_polygons(project.vector_objects[0].paths,
+                                                       project.vector_objects[1].paths);
+        double area = 0.0;
+        if (both) {
+            for (const auto& set : *both) {
+                area += std::abs(geometry::signed_area_um2(set.outer));
+            }
+        }
+        return area / 1e6; // mm²
+    };
+    // Contours par les centres des pixels : un pixel d'écart, aucune surface commune.
+    CHECK(overlap_area() == 0.0);
+
+    const auto widened = run(project, R"({"op":"overlap_fills","overlap_mm":0.5})");
+    REQUIRE(widened.ok);
+    // Les deux tatamis débordent l'un sous l'autre le long de la frontière (40 mm de haut).
+    CHECK(overlap_area() > 20.0);
+    for (const auto& e : project.embroidery_objects) {
+        CHECK(std::get<document::TatamiParams>(e.params).inset.value == 0);
+    }
+    // Deuxième passe : rien à faire (pas de croissance cumulative).
+    const double after_first = overlap_area();
+    REQUIRE(run(project, R"({"op":"overlap_fills"})").ok);
+    CHECK(overlap_area() == after_first);
+
+    // convert_vectors seul (défaut) pose déjà ce débord : agent et CLI sans liseré.
+    auto direct = two_color_project();
+    REQUIRE(run(direct, R"({"op":"image_size","width_mm":80})").ok);
+    REQUIRE(run(direct, R"({"op":"segment_image","max_colors":2,"min_region_px":4})").ok);
+    REQUIRE(run(direct, R"({"op":"vectorize_segmentation"})").ok);
+    REQUIRE(run(direct, R"({"op":"convert_vectors"})").ok);
+    for (const auto& e : direct.embroidery_objects) {
+        CHECK(std::get<document::TatamiParams>(e.params).inset.value == 0);
+    }
 }
