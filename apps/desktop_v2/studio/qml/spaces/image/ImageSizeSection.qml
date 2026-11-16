@@ -61,7 +61,7 @@ ColumnLayout {
                 objectName: "imageScale_" + modelData
                 text: modelData + " %"
                 enabled: sizeSection.space && sizeSection.space.canResize
-                tooltip: qsTr("Multiplier la taille de l'image par %1 %").arg(modelData / 100)
+                tooltip: qsTr("Passer l'image à %1 % de sa taille actuelle").arg(modelData)
                 onClicked: sizeSection.space.scaleImage(modelData)
             }
         }

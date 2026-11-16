@@ -29,16 +29,10 @@ SegmentationSpaceController::SegmentationSpaceController(StudioController& studi
             &SegmentationSpaceController::scheduleRefresh);
     connect(&regions_, &RegionController::busyChanged, this,
             &SegmentationSpaceController::scheduleRefresh);
-    connect(&regions_, &RegionController::confirmRequested, this, [this](const QString& text) {
-        confirmText_ = text;
-        emit confirmChanged();
-    });
-    connect(&regions_, &RegionController::regenerated, this, [this] {
-        if (!confirmText_.isEmpty()) {
-            confirmText_.clear();
-            emit confirmChanged();
-        }
-    });
+    // Une seule demande de confirmation, portée par RegionController : la carte du canevas et
+    // l'onglet « Régions » montrent la même question et confirment la même action.
+    connect(&regions_, &RegionController::confirmChanged, this,
+            &SegmentationSpaceController::confirmChanged);
     refresh();
 }
 
@@ -82,6 +76,9 @@ bool SegmentationSpaceController::canUpdateShapes() const {
 
 void SegmentationSpaceController::attach(QObject* canvas) {
     canvas_ = canvas;
+    // Arrivée depuis « Aller à la région » (espace Vecteurs) : la région désignée dans la
+    // sélection partagée devient la sélection de l'espace.
+    (void)regions_.adoptSessionSelection();
     publish();
 }
 
@@ -123,18 +120,15 @@ void SegmentationSpaceController::updateShapes(bool confirmed) {
     if (!canUpdateShapes()) {
         return;
     }
-    if (!confirmText_.isEmpty()) {
-        confirmText_.clear();
-        emit confirmChanged();
+    if (confirmed && !regions_.confirmText().isEmpty()) {
+        regions_.confirmRegeneration(); // la demande affichée, pas une autre
+        return;
     }
     regions_.regenerate(false, confirmed, images_.segmentationDefaults());
 }
 
 void SegmentationSpaceController::cancelConfirm() {
-    if (!confirmText_.isEmpty()) {
-        confirmText_.clear();
-        emit confirmChanged();
-    }
+    regions_.cancelConfirmation();
 }
 
 void SegmentationSpaceController::scheduleRefresh() {

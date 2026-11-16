@@ -49,10 +49,10 @@ ColumnLayout {
         Layout.fillWidth: true
         Layout.preferredHeight: childrenRect.height
         spacing: 3
-        Mini { objectName: "rotateCwButton"; text: "⟳90"; enabled: bar.some; tooltip: qsTr("Pivoter de 90° (horaire)"); shortcutLabel: "R"; onClicked: editor.rotate90(true) }
-        Mini { objectName: "rotateCcwButton"; text: "⟲90"; enabled: bar.some; tooltip: qsTr("Pivoter de 90° (antihoraire)"); shortcutLabel: "Maj+R"; onClicked: editor.rotate90(false) }
-        Mini { objectName: "mirrorHButton"; text: "⇋"; enabled: bar.some; tooltip: qsTr("Miroir horizontal"); onClicked: editor.mirror(true) }
-        Mini { objectName: "mirrorVButton"; text: "⇅"; enabled: bar.some; tooltip: qsTr("Miroir vertical"); onClicked: editor.mirror(false) }
+        Mini { objectName: "rotateCwButton"; text: "⟳90"; enabled: bar.some; tooltip: qsTr("Pivoter de 90° (horaire)"); shortcutLabel: "Ctrl+R"; onClicked: editor.rotate90(true) }
+        Mini { objectName: "rotateCcwButton"; text: "⟲90"; enabled: bar.some; tooltip: qsTr("Pivoter de 90° (antihoraire)"); shortcutLabel: "Ctrl+Maj+R"; onClicked: editor.rotate90(false) }
+        Mini { objectName: "mirrorHButton"; text: "⇋"; enabled: bar.some; tooltip: qsTr("Miroir horizontal"); shortcutLabel: "Ctrl+Maj+H"; onClicked: editor.mirror(true) }
+        Mini { objectName: "mirrorVButton"; text: "⇅"; enabled: bar.some; tooltip: qsTr("Miroir vertical"); shortcutLabel: "Ctrl+Maj+V"; onClicked: editor.mirror(false) }
         Mini { objectName: "duplicateButton"; text: qsTr("Dupliquer"); enabled: bar.some; shortcutLabel: "Ctrl+D"; onClicked: editor.duplicate(5) }
         Mini { objectName: "deleteButton"; text: qsTr("Supprimer"); enabled: bar.some; shortcutLabel: "Suppr"; onClicked: editor.deleteSelection() }
         Mini { objectName: "frontButton"; text: qsTr("Devant"); enabled: bar.some; shortcutLabel: "Fin"; onClicked: editor.stack("front") }
@@ -60,7 +60,7 @@ ColumnLayout {
         Mini { objectName: "groupButton"; text: qsTr("Grouper"); enabled: bar.many; shortcutLabel: "Ctrl+G"; onClicked: editor.group("") }
         Mini { objectName: "ungroupButton"; text: qsTr("Dégrouper"); enabled: bar.some; shortcutLabel: "Ctrl+Maj+G"; onClicked: editor.ungroup() }
         Mini { text: qsTr("Aligner ▾"); enabled: bar.many; onClicked: alignMenu.popup() }
-        Mini { objectName: "pipetteButton"; text: qsTr("Pipette"); checkable: true; checked: editor.eyedropper; enabled: bar.some; tooltip: qsTr("Copier la couleur d'un objet vers la sélection"); shortcutLabel: "E"; onClicked: editor.eyedropper = !editor.eyedropper }
+        Mini { objectName: "pipetteButton"; text: qsTr("Pipette"); checkable: true; checked: editor.eyedropper; enabled: bar.some; tooltip: qsTr("Copier la couleur d'un objet vers la sélection"); shortcutLabel: "I"; onClicked: editor.eyedropper = !editor.eyedropper }
         Mini { objectName: "snapButton"; text: qsTr("Accrochage"); checkable: true; checked: editor.snapEnabled; tooltip: qsTr("Accrochage et repères au glisser (Alt = temporaire)"); onClicked: editor.snapEnabled = !editor.snapEnabled }
     }
 

@@ -14,6 +14,13 @@ Rectangle {
     // Réglages courants de la segmentation (utilisés par l'action « Segmenter l'image »).
     readonly property var segmentationOptions: segSection.options
     readonly property var tabLabels: [qsTr("Segmentation"), qsTr("Régions"), qsTr("IA")]
+    // L'aperçu de segmentation remplace les régions sur le canevas : hors de son onglet, il
+    // masquerait les régions que l'on retouche (clics et pinceau porteraient sur une image qui
+    // n'est pas le document).
+    onTabChanged: {
+        if (tab !== 0 && typeof imageTools !== "undefined" && imageTools.segPreviewActive)
+            imageTools.cancelSegmentationPreview()
+    }
     color: Theme.panel
     radius: Theme.cardRadius
     border.color: Theme.divider
@@ -27,7 +34,8 @@ Rectangle {
             enabled: !studio.busy
             Layout.fillWidth: true
             readonly property bool ready: typeof imageTools !== "undefined"
-            visible: ready && imageTools.imageLayers.length > 0
+            // Un seul calque : rien à choisir (même règle que l'espace Vecteurs).
+            visible: ready && imageTools.imageLayers.length > 1
             model: ready ? imageTools.imageLayers : []
             currentIndex: ready ? imageTools.imageLayerIndex : -1
             Accessible.name: qsTr("Calque à segmenter")

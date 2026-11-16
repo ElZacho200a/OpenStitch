@@ -174,7 +174,11 @@ Item {
                     tools: root.toolController
                     layers: root.canvasLayers
                     focus: true
+                    onContextMenuRequested: function(x, y, objectId) { contextMenu.openAt(x, y) }
                 }
+
+                // Clic droit : mêmes actions de sélection que dans l'espace Points.
+                CanvasContextMenu { id: contextMenu }
 
                 ToolOverlay {
                     objectName: "toolOverlay"

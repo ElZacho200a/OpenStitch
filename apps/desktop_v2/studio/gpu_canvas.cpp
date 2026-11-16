@@ -768,7 +768,14 @@ void GpuCanvas::mousePressEvent(QMouseEvent* event) {
     const bool ctrl = event->modifiers().testFlag(Qt::ControlModifier);
     if (event->button() == Qt::RightButton) {
         std::optional<std::uint64_t> id;
-        if (controller_ && scene_) {
+        if (vectorPicker_ && layers_.vectors && !layers_.stitches) {
+            // Espace Vectorisation : le clic droit vise une FORME, comme le clic gauche. Une
+            // sélection multiple sous le curseur est conservée pour le menu.
+            if (!selectionRect().contains(lastMouse_)) {
+                const auto p = camera_.screenToWorld({lastMouse_.x(), lastMouse_.y()});
+                vectorPicker_(p.x, p.y, 5.0 / camera_.scale(), false);
+            }
+        } else if (controller_ && scene_) {
             const auto p = camera_.screenToWorld({lastMouse_.x(), lastMouse_.y()});
             id = scene_->pick(p.x, p.y, 5.0 / camera_.scale());
             if (id && std::ranges::find(selection_, Target{TargetKind::EmbroideryObject, *id}) ==

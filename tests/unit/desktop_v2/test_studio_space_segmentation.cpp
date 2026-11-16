@@ -29,6 +29,7 @@
 #include "image_controller.hpp"
 #include "inspector_controller.hpp"
 #include "layers/region_layer.hpp"
+#include "point_edit.hpp"
 #include "region_controller.hpp"
 #include "segmentation_space_controller.hpp"
 #include "studio_controller.hpp"
@@ -924,6 +925,166 @@ private slots:
         rig.images.previewSegmentation({{QStringLiteral("max_colors"), 3}});
         QTRY_VERIFY_WITH_TIMEOUT(rig.images.segPreviewActive(), 20'000);
         QVERIFY(rig.images.segPreviewInfo().contains(QStringLiteral("couleurs")));
+    }
+
+    // --- audit par zone : coquilles de l'espace Segmentation ---------------------------------
+    // « Re-segmenter » applique le lissage du panneau : la cle envoyee par le QML
+    // (smoothing_radius_px) est bien celle que lit RegionController.
+    void resegmentHonoursThePanelSmoothing() {
+        Rig rig;
+        open(rig);
+        const auto options = [](int smoothing) {
+            return QVariantMap{{QStringLiteral("max_colors"), 16},
+                               {QStringLiteral("min_region_px"), 2},
+                               {QStringLiteral("smoothing_radius_px"), smoothing}};
+        };
+        const auto countAfterApply = [&](int smoothing) {
+            QSignalSpy applied(&rig.images, &ImageController::segmentationApplied);
+            rig.images.applySegmentation(options(smoothing));
+            if (!QTest::qWaitFor([&] { return applied.count() >= 1; }, 30'000)) {
+                return -1;
+            }
+            return rig.images.regionCount();
+        };
+        const int rough = countAfterApply(0);
+        const int smooth = countAfterApply(10);
+        QVERIFY(rough > 0 && smooth > 0);
+        // Sans ecart entre les deux lissages, le test ne prouverait rien.
+        QVERIFY2(rough != smooth, "l'image de test ne distingue pas les lissages 0 et 10");
+        // Document a 10 de lissage ; « Re-segmenter » a 0 doit retrouver la segmentation brute.
+        QSignalSpy done(&rig.regions, &RegionController::regenerated);
+        rig.regions.regenerate(true, true, options(0));
+        QTRY_COMPARE_WITH_TIMEOUT(done.count(), 1, 60'000);
+        QCOMPARE(rig.images.regionCount(), rough);
+    }
+
+    // Une seule demande de confirmation, partagee par la carte du canevas et l'onglet Regions :
+    // confirmer depuis l'un execute la demande affichee (ici une re-segmentation) et referme
+    // l'autre.
+    void overwriteConfirmationIsSharedAndRunsTheRequestedAction() {
+        Rig rig;
+        open(rig);
+        // Une retouche de point sur un objet genere : la regeneration doit demander confirmation.
+        std::uint64_t generated = 0;
+        for (const auto& e : rig.session.project().embroidery_objects) {
+            const auto* v = rig.session.project().findObject(e.source_vector);
+            if (v != nullptr && v->source_region) {
+                generated = e.id.value;
+                break;
+            }
+        }
+        QVERIFY(generated != 0);
+        const auto view = stitchPoints(rig.session.project(), generated);
+        QVERIFY(view.has_value());
+        bool moved = false;
+        for (const auto& p : view->points) {
+            if (p.movable) {
+                moved = moveStitchPoints(rig.session, generated,
+                                         {{p.index, PointMm{p.pos.x + 1.0, p.pos.y}}})
+                            .ok;
+                break;
+            }
+        }
+        QVERIFY(moved);
+        auto* panels = rig.named("segmentationPanels");
+        QVERIFY(panels);
+        panels->setProperty("tab", 1);
+        const auto depth = rig.session.undoNames().size();
+        QVERIFY(rig.press("regionResegment"));
+        // Rien n'est modifie ; la meme question apparait aux deux endroits.
+        QTRY_VERIFY(!rig.regions.confirmText().isEmpty());
+        QCOMPARE(rig.space.confirmText(), rig.regions.confirmText());
+        QTRY_VERIFY(rig.named("regionConfirm")->isVisible());
+        QTRY_VERIFY(rig.named("shapesConfirm")->isVisible());
+        QCOMPARE(rig.session.undoNames().size(), depth);
+        QVERIFY(!rig.regions.busy());
+        // « Garder mes retouches » depuis la carte referme aussi la question du panneau.
+        QVERIFY(rig.press("shapesConfirmNo"));
+        QTRY_VERIFY(rig.regions.confirmText().isEmpty());
+        QTRY_VERIFY(!rig.named("regionConfirm")->isVisible());
+        QCOMPARE(rig.session.undoNames().size(), depth);
+        // Nouvelle demande de re-segmentation, confirmee depuis la CARTE : c'est bien une
+        // re-segmentation qui s'execute (la segmentation est remplacee), pas une simple
+        // regeneration des objets.
+        const auto regionsBefore = rig.regions.regions().size();
+        rig.regions.selectAtPixel(20, 20);
+        QCOMPARE(rig.regions.deleteSelected(), QString()); // la segmentation differe de l'image
+        QTRY_COMPARE(rig.regions.regions().size(), regionsBefore - 1);
+        QVERIFY(rig.press("regionResegment"));
+        QTRY_VERIFY(rig.named("shapesConfirm")->isVisible());
+        QSignalSpy done(&rig.regions, &RegionController::regenerated);
+        QVERIFY(rig.press("shapesConfirmYes"));
+        QTRY_COMPARE_WITH_TIMEOUT(done.count(), 1, 60'000);
+        QTRY_VERIFY(rig.regions.confirmText().isEmpty());
+        QTRY_VERIFY(!rig.named("regionConfirm")->isVisible());
+        QTRY_VERIFY(!rig.named("shapesConfirm")->isVisible());
+        // La region supprimee est revenue : l'image a bien ete re-segmentee.
+        QTRY_COMPARE(rig.regions.regions().size(), regionsBefore);
+    }
+
+    // « Choisir la cible » : un clic sur le canevas designe la region qui absorbe la source, au
+    // lieu de remplacer la selection.
+    void mergeTargetCanBeChosenOnTheCanvas() {
+        Rig rig;
+        open(rig);
+        rig.regions.selectAtPixel(20, 20);
+        QCOMPARE(rig.regions.selectedCount(), 1);
+        const auto before = rig.regions.regions().size();
+        const auto depth = rig.session.undoNames().size();
+        rig.regions.setMergeTargetMode(true);
+        QVERIFY(rig.regions.mergeTargetMode());
+        QTest::mouseClick(rig.window, Qt::LeftButton, {}, rig.windowPos(120, 20).toPoint());
+        QTRY_COMPARE(rig.session.undoNames().size(), depth + 1);
+        QTRY_COMPARE(rig.regions.regions().size(), before - 1);
+        QVERIFY(!rig.regions.mergeTargetMode());
+        QVERIFY(rig.session.undo());
+        // Sans region source unique, le mode est refuse.
+        rig.regions.clearSelection();
+        rig.regions.setMergeTargetMode(true);
+        QVERIFY(!rig.regions.mergeTargetMode());
+    }
+
+    // Lien amont « Aller a la region » de l'espace Vecteurs : la region posee dans la selection
+    // partagee est selectionnee a l'entree dans l'espace (liste et canevas).
+    void sharedRegionSelectionIsAdoptedOnEntry() {
+        Rig rig;
+        open(rig);
+        const auto id =
+            static_cast<std::uint64_t>(rig.regions.regions().back().toMap().value("id").toDouble());
+        rig.workspace->setCurrent(QStringLiteral("points"));
+        QTRY_VERIFY(rig.stage().value("actionLabel").toString().isEmpty());
+        rig.regions.clearSelection();
+        rig.session.selection().replace({Target{TargetKind::Region, id}});
+        rig.workspace->setCurrent(QStringLiteral("segmentation"));
+        QTRY_COMPARE(rig.regions.selectedCount(), 1);
+        QCOMPARE(static_cast<std::uint64_t>(rig.regions.selected().front().toDouble()), id);
+        // Une selection locale faite ensuite n'est pas ecrasee par la meme cible au retour.
+        rig.regions.clearSelection();
+        rig.workspace->setCurrent(QStringLiteral("points"));
+        QTRY_VERIFY(rig.stage().value("actionLabel").toString().isEmpty());
+        rig.workspace->setCurrent(QStringLiteral("segmentation"));
+        QTRY_VERIFY(!rig.stage().value("actionLabel").toString().isEmpty());
+        QCOMPARE(rig.regions.selectedCount(), 0);
+    }
+
+    // L'apercu de segmentation ne masque pas les regions hors de son onglet ni apres avoir quitte
+    // l'espace.
+    void previewIsDroppedOutsideTheSegmentationTab() {
+        Rig rig;
+        open(rig);
+        auto* panels = rig.named("segmentationPanels");
+        auto* settings = rig.named("segmentationSection");
+        QVERIFY(panels && settings);
+        QVERIFY(settings->setProperty("liveEnabled", false));
+        QVERIFY(rig.press("segPreviewButton"));
+        QTRY_VERIFY_WITH_TIMEOUT(rig.images.segPreviewActive(), 20'000);
+        panels->setProperty("tab", 1);
+        QTRY_VERIFY(!rig.images.segPreviewActive());
+        panels->setProperty("tab", 0);
+        QVERIFY(rig.press("segPreviewButton"));
+        QTRY_VERIFY_WITH_TIMEOUT(rig.images.segPreviewActive(), 20'000);
+        rig.workspace->setCurrent(QStringLiteral("points"));
+        QTRY_VERIFY(!rig.images.segPreviewActive());
     }
 };
 

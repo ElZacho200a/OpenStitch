@@ -13,7 +13,6 @@ ColumnLayout {
     objectName: "vectorShapePanel"
     required property var stage
     required property var workspace
-    signal updateRequested
     signal goToRegionRequested
     // Plan de mise à jour en attente de confirmation (retouches à écraser) ; null = pas de demande.
     property var pendingPlan: null

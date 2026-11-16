@@ -220,6 +220,9 @@ void RegionController::refresh() {
     if (before != selected_.size()) {
         emit selectionChanged();
     }
+    if (mergeTargetMode_ && selected_.size() != 1) {
+        setMergeTargetMode(false);
+    }
 }
 
 // --- Sélection ----------------------------------------------------------------------------
@@ -253,6 +256,13 @@ void RegionController::selectRegion(double id, const QString& mode) {
 
 void RegionController::selectAtPixel(int x, int y, bool additive) {
     const auto id = regionAtPixel(studio_.session().project(), x, y);
+    if (mergeTargetMode_) {
+        // Le clic désigne la cible : il ne doit jamais remplacer la région source.
+        if (id) {
+            (void)mergeSelectedInto(static_cast<double>(*id));
+        }
+        return;
+    }
     if (!id) {
         if (!additive) {
             clearSelection();
@@ -333,8 +343,45 @@ void RegionController::selectAll() {
 void RegionController::clearSelection() {
     if (selected_.empty())
         return;
+    setMergeTargetMode(false); // plus de région source : le choix de cible n'a plus d'objet
     selected_.clear();
     emit selectionChanged();
+}
+
+bool RegionController::adoptSessionSelection() {
+    const auto& seg = studio_.session().project().imageSource().segmentation;
+    if (!seg) {
+        return false;
+    }
+    std::vector<std::uint64_t> wanted;
+    for (const auto& target : studio_.session().selection().targets()) {
+        if (target.kind == TargetKind::Region && seg->find(RegionId{target.id}) &&
+            std::find(wanted.begin(), wanted.end(), target.id) == wanted.end()) {
+            wanted.push_back(target.id);
+        }
+    }
+    if (wanted.empty() || wanted == adopted_) {
+        adopted_ = std::move(wanted);
+        return false;
+    }
+    adopted_ = wanted;
+    if (wanted != selected_) {
+        selected_ = std::move(wanted);
+        emit selectionChanged();
+    }
+    return true;
+}
+
+void RegionController::setMergeTargetMode(bool on) {
+    if (on && selected_.size() != 1) {
+        setMessage(QStringLiteral("Sélectionnez une seule région source."), true);
+        on = false;
+    }
+    if (on == mergeTargetMode_) {
+        return;
+    }
+    mergeTargetMode_ = on;
+    emit mergeTargetModeChanged();
 }
 
 QVariantList RegionController::objectsOfSelection() const {
@@ -400,8 +447,12 @@ QString RegionController::mergeSelectedInto(double target) {
     // The target keeps its region ID and colour; the source is absorbed in
     // one undoable document command, rather than merging into an arbitrary
     // first neighbour.
-    return report(mergeRegionInto(studio_.session(), idOf(target), selected_.front()),
-                  QStringLiteral("Région fusionnée dans la région cible."));
+    auto refusal = report(mergeRegionInto(studio_.session(), idOf(target), selected_.front()),
+                          QStringLiteral("Région fusionnée dans la région cible."));
+    if (refusal.isEmpty()) {
+        setMergeTargetMode(false);
+    }
+    return refusal;
 }
 
 QString RegionController::mergeWithNeighbour(double id) {
@@ -484,15 +535,25 @@ void RegionController::regenerate(bool resegment, bool confirmed, const QVariant
     if (!confirmed) {
         const auto edits = countHandEdits(studio_.session().project());
         if (edits.retouchedObjects > 0) {
-            emit confirmRequested(
+            // La demande est mémorisée ici : quel que soit le panneau qui confirme, c'est bien
+            // elle (même mode, mêmes réglages) qui sera exécutée.
+            pendingResegment_ = resegment;
+            pendingSettings_ = settings;
+            confirmText_ =
                 QStringLiteral(
-                    "%1 objet(s) portent des retouches de points qui seront remplacées par "
-                    "la nouvelle génération. Les %2 objet(s) dessinés à la main sont "
+                    "%1 objet(s) portent des retouches de points qui seront remplacées "
+                    "par la nouvelle génération. Les %2 objet(s) dessinés à la main sont "
                     "conservés. Vous pourrez tout annuler avec Ctrl+Z.")
                     .arg(edits.retouchedObjects)
-                    .arg(edits.handDrawnObjects));
+                    .arg(edits.handDrawnObjects);
+            emit confirmChanged();
+            emit confirmRequested(confirmText_);
             return;
         }
+    }
+    if (!confirmText_.isEmpty()) {
+        confirmText_.clear();
+        emit confirmChanged();
     }
     auto working = processedImage(studio_.session().project());
     if (!working) {
@@ -505,11 +566,17 @@ void RegionController::regenerate(bool resegment, bool confirmed, const QVariant
         task_ = 0;
     }
     project_ops::DigitizeSettings digitize;
-    digitize.max_colors = static_cast<int>(numberOr(settings, "max_colors", digitize.max_colors));
-    digitize.min_region_px =
-        static_cast<int>(numberOr(settings, "min_region_px", digitize.min_region_px));
-    digitize.smoothing_px =
-        static_cast<int>(numberOr(settings, "smoothing_px", digitize.smoothing_px));
+    // Mêmes clés et mêmes bornes que `ImageController::optionsFrom` : « Re-segmenter » doit
+    // donner la segmentation que l'aperçu vient de montrer (le lissage était ignoré, la clé lue
+    // ici n'étant pas celle envoyée par le panneau).
+    digitize.max_colors =
+        std::clamp(static_cast<int>(numberOr(settings, "max_colors", digitize.max_colors)), 2, 64);
+    digitize.min_region_px = std::clamp(
+        static_cast<int>(numberOr(settings, "min_region_px", digitize.min_region_px)), 1, 100000);
+    digitize.smoothing_px = std::clamp(
+        static_cast<int>(numberOr(settings, "smoothing_radius_px",
+                                  numberOr(settings, "smoothing_px", digitize.smoothing_px))),
+        0, 10);
     const auto snapshot = studio_.session().snapshot();
     const auto revision = studio_.session().revision();
     const image::Image image = std::move(*working);
@@ -555,6 +622,22 @@ void RegionController::regenerate(bool resegment, bool confirmed, const QVariant
                        false);
             emit regenerated(static_cast<int>(r->objectsBefore), static_cast<int>(r->objectsAfter));
         });
+}
+
+void RegionController::confirmRegeneration() {
+    if (confirmText_.isEmpty()) {
+        return;
+    }
+    regenerate(pendingResegment_, true, pendingSettings_);
+}
+
+void RegionController::cancelConfirmation() {
+    if (confirmText_.isEmpty()) {
+        return;
+    }
+    confirmText_.clear();
+    pendingSettings_.clear();
+    emit confirmChanged();
 }
 
 void RegionController::cancelTask() {
