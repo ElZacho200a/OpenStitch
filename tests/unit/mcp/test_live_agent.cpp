@@ -442,7 +442,7 @@ TEST_CASE("manual edit between preview and commit is refused", "[live][agentic]"
     CHECK(d.gate.approvals == 0);
 }
 
-TEST_CASE("agentic tools are exposed read-only and project_export stays denied",
+TEST_CASE("agentic tools are exposed; project_export is gated by extension and approval",
           "[live][agentic]") {
     for (const char* tool : {"live_context", "live_target", "live_plan_satin", "live_preview",
                              "live_ask_user", "live_status"}) {
@@ -451,7 +451,8 @@ TEST_CASE("agentic tools are exposed read-only and project_export stays denied",
     CHECK(mcp::live_policy("live_commit") == mcp::LivePolicy::Denied);
     CHECK(mcp::live_policy("live_anything") == mcp::LivePolicy::Denied);
     Doc d;
-    CHECK(d.call("project_export", {{"path", "x.dst"}})["isError"].get<bool>());
+    // Export : l'extension doit suivre le format (refus avant toute demande d'accord).
+    CHECK(d.call("project_export", {{"path", "x.pes"}, {"format", "dst"}})["isError"].get<bool>());
     const json specs = json::parse(mcp::live_tools_json());
     std::set<std::string> names;
     for (const auto& s : specs) {
@@ -459,7 +460,7 @@ TEST_CASE("agentic tools are exposed read-only and project_export stays denied",
     }
     CHECK(names.contains("live_plan_satin"));
     CHECK(names.contains("project_apply"));
-    CHECK_FALSE(names.contains("project_export"));
+    CHECK(names.contains("project_export")); // côté MCP ; le chat à clé API le filtre
 }
 
 // Performance : un projet de plusieurs centaines d'objets ne doit pas figer l'hote. Seuils

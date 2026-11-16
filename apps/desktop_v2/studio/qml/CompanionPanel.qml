@@ -259,16 +259,76 @@ Controls.Popup {
             spacing: 6
             model: panel.hasCompanion ? companion.messages : []
             onCountChanged: positionViewAtEnd()
-            delegate: Text {
+            delegate: Item {
+                id: row
                 required property var modelData
+                readonly property string role: modelData.role
+                readonly property bool isUser: role === "user"
                 width: ListView.view.width
-                wrapMode: Text.WordWrap
-                text: (modelData.role === "user" ? qsTr("Vous : ") : modelData.role === "tool" ? qsTr("Outil : ") : "") + modelData.text
-                color: modelData.role === "error" ? Theme.accent : modelData.role === "user" ? Theme.foreground : Theme.muted
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.smallSize
-                Accessible.role: Accessible.StaticText
-                Accessible.name: text
+                implicitHeight: bubble.implicitHeight
+                // Vous : bulle rose à droite ; Claude : carte neutre à gauche ; outils : puce
+                // monospace ; réflexion : italique atténué (clic = tout lire).
+                Rectangle {
+                    id: bubble
+                    anchors.right: row.isUser ? parent.right : undefined
+                    anchors.left: row.isUser ? undefined : parent.left
+                    width: Math.min(parent.width - (row.isUser ? 24 : 0), row.role === "tool" ? parent.width : parent.width - 8)
+                    implicitHeight: content.implicitHeight + 14
+                    radius: Theme.radius
+                    color: row.isUser ? Theme.accentSoft
+                           : row.role === "assistant" ? Theme.surface
+                           : row.role === "tool" ? Theme.raised
+                           : "transparent"
+                    border.width: row.role === "assistant" || row.isUser ? 1 : 0
+                    border.color: row.isUser ? Theme.accent : Theme.divider
+                    ColumnLayout {
+                        id: content
+                        anchors.fill: parent
+                        anchors.margins: 7
+                        spacing: 2
+                        Text {
+                            visible: row.role === "user" || row.role === "assistant" || row.role === "thinking" || row.role === "tool"
+                            text: row.isUser ? qsTr("Vous")
+                                  : row.role === "assistant" ? qsTr("Claude")
+                                  : row.role === "thinking" ? qsTr("Réflexion")
+                                  : "⚙ " + (row.modelData.title || qsTr("outil"))
+                            color: row.isUser ? Theme.accent
+                                   : row.role === "assistant" ? Theme.secondaryAccent
+                                   : row.role === "tool" ? Theme.info
+                                   : Theme.faint
+                            font.family: row.role === "tool" ? "Consolas" : Theme.fontFamily
+                            font.pixelSize: Theme.captionSize
+                            font.weight: Font.DemiBold
+                            font.italic: row.role === "thinking"
+                        }
+                        Text {
+                            id: body
+                            Layout.fillWidth: true
+                            property bool expanded: false
+                            wrapMode: Text.WordWrap
+                            maximumLineCount: row.role === "thinking" && !expanded ? 3 : 100000
+                            elide: Text.ElideRight
+                            text: row.modelData.text
+                            textFormat: row.role === "assistant" ? Text.MarkdownText : Text.PlainText
+                            color: row.role === "error" ? Theme.error
+                                   : row.isUser ? Theme.foreground
+                                   : row.role === "assistant" ? Theme.foreground
+                                   : row.role === "tool" ? Theme.muted
+                                   : Theme.faint
+                            font.family: row.role === "tool" ? "Consolas" : Theme.fontFamily
+                            font.pixelSize: row.role === "assistant" || row.isUser ? Theme.bodySize : Theme.smallSize
+                            font.italic: row.role === "thinking"
+                            font.weight: row.isUser ? Font.Medium : Font.Normal
+                            Accessible.role: Accessible.StaticText
+                            Accessible.name: (row.isUser ? qsTr("Vous : ") : row.role === "tool" ? qsTr("Outil ") + (row.modelData.title || "") + " : " : "") + text
+                            MouseArea {
+                                anchors.fill: parent
+                                enabled: row.role === "thinking"
+                                onClicked: body.expanded = !body.expanded
+                            }
+                        }
+                    }
+                }
             }
             Text {
                 anchors.centerIn: parent
@@ -283,6 +343,27 @@ Controls.Popup {
                       ? qsTr("Demandez par exemple « passe l'objet sélectionné en rouge ».")
                       : qsTr("Aucun fournisseur prêt : renseignez une clé API dans Préférences ▸ Compagnon IA, ou reliez Claude Code avec le pont.")
             }
+        }
+        Text {
+            id: activityLine
+            objectName: "companionActivity"
+            visible: panel.hasCompanion && companion.busy
+            Layout.fillWidth: true
+            color: Theme.info
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.smallSize
+            font.italic: true
+            property int dots: 0
+            text: "● " + (panel.hasCompanion && companion.activity !== "" ? companion.activity : qsTr("Claude travaille…"))
+                  + ".".repeat(dots)
+            Timer {
+                interval: 450
+                repeat: true
+                running: activityLine.visible && !Theme.reducedMotion
+                onTriggered: activityLine.dots = (activityLine.dots + 1) % 4
+            }
+            Accessible.role: Accessible.StaticText
+            Accessible.name: text
         }
         Text {
             objectName: "companionUsage"

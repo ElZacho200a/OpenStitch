@@ -84,6 +84,11 @@ add_executable(openstitch_v2_studio WIN32 main.cpp)
 # Studio est l'application par défaut : openstitch.exe (la V1 devient openstitch-v1.exe).
 set_target_properties(openstitch_v2_studio PROPERTIES OUTPUT_NAME openstitch)
 target_link_libraries(openstitch_v2_studio PRIVATE openstitch::studio_ui openstitch::warnings)
+# Le serveur MCP du pont est lance depuis le build voisin (companion_launcher) : il doit etre
+# reconstruit avec le Studio, sinon un `openstitch-mcp` perime ignore les outils live recents.
+if(TARGET openstitch-mcp)
+    add_dependencies(openstitch_v2_studio openstitch-mcp)
+endif()
 qt_add_resources(openstitch_v2_studio studio_qml PREFIX "/studio" FILES ${studio_qml_files})
 
 if(WIN32 AND TARGET Qt6::windeployqt)

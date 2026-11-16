@@ -48,6 +48,8 @@ private:
     void handleOutput();
     void consumeBuffer();
     static QString describeError(const QJsonObject& event);
+    static QString friendlyToolName(const QString& raw);
+    static QString compactInput(const QJsonObject& input);
     void handleLine(const QByteArray& line);
 
     QString executable_;

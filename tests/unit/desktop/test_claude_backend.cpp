@@ -583,8 +583,10 @@ void MainWindowTest::claudeCodeLaunchIsRestricted() {
         }
         return args.at(index + 1);
     };
-    QCOMPARE(valueAfter(QStringLiteral("--tools")), QString());
-    QCOMPARE(valueAfter(QStringLiteral("--permission-mode")), QStringLiteral("dontAsk"));
+    QCOMPARE(valueAfter(QStringLiteral("--tools")), QStringLiteral("Read,Glob,Grep"));
+    QCOMPARE(valueAfter(QStringLiteral("--permission-mode")), QStringLiteral("default"));
+    QCOMPARE(valueAfter(QStringLiteral("--permission-prompt-tool")),
+             QStringLiteral("mcp__openstitch__live_permission"));
     QCOMPARE(valueAfter(QStringLiteral("--allowedTools")), QStringLiteral("mcp__openstitch__*"));
     QCOMPARE(valueAfter(QStringLiteral("--mcp-config")),
              QDir(workspace).filePath(QStringLiteral(".mcp.json")));
@@ -634,9 +636,13 @@ void MainWindowTest::claudeCodeAcceptsHugeCompleteLinesButRejectsRunawayPartialO
 
 void MainWindowTest::claudeCodeAllowsOnlyOpenStitchTools() {
     const QStringList denied = ClaudeCodeProcessBackend::disallowedTools();
-    for (const char* tool : {"Bash", "PowerShell", "Edit", "Write", "Read", "Glob", "Grep",
-                             "WebFetch", "WebSearch", "Task"}) {
+    for (const char* tool :
+         {"Bash", "PowerShell", "Edit", "Write", "NotebookEdit", "WebFetch", "WebSearch", "Task"}) {
         QVERIFY2(denied.contains(QString::fromLatin1(tool)), tool);
+    }
+    // Lecture seule du disque : permise, mais soumise à la permission du pont.
+    for (const char* tool : {"Read", "Glob", "Grep"}) {
+        QVERIFY2(!denied.contains(QString::fromLatin1(tool)), tool);
     }
     QVERIFY(!denied.contains(QStringLiteral("mcp__openstitch")));
 }

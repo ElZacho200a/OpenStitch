@@ -136,8 +136,8 @@ TEST_CASE("live policy classifies tools", "[live]") {
     for (const char* tool : {"project_open", "project_save", "project_export"}) {
         CHECK(mcp::live_policy(tool) == mcp::LivePolicy::HostFile);
     }
-    for (const char* tool : {"project_new", "project_close", "project_restore",
-                             "project_checkpoint", "bash"}) {
+    for (const char* tool :
+         {"project_new", "project_close", "project_restore", "project_checkpoint", "bash"}) {
         CHECK(mcp::live_policy(tool) == mcp::LivePolicy::Denied);
     }
 }
@@ -250,8 +250,9 @@ TEST_CASE("live save and open go through the host and need approval", "[live]") 
               .get<bool>());
     CHECK(saved.empty());
     d.gate.answer = true;
-    CHECK_FALSE(parse(d.service.call("project_save", "{\"path\":" + path_arg(target) + "}"))["isError"]
-                    .get<bool>());
+    CHECK_FALSE(
+        parse(d.service.call("project_save", "{\"path\":" + path_arg(target) + "}"))["isError"]
+            .get<bool>());
     CHECK(saved == target.generic_string());
 
     // Document modifié : l'ouverture exige discard_changes (Doc::info.dirty = true).
@@ -261,8 +262,9 @@ TEST_CASE("live save and open go through the host and need approval", "[live]") 
     CHECK(opened.empty());
     // Fichier introuvable : refusé avant toute demande à l'utilisateur.
     const int before = d.gate.asked;
-    const auto missing = parse(d.service.call(
-        "project_open", "{\"path\":" + path_arg(dir / "absent.osp") + ",\"discard_changes\":true}"));
+    const auto missing =
+        parse(d.service.call("project_open", "{\"path\":" + path_arg(dir / "absent.osp") +
+                                                 ",\"discard_changes\":true}"));
     CHECK(missing["isError"].get<bool>());
     CHECK(d.gate.asked == before);
     std::error_code ec;
@@ -519,4 +521,60 @@ TEST_CASE("digitize skill files are embedded with their front matter", "[live][s
         references += path.starts_with("references/") ? 1 : 0;
     }
     CHECK(references >= 4);
+}
+
+TEST_CASE("live permission asks the user for disk reads and remembers the answer", "[live]") {
+    Doc d;
+    const auto ask = [&d](const std::string& tool, const std::string& path) {
+        const json args{{"tool_name", tool}, {"input", {{"file_path", path}}}};
+        const auto out = parse(d.service.call("live_permission", args.dump()));
+        return json::parse(out["content"][0]["text"].get<std::string>());
+    };
+    // Outil non lecture : refus d'office, sans déranger l'utilisateur.
+    CHECK(ask("Bash", "x")["behavior"] == "deny");
+    CHECK(d.gate.asked == 0);
+    // Secrets : refus d'office.
+    CHECK(ask("Read", "C:/Users/me/.ssh/id_rsa")["behavior"] == "deny");
+    CHECK(d.gate.asked == 0);
+    // Fichier ordinaire : l'utilisateur décide.
+    d.gate.answer = false;
+    CHECK(ask("Read", "D:/pack/manifest.json")["behavior"] == "deny");
+    CHECK(d.gate.asked == 1);
+    CHECK(d.gate.last.tool == "live_permission");
+    CHECK(!d.gate.last.warnings.empty());
+    d.gate.answer = true;
+    const auto allowed = ask("Read", "D:/pack/manifest.json");
+    CHECK(allowed["behavior"] == "allow");
+    CHECK(allowed["updatedInput"]["file_path"] == "D:/pack/manifest.json");
+    CHECK(d.gate.asked == 2);
+    // Déjà accordé : plus de question.
+    CHECK(ask("Read", "D:/pack/manifest.json")["behavior"] == "allow");
+    CHECK(d.gate.asked == 2);
+    CHECK_FALSE(d.stack.canUndo()); // aucune modification du document
+}
+
+TEST_CASE("live granted folders open reads without asking, except secrets", "[live]") {
+    Doc d;
+    const auto dir = std::filesystem::temp_directory_path() / "os-live-grant";
+    std::filesystem::create_directories(dir / ".ssh");
+    CHECK(d.service.grant_read_dir(dir.generic_string()));
+    CHECK_FALSE(d.service.grant_read_dir((dir / "absent").generic_string()));
+    CHECK_FALSE(d.service.grant_read_dir((dir / ".ssh").generic_string())); // sensible
+    const auto ask = [&d](const std::string& path) {
+        const json args{{"tool_name", "Read"}, {"input", {{"file_path", path}}}};
+        const auto out = parse(d.service.call("live_permission", args.dump()));
+        return json::parse(out["content"][0]["text"].get<std::string>())["behavior"];
+    };
+    CHECK(ask((dir / "notes.md").generic_string()) == "allow");
+    CHECK(ask((dir / "sub" / "plan.png").generic_string()) == "allow");
+    CHECK(ask((dir / ".ssh" / "id_rsa").generic_string()) == "deny");
+    CHECK(d.gate.asked == 0);
+    d.gate.answer = false; // hors dossier accordé : l'utilisateur est sollicité
+    CHECK(ask("D:/ailleurs/autre.txt") == "deny");
+    CHECK(d.gate.asked == 1);
+    // « .. » ne sort pas du dossier accordé : l'utilisateur est sollicité.
+    CHECK(ask(dir.generic_string() + "/../../secret.txt") == "deny");
+    CHECK(d.gate.asked == 2);
+    std::error_code ec;
+    std::filesystem::remove_all(dir, ec);
 }

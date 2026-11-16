@@ -7,6 +7,7 @@
 #include <QEventLoop>
 #include <QFileInfo>
 #include <QGuiApplication>
+#include <QRegularExpression>
 #include <QUrl>
 
 #include "../live/live_server.hpp"
@@ -103,8 +104,16 @@ void CompanionController::wire(desktop::CompanionBackend* backend) {
     connect(backend, &B::assistantText, this,
             [this](const QString& text) { append(QStringLiteral("assistant"), text); });
     connect(backend, &B::toolCalled, this, [this](const desktop::CompanionToolCall& call) {
+        // Le NOM de l'outil est toujours montré (titre), le résumé dit sur quoi il porte.
         append(call.isError ? QStringLiteral("error") : QStringLiteral("tool"),
-               call.summary + (call.refusal.isEmpty() ? QString() : " — " + call.refusal));
+               call.summary + (call.refusal.isEmpty() ? QString() : " — " + call.refusal),
+               call.tool);
+    });
+    connect(backend, &B::thinking, this,
+            [this](const QString& text) { append(QStringLiteral("thinking"), text); });
+    connect(backend, &B::activity, this, [this](const QString& label) {
+        activity_ = label;
+        emit changed();
     });
     connect(backend, &B::failed, this, [this](const QString& message) {
         error_ = message;
@@ -114,7 +123,10 @@ void CompanionController::wire(desktop::CompanionBackend* backend) {
         usage_ = tr("%1 jetons envoyés, %2 reçus").arg(in).arg(out);
         emit changed();
     });
-    connect(backend, &B::finished, this, [this] { emit changed(); });
+    connect(backend, &B::finished, this, [this] {
+        activity_.clear();
+        emit changed();
+    });
 }
 
 desktop::ClaudeCompanionBackend& CompanionController::ensureBackend() {
@@ -278,10 +290,21 @@ QString CompanionController::setBridgeEnabled(bool on) {
     return {};
 }
 
-void CompanionController::append(const QString& role, const QString& text) {
-    messages_.push_back(
-        QVariantMap{{QStringLiteral("role"), role}, {QStringLiteral("text"), text}});
+void CompanionController::append(const QString& role, const QString& text, const QString& title) {
+    messages_.push_back(QVariantMap{{QStringLiteral("role"), role},
+                                    {QStringLiteral("text"), text},
+                                    {QStringLiteral("title"), title}});
     emit changed();
+}
+
+QString CompanionController::grantFolder(const QString& path) {
+    const QFileInfo info(path);
+    const QString dir = info.isDir() ? info.absoluteFilePath() : info.absolutePath();
+    if (!ensureCompanion().service().grant_read_dir(
+            QDir::fromNativeSeparators(dir).toStdString())) {
+        return tr("Ce dossier ne peut pas être confié à l'agent (introuvable ou sensible).");
+    }
+    return {};
 }
 
 bool CompanionController::send(const QString& text) {
@@ -307,7 +330,27 @@ bool CompanionController::send(const QString& text) {
         return false;
     }
     error_.clear();
+    activity_ = tr("Envoi à Claude…");
     append(QStringLiteral("user"), trimmed);
+    // Un dossier nommé dans SA demande vaut accord de lecture (le texte vient de l'utilisateur,
+    // jamais d'un fichier ni d'un outil) : l'agent peut alors lire le pack sans rien demander.
+    static const QRegularExpression pathPattern(
+        QStringLiteral(R"((?:[A-Za-z]:[\\/]|/)[^\s"'<>|*?]+)"));
+    auto matches = pathPattern.globalMatch(trimmed);
+    while (matches.hasNext()) {
+        QString candidate = matches.next().captured(0);
+        while (candidate.endsWith(QLatin1Char('.')) || candidate.endsWith(QLatin1Char(',')) ||
+               candidate.endsWith(QLatin1Char(';')) || candidate.endsWith(QLatin1Char(')'))) {
+            candidate.chop(1);
+        }
+        if (QFileInfo::exists(candidate) && grantFolder(candidate).isEmpty()) {
+            const QFileInfo info(candidate);
+            append(QStringLiteral("tool"),
+                   tr("Accès en lecture accordé au dossier : %1")
+                       .arg(QDir::toNativeSeparators(info.isDir() ? info.absoluteFilePath()
+                                                                  : info.absolutePath())));
+        }
+    }
     backend.send(trimmed);
     emit changed();
     return true;
@@ -464,8 +507,8 @@ QString CompanionController::prepareClaudeCode() {
     if (!refusal.isEmpty()) {
         return refusal;
     }
-    const auto env = options_.launcher ? *options_.launcher
-                                       : desktop::ClaudeCodeLauncher::systemEnv();
+    const auto env =
+        options_.launcher ? *options_.launcher : desktop::ClaudeCodeLauncher::systemEnv();
     QString executable;
     QString workspace;
     const auto ready = desktop::ClaudeCodeLauncher::prepare(env, executable, workspace);
@@ -491,8 +534,8 @@ QString CompanionController::openClaudeCodeTerminal() {
     if (auto* clipboard = QGuiApplication::clipboard()) {
         clipboard->setText(connectionCommand());
     }
-    const auto env = options_.launcher ? *options_.launcher
-                                       : desktop::ClaudeCodeLauncher::systemEnv();
+    const auto env =
+        options_.launcher ? *options_.launcher : desktop::ClaudeCodeLauncher::systemEnv();
     const auto result = desktop::ClaudeCodeLauncher::launch(env);
     if (result != desktop::ClaudeCodeLauncher::Result::Started) {
         return desktop::ClaudeCodeLauncher::describe(result) + QLatin1Char(' ') +

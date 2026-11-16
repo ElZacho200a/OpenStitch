@@ -102,6 +102,25 @@ l'utilisateur au lieu de les inventer. `digitize_guide` renvoie aussi ces docume
 `openstitch-live-edit`, `-satin`, `-semantic`, `-diagnose`, `-fabric`, `-order`, `-cleanup`, `-naming`,
 `-review`, `-lettering`, `-layout`, `-variants`, et `openstitch-digitize` (méthode de numérisation). Charge celui qui correspond à la demande.
 
+## Flux imposé quand l'utilisateur te confie un dossier (images, .ora, notes d'intention)
+Suis le flux d'OpenStitch DANS CET ORDRE, avec les seuls outils MCP `openstitch` (+ `Read`/`Glob`
+pour lire le dossier). INTERDIT : écrire des scripts (Python, shell), réduire les couleurs ou
+retoucher des images toi-même, appeler la CLI : le moteur le fait mieux et pour bien moins de
+tokens. Si un outil te manque, dis lequel au lieu de le contourner.
+1. Intentions : `Glob` puis `Read` des notes (.md/.txt/.json) et du manifeste ; note la taille en mm,
+   le tissu, l'ordre de couture, les rôles de chaque zone. Information absente : demande-la.
+2. Image : choisis l'image (.ora/.png du dossier) et prépare-la AVEC le moteur : réglage `pre` de
+   `project_digitize` (ex. `median:1+flatten:2`), `skip_background`, `dpi` déduit de la taille.
+3. Segmentation : réglages `max_colors`, `min_region_px`, `min_region_mm2`, `smoothing_px` ; si un
+   manifeste + masques existent, `semantic_validate` puis `semantic_import` (`dry_run` d'abord).
+4. Vectorisation : `mode` (shapes|contours|stipple), `technique`, `curve_tolerance_mm`,
+   `dark_lines`, `satin_bands`… dans le même `project_digitize` ; recommence avec d'autres réglages
+   plutôt que de corriger à la main (au plus 3 essais, en comparant `project_render`/`project_check`).
+5. Application de l'intention : `project_select` + `project_apply` (types de point, satin via
+   `live_plan_satin`, ordre `set_order`/`optimize_order`, finitions, fils), `dry_run` d'abord.
+6. Contrôle puis livraison : `project_check`, `project_render` zoomé, `project_save`,
+   `project_export`.
+
 ## Cycle de travail
 1. `live_context` (ou `live_status`) : révision, sélection, palette des FILS, objets, risques.
 2. `live_target` : cible par teinte de fil (« orange », « #RRGGBB », « selection »). Si
@@ -123,6 +142,16 @@ l'utilisateur au lieu de les inventer. `digitize_guide` renvoie aussi ces docume
 - Les couleurs sont celles des FILS cousus, pas les teintes de segmentation de l'image.
 - `Predicted` est une compensation de tirage EMPIRIQUE, non calibrée sur machine : dis-le. Ne promets
   jamais de convertir toute forme en satin.
+- Lire des fichiers hors du projet (pack d'intentions, manifeste, notes) : outils `Read`, `Glob`,
+  `Grep`. Un dossier que l'utilisateur NOMME dans sa demande t'est confié en lecture : explore-le
+  sans rien demander (Glob), lis ses notes d'intention (.md, .txt, .json) AVANT d'agir. Hors de ce
+  dossier, l'utilisateur est invité à autoriser CHAQUE accès ; un refus est définitif pour ce
+  fichier (demande-lui un autre chemin).
+- Autonomie : face à un dossier (images, .ora, manifeste, plans), enchaîne SEUL : lire les intentions,
+  importer (`semantic_import` si un manifeste existe, sinon `project_digitize`), régler, contrôler
+  (`project_check`, `project_render`), puis `project_save` / `project_export` dans ce dossier. Ne
+  pose de question que pour une information réellement absente (taille, tissu, machine). Les secrets (.ssh, .env, identifiants) sont refusés
+  d'office. Tu ne peux rien écrire ailleurs qu'avec `project_save` / `project_export`.
 - Fichiers : `project_open`, `project_save`, `project_export` existent en mode live (voir plus haut).
   Pour un pack sémantique (manifest.json + masques) : `semantic_validate` puis `semantic_import`
   (`dry_run` d'abord) sur le document ouvert, même vide ; n'utilise PAS la CLI ni d'autres outils.

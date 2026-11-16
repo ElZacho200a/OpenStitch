@@ -118,6 +118,12 @@ const std::vector<LiveExtraTool> kExtraTools = {
      R"("items":{"type":"integer","minimum":1},"minItems":1,"maxItems":20},)"
      R"("crop":{"type":"array","items":{"type":"number"},"minItems":4,"maxItems":4},)"
      R"("px_per_mm":{"type":"number"}},"required":["operations"]})"},
+    {"live_permission",
+     "Outil INTERNE du compagnon : décide si Claude Code peut lire un fichier hors du projet "
+     "(Read, Glob, Grep seulement). L'utilisateur est invité à autoriser chaque accès ; ne "
+     "l'appelez pas vous-même.",
+     R"({"type":"object","properties":{"tool_name":{"type":"string"},"input":{"type":"object"},)"
+     R"("tool_use_id":{"type":"string"}},"required":["tool_name","input"]})"},
     {"live_ask_user",
      "Pose une question à l'utilisateur DANS LE PANNEAU du compagnon quand la demande est ambiguë "
      "(plusieurs teintes, sélection vide…). 2 à 8 options, chacune avec ses identifiants d'objets. "
@@ -134,6 +140,38 @@ json error_content(const std::string& tool, const char* code, const std::string&
         {"content", json::array({json{{"type", "text"},
                                       {"text", po::error_json(tool, code, message, hint)}}})},
         {"isError", true}};
+}
+
+// Chemins qu'aucun accord ne peut ouvrir : secrets et identifiants.
+bool sensitive_path(std::string path) {
+    for (char& ch : path) {
+        ch = ch == '\\' ? '/' : static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    }
+    for (const char* marker :
+         {"/.ssh/", "/.gnupg/", "/.aws/", "/.azure/", "/.kube/", "id_rsa", "id_ed25519",
+          ".claude.json", "/.claude/.credentials", "credentials", "/.env", "known_hosts"}) {
+        if (path.find(marker) != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
+
+std::string normalized_path(std::string path) {
+    for (char& ch : path) {
+        ch = ch == '\\' ? '/' : static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    }
+    while (path.size() > 1 && path.back() == '/') {
+        path.pop_back();
+    }
+    return path;
+}
+
+json permission_reply(bool allow, const json& input, const std::string& message = {}) {
+    json decision = allow ? json{{"behavior", "allow"}, {"updatedInput", input}}
+                          : json{{"behavior", "deny"}, {"message", message}};
+    return json{{"content", json::array({json{{"type", "text"}, {"text", decision.dump()}}})},
+                {"isError", false}};
 }
 
 json text_content(const std::string& text) {
@@ -179,10 +217,10 @@ std::string live_tools_json() {
         if (live_policy(tool.name) == LivePolicy::Denied) {
             continue;
         }
-        list.push_back(json{{"name", tool.name},
-                            {"description", std::string(tool.description) +
-                                                live_file_note(tool.name)},
-                            {"input_schema", json::parse(tool.input_schema)}});
+        list.push_back(
+            json{{"name", tool.name},
+                 {"description", std::string(tool.description) + live_file_note(tool.name)},
+                 {"input_schema", json::parse(tool.input_schema)}});
     }
     for (const auto& extra : live_extra_tools()) {
         list.push_back(json{{"name", extra.name},
@@ -213,6 +251,10 @@ struct LivePendingCall::Impl {
     fs::path target;
     fs::path temp_file;
     bool dirty_host{false};
+    // live_permission : accès disque demandé par Claude Code (outil, chemin) ; décidé au retour
+    // GUI.
+    std::optional<std::pair<std::string, std::string>> permission;
+    json permission_input = json::object();
     bool ran{false};
 
     Impl() = default;
@@ -236,7 +278,7 @@ void LivePendingCall::run() {
     }
     c.ran = true;
     if (c.tool.starts_with("live_")) {
-        if (c.ask) {
+        if (c.ask || c.permission) {
             return; // question à l'utilisateur : rien à calculer, la réponse vient au retour GUI
         }
         try {
@@ -267,9 +309,9 @@ void LivePendingCall::run() {
             } else if (c.tool == "project_export") { // calcul hors du fil GUI, dossier temporaire
                 std::error_code ec;
                 std::random_device rd;
-                const fs::path dir = fs::temp_directory_path(ec) /
-                                     ("openstitch-live-" + std::to_string(rd()) +
-                                      std::to_string(rd()));
+                const fs::path dir =
+                    fs::temp_directory_path(ec) /
+                    ("openstitch-live-" + std::to_string(rd()) + std::to_string(rd()));
                 fs::create_directories(dir, ec);
                 if (ec) {
                     c.result.is_error = true;
@@ -304,8 +346,7 @@ void LivePendingCall::run() {
         } catch (const std::exception&) {
             // Confort seulement : l'échec de l'aperçu n'empêche pas la demande d'approbation.
         }
-    } else if (c.policy == LivePolicy::Apply && !c.dry_run && !c.result.is_error &&
-               session.dirty) {
+    } else if (c.policy == LivePolicy::Apply && !c.dry_run && !c.result.is_error && session.dirty) {
         c.final_project = std::make_shared<const document::Project>(std::move(*session.project));
         try {
             c.apply_preview = build_apply_preview(*c.snapshot.project, *c.final_project);
@@ -316,6 +357,19 @@ void LivePendingCall::run() {
 }
 
 // --- Service ---------------------------------------------------------------------------------
+
+bool LiveService::grant_read_dir(const std::string& directory) {
+    std::error_code ec;
+    const fs::path dir = path_from_utf8(directory);
+    if (directory.empty() || sensitive_path(directory + "/") || !fs::is_directory(dir, ec)) {
+        return false;
+    }
+    const std::string key = normalized_path(directory);
+    if (std::find(granted_dirs_.begin(), granted_dirs_.end(), key) == granted_dirs_.end()) {
+        granted_dirs_.push_back(key);
+    }
+    return true;
+}
 
 LiveService::LiveService(project_ops::LiveBridge& bridge, IApprovalGate& gate, InfoProvider info,
                          std::function<void()> on_applied)
@@ -340,11 +394,11 @@ std::shared_ptr<LivePendingCall> LiveService::begin(const std::string& tool,
     }
     c.policy = live_policy(tool);
     if (c.policy == LivePolicy::Denied) {
-        c.immediate = error_content(
-            tool, po::code::kRefused,
-            "l'outil « " + tool + " » n'est pas disponible sur le projet ouvert (mode live)",
-            "créer ou fermer un projet se fait depuis OpenStitch Desktop ; "
-            "outils disponibles : tools/list");
+        c.immediate = error_content(tool, po::code::kRefused,
+                                    "l'outil « " + tool +
+                                        " » n'est pas disponible sur le projet ouvert (mode live)",
+                                    "créer ou fermer un projet se fait depuis OpenStitch Desktop ; "
+                                    "outils disponibles : tools/list");
         return call;
     }
     const json parsed =
@@ -357,6 +411,41 @@ std::shared_ptr<LivePendingCall> LiveService::begin(const std::string& tool,
     c.args = parsed.is_null() ? json::object() : parsed;
     c.dry_run = c.args.contains("dry_run") && c.args.at("dry_run").is_boolean() &&
                 c.args.at("dry_run").get<bool>();
+    if (tool == "live_permission") {
+        const auto text_of = [](const json& j, const char* key) {
+            return j.contains(key) && j.at(key).is_string() ? j.at(key).get<std::string>()
+                                                            : std::string{};
+        };
+        const std::string name = text_of(c.args, "tool_name");
+        const json input = c.args.contains("input") && c.args.at("input").is_object()
+                               ? c.args.at("input")
+                               : json::object();
+        std::string path = text_of(input, "file_path");
+        if (path.empty()) {
+            path = text_of(input, "path");
+        }
+        if (name != "Read" && name != "Glob" && name != "Grep") {
+            c.immediate = permission_reply(
+                false, input, "seuls Read, Glob et Grep sont autorisés : utilisez les outils MCP");
+        } else if (!path.empty() && sensitive_path(path)) {
+            c.immediate = permission_reply(
+                false, input, "accès refusé : ce chemin contient des secrets ou identifiants");
+        } else if (path.empty() || read_allowed_.contains(name + "|" + path) ||
+                   std::any_of(granted_dirs_.begin(), granted_dirs_.end(),
+                               [&path](const std::string& dir) {
+                                   const std::string p = normalized_path(path);
+                                   // « .. » sortirait du dossier accordé malgré le préfixe.
+                                   const bool climbs = p.find("/../") != std::string::npos ||
+                                                       p.ends_with("/..") || p.starts_with("../");
+                                   return !climbs && (p == dir || p.starts_with(dir + "/"));
+                               })) {
+            c.immediate = permission_reply(true, input); // espace de travail, ou déjà accordé
+        } else {
+            c.permission = std::make_pair(name, path);
+            c.permission_input = input;
+        }
+        return call;
+    }
     if (tool == "live_ask_user") {
         ChoiceRequest ask;
         ask.question = c.args.value("question", std::string{});
@@ -397,7 +486,8 @@ std::shared_ptr<LivePendingCall> LiveService::begin(const std::string& tool,
                        : std::string{};
         };
         const auto flag_arg = [&c](const char* key) {
-            return c.args.contains(key) && c.args.at(key).is_boolean() && c.args.at(key).get<bool>();
+            return c.args.contains(key) && c.args.at(key).is_boolean() &&
+                   c.args.at(key).get<bool>();
         };
         const bool no_clobber = flag_arg("no_clobber");
         c.dirty_host = doc.dirty;
@@ -499,10 +589,32 @@ std::string LiveService::finish(LivePendingCall& call) {
                              {"applied", false}};
         return reply.dump();
     }
+    if (c.permission) {
+        const auto& [name, path] = *c.permission;
+        ApprovalRequest request;
+        request.tool = "live_permission";
+        request.label = "IA : accès à un fichier";
+        request.items.push_back({0, std::string(name == "Read" ? "lire " : "parcourir ") + path});
+        request.warnings.push_back(
+            "hors du projet : le contenu lu est envoyé à Claude ; refusez si ce n'est pas voulu");
+        request.session_id = bridge_.session_id();
+        request.revision = bridge_.revision();
+        json reply;
+        if (gate_.approve(request)) {
+            read_allowed_.insert(name + "|" + path);
+            reply = permission_reply(true, c.permission_input);
+        } else {
+            reply = permission_reply(false, c.permission_input,
+                                     "l'utilisateur a refusé l'accès à ce fichier");
+        }
+        reply["live"] = json{{"session_id", bridge_.session_id()},
+                             {"revision", bridge_.revision()},
+                             {"applied", false}};
+        return reply.dump();
+    }
     json out{{"content", c.result.content}, {"isError", c.result.is_error}};
     bool applied = false;
-    const auto refuse = [&](const char* code, const std::string& message,
-                            const std::string& hint) {
+    const auto refuse = [&](const char* code, const std::string& message, const std::string& hint) {
         out = error_content(c.tool, code, message, hint);
     };
 
@@ -612,10 +724,9 @@ std::string LiveService::finish(LivePendingCall& call) {
                                       ? std::string{}
                                       : c.result.content.front().value("text", std::string{});
             if (c.policy == LivePolicy::Replace) {
-                const std::string image =
-                    c.args.contains("image") && c.args.at("image").is_string()
-                        ? c.args.at("image").get<std::string>()
-                        : std::string("?");
+                const std::string image = c.args.contains("image") && c.args.at("image").is_string()
+                                              ? c.args.at("image").get<std::string>()
+                                              : std::string("?");
                 request.items.push_back({0, "numériser « " + image + " »"});
                 request.warnings.push_back(
                     "remplace tout le contenu du document ouvert (annulable avec Ctrl+Z)");

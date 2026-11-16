@@ -10,6 +10,8 @@
 #include <QTimer>
 #include <set>
 
+#include <nlohmann/json.hpp>
+
 // clang-format off
 #ifdef _WIN32
 #ifndef NOMINMAX
@@ -184,7 +186,20 @@ std::unique_ptr<agent::ISecretStore> makeSystemSecretStore() {
 // --- Outils du projet -------------------------------------------------------------------------
 
 std::vector<agent::ToolSpec> LiveToolHost::tools() {
-    return agent::parse_tool_specs(mcp::live_tools_json());
+    // Le chat à clé API reste en lecture + modification annulable : jamais de fichier ni de
+    // numérisation complète (réservés au Claude Code intégré, qui passe par le pont MCP).
+    auto specs = nlohmann::json::parse(mcp::live_tools_json());
+    nlohmann::json kept = nlohmann::json::array();
+    for (const auto& spec : specs) {
+        const std::string name = spec.value("name", std::string{});
+        const auto policy = mcp::live_policy(name);
+        if (policy == mcp::LivePolicy::HostFile || policy == mcp::LivePolicy::Replace ||
+            name == "live_permission") {
+            continue;
+        }
+        kept.push_back(spec);
+    }
+    return agent::parse_tool_specs(kept.dump());
 }
 
 agent::ToolHostResult LiveToolHost::call(const std::string& name, const std::string& args_json) {
