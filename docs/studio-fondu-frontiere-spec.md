@@ -12,6 +12,32 @@ HP-STI-010 (dégradé de densité).
   sur une région alignée identique au tatami actuel, partition exacte de deux masques
   complémentaires, rangées communes entre deux régions différentes, rangées éclaircies reliées
   sans saut supplémentaire, déterminisme.
+- 2026-11-16, **L1b livré pour le tatami** (branche `feat/fondu-frontiere-l1b`, empilée sur
+  L1a) : `geometry::shared_frontier` et `geometry::polyline_band` (`geometry/frontier.hpp`),
+  `BoundaryBlendField`, `plan_boundary_blend` et `fill_boundary_blend_tatami`
+  (`stitch_generation/boundary_blend.hpp`). Codes `E_BLEND_NO_FRONTIER`,
+  `E_BLEND_WIDTH_RANGE`. Toujours rien de branché dans la génération des projets (le lien du
+  document arrive en L2). Tests `[frontier]` (`tests/unit/geometry/test_frontier.cpp`) et
+  `[boundary_blend]` (`tests/unit/stitch/test_boundary_blend.cpp`) : rampe de densité, régions
+  prolongées, partition exacte à grille commune (écart < 1 % par bande de 1 mm), superposition
+  à angles croisés (85–115 % d'un aplat), frontière oblique, refus codés, déterminisme.
+- Trois ajustements trouvés en testant L1b :
+  1. **Amorces de frontière** : la tolérance ajoute, au bout de chaque frontière ouverte, un
+     bout du contour extérieur (là où le bord tourne mais reste près de l'autre zone). La bande
+     gonflait vers les coins. Chaque bout est donc rogné de la tolérance.
+  2. **Décision par case de la grille des pénétrations** (et non au milieu de chaque
+     intervalle) : une zone prolongée commence au bord de la bande, au milieu d'une case ; avec
+     une décision au milieu de l'intervalle, les deux couches échantillonnaient la densité en
+     des points différents et se chevauchaient ou laissaient des manques.
+  3. **Marge de prolongation** d'une longueur de point au-delà de la demi-bande : une case à
+     cheval sur le bord de bande doit exister dans les deux couches. Conséquence : une zone peut
+     coudre jusqu'à une demi-case (1,5 mm pour des points de 3 mm) au-delà de la demi-bande de
+     l'autre, aux rares rangées dont le seuil est sous la densité résiduelle.
+- Limite connue : la lisière se découpe par cases de `stitch_length` (3 mm par défaut) le long
+  des rangées ; sur une bande de 5 mm, le dégradé vient surtout de l'alternance des rangées.
+  Des points plus courts dans la bande sont une piste pour la recette physique.
+- Le directionnel (géométrie `Boundary`, grille ancrée) devient un lot à part, **L1c**, et le
+  SVG doré passe en L2 (il lui faut l'opération CLI).
 - Écart au découpage initial : le **branchement du masque dans le directionnel** passe en
   L1b. La grille partagée actuelle classe ses rangées par rang dans la région ; l'ancrer
   changerait la sortie des fondus directionnels existants, ce qui doit se faire avec la
@@ -262,12 +288,13 @@ tissu dans la bande. Statut « Validé » seulement après cette recette.
 | Lot | Contenu | Couches |
 |---|---|---|
 | L1a ☑ | Masque de rangées : grille ancrée, seuils par `k`, surcharge `fill_tatami(…, RowMask*)` ; non-régression octet pour octet sans masque | `stitch_generation` |
-| L1b | `shared_frontier`, `BoundaryDistance`, `DensityGeometry::Boundary`, branchement du masque dans le directionnel (grille ancrée), génération des deux régimes sur les trois combinaisons, tests cœur et doré | `geometry`, `document`, `stitch_generation` |
+| L1b ☑ | `shared_frontier`, `polyline_band`, champ de densité, régions prolongées, paire tatami–tatami dans les deux régimes, tests cœur | `geometry`, `stitch_generation` |
+| L1c | `DensityGeometry::Boundary`, branchement du masque dans le directionnel (grille ancrée), combinaisons directionnel–directionnel et tatami–directionnel | `document`, `stitch_generation` |
 | L2 | Lien, commandes, `.osp`, opération CLI / MCP, codes d'erreur | `document`, `commands`, `project_ops`, `project_io` |
 | L3 | Studio : action, poignées de bande, panneau, QTest | `apps/desktop_v2` |
 | L4 | Frontière dessinée à la main | `geometry`, Studio |
 | L5 | Proposition automatique depuis l'image : transition douce à travers une frontière de segmentation | `autodigitize` |
 
 L1a passe en premier : il touche le cœur du tatami et doit prouver seul qu'il ne change rien
-sans lien. L1b et L2 peuvent ensuite avancer en parallèle si le struct du §4.1 est figé
-d'abord. L3 dépend des deux.
+sans lien. L1c et L2 peuvent ensuite avancer en parallèle si le struct du §4.1 est figé
+d'abord ; L2 peut déjà brancher le cas tatami–tatami. L3 dépend de L2.
