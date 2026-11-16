@@ -417,7 +417,9 @@ void StudioDigitizeTest::multicolorFadeJourney() {
     QTRY_COMPARE(rig.fade.layerCurve(2), 4);
     QVERIFY(rig.fade.reverse());
     QTRY_COMPARE(rig.fade.layerCurve(1), 4);
-    QVERIFY(!rig.fade.editMulticolor({QStringLiteral("#abcdef")}, true, 3, 1));
+    // Deux fils voisins identiques : refusé (un seul fil est en revanche un dégradé valide).
+    QVERIFY(!rig.fade.editMulticolor({QStringLiteral("#abcdef"), QStringLiteral("#abcdef")}, true,
+                                     3, 1));
     const auto beforeNoop = rig.steps();
     QVERIFY(rig.fade.setTexture(3));
     QCOMPARE(rig.steps(), beforeNoop);
@@ -738,22 +740,26 @@ void StudioDigitizeTest::mainQmlHostsDigitizePanels() {
     QVERIFY(!named(window, "fadePanelButton"));
     auto* inlineFade = named(window, "inspectorFadeSection");
     QVERIFY(inlineFade);
-    QTRY_VERIFY(inlineFade->isVisible());
+    // Le fondu est un type de points à part : un tatami ne propose pas d'y passer.
     QTRY_VERIFY(fade.canCreate());
-    auto* inlineCreate = named(window, "inspectorFadeCreate");
-    // Barre de fils : les fils numérotés du brouillon, le fil désigné se règle dans la carte.
+    QVERIFY(!inlineFade->isVisible());
+    // Création par le sélecteur de type, puis réglages appliqués immédiatement.
+    QVERIFY(inspector.setStitchType(QStringLiteral("multicolor_gradient")).isEmpty());
+    QTRY_VERIFY(fade.multiFade());
+    QTRY_VERIFY(inlineFade->isVisible());
+    QCOMPARE(fade.colors().size(), 2);
+    // Barre de fils : le fil désigné se règle dans la carte.
     QTRY_VERIFY(named(window, "inspectorFadeThread1") != nullptr);
     QVERIFY(press(window, "inspectorFadeThread1"));
     auto* arrival = named(window, "inspectorFadeSelectedColor");
-    QVERIFY(inlineCreate && arrival);
-    QTRY_VERIFY(inlineCreate->isEnabled());
+    QVERIFY(arrival);
     QVERIFY(arrival->setProperty("text", QStringLiteral("#ZZZZZZ")));
     QVERIFY(arrival->property("invalid").toBool());
     QVERIFY(arrival->setProperty("text", QStringLiteral("#3388aa")));
     QVERIFY(QMetaObject::invokeMethod(arrival, "editingFinished"));
+    QTRY_COMPARE(fade.colors().at(1).toString(), QStringLiteral("#3388aa"));
     QVERIFY(press(window, "inspectorFadeAddColor")); // après le fil 2 : devient le fil 3
     QTRY_VERIFY(named(window, "inspectorFadeThread2") != nullptr);
-    QVERIFY(press(window, "inspectorFadeCreate"));
     QTRY_VERIFY(fade.multiFade());
     QCOMPARE(fade.colors().size(), 3);
     QCOMPARE(fade.colors().at(1).toString(), QStringLiteral("#3388aa"));
@@ -834,7 +840,7 @@ void StudioDigitizeTest::mainQmlHostsDigitizePanels() {
     QVERIFY(press(window, "inspectorFadeRemoveThread"));
     QTRY_COMPARE(fade.colors().size(), 2);
     QCOMPARE(fade.colors().at(0).toString(), QStringLiteral("#3388aa"));
-    QVERIFY(!named(window, "inspectorFadeRemoveThread")->isEnabled()); // 2 fils au minimum
+    QVERIFY(named(window, "inspectorFadeRemoveThread")->isEnabled()); // 1 fil : dégradé
     // Clavier : la barre se parcourt aux flèches, Ctrl+flèche déplace le fil (un pas).
     auto* bar = named(window, "inspectorFadeThreadBar");
     QVERIFY(bar);
@@ -849,11 +855,16 @@ void StudioDigitizeTest::mainQmlHostsDigitizePanels() {
     QTRY_COMPARE(fade.colors().at(1).toString(), QStringLiteral("#3388aa"));
     QCOMPARE(fade.selectedThread(), 0);
     QCOMPARE(stepDepth(), fadeDepth + 1);
-    // Suppr dans la barre ne supprime jamais l'objet (2 fils : refusé, rien ne change).
+    // Suppr dans la barre retire le fil désigné, jamais l'objet : il reste un dégradé d'un fil.
     fadeDepth = stepDepth();
     QTest::keyClick(window, Qt::Key_Delete);
-    QCOMPARE(stepDepth(), fadeDepth);
+    QTRY_COMPARE(fade.colors().size(), 1);
+    QCOMPARE(stepDepth(), fadeDepth + 1);
     QVERIFY(fade.hasFade());
+    QTRY_VERIFY(named(window, "inspectorFadeEndDensity")->isVisible());
+    QVERIFY(!named(window, "inspectorFadeRemoveThread")->isEnabled());
+    QVERIFY(session.undo());
+    QTRY_COMPARE(fade.colors().size(), 2);
     QVERIFY(session.undo());
     QTRY_COMPARE(fade.colors().at(0).toString(), QStringLiteral("#3388aa"));
     // Inverser retourne l'axe (géométrie courbe ici) sans changer l'ordre de couture.
@@ -861,6 +872,28 @@ void StudioDigitizeTest::mainQmlHostsDigitizePanels() {
     QVERIFY(press(window, "inspectorFadeReverse"));
     QTRY_VERIFY(std::abs(std::abs(fade.angle() - beforeReverse) - 180.0) < 0.01);
     QCOMPARE(fade.colors().at(0).toString(), QStringLiteral("#3388aa"));
+    // Formes d'un clic (contour, spirale), direction des points et écart des rangées.
+    fadeDepth = stepDepth();
+    QVERIFY(press(window, "inspectorFadeShape4"));
+    QTRY_COMPARE(fade.geometry(), 4);
+    QCOMPARE(stepDepth(), fadeDepth + 1);
+    QVERIFY(!named(window, "inspectorFadeEditAxis")->isVisible()); // pas d'axe à placer
+    QVERIFY(press(window, "inspectorFadeShape3"));
+    QTRY_COMPARE(fade.geometry(), 3);
+    QVERIFY(press(window, "inspectorFadeStitchCustom"));
+    QTRY_VERIFY(fade.customStitchAngle());
+    auto* stitchAngle = named(window, "inspectorFadeStitchAngle");
+    QVERIFY(stitchAngle && stitchAngle->isEnabled());
+    QVERIFY(stitchAngle->setProperty("text", QStringLiteral("45")));
+    QVERIFY(QMetaObject::invokeMethod(stitchAngle, "editingFinished"));
+    QTRY_VERIFY(std::abs(fade.stitchAngleDeg() - 45.0) < 0.01);
+    auto* spacing = named(window, "inspectorFadeSpacing");
+    QVERIFY(spacing && spacing->isVisible());
+    fadeDepth = stepDepth();
+    QVERIFY(spacing->setProperty("text", QStringLiteral("0,6")));
+    QVERIFY(QMetaObject::invokeMethod(spacing, "editingFinished"));
+    QTRY_VERIFY(std::abs(fade.spacingMm() - 0.6) < 1e-6);
+    QCOMPARE(stepDepth(), fadeDepth + 1);
     QVERIFY(press(window, "inspectorFadeRemove"));
     QTRY_VERIFY(!fade.hasFade());
     QCOMPARE(session.project().embroidery_objects.size(), std::size_t{1});
@@ -905,9 +938,8 @@ void StudioDigitizeTest::mainQmlHostsDigitizePanels() {
     // Le satin passe par le meme editeur de l'inspecteur : satin entrelace.
     QTRY_VERIFY(fade.satinTarget());
     QTRY_VERIFY(fade.canCreate());
-    QTRY_COMPARE(named(window, "inspectorFadeCreate")->property("text").toString(),
-                 QStringLiteral("Créer le satin entrelacé"));
-    QVERIFY(press(window, "inspectorFadeCreate"));
+    QVERIFY(!named(window, "inspectorFadeSection")->isVisible());
+    QVERIFY(inspector.setStitchType(QStringLiteral("multicolor_gradient")).isEmpty());
     QTRY_VERIFY(fade.multiFade());
     QCOMPARE(fade.colors().size(), 2);
     QCOMPARE(fade.style(), 5);

@@ -199,11 +199,11 @@ Item {
                 embedded: true
                 Layout.fillWidth: true
                 Layout.preferredHeight: implicitHeight
-                // Keep the editor visible for a single selected object even when
-                // the fade service rejects it. FadeProperties already displays
-                // fadeCtl.incompatibility and disables unsupported actions;
-                // hiding the entire section made supported techniques look absent.
+                // Le fondu est un type de points à part : son éditeur n'apparaît que sur un fondu
+                // existant (créé en choisissant « Fondu multicolore » dans le type ci-dessus),
+                // jamais comme proposition de conversion sur un tatami, un satin, etc.
                 visible: root.fadeCtl !== null && root.ctl !== null && root.ctl.count === 1
+                         && root.fadeCtl.hasFade
             }
             Text {
                 objectName: "inspectorFadeDistinction"
