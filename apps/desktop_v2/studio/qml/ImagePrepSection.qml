@@ -123,7 +123,8 @@ ColumnLayout {
             }
             Text {
                 Layout.preferredWidth: 38
-                text: Number(section.values[parent.modelData.key]).toString()
+                // Arrondi d'affichage : un pas de 0,1 ne doit pas montrer 0.30000000000000004.
+                text: (Math.round(Number(section.values[parent.modelData.key]) * 100) / 100).toString()
                 horizontalAlignment: Text.AlignRight
                 color: Theme.muted; font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily
             }
@@ -146,7 +147,8 @@ ColumnLayout {
         }
         StudioButton {
             objectName: "prepCancelButton"
-            text: qsTr("Annuler l'aperçu")
+            // Pendant le calcul, le bouton arrête le calcul : son libellé le dit.
+            text: imageTools.busy && !imageTools.prepPreviewActive ? qsTr("Annuler le calcul") : qsTr("Annuler l'aperçu")
             quiet: true
             visible: imageTools.prepPreviewActive || imageTools.busy
             onClicked: imageTools.prepPreviewActive ? imageTools.clearPrepPreview() : imageTools.cancelTask()

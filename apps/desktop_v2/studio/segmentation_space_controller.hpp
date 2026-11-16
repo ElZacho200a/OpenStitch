@@ -61,7 +61,7 @@ public:
     [[nodiscard]] bool canSegment() const;
     [[nodiscard]] bool busy() const { return images_.busy() || regions_.busy(); }
     [[nodiscard]] bool canUpdateShapes() const;
-    [[nodiscard]] QString confirmText() const { return confirmText_; }
+    [[nodiscard]] QString confirmText() const { return regions_.confirmText(); }
     [[nodiscard]] int fillRebuilds() const { return fillRebuilds_; }
     [[nodiscard]] int highlightRebuilds() const { return highlightRebuilds_; }
 
@@ -99,7 +99,6 @@ private:
     bool contours_{true};
     QString stageState_;
     QString stageDetail_;
-    QString confirmText_;
     bool hadSegmentation_{false};
     std::uint64_t seenRevision_{~0ULL};
     std::uint64_t fingerprint_{0};

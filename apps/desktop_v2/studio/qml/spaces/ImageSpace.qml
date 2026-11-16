@@ -211,7 +211,8 @@ Item {
                     objectName: "imageLayerSelector"
                     enabled: !studio.busy
                     Layout.fillWidth: true
-                    visible: root.prepReady && imageTools.imageLayers.length > 0
+                    // Un seul calque : rien à choisir (même règle que les autres espaces).
+                    visible: root.prepReady && imageTools.imageLayers.length > 1
                     model: root.prepReady ? imageTools.imageLayers : []
                     currentIndex: root.prepReady ? imageTools.imageLayerIndex : -1
                     Accessible.name: qsTr("Calque image actif")

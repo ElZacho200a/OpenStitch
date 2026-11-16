@@ -68,7 +68,9 @@ public:
     // Corrections de régions non répercutées (reflet de `workspace.segmentationDirty`).
     Q_INVOKABLE void setSegmentationDirty(bool dirty, const QString& reason);
     // Clic au canevas (mm scène) ; renvoie l'identifiant de forme touchée (0 : aucune).
-    Q_INVOKABLE QString pickAt(double x, double y, double toleranceMm, bool toggle);
+    // `keepSelected` (clic droit) : une forme déjà sélectionnée ne remplace pas la sélection.
+    Q_INVOKABLE QString pickAt(double x, double y, double toleranceMm, bool toggle,
+                               bool keepSelected = false);
     Q_INVOKABLE void selectShape(const QString& id, bool toggle);
 
     // Lien amont : sélectionne la région d'origine de la forme choisie (sélection partagée) ;

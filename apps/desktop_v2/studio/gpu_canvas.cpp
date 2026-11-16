@@ -770,9 +770,14 @@ void GpuCanvas::mousePressEvent(QMouseEvent* event) {
     const bool ctrl = event->modifiers().testFlag(Qt::ControlModifier);
     if (event->button() == Qt::RightButton) {
         std::optional<std::uint64_t> id;
-        // Sans la couche des points (image, segmentation, vecto), le clic droit ne choisit aucun
-        // objet cousu : il ouvre seulement le menu du canevas.
-        if (controller_ && scene_ && layers_.stitches) {
+        if (vectorPicker_ && layers_.vectors && !layers_.stitches) {
+            // Espace Vectorisation : le clic droit vise une FORME, comme le clic gauche. Une
+            // forme déjà sélectionnée (numérisée ou non) garde la sélection multiple pour le menu.
+            const auto p = camera_.screenToWorld({lastMouse_.x(), lastMouse_.y()});
+            vectorPicker_(p.x, p.y, 5.0 / camera_.scale(), false, true);
+        } else if (controller_ && scene_ && layers_.stitches) {
+            // Sans la couche des points (image, segmentation), le clic droit ne choisit aucun
+            // objet cousu : il ouvre seulement le menu du canevas.
             const auto p = camera_.screenToWorld({lastMouse_.x(), lastMouse_.y()});
             id = scene_->pick(p.x, p.y, 5.0 / camera_.scale());
             if (id && std::ranges::find(selection_, Target{TargetKind::EmbroideryObject, *id}) ==
@@ -823,7 +828,7 @@ void GpuCanvas::mousePressEvent(QMouseEvent* event) {
         // Espace Vectorisation : le clic choisit une FORME (couche vectors), pas un objet de
         // points.
         const auto p = camera_.screenToWorld({lastMouse_.x(), lastMouse_.y()});
-        vectorPicker_(p.x, p.y, 5.0 / camera_.scale(), ctrl);
+        vectorPicker_(p.x, p.y, 5.0 / camera_.scale(), ctrl, false);
     } else if (controller_ && scene_ && event->button() == Qt::LeftButton) {
         const auto p = camera_.screenToWorld({lastMouse_.x(), lastMouse_.y()});
         const auto hit = scene_->pick(p.x, p.y, 5.0 / camera_.scale());

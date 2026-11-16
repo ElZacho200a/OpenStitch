@@ -12,23 +12,24 @@ ColumnLayout {
     objectName: "regionTools"
     spacing: 8
 
-    property string confirmText: ""
-    property bool pendingResegment: false
-    property bool choosingMergeTarget: false
+    // La question et la demande en attente vivent dans RegionController : la carte du canevas et
+    // ce panneau confirment donc la même action, avec les mêmes réglages.
+    readonly property string confirmText: regionTools.confirmText
+    // Mode « choisir la cible » partagé avec la carte et le canevas (RegionController).
+    readonly property bool choosingMergeTarget: regionTools.mergeTargetMode
     function tappedRegion(id, ctrlHeld) {
         if (choosingMergeTarget) {
-            if (regionTools.mergeSelectedInto(id) === "")
-                choosingMergeTarget = false
+            regionTools.mergeSelectedInto(id)
         } else {
             regionTools.selectRegion(id, ctrlHeld ? "toggle" : "replace")
         }
     }
     // Sourced from the active SegmentationSection in Studio, not hardcoded defaults.
     property var segmentationOptions: imageTools.segmentationDefaults
+    // Copie des réglages envoyés avec la dernière demande (diagnostic et tests).
     property var pendingOptions: ({})
     function requestRegeneration(resegment) {
-        pendingResegment = resegment
-        // Freeze the chosen settings while the overwrite confirmation is shown.
+        // RegionController freezes these settings while the overwrite confirmation is shown.
         pendingOptions = Object.assign({}, segmentationOptions)
         regionTools.regenerate(resegment, false, pendingOptions)
     }
@@ -47,7 +48,20 @@ ColumnLayout {
 
     Connections {
         target: regionTools
-        function onConfirmRequested(question) { section.confirmText = question }
+        // Le champ de couleur part de la couleur de la région choisie : « Recolorer » retouche une
+        // teinte au lieu de proposer une couleur sans rapport.
+        function onSelectionChanged() {
+            if (regionTools.selectedCount !== 1)
+                return
+            const id = regionTools.selected[0]
+            const all = regionTools.regions
+            for (let i = 0; i < all.length; ++i) {
+                if (all[i].id === id) {
+                    colorField.text = all[i].color
+                    return
+                }
+            }
+        }
     }
 
     Text {
@@ -247,8 +261,9 @@ ColumnLayout {
         spacing: 6
         StudioButton { objectName: "regionSameColor"; text: qsTr("Même couleur"); enabled: regionTools.selectedCount > 0; onClicked: regionTools.selectSameColor() }
         StudioButton { objectName: "regionNeighbours"; text: qsTr("Voisines"); enabled: regionTools.selectedCount > 0; onClicked: regionTools.selectNeighbours() }
+        StudioButton { objectName: "regionSelectAll"; text: qsTr("Toutes"); enabled: regionTools.hasSegmentation; onClicked: regionTools.selectAll() }
         StudioButton { objectName: "regionInvert"; text: qsTr("Inverser"); enabled: regionTools.hasSegmentation; onClicked: regionTools.invertSelection() }
-        StudioButton { objectName: "regionClear"; text: qsTr("Aucune"); quiet: true; onClicked: regionTools.clearSelection() }
+        StudioButton { objectName: "regionClear"; text: qsTr("Aucune"); quiet: true; enabled: regionTools.selectedCount > 0; onClicked: regionTools.clearSelection() }
     }
 
     SectionLabel { text: qsTr("RETOUCHES") }
@@ -298,8 +313,8 @@ ColumnLayout {
             checkable: true
             checked: section.choosingMergeTarget
             enabled: regionTools.selectedCount === 1 || section.choosingMergeTarget
-            tooltip: qsTr("Sélectionnez une région source puis cliquez la région à conserver dans la liste")
-            onClicked: section.choosingMergeTarget = !section.choosingMergeTarget
+            tooltip: qsTr("Sélectionnez une région source puis cliquez la région à conserver (liste, carte ou canevas)")
+            onClicked: regionTools.mergeTargetMode = !regionTools.mergeTargetMode
         }
         StudioButton { objectName: "regionDelete"; text: qsTr("Supprimer"); enabled: regionTools.selectedCount > 0; onClicked: regionTools.deleteSelected() }
     }
@@ -307,7 +322,7 @@ ColumnLayout {
         objectName: "regionMergeTargetHint"
         Layout.fillWidth: true
         visible: section.choosingMergeTarget
-        text: qsTr("Cliquez dans la liste sur la région qui doit absorber la sélection ; annulez avec le même bouton.")
+        text: qsTr("Cliquez la région qui doit absorber la sélection (liste, carte ou canevas) ; annulez avec le même bouton.")
         wrapMode: Text.WordWrap
         color: Theme.accent
         font.pixelSize: Theme.smallSize
@@ -406,15 +421,12 @@ ColumnLayout {
                     objectName: "regionConfirmYes"
                     text: qsTr("Remplacer les retouches")
                     emphasized: true
-                    onClicked: {
-                        section.confirmText = ""
-                        regionTools.regenerate(section.pendingResegment, true, section.pendingOptions)
-                    }
+                    onClicked: regionTools.confirmRegeneration()
                 }
                 StudioButton {
                     objectName: "regionConfirmNo"
                     text: qsTr("Garder mes retouches")
-                    onClicked: section.confirmText = ""
+                    onClicked: regionTools.cancelConfirmation()
                 }
             }
         }

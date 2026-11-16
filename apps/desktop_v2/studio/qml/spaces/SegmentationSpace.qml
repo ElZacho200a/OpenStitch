@@ -50,6 +50,10 @@ Item {
         root.publish()
     }
     function deactivate() {
+        // Un aperçu laissé actif réapparaîtrait à la place des régions au retour dans l'espace.
+        // Annule aussi un aperçu encore en calcul (il réapparaîtrait au retour dans l'espace).
+        if (root.hasTools)
+            imageTools.cancelSegmentationPreview()
         if (root.seg) root.seg.detach()
         if (root.workspace) {
             root.workspace.clearStageStatus(root.spaceId)

@@ -57,7 +57,6 @@ ColumnLayout {
     }
 
     SectionLabel { text: qsTr("PINCEAU DE DÉFORMATION"); visible: panel.toolCtl && panel.toolCtl.activeTool === "warp-brush" }
-    SectionLabel { text: qsTr("ACCROCHAGE") }
     ColumnLayout {
         visible: panel.toolCtl && panel.toolCtl.activeTool === "warp-brush"
         Layout.fillWidth: true
@@ -81,6 +80,7 @@ ColumnLayout {
             onValueModified: panel.toolCtl.warp.strength = value / 100
         }
     }
+    SectionLabel { text: qsTr("ACCROCHAGE") }
     Flow {
         Layout.fillWidth: true
         spacing: 6
@@ -149,7 +149,7 @@ ColumnLayout {
         Mini { objectName: "offsetInButton"; text: qsTr("Décaler −"); enabled: parent.some && !offsetField.invalid; onClicked: panel.vec.offsetShapes(-Math.abs(parseFloat(offsetField.text.replace(",", ".")))) }
     }
     Text {
-        objectName: "vectorMessage"
+        objectName: "vectorOpsMessage"
         Layout.fillWidth: true
         wrapMode: Text.Wrap
         color: Theme.faint
