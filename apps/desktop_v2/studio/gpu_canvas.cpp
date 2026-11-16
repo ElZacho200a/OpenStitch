@@ -712,7 +712,9 @@ QSGNode* GpuCanvas::updatePaintNode(QSGNode* oldNode, UpdatePaintNodeData*) {
     const auto api = window()->rendererInterface()->graphicsApi();
     const auto& backend =
         api == QSGRendererInterface::Software ? softwareBackend() : sceneGraphBackend();
-    CanvasRenderState state{layers_.stitches ? scene_ : nullptr,
+    // Scène transmise dans tous les espaces : le cadre en fait partie. Le rendu ne construit ses
+    // points que si la couche « stitches » est active.
+    CanvasRenderState state{scene_,
                             camera_,
                             layers_.selectionOverlays ? selection_ : std::vector<Target>{},
                             selectionRevision_,

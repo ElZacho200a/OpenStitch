@@ -115,4 +115,9 @@ public:
 [[nodiscard]] const CanvasRenderBackend& sceneGraphBackend();
 [[nodiscard]] const CanvasRenderBackend& softwareBackend();
 
+// Triangles du tambour (affichage seulement). `fabric` vrai : fond de tissu plein (espace Points) ;
+// faux : anneau creux qui laisse voir l'image, les régions ou les formes posées dans le cadre.
+[[nodiscard]] std::vector<StudioVertex> hoopVertices(const stitch_render::RectMm& hoop,
+                                                     bool fabric);
+
 } // namespace openstitch::desktop_v2::studio
