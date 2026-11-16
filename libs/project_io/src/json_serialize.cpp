@@ -239,6 +239,10 @@ json params_to_json(const document::StitchParams& params) {
                 if (p.edge_outline) {
                     j["edgeOutline"] = true;
                 }
+                if (p.couching_spacing.value != 0) {
+                    j["couchingSpacing"] = p.couching_spacing.value;
+                    j["couchingTieSpacing"] = p.couching_tie_spacing.value;
+                }
                 if (p.entry_point) {
                     j["entryPoint"] = {{"x", p.entry_point->x.value},
                                        {"y", p.entry_point->y.value}};
@@ -542,6 +546,9 @@ json params_to_json(const document::StitchParams& params) {
                      {"stitchLength", p.stitch_length.value},
                      {"minLength", p.min_length.value},
                      {"hiddenUnderpath", p.hidden_underpath}};
+                if (p.scatter != 0.0) {
+                    j["scatter"] = p.scatter;
+                }
             } else if constexpr (std::is_same_v<T, document::RadialFillParams> ||
                                  std::is_same_v<T, document::SpiralFillParams>) {
                 // HP-STI-008 / 009 : mêmes clés, `type` distinct.
@@ -566,6 +573,9 @@ json params_to_json(const document::StitchParams& params) {
                      {"stitchLength", p.stitch_length.value},
                      {"inset", p.inset.value},
                      {"hiddenUnderpath", p.hidden_underpath}};
+                if (p.tie_down.value != 0) {
+                    j["tieDown"] = p.tie_down.value;
+                }
             } else if constexpr (std::is_same_v<T, document::CrossStitchParams>) {
                 j = {{"type", "crossStitch"},
                      {"cell", p.cell.value},
@@ -628,6 +638,12 @@ json params_to_json(const document::StitchParams& params) {
                 }
                 if (p.crosshatch_angle.radians != 0.0) {
                     j["crosshatchAngle"] = p.crosshatch_angle.radians;
+                }
+                if (p.stitch_angle) {
+                    j["stitchAngle"] = p.stitch_angle->radians;
+                }
+                if (p.end_density != 0.15) {
+                    j["endDensity"] = p.end_density;
                 }
             }
             // HP-STI-033 : compensation du tirage (clés écrites seulement hors défaut).
@@ -694,6 +710,9 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.underlay_zigzag = j.value("underlayZigzag", false);
         p.row_end_clip = Micrometers{std::clamp(j.value("rowEndClip", 0), 0, 5'000)};
         p.edge_outline = j.value("edgeOutline", false);
+        p.couching_spacing = Micrometers{std::clamp(j.value("couchingSpacing", 0), 0, 20'000)};
+        p.couching_tie_spacing =
+            Micrometers{std::clamp(j.value("couchingTieSpacing", 3'000), 1'000, 7'000)};
         if (j.contains("entryPoint")) {
             p.entry_point = Vec2um{Micrometers{j.at("entryPoint").at("x")},
                                    Micrometers{j.at("entryPoint").at("y")}};
@@ -876,9 +895,9 @@ Result<document::StitchParams> params_from_json(const json& j) {
                 grad.texture_seed = *textureSeed;
             }
             const int geometry = g.value("geometry", 0);
-            grad.geometry = geometry == 1   ? document::DensityGeometry::Radial
-                            : geometry == 2 ? document::DensityGeometry::Curved
-                                            : document::DensityGeometry::Linear;
+            grad.geometry = document::is_valid_density_geometry(geometry)
+                                ? static_cast<document::DensityGeometry>(geometry)
+                                : document::DensityGeometry::Linear;
             const double bend = g.value("bend", 0.0);
             grad.curve_bend = std::isfinite(bend) ? std::clamp(bend, -1.0, 1.0) : 0.0;
             if (g.contains("densityStops")) {
@@ -1114,7 +1133,7 @@ Result<document::StitchParams> params_from_json(const json& j) {
         // Motif le long d'un chemin (HP-STI-002) : clés optionnelles, valeurs bornées.
         document::MotifRunParams p;
         const int motif = j.value("motif", static_cast<int>(p.motif));
-        if (motif < 0 || motif > static_cast<int>(document::MotifId::Scallop)) {
+        if (motif < 0 || motif > static_cast<int>(document::MotifId::Seed)) {
             return fail(ErrorCategory::InvalidFile, "motifRun : motif inconnu");
         }
         p.motif = static_cast<document::MotifId>(motif);
@@ -1130,7 +1149,7 @@ Result<document::StitchParams> params_from_json(const json& j) {
         // Remplissage à motif (HP-STI-006) : clés optionnelles, valeurs bornées.
         document::MotifFillParams p;
         const int motif = j.value("motif", static_cast<int>(p.motif));
-        if (motif < 0 || motif > static_cast<int>(document::MotifId::Scallop)) {
+        if (motif < 0 || motif > static_cast<int>(document::MotifId::Seed)) {
             return fail(ErrorCategory::InvalidFile, "motifFill : motif inconnu");
         }
         p.motif = static_cast<document::MotifId>(motif);
@@ -1143,6 +1162,8 @@ Result<document::StitchParams> params_from_json(const json& j) {
             Micrometers{std::clamp(j.value("stitchLength", p.stitch_length.value), 1'000, 7'000)};
         p.min_length = Micrometers{std::clamp(j.value("minLength", p.min_length.value), 0, 7'000)};
         p.hidden_underpath = j.value("hiddenUnderpath", p.hidden_underpath);
+        const double scatter = j.value("scatter", 0.0);
+        p.scatter = std::isfinite(scatter) ? std::clamp(scatter, 0.0, 1.0) : 0.0;
         read_simple_pull(j, p);
         return document::StitchParams{p};
     }
@@ -1182,6 +1203,7 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.stitch_length = Micrometers{std::clamp(j.value("stitchLength", 3'000), 1'000, 7'000)};
         p.inset = Micrometers{std::clamp(j.value("inset", 200), 0, 10'000)};
         p.hidden_underpath = j.value("hiddenUnderpath", true);
+        p.tie_down = Micrometers{std::clamp(j.value("tieDown", 0), 0, 4'000)};
         read_simple_pull(j, p);
         return document::StitchParams{p};
     }
@@ -1214,10 +1236,10 @@ Result<document::StitchParams> params_from_json(const json& j) {
         document::MulticolorGradientParams p;
         p.method = *method;
         p.complementary = j.value("complementary", true);
-        if (!j.contains("palette") || !j.at("palette").is_array() || j.at("palette").size() < 2 ||
+        if (!j.contains("palette") || !j.at("palette").is_array() || j.at("palette").empty() ||
             j.at("palette").size() > 8) {
             return fail(ErrorCategory::InvalidFile,
-                        "multicolorGradient : « palette » doit porter de 2 à 8 fils");
+                        "multicolorGradient : « palette » doit porter de 1 à 8 fils");
         }
         for (const auto& pj : j.at("palette")) {
             if (!pj.is_object() || !pj.contains("rgb")) {
@@ -1282,8 +1304,7 @@ Result<document::StitchParams> params_from_json(const json& j) {
             }
             if (tj.contains("geometry")) {
                 const int geometry = tj.at("geometry").get<int>();
-                if (geometry < 0 ||
-                    geometry > static_cast<int>(document::DensityGeometry::Curved)) {
+                if (!document::is_valid_density_geometry(geometry)) {
                     return fail(ErrorCategory::InvalidFile,
                                 "multicolorGradient : transition.geometry inconnue");
                 }
@@ -1300,6 +1321,16 @@ Result<document::StitchParams> params_from_json(const json& j) {
                         "multicolorGradient : crosshatchAngle invalide");
         }
         p.crosshatch_angle = Angle{crosshatchAngle};
+        if (j.contains("stitchAngle")) {
+            const double stitchAngle = j.at("stitchAngle").get<double>();
+            if (!std::isfinite(stitchAngle)) {
+                return fail(ErrorCategory::InvalidFile,
+                            "multicolorGradient : stitchAngle invalide");
+            }
+            p.stitch_angle = Angle{stitchAngle};
+        }
+        const double endDensity = j.value("endDensity", 0.15);
+        p.end_density = std::isfinite(endDensity) ? std::clamp(endDensity, 0.0, 1.0) : 0.15;
         return document::StitchParams{p};
     }
     return fail(ErrorCategory::InvalidFile, "Type de point inconnu : " + type);
@@ -2244,7 +2275,7 @@ Result<document::Project> project_from_json(const json& j) {
                 }
                 const int index = link["index"].get<int>();
                 const int count = link["count"].get<int>();
-                if (*group == 0 || count < 2 || count > 8 || index < 0 || index >= count) {
+                if (*group == 0 || count < 1 || count > 8 || index < 0 || index >= count) {
                     return fail(ErrorCategory::InvalidFile,
                                 "Indices de fondu multicolore invalides.");
                 }

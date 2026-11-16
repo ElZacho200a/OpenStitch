@@ -409,7 +409,13 @@ constexpr int kCurveSamples = 8;
 // Poids w_i(t) des N fils à la position t ∈ [0 ; 1] : entre les fils s et s+1, la
 // transition suit le profil `curves[s + 1]` ; la somme vaut toujours 1.
 std::vector<double> blend_weights(double t, std::size_t n,
-                                  const std::vector<document::DensityCurve>& curves) {
+                                  const std::vector<document::DensityCurve>& curves,
+                                  double endDensity = 0.15) {
+    if (n == 1) {
+        // Dégradé d'un seul fil : de plein (t = 0) à `endDensity` (t = 1), profil du fil.
+        const double v = stitch_generation::shape_density_curve(curves[0], std::clamp(t, 0.0, 1.0));
+        return {1.0 - (1.0 - std::clamp(endDensity, 0.0, 1.0)) * v};
+    }
     std::vector<double> w(n, 0.0);
     const double x = std::clamp(t, 0.0, 1.0) * static_cast<double>(n - 1);
     const auto s = std::min(static_cast<std::size_t>(x), n - 2);
@@ -425,6 +431,13 @@ std::vector<double> blend_weights(double t, std::size_t n,
 std::vector<double> blend_positions(std::size_t n,
                                     const std::vector<document::DensityCurve>& curves) {
     std::vector<double> positions{0.0};
+    if (n == 1) {
+        const int samples = curves[0] == document::DensityCurve::Linear ? 1 : kCurveSamples;
+        for (int k = 1; k <= samples; ++k) {
+            positions.push_back(static_cast<double>(k) / static_cast<double>(samples));
+        }
+        return positions;
+    }
     const double span = 1.0 / static_cast<double>(n - 1);
     for (std::size_t s = 0; s + 1 < n; ++s) {
         const int samples = curves[s + 1] == document::DensityCurve::Linear ? 1 : kCurveSamples;
@@ -452,6 +465,8 @@ Micrometers nominal_spacing(const document::EmbroideryObject& base,
     return Micrometers{std::clamp(value, 100, 4'000)};
 }
 
+geometry::Path straight_guide(const std::vector<geometry::PathSet>& shape, Angle angle);
+
 // L'unique définition du comportement multicolore (remplissages) : toutes les couches
 // tracent la MÊME grille de rangées et chacune ne coud que sa tranche
 // (`DensityGradient::shared_rows`). En complémentaire, les tranches partitionnent [0 ; 1]
@@ -461,7 +476,7 @@ std::optional<std::vector<document::EmbroideryObject>>
 multicolor_layers(const document::EmbroideryObject& base,
                   const std::vector<geometry::PathSet>& shape, const MulticolorGradientSpec& spec) {
     const std::size_t n = spec.palette.size();
-    if (n < 2 || n > 8) {
+    if (n < 1 || n > 8) {
         return std::nullopt;
     }
     const auto finish = [&](document::EmbroideryObject& layer, std::size_t i) {
@@ -474,7 +489,7 @@ multicolor_layers(const document::EmbroideryObject& base,
         layer.edited_point_count = 0;
     };
     if (const auto* satin = std::get_if<document::SatinParams>(&base.params)) {
-        if (satin->rail_a.nodes.size() < 2 || satin->rail_b.nodes.size() < 2) {
+        if (n < 2 || satin->rail_a.nodes.size() < 2 || satin->rail_b.nodes.size() < 2) {
             return std::nullopt;
         }
         std::vector<document::EmbroideryObject> layers;
@@ -509,7 +524,12 @@ multicolor_layers(const document::EmbroideryObject& base,
     }
     // Paramètres communs (guide, graine, écart) : identiques dans toutes les couches pour
     // que la grille de rangées le soit aussi.
-    const auto commonParams = std::get<document::DirectionalFillParams>(pair->first.params);
+    auto commonParams = std::get<document::DirectionalFillParams>(pair->first.params);
+    if (spec.stitch_angle) {
+        // Direction des points choisie : indépendante de l'axe des couleurs (grille partagée,
+        // donc `align_guides_across_density_gradient` ne la remplace pas).
+        commonParams.guides = {straight_guide(shape, *spec.stitch_angle)};
+    }
     std::vector<document::DensityCurve> curves;
     curves.reserve(n);
     for (const auto& thread : spec.palette) {
@@ -531,14 +551,14 @@ multicolor_layers(const document::EmbroideryObject& base,
         gradient.spacing_from = gradient.spacing_to = overlayLayer ? overlay : nominal;
         gradient.density_stops.reserve(positions.size());
         for (const double position : positions) {
-            const auto w = blend_weights(position, n, curves);
+            const auto w = blend_weights(position, n, curves, spec.end_density);
             double lower = 0.0;
             double weight = w[i];
             if (spec.complementary) {
                 for (std::size_t j = 0; j < i; ++j) {
                     lower += w[j];
                 }
-            } else if (i == 0) {
+            } else if (i == 0 && n > 1) {
                 weight = 1.0; // fond plein sous les surcouches
             } else {
                 for (std::size_t j = 1; j < i; ++j) {
@@ -598,7 +618,7 @@ std::vector<ObjectId> inserted_after_ids(const document::Project& project, Objec
 }
 
 bool validate_palette(const std::vector<document::GradientThread>& palette) {
-    if (palette.size() < 2 || palette.size() > 8) {
+    if (palette.empty() || palette.size() > 8) {
         return false;
     }
     for (std::size_t i = 1; i < palette.size(); ++i) {
@@ -607,6 +627,16 @@ bool validate_palette(const std::vector<document::GradientThread>& palette) {
         }
     }
     return true;
+}
+
+std::string invalid_fill_options(const MulticolorGradientSpec& spec) {
+    if (!std::isfinite(spec.end_density) || spec.end_density < 0.0 || spec.end_density > 1.0) {
+        return "La densité d'arrivée doit être comprise entre 0 et 100 %.";
+    }
+    if (spec.stitch_angle && !std::isfinite(spec.stitch_angle->radians)) {
+        return "La direction des points doit être un angle fini.";
+    }
+    return {};
 }
 
 // Ligne guide droite traversant `shape` à `angle` (modèle, Y vers le haut), centrée sur sa boîte
@@ -659,12 +689,15 @@ crosshatch_layers(const document::EmbroideryObject& base,
         document::DensityGradient gradient = spec.transition;
         gradient.interpolate_density = true;
         gradient.density_stops.clear();
+        // Écart uniforme : un écart variable ferait remplacer le guide croisé par un guide
+        // perpendiculaire à l'axe (`align_guides_across_density_gradient`), une seule direction.
+        gradient.spacing_from = gradient.spacing_to = spacing;
         // Grilles d'angles différents : pas de grille partagée, mais les mêmes poids de
         // transition (somme 1, profil de chaque transition échantillonné) que les autres
         // méthodes ; la courbe est déjà dans les arrêts, jamais réappliquée à t.
         gradient.curve = document::DensityCurve::Linear;
         for (const double position : positions) {
-            const double w = blend_weights(position, n, curves)[i];
+            const double w = blend_weights(position, n, curves, spec.end_density)[i];
             const double weight = spec.complementary ? w : (i == 0 ? 1.0 : w * kOverlayDensity);
             gradient.density_stops.push_back({position, weight});
         }
@@ -723,8 +756,13 @@ gradient_object_layers(const document::EmbroideryObject& base,
     document::EmbroideryObject layerBase = base;
     if (std::holds_alternative<document::SatinParams>(layerBase.params)) {
         // Méthode non satin choisie sur une forme actuellement satin : repli sur un gabarit
-        // directionnel neuf (comme `multicolor_layers` le fait déjà pour tout `base` non satin).
-        layerBase.params = document::DirectionalFillParams{};
+        // directionnel neuf (comme `multicolor_layers` le fait déjà pour tout `base` non satin),
+        // à l'écart enregistré dans le fondu.
+        document::DirectionalFillParams fresh;
+        fresh.row_spacing = Micrometers{std::clamp(
+            std::min(spec.transition.spacing_from.value, spec.transition.spacing_to.value), 100,
+            4'000)};
+        layerBase.params = std::move(fresh);
     }
     return multicolor_layers(layerBase, shape, spec);
 }
@@ -738,6 +776,8 @@ document::MulticolorGradientParams anchor_params_from_spec(const MulticolorGradi
     params.satin_density = spec.satin_density;
     params.crosshatch_layers = spec.crosshatch_layers;
     params.crosshatch_angle = spec.crosshatch_angle;
+    params.stitch_angle = spec.stitch_angle;
+    params.end_density = spec.end_density;
     return params;
 }
 
@@ -753,7 +793,15 @@ build_gradient_anchor_command(document::Project& project, const document::Embroi
     if (source == nullptr) {
         return fail(ErrorCategory::OperationImpossible, "Forme source introuvable.");
     }
-    auto layers = gradient_object_layers(base, source->paths, spec);
+    // L'ancre enregistre l'écart RÉELLEMENT cousu (celui du remplissage d'origine) : une
+    // réédition ultérieure le conserve au lieu de retomber sur l'écart nominal de l'axe.
+    auto stored = spec;
+    if (spec.method != document::GradientMethod::SatinInterlaced &&
+        spec.method != document::GradientMethod::CrossHatching) {
+        stored.transition.spacing_from = stored.transition.spacing_to =
+            nominal_spacing(base, spec.transition);
+    }
+    auto layers = gradient_object_layers(base, source->paths, stored);
     if (!layers) {
         return fail(ErrorCategory::OperationImpossible,
                     "Fondu multicolore invalide pour cette géométrie/méthode.");
@@ -769,7 +817,7 @@ build_gradient_anchor_command(document::Project& project, const document::Embroi
             std::make_unique<commands::ClearColorBlendLinkCommand>(base.id, colorBlendPartner));
     }
     batch->add(std::make_unique<commands::SetStitchTypeCommand>(
-        base.id, document::StitchParams{anchor_params_from_spec(spec)}, "Fondu multicolore"));
+        base.id, document::StitchParams{anchor_params_from_spec(stored)}, "Fondu multicolore"));
     for (std::size_t i = 0; i < layers->size(); ++i) {
         auto next = std::move((*layers)[i]);
         next.id = layerIds[i];
@@ -821,6 +869,8 @@ std::optional<MulticolorGradientSpec> describe_multicolor_gradient(const documen
     spec.satin_density = params.satin_density;
     spec.crosshatch_layers = params.crosshatch_layers;
     spec.crosshatch_angle = params.crosshatch_angle;
+    spec.stitch_angle = params.stitch_angle;
+    spec.end_density = params.end_density;
     return spec;
 }
 
@@ -889,8 +939,16 @@ std::string multicolor_gradient_incompatibility(const document::Project& project
 Result<std::unique_ptr<commands::ICommand>>
 make_create_multicolor_gradient_command(document::Project& project, ObjectId fill,
                                         const MulticolorGradientSpec& spec) {
+    if (const auto why = invalid_fill_options(spec); !why.empty()) {
+        return fail(ErrorCategory::UserInput, why);
+    }
     if (!validate_palette(spec.palette)) {
-        return fail(ErrorCategory::OperationImpossible, "Choisissez entre 2 et 8 fils distincts.");
+        return fail(ErrorCategory::OperationImpossible,
+                    "Choisissez entre 1 et 8 fils, deux voisins distincts.");
+    }
+    if (spec.palette.size() < 2 && spec.method == document::GradientMethod::SatinInterlaced) {
+        return fail(ErrorCategory::OperationImpossible,
+                    "Le satin entrelacé demande au moins deux fils.");
     }
     if (const auto why = multicolor_gradient_incompatibility(project, fill, spec.method);
         !why.empty()) {
@@ -903,8 +961,16 @@ make_create_multicolor_gradient_command(document::Project& project, ObjectId fil
 Result<std::unique_ptr<commands::ICommand>>
 make_edit_multicolor_gradient_command(document::Project& project, ObjectId anchorOrMember,
                                       const MulticolorGradientSpec& spec) {
+    if (const auto why = invalid_fill_options(spec); !why.empty()) {
+        return fail(ErrorCategory::UserInput, why);
+    }
     if (!validate_palette(spec.palette)) {
-        return fail(ErrorCategory::OperationImpossible, "Choisissez entre 2 et 8 fils distincts.");
+        return fail(ErrorCategory::OperationImpossible,
+                    "Choisissez entre 1 et 8 fils, deux voisins distincts.");
+    }
+    if (spec.palette.size() < 2 && spec.method == document::GradientMethod::SatinInterlaced) {
+        return fail(ErrorCategory::OperationImpossible,
+                    "Le satin entrelacé demande au moins deux fils.");
     }
     const auto group = document::find_gradient_group(project, anchorOrMember);
     if (!group) {

@@ -1,6 +1,28 @@
 # Studio — Fondus de fils, camaïeux et dégradés de densité
 Date : 12 novembre 2026 — implémentation candidate dans la PR #336 (CI et validation textile non acquises).
 
+## Vérification du 15 novembre 2026 — recette après fusion
+
+La PR #336 est intégrée (`46ce5841`) et les refontes #341/#345 sont présentes dans
+`main` (`94768773`). La CI `43740252593` a réussi les tests Linux et Windows Release,
+mais la recette spéciale des fondus était conditionnée au numéro de PR **336** : elle
+était sautée sur `main` et les PR suivantes.
+
+La recette `scripts/qa_pr336_gradients.py` couvre maintenant le moteur à rangées
+partagées pour les remplissages multicolores : `sharedRows`, arrêts
+`[position, poids, début de tranche]`, profils non linéaires échantillonnés et
+surcouches sur une grille à 60 %. Les trois couples historiques et les trois
+satins conservent leurs chemins spécifiques. La CI Windows lance cette matrice
+sur chaque PR et chaque push sur `main`, avec contrôle du SHA du checkout et
+conservation des OSP/DST/PNG ; les tests Python vérifient aussi les fixtures et
+l'intégrité PNG.
+
+Vérification locale avec le CLI Linux officiel du run ci-dessus (artefact
+`14172732908`, archive SHA256 vérifiée) : **20/20 scénarios et 6/6 grands motifs**
+réussis, aucun échec des critères DST/PNG existants. Ce contrôle ne mesure pas
+la qualité d'une broderie physique et ne remplace pas une recette interactive
+du panneau de Studio.
+
 ## Mise à jour 2026-11-14 — fondu multicolore devenu un type autonome (PR #341)
 
 L'« Architecture cible » décrite plus bas (section *Architecture cible / évolutions pour 3+ fils
@@ -134,6 +156,71 @@ canevas, avec les mêmes numéros des deux côtés.
 
 Non fait : placer un fil ailleurs qu'à intervalle régulier (le moteur répartit les fils
 uniformément le long de l'axe), assistant « camaïeu depuis mes fils en stock ».
+
+## Types de fondu, direction des points et espacement (15 novembre 2026, suite)
+
+Retours d'utilisation : un tatami proposait de « passer en fondu », aucun réglage d'écart entre
+rangées, des types manquants.
+
+- **Type à part** : l'éditeur de fondu de l'inspecteur n'apparaît que sur un fondu existant
+  (`fadeCtl.hasFade`). On crée un fondu en choisissant « Fondu multicolore » dans le type de
+  points (`InspectorController::setStitchType`) ; un satin y devient un satin entrelacé
+  (méthode de `default_multicolor_gradient`, auparavant toujours « Directionnel »).
+- **Forme** (ligne visible, `DensityGeometry`) : Droite, Radiale, **Spirale** (3) et
+  **Contour** (4) ; la courbe reste dans « Plus de réglages ». Spirale : centre et rayon comme le
+  radial, `curve_bend` × 4 tours (2 par défaut), position en onde triangle de période 1 donc
+  continue au raccord des angles. Contour : distance au bord le plus proche (contour et trous)
+  rapportée à la plus grande distance intérieure, grille de distances calculée une fois par
+  couche (`ContourDistance`, propagation du germe le plus proche, déterministe) ; pas d'axe à
+  placer au canevas.
+- **Direction des points** (`MulticolorGradientParams::stitch_angle`, absent = perpendiculaire
+  à l'axe) : « Auto » ou « Angle » + valeur, indépendante de l'axe des couleurs. Les couches
+  partagent la grille de rangées (écart uniforme), donc
+  `align_guides_across_density_gradient` ne remplace pas ce guide.
+- **Dégradé d'un seul fil** : la palette accepte 1 fil (sauf satin entrelacé) ; la couche coud
+  la tranche `[0 ; poids)` avec un poids qui passe de 1 à `end_density` (15 % par défaut,
+  « Densité d'arrivée »), profil du fil. Retirer des fils jusqu'à un seul dans la barre suffit.
+- **Espacement des rangées** (« Espacement des rangées (mm) », 0,1 à 4) : écrit dans
+  `transition.spacing_from/to` de l'ancre. À la création, l'ancre enregistre l'écart réellement
+  cousu (celui du tatami d'origine) ; auparavant la première réédition retombait sur l'écart
+  nominal de l'axe (0,4 mm). Relu depuis la première couche, donc juste aussi pour les anciens
+  fondus.
+- **Correctif hachures croisées** : leurs couches gardaient l'écart variable 4 mm → 0,4 mm de
+  l'axe par défaut, si bien que le générateur remplaçait les guides croisés par un guide
+  perpendiculaire à l'axe (une seule direction). Écart désormais uniforme : les directions
+  croisées sont réellement cousues.
+
+Tests : `fade types: …` (`test_gradient_fill.cpp`, 8 cas), service desktop
+(`test_fade_service.cpp`) et parcours QML (`test_studio_digitize`). Non validé sur tissu.
+
+### Reprise et vérification de la PR #355 (15 novembre 2026)
+
+Intégration de `main` (`94768773`) et compilation complète en Release sous GCC 14,
+Qt 6.8.2. Les fabriques de commandes refusent désormais une densité d'arrivée hors
+de `[0 ; 1]` ou un angle non fini avant toute allocation d'identifiant ou mutation.
+Le panneau signale les espacements et pourcentages hors bornes ; une saisie d'angle
+invalide désactive « Angle » au lieu de remplacer silencieusement la valeur par zéro.
+La direction libre des points est masquée pour le satin, dont les rails pilotent
+les traversées. Le constructeur du compagnon utilise une surcharge délégante pour
+rester compilable avec GCC.
+
+Preuves locales : 32 cas / 2 191 assertions `[project_ops][gradient]`, 16 cas /
+351 assertions `[desktop_v2][fade]`, parcours QML complet passé avec refus des
+valeurs invalides sans étape d'annulation. Les géométries spirale et contour sont
+également rééditées, sauvegardées et rechargées avec une séquence de points identique.
+Sept exemples créés par les commandes publiques couvrent spirale, contour, contour
+avec trou, un fil, angle 45°, hachures croisées et satin entrelacé : génération
+déterministe, réouverture OSP, rendu PNG et export DST. Captures réelles de Studio
+pour la spirale et le dégradé d'un seul fil. Ces contrôles logiciels ne remplacent
+pas un essai textile ; un satin de 20 mm reste susceptible de produire de longs
+points et ne constitue pas un échantillon de couture validé.
+
+Suite CTest complète : 2 633 tests passés, aucun échec (167,43 s). Le test de
+persistance a ensuite été renforcé par une réédition explicite avant sauvegarde,
+puis les 32 cas de fondu ont été rejoués. Les sept DST représentatifs, dont un satin
+de 3,2 mm de large, comportent le nombre attendu de changements de fil et un pas
+cousu maximal de 4,19 mm. Le PDF régénéré est lisible (312 pages) ; son rapport
+conserve les quatre liens de chapitres inconnus déjà signalés sur `main`.
 
 ## Deux notions, deux emplacements
 

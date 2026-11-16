@@ -73,8 +73,9 @@ et `openstitch-cli project applique-cut <osp> -o fichier.svg|dxf`. Reste : plusi
 **Fondu multicolore** (`MulticolorGradientParams`, mission 2026-11-14, PR #341, dernière
 alternative du variant). Type de broderie **autonome** : contrairement aux autres alternatives,
 l'objet qui le porte (l'**ancre**) ne génère aucun point lui-même (`is_multicolor_gradient()`
-exclu de `effective_sequence`) — il porte la palette (2 à 8 fils), la transition (axe, courbe,
-géométrie, texture) et la méthode (`GradientMethod` : `Directional`, `SatinInterlaced`,
+exclu de `effective_sequence`) — il porte la palette (1 à 8 fils ; un seul fil = dégradé de densité jusqu'à
+`end_density`), la transition (axe, courbe, géométrie droite/radiale/courbe/spirale/contour,
+texture, écart des rangées), la direction des points facultative (`stitch_angle`) et la méthode (`GradientMethod` : `Directional`, `SatinInterlaced`,
 `LongAndShort`, `ControlledScatter`, `CrossHatching`, persistées par nom). Les points réels sont
 produits par des `EmbroideryObject` **physiques** distincts (satin/tatami/directionnel selon la
 méthode), tagués vers l'ancre par `MultiBlendLink` (`document::find_gradient_group` résout le

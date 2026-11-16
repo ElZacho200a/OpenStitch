@@ -257,6 +257,7 @@ Window {
         case "cmd.file.save-as": saveDialog.open(); break
         case "cmd.file.import-image": filePanel.importImageDialog(); break
         case "cmd.file.import-machine": filePanel.importMachineDialog(); break
+        case "cmd.file.insert-design": filePanel.insertDesignDialog(); break
         case "cmd.edit.undo": undoWithFeedback(); break
         case "cmd.edit.redo": redoWithFeedback(); break
         case "cmd.edit.duplicate": duplicateWithFeedback(); break

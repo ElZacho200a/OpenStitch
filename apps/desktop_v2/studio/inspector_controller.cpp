@@ -2,6 +2,7 @@
 #include "inspector_controller.hpp"
 
 #include <QColor>
+#include <QQmlEngine>
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -14,8 +15,10 @@
 #include "openstitch/commands/composite_command.hpp"
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/commands/stitch_preset_commands.hpp"
+#include "openstitch/document/stitch_recipes.hpp"
 #include "openstitch/project_ops/gradient_fill.hpp"
 #include "openstitch/project_ops/operations.hpp"
+#include "recipe_swatch_provider.hpp"
 
 namespace openstitch::desktop_v2::studio {
 
@@ -547,6 +550,51 @@ QVariantList InspectorController::presets() const {
     return out;
 }
 
+QVariantList InspectorController::recipes() const {
+    QVariantList out;
+    for (const auto& r : document::stitch_recipes()) {
+        const bool outline = r.target == document::RecipeTarget::Outline;
+        out.push_back(QVariantMap{
+            {QStringLiteral("id"), u8(std::string(r.id))},
+            {QStringLiteral("name"), u8(std::string(r.name_fr))},
+            {QStringLiteral("nameEn"), u8(std::string(r.name_en))},
+            {QStringLiteral("target"), u8(std::string(document::recipe_target_id(r.target)))},
+            {QStringLiteral("label"),
+             u8(std::string(r.name_fr)) +
+                 (outline ? QStringLiteral(" · contour") : QStringLiteral(" · remplissage"))},
+            {QStringLiteral("note"), u8(std::string(r.note))},
+            {QStringLiteral("approximation"),
+             r.fidelity == document::RecipeFidelity::Approximation}});
+    }
+    return out;
+}
+
+bool InspectorController::installRecipeSwatches(QObject* item) const {
+    auto* engine = item != nullptr ? qmlEngine(item) : nullptr;
+    if (engine == nullptr) {
+        return false;
+    }
+    if (engine->imageProvider(QStringLiteral("recipe")) == nullptr) {
+        engine->addImageProvider(QStringLiteral("recipe"), new RecipeSwatchProvider);
+    }
+    return true;
+}
+
+QString InspectorController::applyRecipe(const QString& id) {
+    const auto s = selection();
+    if (s.ids.empty()) {
+        return finish(QStringLiteral("Sélectionnez au moins un objet."));
+    }
+    const auto* recipe = document::find_stitch_recipe(id.toStdString());
+    const auto json = batchApplyRecipe(s.ids, id.toStdString());
+    if (recipe == nullptr || json.empty()) {
+        return finish(QStringLiteral("Recette inconnue."));
+    }
+    const auto result = session_.applyBatch(json, "Recette : " + std::string(recipe->name_fr));
+    return finish(result.committed ? QString() : refusalOf(result.report),
+                  QStringLiteral("Recette « %1 » appliquée").arg(u8(std::string(recipe->name_fr))));
+}
+
 QString InspectorController::finish(const QString& refusal, const QString& success) {
     message_ = refusal.isEmpty() ? success : refusal;
     ok_ = refusal.isEmpty();
@@ -824,6 +872,12 @@ QString InspectorController::setStitchType(const QString& id) {
         MultiFadeSettings settings;
         settings.colors = {defaults->background, defaults->foreground};
         settings.complementary = true;
+        // Un satin devient un satin entrelacé (méthode par défaut de
+        // `default_multicolor_gradient`).
+        if (const auto spec = project_ops::default_multicolor_gradient(session_.project(),
+                                                                       ObjectId{s.ids.front()})) {
+            settings.method = static_cast<int>(spec->method);
+        }
         const auto result = createMultiFade(session_, s.ids.front(), settings);
         return finish(result.ok ? QString() : u8(result.message),
                       QStringLiteral("Fondu multicolore créé"));

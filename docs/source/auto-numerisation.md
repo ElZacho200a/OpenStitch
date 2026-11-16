@@ -60,6 +60,16 @@ ciel ou une mer plein cadre ne remplit jamais tout le pourtour (le cas de test �
 reste non recommandé). `BackgroundCandidateOptions::min_border_ratio` règle le seuil ; une valeur
 supérieure à 1 désactive cette voie.
 
+**Motif recadré serré (2026-11-16).** Quand le motif remplit presque toute l'image (logo recadré
+au plus près, forme qui déborde la moitié du cadre), c'est lui la plus grande région, et le fond
+blanc n'est qu'un liseré. La candidate était alors le motif, non recommandé : rien n'était ignoré et
+le liseré blanc était cousu en tatami autour du motif (11 formes sur 100 du corpus synthétique
+IA-DATA-01, `scripts/ia_data_corpus.py`). Si la plus grande région n'est pas recommandée,
+`background_candidate` essaie maintenant les autres couleurs du pourtour et retient celle qui
+**encadre** l'image (quatre bords, `border_ratio >= min_border_ratio`) ; `skip_largest_region`
+ignore alors cette couleur et non celle du motif. Même garde-fou que pour le fond coloré : un ciel
+ou une mer plein cadre ne fait jamais tout le tour de l'image.
+
 ## Orientation et sous-couche des remplissages (Lot B)
 
 Avant ce lot, chaque tatami créé par l'auto-numérisation recevait

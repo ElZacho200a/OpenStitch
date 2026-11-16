@@ -92,6 +92,12 @@ struct TatamiParams {
     // Passe de contour cousue PAR-DESSUS le remplissage (point droit le long du bord et des
     // trous) : masque les bouts de rangées. Faux = aucune (historique).
     bool edge_outline{false};
+    // Couchage (STCH-CROS-01, point de Bayeux) : le tatami devient la couche POSÉE, traversée
+    // perpendiculairement par des fils de couchage espacés de `couching_spacing` (0 = aucun,
+    // historique ; borné à [2 ; 20] mm) et attachés tous les `couching_tie_spacing` (3 mm,
+    // borné à [1 ; 7] mm) par un petit point en travers. Cf. `stitch_generation::couching_pass`.
+    Micrometers couching_spacing{0};
+    Micrometers couching_tie_spacing{3'000};
 
     bool operator==(const TatamiParams&) const = default;
 };
@@ -132,7 +138,18 @@ enum class DensityGeometry : std::uint8_t {
     Linear = 0,
     Radial = 1,
     Curved = 2,
+    // Fondus (2026-11-15) : bandes en spirale autour de `from` (rayon |to - from|, nombre de
+    // tours porté par `curve_bend` × 4, le signe donne le sens) ; position = onde triangle, donc
+    // continue partout, les fils allant du premier au dernier puis revenant à chaque bras.
+    Spiral = 3,
+    // Du bord de la forme (t = 0) vers son cœur (t = 1) : distance au contour le plus proche
+    // rapportée à la plus grande distance intérieure. `from`/`to` ne servent pas.
+    Contour = 4,
 };
+
+[[nodiscard]] constexpr bool is_valid_density_geometry(int value) {
+    return value >= 0 && value <= static_cast<int>(DensityGeometry::Contour);
+}
 
 // Noeuds d'une densité de fil normalisée le long de l'axe : 0 = aucune
 // couture, 1 = densité de référence. Cette série permet de décrire une rampe
@@ -493,7 +510,8 @@ struct ContourFillParams {
 
 // Motifs de base (HP-STI-002 / HP-STI-006) : petites séquences normalisées définies dans
 // `stitch_generation::motif_pattern`. Ajouter en fin seulement (valeur persistée dans le .osp).
-enum class MotifId : std::uint8_t { Wave, Zigzag, Leaf, Heart, Diamond, Scallop };
+// `Seed` (STCH-CROS-01) : point de semis, un court point droit cousu trois fois.
+enum class MotifId : std::uint8_t { Wave, Zigzag, Leaf, Heart, Diamond, Scallop, Seed };
 
 // Motif le long d'un chemin (« motif run », HP-STI-002) : le motif est répété par abscisse
 // curviligne le long de chaque contour de la source, orienté selon la tangente.
@@ -522,6 +540,10 @@ struct MotifFillParams {
     bool hidden_underpath{true};          // liaisons longues cousues cachées (au lieu de sauts)
     Micrometers pull_compensation{0};     // HP-STI-033 : depassement du contour, 0-3 mm (defaut 0)
     PullMode pull_mode{PullMode::Manual}; // HP-STI-033 : Manual ou Auto
+    // Dispersion (STCH-CROS-01, semis) : chaque instance est déplacée d'au plus
+    // `scatter` x pas / 2 sur chaque axe et tournée d'au plus `scatter` x 180°, par un hachage
+    // déterministe de sa cellule (aucune graine stockée). [0 ; 1], 0 = grille régulière.
+    double scatter{0.0};
 
     bool operator==(const MotifFillParams&) const = default;
 };
@@ -571,6 +593,10 @@ struct CrosshatchFillParams {
     bool hidden_underpath{true};
     Micrometers pull_compensation{0};     // HP-STI-033 : depassement du contour, 0-3 mm (defaut 0)
     PullMode pull_mode{PullMode::Manual}; // HP-STI-033 : Manual ou Auto
+    // Treillis attaché (STCH-CROS-01) : longueur de la petite barre diagonale cousue à chaque
+    // croisement des deux premières couches, qui maintient le fil posé. 0 = aucune (historique) ;
+    // bornée à [1,2 ; 4] mm, ignorée si `row_spacing` < 1 mm.
+    Micrometers tie_down{0};
 
     bool operator==(const CrosshatchFillParams&) const = default;
 };
@@ -677,7 +703,8 @@ struct GradientThread {
 // Changer `method` régénère ces couches SANS toucher `palette` ni `transition`.
 struct MulticolorGradientParams {
     GradientMethod method{GradientMethod::Directional};
-    // 2 à 8 fils, de l'arrière vers l'avant (ordre de couture). Validé par
+    // 1 à 8 fils, de l'arrière vers l'avant (ordre de couture). Un seul fil : dégradé de
+    // densité monochrome, de plein (t = 0) à `end_density` (t = 1). Validé par
     // `project_ops::make_create_multicolor_gradient_object_command`, pas par le modèle.
     std::vector<GradientThread> palette;
     // Vrai : les fils se partagent UNE grille de rangées (couverture exacte). Faux : premier fil
@@ -692,6 +719,11 @@ struct MulticolorGradientParams {
     // de la première couche ; les couches suivantes tournent de 180°/`crosshatch_layers`.
     int crosshatch_layers{2};
     Angle crosshatch_angle{0.0};
+    // Remplissages (hors satin et hachures) : angle imposé aux lignes de couture, indépendant
+    // de l'axe du fondu. Absent : lignes perpendiculaires à l'axe (comportement historique).
+    std::optional<Angle> stitch_angle;
+    // Fondu d'un seul fil uniquement : densité relative à l'arrivée, [0 ; 1].
+    double end_density{0.15};
 
     bool operator==(const MulticolorGradientParams&) const = default;
 };

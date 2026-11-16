@@ -11,6 +11,7 @@
 #include <numbers>
 
 #include "fade_service.hpp"
+#include "file_io.hpp"
 #include "openstitch/document/machine_profile.hpp"
 
 namespace openstitch::desktop_v2 {
@@ -223,6 +224,20 @@ std::vector<ActionDef> makeCatalog() {
         a.fields = {fileField("file", "Fichier DXF", "")};
         a.build = [](const Values& v, const ActionContext&, std::string&) {
             return wrap(R"({"op":"import_dxf","file":)" + quote(v.at("file")) + "}");
+        };
+        out.push_back(std::move(a));
+    }
+    {
+        // CX08 : fusion par ICommand (InsertDesignCommand), pas par lot JSON.
+        ActionDef a;
+        a.id = "file.insert_design";
+        a.label = "Insérer un design…";
+        a.group = "Fichier";
+        a.fields = {fileField("file", "Projet .osp ou broderie machine", "")};
+        a.run = [](DocumentSession& session, const Values& v, const ActionContext&) {
+            const std::string& file = v.at("file"); // UTF-8
+            return insertDesign(session,
+                                std::filesystem::path(std::u8string(file.begin(), file.end())));
         };
         out.push_back(std::move(a));
     }

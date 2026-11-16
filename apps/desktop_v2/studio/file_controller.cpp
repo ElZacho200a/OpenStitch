@@ -772,6 +772,33 @@ void FileController::importVector(const QString& path, const QString& stitchType
                    .arg(QFileInfo(path).fileName()));
 }
 
+QVariantMap FileController::insertDesignPreview(const QUrl& url) const {
+    const QString path = url.isLocalFile() ? url.toLocalFile() : url.toString();
+    const auto preview = previewDesignInsert(studio_.session().project(), toPath(path));
+    return {{QStringLiteral("ok"), preview.ok},
+            {QStringLiteral("message"), QString::fromStdString(preview.message)},
+            {QStringLiteral("name"), QFileInfo(path).fileName()},
+            {QStringLiteral("machine"), preview.machine},
+            {QStringLiteral("shapes"), static_cast<qulonglong>(preview.shapes)},
+            {QStringLiteral("embroideries"), static_cast<qulonglong>(preview.embroideries)},
+            {QStringLiteral("texts"), static_cast<qulonglong>(preview.texts)},
+            {QStringLiteral("stitches"), static_cast<qulonglong>(preview.stitches)},
+            {QStringLiteral("colors"), static_cast<qulonglong>(preview.colors)},
+            {QStringLiteral("widthMm"), preview.widthMm},
+            {QStringLiteral("heightMm"), preview.heightMm}};
+}
+
+bool FileController::insertDesign(const QUrl& url) {
+    const QString path = url.isLocalFile() ? url.toLocalFile() : url.toString();
+    const auto result = desktop_v2::insertDesign(studio_.session(), toPath(path));
+    if (!result.ok) {
+        setMessage(QString::fromStdString(result.message), true);
+        return false;
+    }
+    setMessage(QStringLiteral("Design inséré : %1 (annulable)").arg(QFileInfo(path).fileName()));
+    return true;
+}
+
 // --- Exports -----------------------------------------------------------------------------------
 
 QVariantList FileController::machineFormats() const {
@@ -1055,8 +1082,8 @@ void FileController::exportImage(const QUrl& url, double pxPerMm, int jpegQualit
         setMessage(QStringLiteral("Choisissez un fichier local."), true);
         return;
     }
-    if (pxPerMm < 1.0 || pxPerMm > 20.0) {
-        setMessage(QStringLiteral("Résolution : entre 1 et 20 pixels par mm."), true);
+    if (pxPerMm < kMinPxPerMm || pxPerMm > kMaxPxPerMm) {
+        setMessage(QStringLiteral("Résolution : entre 1 et 12 pixels par mm."), true);
         return;
     }
     const QString suffix = QString::fromStdWString(path.extension().wstring()).mid(1).toLower();
@@ -1146,21 +1173,15 @@ void FileController::exportPlacementTemplate(const QUrl& url, const QVariantMap&
         setMessage(QStringLiteral("Choisissez un fichier local."), true);
         return;
     }
-    stitch_analysis::PlacementTemplateOptions tpl;
     const QString paper = options.value(QStringLiteral("paper"), QStringLiteral("A4")).toString();
-    if (paper == QLatin1String("A3")) {
-        tpl.paper_width = Micrometers{297'000};
-        tpl.paper_height = Micrometers{420'000};
-    } else if (paper == QLatin1String("Letter")) {
-        tpl.paper_width = Micrometers{215'900};
-        tpl.paper_height = Micrometers{279'400};
-    } else if (paper != QLatin1String("A4")) {
+    const auto chosen = placement_template_options(
+        toUtf8(paper), options.value(QStringLiteral("landscape")).toBool(),
+        toUtf8(studio_.title()));
+    if (!chosen) {
         setMessage(QStringLiteral("Papier inconnu : %1 (A4, A3 ou Letter).").arg(paper), true);
         return;
     }
-    tpl.landscape = options.value(QStringLiteral("landscape")).toBool();
-    const QString title = studio_.title();
-    tpl.title = toUtf8(title);
+    const auto tpl = *chosen;
     const auto snapshot = studio_.session().snapshot();
     runJob<int>(
         QStringLiteral("Gabarit de placement"),
@@ -1185,6 +1206,68 @@ void FileController::exportPlacementTemplate(const QUrl& url, const QVariantMap&
                            .arg(pages));
         },
         QStringLiteral("Gabarit impossible : "));
+}
+
+namespace {
+// Résultat d'un plan d'export : toujours livré, refus compris (le dialogue l'affiche).
+struct ExportPlanJob {
+    QString error;
+    ImageExportPlan image;
+    TemplateExportPlan tpl;
+};
+} // namespace
+
+void FileController::requestExportPlan(const QString& kind, const QVariantMap& options) {
+    const auto snapshot = studio_.session().snapshot();
+    const bool image = kind == QLatin1String("image");
+    std::optional<stitch_analysis::PlacementTemplateOptions> tpl;
+    const double pxPerMm = options.value(QStringLiteral("pxPerMm"), 6.0).toDouble();
+    if (!image) {
+        tpl = placement_template_options(
+            toUtf8(options.value(QStringLiteral("paper"), QStringLiteral("A4")).toString()),
+            options.value(QStringLiteral("landscape")).toBool(), toUtf8(studio_.title()));
+        if (!tpl) {
+            emit exportPlanReady(kind, {{QStringLiteral("ok"), false},
+                                        {QStringLiteral("message"),
+                                         QStringLiteral("Papier inconnu (A4, A3 ou Letter).")}});
+            return;
+        }
+    }
+    runJob<ExportPlanJob>(
+        QStringLiteral("Aperçu de l'export"),
+        [snapshot, image, tpl, pxPerMm](const TaskContext& task) -> Result<ExportPlanJob> {
+            ExportPlanJob job;
+            if (image) {
+                auto plan = plan_image_export(snapshot, pxPerMm, task);
+                plan ? void(job.image = *plan) : void(job.error = errorText(plan.error()));
+            } else {
+                auto plan = plan_placement_template(*snapshot, *tpl, task);
+                plan ? void(job.tpl = *plan) : void(job.error = errorText(plan.error()));
+            }
+            return job;
+        },
+        [this, kind, image](ExportPlanJob&& job) {
+            QVariantMap plan{{QStringLiteral("ok"), job.error.isEmpty()},
+                             {QStringLiteral("message"), job.error}};
+            if (job.error.isEmpty() && image) {
+                plan.insert({{QStringLiteral("width"), job.image.width},
+                             {QStringLiteral("height"), job.image.height},
+                             {QStringLiteral("pxPerMm"), job.image.pxPerMm},
+                             {QStringLiteral("reduced"), job.image.reduced},
+                             {QStringLiteral("widthMm"), job.image.widthMm},
+                             {QStringLiteral("heightMm"), job.image.heightMm}});
+            } else if (job.error.isEmpty()) {
+                plan.insert({{QStringLiteral("pages"), static_cast<qulonglong>(job.tpl.pages)},
+                             {QStringLiteral("columns"), static_cast<qulonglong>(job.tpl.columns)},
+                             {QStringLiteral("rows"), static_cast<qulonglong>(job.tpl.rows)},
+                             {QStringLiteral("designWidthMm"), job.tpl.designWidthMm},
+                             {QStringLiteral("designHeightMm"), job.tpl.designHeightMm},
+                             {QStringLiteral("pageWidthMm"), job.tpl.pageWidthMm},
+                             {QStringLiteral("pageHeightMm"), job.tpl.pageHeightMm}});
+            }
+            emit exportPlanReady(kind, plan);
+        },
+        QStringLiteral("Aperçu impossible : "));
 }
 
 // --- Cadre et machine --------------------------------------------------------------------------

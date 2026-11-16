@@ -43,6 +43,9 @@ class InspectorController : public QObject {
     Q_PROPERTY(bool showAdvanced READ showAdvanced WRITE setShowAdvanced NOTIFY changed)
     Q_PROPERTY(bool allPresets READ allPresets WRITE setAllPresets NOTIFY changed)
     Q_PROPERTY(QVariantList presets READ presets NOTIFY changed)
+    // Built-in stitch recipes (STCH-CROS-01): [{id, name, nameEn, target, label, note,
+    // approximation}], fixed order.
+    Q_PROPERTY(QVariantList recipes READ recipes CONSTANT)
     Q_PROPERTY(QString message READ message NOTIFY messageChanged)
     Q_PROPERTY(bool messageOk READ messageOk NOTIFY messageChanged)
 public:
@@ -83,6 +86,7 @@ public:
     // [{index, name, typeId, typeLabel, matches}] ; only the presets of the selected type unless
     // `allPresets`.
     [[nodiscard]] QVariantList presets() const;
+    [[nodiscard]] QVariantList recipes() const;
     [[nodiscard]] QString message() const { return message_; }
     [[nodiscard]] bool messageOk() const { return ok_; }
 
@@ -104,6 +108,11 @@ public:
     Q_INVOKABLE QString applyPreset(int index);
     Q_INVOKABLE QString renamePreset(int index, const QString& name);
     Q_INVOKABLE QString removePreset(int index);
+    // Applies a built-in recipe (type and settings) to the selection, one undo step.
+    Q_INVOKABLE QString applyRecipe(const QString& id);
+    // Installs the `image://recipe/` thumbnail provider on `item`'s QML engine if missing
+    // (idempotent): the catalogue works in every host, the app and the QML tests alike.
+    Q_INVOKABLE bool installRecipeSwatches(QObject* item) const;
 signals:
     void changed();
     void messageChanged();
