@@ -39,12 +39,12 @@ double round_to(double v, int digits) {
 // Fond ignoré : la plus grande région de la segmentation dont la couleur n'est celle d'aucun fil.
 std::optional<std::array<std::uint8_t, 3>> background_colour(const document::Project& project,
                                                              const ThreadModel& model) {
-    if (!project.segmentation) {
+    if (!project.imageSource().segmentation) {
         return std::nullopt;
     }
     std::size_t best = 0;
     std::optional<std::array<std::uint8_t, 3>> out;
-    for (const auto& slot : project.segmentation->region_slots) {
+    for (const auto& slot : project.imageSource().segmentation->region_slots) {
         if (!slot || slot->pixel_count <= best) {
             continue;
         }
@@ -141,7 +141,7 @@ Result<FidelityData> compute_fidelity(const document::Project& project, const Th
     }
     const int w = src.width;
     const int h = src.height;
-    const double mmpp = project.mm_per_px.value;
+    const double mmpp = project.imageSource().mm_per_px.value;
     const double px_mm2 = mmpp * mmpp;
     const std::size_t n = static_cast<std::size_t>(w) * h;
 
@@ -417,7 +417,7 @@ Result<DensityData> compute_density(const document::Project& project, const Thre
             }
         });
     }
-    const double mmpp = project.mm_per_px.value;
+    const double mmpp = project.imageSource().mm_per_px.value;
     json hotspots = json::array();
     for (std::size_t k = 0; k < comps.size(); ++k) {
         const Component& c = comps[k];
@@ -557,8 +557,8 @@ Result<FidelityReport> measure_fidelity(const document::Project& project,
                                           "fidélité impossible : le projet n'a pas d'image source "
                                           "(utiliser l'opération set_source_image)"));
     }
-    const auto raster = detail::rasterize_threads(*model, work.width, work.height,
-                                                  project.mm_per_px.value, options.thread_mm);
+    const auto raster = detail::rasterize_threads(
+        *model, work.width, work.height, project.imageSource().mm_per_px.value, options.thread_mm);
     auto data = compute_fidelity(project, *model, raster, options);
     if (!data) {
         return std::unexpected(data.error());
@@ -640,7 +640,7 @@ Result<LocateReport> locate_objects(const document::Project& project, const Loca
         }
         objs.push_back(std::move(o));
     }
-    const double mmpp = project.mm_per_px.value;
+    const double mmpp = project.imageSource().mm_per_px.value;
     json q = {{"x_mm", query.x_mm}, {"y_mm", query.y_mm}, {"radius_mm", query.radius_mm}};
     if (!work.empty()) {
         q["x_px"] = round_to(detail::mm_to_px_x(query.x_mm, work.width, mmpp), 1);
@@ -683,7 +683,7 @@ Result<DiagnoseReport> diagnose_project(const document::Project& project) {
                                    : report.infos)++;
         report.findings.push_back(std::move(f));
     };
-    const double mmpp = project.mm_per_px.value;
+    const double mmpp = project.imageSource().mm_per_px.value;
     const bool hasImage = !work.empty();
     const double motifW = model->max_x - model->min_x;
     const double motifH = model->max_y - model->min_y;

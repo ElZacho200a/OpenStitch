@@ -26,6 +26,29 @@ Sonnet par défaut. Haiku : localisation, tri, résumé de sortie. Opus : concep
 sous-système, bug résistant à deux hypothèses, arbitrage coûteux à défaire. Effort bas pour les
 tâches mécaniques, haut pour la conception. Le changer exige une raison, pas un réflexe.
 
+### 2 bis. Modèle local (Ollama) : à utiliser s'il existe
+
+Pour économiser le quota, **si un modèle local est disponible, l'utiliser en priorité** pour les
+tâches à faible enjeu. Détection (une fois par session, ~1 s) : `ollama list` et
+`curl -s http://localhost:11434/api/tags` ; absent ou injoignable → repli normal, sans insister.
+Modèle présent au 2026-11-10 : `qwen3.5:9b` (le lister à nouveau, ne pas le supposer).
+
+- **Pour le local** : résumer une sortie de build/test/log volumineuse, trier des résultats de
+  recherche, extraire des champs, reformuler un message de commit ou un paragraphe de doc,
+  brouillons de texte, classification de fichiers.
+- **Code : brouillons bornés seulement** : squelettes de banc de mesure (boucles, p50/p95/p99,
+  CSV), cas Catch2 répétitifs, boilerplate CMake/QML, scripts PowerShell. Le local rédige, Claude
+  relit, puis compilateur + clang-format 18 + tests tranchent. Rejeter tout brouillon qui ne
+  compile pas du premier coup au lieu de le réparer en boucle.
+- **Pas pour le local** (9 B : trop faible) : code touchant aux invariants (µm/`Micrometers`,
+  `ICommand`, `effective_sequence`, déterminisme, couches), diagnostic de cause racine,
+  décisions d'architecture, revue de correction. Ces tâches restent sur Claude.
+- **Méthode** : `ollama run <modèle> "<consigne>" < fichier` ou `POST /api/generate`
+  (`"stream": false`) ; ne passer que l'extrait utile, jamais de secret ni de donnée perso.
+  Désactiver la réflexion si disponible pour les tâches mécaniques.
+- **Vérifier** : la sortie locale est un brouillon ; relire ce qui engage (chemins, numéros de
+  ligne, noms de symboles) avant de s'y fier. En cas de doute ou d'échec, faire soi-même.
+
 ## 3. Déléguer seulement si rentable
 
 Un sous-agent redémarre à froid (~80 k de préfixe) : il se justifie par du parallélisme réel, par

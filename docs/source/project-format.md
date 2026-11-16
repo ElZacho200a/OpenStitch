@@ -15,6 +15,14 @@ Un projet `.osp` est une **archive ZIP** (via minizip-ng) contenant :
 Le JSON et le binaire sont séparés pour ne pas alourdir le JSON (la carte des
 labels peut faire plusieurs mégaoctets).
 
+Le schéma **v10** ajoute `document.imageSources`. Chaque entrée référence un
+calque et stocke sa résolution, sa pile d’opérations et les métadonnées de sa
+segmentation. Ses données binaires sont sous `images/<id-du-calque>/` avec les
+mêmes noms qu’à la racine, dont `detail_mask.u8` si un masque existe. Sur une forme
+dérivée, `sourceImage` désigne le calque image et `sourceRegion` identifie la
+région dans cette source. Déplacer la forme dans la pile de couture conserve
+son lien d’origine. Les anciennes archives à image unique restent lisibles.
+
 Compression (2026-10) : l'image PNG, déjà compressée, est stockée telle quelle dans le ZIP ; le JSON et les étiquettes sont en DEFLATE niveau rapide. Le fichier reste un ZIP standard, lisible par les versions précédentes.
 
 ## Contenu de `project.json`
@@ -65,7 +73,11 @@ Compression (2026-10) : l'image PNG, déjà compressée, est stockée telle quel
   `seed`, `spacingRegularity` (réel [0 ; 1], absent = 0 ; borné à la
   lecture) et l'objet `densityGradient` (`fromX`, `fromY`, `toX`, `toY`,
   `spacingFrom`, `spacingTo`, µm entiers ; `curve` entier 0 linéaire / 1 douce /
-  2 marquée, absent = 0 ; absent = écart uniforme) — tous
+  2 marquée, absent = 0 ; absent = écart uniforme ; `densityStops` : arrêts
+  `[position, poids]` d'un fondu, 2 à 64 ; avec `sharedRows: true`, arrêts
+  `[position, poids, début]` d'une **grille de rangées partagée** : la couche coud
+  la tranche `[début ; début + poids)` des rangées communes à tout le fondu,
+  `début + poids ≤ 1`) — tous
   optionnels (défauts du modèle) ; son ajout n'a pas changé
   `schemaVersion`. Depuis le schéma v3, un objet
   peut aussi porter ses **retouches manuelles** (Lot 8.1, ADR-014) :

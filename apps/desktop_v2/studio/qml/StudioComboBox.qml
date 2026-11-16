@@ -12,6 +12,15 @@ Controls.ComboBox {
     implicitWidth: 140
     hoverEnabled: true
     focusPolicy: Qt.StrongFocus
+    // Journal d'usage local : jamais de texte saisi, seulement l'identifiant du contrôle.
+    Connections {
+        target: control
+        function onActivated(index) {
+            const id = control.objectName.length > 0 ? control.objectName : ""
+            if (id.length > 0 && typeof usage !== "undefined" && usage)
+                usage.track("control", id, "#" + index)
+        }
+    }
     font.family: Theme.fontFamily
     font.pixelSize: Theme.smallSize
     leftPadding: 8

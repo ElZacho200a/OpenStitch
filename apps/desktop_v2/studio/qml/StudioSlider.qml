@@ -9,7 +9,27 @@ Controls.Slider {
     implicitHeight: 24
     implicitWidth: 120
     hoverEnabled: true
+    // La molette règle la valeur par pas (stepSize), mais seulement une fois le curseur
+    // focalisé (clic ou Tab) : sinon elle vole le défilement du panneau qui le contient
+    // (QA-STUDIO-001 LAY-023).
+    wheelEnabled: control.activeFocus
     focusPolicy: Qt.StrongFocus
+    function logValue() {
+        if (control.objectName.length > 0 && typeof usage !== "undefined" && usage)
+            usage.track("control", control.objectName, String(control.value))
+    }
+    // Journal d'usage local : valeur finale seulement (relâchement, molette ou clavier).
+    Connections {
+        target: control
+        function onMoved() {
+            if (!control.pressed)
+                control.logValue()
+        }
+        function onPressedChanged() {
+            if (!control.pressed)
+                control.logValue()
+        }
+    }
     Accessible.role: Accessible.Slider
 
     background: Rectangle {

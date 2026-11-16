@@ -236,10 +236,9 @@ recopiée, 30 tirages × 4 seuils, masques `bool`/`uint8`, masques vides.
 
 ## 5. Problèmes restants, par impact
 
-1. **Auto-satin sur jonctions à haut degré** : ~14 s sur deux régions de
-   tentabrode (génération de candidats de coupe de `split_region`, puis
-   oracle de couverture). Correctif architectural déjà identifié dans
-   `satin_plan.hpp`, hors périmètre.
+1. ~~**Auto-satin sur jonctions à haut degré**~~ : le chemin `split_region`
+   (`satin_planning`) a été retiré en août 2026 ; le coût restant de l'essai de
+   satin venait du rognage aux cellules, traité le 2026-11-15 (§13).
 2. **Régénération complète à chaque mutation** : ~110 ms (tentabrode) à
    ~180 ms (sample) restent pour une modification locale. Un cache par
    objet est possible (tatami/directionnel dépendent de la seule forme et
@@ -444,3 +443,286 @@ objet, pas par région. Les satins (colonnes routées, entrée dépendant de l'o
 l'auto-satin ne passent pas par ce cache ; leur squelette garde son propre cache (§8). Le banc
 désactive le cache pour ses étapes historiques afin de rester comparable aux relevés précédents et
 ajoute trois étapes « cache chaud », « objet médian modifié », « plus gros objet modifié ».
+
+## 10. Audit du 2026-11-13 : marqueurs des vecteurs denses dans Studio
+
+**Constat.** La sélection d'un objet vectoriel dense créait un `QVariantMap` et un
+`ToolOverlayItem` par nœud, puis demandait au canevas de dessiner chaque marqueur. Sur le cas de
+régression à 10 000 nœuds, toute la liste traversait ainsi la frontière C++/Qt et le rendu, même
+quand plusieurs points occupaient le même voisinage à l'écran.
+
+**Correctif.** `ToolController` regroupe les nœuds ordinaires et sélectionnés dans deux lots. Le
+canevas applique ensuite un niveau de détail déterministe en espace écran aux nœuds ordinaires :
+au plus un marqueur par cellule, avec environ 3 000 cellules visibles pour une fenêtre usuelle.
+Les points hors écran restent éliminés et le point sélectionné contourne toujours cette limite.
+Le contour de sélection élimine également ses sommets sous-pixel, tout en conservant ses
+extrémités : sur la scène circulaire de régression, 10 001 sommets source deviennent environ
+436 à 456 sommets d'affichage selon le cadrage.
+
+La géométrie source complète reste dans le modèle et dans les lots du contrôleur : sélection,
+édition et hit-testing continuent donc à voir les 10 000 nœuds. Le test clique notamment un nœud
+non dessiné par le niveau de détail et vérifie qu'il devient sélectionné et visible.
+
+**Preuve structurelle.** `test_desktop_v2_studio_tools` passe avec 10 000 nœuds source, au plus
+3 100 marqueurs ordinaires affichés et moins de la moitié des marqueurs initiaux. Ce relevé ne
+prouve la borne de travail côté rendu et la conservation des interactions.
+
+**Mesure locale Release.** Le micro-banc opt-in `perfDenseNodeSelectionOverlay`
+(`OPENSTITCH_PERF=1`) mesure le chemin sélection de l'objet dense → reconstruction des lots →
+conversion de la surcouche visible en types Qt, après 10 passages de chauffe et sur 100 passages.
+Sur Windows 11, Qt 6.8.3, backend Quick logiciel/offscreen, quatre exécutions après le LOD du
+contour donnent un p50 entre 3,68 et 3,81 ms, un p95 entre 4,05 et 4,63 ms et un p99 entre 8,57 et
+9,91 ms. La scène circulaire de 10 000 nœuds produit 74 marqueurs visibles avec ce cadrage. Cette
+mesure ne couvre ni la peinture QPainter, ni la présentation GPU/écran : elle ne constitue donc
+pas un relevé FPS global.
+
+**Banc natif.** `perfDenseNodeSelectionNative` ouvre le shell complet, vérifie un backend RHI
+matériel et compare une cadence témoin sans sélection aux sélections légère et dense. Dans la
+session du 14 novembre 2026, `QSG_INFO=1` confirme D3D11 sur une NVIDIA GeForce RTX 5060 Ti, mais
+la cadence témoin elle-même est bridée à un p95 de 262,46 ms ; les sélections légère (262,16 ms)
+et dense (263,64 ms) sont indiscernables de ce témoin. Ces valeurs ne mesurent donc pas le coût de
+l'overlay et ne valident ni n'invalident un portage QSG. Le banc doit être rejoué dans une session
+graphique non bridée, fenêtre réellement présentée et dégagée.
+
+**Limite et suite.** Les marqueurs restent dessinés par le canevas QPainter actuel. Un passage à
+des instances GPU/QSG ne sera justifié qu'après profilage du nouveau chemin : le principal coût
+confirmé ici était la création et le transfert de milliers d'objets Qt, pas le calcul de leurs
+coordonnées.
+
+## 11. Audit du 2026-11-14 : liaisons cachées du tatami (`HiddenRouter`)
+
+**Constat.** `generate_sequence` était passé de 63 ms (§9) à ~160 ms sur `tentabrode.png`, et le
+plus gros objet modifié de 67 à 161 ms. Le cache chaud restant à 6,5 ms, tout le temps venait du
+seul fond tatami. Profil temporaire : `HiddenRouter::route` (#343, 96 points de passage au lieu de
+24) fait ~190 appels par génération et **5,6 M de tests de visibilité** sur le banc (~0,6 µs
+chacun), 70 % dans les liaisons réussies (A* : chaque nœud développé teste ses ~96 voisins).
+
+**Corrections** (`libs/stitch_generation/src/tatami.cpp`), toutes à sortie identique :
+
+- `connector_invalid` : rejet en x des arêtes (les bandes de l'index ne trient qu'en y ; marge
+  d'1 µm, très au-delà des tolérances paramétriques de 1e-9) et tampon `ts` réutilisé.
+- `in_region` : parités réutilisées et remises à zéro case par case, au lieu d'allouer un vecteur
+  par polygone à chaque milieu de sous-segment testé.
+- A* : un nœud dont la borne inférieure `dist + |v b|` dépasse le plafond (marge d'1 µm) n'est pas
+  testé ; visibilités depuis `a` et vers `b` paresseuses et mémoïsées ; candidats sélectionnés par
+  `nth_element` puis triés (ordre total, mêmes candidats).
+- Visibilité entre deux points de passage mémoïsée sur la vie du routeur (clé ordonnée, le test
+  n'étant pas exactement symétrique en virgule flottante ; 4 M d'entrées au plus).
+
+**Résultats** (Release, médianes à chaud, même machine, `main` contre la branche ; empreintes de
+segmentation et de séquence effective identiques sur les trois images, et avec `OPENSTITCH_THREADS=1`) :
+
+| Image | `generate_sequence` avant | après | empreinte |
+|---|---|---|---|
+| `tentabrode.png` | 161 ms | **79 ms** | `0e0ebfe85091dd02` |
+| `sample/0215a7e5…png` | 168 ms | **67 ms** | `b55ebf70db688425` |
+| `marine-synth-01/source.png` | 3,4 ms | **2,5 ms** | `d1f73e507e36b047` |
+
+**Hypothèse restante.** Les tests depuis les extrémités, propres à chaque liaison, dominent
+désormais. Un index 2D (grille parcourue le long du segment) à la place des bandes en y réduirait
+le nombre d'arêtes visitées par test sans changer le résultat (déduplication par marques, `ts`
+trié) ; non fait, à mesurer.
+
+## 12. Audit du 2026-11-14 : ce qui passe sur le GPU dans Studio
+
+**État des lieux.** Les points, le cadre, la grille, les repères, les sauts et le rendu réaliste
+sont déjà des géométries du scene graph (RHI D3D11). Banc natif `openstitch-studio-bench`
+(scène de 10 000 points) : scène construite en 2,7 ms, géométrie créée une seule fois, rendu
+GPU 1–2 ms par image ; `QSG_RENDER_TIMING=1` donne `time in renderer: total=0–2 ms`.
+
+**Le « bridage » à ~260 ms par image n'est pas la session.** Il apparaît en `sync=244–254 ms`
+(`render=2`, `swap=0`) : dans la boucle threadée, la phase « sync » inclut `beginFrame`, qui
+attend le swapchain. La machine était sans clavier ni souris depuis 66 min, écran en veille :
+Windows ne présente plus alors que ~4 images/s. Preuve indépendante de Studio :
+`DwmGetCompositionTimingInfo` compte 0 à 1 rafraîchissement en 3 s pour trois écrans déclarés à
+60 Hz, et le même plafond apparaît sur le GPU intégré AMD (`QT_D3D_ADAPTER_INDEX=1`). Ni
+`SetThreadExecutionState(ES_DISPLAY_REQUIRED)`, ni une entrée souris simulée, ni
+`SC_MONITORPOWER` ne rallument ces écrans : une action physique est nécessaire. Les relevés
+natifs du §10 (cadence témoin à 262 ms) ont la même cause. Mesurer la cadence avec un écran allumé et actif ; à défaut, lire les
+temps `polish` (fil d'interface) et `render` (GPU), indépendants de la présentation.
+
+**Surcouches `Canvas` (QML, JavaScript) : laissées telles quelles.** Sélection dense de 10 000
+nœuds (`perfDenseNodeSelectionNative`, D3D11) : polish médian 2 ms, p95 5 ms grâce au niveau de
+détail du §10. Un portage en géométrie ne gagnerait que quelques millisecondes, sous le budget
+d'une image : non fait.
+
+**Couche vecteurs : triangles GPU au lieu d'une image rastérisée.** `VectorLayer::build`
+rastérisait toutes les formes au QPainter dans une image jusqu'à 4096 px de côté (12 px/mm au plus,
+floue au fort zoom) à chaque changement de géométrie. Désormais il triangule les remplissages
+pair-impair (`qTriangulate`, API privée de QtGui 6.8.3, isolée dans `layers/vector_layer.cpp`) et
+les contours (traits pleins ou pointillés `Qt::DashLine`, en quadrilatères), en mm scène ; le
+backend RHI les dessine avec la matrice de la caméra (lissage MSAA 4× du swapchain). Le backend
+logiciel garde exactement l'image d'avant, rastérisée à la demande et une seule fois par calque
+(`call_once`), dans le worker quand le canevas est logiciel.
+
+| Projet (formes) | Avant : construction + rastérisation | Après : construction + triangles |
+|---|---|---|
+| synthétique 1 000 carrés | 51 ms | **5,2 ms** |
+| `tentabrode` (158) | 91 ms | **5,9 ms** |
+| `Impossibke.osp` (496) | 244 ms | **16,5 ms** |
+| `RuieGothique.osp` (435) | 83 ms | **28 ms** |
+
+(Release, médianes de 5 passes, `perfVectorLayer` avec `OPENSTITCH_PERF=1` et
+`OPENSTITCH_PERF_OSP=<projet>`.) Le pick reste sur les chemins `QPainterPath`, inchangé.
+
+**Preuves.** `layerTrianglesCoverFillAndSkipRaster` : aire des triangles de remplissage = 84 mm²
+pour un carré de 10 mm troué de 4 mm, trou vide, couleur prémultipliée, aucune rastérisation tant
+que seul le GPU lit le calque. Suite `test_desktop_v2_studio_space_vector` rejouée sur D3D11 natif
+avec `OPENSTITCH_TEST_RHI=1 QT_ENABLE_HIGHDPI_SCALING=0` : 20/20, dont les tests de pixels (formes
+visibles, masquage, republication). Sans `QT_ENABLE_HIGHDPI_SCALING=0`, trois tests de pixels
+échouent aussi sur `main` à DPR 1,5 (coordonnées logiques contre image physique) : défaut des
+tests, pas du rendu.
+
+**Restent sur CPU, volontairement.** Image, segmentation et génération des points : un calcul GPU
+en virgule flottante varie selon le pilote et casserait le déterminisme octet pour octet. La
+couche régions (une passe sur les étiquettes à chaque changement de segmentation) et l'image
+source sont déjà des textures envoyées une fois par révision.
+
+## 13. Audit du 2026-11-15 : rognage aux cellules de l'auto-satin
+
+**Constat.** Avec « Satin automatique », l'essai de satin de chaque région
+(`choose_satin` → `generate_skeleton_satin` avec mesure de couverture) faisait
+presque tout le temps de `auto_digitize` : 2,3 s sur 2,3 s pour tentabrode en monofil.
+Une seule région (n° 95, 1 241 mm², jonctions) prenait 882 ms et bornait le temps en
+parallèle (968 ms). Profil temporaire par phase : `sample_axis` 1 908 ms, dont la quasi-totalité
+dans `clip_to_cell` ; l'analyse raster et le squelette ne pèsent que ~120 ms. Pour chaque
+traversée, le rognage avance le long de la corde par pas de 40 µm (avec dichotomie), soit
+557 000 tests `inside()` pour 8 681 traversées. Chaque test mesurait la distance exacte du point
+à toute la polyligne de son morceau (axe échantillonné tous les 50 µm, jusqu'à 3 223 points) et
+parcourait tous les autres morceaux (jusqu'à 69 sur sample).
+
+**Corrections** (`libs/auto_satin/src/skeleton_satin.cpp`), toutes à résultat identique :
+
+- Arbre de boîtes par polyligne de morceau (feuilles de 8 segments consécutifs) : la distance au
+  morceau ne visite que les nœuds plus proches que le meilleur déjà trouvé, avec une marge d'1e-6 µm
+  contre l'arrondi ; le minimum ne dépend pas de l'ordre de parcours, donc même valeur. Le segment le
+  plus proche au point précédent sert de borne initiale (les points avancent de 40 µm).
+- Pour chaque traversée, liste des morceaux voisins qui peuvent compter : la limite d − biais vaut au
+  plus d(p) + |t| sur toute la corde (inégalité triangulaire) ; un morceau dont la boîte est plus loin
+  que cette borne de la boîte de la corde serait écarté à chaque point par le test exact.
+- Filtres de boîtes sans racine carrée, qui n'écartent que ce que le test exact écarte.
+
+Deux essais intermédiaires mesurés puis remplacés : blocs plats de 8 segments triés par distance
+(plus lent : 2 557 ms, le tri coûte plus qu'il ne rapporte) et blocs plats sans tri (1 747 ms :
+62 M de boîtes parcourues, 112 par appel en moyenne).
+
+**Résultats** (Release, `--satin-bands`, médianes, 16 fils ; `main` contre la branche, même machine) :
+
+| Entrée | `auto_digitize` avant | après | empreinte de séquence |
+|---|---|---|---|
+| `tentabrode.png` | 963 ms | **231 ms** | `66a0e13ef20e3a3e` |
+| `sample/0215a7e5…png` | 684 ms | **304 ms** | `5de2d277161421b0` |
+| `marine-synth-01/source.png` | 99 ms | **44 ms** | `7ba378266ebee199` |
+
+En monofil, tentabrode passe de 2 300 à 1 010 ms et la région 95 de 882 à 173 ms ; sample de
+2 755 à 1 553 ms (région 91 : 435 → 223 ms). Empreintes également identiques pour
+`Impossibke.osp` et `RuieGothique.osp` régénérés depuis le projet (`--from-osp`). Tests : suites
+auto-satin et golden (175 cas), puis `ctest` Release complet.
+
+**Reste.** Le rognage reste le premier poste (~0,7 s sur 1 s en monofil pour tentabrode) : le pas
+de 40 µm et la dichotomie à 10 niveaux fixent le nombre de tests ; les réduire changerait les
+traversées, donc la broderie : à traiter comme un changement de comportement, mesuré sur la qualité.
+
+## 16. Audit du 2026-11-15 : lecture des projets (`load_project`)
+
+Sur de vrais projets, la lecture coûtait 2 à 4 fois l'enregistrement (Impossibke 215 ms, RuieGothique
+395 ms). Mesure par étape (RuieGothique, sondes temporaires) : zip 19 ms, première lecture du JSON
+36 ms, **migration 137 ms**, deuxième lecture du JSON 49 ms, `project_from_json` 14 ms, PNG 22 ms,
+labels 3 ms. `project.json` était lu quatre fois et réécrit une fois : `load_project_impl` le lisait,
+`migrate_project_json` le relisait, `declared_schema_version` le relisait encore, puis `dump()`, puis
+`load_project_impl` relisait le texte migré. C'était le cas même pour un fichier déjà à la dernière
+version, où aucune étape ne s'applique.
+
+**Changement.** `detail::migrate_project_json_in_place` applique les mêmes contrôles de version et les
+mêmes étapes à l'arbre déjà lu ; `migrate_project_json` (API texte, inchangée) l'enveloppe ;
+`load_project_impl` et `fragment_from_json` l'appellent directement. Le document obtenu est le même :
+les lecteurs de `json_serialize.cpp` acceptent indifféremment entiers signés et non signés (seule
+différence possible entre une valeur insérée par une étape et la même valeur relue), et les réels
+sortent identiques d'un aller-retour `dump`/`parse`.
+
+**Preuve d'équivalence.** Les 17 projets de `Documents\Broderie` sont chargés puis réenregistrés
+(`openstitch-bench --from-osp p --save-osp q`, option ajoutée) avec l'ancien et le nouveau code :
+SHA-256 identiques pour les 16 projets lisibles ; `TheyAskedForIT.osp` (ancien format de fondu
+multicolore) est refusé par les deux versions.
+
+**Résultats** (Release, `--reps 7`, médianes) :
+
+| Projet | `load_project` avant | après | `save_project` |
+|---|---:|---:|---:|
+| Impossibke.osp (1,9 Mo) | 215 ms | **63 ms** | 55 ms |
+| RuieGothique.osp (2,4 Mo) | 395 ms | **105 ms** | 98 ms |
+
+**Reste.** La lecture vaut maintenant l'enregistrement. Le zip (19 ms) et le PNG (22 ms) sont
+séquentiels et indépendants de l'analyse du JSON (36 ms) : les recouvrir gagnerait encore ~20 ms.
+## 15. Audit du 2026-11-15 : opérations d'image (`apply_pipeline`)
+
+`cv::medianBlur` ne tourne que sur un fil, et luminosité/contraste ainsi que l'affectation des
+pixels de la quantification parcouraient l'image en une seule boucle séquentielle. Trois changements,
+sortie identique octet pour octet :
+
+- **Débruitage médian** : bandes de 64 lignes filtrées en parallèle (`parallel_for`), chacune avec
+  `ksize / 2` lignes de voisinage lues dans l'image ; le bord répliqué ne s'applique qu'aux vrais bords
+  de l'image, comme l'appel entier. Chaque tâche écrit ses propres lignes de la sortie. Test
+  `debruitage median par bandes` : 151 lignes (trois jonctions, dernière bande incomplète), noyaux 3
+  et 5, comparés à une médiane naïve.
+- **Luminosité/contraste** : la fonction ne dépend que de la valeur du canal ; le même `convertTo` est
+  appliqué une fois aux 256 valeurs, puis `cv::LUT` (alpha identité) remplace `split`/`merge`.
+- **Quantification** : affectation au centre le plus proche ligne par ligne en parallèle (le k-means
+  sur l'échantillon est inchangé).
+
+**Résultats** (Release, `openstitch-bench tentabrode.png --reps 9`, 1117 × 1408, médianes, 16 fils) :
+
+| Pipeline | avant | après | empreinte de l'image |
+|---|---:|---:|---|
+| médiane 3 + luminosité/contraste | 63 ms | **11 ms** | `6a5786d520733673` |
+| médiane 3 seule | 55 ms | **9 ms** | — |
+| médiane 5 seule | 56 ms | **10 ms** | `a7cfcaa5aede66d4` |
+| luminosité/contraste seul | 9 ms | **2 ms** | `67e7266b9376b54a` (−40/−30) |
+| quantification 8 couleurs | 25 ms | **9 ms** | `ce49d00a44412900` |
+
+Empreintes relevées sur l'ancien et le nouveau code (même binaire de banc, `ops.cpp` permuté). Le banc
+mesure désormais chaque opération séparément et imprime ces empreintes.
+
+**Reste.** La quantification passe l'essentiel de ses 9 ms dans `cv::kmeans` (20 000 échantillons,
+3 essais) ; le reste du pipeline (bilatéral, aplat, CLAHE, netteté) n'est pas sur le chemin par défaut.
+## 14. Audit du 2026-11-15 : régénération, gros objet troué et état des routeurs
+
+**« Mettre à jour » après retouche d'une région** (banc `[.perf]` de `test_region_edit.cpp`, #348) :
+19 + 1 + 3 ms sur tentabrode, 33 + 1 + 23 ms sur `Impossibke.osp` (1 395 régions, 494 objets sur
+496 réutilisés), 27 + 1 + 16 ms sur `RuieGothique.osp`. La mise à jour région par région notée dans
+PERF-STUDIO-001 n'est plus justifiée.
+
+**Gros objet troué.** Sur `Impossibke.osp`, un seul tatami (« Remplissage Région 26112 », 37 trous,
+1 372 nœuds) fait ~370 ms des ~600 ms d'une génération complète en monofil, et ~320 ms quand on le
+modifie dans Studio (étape « le plus gros objet modifié »). Presque tout est dans les liaisons
+cachées de `HiddenRouter` : 2,78 M tests de visibilité entre points de passage et 0,53 M depuis les
+extrémités pour 8 générations du banc.
+
+Hypothèses écartées, mesurées sans instrumentation et en alternance A/B :
+
+- Grille 2D des arêtes pour collecter les intersections : 6,5× moins d'arêtes visitées (437 M → 67 M)
+  mais aucun gain mesurable (monofil 536 contre 530 ms) ; le coût est par appel, pas par arête.
+- A* paresseux à résultat identique (validation de la visibilité au choix du nœud) : −34 % de tests
+  seulement, aucun gain ; avec 37 trous, la plupart des candidats sont invisibles et doivent être
+  validés un à un.
+
+**Correction retenue : état du routeur gardé d'une génération à l'autre.** L'index des arêtes, les
+points de passage (contour rentré par Clipper) et le mémo des visibilités ne dépendent que de la
+géométrie (région, retrait). `RouterState` est emprunté à un cache à clé exacte (région entière et
+retrait comparés) à la construction du routeur et rendu à sa destruction : jamais deux fils sur le
+même état, budget de 64 Mio, éviction du plus ancien. Il suit `set_chunk_cache_enabled` et
+`clear_chunk_cache` (les étapes historiques du banc restent comparables). Résultat inchangé :
+valeurs pures de la géométrie.
+
+| `Impossibke.osp`, Release, 16 fils | Avant | Après |
+|---|---|---|
+| le plus gros objet modifié (`row_spacing`) | ~320 ms | **~130–140 ms** |
+| génération complète, cache désactivé | ~310 ms | ~310 ms (inchangé) |
+| pic mémoire du banc | 88 Mo | 116 Mo |
+
+Empreintes de séquence identiques à `main` sur les 5 entrées habituelles. Test :
+« etat du routeur reutilise entre deux reglages » (tatami percé de 9 trous, trois réglages
+successifs, comparés à un calcul à neuf).
+
+**Reste.** La première génération du gros objet (ouverture du projet) garde son coût : réduire les
+candidats (`kMaxCandidates`) ou le pas de recherche changerait les liaisons, donc la broderie.

@@ -13,6 +13,10 @@ Avant tout nouveau lot autonome : inspecter les tâches existantes, propriétair
 
 **Validation :** ne jamais déduire « Validé » du seul merge : critères, commit main, tests/CI, revue indépendante et recette Studio/physique selon le cas. Une PR en cours reste « En PR ». Ne pas annoncer une réussite sans preuve. Les règles locales de non-merge de ce fichier restent en vigueur.
 
+## Local first — Claude supervise, Ollama exécute (règle permanente)
+
+Économiser le quota Anthropic : le travail technique (exploration, lecture, bugs, refactoring, implémentation, tests, build/CI, relecture, doc, messages de commit/PR) est délégué à Ollama/OpenCode via `scripts/local/delegate.ps1` (niveaux 0-5, rapport compact, statut calculé mécaniquement). Claude comprend, découpe, vérifie, arbitre ; GitHub et Notion restent à Claude. Un sous-agent Claude n'est pas local. Politique et escalade : `.claude/rules/local-first.md` ; skill `openstitch-local-first` ; stats : `delegate.ps1 -Stats`. Un hook signale (sans bloquer) les éditions directes de code et les sous-agents.
+
 ## Invariants (violation = reset)
 
 - **Couches** strictes et acycliques : `apps/{desktop,cli} → libs/* → libs/core`. Seul
@@ -60,7 +64,7 @@ fichiers modifiés seulement.
 
 Chargés à la demande selon leur description : `openstitch-docs`, `-build-test`,
 `-stitch-param`, `-cli-debug`, `-bugfix`, `-commit`, `-performance`, `-digitize`,
-`-multi-agent`, `-roadmap`, `-token-efficiency`, `-notion`. Règles qui s'appliquent même sans les charger :
+`-multi-agent`, `-roadmap`, `-token-efficiency`, `-notion`, `-studio-ux`. Règles qui s'appliquent même sans les charger :
 
 - **Chaque commit met à jour `docs/roadmap-parite-hatch.md`** (statut, nouveaux manques,
   journal §28) ou écrit « roadmap : aucune entrée concernée » dans le message.

@@ -38,11 +38,13 @@ Revue partielle du 2026-10-13 (`main` = `4a8088b`) : vague 1 — objets, cadres,
 | Priorité | ☑ Fait | ◐ Partiel | ☐ À faire | Total |
 |---|---|---|---|---|
 | 2026-10-26 | Claude (IA PR-02) | **Contrat de backend IA générique** `openstitch.ai.backend/1` : worker Python `ai-worker/` (adaptateur SAM 2.1 sans modifier `sam-worker/`, deux faux backends), client sans Qt dans `libs/ai_segmentation` (protocole, session avec annulation/délais, transport processus Windows+POSIX, registre de découverte avec repli classique), `openstitch-cli ai backends`, outil MCP `ai_backends` en lecture seule, 5 nouveaux codes d'erreur, tests Catch2 + Python. Le desktop garde son client SAM v1 (migration prévue). |
-| P0 | 12 | 28 | 5 | 45 |
-| P1 | 10 | 68 | 99 | 177 |
-| P2 | 3 | 34 | 128 | 165 |
+| P0 | 16 | 29 | 0 | 45 |
+| P1 | 34 | 125 | 14 | 173 |
+| P2 | 4 | 42 | 119 | 165 |
 | P3 | 0 | 3 | 38 | 41 |
-| **Total** | **25** | **133** | **270** | **428** |
+| **Total** | **54** | **199** | **171** | **424** |
+
+Tableau recalculé le 2026-11-11 par comptage mécanique des titres `### HP-… [Px] — ☑/◐/☐` (`main` `819e8e5`) ; il ne revérifie aucun statut contre le code. Les 424 titres comptés remplacent le total précédent (428) ; l'écart vient du format des titres, pas d'entrées retirées.
 
 Seconde passe approfondie du 2026-10-30 : **+61 entrées à faire** (12 P1, 36 P2, 13 P3), §27ter, lots G à L ; total +112 sur la journée.
 
@@ -374,6 +376,7 @@ graphiques. C'est **le premier mur** : la majorité des machines domestiques
 - Hatch : export d'une image réaliste pour montrer au client.
 - À faire : rendu hors écran du rendu réaliste (HP-VIEW-001) à une résolution
   choisie, fond transparent ou couleur tissu.
+- Studio (2026-11-16, CX07-a) : résolution (1 à 12 px/mm) et qualité JPEG choisies avant l'export, taille réelle en pixels annoncée (`plan_image_export`, même fenêtre et même plafond que le rendu). Correctif : l'export acceptait jusqu'à 20 px/mm alors que le rendu borne à 12 ; il refuse désormais au-delà de 12 au lieu d'écrire une image moins résolue sans le dire.
 - Modules : `apps/desktop` (le rendu Qt), éventuellement un rendu cœur
   simplifié dans `formats` pour la CLI.
 - Dépend de : HP-VIEW-001.
@@ -958,6 +961,11 @@ plus.
 - Modules : `libs/stitch_generation`.
 
 ### HP-STI-011 — Mélange de couleurs (color blending) [P2] — ◐ Partiel (action disponible)
+- 2026-11-15 : recette black-box actualisée pour les rangées partagées (triples
+  position/poids/début, profils échantillonnés, grille de surcouche à 60 %) et
+  réactivée sur les PR suivantes et `main`, au lieu de la seule PR #336 fermée.
+  CLI officiel `94768773` : 20 scénarios et 6 grands motifs OSP/DST/PNG réussis.
+  Reste : recette interactive et essais textiles ; statut ◐ conservé.
 - 2026-10-13 (intégration UI après PR #36) : dialogue avant mutation, aperçu
   schématique, couleurs manuelles sans raster et proposition depuis l'image,
   angle/écarts/inversion ; dessus inséré après le fond ; choix et édition des
@@ -992,8 +1000,27 @@ plus.
   annulation sans créer de couche ni changer l'ordre ; supprimer une couche supprime
   le couple ; copier/coller, déplacer, `.osp` testés. Reste : détection automatique
   des dégradés dans la numérisation (hors périmètre), réglage de la largeur de fil.
+- 2026-11-14 (refonte des fondus) : **grille de rangées partagée** entre les couches
+  (`DensityGradient::shared_rows`, `DensityStop::lower`) : chaque segment de rangée est cousu
+  par un seul fil en complémentaire. Couverture mesurée par bande de 5 mm : avant 73–191 % d'un
+  remplissage uni, après 88–112 % (test `shared rows: complementary blends cover the shape like
+  one plain fill`). Superposition : surcouche à 60 % au lieu de 30 %, le fil d'arrivée devient
+  visible. Profil par transition (somme des poids = 1), fils de nuancier conservés aux
+  rééditions, poignées du canevas sur les fondus multicolores, éditeur unique dans l'inspecteur.
+- 2026-11-15 (éditeur accessible) : barre de fils numérotés dans l'inspecteur (carte du fil
+  désigné avec nom et code de nuancier, ordre, ajout, retrait, clavier complet), style en tuiles
+  illustrées, direction en flèches, transition Douce / Moyenne / Nette, réglages fins repliés ;
+  fils numérotés sur le canevas, partagés avec la barre (tests `fadeThreadStopsByMouse` et
+  parcours QML de `test_studio_digitize`). Voir `docs/studio-fondus-camaieu-architecture.md`.
+- 2026-11-15 (types de fondu) : le fondu est un type à part (plus de proposition de fondu sur
+  un tatami) ; formes **Spirale** et **Contour** ; **direction des points** indépendante de
+  l'axe ; **dégradé d'un seul fil** (densité d'arrivée réglable) ; **espacement des rangées**
+  réglable et conservé aux rééditions ; correctif des hachures croisées (une seule direction
+  cousue). Voir `docs/studio-fondus-camaieu-architecture.md`. Non validé sur tissu.
 - Hatch : deux couches de dégradés inverses qui se mélangent.
-- À faire : détection automatique dans la numérisation ; validation sur machine.
+- À faire : placement libre d'un fil le long de l'axe ; assistant « camaïeu depuis mes fils » ;
+  détection automatique dans la numérisation ; **validation sur tissu** de la grille
+  partagée (pièce-test 3 fils, complémentaire et superposition).
 - Dépend de : HP-STI-010.
 
 ### HP-STI-012 — Point de croix [P2] — ◐ Partiel (2026-10-31)
@@ -1139,6 +1166,7 @@ plus.
   significative (principal + branches, max 8) ; (2) guides existants = remplacés,
   y compris le guide par défaut issu de la conversion tatami. Voir
   `docs/source/directional-fill.md` § Interface.
+- Constat (2026-11-12, agent) : le cœur existe déjà sur `main` : `directional_guides_from_region` (`libs/stitch_generation/.../directional_fill.hpp`, commit `0a8c495`, tests dans `test_directional_fill.cpp`), appelé par l'op `project_ops` (`op_params.cpp`) et par le bureau V1 (`apps/desktop/main_window_directional.cpp`). Studio : l'action `fill.guides` (« Guides de direction automatiques ») existe dans `apps/desktop_v2/core/action_catalog.cpp` (op `directional_guides`, remplace les guides, une seule commande annulable) et la palette de commandes liste tout le catalogue ; matrice de parité Studio : SERVICE_ONLY, sans test QTest ni recette réelle. Reste : test Studio, recette réelle, présence au clic droit à vérifier. Statut inchangé (☐) faute de preuve Studio ; une première tentative de doublon (même nom, signature différente) a été retirée : violation ODR détectée sous Linux.
 
 ### HP-STI-019 — Broderie à main levée (freehand) [P2] — ☐ À faire
 - Hatch : dessiner directement un point de contour, triple, satin à la souris
@@ -1395,6 +1423,7 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
 - Modules : `apps/desktop`.
 
 ### HP-ENG-008 — Longueurs min/max appliquées à tous les générateurs [P0] — ◐ Partiel
+- Corrigé (2026-11-16) : la fusion des points courts ignorait les remplissages **compensés** (tatami, directionnel, spirale…) : les bouts de rangée dépassent de la région de la compensation du tirage et la corde de fusion, testée contre la région nue, échouait à chaque demi-tour. La corde est maintenant testée contre la région agrandie de la compensation effective. Corpus IA-DATA-01 (100 formes, auto-numérisation) : 5 174 → 10 points courts, −6 % de points, couverture 0,957 → 0,939 (les micro-points des demi-tours couvraient le bord).
 - Livré (2026-10-25) : passe commune `enforce_length_bounds` (`length_bounds.cpp`) appelée par `finish.cpp`, rapport étendu. Reste : découpage des longs désactivé par défaut, invariant sur tout le corpus non mesuré.
 - Livré 2026-10-10 : `split_long_stitches`/`max_stitch_length` dans les finitions
   (découpage de tout point cousu trop long, tous types, testé : aucun point > max),
@@ -1582,7 +1611,13 @@ SAM via un worker **WSL**. ~18 s sur l'image de référence.
   `segmentation::border_touching_regions`) : seules les régions de la couleur du fond qui
   touchent le pourtour de l'image sont ignorées ; un blanc enfermé dans le motif (nuage,
   soleil) reste cousu. Constat : photo réelle d'un DST « vaisseau au coucher de soleil » où le
-  blanc des nuages et de l'écume disparaissait avec le fond.
+  blanc des nuages et de l'écume disparaissait avec le fond. **Motif recadré serré** (2026-11-16) :
+  quand le motif est la plus grande région, la couleur claire qui encadre l'image devient la
+  candidate (11 formes sur 100 du corpus IA-DATA-01 brodaient leur liseré blanc ; 0 après).
+  **Fond transparent à la pipette** (2026-11-16, Studio, espace Image) : traitement non destructif
+  `image::ColorToAlphaOp` (couleur ± tolérance par canal, zone contiguë depuis le clic ou toute la
+  couleur) ; les pixels deviennent transparents, donc du fond pour la segmentation. Il agit sur le
+  calque actif d'un document multi-calques ; CLI `--pre transparent:RRGGBB[:T]`.
 - À faire : choix « ne pas broder cette couleur » par couleur. Dialogue « Numérisation automatique » du
   bureau : case « Seulement le fond extérieur » (`test_main_window`).
 
@@ -2100,6 +2135,14 @@ tout utilisateur de Hatch fait Ctrl+C/Ctrl+V, sélection rectangle, rotation.
   gras, + − ▲ ▼, menu « Déplacer la sélection ici »), nouvelles formes dans le calque actif,
   calque verrouillé non saisissable, panneau Ordre et liste Document suivant l'ordre réel,
   optimisation de l'ordre confinée à chaque calque.
+- Studio (F43-01) : l’import d’images et d’archives OpenRaster ajoute des sources
+  par calque. Chaque source garde ses opérations et ses régions dans le projet
+  OSP v10. Les formes dérivées rejoignent leur calque et conservent un lien vers
+  leur région d’origine. La recette vérifie l’indépendance de deux calques,
+  l’annulation après changement de source et l’ordre des points après réouverture.
+- La commande **Segmenter tous les calques** applique les réglages courants aux
+  sources du projet en une étape annulable. La recette Studio vérifie les régions
+  par calque ainsi que l’annulation et le rétablissement après changement de source.
 - Reste : effets **liés** (une forme d'un calque supérieur qui suit/découpe ses cibles) ;
   sélection d'un calque entier au canevas ; calques dans la CLI `project` (inspect, opérations) ;
   glisser une forme d'un calque à l'autre dans la liste Document ; réordonner les calques par
@@ -2222,6 +2265,11 @@ couches ; objets verrouillables ; coût estimé ; routage satin multi-colonnes.
   `libs/project_io`, `apps/desktop/properties_panel`.
 
 ### HP-SEQ-006 — Minimiser les coupes [P1] — ◐ Partiel (2026-10-13, en PR)
+- Livré (2026-11-14) : liaisons cachées INTERNES du remplissage. `HiddenRouter` tolère
+  0,3 mm au bord pour ses seuls tronçons d'extrémité (les fins de rangée dépassent la région
+  par compensation de tirage et étaient rejetées) et retient 96 points de passage au lieu de
+  24. Auto-numérisation par défaut, `sample/` : 546 -> 229 coupes ; marine synthétique : 32 -> 20.
+  Voir `docs/source/tatami.md`, « Extrémités de liaison hors région ».
 - À faire : préférer un déplacement cousu caché sous un objet cousu ensuite
   (même couleur ou couverture garantie) plutôt qu'une coupe ; métrique :
   nombre de coupes sur le corpus.
@@ -2586,6 +2634,7 @@ hors cadre, déplacement sans coupe), résumé avant export DST.
 
 ### HP-PROD-003 — Gabarit de placement imprimé à l'échelle 1:1 [P1] — ◐ Partiel (2026-10-26)
 - Livré (2026-10-26) : Gabarit de placement 1:1 (`make_placement_template`, pages A4 / Lettre recouvertes de 10 mm, axes, croix, équerres, règle 100 mm), PDF vectoriel déterministe, CLI `--placement-template`, dialogue bureau avec aperçu et impression. Reste : contrôle sur imprimante réelle.
+- Studio (2026-11-16, CX07-a) : réglages du gabarit avant l'export (papier A4 / A3 / Letter, paysage) avec le nombre de pages et l'emprise annoncés par le même pavage (`plan_placement_template`) ; le papier est choisi dans le cœur (`placement_template_options`). Reste Studio : impression (CX07-b), contrôle sur imprimante réelle.
 - Hatch : impression du design à taille réelle avec croix de centrage et axes.
 - À faire : impression 1:1 vérifiée (règle imprimée de 10 cm), sur plusieurs
   pages si besoin.
@@ -2638,7 +2687,8 @@ hors cadre, déplacement sans coupe), résumé avant export DST.
 Aujourd'hui : un cadre **rectangulaire** de taille libre (10–500 mm), persisté.
 
 ### HP-HOOP-001 — Bibliothèque de cadres par marque [P1] — ◐ Partiel (2026-10-13)
-- Livré (2026-10-25) : `HoopShape` (rectangle, ellipse, coins arrondis), 16 cadres génériques, hors-cadre sur la forme réelle, dialogue du cadre. Reste : cadres par marque, gabarits, forme dans les cadres utilisateur.
+- Livré (2026-10-25) : `HoopShape` (rectangle, ellipse, coins arrondis), 16 cadres génériques, hors-cadre sur la forme réelle, dialogue du cadre.
+- Livré (2026-11-16, Studio) : cadre visible dans les quatre espaces, tambour à la forme réelle avec zone brodable, réglage rapide (en-tête et clic droit de tous les canevas : forme, dimensions, rayon, marge, pivoter, modèles, Mes cadres avec forme). Reste : cadres par marque, gabarits.
 - Livré (PR #25, fusionnée le 2026-10-13) : 8 cadres rectangulaires usuels (`document/hoop_presets.hpp`), cadres enregistrés par l'utilisateur, bouton Pivoter, marge de sécurité (`Canvas::margin`) et zone brodable affichée et utilisée par l'analyse.
 - Reste : cadres par marque, formes non rectangulaires, gabarits.
 - Hatch : liste des cadres de chaque marque (Brother, Babylock, Janome,
@@ -2968,6 +3018,7 @@ et récupération après plantage (HP-FILE-004).
 
 ### HP-FILE-007 — Insérer un design dans le projet courant [P1] — ◐ Partiel (2026-10-26)
 - Livré (2026-10-26) : `InsertDesignCommand` (ids neufs, `.osp` ou fichier machine, un pas d'annulation), Fichier › « Insérer un design… », Maj + dépôt. Reste : position (toujours à l'origine), calques et coloris ignorés.
+- Studio (2026-11-16, CX08-a) : Fichier › Importer › « Un design dans ce projet… » et commande `cmd.file.insert-design` ; boîte d'aperçu (formes, objets, textes ou points/couleurs, emprise en mm) avant validation, bouton Insérer désactivé si le fichier est illisible ou la combinaison refusée ; action `file.insert_design` du catalogue (palette, compagnon). Service sans Qt `previewDesignInsert`/`insertDesign` (`desktop_v2/core/file_io`). Reste identique : position, calques, coloris.
 - Hatch : Insert design : fusionner un autre fichier dans le design ouvert.
 - À faire : insérer un `.osp` (objets éditables) ou un fichier machine
   (séquence brute positionnable) ; une commande annulable.
@@ -4570,6 +4621,27 @@ ouvrant le lot (§0.1).
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-11-16 | Claude (barre d'outils commune des espaces Studio) | **HP-AUTO-006 ◐** (inchangé, précisé) et **HP-OBJ-024 ◐** (inchangé, précisé). Barre latérale commune `CanvasToolRail` dans les quatre espaces (outils modaux seulement : Sélection, Main, outils de l'espace par groupe, Ajuster) ; pinceau et gomme de Segmentation sortis du panneau ; espace Image : Recadrer, Règle d'échelle, Fond transparent (`ColorToAlphaOp`). Multi-calques : l'échelle change tous les calques du même facteur et le recadrage s'applique à tous les calques de même taille de travail, en une étape ; la pipette agit sur le calque actif. |
+| 2026-11-15 | Codex (F43-01, segmentation en lot) | HP-OBJ-024 reste partiel. Un bouton Studio segmente les sources du document avec les mêmes réglages et un seul pas d’annulation. |
+| 2026-11-16 | Claude (IA-DATA-01 L0+L1) | Roadmap : aucune entrée HP (chantier IA hors parité, Notion IA-DATA-01). Audit des sources (`docs/ai/ia-data-sources.csv` : seul le générateur synthétique est approuvé, aucune donnée tierce ingérée) ; `scripts/ia_data_corpus.py` génère des formes à graine fixe (7 familles, cas minuscules, fins, très concaves) et mesure 9 candidats par forme via `openstitch-cli project apply/check/density` (statuts measured/refused/empty/failed, aucun label) ; corpus et manifeste SHA-256 identiques octet pour octet ; 16 tests Python, dont une intégration moteur facultative. Doc `docs/ai/ia-data-01.md`. |
+| 2026-11-16 | Claude (fond d'un motif recadré serré) | **HP-AUTO-006 ◐** (inchangé, précisé). Audit par le corpus synthétique IA-DATA-01 passé dans `project digitize` : 11 formes sur 100 qui remplissent presque l'image brodaient leur liseré blanc en tatami (le motif était la plus grande région, donc la candidate, non recommandée). `background_candidate` essaie à défaut la couleur claire qui encadre l'image (4 bords, ≥ 85 % du pourtour) et `auto_digitize` ignore cette couleur ; un cadre coloré ou un ciel plein cadre restent cousus. Corpus : 11 → 0 fonds brodés, −23 % de points, 89 autres formes identiques au point près. Tests `test_segmentation` (2) et `test_autodigitize` (1). |
+| 2026-11-16 | Claude (fusion des points courts sous compensation) | **HP-ENG-008 ◐** (inchangé, précisé). `merge_short` testait la corde de fusion contre la région nue alors que les bouts de rangée d'un remplissage compensé en dépassent volontairement : aucun demi-tour n'était fusionné (212 points courts sur un U de 780 points, pull_mode Auto de l'auto-numérisation). Corde testée contre la région agrandie de la compensation effective (`resolve_pull_compensation`, `grown_for_pull`). Corpus : 5 174 → 10 points courts, −6 % de points, couverture 0,957 → 0,939. Une variante « milieu des deux bouts » n'a rien regagné (0,939). Test `test_length_bounds`. |
+| 2026-11-16 | Claude (CX07-a, réglages et aperçu des exports image et gabarit) | **HP-FMT-011 ☑** (précisé) et **HP-PROD-003 ◐** (inchangé : impression Studio et contrôle physique restent). Dialogue d'options de Studio : px/mm et qualité JPEG avec taille en pixels annoncée ; papier et orientation avec pages et emprise annoncées ; calculs hors fil d'interface (`FileController::requestExportPlan`). `render_preview` gagne un mode « plan seulement » (`plan_preview`) : une seule source pour la taille de l'image. Correctif de la plage 1-20 px/mm, bornée en silence à 12 par le rendu. Tests : `test_view_tools.cpp` (taille PNG = plan à 1, 4 et 7,5 px/mm ; pages et MediaBox du PDF = plan pour A4, A3 paysage, Letter) et `test_studio_files.cpp::exportOptionsShowThePlanBeforeWriting` (vraie scène QML). |
+| 2026-11-16 | Claude (CX08-a, insertion de design dans Studio) | **HP-FILE-007 ◐** (inchangé : position, calques et coloris restent à faire). Câblage Studio de `InsertDesignCommand` : aperçu sans modification puis insertion en une étape d'annulation, refus clair et document intact pour un fichier illisible ou une broderie machine à côté d'objets éditables. Tests : `test_file_io.cpp` (3 cas, OSP et DST réels issus de `run_digitize`) et `test_studio_files.cpp::insertDesignPreviewThenOneUndoStep` (vraie scène QML). |
+| 2026-11-15 | Codex (reprise PR #336, QA après fusion) | **HP-STI-011 ◐** maintenu. Les fixtures multicolores utilisent la grille partagée introduite par #345 (profils à trois composantes, courbes échantillonnées, surcouche à 60 %). Matrice Windows réactivée pour toutes les PR et `main` ; tests des fixtures et test PNG inclus dans le workflow Python. Vérifié avec le CLI officiel `94768773` : 20/20 variantes + 6/6 grands motifs ; suite Python 144 tests, 1 ignoré prévu, test PNG réussi. Pas de validation textile. |
+| 2026-11-15 | Codex (PR #355, F22-01) | **HP-STI-011 ◐** : intégration de main `94768773`, validation des bornes densité/angle avant mutation, champs QML invalides signalés et angle masqué en satin, constructeur du compagnon portable GCC. Compilation Release complète, CTest **2 633/2 633**, fondu **32 cas / 2 191 assertions**, service **16 cas / 351 assertions**, parcours QML réel. Sept projets créés par commandes : déterminisme et OSP exacts, PNG/DST valides (pas cousu max. 4,19 mm sur échantillons adaptés), captures Studio spirale/un fil. PDF régénéré ; quatre liens cassés préexistants. F22-01 réconcilié dans Notion. Essai textile et revue indépendante restent requis. |
+| 2026-11-15 | Claude (types de fondu) | **HP-STI-011 ◐** (inchangé, validation textile en attente). Retours d'utilisation : (1) l'éditeur de fondu n'apparaît plus sur un tatami (`Inspector.qml`, `fadeCtl.hasFade`) ; création par le type « Fondu multicolore », un satin y devient un satin entrelacé ; (2) espacement des rangées réglable (`FadeController::setSpacing`, `transition.spacing_from/to`), enregistré à la création et conservé aux rééditions ; (3) types : `DensityGeometry::Spiral` et `Contour` (`ContourDistance` dans `directional_fill.cpp`), `MulticolorGradientParams::stitch_angle` (direction des points), palette d'un seul fil avec `end_density` (clés `.osp` `stitchAngle`, `endDensity`, géométries 3 et 4). Correctif : hachures croisées cousues dans une seule direction (écart variable hérité de l'axe). Tests : 6 cas `fade types` (project_ops), service et parcours QML. Notion non mis à jour dans cette session (mission ciblée). |
+| 2026-11-15 | Codex (F43-01, import en calques Studio) | HP-OBJ-024 reste partiel. Import d’un lot raster ou d’un document OpenRaster, préparation et segmentation par source, rattachement des formes et des points au calque, OSP v10. |
+| 2026-11-15 | Claude (fondus accessibles, PR #345) | **HP-STI-011 ◐** (inchangé, validation textile en attente). Éditeur du fondu simplifié d'après trois maquettes (barre de fils retenue, avec les fils numérotés du canevas) : barre de fils et carte du fil désigné (`selectedThread`, `threadLabels`, `insertThread`/`removeThread`/`moveThread`/`setThreadColor`, clavier), tuiles de style illustrées (`FadeStylePreview.qml`), flèches de direction, transition Douce / Moyenne / Nette (`softness`), « Plus de réglages » replié ; canevas : pastilles numérotées (`HandleItem::Kind::Stop`), clic = désigner, glisser un fil du milieu ou la ligne = déplacer sans saut. Reste : placement libre d'un fil, assistant camaïeu. |
+| 2026-11-14 | Claude (refonte des fondus, après PR #341) | **HP-STI-011 ◐** (précisé, reste ◐ jusqu'à la validation textile). Audit mesuré puis correctifs : (1) moteur à **grille de rangées partagée** (`shared_rows`, `lower`, `row_thresholds`/`append_owned_runs` dans `directional_fill.cpp`) — couverture 88–112 % au lieu de 73–191 % ; (2) superposition à 60 % (le dernier fil plafonnait à 30 %) ; (3) `GradientThread::curve` = profil de la transition, poids de somme 1 (des profils différents par fil donnaient 191 %) ; (4) fils de nuancier conservés par couleur à toute réédition, palette relue depuis les couches (le panneau Fils fait foi) ; (5) poignées, zone, profil et inversion du canevas sur les fondus multicolores (`fade_axis.cpp` ne lisait que l'ancien couple) ; (6) `createFade`/`editFade` passent par le moteur multicolore (un seul moteur) ; (7) UI : éditeur unique dans l'inspecteur, réglages appliqués immédiatement, technique unique (méthode + aspect), retrait du tiroir Fondu (barre de panneaux et hub) et de l'outil « Geste fondu » (bouton « Ajuster l'axe au canevas »). Anciens fondus : génération inchangée tant qu'ils ne sont pas modifiés. Notion indisponible dans la session : lot non réservé. |
+| 2026-11-14 | Claude (fondu multicolore, Phase 4 — Studio) | Roadmap : aucune entrée HP précise (suite Phases 1-3, mission PR #341, Notion E19). « Fondu multicolore » remplace l'entrée virtuelle QML de la PR #341 (`Inspector.qml` : retrait de `gradientEditorRequested`/`stitchTypeChoices`/l'aide « configurez puis créez ») par une vraie entrée de `settableStitchTypes()` (`inspector_model.cpp`). La choisir crée RÉELLEMENT l'ancre (deux fils par défaut, axe de `default_gradient_fill`), un seul pas d'annulation ; en choisir une autre dissout le groupe (`make_remove_multicolor_gradient_command`) avant la conversion générique — jamais une couche physique laissée orpheline (même défaut que celui corrigé en Phase 3 pour l'ancien fondu à deux fils, cette fois en amont). `project_ops::default_multicolor_gradient` ajouté (méthode SatinInterlaced si la forme est déjà satin, Directional sinon). Panneau dédié (ordre méthode/palette/géométrie/mélange/réglages spécifiques/optimisation/avancé demandé par la mission) : non fait, `FadeProperties.qml` reste construit autour de l'ancien modèle texture/géométrie entier (MultiFadeSettings), pas de sélecteur de méthode explicite ni de rails satin éditables depuis l'UI — reporté. Tests : nouveau cas QTest bout en bout (`test_studio_inspector.cpp::multicolorGradientType`, charge réellement `Inspector.qml`) + exclusion documentée dans `test_direction_guides.cpp` (comme `auto_satin`). Suites complètes project_ops/desktop_v2_core vérifiées après chaque étape. |
+| 2026-11-14 | Codex (fondu multicolore, Phase 5 — panneau et PR #340) | Roadmap : aucune entrée HP précise (mission PR #341, Notion E19). `FadeProperties.qml` place les cinq méthodes autonomes avant la palette et expose les réglages spécifiques (densité satin, 2/3 directions et angle de hachures) ; `FadeController`/`fade_service` relisent et éditent désormais `MulticolorGradientSpec` sans perdre la méthode. L'angle de transition est modifiable dans Studio. Le défaut de la PR #340 est absorbé fonctionnellement : un satin sans rails manuels crée réellement un SatinInterlaced grâce à `rails_from_contour`, au lieu d'un simple diagnostic. Tests : service desktop (création satin sans rails, persistance des réglages) et parcours QML réel (5 boutons de méthode, application de LongAndShort). Reste : rails satin éditables manuellement, couches physiques masquées de la sélection/arbre, QA exhaustive et textile. |
+| 2026-11-14 | Codex (fondu multicolore, isolation logique) | Roadmap : aucune entrée HP précise (mission PR #341, Notion E19). Les couches `MultiBlendLink` rattachées à une ancre `MulticolorGradientParams` restent physiques dans le moteur/export, mais disparaissent de l'arbre Points ; un hit-test sur une couche sélectionne l'ancre, et la scène agrège leurs bornes sous l'id de l'ancre pour conserver cadre et poignées. Test QML : arbre réduit à l'ancre et sélection d'une couche redirigée. |
+| 2026-11-14 | Codex (fondu multicolore, Phase 7 — nettoyage) | Roadmap : aucune entrée HP précise (mission PR #341, Notion E19). Suppression de l'API publique parallèle `MultiGradientFillSpec` et des adaptateurs `*_multicolor_gradient_fill_*` : génération, description, édition et suppression passent par la seule `MulticolorGradientSpec`. La migration d'un ancien `ColorBlendLink` est conservée directement dans `make_edit_multicolor_gradient_command`, en un pas, sans couche orpheline. Les scénarios historiques PR #336 ont été migrés vers l'API autonome : `test_project_ops` 178 cas / 12 158 assertions et tests fade desktop 12 cas / 305 assertions verts. |
+| 2026-11-14 | Claude (fondu multicolore, Phase 3 — moteur) | Roadmap : aucune entrée HP précise (suite Phases 1-2, mission PR #341, Notion E19). API primaire `make_create/edit/remove_multicolor_gradient_command` + `describe_multicolor_gradient` + `multicolor_gradient_incompatibility` (méthode explicite) ; les fonctions historiques `*_multicolor_gradient_fill_*` (`MultiGradientFillSpec`, méthode devinée depuis la texture) deviennent de simples adaptateurs, toujours utilisées par `fade_service.cpp`. Cinq méthodes réellement génératrices, aucun nouvel algorithme de points : Directional/LongAndShort/ControlledScatter réutilisent `multicolor_layers` (PR #336, `DensityTexture`) ; **SatinInterlaced dérive automatiquement deux rails du contour source via `rails_from_contour` quand aucun rail n'existe déjà** (HP satin entrelacé — ne se contente plus d'un message « rails manquants », message actionnable sinon) ; CrossHatching est nouveau (couches directionnelles à guide droit, angle tournant). Bug trouvé et corrigé en écrivant les tests : la conversion d'un ancien fondu à deux fils (ColorBlendLink) laissait l'ancienne couche de dessus orpheline (ni réutilisée ni supprimée) — ajout du retrait explicite dans le même pas d'annulation. Complétude `param_spec.cpp`/`object_labels.cpp`/`op_params.cpp` (desktop_v2 + CLI) mise à jour pour la 15e entrée de `StitchParams` (tripwires de comptage de membres et de registre, déjà en place dans le dépôt, avaient détecté l'omission). Tests : project_ops 12158/178, project_io 1150/137, document 312/18, stitch_generation 237154/496, commands 1861/236, desktop_v2_core 30417/331 — tous verts en Debug MSVC. Reste : Phase 4 (Studio, vrai type dans `inspector_model.cpp`/`Inspector.qml`, panneau dédié), Phase 5 (édition manuelle des rails satin entrelacés), Phase 6 (QA visuelle/exports/perf), Phase 7 (nettoyage). |
+| 2026-11-14 | Claude (fondu multicolore, Phase 2 — sérialisation OSP) | Roadmap : aucune entrée HP précise (suite de la Phase 1, mission PR #341, Notion E19). `MulticolorGradientParams` lu/écrit (clé `multicolorGradient`, `method` par nom, refus explicite d'une méthode inconnue). Rupture acceptée : au chargement, tout groupe `multiBlend` dont l'ancre ne résout pas via `document::find_gradient_group` (nouveau, `multi_blend.hpp`) est REFUSÉ avec un message explicite — jamais tronqué ni rechargé en orphelin silencieux ; les projets sans fondu multicolore ne sont pas concernés. Tests : round-trip complet (palette à fil de nuancier, transition radiale/texture/courbe, 3 couches) et refus d'un groupe sans ancre. `test_project_io` : 1150 assertions / 137 cas, verts. |
+| 2026-11-14 | Claude (fondu multicolore, Phase 1 — modèle) | Roadmap : aucune entrée HP précise (mission ciblée PR #341, suivie dans Notion E19). `MulticolorGradientParams` ajouté à `StitchParams` : type de broderie AUTONOME (méthode/palette/transition), porté par un objet « ancre » sans point propre, exclu de `effective_sequence`/génération ; ses couches physiques restent de vrais satin/tatami/directionnel tagués `MultiBlendLink` vers l'ancre (réutilise les générateurs de la PR #336, aucun nouvel algorithme de points). `GradientMethod` (5 valeurs, persistées par nom). Corrigé en passant : lecture hors bornes potentielle dans `stitch_type_name` (`op_params.cpp`, tableau indexé par `variant::index()` sans la 15e entrée). Build + tests Debug ciblés verts (document/stitch_generation/project_io/project_ops/commands) ; Studio, sérialisation OSP et moteur multicolore restent à faire (phases 2-7). |
+| 2026-11-11 | Claude (réconciliation) | Tableau d'avancement recalculé depuis les titres (P0 : 5 « à faire » → 0 ; P1 : 99 → 14 ; total 424). Aucun statut d'entrée modifié ni revérifié. Reste P1 « à faire » : HP-TXT-002, HP-STI-018.a, HP-ENG-009 (bloqué par HP-STI-018), HP-AUTO-011, HP-VIEW-009, HP-UX-001/004, HP-I18N-001.a/003, HP-PERF-004, HP-QA-009/010, HP-DIST-006/007, HP-PHYS-002/003. |
 | 2026-11-09 | Codex (Studio, F27-01 et F27-04) | HP-SEQ-002 : bande de fils dans Points, sélection groupée, réordonnancement annulable et sélecteur de couleur. Statut partiel conservé. Correction du démarrage Qt 6.8.3 après #310 via les hauteurs préférées des groupes d’actions. |
 | 2026-11-07 | Claude (Studio par défaut) | Roadmap : aucune entrée HP précise. Studio devient l'application par défaut : exécutable `openstitch.exe` (cible `openstitch_v2_studio`), installeur et artefacts de release construits sur Studio ; la V1 Widgets passe derrière `OPENSTITCH_BUILD_LEGACY_V1` (OFF par défaut, ON dans le preset `msvc` tant que la parité n'est pas complète) et devient `openstitch-v1.exe`. Suppression de la V1 : reportée à la fermeture des lignes ABSENT de la matrice de parité. |
 | 2026-11-07 | Codex (validation Studio) | Builds Debug/Release et suites complètes sur `1372589` : 2 579/2 579 chacune ; cœur compilé sans Qt, captures natives et mesures MSAA 4× publiées. Intégration de `main` `8c200e0` dans #282 : deux historiques conservés ; vérification ciblée après intégration (293 cas du cœur, deux shells QTest). Fondation toujours partielle, aucun statut HP-* clos ; cible p95 <16,7 ms non atteinte, CI suivie sur GitHub. |
@@ -4724,3 +4796,15 @@ ouvrant le lot (§0.1).
 | 2026-11-03 | Claude (dégradés) | HP-STI-010 et HP-STI-011 ◐ : le dégradé devient un remplissage logique rééditable (Uni/Dégradé, poignées canevas, réédition globale, couple supprimé/dupliqué ensemble) ; non validé sur machine ni tissu. |
 | 2026-11-06 | Claude (Desktop V2, session 3) | Roadmap : aucune entrée HP précise. Rattrapage V1 -> V2 : import de broderies machine (DST/PES/JEF/EXP) et DXF, types de remplissage complets, guides de direction et lignes de rupture, re-segmentation avec aperçu et réduction de palette, retouche de points multiple (saut, coupe), zoom, guides de session, qualité du rendu réaliste, sélection partagée des régions, espaces Formes / Zones, guide de parcours à état réel ; voir `docs/desktop-v2/13-retards-v2-vs-v1.md` et `14-dependances-parcours-et-visuel.md`. |
 | 2026-11-10 | Claude (inspecteur Studio) | Roadmap : aucune entrée HP précise. Réglages de points en sélection mixte : l'inspecteur Studio affiche et applique les réglages scalaires communs à tous les types (écart, compensation, sous-couche…), chaque objet recevant la valeur par son propre type, en une seule étape d'annulation ; réinitialisation par type ; les réglages propres à un seul type restent refusés. |
+| 2026-11-10 | Claude (perf Studio) | Roadmap : aucune entrée HP précise. PERF « 60 fps » lot 1 : suppression des 11 minuteurs de sondage `TaskManager::pump()` (~1 100 réveils/s au repos) au profit d une notification de fin de tâche ; voir `docs/desktop-v2/18-studio-benchmarks.md`. fps de l application entière non mesuré. |
+| 2026-11-14 | Codex (PR #341, phase 6) | HP-STI-010/011 restent ◐ jusqu'à validation textile. La QA noire PR #336 écrit désormais le vrai schéma autonome (`multicolorGradient` + couches physiques), distingue l'ancre sans points, et valide 20 variantes OSP/PNG/DST ainsi que 6 grands motifs de benchmark. Exécution locale au HEAD : 20/20 scénarios, aucune alerte de qualité ; jusqu'à 33 844 points, pas cousu maximal 3,50 mm. |
+| 2026-11-14 | Claude (E12, coupes internes) | **HP-SEQ-006 ◐** : `HiddenRouter` accepte une extrémité de liaison à 0,3 mm hors région (débord de compensation de tirage) et passe de 24 à 96 points de passage ; coupes de l'auto-numérisation par défaut 546 -> 229 sur `sample/`, 32 -> 20 sur la marine synthétique, +0,7 % de points. Reste : liaisons sans trajet par le contour rentré, coût en temps à mesurer en Release (2,1 -> 4,0 s en Debug sur `sample/`). |
+| 2026-11-15 | Claude (STCH-CROS-01, L0) | Roadmap : aucune entrée HP précise. Inventaire Crosstela : 362 fiches classées A 13 / B 27 / C 140 / D 110 / E 72 (`docs/research/crosstela.md`, matrice CSV régénérable par `scripts/crosstela_matrix.py`). ADR 0007 : recettes = catalogue intégré compilé en `StitchParams`, appliqué par `ApplyStitchPresetCommand`, sans champ OSP. Constat : le croisé n'a pas d'attache aux intersections, donc le treillis n'est pas couvert. |
+| 2026-11-15 | Claude (STCH-CROS-01, L1) | Roadmap : aucune entrée HP précise. Catalogue intégré de 15 recettes de points (`document::stitch_recipes`, contours et remplissages, fidélité `faithful`/`approximation`), opération de lot `apply_recipe` (même conversion que `set_stitch_type`, un pas d'annulation), `openstitch-cli recipes [--json]`, section « Recettes de points » de l'inspecteur Studio. Le passé plat reste la conversion satin planifiée. Aucun essai textile. |
+| 2026-11-15 | Claude (STCH-CROS-01, L2) | Roadmap : aucune entrée HP précise. Treillis attaché : `CrosshatchFillParams::tie_down` (0 = historique, borné [1,2 ; 4] mm, ignoré sous 1 mm d'écart) ajoute une barre diagonale à chaque croisement des deux premières couches ; OSP `tieDown`, `set_params` `tie_down_mm`, inspecteur Studio. Recettes `trellis-filling-stitch` et `trellis-couching` (liaisons cachées désactivées : visibles sur une grille ajourée). Restent Bayeux et dégradé en briques. |
+| 2026-11-15 | Claude (STCH-CROS-01, L3a) | Roadmap : aucune entrée HP précise. Couchage du tatami : `TatamiParams::couching_spacing` (0 = historique, [2 ; 20] mm) et `couching_tie_spacing` ([1 ; 7] mm) cousent sur la couche posée des fils perpendiculaires attachés à chaque pénétration (`stitch_generation::couching_pass`) ; OSP, `set_params`, inspecteur. Recettes `bayeux-stitch` et `brick-stitch` (reclassé B : tatami à `stagger` 2). |
+| 2026-11-15 | Claude (STCH-CROS-01, L3b) | Roadmap : aucune entrée HP précise. Semis : motif `Seed` (ajouté en fin d'énumération) et `MotifFillParams::scatter` ([0 ; 1], 0 = grille historique) qui déplace et tourne chaque instance par hachage déterministe de sa cellule ; OSP `scatter`, `set_params`, inspecteur. Recette `seeding-stitch` marquée approximation (liaisons cousues visibles entre graines). |
+| 2026-11-15 | Claude (STCH-CROS-01, L5 partiel) | Banc `scripts/recipe_bench.py` : 18 recettes x 5 formes (dont 240 x 240 mm) générées sans refus ; tableau `docs/research/recipe-benchmark.md` (Debug). Limite mesurée : semis 3 538 coupes sur 240 mm. |
+| 2026-11-15 | Claude (STCH-CROS-01, L4) | Roadmap : aucune entrée HP précise. Catalogue illustré des recettes dans l'inspecteur Studio (`RecipeCatalog.qml`) : vignettes rendues par le moteur (`project_ops::render_recipe_swatch`, fournisseur `image://recipe/` asynchrone et mis en cache), recherche FR/EN, filtres contours / remplissages / simulations, note, application en un pas. Guide utilisateur §« Recettes de points (Studio) ». |
+| 2026-11-16 | Claude (cadre visible dans tous les espaces Studio) | **HP-HOOP-001 ◐** (inchangé). Le tambour n'apparaissait que dans l'espace Points : `GpuCanvas` ne transmettait la scène (qui porte le cadre) qu'avec la couche des points. La scène est désormais transmise partout et seuls les points dépendent de la couche ; dans Image, Segmentation et Vecto le tambour est un anneau creux (sans fond de tissu) qui laisse voir l'image, les régions et les formes. Chemins GPU et logiciel. Tests `test_studio_space_image.cpp` (`hoopRingIsHollowWithoutStitches`, cadre construit dans l'espace Image). Reste : forme réelle (rond, ovale) dans le tambour du Studio, menu « Atelier » commun aux canevas. |
+| 2026-11-16 | Claude (réglage rapide du cadre, Studio) | **HP-HOOP-001 ◐** (précisé) et **HP-HOOP-005 ◐** (inchangé). Bouton « Cadre L × H mm » dans l'en-tête et entrée « Cadre… » au clic droit de tous les canevas : `HoopPopover.qml` (forme, largeur, hauteur, rayon, marge, pivoter, modèles, Mes cadres), appliqué en direct en une commande annulable (`FileController::applyHoopSpec`). Tambour à la forme réelle (rond, ovale, coins arrondis) et zone brodable en retrait, GPU et logiciel (`HoopDisplay`). Sans couche des points, le clic droit ne choisit plus d'objet. Tests `test_studio_files.cpp::hoopQuickSettingsAreOneUndoStepEach` (vraie scène QML) et `test_studio_space_image.cpp::hoopRingIsHollowWithoutStitches` (formes, marge). Reste : réglages d'atelier (espacement par défaut, machine). |

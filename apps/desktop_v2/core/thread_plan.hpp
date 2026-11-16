@@ -43,6 +43,9 @@ struct OrderRow {
 // Déplace un objet à la position `toPosition` (0 = cousu en premier). Refuse un déplacement qui
 // casserait l'ordre des calques.
 ServiceResult moveInOrder(DocumentSession& session, std::uint64_t id, std::size_t toPosition);
+// Déplace un objet vers une position absolue (supporte drag-and-drop style, saute les objets
+// masqués)
+ServiceResult moveToPositionAbsolute(DocumentSession& session, std::uint64_t id, int toPosition);
 
 // --- Coloris -------------------------------------------------------------------------------
 struct ColorwayRow {

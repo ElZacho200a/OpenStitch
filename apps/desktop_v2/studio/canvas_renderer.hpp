@@ -21,6 +21,7 @@ class QSGNode;
 namespace openstitch::desktop_v2::studio {
 
 struct RegionLayerData; // couche « regions » (layers/region_layer.hpp), immuable
+class VectorLayer;      // couche « vectors » (layers/vector_layer.hpp), immuable
 
 // Display-only layers drawn over the immutable scene (grid, guides, analysis maps, markers,
 // simulation cursor). Immutable once published: a change publishes a new instance and bumps the
@@ -36,6 +37,10 @@ struct OverlayMarker {
 struct OverlayJump {
     double ax{0}, ay{0}, bx{0}, by{0};
 };
+struct OverlayTrim {
+    double x{0}, y{0};         // position du point de coupe en coordonnées scène
+    QColor color{231, 76, 60}; // rouge pour les coupes
+};
 struct CanvasOverlays {
     static constexpr std::size_t all = std::numeric_limits<std::size_t>::max();
     bool showStitches{true};
@@ -48,6 +53,7 @@ struct CanvasOverlays {
     std::vector<OverlayImage> images;
     std::vector<OverlayMarker> markers;
     std::vector<OverlayJump> jumps;   // drawn when non-empty
+    std::vector<OverlayTrim> trims;   // drawn when non-empty
     std::size_t visibleSegments{all}; // simulation: first N segments of the scene
     // Rendu réaliste accéléré (chemin RHI uniquement ; le backend logiciel l'ignore et garde le
     // raster CPU de référence). Vue seule : ne change ni le document ni les points.
@@ -83,8 +89,9 @@ struct CanvasRenderState {
     SourceImageView sourceImage; // couche « sourceImage » (espace Image), vide sinon
     // Couche « regions » (espace Segmentation) : données immuables publiées par révision.
     std::shared_ptr<const RegionLayerData> regions;
-    // Couche « vectors » : image des formes (mm scène), dessinée sous les points (espace Vecto).
-    std::shared_ptr<const OverlayImage> vectorImage;
+    // Couche « vectors » : formes (mm scène) dessinées sous les points (espace Vecto) ; triangles
+    // pour le backend GPU, image rastérisée à la demande pour le backend logiciel.
+    std::shared_ptr<const VectorLayer> vectorLayer;
 };
 
 struct CanvasRenderResult {
@@ -107,5 +114,19 @@ public:
 
 [[nodiscard]] const CanvasRenderBackend& sceneGraphBackend();
 [[nodiscard]] const CanvasRenderBackend& softwareBackend();
+
+// Cadre à dessiner : boîte englobante (mm scène), forme réelle, rayon des coins et marge de
+// sécurité (zone brodable tracée en retrait quand elle n'est pas nulle).
+struct HoopDisplay {
+    stitch_render::RectMm rect;
+    document::HoopShape shape{document::HoopShape::Rectangle};
+    double cornerMm{0};
+    double marginMm{0};
+};
+[[nodiscard]] HoopDisplay hoopDisplay(const StudioSceneSnapshot& scene);
+
+// Triangles du tambour (affichage seulement). `fabric` vrai : fond de tissu plein (espace Points) ;
+// faux : anneau creux qui laisse voir l'image, les régions ou les formes posées dans le cadre.
+[[nodiscard]] std::vector<StudioVertex> hoopVertices(const HoopDisplay& hoop, bool fabric);
 
 } // namespace openstitch::desktop_v2::studio

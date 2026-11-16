@@ -1,10 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+#include <memory>
 
 #include "edit_batch.hpp"
 #include "fade_service.hpp"
 #include "inspector_model.hpp"
+#include "openstitch/commands/thread_commands.hpp"
+#include "openstitch/document/multi_blend.hpp"
 #include "openstitch/project_ops/factory.hpp"
+#include "openstitch/project_ops/gradient_fill.hpp"
 
 using namespace openstitch;
 using namespace openstitch::desktop_v2;
@@ -79,4 +85,174 @@ TEST_CASE("fade requests that cannot work are refused with the engine's reason",
     const auto depth = g.session.undoNames().size();
     CHECK_FALSE(createFade(g.session, g.id, same).ok);
     CHECK(g.session.undoNames().size() == depth);
+}
+
+TEST_CASE("rail-less satin creates an autonomous interlaced gradient",
+          "[desktop_v2][fade][satin]") {
+    auto f = rectFill();
+    auto* object = f.session.projectForIdAllocation().findEmbroidery(ObjectId{f.id});
+    REQUIRE(object != nullptr);
+    object->params = document::SatinParams{};
+
+    // Régression PR #340 : choisir Satin ne doit ni afficher l'ancien diagnostic « tatami », ni
+    // exiger une saisie manuelle préalable. Les rails sont dérivés du contour par le moteur.
+    CHECK(fadeIncompatibility(f.session.project(), f.id).empty());
+    MultiFadeSettings settings;
+    settings.colors = {{255, 0, 0}, {0, 0, 255}};
+    settings.method = static_cast<int>(document::GradientMethod::SatinInterlaced);
+    const auto depth = f.session.undoNames().size();
+    REQUIRE(createMultiFade(f.session, f.id, settings).ok);
+    CHECK(f.session.undoNames().size() == depth + 1);
+
+    const auto spec =
+        project_ops::describe_multicolor_gradient(f.session.project(), ObjectId{f.id});
+    REQUIRE(spec.has_value());
+    CHECK(spec->method == document::GradientMethod::SatinInterlaced);
+    CHECK(spec->palette.size() == 2);
+}
+
+TEST_CASE("autonomous gradient method settings survive desktop edits", "[desktop_v2][fade]") {
+    auto f = rectFill();
+    MultiFadeSettings settings;
+    settings.colors = {{10, 20, 30}, {70, 80, 90}, {120, 130, 140}};
+    settings.method = static_cast<int>(document::GradientMethod::CrossHatching);
+    settings.crosshatchLayers = 3;
+    settings.crosshatchAngleDeg = 37.5;
+    REQUIRE(createMultiFade(f.session, f.id, settings).ok);
+
+    const auto read = readMultiFade(f.session.project(), f.id);
+    REQUIRE(read.has_value());
+    CHECK(read->method == settings.method);
+    CHECK(read->crosshatchLayers == 3);
+    CHECK(read->crosshatchAngleDeg == Catch::Approx(37.5));
+
+    auto edited = *read;
+    edited.method = static_cast<int>(document::GradientMethod::LongAndShort);
+    edited.geometry = 2;
+    REQUIRE(editMultiFade(f.session, f.id, edited).ok);
+    const auto after = readMultiFade(f.session.project(), f.id);
+    REQUIRE(after.has_value());
+    CHECK(after->method == static_cast<int>(document::GradientMethod::LongAndShort));
+    CHECK(after->geometry == 2);
+}
+
+TEST_CASE("fade edits keep the thread references of unchanged colours",
+          "[desktop_v2][fade][threads]") {
+    auto f = rectFill();
+    MultiFadeSettings settings;
+    settings.colors = {{200, 30, 30}, {30, 120, 200}, {240, 200, 40}};
+    REQUIRE(createMultiFade(f.session, f.id, settings).ok);
+    auto spec = project_ops::describe_multicolor_gradient(f.session.project(), ObjectId{f.id});
+    REQUIRE(spec);
+    // Fil de nuancier choisi pour le 2e fil (comme depuis le panneau des fils).
+    spec->palette[1].thread = thread_palette::ThreadKey{"madeira_polyneon", "1747"};
+    auto command = project_ops::make_edit_multicolor_gradient_command(
+        f.session.projectForIdAllocation(), ObjectId{f.id}, *spec);
+    REQUIRE(command);
+    f.session.execute(std::move(*command));
+    const auto threadOf = [&](std::size_t i) {
+        return project_ops::describe_multicolor_gradient(f.session.project(), ObjectId{f.id})
+            ->palette[i]
+            .thread;
+    };
+    REQUIRE(threadOf(1).has_value());
+
+    // Technique, géométrie, ordre : la référence suit sa couleur.
+    settings.texture = 1;
+    settings.geometry = 2;
+    REQUIRE(editMultiFade(f.session, f.id, settings).ok);
+    CHECK(threadOf(1) == thread_palette::ThreadKey{"madeira_polyneon", "1747"});
+    settings.colors = {{240, 200, 40}, {30, 120, 200}, {200, 30, 30}};
+    REQUIRE(editMultiFade(f.session, f.id, settings).ok);
+    CHECK(threadOf(1) == thread_palette::ThreadKey{"madeira_polyneon", "1747"});
+    // Une couleur remplacée redevient libre : jamais un fil de nuancier pour une autre teinte.
+    settings.colors[1] = {10, 10, 10};
+    REQUIRE(editMultiFade(f.session, f.id, settings).ok);
+    CHECK_FALSE(threadOf(1).has_value());
+}
+
+TEST_CASE("the two-thread entry points use the multicolour engine", "[desktop_v2][fade]") {
+    auto f = rectFill();
+    REQUIRE(createFade(f.session, f.id, FadeSettings{{250, 120, 10}, true}).ok);
+    const auto spec =
+        project_ops::describe_multicolor_gradient(f.session.project(), ObjectId{f.id});
+    REQUIRE(spec);
+    CHECK(spec->palette.size() == 2);
+    CHECK_FALSE(project_ops::describe_gradient_fill(f.session.project(), ObjectId{f.id}));
+}
+
+TEST_CASE("a chart thread set on a fade layer survives the next fade edit",
+          "[desktop_v2][fade][threads]") {
+    auto f = rectFill();
+    MultiFadeSettings settings;
+    settings.colors = {{200, 30, 30}, {30, 120, 200}};
+    REQUIRE(createMultiFade(f.session, f.id, settings).ok);
+    const auto group = document::find_gradient_group(f.session.project(), ObjectId{f.id});
+    REQUIRE(group);
+    // Comme le panneau Fils : la couche physique reçoit un fil de nuancier et sa couleur.
+    const thread_palette::ThreadKey key{"madeira_polyneon", "1747"};
+    const std::array<std::uint8_t, 3> chartRgb{20, 90, 170};
+    f.session.execute(std::make_unique<commands::SetObjectThreadCommand>(
+        std::vector<commands::ObjectThreadAssignment>{{group->layers[1], key, chartRgb}}));
+    settings.colors = {{200, 30, 30}, chartRgb};
+    settings.geometry = 2;
+    REQUIRE(editMultiFade(f.session, f.id, settings).ok);
+    const auto spec =
+        project_ops::describe_multicolor_gradient(f.session.project(), ObjectId{f.id});
+    REQUIRE(spec);
+    CHECK(spec->palette[1].rgb == chartRgb);
+    CHECK(spec->palette[1].thread == key);
+}
+
+TEST_CASE("fade spacing, stitch direction, shapes and single thread round-trip through the "
+          "desktop service",
+          "[desktop_v2][fade][types]") {
+    auto f = rectFill();
+    MultiFadeSettings settings;
+    settings.colors = {{10, 20, 30}, {200, 210, 220}};
+    REQUIRE(createMultiFade(f.session, f.id, settings).ok);
+    auto read = readMultiFade(f.session.project(), f.id);
+    REQUIRE(read.has_value());
+    CHECK(read->spacingMm > 0.0); // écart réellement cousu, jamais 0
+    CHECK_FALSE(read->customStitchAngle);
+
+    // Écart des rangées : un pas d'annulation, relu tel quel.
+    auto next = *read;
+    next.spacingMm = 0.65;
+    const auto depth = f.session.undoNames().size();
+    REQUIRE(editMultiFade(f.session, f.id, next).ok);
+    CHECK(f.session.undoNames().size() == depth + 1);
+    read = readMultiFade(f.session.project(), f.id);
+    REQUIRE(read.has_value());
+    CHECK(read->spacingMm == Catch::Approx(0.65));
+
+    // Direction des points imposée, puis spirale et contour : l'écart est conservé.
+    next = *read;
+    next.customStitchAngle = true;
+    next.stitchAngleDeg = 30.0;
+    next.geometry = 3;
+    REQUIRE(editMultiFade(f.session, f.id, next).ok);
+    read = readMultiFade(f.session.project(), f.id);
+    REQUIRE(read.has_value());
+    CHECK(read->customStitchAngle);
+    CHECK(read->stitchAngleDeg == Catch::Approx(30.0));
+    CHECK(read->geometry == 3);
+    CHECK(read->spacingMm == Catch::Approx(0.65));
+    next = *read;
+    next.geometry = 4;
+    REQUIRE(editMultiFade(f.session, f.id, next).ok);
+    CHECK(readMultiFade(f.session.project(), f.id)->geometry == 4);
+
+    // Un seul fil : dégradé de densité, une seule couche physique.
+    next = *readMultiFade(f.session.project(), f.id);
+    next.colors.resize(1);
+    next.endDensity = 0.3;
+    REQUIRE(editMultiFade(f.session, f.id, next).ok);
+    read = readMultiFade(f.session.project(), f.id);
+    REQUIRE(read.has_value());
+    CHECK(read->colors.size() == 1);
+    CHECK(read->endDensity == Catch::Approx(0.3));
+    const auto group = document::find_gradient_group(f.session.project(), ObjectId{f.id});
+    REQUIRE(group.has_value());
+    CHECK(group->layers.size() == 1);
 }

@@ -126,94 +126,176 @@ Item {
         switchTo(workspace.current)
     }
 
+    // --- Cadre : accessible depuis l'en-tête et le clic droit de TOUS les canevas -------------
+    // `openHoop(item, x, y)` ouvre le réglage rapide au point donné ; sans point, en haut à droite.
+    function openHoop(item, x, y) {
+        if (typeof files === "undefined" || files === null)
+            return
+        if (item)
+            hoopPopover.openAt(item, x, y)
+        else
+            hoopPopover.openAt(host, host.width - hoopPopover.width - 16, 8)
+    }
+    function hoopSummary() {
+        if (typeof files === "undefined" || files === null)
+            return ""
+        studio.commandCount // relu à chaque changement du document
+        const h = files.currentHoop()
+        return qsTr("%1 × %2 mm").arg(Math.round(h.widthMm)).arg(Math.round(h.heightMm))
+    }
+    HoopPopover {
+        id: hoopPopover
+        parent: host
+        ctl: typeof files !== "undefined" ? files : null
+    }
+    // Espaces sans menu d'objets (image, segmentation, vecto) : clic droit = menu du canevas.
+    Controls.Menu {
+        id: canvasMenu
+        objectName: "spaceCanvasMenu"
+        property real atX: 0
+        property real atY: 0
+        Controls.MenuItem {
+            objectName: "canvasMenuHoop"
+            text: qsTr("Cadre (%1)…").arg(host.hoopSummary())
+            onTriggered: host.openHoop(host.canvas, canvasMenu.atX, canvasMenu.atY)
+        }
+    }
+    Connections {
+        target: host.loadedId !== "points" ? host.canvas : null
+        ignoreUnknownSignals: true
+        function onContextMenuRequested(x, y, objectId) {
+            canvasMenu.atX = x
+            canvasMenu.atY = y
+            const p = host.canvas.mapToItem(host, x, y)
+            canvasMenu.popup(host, p.x, p.y)
+        }
+    }
+
     Shortcut { sequence: "Ctrl+1"; onActivated: host.workspace.setCurrent("image") }
     Shortcut { sequence: "Ctrl+2"; onActivated: host.workspace.setCurrent("segmentation") }
     Shortcut { sequence: "Ctrl+3"; onActivated: host.workspace.setCurrent("vector") }
     Shortcut { sequence: "Ctrl+4"; onActivated: host.workspace.setCurrent("points") }
 
-    ColumnLayout {
-        anchors.fill: parent
-        spacing: 0
+    // --- parcours en quatre étapes -----------------------------------------------------------
+    // Les quatre espaces sont présentés comme un parcours numéroté. L'hôte (Main.qml) fournit
+    // `tabsHost`, un emplacement dans l'en-tête ; sans lui (tests, hôte autonome) le parcours
+    // reste au-dessus de l'espace.
+    property Item tabsHost: null
+    readonly property real tabsWidth: stepper.implicitWidth
+    Rectangle {
+        id: stepper
+        objectName: "spaceTabs"
+        parent: host.tabsHost ? host.tabsHost : fallbackSlot
+        anchors.centerIn: parent
+        // Sous ce palier seuls le numéro et l'étape active gardent leur libellé.
+        readonly property bool compact: host.width < 1240
+        implicitWidth: tabsRow.implicitWidth + 8
+        width: implicitWidth
+        height: 40
+        radius: 12
+        color: Theme.background
+        border.width: 1
+        border.color: Theme.divider
 
-        // --- barre d'onglets ---------------------------------------------------------------
+        // Pastille pleine qui glisse d'une étape à l'autre, y compris via Ctrl+1..4.
         Rectangle {
-            objectName: "spaceTabs"
-            Layout.fillWidth: true
-            Layout.preferredHeight: 40
-            color: Theme.surface
-            RowLayout {
-                id: tabsRow
-                anchors.fill: parent
-                anchors.leftMargin: 18
-                anchors.rightMargin: 18
-                spacing: 3
-                Repeater {
-                    id: tabsRepeater
-                    // Modèle = nombre d'espaces : les onglets ne sont pas recréés quand un état change.
-                    model: 4
-                    delegate: Controls.AbstractButton {
-                        id: tab
-                        required property int index
-                        readonly property var modelData: host.workspace.spaces[index]
-                        objectName: "spaceTab_" + modelData.id
-                        readonly property bool current: host.workspace.current === modelData.id
-                        Layout.preferredHeight: 32
-                        Layout.preferredWidth: host.width < 1180 ? 122 : 146
-                        hoverEnabled: true
-                        focusPolicy: Qt.StrongFocus
-                        Accessible.role: Accessible.PageTab
-                        Accessible.name: modelData.label + " : " + host.stateLabel(modelData.state)
-                        Accessible.description: modelData.detail + ". " + qsTr("Raccourci ") + modelData.shortcut
-                        onClicked: host.workspace.setCurrent(modelData.id)
-                        background: Rectangle {
-                            color: tab.current ? Theme.accentSoft : tab.down ? Theme.hover
-                                   : tab.hovered ? Theme.raised : "transparent"
-                            radius: Theme.radius
-                            border.width: tab.activeFocus ? 2 : 0
-                            border.color: Theme.accent
-                            Behavior on color { ColorAnimation { duration: Theme.animationMs } }
-                            Behavior on border.width { NumberAnimation { duration: Theme.feedbackFastMs } }
-                        }
-                        contentItem: Row {
-                            spacing: 8
+            id: activePill
+            objectName: "activeSpaceUnderline"
+            // `count` rend la liaison réactive à la création des étapes (itemAt seul ne notifie pas).
+            readonly property var currentTab: tabsRepeater.count > host.workspace.currentIndex
+                                              ? tabsRepeater.itemAt(host.workspace.currentIndex) : null
+            x: currentTab ? tabsRow.x + currentTab.x : 4
+            y: 4
+            width: currentTab ? currentTab.width : 0
+            height: parent.height - 8
+            radius: 9
+            color: Theme.accent
+            // Pas de glissement à l'ouverture : la pastille est posée d'emblée sur l'étape active.
+            property bool settled: false
+            Timer { interval: 300; running: true; onTriggered: activePill.settled = true }
+            Behavior on x { enabled: activePill.settled; NumberAnimation { duration: Theme.feedbackSlowMs; easing.type: Easing.OutCubic } }
+            Behavior on width { enabled: activePill.settled; NumberAnimation { duration: Theme.feedbackSlowMs; easing.type: Easing.OutCubic } }
+        }
+
+        Row {
+            id: tabsRow
+            x: 4
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 2
+            Repeater {
+                id: tabsRepeater
+                // Modèle = nombre d'espaces : les étapes ne sont pas recréées quand un état change.
+                model: 4
+                delegate: Controls.AbstractButton {
+                    id: tab
+                    required property int index
+                    readonly property var modelData: host.workspace.spaces[index]
+                    objectName: "spaceTab_" + modelData.id
+                    readonly property bool current: host.workspace.current === modelData.id
+                    implicitHeight: 32
+                    implicitWidth: tabContent.implicitWidth + 24
+                    hoverEnabled: true
+                    focusPolicy: Qt.StrongFocus
+                    Accessible.role: Accessible.PageTab
+                    Accessible.name: modelData.label + " : " + host.stateLabel(modelData.state)
+                    Accessible.description: modelData.detail + ". " + qsTr("Raccourci ") + modelData.shortcut
+                    onClicked: host.workspace.setCurrent(modelData.id)
+                    background: Rectangle {
+                        radius: 9
+                        color: tab.current ? "transparent" : tab.down ? Theme.hover
+                               : tab.hovered ? Theme.raised : "transparent"
+                        border.width: tab.activeFocus ? 2 : 0
+                        border.color: tab.current ? Theme.accentInk : Theme.accent
+                        Behavior on color { ColorAnimation { duration: Theme.animationMs } }
+                    }
+                    contentItem: Item {
+                        implicitWidth: tabContent.implicitWidth
+                        implicitHeight: tabContent.implicitHeight
+                        Row {
+                            id: tabContent
                             anchors.centerIn: parent
+                            spacing: 8
                             Rectangle {
                                 objectName: "spaceBadge_" + tab.modelData.id
                                 property string badgeState: tab.modelData.state
                                 anchors.verticalCenter: parent.verticalCenter
-                                width: 10
-                                height: 10
-                                radius: 5
-                                color: badgeState === "empty" ? "transparent" : host.stateColor(badgeState)
-                                border.width: 2
+                                width: 20
+                                height: 20
+                                radius: 10
+                                color: tab.current ? Theme.accentInk : Theme.raised
+                                border.width: badgeState === "empty" ? 0 : 2
                                 border.color: host.stateColor(badgeState)
                                 Behavior on color { ColorAnimation { duration: Theme.feedbackSlowMs } }
                                 Behavior on border.color { ColorAnimation { duration: Theme.feedbackSlowMs } }
+                                Text {
+                                    anchors.centerIn: parent
+                                    // L'état est porté par un signe, pas seulement par la couleur.
+                                    text: parent.badgeState === "upToDate" ? "✓"
+                                          : parent.badgeState === "stale" || parent.badgeState === "blocked" ? "!"
+                                          : (tab.index + 1)
+                                    color: tab.current ? Theme.accent : host.stateColor(parent.badgeState)
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: Theme.captionSize
+                                    font.weight: Font.Bold
+                                }
                             }
                             Text {
+                                visible: !stepper.compact || tab.current
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: tab.modelData.label
-                                color: tab.current ? Theme.accent : Theme.muted
+                                color: tab.current ? Theme.accentInk : Theme.muted
                                 font.family: Theme.fontFamily
                                 font.pixelSize: Theme.bodySize
                                 font.weight: tab.current ? Font.DemiBold : Font.Normal
+                                Behavior on color { ColorAnimation { duration: Theme.animationMs } }
                             }
                         }
-                        StudioToolTip {
-                            delay: 500
-                            text: tab.modelData.label + " (" + host.stateLabel(tab.modelData.state) + ") · "
-                                  + tab.modelData.detail + "  ·  " + tab.modelData.shortcut
-                        }
                     }
-                }
-                Item { Layout.fillWidth: true }
-                Text {
-                    visible: host.width >= 1160
-                    text: qsTr("UN DOCUMENT · QUATRE ESPACES LIÉS")
-                    color: Theme.faint
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.captionSize
-                    font.letterSpacing: 1.1
+                    StudioToolTip {
+                        delay: 500
+                        text: tab.modelData.label + " (" + host.stateLabel(tab.modelData.state) + ") · "
+                              + tab.modelData.detail + "  ·  " + tab.modelData.shortcut
+                    }
                 }
             }
             // Single underline moves between tabs, including Ctrl+1..4 navigation.
@@ -232,8 +314,17 @@ Item {
                 Behavior on width { NumberAnimation { duration: Theme.feedbackSlowMs; easing.type: Easing.InOutCubic } }
             }
         }
+    }
 
-        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }
+    ColumnLayout {
+        anchors.fill: parent
+        spacing: 0
+
+        Item {
+            id: fallbackSlot
+            Layout.fillWidth: true
+            Layout.preferredHeight: host.tabsHost ? 0 : 52
+        }
 
         // --- bandeau de l'étape amont ------------------------------------------------------
         Rectangle {
@@ -316,7 +407,10 @@ Item {
                 active: internal.visitedPoints
                 visible: internal.loadedId === "points"
                 asynchronous: false
-                sourceComponent: PointsSpace { workspace: host.workspace }
+                sourceComponent: PointsSpace {
+                    workspace: host.workspace
+                    onHoopRequested: function(x, y) { host.openHoop(host.canvas, x, y) }
+                }
                 onLoaded: host.activateSpace("points", item)
             }
         }

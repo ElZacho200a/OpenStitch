@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "region_controller.hpp"
 
+#include "segmentation_settings.hpp"
+#include "task_pump.hpp"
+
 #include <QColor>
 #include <QImage>
 #include <algorithm>
@@ -32,33 +35,32 @@ std::uint64_t idOf(double value) {
     return value < 0.0 ? 0 : static_cast<std::uint64_t>(value);
 }
 
-double numberOr(const QVariantMap& map, const char* key, double fallback) {
-    const auto found = map.find(QLatin1String(key));
-    if (found == map.end()) {
-        return fallback;
-    }
-    bool ok = false;
-    const double value = found->toDouble(&ok);
-    return ok ? value : fallback;
-}
-
 } // namespace
 
 RegionController::RegionController(StudioController& studio, ImageController& images,
                                    QObject* parent)
     : QObject(parent), studio_(studio), images_(images) {
-    pump_.setInterval(16);
-    connect(&pump_, &QTimer::timeout, this, [this] { tasks_.pump(); });
-    pump_.start();
+    attachTaskPump(tasks_, this);
     refreshTimer_.setSingleShot(true);
     refreshTimer_.setInterval(0);
     connect(&refreshTimer_, &QTimer::timeout, this, [this] { refresh(); });
     token_ = studio_.session().subscribe([this](ChangeKind kind) {
         const auto& session = studio_.session();
         const auto revision = session.revision();
+        const auto source = session.project().imageSourceId();
         if (kind == ChangeKind::Replaced) {
+            staleSources_.clear();
+        }
+        if (kind == ChangeKind::Replaced || source != observedImageSource_) {
+            observedImageSource_ = source;
+            // Une confirmation en attente a été calculée pour l'ancien document ou l'ancienne
+            // source : l'exécuter ici remplacerait des retouches jamais comptées.
+            cancelConfirmation();
+            setMergeTargetMode(false);
             selected_.clear();
-            setStale(false);
+            const auto stale = staleSources_.find(source);
+            setStale(stale != staleSources_.end(),
+                     stale != staleSources_.end() ? stale->second : QString{});
         }
         if (revision == observedDocumentRevision_) {
             return; // sauvegarde ou signal de statut sans mutation
@@ -70,29 +72,34 @@ RegionController::RegionController(StudioController& studio, ImageController& im
     });
     connect(&images_, &ImageController::prepApplied, this,
             [this] { setStale(true, QStringLiteral("l'image a été retraitée")); });
-    connect(&images_, &ImageController::segmentationApplied, this,
-            [this](int) { setStale(true, QStringLiteral("l'image a été re-segmentée")); });
+    connect(&images_, &ImageController::segmentationAppliedToLayer, this, [this](ObjectId source) {
+        const auto reason = tr("l'image a été re-segmentée");
+        if (source == observedImageSource_) {
+            setStale(true, reason);
+        } else {
+            staleSources_.insert_or_assign(source, reason);
+        }
+    });
     scheduleRefresh();
 }
 
 RegionController::~RegionController() {
-    pump_.stop();
     tasks_.cancelAll();
     studio_.session().unsubscribe(token_);
 }
 
 int RegionController::mapWidth() const {
-    const auto& seg = studio_.session().project().segmentation;
+    const auto& seg = studio_.session().project().imageSource().segmentation;
     return seg ? seg->width : 0;
 }
 
 int RegionController::mapHeight() const {
-    const auto& seg = studio_.session().project().segmentation;
+    const auto& seg = studio_.session().project().imageSource().segmentation;
     return seg ? seg->height : 0;
 }
 
 bool RegionController::hasSegmentation() const {
-    return studio_.session().project().segmentation.has_value();
+    return studio_.session().project().imageSource().segmentation.has_value();
 }
 
 QVariantList RegionController::selected() const {
@@ -116,6 +123,11 @@ void RegionController::setMessage(const QString& text, bool error) {
 }
 
 void RegionController::setStale(bool stale, const QString& reason) {
+    if (stale) {
+        staleSources_.insert_or_assign(observedImageSource_, reason);
+    } else {
+        staleSources_.erase(observedImageSource_);
+    }
     if (stale_ == stale && staleReason_ == reason) {
         return;
     }
@@ -159,11 +171,12 @@ void RegionController::refresh() {
     // Élague la sélection : une région fusionnée ou supprimée n'existe plus.
     const auto before = selected_.size();
     std::erase_if(selected_, [&](std::uint64_t id) {
-        return !project.segmentation || !project.segmentation->find(RegionId{id});
+        return !project.imageSource().segmentation ||
+               !project.imageSource().segmentation->find(RegionId{id});
     });
-    if (project.segmentation && project.segmentation->width > 0 &&
-        project.segmentation->height > 0) {
-        const auto& seg = *project.segmentation;
+    if (project.imageSource().segmentation && project.imageSource().segmentation->width > 0 &&
+        project.imageSource().segmentation->height > 0) {
+        const auto& seg = *project.imageSource().segmentation;
         // Le panneau n'affiche que 170 px de haut : ne jamais générer une
         // seconde carte RGBA plein format pour sa miniature.
         constexpr int maxSide = 512;
@@ -208,13 +221,16 @@ void RegionController::refresh() {
     if (before != selected_.size()) {
         emit selectionChanged();
     }
+    if (mergeTargetMode_ && selected_.size() != 1) {
+        setMergeTargetMode(false);
+    }
 }
 
 // --- Sélection ----------------------------------------------------------------------------
 
 void RegionController::selectRegion(double id, const QString& mode) {
     const auto region = idOf(id);
-    const auto& seg = studio_.session().project().segmentation;
+    const auto& seg = studio_.session().project().imageSource().segmentation;
     if (!seg || region == 0 || !seg->find(RegionId{region})) {
         return;
     }
@@ -241,6 +257,13 @@ void RegionController::selectRegion(double id, const QString& mode) {
 
 void RegionController::selectAtPixel(int x, int y, bool additive) {
     const auto id = regionAtPixel(studio_.session().project(), x, y);
+    if (mergeTargetMode_) {
+        // Le clic désigne la cible : il ne doit jamais remplacer la région source.
+        if (id) {
+            (void)mergeSelectedInto(static_cast<double>(*id));
+        }
+        return;
+    }
     if (!id) {
         if (!additive) {
             clearSelection();
@@ -275,6 +298,39 @@ void RegionController::selectNeighbours() {
     emit selectionChanged();
 }
 
+bool RegionController::stepRegion(int direction) {
+    const int count = static_cast<int>(regions_.size());
+    if (count == 0) {
+        return false;
+    }
+    int index =
+        direction > 0 ? -1 : count; // pas de sélection unique : on part du début / de la fin
+    if (selected_.size() == 1) {
+        for (int i = 0; i < count; ++i) {
+            if (idOf(regions_[i].toMap().value(QStringLiteral("id")).toDouble()) ==
+                selected_.front()) {
+                index = i;
+                break;
+            }
+        }
+    }
+    const int next = ((index + direction) % count + count) % count;
+    selectRegion(regions_[next].toMap().value(QStringLiteral("id")).toDouble());
+    return true;
+}
+
+bool RegionController::selectNextRegion() {
+    return stepRegion(1);
+}
+
+bool RegionController::selectPreviousRegion() {
+    return stepRegion(-1);
+}
+
+void RegionController::stepBrushRadius(int steps) {
+    setBrushRadius(brushRadius_ + steps);
+}
+
 void RegionController::invertSelection() {
     selected_ = invertRegionSet(studio_.session().project(), selected_);
     emit selectionChanged();
@@ -288,8 +344,48 @@ void RegionController::selectAll() {
 void RegionController::clearSelection() {
     if (selected_.empty())
         return;
+    setMergeTargetMode(false); // plus de région source : le choix de cible n'a plus d'objet
     selected_.clear();
     emit selectionChanged();
+}
+
+bool RegionController::adoptSessionSelection() {
+    const auto& seg = studio_.session().project().imageSource().segmentation;
+    const auto& shared = studio_.session().selection();
+    if (!seg || adoptedSelectionRevision_ == shared.revision()) {
+        return false;
+    }
+    adoptedSelectionRevision_ = shared.revision();
+    std::vector<std::uint64_t> wanted;
+    for (const auto& target : shared.targets()) {
+        if (target.kind == TargetKind::Region && seg->find(RegionId{target.id}) &&
+            std::find(wanted.begin(), wanted.end(), target.id) == wanted.end()) {
+            wanted.push_back(target.id);
+        }
+    }
+    if (wanted.empty()) {
+        return false;
+    }
+    // Une autre région devient la source : un choix de cible resté ouvert la fusionnerait au
+    // prochain clic.
+    setMergeTargetMode(false);
+    if (wanted != selected_) {
+        selected_ = std::move(wanted);
+        emit selectionChanged();
+    }
+    return true;
+}
+
+void RegionController::setMergeTargetMode(bool on) {
+    if (on && selected_.size() != 1) {
+        setMessage(QStringLiteral("Sélectionnez une seule région source."), true);
+        on = false;
+    }
+    if (on == mergeTargetMode_) {
+        return;
+    }
+    mergeTargetMode_ = on;
+    emit mergeTargetModeChanged();
 }
 
 QVariantList RegionController::objectsOfSelection() const {
@@ -344,6 +440,23 @@ QString RegionController::mergeSelected() {
     }
     return report(mergeRegionSet(studio_.session(), selected_),
                   QStringLiteral("Régions fusionnées."));
+}
+
+QString RegionController::mergeSelectedInto(double target) {
+    if (selected_.size() != 1) {
+        const auto text = QStringLiteral("Sélectionnez une seule région source.");
+        setMessage(text, true);
+        return text;
+    }
+    // The target keeps its region ID and colour; the source is absorbed in
+    // one undoable document command, rather than merging into an arbitrary
+    // first neighbour.
+    auto refusal = report(mergeRegionInto(studio_.session(), idOf(target), selected_.front()),
+                          QStringLiteral("Région fusionnée dans la région cible."));
+    if (refusal.isEmpty()) {
+        setMergeTargetMode(false);
+    }
+    return refusal;
 }
 
 QString RegionController::mergeWithNeighbour(double id) {
@@ -426,15 +539,25 @@ void RegionController::regenerate(bool resegment, bool confirmed, const QVariant
     if (!confirmed) {
         const auto edits = countHandEdits(studio_.session().project());
         if (edits.retouchedObjects > 0) {
-            emit confirmRequested(
+            // La demande est mémorisée ici : quel que soit le panneau qui confirme, c'est bien
+            // elle (même mode, mêmes réglages) qui sera exécutée.
+            pendingResegment_ = resegment;
+            pendingSettings_ = settings;
+            confirmText_ =
                 QStringLiteral(
-                    "%1 objet(s) portent des retouches de points qui seront remplacées par "
-                    "la nouvelle génération. Les %2 objet(s) dessinés à la main sont "
+                    "%1 objet(s) portent des retouches de points qui seront remplacées "
+                    "par la nouvelle génération. Les %2 objet(s) dessinés à la main sont "
                     "conservés. Vous pourrez tout annuler avec Ctrl+Z.")
                     .arg(edits.retouchedObjects)
-                    .arg(edits.handDrawnObjects));
+                    .arg(edits.handDrawnObjects);
+            emit confirmChanged();
+            emit confirmRequested(confirmText_);
             return;
         }
+    }
+    if (!confirmText_.isEmpty()) {
+        confirmText_.clear();
+        emit confirmChanged();
     }
     auto working = processedImage(studio_.session().project());
     if (!working) {
@@ -447,11 +570,12 @@ void RegionController::regenerate(bool resegment, bool confirmed, const QVariant
         task_ = 0;
     }
     project_ops::DigitizeSettings digitize;
-    digitize.max_colors = static_cast<int>(numberOr(settings, "max_colors", digitize.max_colors));
-    digitize.min_region_px =
-        static_cast<int>(numberOr(settings, "min_region_px", digitize.min_region_px));
-    digitize.smoothing_px =
-        static_cast<int>(numberOr(settings, "smoothing_px", digitize.smoothing_px));
+    // Mêmes clés et mêmes bornes que l'aperçu (`segmentationSettingsFrom`).
+    const auto chosen = segmentationSettingsFrom(
+        settings, {digitize.max_colors, digitize.min_region_px, digitize.smoothing_px});
+    digitize.max_colors = chosen.max_colors;
+    digitize.min_region_px = chosen.min_region_px;
+    digitize.smoothing_px = chosen.smoothing_radius_px;
     const auto snapshot = studio_.session().snapshot();
     const auto revision = studio_.session().revision();
     const image::Image image = std::move(*working);
@@ -497,6 +621,22 @@ void RegionController::regenerate(bool resegment, bool confirmed, const QVariant
                        false);
             emit regenerated(static_cast<int>(r->objectsBefore), static_cast<int>(r->objectsAfter));
         });
+}
+
+void RegionController::confirmRegeneration() {
+    if (confirmText_.isEmpty()) {
+        return;
+    }
+    regenerate(pendingResegment_, true, pendingSettings_);
+}
+
+void RegionController::cancelConfirmation() {
+    if (confirmText_.isEmpty()) {
+        return;
+    }
+    confirmText_.clear();
+    pendingSettings_.clear();
+    emit confirmChanged();
 }
 
 void RegionController::cancelTask() {

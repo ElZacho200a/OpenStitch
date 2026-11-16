@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "thread_controller.hpp"
+#include "change_gate.hpp"
 
 #include <QColor>
 #include <QDir>
@@ -45,7 +46,14 @@ std::filesystem::path pathOf(const QUrl& url) {
 ThreadController::ThreadController(StudioController& studio, std::filesystem::path configDir,
                                    QObject* parent)
     : QObject(parent), studio_(studio) {
-    connect(&studio_, &StudioController::changed, this, &ThreadController::changed);
+    gateStamp_ = documentStamp(studio_);
+    connect(&studio_, &StudioController::changed, this, [this] {
+        const auto stamp = documentStamp(studio_);
+        if (stamp != gateStamp_) { // pas de recalcul des listes de fils pour un simple statut
+            gateStamp_ = stamp;
+            emit changed();
+        }
+    });
     if (!configDir.empty()) {
         chartDir_ = configDir / "charts";
         stockPath_ = configDir / "my_threads.json";
@@ -335,6 +343,18 @@ bool ThreadController::moveInOrder(const QString& objectId, int toPosition) {
     return report(
         desktop_v2::moveInOrder(studio_.session(), id, static_cast<std::size_t>(toPosition)),
         QStringLiteral("Ordre de couture modifié"));
+}
+
+bool ThreadController::moveToPositionAbsolute(const QString& objectId, int toPosition) {
+    bool parsed = false;
+    const auto id = objectId.toULongLong(&parsed);
+    if (!parsed || toPosition < 0) {
+        return report({false, "Objet ou position invalide"}, {});
+    }
+    // moveToPositionAbsolute prend une position absolue (int) au lieu d'un décalage relatif
+    return report(desktop_v2::moveToPositionAbsolute(studio_.session(), id,
+                                                     static_cast<std::size_t>(toPosition)),
+                  QStringLiteral("Ordre de couture modifié (déplacement absolu)"));
 }
 
 QVariantList ThreadController::searchThreads(const QString& chartId, const QString& query) const {
@@ -784,3 +804,7 @@ bool ThreadController::renameColorway(int index, const QString& name) {
 }
 
 } // namespace openstitch::desktop_v2::studio
+
+// force rebuild marker for absolute move feature
+
+// force rebuild for absolute move feature

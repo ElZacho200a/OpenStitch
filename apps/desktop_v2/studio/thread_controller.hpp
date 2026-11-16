@@ -5,6 +5,7 @@
 #include <QString>
 #include <QUrl>
 #include <QVariantList>
+#include <cstdint>
 #include <filesystem>
 #include <optional>
 
@@ -67,6 +68,7 @@ public:
     Q_INVOKABLE bool setThreadVisible(int entry, bool visible);
     Q_INVOKABLE bool selectThreadObjects(int entry);
     Q_INVOKABLE bool moveInOrder(const QString& objectId, int toPosition);
+    Q_INVOKABLE bool moveToPositionAbsolute(const QString& objectId, int toPosition);
 
     // --- Charts ----------------------------------------------------------------------------------
     // [{chartId, code, name, brand, color, distance}]
@@ -110,6 +112,7 @@ signals:
     void stockChanged();
 
 private:
+    std::uint64_t gateStamp_{0}; // documentStamp() au dernier changed rediffusé
     bool report(const ServiceResult& result, const QString& success);
     [[nodiscard]] bool persistStock(const thread_palette::ThreadStock& stock);
     [[nodiscard]] bool persistStockSetting(bool limit);

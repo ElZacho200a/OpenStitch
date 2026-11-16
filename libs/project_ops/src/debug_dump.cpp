@@ -62,12 +62,13 @@ Result<void> write_debug_dir(const std::filesystem::path& dir, const document::P
     const std::size_t n = static_cast<std::size_t>(src.width) * src.height;
 
     // Régions de la segmentation.
-    if (project.segmentation && project.segmentation->labels.size() == n) {
+    if (project.imageSource().segmentation &&
+        project.imageSource().segmentation->labels.size() == n) {
         image::Image regions;
         regions.width = src.width;
         regions.height = src.height;
         regions.rgba.assign(n * 4, 255);
-        const auto& seg = *project.segmentation;
+        const auto& seg = *project.imageSource().segmentation;
         for (std::size_t i = 0; i < n; ++i) {
             const std::uint32_t l = seg.labels[i];
             if (l != 0 && l <= seg.region_slots.size() && seg.region_slots[l - 1]) {
@@ -114,8 +115,8 @@ Result<void> write_debug_dir(const std::filesystem::path& dir, const document::P
 
     // Couverture réelle des fils et carte d'erreurs (si des points sont cousus).
     if (auto model = build_thread_model(project)) {
-        const auto raster =
-            rasterize_threads(*model, src.width, src.height, project.mm_per_px.value, 0.55);
+        const auto raster = rasterize_threads(*model, src.width, src.height,
+                                              project.imageSource().mm_per_px.value, 0.55);
         image::Image cover;
         cover.width = src.width;
         cover.height = src.height;
@@ -141,8 +142,9 @@ Result<void> write_debug_dir(const std::filesystem::path& dir, const document::P
     }
 
     json d;
-    d["image"] = {
-        {"width_px", src.width}, {"height_px", src.height}, {"mm_per_px", project.mm_per_px.value}};
+    d["image"] = {{"width_px", src.width},
+                  {"height_px", src.height},
+                  {"mm_per_px", project.imageSource().mm_per_px.value}};
     d["regions"] = report.regions;
     d["background_skipped"] = report.background_skipped;
     d["background_auto"] = report.background_auto;

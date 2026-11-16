@@ -10,6 +10,7 @@ Controls.Popup {
     id: dialog
     objectName: "preferencesDialog"
     readonly property bool hasPrefs: typeof prefs !== "undefined" && prefs !== null
+    readonly property bool hasUsage: typeof usage !== "undefined" && usage !== null
     readonly property bool hasCompanion: typeof companion !== "undefined" && companion !== null
     modal: true
     focus: true
@@ -104,6 +105,38 @@ Controls.Popup {
             Text {
                 Layout.fillWidth: true
                 text: qsTr("Langue : français (seule langue de l'interface pour l'instant). Les raccourcis sont fixes ; Aide ▸ Raccourcis les liste.")
+                color: Theme.faint
+                wrapMode: Text.WordWrap
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.smallSize
+            }
+
+            SectionLabel { text: qsTr("USAGE") }
+            StudioCheckBox {
+                objectName: "usageLogCheck"
+                visible: dialog.hasUsage
+                text: qsTr("Enregistrer l'usage de l'application sur cet ordinateur (jamais envoyé)")
+                checked: dialog.hasUsage && usage.enabled
+                enabled: dialog.hasUsage && !usage.lockedByEnvironment
+                Accessible.name: text
+                onToggled: usage.enabled = checked
+                contentItem: Text {
+                    leftPadding: 28
+                    text: parent.text
+                    color: parent.enabled ? Theme.foreground : Theme.faint
+                    wrapMode: Text.WordWrap
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.bodySize
+                    verticalAlignment: Text.AlignVCenter
+                }
+            }
+            Text {
+                Layout.fillWidth: true
+                visible: dialog.hasUsage
+                text: dialog.hasUsage && usage.lockedByEnvironment
+                      ? qsTr("Désactivé par la variable d'environnement OPENSTITCH_USAGE_LOG.")
+                      : qsTr("Outils, commandes et espaces utilisés, sans nom de fichier ni texte saisi. Dossier : ")
+                        + (dialog.hasUsage ? usage.folder : "")
                 color: Theme.faint
                 wrapMode: Text.WordWrap
                 font.family: Theme.fontFamily

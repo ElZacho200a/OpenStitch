@@ -1225,7 +1225,7 @@ void PropertiesPanelTest::autoSatinMethodChoiceEmitsTheStrategy() {
     panel.showEmbroidery(autoSatinObject(40));
     auto* combo = panel.findChild<QComboBox*>(QStringLiteral("combo_autoSatinStrategy"));
     QVERIFY(combo != nullptr);
-    QCOMPARE(combo->count(), 3);
+    QCOMPARE(combo->count(), 4);
     QCOMPARE(combo->currentIndex(), 0); // le squelette reste le défaut
     for (int i = 0; i < combo->count(); ++i) {
         QVERIFY(!combo->itemData(i, Qt::ToolTipRole).toString().isEmpty());

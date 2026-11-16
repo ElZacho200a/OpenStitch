@@ -1,10 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "vector_layer.hpp"
 
+#include <map>
+
 #include <QImage>
 #include <QPainter>
 #include <QPen>
+#include <QTransform>
+#include <QtGui/private/qtriangulator_p.h>
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <utility>
 
@@ -45,6 +50,105 @@ void appendPath(QPainterPath& out, const geometry::Path& path, std::vector<QPoin
     }
 }
 
+// Apparence d'une forme, commune au raster logiciel et aux triangles GPU.
+constexpr double kOutlineMm = 0.18;
+int fillAlpha(const VectorShape& shape) {
+    return shape.sourceRegion != 0 ? 235 : 200;
+}
+bool dashedOutline(const VectorShape& shape) {
+    return shape.sourceRegion == 0; // forme dessinée à la main : contour pointillé distinct
+}
+
+StudioVertex premultiplied(QPointF p, const QColor& color, int alpha) {
+    const auto mul = [alpha](int c) { return static_cast<std::uint8_t>(c * alpha / 255); };
+    return {static_cast<float>(p.x()), static_cast<float>(p.y()), mul(color.red()),
+            mul(color.green()),        mul(color.blue()),         static_cast<std::uint8_t>(alpha)};
+}
+
+// Unité de travail des aplatissements : 10 µm. La triangulation de Qt arrondit à 1/32 d'unité et
+// découpe les courbes à environ une unité près, soit bien sous le pixel au zoom maximal.
+constexpr double kUnitsPerMm = 100.0;
+
+// Remplissage pair-impair (trous compris) en triangles.
+void appendFill(std::vector<StudioVertex>& out, const VectorShape& shape) {
+    const QTriangleSet set =
+        qTriangulate(shape.path, QTransform::fromScale(kUnitsPerMm, kUnitsPerMm));
+    const auto& v = set.vertices;
+    const int count = set.indices.size();
+    const bool wide = set.indices.type() == QVertexIndexVector::UnsignedInt;
+    const auto* idx32 = static_cast<const quint32*>(set.indices.data());
+    const auto* idx16 = static_cast<const quint16*>(set.indices.data());
+    const int alpha = fillAlpha(shape);
+    out.reserve(out.size() + static_cast<std::size_t>(count));
+    for (int i = 0; i + 2 < count; i += 3) {
+        for (int k = 0; k < 3; ++k) {
+            const auto at = static_cast<qsizetype>(wide ? idx32[i + k] : idx16[i + k]);
+            const QPointF p(v[2 * at] / kUnitsPerMm, v[2 * at + 1] / kUnitsPerMm);
+            out.push_back(premultiplied(p, shape.color, alpha));
+        }
+    }
+}
+
+// Un trait [a, b] de largeur `width`, prolongé d'une demi-largeur à chaque bout (bouts carrés :
+// les traits successifs se recouvrent aux sommets, sans trou aux angles).
+void appendStroke(std::vector<StudioVertex>& out, QPointF a, QPointF b, double width,
+                  const QColor& color) {
+    const double dx = b.x() - a.x();
+    const double dy = b.y() - a.y();
+    const double len = std::hypot(dx, dy);
+    if (len <= 0.0) {
+        return;
+    }
+    const double h = width / 2.0;
+    const QPointF along(dx / len * h, dy / len * h);
+    const QPointF across(-along.y(), along.x());
+    const QPointF s = a - along;
+    const QPointF e = b + along;
+    const std::array<QPointF, 6> quad{s + across, s - across, e + across,
+                                      e + across, s - across, e - across};
+    for (const QPointF& p : quad) {
+        out.push_back(premultiplied(p, color, 255));
+    }
+}
+
+// Contour aplati, plein ou pointillé comme `Qt::DashLine` (4 largeurs tracées, 2 laissées), le
+// motif reprenant au début de chaque sous-chemin comme pour QPainter.
+void appendOutline(std::vector<StudioVertex>& out, const VectorShape& shape) {
+    const QColor color = shape.color.darker(160);
+    const bool dashed = dashedOutline(shape);
+    const double on = 4.0 * kOutlineMm;
+    const double off = 2.0 * kOutlineMm;
+    const QTransform up = QTransform::fromScale(kUnitsPerMm, kUnitsPerMm);
+    for (const QPolygonF& poly : shape.path.toSubpathPolygons(up)) {
+        double phase = 0.0; // distance parcourue dans le motif courant
+        for (qsizetype i = 0; i + 1 < poly.size(); ++i) {
+            const QPointF a = poly[i] / kUnitsPerMm;
+            const QPointF b = poly[i + 1] / kUnitsPerMm;
+            if (!dashed) {
+                appendStroke(out, a, b, kOutlineMm, color);
+                continue;
+            }
+            const double len = std::hypot(b.x() - a.x(), b.y() - a.y());
+            double t = 0.0;
+            while (t < len) {
+                const bool drawing = phase < on;
+                const double left = drawing ? on - phase : on + off - phase;
+                const double step = std::min(left, len - t);
+                if (drawing) {
+                    const QPointF p = a + (b - a) * (t / len);
+                    const QPointF q = a + (b - a) * ((t + step) / len);
+                    appendStroke(out, p, q, kOutlineMm, color);
+                }
+                t += step;
+                phase += step;
+                if (phase >= on + off) {
+                    phase = 0.0;
+                }
+            }
+        }
+    }
+}
+
 } // namespace
 
 std::shared_ptr<const VectorLayer> VectorLayer::build(const document::Project& project) {
@@ -53,11 +157,36 @@ std::shared_ptr<const VectorLayer> VectorLayer::build(const document::Project& p
 
 std::shared_ptr<const VectorLayer>
 VectorLayer::build(const std::vector<document::VectorObject>& shapes) {
+    return build(shapes, {}, nullptr);
+}
+
+std::shared_ptr<const VectorLayer>
+VectorLayer::build(const std::vector<document::VectorObject>& shapes,
+                   const std::vector<std::uint64_t>& keys, const VectorLayer* previous) {
     auto layer = std::make_shared<VectorLayer>();
+    const bool keyed = keys.size() == shapes.size();
+    // Formes déjà triangulées, par clé (std::map : ordre déterministe, aucune fuite d'ordre).
+    std::map<std::uint64_t, const VectorShape*> reusable;
+    if (keyed && previous != nullptr) {
+        for (const auto& shape : previous->shapes_) {
+            if (shape.key != 0) {
+                reusable.emplace(shape.key, &shape);
+            }
+        }
+    }
     QRectF all;
-    for (const auto& object : shapes) {
+    for (std::size_t index = 0; index < shapes.size(); ++index) {
+        const auto& object = shapes[index];
         if (!object.visible) {
             continue;
+        }
+        if (keyed) {
+            if (const auto it = reusable.find(keys[index]); it != reusable.end()) {
+                const VectorShape& kept = *it->second;
+                all = all.isNull() ? kept.bounds : all.united(kept.bounds);
+                layer->shapes_.push_back(kept);
+                continue;
+            }
         }
         VectorShape shape;
         shape.id = object.id.value;
@@ -76,13 +205,44 @@ VectorLayer::build(const std::vector<document::VectorObject>& shapes) {
         }
         shape.bounds = shape.path.boundingRect();
         all = all.isNull() ? shape.bounds : all.united(shape.bounds);
+        shape.key = keyed ? keys[index] : 0;
+        appendFill(shape.geometry, shape);
+        appendOutline(shape.geometry, shape);
         layer->shapes_.push_back(std::move(shape));
     }
     if (layer->shapes_.empty() || all.width() <= 0 || all.height() <= 0) {
         return layer;
     }
     const double margin = 2.0; // mm : le trait et les nœuds débordent un peu
-    const QRectF area = all.adjusted(-margin, -margin, margin, margin);
+    layer->area_ = all.adjusted(-margin, -margin, margin, margin);
+    std::size_t total = 0;
+    for (const auto& shape : layer->shapes_) {
+        total += shape.geometry.size();
+    }
+    layer->triangles_.reserve(total);
+    for (const auto& shape : layer->shapes_) {
+        layer->triangles_.insert(layer->triangles_.end(), shape.geometry.begin(),
+                                 shape.geometry.end());
+    }
+    return layer;
+}
+
+const OverlayImage& VectorLayer::image() const {
+    std::call_once(rasterOnce_, [this] { rasterize(); });
+    return image_;
+}
+
+qint64 VectorLayer::bytes() const {
+    const auto geometry = static_cast<qint64>(triangles_.size() * sizeof(StudioVertex));
+    return geometry + (rasterized_.load() ? image_.image.sizeInBytes() : 0);
+}
+
+void VectorLayer::rasterize() const {
+    if (shapes_.empty() || area_.width() <= 0 || area_.height() <= 0) {
+        rasterized_ = true;
+        return;
+    }
+    const QRectF& area = area_;
     // Résolution bornée : une seule image, quelle que soit la taille du motif.
     const double pxPerMm = std::clamp(4096.0 / std::max(area.width(), area.height()), 1.0, 12.0);
     QImage image(std::max(1, static_cast<int>(std::ceil(area.width() * pxPerMm))),
@@ -93,23 +253,22 @@ VectorLayer::build(const std::vector<document::VectorObject>& shapes) {
     painter.setRenderHint(QPainter::Antialiasing);
     painter.scale(pxPerMm, pxPerMm);
     painter.translate(-area.topLeft());
-    for (const auto& shape : layer->shapes_) {
+    for (const auto& shape : shapes_) {
         QColor fill = shape.color;
-        fill.setAlpha(shape.sourceRegion != 0 ? 235 : 200);
+        fill.setAlpha(fillAlpha(shape));
         painter.setBrush(fill);
-        QPen outline(shape.color.darker(160), 0.18);
-        // Forme sans région d'origine (dessinée à la main) : contour pointillé distinct.
-        outline.setStyle(shape.sourceRegion != 0 ? Qt::SolidLine : Qt::DashLine);
+        QPen outline(shape.color.darker(160), kOutlineMm);
+        outline.setStyle(dashedOutline(shape) ? Qt::DashLine : Qt::SolidLine);
         painter.setPen(outline);
         painter.drawPath(shape.path);
     }
     painter.end();
-    layer->image_.image = std::move(image);
-    layer->image_.x0 = area.x();
-    layer->image_.y0 = area.y();
-    layer->image_.widthMm = area.width();
-    layer->image_.heightMm = area.height();
-    return layer;
+    image_.image = std::move(image);
+    image_.x0 = area.x();
+    image_.y0 = area.y();
+    image_.widthMm = area.width();
+    image_.heightMm = area.height();
+    rasterized_ = true;
 }
 
 std::optional<std::uint64_t> VectorLayer::pick(double x, double y, double toleranceMm) const {

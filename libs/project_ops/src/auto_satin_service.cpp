@@ -34,13 +34,14 @@ void add_message(std::vector<std::string>& messages, const std::string& message)
 std::optional<std::vector<geometry::PathSet>> pristine_contour(const document::Project& project,
                                                                const document::VectorObject& vector,
                                                                std::vector<std::string>& messages) {
-    if (!vector.source_region || !project.segmentation) {
+    const auto* source = project.findImageSource(vector.source_image);
+    if (!vector.source_region || source == nullptr || !source->segmentation) {
         return std::nullopt;
     }
     vectorization::VectorizeOptions options;
-    options.mm_per_px = project.mm_per_px;
+    options.mm_per_px = source->mm_per_px;
     const auto raw =
-        vectorization::vectorize_region(*project.segmentation, *vector.source_region, options);
+        vectorization::vectorize_region(*source->segmentation, *vector.source_region, options);
     if (!raw) {
         add_message(messages, "contour brut de la région non rétabli : " + raw.error().message);
         return std::nullopt;
@@ -241,6 +242,29 @@ Result<AutoSatinPlan> plan_auto_satin(const document::Project& project, ObjectId
     }
     plan.accepted = true;
     return plan;
+}
+
+std::optional<SatinWidth> satin_width(const document::Project& project, ObjectId vector_object) {
+    const document::VectorObject* vector = project.findObject(vector_object);
+    if (vector == nullptr || vector->paths.empty()) {
+        return std::nullopt;
+    }
+    const geometry::PathSet* largest = nullptr;
+    double largest_area = -1.0;
+    for (const auto& set : vector->paths) {
+        const double area = std::abs(geometry::signed_area_um2(set.outer));
+        if (area > largest_area) {
+            largest_area = area;
+            largest = &set;
+        }
+    }
+    const auto analysis =
+        auto_satin::analyze_region(*largest, auto_satin::stable_skeleton_analysis());
+    if (!analysis) {
+        return std::nullopt;
+    }
+    const auto& r = analysis->report;
+    return SatinWidth{r.mean_width_mm, r.minimum_width_mm, r.maximum_width_mm, r.is_elongated};
 }
 
 } // namespace openstitch::project_ops

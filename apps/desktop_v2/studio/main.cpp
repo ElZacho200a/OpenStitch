@@ -12,6 +12,7 @@
 #include <QFileInfo>
 #include <QStandardPaths>
 #include <filesystem>
+#include <memory>
 
 #include "action_controller.hpp"
 #include "analysis_controller.hpp"
@@ -22,6 +23,7 @@
 #include "fade_controller.hpp"
 #include "file_controller.hpp"
 #include "fix_controller.hpp"
+#include "frame_probe.hpp"
 #include "gpu_canvas.hpp"
 #include "help_controller.hpp"
 #include "history_controller.hpp"
@@ -38,6 +40,7 @@
 #include "studio_controller.hpp"
 #include "thread_controller.hpp"
 #include "tool_controller.hpp"
+#include "usage_controller.hpp"
 #include "vector_controller.hpp"
 #include "vector_space_controller.hpp"
 #include "view_controller.hpp"
@@ -75,6 +78,23 @@ int main(int argc, char** argv) {
              "virgules : vue, fils, analyse, satin, fondu, points, tirage, applique, corriger, "
              "inspecteur ; un seul panneau à la fois par groupe, le dernier gagne)"),
          QStringLiteral("liste")});
+    parser.addOption({QStringLiteral("realistic"),
+                      QStringLiteral("Force le rendu réaliste (déjà le défaut hors --software)")});
+    parser.addOption({QStringLiteral("flat"),
+                      QStringLiteral("Démarre en rendu filaire au lieu du rendu réaliste")});
+    parser.addOption(
+        {QStringLiteral("window-size"),
+         QStringLiteral("Recette : taille logique de la fenêtre, LARGEURxHAUTEUR (ex. 1280x720)"),
+         QStringLiteral("taille")});
+    parser.addOption(
+        {QStringLiteral("frame-stats"),
+         QStringLiteral("Mesure les frames de la vraie fenêtre, écrit ce JSON, quitte"),
+         QStringLiteral("json")});
+    parser.addOption({QStringLiteral("frame-scenario"),
+                      QStringLiteral("Scénario de mesure : idle (défaut) ou pan"),
+                      QStringLiteral("scenario"), QStringLiteral("idle")});
+    parser.addOption({QStringLiteral("frame-seconds"), QStringLiteral("Durée de la mesure (s)"),
+                      QStringLiteral("s"), QStringLiteral("8")});
     parser.process(app);
     {
         // Default font of every Qt control (Theme.fontFamily / Theme.bodySize): a control that is
@@ -105,6 +125,13 @@ int main(int argc, char** argv) {
                          QStandardPaths::writableLocation(QStandardPaths::AppDataLocation));
     InspectorController inspector(controller);
     ToolController tools(controller);
+    // Journal d'usage local (docs/source/usage-log.md) : jamais envoyé, désactivable.
+    UsageLog usageLog(UsageController::defaultOptions(QCoreApplication::applicationVersion()));
+    UsageController usage(usageLog);
+    usage.record(QStringLiteral("session"), QStringLiteral("start"));
+    QObject::connect(&app, &QCoreApplication::aboutToQuit, &usage,
+                     [&usage] { usage.record(QStringLiteral("session"), QStringLiteral("end")); });
+    usage.observe(actions, tools);
     VectorController vectors(controller);
     const std::filesystem::path configDir(
         QStandardPaths::writableLocation(QStandardPaths::AppDataLocation).toStdWString());
@@ -137,6 +164,7 @@ int main(int argc, char** argv) {
     engine.rootContext()->setContextProperty(QStringLiteral("satin"), &satin);
     engine.rootContext()->setContextProperty(QStringLiteral("fade"), &fade);
     engine.rootContext()->setContextProperty(QStringLiteral("prefs"), &prefs);
+    engine.rootContext()->setContextProperty(QStringLiteral("usage"), &usage);
     engine.rootContext()->setContextProperty(QStringLiteral("help"), &help);
     engine.rootContext()->setContextProperty(QStringLiteral("companion"), &companion);
     engine.rootContext()->setContextProperty(QStringLiteral("pointEdit"), &pointEdit);
@@ -208,6 +236,23 @@ int main(int argc, char** argv) {
             }
         }
     }
+    if (parser.isSet(QStringLiteral("window-size"))) {
+        // Captures aux largeurs de référence (1280x720, 1920x1200…) : la taille minimale de la
+        // fenêtre reste appliquée par Qt.
+        const auto parts =
+            parser.value(QStringLiteral("window-size")).toLower().split(QLatin1Char('x'));
+        const int w = parts.size() == 2 ? parts[0].toInt() : 0;
+        const int h = parts.size() == 2 ? parts[1].toInt() : 0;
+        if (w > 0 && h > 0) {
+            window->resize(w, h);
+        }
+    }
+    // Le rendu réaliste (fil en relief sur tissu clair) est le visage par défaut de Studio. Le
+    // repli CPU étant coûteux, --software démarre en filaire ; --flat le force, --realistic aussi.
+    if (parser.isSet(QStringLiteral("realistic")) ||
+        (!parser.isSet(QStringLiteral("flat")) && !parser.isSet(QStringLiteral("software")))) {
+        view.setRealistic(true);
+    }
     if (parser.isSet(QStringLiteral("open-space"))) {
         if (auto* workspace = window->findChild<WorkspaceController*>()) {
             workspace->setCurrent(parser.value(QStringLiteral("open-space")));
@@ -230,8 +275,33 @@ int main(int argc, char** argv) {
             files.openPath(last);
         }
     }
+    std::unique_ptr<FrameProbe> probe;
+    if (parser.isSet(QStringLiteral("frame-stats"))) {
+        probe = std::make_unique<FrameProbe>(*window, parser.value(QStringLiteral("frame-stats")),
+                                             parser.value(QStringLiteral("frame-scenario")),
+                                             parser.value(QStringLiteral("frame-seconds")).toInt());
+        // Départ après la scène de points ET quelques frames d'installation (QML + GPU).
+        QObject::connect(&controller, &StudioController::loadFinished, &app, [&](bool success) {
+            if (!success) {
+                app.exit(3);
+                return;
+            }
+            QTimer::singleShot(1500, &app, [&] {
+                auto* canvas = window->findChild<GpuCanvas*>(QStringLiteral("studioCanvas"));
+                probe->start(canvas ? canvas : window->findChild<GpuCanvas*>());
+            });
+        });
+        // Projet sans objet de broderie (image/segmentation seulement) : aucune scène de points
+        // n'est construite et loadFinished n'arrive jamais. On mesure alors après 8 s.
+        QTimer::singleShot(8000, &app, [&] {
+            auto* canvas = window->findChild<GpuCanvas*>(QStringLiteral("studioCanvas"));
+            probe->start(canvas ? canvas : window->findChild<GpuCanvas*>());
+        });
+        QTimer::singleShot(120'000, &app, [&app] { app.exit(5); });
+    }
     QTimer capture;
     bool capturePrimed = false;
+    int captureSettleTicks = 0;
     if (parser.isSet(QStringLiteral("screenshot"))) {
         const auto output = parser.value(QStringLiteral("screenshot"));
         QObject::connect(&controller, &StudioController::loadFinished, &app, [&app](bool success) {
@@ -261,6 +331,12 @@ int main(int argc, char** argv) {
                 canvas && canvas->layerFlags().stitches && canvas->geometryBuildCount() == 0;
             if (!capturePrimed || (controller.scene() && waitsForStitches)) {
                 capturePrimed = true;
+                window->update();
+                return;
+            }
+            // Laisse finir les transitions d'interface (pastille d'étape, messages) : la capture
+            // montre l'état posé, pas une image intermédiaire.
+            if (++captureSettleTicks < 14) {
                 window->update();
                 return;
             }

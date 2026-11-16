@@ -89,6 +89,59 @@ Rectangle {
             Text { objectName: "riskSummary"; Layout.fillWidth: true; wrapMode: Text.WordWrap; text: panel.controller.riskVerdict; color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize }
 
             Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Theme.divider }
+            SectionLabel { text: qsTr("STATISTIQUES ET FIDÉLITÉ") }
+            Text {
+                objectName: "statisticsText"
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                text: panel.controller.statistics.text
+                color: Theme.foreground
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.smallSize
+            }
+            Flow {
+                Layout.fillWidth: true
+                spacing: 4
+                StudioButton {
+                    objectName: "fidelityButton"
+                    text: qsTr("Fidélité à l'image")
+                    tooltip: qsTr("Compare l'image source et le fil posé : trous, détails perdus, mauvaises couleurs")
+                    enabled: !panel.controller.busy
+                    onClicked: panel.controller.measureFidelity()
+                }
+                StudioButton { text: qsTr("Effacer"); quiet: true; visible: panel.controller.fidelityReady; onClicked: panel.controller.clearFidelity() }
+            }
+            Text {
+                objectName: "fidelityStale"
+                Layout.fillWidth: true
+                visible: panel.controller.fidelityStale
+                wrapMode: Text.WordWrap
+                text: qsTr("Le motif a changé depuis cette mesure : relancez-la.")
+                color: Theme.warning
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.smallSize
+            }
+            Text {
+                objectName: "fidelityText"
+                Layout.fillWidth: true
+                visible: panel.controller.fidelityReady
+                wrapMode: Text.WordWrap
+                text: panel.controller.fidelityText
+                color: Theme.muted
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.smallSize
+            }
+            Image {
+                objectName: "fidelityMap"
+                Layout.fillWidth: true
+                Layout.preferredHeight: visible ? width * 0.75 : 0
+                visible: panel.controller.fidelityReady && panel.controller.fidelityMapUrl.length > 0
+                source: panel.controller.fidelityMapUrl
+                fillMode: Image.PreserveAspectFit
+                cache: false
+            }
+
+            Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Theme.divider }
             SectionLabel { text: qsTr("OPTIMISER L'ORDRE") }
             RowLayout {
                 Layout.fillWidth: true

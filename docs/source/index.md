@@ -41,7 +41,7 @@ associée** listant les fichiers, classes, fonctions et tests réels.
 - Vous voulez **contribuer** : lisez [Architecture](architecture.md),
   [Référence des modules](module-reference.md), [Modèle de données](data-model.md),
   [Algorithmes](algorithms.md), [Compilation et développement](build-system.md),
-  [Tests](testing.md).
+  [Tests](testing.md), [Journal d'usage local](usage-log.md).
 - Vous voulez **maintenir** : ajoutez [Limitations](limitations.md),
   [Roadmap](roadmap.md), [Licences](licenses.md) et le
   [Guide de contribution](contributing.md).

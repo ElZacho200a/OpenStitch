@@ -1,11 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "vector_space_controller.hpp"
 
+#include "task_pump.hpp"
+
+#include "perf_log.hpp"
+
+#include <QElapsedTimer>
+#include <algorithm>
+#include <cmath>
+
 #include <algorithm>
 
 #include "gpu_canvas.hpp"
+#include "openstitch/autodigitize/autodigitize.hpp"
+#include "openstitch/autodigitize/vector_convert.hpp"
 #include "openstitch/commands/composite_command.hpp"
 #include "openstitch/commands/project_commands.hpp"
+#include "openstitch/core/units.hpp"
+#include "openstitch/project_ops/revectorize.hpp"
 #include "openstitch/vectorization/vectorize.hpp"
 #include "stage_status.hpp"
 
@@ -23,60 +35,12 @@ const document::EmbroideryObject* embroideryOf(const document::Project& project,
     return nullptr;
 }
 
-// Résultat d'une revectorisation des régions de la segmentation courante.
-struct Fresh {
-    std::vector<std::pair<ObjectId, std::vector<geometry::PathSet>>> replace;
-    std::vector<document::VectorObject> add; // id à réserver à l'exécution
-    int keep{0};
-    int orphan{0};
-};
-
-Fresh revectorize(const document::Project& project) {
-    Fresh out;
-    if (!project.segmentation) {
-        return out;
-    }
-    std::vector<RegionId> ids;
-    for (const auto& slot : project.segmentation->region_slots) {
-        if (slot) {
-            ids.push_back(slot->id);
-        }
-    }
-    const vectorization::VectorizeOptions options{.mm_per_px = project.mm_per_px,
-                                                  .detail_mask = &project.detail_mask};
-    const auto results = vectorization::vectorize_regions(*project.segmentation, ids, options);
-    for (std::size_t i = 0; i < ids.size(); ++i) {
-        if (!results[i]) {
-            continue;
-        }
-        const document::VectorObject* existing = nullptr;
-        for (const auto& shape : project.vector_objects) {
-            if (shape.source_region && *shape.source_region == ids[i]) {
-                existing = &shape;
-                break;
-            }
-        }
-        if (existing != nullptr) {
-            if (existing->paths == *results[i]) {
-                ++out.keep;
-            } else {
-                out.replace.emplace_back(existing->id, *results[i]);
-            }
-        } else if (!results[i]->empty()) {
-            document::VectorObject shape;
-            shape.name = "Région " + std::to_string(ids[i].value);
-            shape.source_region = ids[i];
-            shape.rgb = project.segmentation->find(ids[i])->rgb;
-            shape.paths = *results[i];
-            out.add.push_back(std::move(shape));
-        }
-    }
-    for (const auto& shape : project.vector_objects) {
-        if (shape.source_region && project.segmentation->find(*shape.source_region) == nullptr) {
-            ++out.orphan;
-        }
-    }
-    return out;
+// Revectorisation partagée avec l'opération `vectorize_segmentation` (project_ops).
+project_ops::RevectorizePlan revectorize(const document::Project& project, double simplifyMm,
+                                         bool curves, double curveTolerancePx) {
+    return project_ops::revectorize(
+        project,
+        {.precision_mm = simplifyMm, .curves = curves, .curve_tolerance_px = curveTolerancePx});
 }
 
 // One key per vector in painter order. semantic_geometry_fingerprint is translation
@@ -120,14 +84,12 @@ VectorSpaceController::VectorSpaceController(StudioController& studio, QObject* 
     connect(&studio_, &StudioController::selectionChanged, this,
             &VectorSpaceController::layerChanged);
     connect(&studio_, &StudioController::changed, this, &VectorSpaceController::refresh);
-    pump_.setInterval(8);
-    connect(&pump_, &QTimer::timeout, this, [this] { tasks_.pump(); });
-    pump_.start();
+    attachTaskPump(tasks_, this);
+    attachTaskPump(convertTasks_, this);
     refresh();
 }
 
 VectorSpaceController::~VectorSpaceController() {
-    pump_.stop();
     tasks_.cancelAll();
 }
 
@@ -162,7 +124,7 @@ std::vector<std::uint64_t> VectorSpaceController::selectedShapeIds() const {
             break;
         case TargetKind::Region:
             for (const auto& shape : project.vector_objects) {
-                if (shape.source_region && shape.source_region->value == target.id) {
+                if (project.fromActiveImage(shape) && shape.source_region->value == target.id) {
                     add(shape.id.value);
                 }
             }
@@ -172,13 +134,56 @@ std::vector<std::uint64_t> VectorSpaceController::selectedShapeIds() const {
     return out;
 }
 
+namespace {
+constexpr std::size_t kLayerCacheEntries = 4;
+constexpr qint64 kLayerCacheBytes = 96LL * 1024 * 1024; // plafond de mémoire des images conservées
+} // namespace
+
+std::shared_ptr<const VectorLayer>
+VectorSpaceController::cachedLayer(const std::vector<std::uint64_t>& keys) {
+    const auto it =
+        std::ranges::find_if(layerCache_, [&](const CachedLayer& e) { return e.keys == keys; });
+    if (it == layerCache_.end()) {
+        return nullptr;
+    }
+    std::rotate(layerCache_.begin(), it, it + 1); // le plus récemment utilisé en tête
+    return layerCache_.front().layer;
+}
+
+void VectorSpaceController::rememberLayer(const std::vector<std::uint64_t>& keys,
+                                          const std::shared_ptr<const VectorLayer>& layer) {
+    if (!layer) {
+        return;
+    }
+    std::erase_if(layerCache_, [&](const CachedLayer& e) { return e.keys == keys; });
+    layerCache_.insert(layerCache_.begin(), CachedLayer{keys, layer});
+    qint64 bytes = 0;
+    std::size_t kept = 0;
+    for (const auto& entry : layerCache_) {
+        bytes += entry.layer->bytes();
+        if (kept >= kLayerCacheEntries || (kept > 0 && bytes > kLayerCacheBytes)) {
+            break;
+        }
+        ++kept;
+    }
+    layerCache_.resize(std::max<std::size_t>(kept, 1));
+}
+
 void VectorSpaceController::publishLayer(std::shared_ptr<const VectorLayer> layer,
                                          std::vector<std::uint64_t> keys) {
+    rememberLayer(keys, layer);
+    if (perfLogEnabled()) {
+        perfLog(QStringLiteral("vector.layer"),
+                {{QStringLiteral("shapes"),
+                  static_cast<qulonglong>(studio_.session().project().vector_objects.size())},
+                 {QStringLiteral("builds"), builds_ + 1},
+                 {QStringLiteral("cacheHits"), cacheHits_}});
+    }
     layer_ = std::move(layer);
     renderedVisualKeys_ = std::move(keys);
     ++builds_;
     if (canvas_) {
-        canvas_->setVectorLayer(std::shared_ptr<const OverlayImage>(layer_, &layer_->image()));
+        canvas_->setVectorLayer(layer_);
     }
 }
 
@@ -190,13 +195,23 @@ void VectorSpaceController::startAsyncBuild(std::vector<std::uint64_t> keys) {
     // Copie immuable des seules formes : le worker ne touche jamais au document vivant.
     auto shapes = std::make_shared<const std::vector<document::VectorObject>>(
         studio_.session().project().vector_objects);
+    // Le GPU dessine les triangles ; seul le backend logiciel (ou un canevas pas encore affiché)
+    // a besoin de l'image.
+    const bool software = !canvas_ || !canvas_->rhiBackend();
     tasks_.submit<std::shared_ptr<const VectorLayer>>(
         "studio.vector-layer",
-        [shapes](const TaskContext& task) -> Result<std::shared_ptr<const VectorLayer>> {
+        [shapes, software, workerKeys = pendingVisualKeys_,
+         previous = layer_](const TaskContext& task) -> Result<std::shared_ptr<const VectorLayer>> {
             if (task.cancelled()) {
                 return cancelled_error();
             }
-            return VectorLayer::build(*shapes);
+            // Incrémental : seules les formes modifiées sont retriangulées (un déplacement ne
+            // retriangule plus les centaines de formes du motif).
+            auto layer = VectorLayer::build(*shapes, workerKeys, previous.get());
+            if (software) {
+                (void)layer->image(); // backend logiciel : rastériser ici, pas pendant la synchro
+            }
+            return layer;
         },
         [this, request,
          keys = std::move(keys)](Result<std::shared_ptr<const VectorLayer>>&& result) mutable {
@@ -234,7 +249,14 @@ void VectorSpaceController::refresh() {
         if (alreadyBuilding) {
             // Ce même état est déjà en cours de rasterisation : ne pas relancer.
         } else if (differsFromRendered) {
-            if (session.project().vector_objects.size() <= kSyncShapeLimit) {
+            if (const auto known = cachedLayer(nextVisualKeys)) {
+                // État déjà rasterisé (masquer puis ré-afficher, annuler) : republié tel quel.
+                tasks_.cancelAll();
+                ++buildRequest_;
+                pending_ = false;
+                ++cacheHits_;
+                publishLayer(known, std::move(nextVisualKeys));
+            } else if (session.project().vector_objects.size() <= kSyncShapeLimit) {
                 // Petite scène : rasterisation synchrone (quelques ms), comme avant. Toute
                 // rasterisation asynchrone devenue inutile est abandonnée.
                 tasks_.cancelAll();
@@ -292,11 +314,12 @@ void VectorSpaceController::attach(QObject* canvas) {
     if (!canvas_) {
         return;
     }
-    canvas_->setVectorPicker([this](double x, double y, double tolerance, bool toggle) {
-        pickAt(x, y, tolerance, toggle);
-    });
+    canvas_->setVectorPicker(
+        [this](double x, double y, double tolerance, bool toggle, bool keepSelected) {
+            return pickAt(x, y, tolerance, toggle, keepSelected);
+        });
     if (layer_) {
-        canvas_->setVectorLayer(std::shared_ptr<const OverlayImage>(layer_, &layer_->image()));
+        canvas_->setVectorLayer(layer_);
     }
 }
 
@@ -318,7 +341,8 @@ void VectorSpaceController::setSegmentationDirty(bool dirty, const QString& reas
     refresh();
 }
 
-QString VectorSpaceController::pickAt(double x, double y, double toleranceMm, bool toggle) {
+QString VectorSpaceController::pickAt(double x, double y, double toleranceMm, bool toggle,
+                                      bool keepSelected) {
     if (!layer_) {
         return {};
     }
@@ -330,6 +354,14 @@ QString VectorSpaceController::pickAt(double x, double y, double toleranceMm, bo
         return {};
     }
     const auto id = QString::number(*hit);
+    if (keepSelected) {
+        const auto* object = embroideryOf(studio_.session().project(), *hit);
+        const Target target = object ? Target{TargetKind::EmbroideryObject, object->id.value}
+                                     : Target{TargetKind::VectorObject, *hit};
+        if (studio_.session().selection().contains(target)) {
+            return id; // menu contextuel sur la sélection en cours
+        }
+    }
     selectShape(id, toggle);
     return id;
 }
@@ -371,8 +403,9 @@ QVariantMap VectorSpaceController::selectedShape() const {
     }
     const bool hasSource = shape->source_region.has_value();
     const auto regionId = hasSource ? shape->source_region->value : 0;
-    const bool regionExists =
-        hasSource && project.segmentation && project.segmentation->find(*shape->source_region);
+    const auto* source = project.findImageSource(shape->source_image);
+    const bool regionExists = hasSource && source != nullptr && source->segmentation &&
+                              source->segmentation->find(*shape->source_region) != nullptr;
     const auto* object = embroideryOf(project, ids.back());
     return {{QStringLiteral("id"), QString::number(shape->id.value)},
             {QStringLiteral("name"), QString::fromStdString(shape->name)},
@@ -396,17 +429,44 @@ bool VectorSpaceController::selectOriginRegion() {
         return false;
     }
     const auto& project = studio_.session().project();
-    if (!project.segmentation || project.segmentation->find(*shape->source_region) == nullptr) {
+    const auto* source = project.findImageSource(shape->source_image);
+    if (source == nullptr || !source->segmentation ||
+        !source->segmentation->find(*shape->source_region)) {
         say(tr("La région d'origine n'existe plus (fusionnée ou supprimée)."));
         return false;
     }
+    studio_.session().selectImageSource(shape->source_image);
     studio_.session().selection().replace(
         {Target{TargetKind::Region, shape->source_region->value}});
     return true;
 }
 
+void VectorSpaceController::setPrecisionMm(double mm) {
+    const double clamped = std::clamp(mm, 0.02, 2.0);
+    if (clamped != precisionMm_) {
+        precisionMm_ = clamped;
+        emit optionsChanged();
+    }
+}
+
+void VectorSpaceController::setCurves(bool on) {
+    if (on != curves_) {
+        curves_ = on;
+        emit optionsChanged();
+    }
+}
+
+void VectorSpaceController::setCurveTolerancePx(double px) {
+    const double clamped = std::clamp(px, 0.5, 10.0);
+    if (clamped != curveTolerancePx_) {
+        curveTolerancePx_ = clamped;
+        emit optionsChanged();
+    }
+}
+
 QVariantMap VectorSpaceController::updatePlan() const {
-    const auto fresh = revectorize(studio_.session().project());
+    const auto fresh =
+        revectorize(studio_.session().project(), precisionMm_, curves_, curveTolerancePx_);
     return {{QStringLiteral("replace"), static_cast<int>(fresh.replace.size())},
             {QStringLiteral("add"), static_cast<int>(fresh.add.size())},
             {QStringLiteral("keep"), fresh.keep},
@@ -415,11 +475,11 @@ QVariantMap VectorSpaceController::updatePlan() const {
 
 bool VectorSpaceController::updateFromSegmentation() {
     auto& session = studio_.session();
-    if (!session.project().segmentation) {
+    if (!session.project().imageSource().segmentation) {
         say(tr("Aucune segmentation : rien à vectoriser."));
         return false;
     }
-    auto fresh = revectorize(session.project());
+    auto fresh = revectorize(session.project(), precisionMm_, curves_, curveTolerancePx_);
     if (fresh.replace.empty() && fresh.add.empty()) {
         say(tr("Les formes suivent déjà la segmentation."));
         return false;
@@ -441,18 +501,138 @@ bool VectorSpaceController::updateFromSegmentation() {
     return true;
 }
 
-bool VectorSpaceController::convertToEmbroidery() {
-    const auto result = studio_.session().applyBatch(
-        R"({"schema":"openstitch.batch/1","operations":[{"op":"convert_vectors"}]})",
-        "Convertir les formes en broderie");
-    if (!result.committed) {
-        const auto& outcomes = result.report.outcomes;
-        say(tr("Conversion refusée : %1")
-                .arg(outcomes.empty() ? tr("aucun effet")
-                                      : QString::fromStdString(outcomes.back().message)));
+namespace {
+std::vector<ObjectId> segmentedSources(const document::Project& project) {
+    std::vector<ObjectId> out;
+    if (!project.original.empty() && project.segmentation) {
+        out.push_back(ObjectId{}); // image d'origine
+    }
+    for (const auto& entry : project.image_sources) {
+        if (entry.source.segmentation) {
+            out.push_back(entry.calque);
+        }
+    }
+    return out;
+}
+} // namespace
+
+int VectorSpaceController::segmentedLayerCount() const {
+    return static_cast<int>(segmentedSources(studio_.session().project()).size());
+}
+
+bool VectorSpaceController::updateAllLayersFromSegmentation() {
+    auto& session = studio_.session();
+    const auto sources = segmentedSources(session.project());
+    if (sources.empty()) {
+        say(tr("Aucun calque segmenté : rien à vectoriser."));
         return false;
     }
-    say(tr("Formes converties en objets de broderie."));
+    auto group = std::make_unique<commands::CompositeCommand>(
+        "Mettre à jour les formes de tous les calques");
+    std::size_t replaced = 0;
+    std::size_t added = 0;
+    for (const auto source : sources) {
+        auto fresh =
+            project_ops::revectorize(session.project(), {.precision_mm = precisionMm_,
+                                                         .curves = curves_,
+                                                         .curve_tolerance_px = curveTolerancePx_,
+                                                         .image_source = source});
+        replaced += fresh.replace.size();
+        added += fresh.add.size();
+        for (auto& [id, paths] : fresh.replace) {
+            group->add(std::make_unique<commands::SetVectorPathsCommand>(
+                id, std::move(paths), "Mettre à jour une forme"));
+        }
+        for (auto& shape : fresh.add) {
+            shape.id = session.allocateObjectId();
+            group->add(std::make_unique<commands::AddVectorObjectCommand>(std::move(shape)));
+        }
+    }
+    if (replaced + added == 0) {
+        say(tr("Les formes de tous les calques suivent déjà la segmentation."));
+        return false;
+    }
+    session.execute(std::move(group));
+    say(tr("%1 calque(s) : %2 forme(s) remplacée(s), %3 ajoutée(s).")
+            .arg(sources.size())
+            .arg(replaced)
+            .arg(added));
+    return true;
+}
+
+bool VectorSpaceController::convertToEmbroidery() {
+    if (converting_) {
+        return false;
+    }
+    // La classification de chaque forme (tatami, contour…) est longue sur un gros motif : elle
+    // tourne sur un instantané, hors du fil d'interface ; seul l'ajout du lot (une commande
+    // annulable) se fait ici, et seulement si le document n'a pas changé entre-temps.
+    auto snapshot = studio_.session().snapshot();
+    const auto revision = studio_.session().revision();
+    converting_ = true;
+    emit convertingChanged();
+    say(tr("Conversion en broderie…"));
+    convertTasks_.submit<autodigitize::VectorConversion>(
+        "studio.convert-vectors",
+        [snapshot](const TaskContext& task) -> Result<autodigitize::VectorConversion> {
+            if (task.cancelled()) {
+                return cancelled_error();
+            }
+            autodigitize::AutoOptions options;
+            options.mm_per_px = snapshot->imageSource().mm_per_px;
+            auto ids = snapshot->object_ids; // copie : les vrais identifiants sont pris au retour
+            return autodigitize::convert_vectors_to_embroidery(*snapshot, ids, options);
+        },
+        [this, revision](Result<autodigitize::VectorConversion>&& result) {
+            converting_ = false;
+            emit convertingChanged();
+            if (!result) {
+                say(tr("Conversion refusée : %1")
+                        .arg(QString::fromStdString(result.error().message)));
+                return;
+            }
+            auto& session = studio_.session();
+            if (session.revision() != revision) {
+                say(tr("Le document a changé pendant la conversion : relancez-la."));
+                return;
+            }
+            if (result->embroideries.empty()) {
+                say(tr("Conversion refusée : aucun objet de broderie produit"));
+                return;
+            }
+            for (auto& embroidery : result->embroideries) {
+                embroidery.id = session.allocateObjectId();
+            }
+            const auto count = result->embroideries.size();
+            // Un seul pas d'annulation pour tout le lot : l'ajout des broderies et le débord sous
+            // les voisins (ci-dessous) sont simulés sur une copie avant d'être rejoués une seule
+            // fois pour de vrai, dans le même `CompositeCommand`.
+            auto batch =
+                std::make_unique<commands::CompositeCommand>("Numériser les formes vectorielles");
+            auto addCmd = std::make_unique<commands::AddObjectBatchCommand>(
+                std::vector<document::VectorObject>{}, std::move(result->embroideries),
+                "Numériser les formes vectorielles");
+            document::Project scratch = session.project();
+            addCmd->apply(scratch);
+            batch->add(std::move(addCmd));
+            // Sans débord, contours tracés par les centres des pixels + retrait du tatami
+            // laissent un liseré de tissu nu à chaque frontière (même règle que l'op
+            // `overlap_fills` : op_convert.cpp, project_ops).
+            constexpr double kOverlapMm = 0.5;
+            auto overlapChanges =
+                autodigitize::plan_fill_overlap(scratch, to_micrometers(Millimeters{kOverlapMm}));
+            for (auto& change : overlapChanges) {
+                const auto* emb = scratch.findEmbroidery(change.embroidery);
+                auto params = emb->params;
+                std::get<document::TatamiParams>(params).inset = Micrometers{0};
+                batch->add(std::make_unique<commands::SetVectorPathsCommand>(
+                    change.vector, std::move(change.paths), "Élargir sous les voisins"));
+                batch->add(std::make_unique<commands::SetStitchParamsCommand>(
+                    change.embroidery, std::move(params), "Retrait"));
+            }
+            session.execute(std::move(batch));
+            say(tr("%1 forme(s) converties en objets de broderie.").arg(count));
+        });
     return true;
 }
 

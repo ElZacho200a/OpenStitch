@@ -24,8 +24,15 @@
 #include "edit_controller.hpp"
 #include "file_controller.hpp"
 #include "gpu_canvas.hpp"
+#include "image_controller.hpp"
+#include "image_space_controller.hpp"
 #include "openstitch/project_io/project_io.hpp"
+#include "openstitch/stitch_generation/overrides.hpp"
+#include "region_controller.hpp"
+#include "segmentation_space_controller.hpp"
 #include "studio_controller.hpp"
+#include "vector_space_controller.hpp"
+#include "workspace_controller.hpp"
 
 using namespace openstitch;
 using namespace openstitch::desktop_v2;
@@ -75,6 +82,34 @@ QUrl url(const QTemporaryDir& dir, const char* name) {
 QByteArray bytes(const QString& path) {
     QFile file(path);
     return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray();
+}
+
+QQuickItem* findVisualItem(QQuickItem* item, const QString& name) {
+    if (item->objectName() == name) {
+        return item;
+    }
+    for (auto* child : item->childItems()) {
+        if (auto* found = findVisualItem(child, name)) {
+            return found;
+        }
+    }
+    return nullptr;
+}
+
+std::vector<ObjectId> sewnLayerOrder(const document::Project& project) {
+    std::vector<ObjectId> order;
+    if (const auto sequence = stitch_generation::effective_sequence(project); sequence) {
+        for (const auto& command : sequence->commands) {
+            const auto* object = project.findEmbroidery(command.source);
+            const auto* shape =
+                object == nullptr ? nullptr : project.findObject(object->source_vector);
+            if (command.type == stitch::CommandType::Stitch && shape &&
+                shape->source_image.valid() && (order.empty() || order.back() != shape->calque)) {
+                order.push_back(shape->calque);
+            }
+        }
+    }
+    return order;
 }
 
 // Session + contrôleurs sur la vraie scène QML.
@@ -129,6 +164,8 @@ class StudioFilesTest : public QObject {
     Q_OBJECT
 private slots:
     void initTestCase();
+    void openDialogListsOpenRaster();
+    void openingAnotherProjectClearsLayerAndObjectSelection();
     void fileMenuEntriesCloseAfterRealMouseClick();
     void fileMenuStaysReachableInAShortWindow();
     void comboPopupOpensAboveAtWindowBottom();
@@ -138,16 +175,336 @@ private slots:
     void guardDialogIsShownByTheRealQml();
     void discardFromCloseDialogClosesWindowWithoutSaving();
     void recentFilesPersistPruneAndReopen();
+    void openingMessageIsReplacedOnceLoadedInsteadOfLingering();
     void dropAndCommandLineDispatchByExtension();
     void machineExportImportRoundTrip();
+    void insertDesignPreviewThenOneUndoStep();
+    void exportOptionsShowThePlanBeforeWriting();
     void overflowExportRequiresExplicitConfirmation();
     void exportsAreDeterministicAndRepeatable();
     void documentExportsWriteRealFiles();
     void exportOptionsAreOneUndoStepAndRefusedWhenInvalid();
     void imageAndVectorImports();
+    void imagesStayIndependentThroughStitchesAndSave();
+    void openRasterThroughStudioPoints();
+    void batchSegmentationSkipsTransparentImage();
+    void vectorizeAllLayersIsIdempotent();
     void autosaveRecoveryAndDiscard();
     void hoopMachineAndUserHoops();
+    void hoopQuickSettingsAreOneUndoStepEach();
 };
+
+void StudioFilesTest::imagesStayIndependentThroughStitchesAndSave() {
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    QImage image(80, 80, QImage::Format_ARGB32);
+    const auto red = url(dir, "fond.png");
+    const auto blue = url(dir, "dessus.png");
+    image.fill(Qt::transparent);
+    {
+        QPainter painter(&image);
+        painter.fillRect(12, 10, 50, 42, Qt::red);
+    }
+    QVERIFY(image.save(red.toLocalFile()));
+    image.fill(Qt::transparent);
+    {
+        QPainter painter(&image);
+        painter.fillRect(17, 30, 45, 38, Qt::blue);
+    }
+    QVERIFY(image.save(blue.toLocalFile()));
+
+    Rig rig;
+    const auto existing = osp(dir, "existant.osp", studioFixture());
+    QVERIFY(!existing.isEmpty());
+    rig.load(existing);
+    ImageController images(rig.studio);
+    ImageSpaceController imageSpace(rig.studio, images);
+    VectorSpaceController vectors(rig.studio);
+    QQmlApplicationEngine engine;
+    auto* context = engine.rootContext();
+    context->setContextProperty(QStringLiteral("studio"), &rig.studio);
+    context->setContextProperty(QStringLiteral("editor"), &rig.editor);
+    context->setContextProperty(QStringLiteral("actions"), &rig.actions);
+    context->setContextProperty(QStringLiteral("files"), rig.files.get());
+    context->setContextProperty(QStringLiteral("imageTools"), &images);
+    context->setContextProperty(QStringLiteral("imageSpace"), &imageSpace);
+    engine.load(QUrl(QStringLiteral("qrc:/studio/qml/Main.qml")));
+    QVERIFY(!engine.rootObjects().empty());
+    auto* window = engine.rootObjects().front();
+    QSignalSpy imported(rig.files.get(), &FileController::imageImported);
+    const auto broken = url(dir, "corrompu.png");
+    {
+        QFile file(broken.toLocalFile());
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        QCOMPARE(file.write("not a png"), qint64{9});
+    }
+    rig.files->importImageLayers({red, broken});
+    QVERIFY(rig.waitIdle());
+    QVERIFY(rig.files->messageIsError());
+    QVERIFY(rig.session.project().image_sources.empty());
+    QCOMPARE(rig.session.historySize(), std::size_t{0});
+    QCOMPARE(imported.count(), 0);
+    rig.files->importImageLayers({red, blue});
+    QTRY_COMPARE_WITH_TIMEOUT(imported.count(), 1, 15'000);
+    const auto& project = rig.session.project();
+    QCOMPARE(rig.studio.path(), existing);
+    QCOMPARE(project.image_sources.size(), std::size_t{2});
+    QCOMPARE(project.embroidery_objects.size(), std::size_t{2});
+    const auto lower = project.image_sources[0].calque;
+    const auto upper = project.image_sources[1].calque;
+    QCOMPARE(rig.session.historySize(), std::size_t{1});
+    QVERIFY(rig.session.undo());
+    QVERIFY(project.image_sources.empty());
+    QVERIFY(rig.session.redo());
+    QCOMPARE(project.image_sources.size(), std::size_t{2});
+    QVERIFY(rig.session.selectImageSource(lower));
+
+    QCOMPARE(images.applyPrep(QStringLiteral("flip_h"), {}), QString());
+    QTRY_VERIFY_WITH_TIMEOUT(window->findChild<QObject*>(QStringLiteral("imageLayerSelector")),
+                             5'000);
+    auto* picker = window->findChild<QObject*>(QStringLiteral("imageLayerSelector"));
+    QTRY_COMPARE_WITH_TIMEOUT(picker->property("currentText").toString(),
+                              QStringLiteral("fond.png"), 5'000);
+    QVERIFY(QMetaObject::invokeMethod(picker, "activated", Q_ARG(int, 1)));
+    QCOMPARE(picker->property("model").toStringList().size(), 2);
+    QVERIFY(project.imageSourceId() == upper);
+    QVERIFY(rig.session.undo());
+    QVERIFY(project.findImageSource(lower)->ops.empty());
+    QVERIFY(rig.session.redo());
+    QCOMPARE(project.findImageSource(lower)->ops.size(), std::size_t{1});
+    QVERIFY(project.findImageSource(upper)->ops.empty());
+    QVERIFY(project.imageSourceId() == upper);
+
+    for (const ObjectId layer : {lower, upper}) {
+        QVERIFY(rig.session.selectImageSource(layer));
+        images.applySegmentation({});
+        QTRY_VERIFY_WITH_TIMEOUT(images.hasSegmentation() && !images.busy(), 15'000);
+        QVERIFY(vectors.updateFromSegmentation());
+    }
+    QVERIFY(vectors.convertToEmbroidery());
+    QTRY_VERIFY_WITH_TIMEOUT(!vectors.converting(), 15'000); // calcul hors du fil d'interface
+    for (const ObjectId layer : {lower, upper}) {
+        QVERIFY(std::ranges::any_of(project.embroidery_objects, [&](const auto& object) {
+            const auto* shape = project.findObject(object.source_vector);
+            return shape && shape->source_image == layer && shape->calque == layer;
+        }));
+    }
+    QVERIFY(sewnLayerOrder(project) == (std::vector<ObjectId>{lower, upper}));
+
+    const auto path = osp(dir, "calques.osp", project);
+    QVERIFY(!path.isEmpty());
+    const auto saved = project_io::load_project(std::filesystem::path(path.toStdWString()));
+    QVERIFY(saved.has_value());
+    QCOMPARE(saved->image_sources.size(), std::size_t{2});
+    QCOMPARE(saved->findImageSource(lower)->ops.size(), std::size_t{1});
+    QVERIFY(sewnLayerOrder(*saved) == (std::vector<ObjectId>{lower, upper}));
+    for (const ObjectId layer : {lower, upper}) {
+        const auto* source = saved->findImageSource(layer);
+        QVERIFY(source && source->segmentation);
+        QVERIFY(source->original.rgba == project.findImageSource(layer)->original.rgba);
+        QVERIFY(source->segmentation->labels ==
+                project.findImageSource(layer)->segmentation->labels);
+    }
+}
+
+void StudioFilesTest::openRasterThroughStudioPoints() {
+    const auto path = QFINDTESTDATA("../../fixtures/motif-calques.ora");
+    QVERIFY(!path.isEmpty());
+    Rig rig;
+    ImageController images(rig.studio);
+    ImageSpaceController imageSpace(rig.studio, images);
+    RegionController regions(rig.studio, images);
+    SegmentationSpaceController segmentation(rig.studio, images, regions);
+    VectorSpaceController vectors(rig.studio);
+    QQmlApplicationEngine engine;
+    auto* context = engine.rootContext();
+    context->setContextProperty(QStringLiteral("studio"), &rig.studio);
+    context->setContextProperty(QStringLiteral("editor"), &rig.editor);
+    context->setContextProperty(QStringLiteral("actions"), &rig.actions);
+    context->setContextProperty(QStringLiteral("files"), rig.files.get());
+    context->setContextProperty(QStringLiteral("imageTools"), &images);
+    context->setContextProperty(QStringLiteral("imageSpace"), &imageSpace);
+    context->setContextProperty(QStringLiteral("regionTools"), &regions);
+    context->setContextProperty(QStringLiteral("segmentationSpace"), &segmentation);
+    context->setContextProperty(QStringLiteral("vectorStage"), &vectors);
+    engine.addImageProvider(QStringLiteral("prepare"), images.createProvider());
+    engine.load(QUrl(QStringLiteral("qrc:/studio/qml/Main.qml")));
+    QVERIFY(!engine.rootObjects().empty());
+    auto* window = qobject_cast<QQuickWindow*>(engine.rootObjects().front());
+    QVERIFY(window);
+    auto* workspace = window->findChild<WorkspaceController*>();
+    QVERIFY(workspace);
+    const auto ready = [window](const QString& name) {
+        auto* item = findVisualItem(window->contentItem(), name);
+        return item && item->isVisible() && item->isEnabled();
+    };
+    const auto click = [window](const QString& name) {
+        auto* item = findVisualItem(window->contentItem(), name);
+        return item && item->isVisible() && item->isEnabled() &&
+               QMetaObject::invokeMethod(item, "click");
+    };
+
+    QSignalSpy imported(rig.files.get(), &FileController::imageImported);
+    rig.files->openUrl(QUrl::fromLocalFile(path));
+    QTRY_COMPARE_WITH_TIMEOUT(imported.count(), 1, 15'000);
+    QCOMPARE(workspace->current(), QStringLiteral("image"));
+    const auto& project = rig.session.project();
+    QCOMPARE(images.imageLayers(), (QStringList{"Feuilles", "Fleur"}));
+    QCOMPARE(project.image_sources.size(), std::size_t{2});
+    const auto leaves = project.image_sources[0].calque;
+    const auto flower = project.image_sources[1].calque;
+    QVERIFY(!project.findImageSource(leaves)->segmentation);
+    QVERIFY(!project.findImageSource(flower)->segmentation);
+    QVERIFY(project.vector_objects.empty());
+    QVERIFY(project.embroidery_objects.empty());
+
+    workspace->setCurrent(QStringLiteral("segmentation"));
+    const auto beforeSegmentation = rig.session.historyPosition();
+    // Le bouton se désactive dès que le clic démarre la tâche (imageTools.busy) : attendre qu'il
+    // soit cliquable puis cliquer une seule fois, sans réévaluer l'action elle-même (un aperçu en
+    // direct automatique peut aussi occuper imageTools.busy quelques secondes au premier accès).
+    QTRY_VERIFY_WITH_TIMEOUT(ready(QStringLiteral("segmentAllLayersButton")), 15'000);
+    QVERIFY(click(QStringLiteral("segmentAllLayersButton")));
+    QTRY_VERIFY_WITH_TIMEOUT(!images.busy() && project.findImageSource(leaves)->segmentation &&
+                                 project.findImageSource(flower)->segmentation,
+                             15'000);
+    QCOMPARE(project.imageSourceId(), leaves);
+    QCOMPARE(rig.session.historyPosition(), beforeSegmentation + 1);
+    QVERIFY(project.vector_objects.empty());
+    QVERIFY(project.embroidery_objects.empty());
+    QVERIFY(project.findImageSource(leaves)->segmentation->region_count() > 0);
+    QVERIFY(project.findImageSource(flower)->segmentation->region_count() > 0);
+    auto* regionPicker = window->findChild<QObject*>(QStringLiteral("segmentationLayerSelector"));
+    QVERIFY(regionPicker);
+    QVERIFY(QMetaObject::invokeMethod(regionPicker, "activated", Q_ARG(int, 1)));
+    QCOMPARE(project.imageSourceId(), flower);
+    QVERIFY(rig.session.undo());
+    QVERIFY(!project.findImageSource(leaves)->segmentation);
+    QVERIFY(!project.findImageSource(flower)->segmentation);
+    QVERIFY(rig.session.redo());
+    QCOMPARE(project.imageSourceId(), flower);
+    QVERIFY(project.findImageSource(leaves)->segmentation);
+    QVERIFY(project.findImageSource(flower)->segmentation);
+
+    workspace->setCurrent(QStringLiteral("vector"));
+    QTRY_VERIFY_WITH_TIMEOUT(click(QStringLiteral("vectorUpdateButton")), 5'000);
+    QVERIFY(!project.vector_objects.empty());
+    QVERIFY(std::ranges::all_of(project.vector_objects, [&](const auto& shape) {
+        return shape.calque == flower && shape.source_image == flower;
+    }));
+    auto* vectorPicker = window->findChild<QObject*>(QStringLiteral("vectorImageLayerSelector"));
+    QVERIFY(vectorPicker);
+    QVERIFY(QMetaObject::invokeMethod(vectorPicker, "activated", Q_ARG(int, 0)));
+    QCOMPARE(project.imageSourceId(), leaves);
+    QTRY_VERIFY_WITH_TIMEOUT(click(QStringLiteral("vectorUpdateButton")), 5'000);
+    // Un seul clic (QTRY réévalue l'expression) ; la conversion tourne hors du fil d'interface.
+    auto* convert = findVisualItem(window->contentItem(), QStringLiteral("vectorConvertButton"));
+    QTRY_VERIFY_WITH_TIMEOUT(convert && convert->isVisible() && convert->isEnabled(), 5'000);
+    QVERIFY(QMetaObject::invokeMethod(convert, "click"));
+    QTRY_VERIFY_WITH_TIMEOUT(!project.embroidery_objects.empty(), 15'000);
+
+    workspace->setCurrent(QStringLiteral("points"));
+    QTRY_VERIFY_WITH_TIMEOUT(rig.studio.scene() && !rig.studio.busy(), 15'000);
+    const std::vector<ObjectId> expected{leaves, flower};
+    QVERIFY(sewnLayerOrder(project) == expected);
+    QCOMPARE(rig.editor.layers().size(), 2);
+    QVERIFY(rig.editor.setLayerVisible(QString::number(leaves.value), false));
+    QVERIFY(sewnLayerOrder(project) == std::vector<ObjectId>{flower});
+    QVERIFY(rig.editor.setLayerVisible(QString::number(leaves.value), true));
+
+    const QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const auto savedPath = osp(dir, "openraster.osp", project);
+    QVERIFY(!savedPath.isEmpty());
+    const auto saved = project_io::load_project(std::filesystem::path(savedPath.toStdWString()));
+    QVERIFY(saved.has_value());
+    QVERIFY(sewnLayerOrder(*saved) == expected);
+}
+
+void StudioFilesTest::batchSegmentationSkipsTransparentImage() {
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    QImage source(32, 32, QImage::Format_ARGB32);
+    const auto solid = url(dir, "plein.png");
+    const auto transparent = url(dir, "transparent.png");
+    source.fill(Qt::red);
+    QVERIFY(source.save(solid.toLocalFile()));
+    source.fill(Qt::transparent);
+    QVERIFY(source.save(transparent.toLocalFile()));
+
+    Rig rig;
+    ImageController images(rig.studio);
+    QSignalSpy imported(rig.files.get(), &FileController::imageImported);
+    rig.files->importImageLayers({solid, transparent});
+    QTRY_COMPARE_WITH_TIMEOUT(imported.count(), 1, 10'000);
+    const auto& project = rig.session.project();
+    QCOMPARE(project.image_sources.size(), std::size_t{2});
+    const auto before = rig.session.historyPosition();
+    images.applySegmentationToAllLayers({});
+    images.cancelTask();
+    QCOMPARE(rig.session.historyPosition(), before);
+
+    images.applySegmentationToAllLayers({});
+    QTRY_VERIFY_WITH_TIMEOUT(!images.busy() && project.image_sources.front().source.segmentation,
+                             10'000);
+    QCOMPARE(rig.session.historyPosition(), before + 1);
+    QVERIFY(!project.image_sources.back().source.segmentation);
+    QVERIFY(!images.messageIsError());
+    QVERIFY(images.message().contains(QStringLiteral("transparent")));
+}
+
+void StudioFilesTest::vectorizeAllLayersIsIdempotent() {
+    // « Vectoriser les N calques » : chaque calque reçoit les formes de SES régions, une seule
+    // fois ; une seconde passe sur la même segmentation n'ajoute rien (pas de doublon).
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    QImage source(48, 48, QImage::Format_ARGB32);
+    const auto first = url(dir, "rouge.png");
+    const auto second = url(dir, "bleu.png");
+    source.fill(Qt::white);
+    {
+        QPainter painter(&source);
+        painter.fillRect(8, 8, 24, 24, Qt::red);
+    }
+    QVERIFY(source.save(first.toLocalFile()));
+    source.fill(Qt::white);
+    {
+        QPainter painter(&source);
+        painter.fillRect(16, 16, 24, 24, Qt::blue);
+    }
+    QVERIFY(source.save(second.toLocalFile()));
+
+    Rig rig;
+    ImageController images(rig.studio);
+    QSignalSpy imported(rig.files.get(), &FileController::imageImported);
+    rig.files->importImageLayers({first, second});
+    QTRY_COMPARE_WITH_TIMEOUT(imported.count(), 1, 10'000);
+    const auto& project = rig.session.project();
+    QCOMPARE(project.image_sources.size(), std::size_t{2});
+    images.applySegmentationToAllLayers({});
+    QTRY_VERIFY_WITH_TIMEOUT(!images.busy() && project.image_sources[0].source.segmentation &&
+                                 project.image_sources[1].source.segmentation,
+                             10'000);
+
+    VectorSpaceController vectors(rig.studio);
+    QCOMPARE(vectors.segmentedLayerCount(), 2);
+    QVERIFY(vectors.updateAllLayersFromSegmentation());
+    const auto shapes = project.vector_objects.size();
+    QVERIFY(shapes > 0);
+    for (const auto& layer : project.image_sources) {
+        std::size_t regions = 0;
+        for (const auto& slot : layer.source.segmentation->region_slots) {
+            regions += slot ? 1 : 0;
+        }
+        const auto owned = std::ranges::count_if(project.vector_objects, [&](const auto& shape) {
+            return shape.source_region && shape.source_image == layer.calque;
+        });
+        QVERIFY(owned > 0);
+        QVERIFY(static_cast<std::size_t>(owned) <= regions);
+    }
+    QVERIFY(!vectors.updateAllLayersFromSegmentation());
+    QCOMPARE(project.vector_objects.size(), shapes);
+}
 
 void StudioFilesTest::initTestCase() {
     QQuickStyle::setStyle(QStringLiteral("Basic"));
@@ -155,6 +512,61 @@ void StudioFilesTest::initTestCase() {
     qmlRegisterType<GpuCanvas>("OpenStitch.Studio", 1, 0, "GpuCanvas");
     qmlRegisterUncreatableType<StudioController>("OpenStitch.Studio", 1, 0, "StudioController",
                                                  QStringLiteral("Provided by the application"));
+}
+
+void StudioFilesTest::openDialogListsOpenRaster() {
+    Rig rig({}, true);
+    QVERIFY(rig.window);
+    auto* dialog = rig.window->findChild<QObject*>(QStringLiteral("openAnyDialog"));
+    QVERIFY(dialog);
+    const auto filters = dialog->property("nameFilters").toStringList();
+    QVERIFY(!filters.isEmpty());
+    QVERIFY(filters.front().contains(QStringLiteral("*.ora")));
+    QVERIFY(filters.contains(QStringLiteral("OpenRaster (*.ora)")));
+}
+
+void StudioFilesTest::openingAnotherProjectClearsLayerAndObjectSelection() {
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    auto first = studioFixture();
+    first.calques = {{ObjectId{201}, "Premier fond"}, {ObjectId{202}, "Premier dessus"}};
+    auto second = studioFixture();
+    second.calques = {{ObjectId{301}, "Nouveau fond"}, {ObjectId{302}, "Nouveau dessus"}};
+    const auto firstPath = osp(dir, "un.osp", first);
+    const auto secondPath = osp(dir, "deux.osp", second);
+    QVERIFY(!firstPath.isEmpty() && !secondPath.isEmpty());
+
+    Rig rig({}, true);
+    QVERIFY(rig.window);
+    rig.load(firstPath);
+    auto* layerPanel = rig.window->findChild<QObject*>(QStringLiteral("layerPanel"));
+    QVERIFY(layerPanel);
+    auto* tree = layerPanel->findChild<QObject*>(QStringLiteral("objectTree"));
+    auto* rename = layerPanel->findChild<QObject*>(QStringLiteral("layerRenameField"));
+    QVERIFY(tree && rename);
+    QVERIFY(tree->setProperty("currentLayer", QStringLiteral("201")));
+    QVERIFY(rename->setProperty("text", QStringLiteral("Ancien brouillon")));
+    QVERIFY(rename->setProperty("visible", true));
+    const Target selected{TargetKind::EmbroideryObject, firstId};
+    rig.studio.selectObject(QString::number(firstId));
+    QVERIFY(rig.session.selection().contains(selected));
+    QVERIFY(second.findEmbroidery(ObjectId{firstId}));
+
+    auto* dialog = rig.window->findChild<QObject*>(QStringLiteral("openAnyDialog"));
+    QVERIFY(dialog);
+    QTest::keyClick(rig.window, Qt::Key_O, Qt::ControlModifier);
+    QTRY_VERIFY_WITH_TIMEOUT(dialog->property("visible").toBool(), 5'000);
+    QVERIFY(dialog->setProperty("selectedFile", QUrl::fromLocalFile(secondPath)));
+    QCOMPARE(dialog->property("selectedFile").toUrl(), QUrl::fromLocalFile(secondPath));
+    QVERIFY(QMetaObject::invokeMethod(dialog, "accepted"));
+    QVERIFY(QMetaObject::invokeMethod(dialog, "close"));
+    QTRY_VERIFY_WITH_TIMEOUT(
+        rig.studio.path() == secondPath && !rig.studio.busy() && rig.studio.scene(), 15'000);
+    QVERIFY(rig.session.selection().targets().empty());
+    QCOMPARE(tree->property("currentLayer").toString(), QString());
+    QCOMPARE(layerPanel->property("layerId").toString(), QStringLiteral("302"));
+    QVERIFY(!rename->property("visible").toBool());
+    QVERIFY(rename->property("text").toString().isEmpty());
 }
 
 void StudioFilesTest::fileMenuEntriesCloseAfterRealMouseClick() {
@@ -548,6 +960,23 @@ void StudioFilesTest::recentFilesPersistPruneAndReopen() {
     QVERIFY(reread.files->messageIsError());
 }
 
+// QA-STUDIO-001 POP-015/UX-11: "Ouverture de X…" must not linger as if still loading once the
+// document is visible -- loadFinished(true) replaces it instead of leaving it for the toast's
+// 8 s timer.
+void StudioFilesTest::openingMessageIsReplacedOnceLoadedInsteadOfLingering() {
+    QTemporaryDir dir;
+    QTemporaryDir state;
+    QVERIFY(dir.isValid() && state.isValid());
+    const auto path = osp(dir, "boat.osp", studioFixture());
+    Rig rig(state.path());
+    rig.files->openPath(path);
+    QVERIFY(rig.files->message().startsWith(QStringLiteral("Ouverture de")));
+    QTRY_VERIFY_WITH_TIMEOUT(
+        !rig.studio.busy() && !rig.files->busy() && rig.studio.scene() != nullptr, 15'000);
+    QCOMPARE(rig.files->message(), QStringLiteral("Projet ouvert."));
+    QVERIFY(!rig.files->messageIsError());
+}
+
 void StudioFilesTest::dropAndCommandLineDispatchByExtension() {
     QTemporaryDir dir;
     QVERIFY(dir.isValid());
@@ -610,6 +1039,139 @@ void StudioFilesTest::machineExportImportRoundTrip() {
     rig.files->exportMachine(url(dir, "x.abc"));
     QVERIFY(rig.files->messageIsError());
     QVERIFY(!QFileInfo::exists(dir.filePath(QStringLiteral("x.abc"))));
+}
+
+// CX08 : Fichier > Insérer un design. Aperçu dans la vraie boîte QML, insertion en une étape
+// d'annulation avec des identifiants neufs ; un fichier illisible ne peut pas être validé.
+void StudioFilesTest::insertDesignPreviewThenOneUndoStep() {
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    Rig rig({}, true);
+    QVERIFY(rig.window);
+    QTRY_VERIFY_WITH_TIMEOUT(rig.window->isExposed(), 5'000);
+    const QString source = osp(dir, "motif.osp", studioFixture());
+    QVERIFY(!source.isEmpty());
+    rig.session.replaceProject(studioFixture(), true);
+
+    auto* panel = rig.window->findChild<QObject*>(QStringLiteral("filePanel"));
+    auto* dialog = rig.window->findChild<QObject*>(QStringLiteral("insertDesignDialog"));
+    auto* summary = rig.window->findChild<QObject*>(QStringLiteral("insertDesignSummary"));
+    auto* accept = rig.window->findChild<QQuickItem*>(QStringLiteral("acceptInsertDesign"));
+    auto* cancel = rig.window->findChild<QQuickItem*>(QStringLiteral("cancelInsertDesign"));
+    QVERIFY(panel);
+    QVERIFY(dialog);
+    QVERIFY(summary);
+    QVERIFY(accept);
+    QVERIFY(cancel);
+    QVERIFY(rig.window->findChild<QQuickItem*>(QStringLiteral("insertDesignMenuEntry")));
+
+    // Aperçu : rien n'est modifié tant que l'utilisateur n'a pas validé.
+    const auto depth = rig.session.undoNames().size();
+    QVERIFY(QMetaObject::invokeMethod(
+        panel, "previewInsert", Q_ARG(QVariant, QVariant::fromValue(QUrl::fromLocalFile(source)))));
+    QTRY_VERIFY_WITH_TIMEOUT(dialog->property("visible").toBool(), 3'000);
+    QVERIFY2(summary->property("text").toString().contains(QStringLiteral("2 objets")),
+             qPrintable(summary->property("text").toString()));
+    QVERIFY(accept->isEnabled());
+    QCOMPARE(rig.session.project().embroidery_objects.size(), std::size_t{2});
+    QVERIFY(QMetaObject::invokeMethod(accept, "click"));
+    QTRY_VERIFY_WITH_TIMEOUT(!dialog->property("visible").toBool(), 3'000);
+
+    const auto& project = rig.session.project();
+    QCOMPARE(project.embroidery_objects.size(), std::size_t{4});
+    QCOMPARE(project.vector_objects.size(), std::size_t{4});
+    QCOMPARE(rig.session.undoNames().size(), depth + 1);
+    for (std::size_t i = 2; i < 4; ++i) {
+        QVERIFY(project.embroidery_objects[i].id.value > secondId); // ids jamais réutilisés
+    }
+    QVERIFY(!rig.files->messageIsError());
+    QVERIFY(rig.session.undo());
+    QCOMPARE(rig.session.project().embroidery_objects.size(), std::size_t{2});
+
+    // Fichier illisible : refus affiché, bouton Insérer désactivé, document intact.
+    const QString junk = dir.filePath(QStringLiteral("abime.osp"));
+    {
+        QFile file(junk);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write("pas une archive");
+    }
+    QVERIFY(QMetaObject::invokeMethod(
+        panel, "previewInsert", Q_ARG(QVariant, QVariant::fromValue(QUrl::fromLocalFile(junk)))));
+    QTRY_VERIFY_WITH_TIMEOUT(dialog->property("visible").toBool(), 3'000);
+    QVERIFY(!accept->isEnabled());
+    QVERIFY(!summary->property("text").toString().isEmpty());
+    QVERIFY(QMetaObject::invokeMethod(cancel, "click"));
+    QTRY_VERIFY_WITH_TIMEOUT(!dialog->property("visible").toBool(), 3'000);
+    QVERIFY(!rig.files->insertDesign(QUrl::fromLocalFile(junk)));
+    QVERIFY(rig.files->messageIsError());
+    QCOMPARE(rig.session.project().embroidery_objects.size(), std::size_t{2});
+    QVERIFY(rig.warnings.isEmpty());
+}
+
+// CX07 : Fichier > Exporter > Image / Gabarit ouvre les réglages ; l'aperçu annonce la taille en
+// pixels ou le nombre de pages AVANT le choix du fichier, et suit les réglages.
+void StudioFilesTest::exportOptionsShowThePlanBeforeWriting() {
+    Rig rig({}, true);
+    QVERIFY(rig.window);
+    QTRY_VERIFY_WITH_TIMEOUT(rig.window->isExposed(), 5'000);
+    rig.session.replaceProject(studioFixture(), true);
+    auto* panel = rig.window->findChild<QObject*>(QStringLiteral("filePanel"));
+    auto* dialog = rig.window->findChild<QObject*>(QStringLiteral("exportOptionsDialog"));
+    auto* summary = rig.window->findChild<QObject*>(QStringLiteral("exportPlanSummary"));
+    auto* confirm = rig.window->findChild<QQuickItem*>(QStringLiteral("confirmExportOptions"));
+    auto* cancel = rig.window->findChild<QQuickItem*>(QStringLiteral("cancelExportOptions"));
+    QVERIFY(panel && dialog && summary && confirm && cancel);
+    QSignalSpy plans(rig.files.get(), &FileController::exportPlanReady);
+
+    QVERIFY(QMetaObject::invokeMethod(panel, "openExportOptions",
+                                      Q_ARG(QVariant, QStringLiteral("image"))));
+    QTRY_VERIFY_WITH_TIMEOUT(dialog->property("visible").toBool(), 3'000);
+    QTRY_COMPARE_WITH_TIMEOUT(plans.count(), 1, 15'000);
+    const auto image = plans.takeFirst().at(1).toMap();
+    QVERIFY2(image.value(QStringLiteral("ok")).toBool(),
+             qPrintable(image.value(QStringLiteral("message")).toString()));
+    const int width6 = image.value(QStringLiteral("width")).toInt();
+    QVERIFY(width6 > 0);
+    QTRY_VERIFY_WITH_TIMEOUT(summary->property("text").toString().contains(QString::number(width6)),
+                             3'000);
+    QVERIFY(confirm->isEnabled());
+
+    // Doubler la résolution double (à un pixel près) la largeur annoncée.
+    dialog->setProperty("pxPerMm", 12.0);
+    QVERIFY(QMetaObject::invokeMethod(dialog, "refresh"));
+    QTRY_COMPARE_WITH_TIMEOUT(plans.count(), 1, 15'000);
+    const int width12 = plans.takeFirst().at(1).toMap().value(QStringLiteral("width")).toInt();
+    QVERIFY2(std::abs(width12 - 2 * width6) <= 2,
+             qPrintable(QStringLiteral("%1 vs %2").arg(width12).arg(width6)));
+    QVERIFY(QMetaObject::invokeMethod(cancel, "click"));
+    QTRY_VERIFY_WITH_TIMEOUT(!dialog->property("visible").toBool(), 3'000);
+
+    // Gabarit : nombre de pages et papier, recalculés au changement d'orientation.
+    QVERIFY(QMetaObject::invokeMethod(panel, "openExportOptions",
+                                      Q_ARG(QVariant, QStringLiteral("template"))));
+    QTRY_COMPARE_WITH_TIMEOUT(plans.count(), 1, 15'000);
+    auto tpl = plans.takeFirst();
+    QCOMPARE(tpl.at(0).toString(), QStringLiteral("template"));
+    QVERIFY(tpl.at(1).toMap().value(QStringLiteral("pages")).toInt() >= 1);
+    QCOMPARE(tpl.at(1).toMap().value(QStringLiteral("pageWidthMm")).toDouble(), 210.0);
+    dialog->setProperty("landscape", true);
+    QVERIFY(QMetaObject::invokeMethod(dialog, "refresh"));
+    QTRY_COMPARE_WITH_TIMEOUT(plans.count(), 1, 15'000);
+    QCOMPARE(plans.takeFirst().at(1).toMap().value(QStringLiteral("pageWidthMm")).toDouble(),
+             297.0);
+    QTRY_VERIFY_WITH_TIMEOUT(summary->property("text").toString().contains(QStringLiteral("page")),
+                             3'000);
+    QVERIFY(QMetaObject::invokeMethod(cancel, "click"));
+
+    // Document sans point : le gabarit est refusé, le bouton Enregistrer reste inactif.
+    rig.session.replaceProject(document::Project{}, true);
+    QVERIFY(QMetaObject::invokeMethod(panel, "openExportOptions",
+                                      Q_ARG(QVariant, QStringLiteral("template"))));
+    QTRY_COMPARE_WITH_TIMEOUT(plans.count(), 1, 15'000);
+    QVERIFY(!plans.takeFirst().at(1).toMap().value(QStringLiteral("ok")).toBool());
+    QVERIFY(!confirm->isEnabled());
+    QVERIFY(QMetaObject::invokeMethod(cancel, "click"));
+    QVERIFY(rig.warnings.isEmpty());
 }
 
 void StudioFilesTest::overflowExportRequiresExplicitConfirmation() {
@@ -915,6 +1477,63 @@ void StudioFilesTest::hoopMachineAndUserHoops() {
     QVERIFY(rig.files->applyUserHoop(QStringLiteral("Mon cadre")).isEmpty());
     QVERIFY(rig.files->removeUserHoop(QStringLiteral("Mon cadre")).isEmpty());
     QVERIFY(rig.files->userHoops().isEmpty());
+}
+
+// Réglage rapide du cadre (en-tête, clic droit des canevas) : forme, dimensions, rayon, marge en
+// une commande annulable ; « Mes cadres » garde la forme ; le cadre courant est relu après annuler.
+void StudioFilesTest::hoopQuickSettingsAreOneUndoStepEach() {
+    QTemporaryDir state;
+    QVERIFY(state.isValid());
+    Rig rig(state.path(), true);
+    QVERIFY2(rig.window, qPrintable(rig.warnings.join(QStringLiteral(" | "))));
+    rig.session.replaceProject(studioFixture(), true);
+
+    // API : forme réelle, refus clair d'un cadre invalide, déjà-celui-là sans erreur affichée.
+    QVERIFY(rig.files->applyHoopSpec(QStringLiteral("ellipse"), 150.0, 120.0, 0.0, 4.0).isEmpty());
+    auto hoop = rig.files->currentHoop();
+    QCOMPARE(hoop.value(QStringLiteral("shape")).toString(), QStringLiteral("ellipse"));
+    QCOMPARE(hoop.value(QStringLiteral("widthMm")).toDouble(), 150.0);
+    QCOMPARE(hoop.value(QStringLiteral("heightMm")).toDouble(), 120.0);
+    QCOMPARE(hoop.value(QStringLiteral("marginMm")).toDouble(), 4.0);
+    QCOMPARE(rig.session.project().canvas.shape, document::HoopShape::Ellipse);
+    QVERIFY(!rig.files->applyHoopSpec(QStringLiteral("ellipse"), 150.0, 120.0, 0.0, 4.0).isEmpty());
+    QVERIFY(!rig.files->messageIsError());
+    QVERIFY(!rig.files->applyHoopSpec(QStringLiteral("rectangle"), 5.0, 120.0, 0.0, 0.0).isEmpty());
+    QCOMPARE(rig.session.project().canvas.width.value, 150'000);
+    QVERIFY(rig.files->saveCurrentHoopAs(QStringLiteral("Ovale atelier")).isEmpty());
+    const auto mine = rig.files->userHoops().front().toMap();
+    QCOMPARE(mine.value(QStringLiteral("shape")).toString(), QStringLiteral("ellipse"));
+    QCOMPARE(rig.files->currentHoop().value(QStringLiteral("label")).toString(),
+             QStringLiteral("Ovale atelier"));
+    QVERIFY(
+        !rig.files->hoops().front().toMap().value(QStringLiteral("shape")).toString().isEmpty());
+
+    // Vraie scène QML : le panneau s'ouvre depuis l'hôte des espaces, applique en une étape.
+    auto* host = rig.window->findChild<QObject*>(QStringLiteral("spaceHost"));
+    QVERIFY(host);
+    QVERIFY(rig.window->findChild<QObject*>(QStringLiteral("hoopButton")));
+    QVERIFY(QMetaObject::invokeMethod(host, "openHoop", Q_ARG(QVariant, QVariant()),
+                                      Q_ARG(QVariant, 0), Q_ARG(QVariant, 0)));
+    auto* pop = rig.window->findChild<QObject*>(QStringLiteral("hoopPopover"));
+    QVERIFY(pop);
+    QTRY_VERIFY(pop->property("opened").toBool());
+    auto* width = rig.window->findChild<QObject*>(QStringLiteral("hoopWidthSpin"));
+    auto* radius = rig.window->findChild<QObject*>(QStringLiteral("hoopRadiusSpin"));
+    QVERIFY(width && radius);
+    QCOMPARE(width->property("value").toInt(), 150); // relu du document à l'ouverture
+    width->setProperty("value", 200);
+    pop->setProperty("shape", QStringLiteral("rounded"));
+    radius->setProperty("value", 15);
+    QVERIFY(QMetaObject::invokeMethod(pop, "applyNow"));
+    QVERIFY(rig.studio.canUndo());
+    QCOMPARE(rig.session.project().canvas.width.value, 200'000);
+    QCOMPARE(rig.session.project().canvas.shape, document::HoopShape::RoundedRectangle);
+    QCOMPARE(rig.session.project().canvas.corner_radius.value, 15'000);
+
+    rig.studio.undo(); // le panneau ouvert se relit sur le document
+    QCOMPARE(rig.session.project().canvas.width.value, 150'000);
+    QTRY_COMPARE(width->property("value").toInt(), 150);
+    QCOMPARE(pop->property("shape").toString(), QStringLiteral("ellipse"));
 }
 
 QTEST_MAIN(StudioFilesTest)

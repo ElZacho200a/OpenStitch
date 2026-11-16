@@ -29,16 +29,10 @@ SegmentationSpaceController::SegmentationSpaceController(StudioController& studi
             &SegmentationSpaceController::scheduleRefresh);
     connect(&regions_, &RegionController::busyChanged, this,
             &SegmentationSpaceController::scheduleRefresh);
-    connect(&regions_, &RegionController::confirmRequested, this, [this](const QString& text) {
-        confirmText_ = text;
-        emit confirmChanged();
-    });
-    connect(&regions_, &RegionController::regenerated, this, [this] {
-        if (!confirmText_.isEmpty()) {
-            confirmText_.clear();
-            emit confirmChanged();
-        }
-    });
+    // Une seule demande de confirmation, portée par RegionController : la carte du canevas et
+    // l'onglet « Régions » montrent la même question et confirment la même action.
+    connect(&regions_, &RegionController::confirmChanged, this,
+            &SegmentationSpaceController::confirmChanged);
     refresh();
 }
 
@@ -64,11 +58,11 @@ void SegmentationSpaceController::setContours(bool value) {
 }
 
 bool SegmentationSpaceController::hasSegmentation() const {
-    return studio_.session().project().segmentation.has_value();
+    return studio_.session().project().imageSource().segmentation.has_value();
 }
 
 int SegmentationSpaceController::regionCount() const {
-    const auto& seg = studio_.session().project().segmentation;
+    const auto& seg = studio_.session().project().imageSource().segmentation;
     return seg ? static_cast<int>(seg->region_count()) : 0;
 }
 
@@ -82,10 +76,15 @@ bool SegmentationSpaceController::canUpdateShapes() const {
 
 void SegmentationSpaceController::attach(QObject* canvas) {
     canvas_ = canvas;
+    // Arrivée depuis « Aller à la région » (espace Vecteurs) : la région désignée dans la
+    // sélection partagée devient la sélection de l'espace.
+    (void)regions_.adoptSessionSelection();
     publish();
 }
 
 void SegmentationSpaceController::detach() {
+    // Un choix de cible de fusion laissé ouvert fusionnerait au retour la prochaine région cliquée.
+    regions_.setMergeTargetMode(false);
     if (auto* gpu = qobject_cast<GpuCanvas*>(canvas_.data())) {
         gpu->setRegionLayer(nullptr);
     }
@@ -123,18 +122,15 @@ void SegmentationSpaceController::updateShapes(bool confirmed) {
     if (!canUpdateShapes()) {
         return;
     }
-    if (!confirmText_.isEmpty()) {
-        confirmText_.clear();
-        emit confirmChanged();
+    if (confirmed && !regions_.confirmText().isEmpty()) {
+        regions_.confirmRegeneration(); // la demande affichée, pas une autre
+        return;
     }
     regions_.regenerate(false, confirmed, images_.segmentationDefaults());
 }
 
 void SegmentationSpaceController::cancelConfirm() {
-    if (!confirmText_.isEmpty()) {
-        confirmText_.clear();
-        emit confirmChanged();
-    }
+    regions_.cancelConfirmation();
 }
 
 void SegmentationSpaceController::scheduleRefresh() {
@@ -217,9 +213,9 @@ void SegmentationSpaceController::refresh() {
     }
     const QRectF fillRectMm = regionLayerRect(project);
     QRectF highlightRectMm;
-    if (project.segmentation && highlightBoundsPx_.isValid()) {
-        const auto& seg = *project.segmentation;
-        const double mm = project.mm_per_px.value;
+    if (project.imageSource().segmentation && highlightBoundsPx_.isValid()) {
+        const auto& seg = *project.imageSource().segmentation;
+        const double mm = project.imageSource().mm_per_px.value;
         const double x = (highlightBoundsPx_.x() - seg.width / 2.0) * mm;
         const double y = (highlightBoundsPx_.y() - seg.height / 2.0) * mm;
         const double w = highlightBoundsPx_.width() * mm;

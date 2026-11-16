@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "file_controller.hpp"
 
+#include "task_pump.hpp"
+
 #include <QColor>
 #include <QDesktopServices>
 #include <QDir>
@@ -19,8 +21,11 @@
 #include "digitize_pipeline.hpp"
 #include "export_settings.hpp"
 #include "file_io.hpp"
+#include "openstitch/commands/calque_commands.hpp"
+#include "openstitch/document/hoop_library.hpp"
 #include "openstitch/formats/svg.hpp"
 #include "openstitch/image/image.hpp"
+#include "openstitch/project_io/openraster.hpp"
 #include "openstitch/project_ops/factory.hpp"
 #include "openstitch/stitch_analysis/placement_template.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
@@ -30,6 +35,30 @@
 namespace openstitch::desktop_v2::studio {
 
 namespace {
+
+// Forme du cadre telle que la voit le QML : « rectangle », « ellipse », « rounded ».
+QString hoopShapeName(document::HoopShape shape) {
+    switch (shape) {
+    case document::HoopShape::Ellipse:
+        return QStringLiteral("ellipse");
+    case document::HoopShape::RoundedRectangle:
+        return QStringLiteral("rounded");
+    case document::HoopShape::Rectangle:
+        break;
+    }
+    return QStringLiteral("rectangle");
+}
+QString userHoopShapeName(UserHoopShape shape) {
+    switch (shape) {
+    case UserHoopShape::Ellipse:
+        return QStringLiteral("ellipse");
+    case UserHoopShape::RoundedRectangle:
+        return QStringLiteral("rounded");
+    case UserHoopShape::Rectangle:
+        break;
+    }
+    return QStringLiteral("rectangle");
+}
 
 QString fromUtf8(const std::string& text) {
     return QString::fromUtf8(text.data(), static_cast<qsizetype>(text.size()));
@@ -238,11 +267,15 @@ FileController::FileController(StudioController& studio, ActionController* actio
     connect(&studio_, &StudioController::loadFinished, this, [this](bool ok) {
         if (!ok) {
             setMessage(studio_.status(), true);
+        } else if (message_.startsWith(QStringLiteral("Ouverture de "))) {
+            // loadFinished(true) also fires after every successful scene rebuild (any edit,
+            // not just opening a project) : only replace the specific "Ouverture de X…"
+            // message, which otherwise lingers up to 8 s after the document is already
+            // visible (QA-STUDIO-001 POP-015/UX-11), never another in-progress message.
+            setMessage(QStringLiteral("Projet ouvert."));
         }
     });
-    pump_.setInterval(16);
-    connect(&pump_, &QTimer::timeout, this, [this] { tasks_.pump(); });
-    pump_.start();
+    attachTaskPump(tasks_, this);
     autosaveTimer_.setInterval(60'000);
     connect(&autosaveTimer_, &QTimer::timeout, this, [this] { (void)autosaveNow(); });
     if (autosave_) {
@@ -251,7 +284,6 @@ FileController::FileController(StudioController& studio, ActionController* actio
 }
 
 FileController::~FileController() {
-    pump_.stop();
     autosaveTimer_.stop();
     tasks_.cancelAll();
 }
@@ -463,6 +495,14 @@ void FileController::openUrl(const QUrl& url) {
 }
 
 void FileController::openDropped(const QVariantList& urls) {
+    if (urls.size() > 1 && std::ranges::all_of(urls, [](const auto& value) {
+            const auto url = value.toUrl();
+            const auto suffix = lowerSuffix(url.toLocalFile());
+            return url.isLocalFile() && (isImageSuffix(suffix) || suffix == QLatin1String("ora"));
+        })) {
+        importImageLayers(urls);
+        return;
+    }
     for (const auto& value : urls) {
         const QUrl url = value.toUrl();
         if (url.isLocalFile()) {
@@ -483,6 +523,8 @@ void FileController::openPath(const QString& path) {
         guarded(QStringLiteral("ouvrir"), [this, path] { doOpenOsp(path); });
     } else if (isMachineDesignFile(toPath(path))) {
         guarded(QStringLiteral("ouvrir"), [this, path] { doOpenMachine(path); });
+    } else if (suffix == QLatin1String("ora")) {
+        importImageLayers({QUrl::fromLocalFile(path)});
     } else if (isImageSuffix(suffix)) {
         // Opening a raster image starts in the Image space. Segmentation,
         // vectorization and stitch generation are separate, explicit steps.
@@ -491,7 +533,7 @@ void FileController::openPath(const QString& path) {
         importVector(path);
     } else {
         setMessage(QStringLiteral("Format non pris en charge : .%1 (OSP, DST, PES, JEF, EXP, "
-                                  "image, SVG ou DXF attendus)")
+                                  "image, ORA, SVG ou DXF attendus)")
                        .arg(suffix),
                    true);
     }
@@ -556,6 +598,103 @@ QVariantMap FileController::imageImportDefaults() const {
     // Physical scale is a document property. Colour count, region smoothing and
     // stitch type are intentionally NOT import settings in the four-space Studio.
     return {{QStringLiteral("heightMm"), 100.0}};
+}
+
+void FileController::importImageLayers(const QVariantList& urls) {
+    if (urls.empty()) {
+        return;
+    }
+    std::vector<std::pair<std::filesystem::path, std::string>> files;
+    for (const auto& value : urls) {
+        const auto url = value.toUrl();
+        const QFileInfo info(url.toLocalFile());
+        const auto suffix = info.suffix().toLower();
+        if (!url.isLocalFile() || !info.isFile() ||
+            (!isImageSuffix(suffix) && suffix != QLatin1String("ora"))) {
+            setMessage(tr("Image locale non prise en charge : %1").arg(url.toDisplayString()),
+                       true);
+            return;
+        }
+        files.emplace_back(toPath(info.filePath()), toUtf8(info.fileName()));
+    }
+
+    using Entry = commands::ImportImageLayersCommand::Entry;
+    auto& session = studio_.session();
+    const auto revision = session.revision();
+    const auto scale = session.project().hasActiveImage()
+                           ? session.project().imageSource().mm_per_px
+                           : Millimeters{0};
+    runJob<std::vector<Entry>>(
+        tr("Chargement des images"),
+        [files = std::move(files), scale](const TaskContext& task) -> Result<std::vector<Entry>> {
+            std::vector<Entry> entries;
+            entries.reserve(files.size());
+            auto mmPerPx = scale;
+            const auto append = [&](project_io::OpenRasterLayer layer) {
+                if (mmPerPx.value <= 0) {
+                    mmPerPx = Millimeters{100.0 / static_cast<double>(layer.image.height)};
+                }
+                Entry entry;
+                entry.calque.name = std::move(layer.name);
+                entry.calque.visible = layer.visible;
+                entry.source.mm_per_px = mmPerPx;
+                entry.source.original = std::move(layer.image);
+                entries.push_back(std::move(entry));
+            };
+            for (const auto& [file, name] : files) {
+                if (task.cancelled()) {
+                    return cancelled_error();
+                }
+                if (lowerSuffix(fromPath(file)) == QLatin1String("ora")) {
+                    auto layers = project_io::load_openraster(file);
+                    if (!layers) {
+                        auto error = layers.error();
+                        error.message = name + " : " + error.message;
+                        return std::unexpected(std::move(error));
+                    }
+                    for (auto& layer : *layers) {
+                        append(std::move(layer));
+                    }
+                    continue;
+                }
+                auto image = image::load_image(file);
+                if (!image) {
+                    auto error = image.error();
+                    error.message = name + " : " + error.message;
+                    return std::unexpected(std::move(error));
+                }
+                if (image->empty() || image->height <= 0) {
+                    return fail(ErrorCategory::InvalidFile, "Dimensions invalides : " + name);
+                }
+                append({name, std::move(*image), true});
+            }
+            return entries;
+        },
+        [this, revision](std::vector<Entry>&& entries) {
+            auto& current = studio_.session();
+            if (current.revision() != revision) {
+                setMessage(tr("Le document a changé pendant l'import. Relancez l'import."), true);
+                return;
+            }
+            const auto& project = current.project();
+            const auto background =
+                project.calques.empty() &&
+                        (!project.vector_objects.empty() || !project.embroidery_objects.empty() ||
+                         project.hasActiveImage())
+                    ? current.allocateObjectId()
+                    : ObjectId{};
+            for (auto& entry : entries) {
+                entry.calque.id = current.allocateObjectId();
+            }
+            const auto first = entries.front().calque.id;
+            const auto count = static_cast<int>(entries.size());
+            current.execute(std::make_unique<commands::ImportImageLayersCommand>(std::move(entries),
+                                                                                 background));
+            current.selectImageSource(first);
+            emit imageImported();
+            setMessage(tr("%n image(s) importée(s) en calques.", nullptr, count));
+        },
+        tr("Chargement des images impossible : "));
 }
 
 void FileController::importImage(const QString& path, const QVariantMap& options) {
@@ -656,6 +795,33 @@ void FileController::importVector(const QString& path, const QString& stitchType
     }
     setMessage(QStringLiteral("%1 importé : tracés ajoutés au projet (annulable).")
                    .arg(QFileInfo(path).fileName()));
+}
+
+QVariantMap FileController::insertDesignPreview(const QUrl& url) const {
+    const QString path = url.isLocalFile() ? url.toLocalFile() : url.toString();
+    const auto preview = previewDesignInsert(studio_.session().project(), toPath(path));
+    return {{QStringLiteral("ok"), preview.ok},
+            {QStringLiteral("message"), QString::fromStdString(preview.message)},
+            {QStringLiteral("name"), QFileInfo(path).fileName()},
+            {QStringLiteral("machine"), preview.machine},
+            {QStringLiteral("shapes"), static_cast<qulonglong>(preview.shapes)},
+            {QStringLiteral("embroideries"), static_cast<qulonglong>(preview.embroideries)},
+            {QStringLiteral("texts"), static_cast<qulonglong>(preview.texts)},
+            {QStringLiteral("stitches"), static_cast<qulonglong>(preview.stitches)},
+            {QStringLiteral("colors"), static_cast<qulonglong>(preview.colors)},
+            {QStringLiteral("widthMm"), preview.widthMm},
+            {QStringLiteral("heightMm"), preview.heightMm}};
+}
+
+bool FileController::insertDesign(const QUrl& url) {
+    const QString path = url.isLocalFile() ? url.toLocalFile() : url.toString();
+    const auto result = desktop_v2::insertDesign(studio_.session(), toPath(path));
+    if (!result.ok) {
+        setMessage(QString::fromStdString(result.message), true);
+        return false;
+    }
+    setMessage(QStringLiteral("Design inséré : %1 (annulable)").arg(QFileInfo(path).fileName()));
+    return true;
 }
 
 // --- Exports -----------------------------------------------------------------------------------
@@ -941,8 +1107,8 @@ void FileController::exportImage(const QUrl& url, double pxPerMm, int jpegQualit
         setMessage(QStringLiteral("Choisissez un fichier local."), true);
         return;
     }
-    if (pxPerMm < 1.0 || pxPerMm > 20.0) {
-        setMessage(QStringLiteral("Résolution : entre 1 et 20 pixels par mm."), true);
+    if (pxPerMm < kMinPxPerMm || pxPerMm > kMaxPxPerMm) {
+        setMessage(QStringLiteral("Résolution : entre 1 et 12 pixels par mm."), true);
         return;
     }
     const QString suffix = QString::fromStdWString(path.extension().wstring()).mid(1).toLower();
@@ -1032,21 +1198,15 @@ void FileController::exportPlacementTemplate(const QUrl& url, const QVariantMap&
         setMessage(QStringLiteral("Choisissez un fichier local."), true);
         return;
     }
-    stitch_analysis::PlacementTemplateOptions tpl;
     const QString paper = options.value(QStringLiteral("paper"), QStringLiteral("A4")).toString();
-    if (paper == QLatin1String("A3")) {
-        tpl.paper_width = Micrometers{297'000};
-        tpl.paper_height = Micrometers{420'000};
-    } else if (paper == QLatin1String("Letter")) {
-        tpl.paper_width = Micrometers{215'900};
-        tpl.paper_height = Micrometers{279'400};
-    } else if (paper != QLatin1String("A4")) {
+    const auto chosen = placement_template_options(
+        toUtf8(paper), options.value(QStringLiteral("landscape")).toBool(),
+        toUtf8(studio_.title()));
+    if (!chosen) {
         setMessage(QStringLiteral("Papier inconnu : %1 (A4, A3 ou Letter).").arg(paper), true);
         return;
     }
-    tpl.landscape = options.value(QStringLiteral("landscape")).toBool();
-    const QString title = studio_.title();
-    tpl.title = toUtf8(title);
+    const auto tpl = *chosen;
     const auto snapshot = studio_.session().snapshot();
     runJob<int>(
         QStringLiteral("Gabarit de placement"),
@@ -1073,6 +1233,68 @@ void FileController::exportPlacementTemplate(const QUrl& url, const QVariantMap&
         QStringLiteral("Gabarit impossible : "));
 }
 
+namespace {
+// Résultat d'un plan d'export : toujours livré, refus compris (le dialogue l'affiche).
+struct ExportPlanJob {
+    QString error;
+    ImageExportPlan image;
+    TemplateExportPlan tpl;
+};
+} // namespace
+
+void FileController::requestExportPlan(const QString& kind, const QVariantMap& options) {
+    const auto snapshot = studio_.session().snapshot();
+    const bool image = kind == QLatin1String("image");
+    std::optional<stitch_analysis::PlacementTemplateOptions> tpl;
+    const double pxPerMm = options.value(QStringLiteral("pxPerMm"), 6.0).toDouble();
+    if (!image) {
+        tpl = placement_template_options(
+            toUtf8(options.value(QStringLiteral("paper"), QStringLiteral("A4")).toString()),
+            options.value(QStringLiteral("landscape")).toBool(), toUtf8(studio_.title()));
+        if (!tpl) {
+            emit exportPlanReady(kind, {{QStringLiteral("ok"), false},
+                                        {QStringLiteral("message"),
+                                         QStringLiteral("Papier inconnu (A4, A3 ou Letter).")}});
+            return;
+        }
+    }
+    runJob<ExportPlanJob>(
+        QStringLiteral("Aperçu de l'export"),
+        [snapshot, image, tpl, pxPerMm](const TaskContext& task) -> Result<ExportPlanJob> {
+            ExportPlanJob job;
+            if (image) {
+                auto plan = plan_image_export(snapshot, pxPerMm, task);
+                plan ? void(job.image = *plan) : void(job.error = errorText(plan.error()));
+            } else {
+                auto plan = plan_placement_template(*snapshot, *tpl, task);
+                plan ? void(job.tpl = *plan) : void(job.error = errorText(plan.error()));
+            }
+            return job;
+        },
+        [this, kind, image](ExportPlanJob&& job) {
+            QVariantMap plan{{QStringLiteral("ok"), job.error.isEmpty()},
+                             {QStringLiteral("message"), job.error}};
+            if (job.error.isEmpty() && image) {
+                plan.insert({{QStringLiteral("width"), job.image.width},
+                             {QStringLiteral("height"), job.image.height},
+                             {QStringLiteral("pxPerMm"), job.image.pxPerMm},
+                             {QStringLiteral("reduced"), job.image.reduced},
+                             {QStringLiteral("widthMm"), job.image.widthMm},
+                             {QStringLiteral("heightMm"), job.image.heightMm}});
+            } else if (job.error.isEmpty()) {
+                plan.insert({{QStringLiteral("pages"), static_cast<qulonglong>(job.tpl.pages)},
+                             {QStringLiteral("columns"), static_cast<qulonglong>(job.tpl.columns)},
+                             {QStringLiteral("rows"), static_cast<qulonglong>(job.tpl.rows)},
+                             {QStringLiteral("designWidthMm"), job.tpl.designWidthMm},
+                             {QStringLiteral("designHeightMm"), job.tpl.designHeightMm},
+                             {QStringLiteral("pageWidthMm"), job.tpl.pageWidthMm},
+                             {QStringLiteral("pageHeightMm"), job.tpl.pageHeightMm}});
+            }
+            emit exportPlanReady(kind, plan);
+        },
+        QStringLiteral("Aperçu impossible : "));
+}
+
 // --- Cadre et machine --------------------------------------------------------------------------
 
 QVariantList FileController::hoops() const {
@@ -1082,7 +1304,9 @@ QVariantList FileController::hoops() const {
                                    {QStringLiteral("family"), fromUtf8(h.family)},
                                    {QStringLiteral("name"), fromUtf8(h.name)},
                                    {QStringLiteral("widthMm"), h.widthMm},
-                                   {QStringLiteral("heightMm"), h.heightMm}});
+                                   {QStringLiteral("heightMm"), h.heightMm},
+                                   {QStringLiteral("shape"), hoopShapeName(h.shape)},
+                                   {QStringLiteral("cornerRadiusMm"), h.cornerRadiusMm}});
     }
     return list;
 }
@@ -1105,14 +1329,38 @@ QVariantList FileController::userHoops() const {
         list.push_back(QVariantMap{{QStringLiteral("name"), fromUtf8(h.name)},
                                    {QStringLiteral("widthMm"), h.widthMm},
                                    {QStringLiteral("heightMm"), h.heightMm},
-                                   {QStringLiteral("marginMm"), h.marginMm}});
+                                   {QStringLiteral("marginMm"), h.marginMm},
+                                   {QStringLiteral("shape"), userHoopShapeName(h.shape)},
+                                   {QStringLiteral("cornerRadiusMm"), h.cornerRadiusMm}});
     }
     return list;
 }
 
 QVariantMap FileController::currentHoop() const {
     const auto& project = studio_.session().project();
-    return {{QStringLiteral("id"), fromUtf8(currentHoopId(project))},
+    const auto& canvas = project.canvas;
+    const auto mm = [](Micrometers v) { return static_cast<double>(v.value) / 1000.0; };
+    // Libellé : cadre de la bibliothèque, sinon cadre de « Mes cadres » identique, sinon vide.
+    const auto id = currentHoopId(project);
+    QString label;
+    if (const auto* spec = document::find_hoop(id)) {
+        label = QString::fromUtf8(spec->name.data(), static_cast<qsizetype>(spec->name.size()));
+    } else {
+        for (const auto& h : userHoops_) {
+            const auto here = userHoopFromProject(project, h.name);
+            if (here.shape == h.shape && here.widthMm == h.widthMm && here.heightMm == h.heightMm &&
+                here.cornerRadiusMm == h.cornerRadiusMm && here.marginMm == h.marginMm) {
+                label = fromUtf8(h.name);
+                break;
+            }
+        }
+    }
+    return {{QStringLiteral("id"), fromUtf8(id)},
+            {QStringLiteral("label"), label},
+            {QStringLiteral("shape"), hoopShapeName(canvas.shape)},
+            {QStringLiteral("widthMm"), mm(canvas.width)},
+            {QStringLiteral("heightMm"), mm(canvas.height)},
+            {QStringLiteral("cornerRadiusMm"), mm(canvas.corner_radius)},
             {QStringLiteral("marginMm"), currentMarginMm(project)}};
 }
 
@@ -1134,6 +1382,28 @@ QString FileController::applyCustomHoop(double widthMm, double heightMm, double 
         refusalOf(desktop_v2::applyCustomHoop(studio_.session(), widthMm, heightMm, marginMm));
     setMessage(refusal.isEmpty() ? QStringLiteral("Cadre personnalisé appliqué.") : refusal,
                !refusal.isEmpty());
+    return refusal;
+}
+
+QString FileController::applyHoopSpec(const QString& shape, double widthMm, double heightMm,
+                                      double cornerRadiusMm, double marginMm) {
+    UserHoop hoop;
+    hoop.name = "cadre";
+    hoop.shape = shape == QLatin1String("ellipse")   ? UserHoopShape::Ellipse
+                 : shape == QLatin1String("rounded") ? UserHoopShape::RoundedRectangle
+                                                     : UserHoopShape::Rectangle;
+    hoop.widthMm = widthMm;
+    hoop.heightMm = heightMm;
+    hoop.cornerRadiusMm = cornerRadiusMm;
+    hoop.marginMm = marginMm;
+    const auto refusal = refusalOf(desktop_v2::applyUserHoop(studio_.session(), hoop));
+    // « Déjà celui-là » n'est pas une erreur pour un réglage en direct.
+    if (refusal.isEmpty()) {
+        setMessage(QStringLiteral("Cadre %1 × %2 mm appliqué.")
+                       .arg(QString::number(widthMm, 'f', 0), QString::number(heightMm, 'f', 0)));
+    } else if (!refusal.startsWith(QStringLiteral("Le cadre est déjà"))) {
+        setMessage(refusal, true);
+    }
     return refusal;
 }
 

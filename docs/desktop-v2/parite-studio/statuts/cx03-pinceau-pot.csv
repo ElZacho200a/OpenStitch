@@ -1,0 +1,6 @@
+id,statut,preuve,controleur,composant
+4b6cfb58,UI_PARTIAL,pinceau asynchrone et tests prepares - Debug et Release en attente,WarpTool / ToolController,ToolRail.qml / ToolOptions.qml
+7e011329,UI_PARTIAL,pot vectoriel avec apercu et tests prepares - execution en attente,BucketTool / ToolController,ToolRail.qml
+8fff58b4,UI_PARTIAL,rayon et intensite bornes exposes - execution en attente,WarpTool,ToolOptions.qml
+8ce04bb9,UI_PARTIAL,raccourci ] prepare - execution en attente,WarpTool / ToolController,ToolOptions.qml
+c3bcc666,UI_PARTIAL,raccourci [ prepare - execution en attente,WarpTool / ToolController,ToolOptions.qml

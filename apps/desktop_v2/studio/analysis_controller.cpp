@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "analysis_controller.hpp"
 
+#include "task_pump.hpp"
+
+#include <QByteArray>
 #include <QImage>
 #include <algorithm>
 #include <cmath>
@@ -8,6 +11,8 @@
 #include "action_catalog.hpp"
 #include "openstitch/document/hoop_library.hpp"
 #include "openstitch/document/machine_profile.hpp"
+#include "openstitch/project_ops/analysis.hpp"
+#include "openstitch/stitch/sequence.hpp"
 #include "preferences.hpp"
 
 namespace openstitch::desktop_v2::studio {
@@ -91,13 +96,12 @@ AnalysisController::AnalysisController(StudioController& studio, ViewController&
         }
     });
     connect(&studio_, &StudioController::changed, this, &AnalysisController::onDocumentChanged);
-    pump_.setInterval(8);
-    connect(&pump_, &QTimer::timeout, this, [this] { tasks_.pump(); });
-    pump_.start();
+    connect(&studio_, &StudioController::sceneChanged, this,
+            &AnalysisController::statisticsChanged);
+    attachTaskPump(tasks_, this);
 }
 
 AnalysisController::~AnalysisController() {
-    pump_.stop();
     tasks_.cancelAll();
 }
 
@@ -136,6 +140,9 @@ void AnalysisController::onDocumentChanged() {
         return;
     }
     lastRevision_ = revision;
+    if (fidelityRevision_) {
+        emit fidelityChanged(); // la mesure est périmée : le panneau le signale
+    }
     // Maps describe one revision: never leave them over a changed document.
     if (density_) {
         density_.reset();
@@ -384,6 +391,96 @@ QString AnalysisController::riskVerdict() const {
 
 QString AnalysisController::riskLevel() const {
     return risk_ ? q(risk_->level()) : QString();
+}
+
+// --- Statistiques et fidélité (V1) ---------------------------------------------------------------
+
+QVariantMap AnalysisController::statistics() const {
+    const auto& scene = studio_.scene();
+    if (!scene || !scene->effectiveSequence || scene->effectiveSequence->commands.empty()) {
+        return {{QStringLiteral("ready"), false},
+                {QStringLiteral("text"),
+                 QStringLiteral("Statistiques indisponibles : générez d'abord des points.")}};
+    }
+    const auto stats = stitch::compute_stats(*scene->effectiveSequence);
+    const double widthMm = to_millimeters(stats.bounds.max.x - stats.bounds.min.x).value;
+    const double heightMm = to_millimeters(stats.bounds.max.y - stats.bounds.min.y).value;
+    const double threadM = stats.thread_length_um / 1e9;
+    return {{QStringLiteral("ready"), true},
+            {QStringLiteral("stitches"), static_cast<qulonglong>(stats.stitches)},
+            {QStringLiteral("jumps"), static_cast<qulonglong>(stats.jumps)},
+            {QStringLiteral("trims"), static_cast<qulonglong>(stats.trims)},
+            {QStringLiteral("colorChanges"), static_cast<qulonglong>(stats.color_changes)},
+            {QStringLiteral("widthMm"), widthMm},
+            {QStringLiteral("heightMm"), heightMm},
+            {QStringLiteral("threadM"), threadM},
+            {QStringLiteral("text"),
+             QStringLiteral("Points : %1\nSauts : %2\nCoupes : %3\nChangements de couleur : %4\n"
+                            "Dimensions : %5 × %6 mm\nFil cousu estimé : %7 m")
+                 .arg(stats.stitches)
+                 .arg(stats.jumps)
+                 .arg(stats.trims)
+                 .arg(stats.color_changes)
+                 .arg(widthMm, 0, 'f', 1)
+                 .arg(heightMm, 0, 'f', 1)
+                 .arg(threadM, 0, 'f', 2)}};
+}
+
+bool AnalysisController::fidelityStale() const {
+    return fidelityRevision_ && *fidelityRevision_ != studio_.session().revision();
+}
+
+void AnalysisController::clearFidelity() {
+    if (fidelityRevision_ || !fidelityText_.isEmpty()) {
+        fidelityRevision_.reset();
+        fidelityText_.clear();
+        fidelityMapUrl_.clear();
+        emit fidelityChanged();
+    }
+}
+
+void AnalysisController::measureFidelity() {
+    if (studio_.session().project().embroidery_objects.empty()) {
+        say(false, QStringLiteral("Le projet ne contient aucun objet de broderie."));
+        return;
+    }
+    const auto snapshot = studio_.session().snapshot();
+    const auto revision = studio_.session().revision();
+    begin(QStringLiteral("Fidélité à l'image…"));
+    struct Measured {
+        std::uint64_t revision{0};
+        project_ops::FidelityReport report;
+    };
+    tasks_.submit<Measured>(
+        "studio.fidelity",
+        [snapshot, revision](const TaskContext&) -> Result<Measured> {
+            project_ops::FidelityOptions options;
+            options.error_map = true;
+            auto report = project_ops::measure_fidelity(*snapshot, options);
+            if (!report) {
+                return std::unexpected(report.error());
+            }
+            return Measured{revision, std::move(*report)};
+        },
+        [this](Result<Measured>&& result) {
+            end();
+            if (!result) {
+                say(false, q(result.error().message));
+                return;
+            }
+            fidelityRevision_ = result->revision;
+            fidelityText_ = QString::fromStdString(result->report.text);
+            const auto& png = result->report.error_map_png;
+            fidelityMapUrl_ =
+                png.empty()
+                    ? QString()
+                    : QStringLiteral("data:image/png;base64,") +
+                          QString::fromLatin1(QByteArray(reinterpret_cast<const char*>(png.data()),
+                                                         static_cast<qsizetype>(png.size()))
+                                                  .toBase64());
+            emit fidelityChanged();
+            say(true, QStringLiteral("Fidélité mesurée."));
+        });
 }
 
 // --- Order optimisation

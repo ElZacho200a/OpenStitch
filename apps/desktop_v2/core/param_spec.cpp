@@ -31,12 +31,16 @@ constexpr std::string_view kSplit =
 constexpr std::string_view kCorner = "none|Aucun;miter|Onglet;overlap|Chevauchement;cut|Coupe";
 constexpr std::string_view kJagged = "none|Aucun;side_a|Côté A;side_b|Côté B;both|Les deux côtés";
 constexpr std::string_view kStrategy =
-    "skeleton|Squelette;parallel_sweep|Balayage parallèle;medial_axis|Axe médian";
+    "skeleton|Squelette;parallel_sweep|Balayage parallèle;medial_axis|Axe médian;"
+    "guided_satin|Satin guidé";
 constexpr std::string_view kBlanketStyle = "blanket|Boutonnière;zigzag|Zigzag";
 constexpr std::string_view kBlanketSide = "left|Gauche;right|Droite;center|Centré";
 constexpr std::string_view kMotif =
-    "wave|Vague;zigzag|Zigzag;leaf|Feuille;heart|Coeur;diamond|Losange;scallop|Feston";
+    "wave|Vague;zigzag|Zigzag;leaf|Feuille;heart|Coeur;diamond|Losange;scallop|Feston;seed|Graine";
 constexpr std::string_view kTack = "straight|Droit;zigzag|Zigzag;blanket|Boutonnière";
+constexpr std::string_view kGradientMethod =
+    "directional|Directionnel;satin_interlaced|Satin entrelacé;long_and_short|Passé empiétant;"
+    "controlled_scatter|Dispersion contrôlée;cross_hatching|Hachures croisées";
 
 // type, clé, libellé, nature, min, max, pas, unité[, options]
 const std::vector<ParamSpec>& table() {
@@ -58,6 +62,10 @@ const std::vector<ParamSpec>& table() {
         {"tatami", "row_end_clip_mm", "Raccourcissement des fins de rangée", K::Number, 0.0, 5.0,
          0.1, "mm"},
         {"tatami", "edge_outline", "Contour de bordure", K::Bool, 0, 1, 1, ""},
+        {"tatami", "couching_spacing_mm", "Couchage : écart des fils (Bayeux)", K::Number, 0.0,
+         20.0, 0.5, "mm"},
+        {"tatami", "couching_tie_spacing_mm", "Couchage : écart des attaches", K::Number, 1.0, 7.0,
+         0.1, "mm"},
         {"directional", "stagger", "Décalage des rangées (motif en quinconce)", K::Integer, 1, 8, 1,
          ""},
         {"directional", "spacing_regularity", "Régularité de l'écart", K::Number, 0.0, 1.0, 0.05,
@@ -191,7 +199,7 @@ std::vector<ParamSpec> completeTable() {
     appendSatinCommon(t, "satin", false);
     add({"satin", "rungs", "Barreaux", K::List, 0, 2000, 1, ""});
     appendSatinCommon(t, "auto_satin", true);
-    add({"auto_satin", "strategy", "Méthode de calcul", K::Choice, 0, 2, 1, "", kStrategy});
+    add({"auto_satin", "strategy", "Méthode de calcul", K::Choice, 0, 3, 1, "", kStrategy});
     add({"auto_satin", "spacing_mm", "Écart entre traversées", K::Number, 0.1, 2.0, 0.05, "mm"});
     add({"auto_satin", "split_threshold_mm", "Seuil de fractionnement", K::Number, 1.0, 20.0, 0.5,
          "mm"});
@@ -219,14 +227,14 @@ std::vector<ParamSpec> completeTable() {
          0.05, "mm"});
     add({"contour_fill", "pull_mode", "Mode de compensation", K::Choice, 0, 3, 1, "", kPull});
     // Motif le long du contour et remplissage à motif.
-    add({"motif_run", "motif", "Motif", K::Choice, 0, 5, 1, "", kMotif});
+    add({"motif_run", "motif", "Motif", K::Choice, 0, 6, 1, "", kMotif});
     add({"motif_run", "size_mm", "Hauteur du motif", K::Number, 0.5, 40.0, 0.5, "mm"});
     add({"motif_run", "spacing_mm", "Longueur d'une répétition", K::Number, 1.0, 100.0, 0.5, "mm"});
     add({"motif_run", "stitch_length_mm", "Longueur de point", K::Number, 1.0, 7.0, 0.1, "mm"});
     add({"motif_run", "min_length_mm", "Longueur minimale d'un point", K::Number, 0.0, 7.0, 0.1,
          "mm"});
     add({"motif_run", "alternate", "Motif en miroir une fois sur deux", K::Bool, 0, 1, 1, ""});
-    add({"motif_fill", "motif", "Motif", K::Choice, 0, 5, 1, "", kMotif});
+    add({"motif_fill", "motif", "Motif", K::Choice, 0, 6, 1, "", kMotif});
     add({"motif_fill", "size_mm", "Taille du motif", K::Number, 0.5, 40.0, 0.5, "mm"});
     add({"motif_fill", "spacing_mm", "Pas de la grille", K::Number, 1.0, 100.0, 0.5, "mm"});
     add({"motif_fill", "angle_deg", "Angle de la grille", K::Number, -360.0, 360.0, 5.0, "°"});
@@ -239,6 +247,7 @@ std::vector<ParamSpec> completeTable() {
     add({"motif_fill", "pull_compensation_mm", "Compensation de tirage", K::Number, 0.0, 3.0, 0.05,
          "mm"});
     add({"motif_fill", "pull_mode", "Mode de compensation", K::Choice, 0, 3, 1, "", kPull});
+    add({"motif_fill", "scatter", "Dispersion (semis)", K::Number, 0.0, 1.0, 0.05, ""});
     // Radial.
     add({"radial", "row_spacing_mm", "Écart entre rayons", K::Number, 0.1, 10.0, 0.05, "mm"});
     add({"radial", "stitch_length_mm", "Longueur de point", K::Number, 1.0, 7.0, 0.1, "mm"});
@@ -268,11 +277,26 @@ std::vector<ParamSpec> completeTable() {
     add({"crosshatch", "pull_compensation_mm", "Compensation de tirage", K::Number, 0.0, 3.0, 0.05,
          "mm"});
     add({"crosshatch", "pull_mode", "Mode de compensation", K::Choice, 0, 3, 1, "", kPull});
+    add({"crosshatch", "tie_down_mm", "Attaches aux croisements (treillis)", K::Number, 0.0, 4.0,
+         0.1, "mm"});
     // Point de croix et appliqué (complètent les lignes de base).
     add({"cross_stitch", "hidden_underpath", "Liaisons cachées", K::Bool, 0, 1, 1, ""});
     add({"applique", "tack", "Point de maintien", K::Choice, 0, 2, 1, "", kTack});
     add({"applique", "cut_offset_mm", "Décalage du contour de découpe", K::Number, -5.0, 5.0, 0.25,
          "mm"});
+    // Fondu multicolore (mission 2026-11-14). `palette` et `transition` restent hors de cette
+    // table (commande dédiée du panneau de fondu, pas un champ numérique simple) -- comme
+    // `rail_a`/`rail_b` pour le satin.
+    add({"multicolor_gradient", "method", "Méthode", K::Choice, 0, 4, 1, "", kGradientMethod});
+    add({"multicolor_gradient", "complementary", "Rampes complémentaires", K::Bool, 0, 1, 1, ""});
+    add({"multicolor_gradient", "satin_density_mm", "Densité du satin entrelacé", K::Number, 0.1,
+         2.0, 0.05, "mm"});
+    add({"multicolor_gradient", "crosshatch_layers", "Couches (hachures croisées)", K::Integer, 2,
+         3, 1, ""});
+    add({"multicolor_gradient", "crosshatch_angle_deg", "Angle (hachures croisées)", K::Number,
+         -360.0, 360.0, 5.0, "°"});
+    add({"multicolor_gradient", "end_density", "Densité d'arrivée (un seul fil)", K::Number, 0.0,
+         1.0, 0.05, ""});
     return t;
 }
 
@@ -332,7 +356,7 @@ const std::vector<std::string_view>& paramTypeIds() {
     static const std::vector<std::string_view> kIds{
         "running", "tatami",       "satin",        "directional", "auto_satin",
         "blanket", "contour_fill", "motif_run",    "motif_fill",  "radial",
-        "spiral",  "crosshatch",   "cross_stitch", "applique"};
+        "spiral",  "crosshatch",   "cross_stitch", "applique",    "multicolor_gradient"};
     return kIds;
 }
 
@@ -518,6 +542,8 @@ Opt readP(const document::TatamiParams& p, std::string_view key) {
     PS_MM("row_end_clip_mm", row_end_clip);
     PS_B("edge_outline", edge_outline);
     PS_PT("entry_point_mm", entry_point);
+    PS_MM("couching_spacing_mm", couching_spacing);
+    PS_MM("couching_tie_spacing_mm", couching_tie_spacing);
     return std::nullopt;
 }
 
@@ -645,6 +671,7 @@ Opt readP(const document::MotifFillParams& p, std::string_view key) {
     PS_B("hidden_underpath", hidden_underpath);
     PS_MM("pull_compensation_mm", pull_compensation);
     PS_E("pull_mode", pull_mode);
+    PS_N("scatter", scatter);
     return std::nullopt;
 }
 
@@ -682,6 +709,7 @@ Opt readP(const document::CrosshatchFillParams& p, std::string_view key) {
     PS_B("hidden_underpath", hidden_underpath);
     PS_MM("pull_compensation_mm", pull_compensation);
     PS_E("pull_mode", pull_mode);
+    PS_MM("tie_down_mm", tie_down);
     return std::nullopt;
 }
 
@@ -691,6 +719,20 @@ Opt readP(const document::CrossStitchParams& p, std::string_view key) {
     PS_B("full_cross", full_cross);
     PS_N("passes", passes);
     PS_B("hidden_underpath", hidden_underpath);
+    return std::nullopt;
+}
+
+Opt readP(const document::MulticolorGradientParams& p, std::string_view key) {
+    // Palette/transition ne sont pas des champs numériques simples (édition par la commande
+    // dédiée du panneau de fondu, pas le glisser-valeur générique) ; `method` reste un simple
+    // choix comme les autres énumérations de ce fichier.
+    PS_E("method", method);
+    PS_B("complementary", complementary);
+    PS_MM("satin_density_mm", satin_density);
+    PS_N("crosshatch_layers", crosshatch_layers);
+    PS_DEG("crosshatch_angle_deg", crosshatch_angle);
+    if (key == "end_density")
+        return p.end_density;
     return std::nullopt;
 }
 

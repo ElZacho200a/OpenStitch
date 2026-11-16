@@ -18,6 +18,8 @@ struct SimulationMarks {
     std::vector<std::size_t>
         objects; // positions où un nouvel objet commence (0 exclu), croissantes
     std::vector<std::size_t> colours; // positions juste APRÈS un changement de fil, croissantes
+    std::vector<std::size_t> jumps;   // positions des sauts (Jump commands)
+    std::vector<std::size_t> trims;   // positions des coupes (Trim commands)
     std::size_t total{0};             // nombre total de commandes
 };
 

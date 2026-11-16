@@ -71,6 +71,11 @@ public:
     // --- Transformations (une étape d'annulation chacune) -------------------------------------
     Q_INVOKABLE bool rotate(double degrees); // anti-horaire, autour du centre de la sélection
     Q_INVOKABLE bool rotate90(bool clockwise);
+    // Rotation autour d'un centre CHOISI (mm modèle, Y vers le haut, comme les champs de
+    // placement), anti-horaire, entre -360 et 360 degrés : une étape d'annulation.
+    Q_INVOKABLE bool rotateAround(double degrees, double pivotXmm, double pivotYmm);
+    // Centre de la sélection dans le même repère (valeur par défaut du centre de rotation).
+    Q_INVOKABLE [[nodiscard]] QVariantMap selectionCentreMm() const;
     Q_INVOKABLE bool mirror(bool horizontal);
     Q_INVOKABLE bool scale(double factor, double anchorXmm, double anchorYmm); // ancre en mm scène
     Q_INVOKABLE bool duplicate(double offsetMm = 5.0);
@@ -101,6 +106,7 @@ public:
     Q_INVOKABLE bool addLayer(const QString& name);
     Q_INVOKABLE bool renameLayer(const QString& id, const QString& name);
     Q_INVOKABLE bool removeLayer(const QString& id);
+    Q_INVOKABLE bool duplicateLayer(const QString& id);
     Q_INVOKABLE bool setLayerVisible(const QString& id, bool visible);
     Q_INVOKABLE bool setLayerLocked(const QString& id, bool locked);
     Q_INVOKABLE bool moveLayer(const QString& id, int direction);
@@ -116,6 +122,7 @@ signals:
     void eyedropperChanged();
 
 private:
+    std::uint64_t gateStamp_{0}; // documentStamp() au dernier changed rediffusé
     [[nodiscard]] std::vector<std::uint64_t> selectedIds() const;
     [[nodiscard]] bool selectIds(const std::vector<std::uint64_t>& ids, bool additive = false);
     [[nodiscard]] bool visibleObject(std::uint64_t id) const;

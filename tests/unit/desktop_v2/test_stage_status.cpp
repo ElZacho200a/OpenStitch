@@ -128,3 +128,27 @@ TEST_CASE("stage status: an embroidery object without its source shape is stale"
     CHECK(status[2].state == StageState::UpToDate);
     CHECK(status[3].state == StageState::Stale);
 }
+
+TEST_CASE("live tool operations map to the space where their effect shows", "[stage]") {
+    CHECK(stageForOperation("set_source_image") == StageId::Image);
+    CHECK(stageForOperation("image_prep") == StageId::Image);
+    CHECK(stageForOperation("image_size") == StageId::Image);
+    CHECK(stageForOperation("segment_image") == StageId::Segmentation);
+    CHECK(stageForOperation("seg_clean_islands") == StageId::Segmentation);
+    CHECK(stageForOperation("vectorize_segmentation") == StageId::Vector);
+    CHECK(stageForOperation("remove_small_pieces") == StageId::Vector);
+    CHECK(stageForOperation("convert_vectors") == StageId::Points);
+    CHECK(stageForOperation("auto_satin") == StageId::Points);
+
+    // Lot : l'espace de la DERNIÈRE opération ; outils sans espace propre : aucun changement.
+    CHECK(stageForLiveTool("project_apply", {"segment_image", "vectorize_segmentation"}) ==
+          StageId::Vector);
+    CHECK(stageForLiveTool("semantic_import", {}) == StageId::Points);
+    CHECK_FALSE(stageForLiveTool("project_save", {}).has_value());
+    CHECK_FALSE(stageForLiveTool("live_permission", {"lire"}).has_value());
+    CHECK_FALSE(stageForLiveTool("project_apply", {}).has_value());
+    // Opérations neutres : la fenêtre ne bouge pas (régler le cadre pendant l'étape Image).
+    CHECK_FALSE(stageForOperation("set_canvas").has_value());
+    CHECK_FALSE(stageForLiveTool("project_apply", {"set_canvas"}).has_value());
+    CHECK(stageForLiveTool("project_apply", {"image_size", "set_canvas"}) == StageId::Image);
+}

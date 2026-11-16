@@ -50,6 +50,7 @@ const Registry& registry() {
         detail::register_group_ops(r.ops);
         detail::register_convert_ops(r.ops);
         detail::register_cleanup_ops(r.ops);
+        detail::register_step_ops(r.ops);
         std::stable_sort(r.ops.begin(), r.ops.end(),
                          [](const OpSpec& a, const OpSpec& b) { return a.name < b.name; });
         for (std::size_t i = 1; i < r.ops.size(); ++i) {
@@ -328,7 +329,9 @@ BatchReport run(document::Project& project, std::string_view text, const BatchOp
     json doc;
     try {
         doc = json::parse(text);
-    } catch (const json::parse_error& e) {
+    } catch (const json::exception& e) {
+        // `parse_error`, mais aussi `out_of_range` (nombre hors plage, ex. 1e+3086) : un lot
+        // illisible est refusé, jamais propagé en exception.
         return global_error(code::kSchema, std::string("JSON illisible : ") + e.what(), dry);
     }
 

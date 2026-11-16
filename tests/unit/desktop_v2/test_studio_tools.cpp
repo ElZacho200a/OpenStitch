@@ -2,17 +2,26 @@
 // Studio -- famille F « outils de dessin et d'édition vectorielle » : parcours réels (shell QML,
 // vrai canevas, souris QTest, vrai moteur) avec annulation en une étape, Échap et persistance OSP.
 // Aucun mock du moteur.
+#include <QEventLoop>
+#include <QFile>
 #include <QGuiApplication>
+#include <QKeySequence>
 #include <QQmlApplicationEngine>
+#include <QQmlComponent>
 #include <QQmlContext>
 #include <QQuickItem>
 #include <QQuickStyle>
 #include <QQuickWindow>
+#include <QShortcutEvent>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QTimer>
 #include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cmath>
 #include <filesystem>
+#include <numbers>
 
 #include "action_controller.hpp"
 #include "edit_controller.hpp"
@@ -22,6 +31,7 @@
 #include "studio_controller.hpp"
 #include "tool_controller.hpp"
 #include "tool_registry.hpp"
+#include "usage_controller.hpp"
 #include "vector_controller.hpp"
 #include "vector_space_controller.hpp"
 #include "workspace_controller.hpp"
@@ -55,6 +65,34 @@ document::Project anchorProject() {
         project.embroidery_objects.push_back(object);
     }
     project.object_ids.reset(300);
+    return project;
+}
+
+document::Project denseNodeProject(std::size_t count) {
+    auto project = anchorProject();
+    document::VectorObject vector;
+    vector.id = ObjectId{50};
+    geometry::Path path;
+    path.closed = true;
+    path.nodes.reserve(count);
+    constexpr double radiusUm = 25'000.0;
+    for (std::size_t i = 0; i < count; ++i) {
+        const double angle =
+            2.0 * std::numbers::pi * static_cast<double>(i) / static_cast<double>(count);
+        path.nodes.push_back(
+            {{Micrometers{static_cast<std::int32_t>(std::lround(radiusUm * std::cos(angle)))},
+              Micrometers{static_cast<std::int32_t>(std::lround(radiusUm * std::sin(angle)))}}});
+    }
+    vector.paths.push_back({std::move(path), {}});
+    project.vector_objects.push_back(std::move(vector));
+    document::EmbroideryObject object;
+    object.id = ObjectId{51};
+    object.source_vector = ObjectId{50};
+    object.name = "Dense vector";
+    object.rgb = {20, 40, 200};
+    object.params = document::RunningStitchParams{Micrometers{2'000}};
+    project.embroidery_objects.push_back(std::move(object));
+    project.object_ids.reset(100);
     return project;
 }
 
@@ -156,19 +194,27 @@ private slots:
     void initTestCase();
     void toolRailMatchesRegistry();
     void basicShapesByMouse();
+    void usageLogRecordsToolsAndActions();
     void polygonAndRegularShapes();
     void penBezierAndFreehand();
     void escapeCancelsGestures();
     void nodeEditByMouse();
     void nodeDragFromSelectTool();
     void offscreenNodeHandlesDoNotFillQmlCanvas();
+    void denseNodeHandlesUseDisplayLodButRemainEditable();
+    void perfDenseNodeSelectionOverlay();
+    void perfDenseNodeSelectionNative();
     void knifeAndBooleans();
+    void offsetShapesCreatesAGrownOrShrunkCopyInOneStep();
+    void outlineAroundTheSelectionIsARingInOneStep();
     void snappingIsConfigurable();
 };
 
 void StudioToolsTest::initTestCase() {
     QQuickStyle::setStyle(QStringLiteral("Basic"));
-    QQuickWindow::setSceneGraphBackend(QStringLiteral("software"));
+    if (qEnvironmentVariableIntValue("OPENSTITCH_NATIVE_PERF") != 1) {
+        QQuickWindow::setSceneGraphBackend(QStringLiteral("software"));
+    }
     qmlRegisterType<GpuCanvas>("OpenStitch.Studio", 1, 0, "GpuCanvas");
     qmlRegisterUncreatableType<StudioController>("OpenStitch.Studio", 1, 0, "StudioController",
                                                  QStringLiteral("Provided by the application"));
@@ -207,7 +253,7 @@ void StudioToolsTest::open(Rig& rig) {
     rig.session.replaceProject(anchorProject(), true);
     settle(rig);
     // Le canevas de l'espace Vecteurs ne construit pas de points : prêt = formes publiées.
-    QTRY_VERIFY_WITH_TIMEOUT(rig.canvas->vectorImage() != nullptr && rig.canvas->width() > 0,
+    QTRY_VERIFY_WITH_TIMEOUT(rig.canvas->vectorLayer() != nullptr && rig.canvas->width() > 0,
                              10'000);
     rig.tools.setSnapVertices(false);
 }
@@ -255,10 +301,8 @@ void StudioToolsTest::toolRailMatchesRegistry() {
     QCOMPARE(rig.tools.activeTool(), QStringLiteral("node.edit"));
     QTest::keyClick(rig.window, Qt::Key_K);
     QCOMPARE(rig.tools.activeTool(), QStringLiteral("knife"));
-    rig.tools.setActiveTool(
-        QStringLiteral("bucket")); // pas encore disponible : refus, pas de changement
-    QCOMPARE(rig.tools.activeTool(), QStringLiteral("knife"));
-    QVERIFY(rig.tools.message().contains(QStringLiteral("pas encore")));
+    rig.tools.setActiveTool(QStringLiteral("bucket"));
+    QCOMPARE(rig.tools.activeTool(), QStringLiteral("bucket"));
     QVERIFY(!rig.tools.hint().isEmpty());
     QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
 }
@@ -522,9 +566,10 @@ void StudioToolsTest::offscreenNodeHandlesDoNotFillQmlCanvas() {
     const auto countMarkers = [](const QVariantList& items) {
         int markers = 0;
         for (const auto& item : items) {
-            const auto kind = item.toMap().value(QStringLiteral("kind")).toString();
+            const auto map = item.toMap();
+            const auto kind = map.value(QStringLiteral("kind")).toString();
             if (kind == QStringLiteral("point") || kind == QStringLiteral("selected")) {
-                ++markers;
+                markers += map.value(QStringLiteral("pts")).toList().size() / 2;
             }
         }
         return markers;
@@ -538,6 +583,247 @@ void StudioToolsTest::offscreenNodeHandlesDoNotFillQmlCanvas() {
     // may cross the viewport in other pan/zoom configurations.
     QVERIFY(!outside.isEmpty());
     QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+}
+
+void StudioToolsTest::denseNodeHandlesUseDisplayLodButRemainEditable() {
+    Rig rig;
+    open(rig);
+    constexpr std::size_t nodeTotal = 10'000;
+    rig.session.replaceProject(denseNodeProject(nodeTotal), true);
+    rig.session.selection().replace({Target{TargetKind::EmbroideryObject, 51}});
+    rig.tools.setActiveTool(QStringLiteral("select"));
+
+    std::size_t sourceMarkers = 0;
+    std::size_t sourceOutlinePoints = 0;
+    for (const auto& item : rig.tools.overlay()) {
+        if (item.kind == ToolOverlayItem::Kind::Point) {
+            sourceMarkers += item.points.size();
+        } else if (item.kind == ToolOverlayItem::Kind::Closed) {
+            sourceOutlinePoints += item.points.size();
+        }
+    }
+    QCOMPARE(sourceMarkers, nodeTotal);
+    QCOMPARE(sourceOutlinePoints, nodeTotal + 1); // le contour fermé répète son premier point
+
+    std::size_t displayedMarkers = 0;
+    std::size_t displayedOutlinePoints = 0;
+    for (const auto& value : rig.canvas->toolOverlay()) {
+        const auto item = value.toMap();
+        const auto kind = item.value(QStringLiteral("kind")).toString();
+        if (kind == QStringLiteral("point")) {
+            displayedMarkers +=
+                static_cast<std::size_t>(item.value(QStringLiteral("pts")).toList().size() / 2);
+        } else if (kind == QStringLiteral("closed")) {
+            displayedOutlinePoints +=
+                static_cast<std::size_t>(item.value(QStringLiteral("pts")).toList().size() / 2);
+        }
+    }
+    QVERIFY(displayedMarkers > 0);
+    QVERIFY(displayedMarkers <= 3'100); // budget + cellules partielles aux bords
+    QVERIFY(displayedMarkers < nodeTotal / 2);
+    QVERIFY(displayedOutlinePoints > 2);
+    QVERIFY(displayedOutlinePoints <= 1'000);
+    QVERIFY(displayedOutlinePoints < nodeTotal / 2);
+
+    // Le LOD ne touche pas le modèle d'édition : un nœud masqué visuellement reste cliquable.
+    const auto view = nodeView(rig.session.project(), 51);
+    QVERIFY(view.has_value());
+    QCOMPARE(view->nodes.size(), nodeTotal);
+    const auto target = view->nodes[nodeTotal / 3].pos;
+    QTest::mouseClick(rig.window, Qt::LeftButton, {}, at(rig, target.x, target.y));
+    QCOMPARE(rig.tools.selectedNodeCount(), 1);
+    const auto selectedVisible = std::ranges::any_of(rig.canvas->toolOverlay(), [](const auto& v) {
+        const auto item = v.toMap();
+        return item.value(QStringLiteral("kind")).toString() == QStringLiteral("selected") &&
+               !item.value(QStringLiteral("pts")).toList().isEmpty();
+    });
+    QVERIFY(selectedVisible);
+}
+
+void StudioToolsTest::perfDenseNodeSelectionOverlay() {
+    if (qEnvironmentVariableIntValue("OPENSTITCH_PERF") != 1) {
+        QSKIP("mesure désactivée : définir OPENSTITCH_PERF=1");
+    }
+    using Clock = std::chrono::steady_clock;
+    const auto percentile = [](std::vector<double> values, double p) {
+        std::sort(values.begin(), values.end());
+        const auto index =
+            static_cast<std::size_t>(std::ceil(p * static_cast<double>(values.size())) - 1.0);
+        return values[std::min(index, values.size() - 1)];
+    };
+
+    Rig rig;
+    open(rig);
+    constexpr std::size_t nodeTotal = 10'000;
+    constexpr int warmupRuns = 10;
+    constexpr int measuredRuns = 100;
+    rig.session.replaceProject(denseNodeProject(nodeTotal), true);
+    rig.tools.setActiveTool(QStringLiteral("select"));
+
+    std::vector<double> samplesMs;
+    samplesMs.reserve(measuredRuns);
+    std::size_t displayedMarkers = 0;
+    for (int run = 0; run < warmupRuns + measuredRuns; ++run) {
+        rig.session.selection().clear();
+        const auto start = Clock::now();
+        rig.session.selection().replace({Target{TargetKind::EmbroideryObject, 51}});
+        const auto overlay = rig.canvas->toolOverlay();
+        const auto elapsedMs =
+            std::chrono::duration<double, std::milli>(Clock::now() - start).count();
+        if (run >= warmupRuns) {
+            samplesMs.push_back(elapsedMs);
+        }
+        if (run == warmupRuns + measuredRuns - 1) {
+            for (const auto& value : overlay) {
+                const auto item = value.toMap();
+                if (item.value(QStringLiteral("kind")).toString() == QStringLiteral("point")) {
+                    displayedMarkers += static_cast<std::size_t>(
+                        item.value(QStringLiteral("pts")).toList().size() / 2);
+                }
+            }
+        }
+    }
+
+    QVERIFY(displayedMarkers > 0);
+    QVERIFY(displayedMarkers <= 3'100);
+    qInfo("[perf-vector-overlay] nodes=%zu displayed=%zu runs=%d p50=%.3fms p95=%.3fms "
+          "p99=%.3fms max=%.3fms",
+          nodeTotal, displayedMarkers, measuredRuns, percentile(samplesMs, 0.50),
+          percentile(samplesMs, 0.95), percentile(samplesMs, 0.99), percentile(samplesMs, 1.0));
+}
+
+void StudioToolsTest::perfDenseNodeSelectionNative() {
+    if (qEnvironmentVariableIntValue("OPENSTITCH_NATIVE_PERF") != 1) {
+        QSKIP("mesure native désactivée : définir OPENSTITCH_NATIVE_PERF=1");
+    }
+    using Clock = std::chrono::steady_clock;
+    const auto percentile = [](std::vector<double> values, double p) {
+        std::sort(values.begin(), values.end());
+        const auto index =
+            static_cast<std::size_t>(std::ceil(p * static_cast<double>(values.size())) - 1.0);
+        return values[std::min(index, values.size() - 1)];
+    };
+
+    Rig rig;
+    open(rig);
+    rig.window->setFlag(Qt::WindowStaysOnTopHint, true);
+    rig.window->show();
+    rig.window->raise();
+    rig.window->requestActivate();
+    QVERIFY(QTest::qWaitForWindowExposed(rig.window, 5'000));
+    constexpr std::size_t nodeTotal = 10'000;
+    constexpr int warmupFrames = 20;
+    constexpr int baselineFrames = 30;
+    constexpr int measuredFrames = 120;
+    rig.session.replaceProject(denseNodeProject(nodeTotal), true);
+    settle(rig);
+    rig.tools.setActiveTool(QStringLiteral("select"));
+    rig.session.selection().replace({Target{TargetKind::EmbroideryObject, 51}});
+
+    std::size_t displayedMarkers = 0;
+    std::size_t displayedOutlinePoints = 0;
+    for (const auto& value : rig.canvas->toolOverlay()) {
+        const auto item = value.toMap();
+        const auto kind = item.value(QStringLiteral("kind")).toString();
+        if (kind == QStringLiteral("point")) {
+            displayedMarkers +=
+                static_cast<std::size_t>(item.value(QStringLiteral("pts")).toList().size() / 2);
+        } else if (kind == QStringLiteral("closed")) {
+            displayedOutlinePoints +=
+                static_cast<std::size_t>(item.value(QStringLiteral("pts")).toList().size() / 2);
+        }
+    }
+    rig.session.selection().replace({Target{TargetKind::EmbroideryObject, 101}});
+
+    std::vector<double> latenciesMs;
+    std::vector<double> baselineLatenciesMs;
+    std::vector<double> denseLatenciesMs;
+    std::vector<double> lightLatenciesMs;
+    std::vector<double> intervalsMs;
+    latenciesMs.reserve(measuredFrames);
+    intervalsMs.reserve(measuredFrames);
+    QEventLoop loop;
+    QTimer timeout;
+    timeout.setSingleShot(true);
+    timeout.start(60'000);
+    connect(&timeout, &QTimer::timeout, &loop, &QEventLoop::quit);
+    std::atomic_bool pending{false};
+    Clock::time_point requestedAt{};
+    Clock::time_point previous{};
+    bool requestedDense = false;
+    int completed = 0;
+
+    std::function<void()> requestFrame;
+    const auto swapConnection = connect(
+        rig.window, &QQuickWindow::frameSwapped, &loop,
+        [&] {
+            if (!pending.exchange(false)) {
+                return;
+            }
+            const auto finished = Clock::now();
+            QMetaObject::invokeMethod(
+                &loop,
+                [&, finished] {
+                    ++completed;
+                    if (completed > warmupFrames && completed <= warmupFrames + baselineFrames) {
+                        baselineLatenciesMs.push_back(
+                            std::chrono::duration<double, std::milli>(finished - requestedAt)
+                                .count());
+                    } else if (completed > warmupFrames + baselineFrames) {
+                        const double latency =
+                            std::chrono::duration<double, std::milli>(finished - requestedAt)
+                                .count();
+                        latenciesMs.push_back(latency);
+                        (requestedDense ? denseLatenciesMs : lightLatenciesMs).push_back(latency);
+                        if (previous != Clock::time_point{}) {
+                            intervalsMs.push_back(
+                                std::chrono::duration<double, std::milli>(finished - previous)
+                                    .count());
+                        }
+                    }
+                    previous = finished;
+                    if (completed >= warmupFrames + baselineFrames + measuredFrames) {
+                        loop.quit();
+                    } else {
+                        QTimer::singleShot(0, &loop, requestFrame);
+                    }
+                },
+                Qt::QueuedConnection);
+        },
+        Qt::DirectConnection);
+    requestFrame = [&] {
+        requestedAt = Clock::now();
+        pending.store(true);
+        if (completed >= warmupFrames + baselineFrames) {
+            requestedDense = completed % 2 == 0;
+            const std::uint64_t id = requestedDense ? 51 : 101;
+            rig.session.selection().replace({Target{TargetKind::EmbroideryObject, id}});
+        }
+        rig.window->update();
+    };
+
+    QTimer::singleShot(0, &loop, requestFrame);
+    loop.exec();
+    disconnect(swapConnection);
+    QVERIFY(!latenciesMs.empty());
+    QVERIFY(!intervalsMs.empty());
+    qInfo("[perf-vector-overlay-native-baseline] frames=%zu p50=%.3fms p95=%.3fms",
+          baselineLatenciesMs.size(), percentile(baselineLatenciesMs, 0.50),
+          percentile(baselineLatenciesMs, 0.95));
+    qInfo("[perf-vector-overlay-native] backend=%s nodes=%zu displayed=%zu frames=%zu/%d "
+          "outline=%zu latency-p50=%.3fms latency-p95=%.3fms interval-p50=%.3fms "
+          "interval-p95=%.3fms",
+          qPrintable(rig.canvas->backendName()), nodeTotal, displayedMarkers, latenciesMs.size(),
+          measuredFrames, displayedOutlinePoints, percentile(latenciesMs, 0.50),
+          percentile(latenciesMs, 0.95), percentile(intervalsMs, 0.50),
+          percentile(intervalsMs, 0.95));
+    qInfo("[perf-vector-overlay-native-split] dense-p50=%.3fms dense-p95=%.3fms "
+          "light-p50=%.3fms light-p95=%.3fms",
+          percentile(denseLatenciesMs, 0.50), percentile(denseLatenciesMs, 0.95),
+          percentile(lightLatenciesMs, 0.50), percentile(lightLatenciesMs, 0.95));
+    QCOMPARE(static_cast<int>(latenciesMs.size()), measuredFrames);
+    QVERIFY(rig.window->rendererInterface()->graphicsApi() != QSGRendererInterface::Null);
+    QVERIFY(rig.window->rendererInterface()->graphicsApi() != QSGRendererInterface::Software);
 }
 
 void StudioToolsTest::nodeEditByMouse() {
@@ -625,6 +911,80 @@ void StudioToolsTest::nodeEditByMouse() {
     QVERIFY(live && disk);
     QVERIFY(live->paths.front().outer == disk->paths.front().outer);
     QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+}
+
+// « Décaler la forme » : une copie agrandie ou rétrécie, une seule étape d'annulation ; refus
+// d'un décalage nul, hors bornes, d'une sélection vide ou qui ferait disparaître la forme.
+void StudioToolsTest::offsetShapesCreatesAGrownOrShrunkCopyInOneStep() {
+    Rig rig;
+    open(rig);
+    const auto a = draw(rig, "draw.rectangle", {-10, -5}, {10, 5});
+    QVERIFY(a != 0);
+    QVERIFY(rig.window->findChild<QQuickItem*>(QStringLiteral("offsetOutButton")));
+    QVERIFY(rig.window->findChild<QQuickItem*>(QStringLiteral("offsetInButton")));
+    const auto baseSteps = steps(rig);
+    const auto baseObjects = objects(rig);
+    rig.session.selection().replace({Target{TargetKind::EmbroideryObject, a}});
+
+    QVERIFY(rig.vectors.offsetShapes(2.0));
+    QCOMPARE(steps(rig), baseSteps + 1);
+    QCOMPARE(objects(rig), baseObjects + 1);
+    const auto grown =
+        boundsOf(rig.session.project(), rig.session.project().embroidery_objects.back().id.value);
+    QVERIFY(std::abs((grown.x1 - grown.x0) - 24.0) < 0.3);
+    QVERIFY(std::abs((grown.y1 - grown.y0) - 14.0) < 0.3);
+    QVERIFY(rig.session.undo());
+    QCOMPARE(steps(rig), baseSteps);
+    QCOMPARE(objects(rig), baseObjects);
+
+    rig.session.selection().replace({Target{TargetKind::EmbroideryObject, a}});
+    QVERIFY(rig.vectors.offsetShapes(-2.0));
+    const auto shrunk =
+        boundsOf(rig.session.project(), rig.session.project().embroidery_objects.back().id.value);
+    QVERIFY(std::abs((shrunk.x1 - shrunk.x0) - 16.0) < 0.3);
+    QVERIFY(rig.session.undo());
+
+    rig.session.selection().replace({Target{TargetKind::EmbroideryObject, a}});
+    QVERIFY(!rig.vectors.offsetShapes(0.0));
+    QVERIFY(!rig.vectors.offsetShapes(100.0));
+    QVERIFY(!rig.vectors.offsetShapes(-20.0)); // la forme (10 mm de haut) disparaîtrait
+    rig.session.selection().clear();
+    QVERIFY(!rig.vectors.offsetShapes(1.0));
+    QCOMPARE(steps(rig), baseSteps);
+    QCOMPARE(objects(rig), baseObjects);
+}
+
+// « Contour autour de la sélection » : un anneau (la forme d'origine en trou) plus large de la
+// largeur demandée, une seule étape d'annulation ; largeur nulle / négative / hors bornes refusée.
+void StudioToolsTest::outlineAroundTheSelectionIsARingInOneStep() {
+    Rig rig;
+    open(rig);
+    const auto a = draw(rig, "draw.rectangle", {-10, -5}, {10, 5});
+    QVERIFY(a != 0);
+    QVERIFY(rig.window->findChild<QQuickItem*>(QStringLiteral("outlineButton")));
+    const auto baseSteps = steps(rig);
+    const auto baseObjects = objects(rig);
+    rig.session.selection().replace({Target{TargetKind::EmbroideryObject, a}});
+    QVERIFY(rig.vectors.outlineShapes(2.0));
+    QCOMPARE(steps(rig), baseSteps + 1);
+    QCOMPARE(objects(rig), baseObjects + 1);
+    const auto ring =
+        boundsOf(rig.session.project(), rig.session.project().embroidery_objects.back().id.value);
+    QVERIFY(std::abs((ring.x1 - ring.x0) - 24.0) < 0.3);
+    const auto& shape = rig.session.project().vector_objects.back();
+    QVERIFY(!shape.paths.empty());
+    QCOMPARE(shape.paths.front().holes.size(), std::size_t{1});
+    QVERIFY(rig.session.undo());
+    QCOMPARE(steps(rig), baseSteps);
+    QCOMPARE(objects(rig), baseObjects);
+
+    rig.session.selection().replace({Target{TargetKind::EmbroideryObject, a}});
+    QVERIFY(!rig.vectors.outlineShapes(0.0));
+    QVERIFY(!rig.vectors.outlineShapes(-2.0));
+    QVERIFY(!rig.vectors.outlineShapes(100.0));
+    rig.session.selection().clear();
+    QVERIFY(!rig.vectors.outlineShapes(2.0));
+    QCOMPARE(steps(rig), baseSteps);
 }
 
 void StudioToolsTest::knifeAndBooleans() {
@@ -740,6 +1100,64 @@ void StudioToolsTest::snappingIsConfigurable() {
     const auto free = boundsOf(rig.session.project(), rig.session.selection().targets().front().id);
     QVERIFY(std::abs(free.x0 - target.x1) > 0.01 && std::abs(free.x1 - target.x1) > 0.01);
     QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+}
+
+void StudioToolsTest::usageLogRecordsToolsAndActions() {
+    Rig rig;
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    UsageLogOptions options;
+    options.dir = std::filesystem::path(dir.path().toStdString());
+    options.version = "test";
+    UsageLog log(options);
+    UsageController usage(log);
+    usage.observe(rig.actions, rig.tools);
+    rig.tools.setActiveTool(QStringLiteral("draw.ellipse"));
+    QVERIFY(!rig.actions.run(QStringLiteral("no.such.action"), {}).isEmpty());
+    usage.click(QStringLiteral("gesture_satin"));
+    QFile file(QString::fromStdString(log.currentFile().string()));
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    const auto text = QString::fromUtf8(file.readAll());
+    QVERIFY(text.contains(QStringLiteral("\"k\":\"tool\",\"id\":\"draw.ellipse\"")));
+    QVERIFY(text.contains(
+        QStringLiteral("\"k\":\"action\",\"id\":\"no.such.action\",\"d\":\"refused\"")));
+    QVERIFY(text.contains(QStringLiteral("\"k\":\"click\",\"id\":\"gesture_satin\"")));
+
+    // A keyboard shortcut (application-wide filter) and a control hooked from QML.
+    QShortcutEvent shortcut(QKeySequence(QStringLiteral("Ctrl+K")), 1);
+    QCoreApplication::sendEvent(&usage, &shortcut);
+    QQmlEngine qml;
+    qml.rootContext()->setContextProperty(QStringLiteral("usage"), &usage);
+    QQmlComponent probe(&qml);
+    probe.setData(QByteArrayLiteral("import QtQuick\n"
+                                    "Item { Component.onCompleted: { "
+                                    "usage.track('control', 'probe_switch', 'on'); "
+                                    "usage.track('control', 'probe_two') } }"),
+                  QUrl());
+    std::unique_ptr<QObject> probeItem(probe.create());
+    QVERIFY2(probeItem != nullptr, qPrintable(probe.errorString()));
+    QFile mid(QString::fromStdString(log.currentFile().string()));
+    QVERIFY(mid.open(QIODevice::ReadOnly));
+    const auto midText = QString::fromUtf8(mid.readAll());
+    QVERIFY(midText.contains(QStringLiteral("\"k\":\"key\",\"id\":\"Ctrl+K\"")));
+    QVERIFY(
+        midText.contains(QStringLiteral("\"k\":\"control\",\"id\":\"probe_switch\",\"d\":\"on\"")));
+    QVERIFY(midText.contains(QStringLiteral("\"k\":\"control\",\"id\":\"probe_two\"}")));
+
+    // The Preferences switch: off writes the DISABLED marker and stops recording; on removes it.
+    usage.setEnabled(false);
+    QVERIFY(!usage.enabled());
+    QVERIFY(QFile::exists(dir.filePath(QStringLiteral("DISABLED"))));
+    usage.click(QStringLiteral("after_off"));
+    usage.setEnabled(true);
+    QVERIFY(usage.enabled());
+    QVERIFY(!QFile::exists(dir.filePath(QStringLiteral("DISABLED"))));
+    usage.click(QStringLiteral("after_on"));
+    QFile again(QString::fromStdString(log.currentFile().string()));
+    QVERIFY(again.open(QIODevice::ReadOnly));
+    const auto later = QString::fromUtf8(again.readAll());
+    QVERIFY(!later.contains(QStringLiteral("after_off")));
+    QVERIFY(later.contains(QStringLiteral("after_on")));
 }
 
 QTEST_MAIN(StudioToolsTest)

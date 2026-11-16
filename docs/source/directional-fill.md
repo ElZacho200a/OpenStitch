@@ -247,6 +247,41 @@ sur une zone déjà cousue (surépaisseur, fil visible en haute densité) : c'es
 déjà ce que fait le trajet caché quand il est possible, avec un plafond de
 8 mm voulu. Pas de gain mesurable : non implémenté.
 
+## Grille partagée des fondus multicolores (2026-11-14)
+
+**Problème mesuré** (audit du 14 novembre 2026, rectangle 30 × 20 mm, fil cousu par bande
+rapporté à un remplissage uni) : chaque couche d'un fondu modulait sa propre densité et
+traçait ses propres rangées. Rien ne garantissait qu'à un endroit donné les fils totalisent
+100 % : de 73 % (trou visible au milieu d'un fondu à trois fils) à 191 % (profils différents
+d'un fil à l'autre) ; en superposition, le dernier fil plafonnait à 30 % au-dessus d'un fond
+plein, si bien que la couleur d'arrivée n'apparaissait jamais.
+
+**Modèle** : `DensityGradient::shared_rows` et `DensityStop::lower`. Toutes les couches d'un
+fondu reçoivent les mêmes paramètres de tracé (guide perpendiculaire à l'axe, écart nominal
+uniforme, graine) : elles tracent donc **la même grille de rangées**. Chaque rangée reçoit un
+seuil `u ∈ [0 ; 1)` : rang spatial le long de l'axe, puis suite de Weyl du nombre d'or (toute
+fenêtre de rangées voisines répartit ses seuils presque uniformément). Un segment de points
+appartient à la couche dont la tranche `[lower(t) ; lower(t) + w(t))` contient le seuil de sa
+rangée, évaluée en son milieu (`SpacingField::owns`, `append_owned_runs`).
+
+- **Complémentaire** : `lower_i = Σ_{j<i} w_j`, donc les tranches partitionnent `[0 ; 1]` à
+  chaque position : chaque segment de rangée est cousu par **exactement un** fil. Couverture
+  mesurée après correctif : 88 à 112 % par bande, quels que soient le nombre de fils et les
+  profils (test `shared rows: complementary blends cover the shape like one plain fill`).
+- **Superposition** : le premier fil est plein ; les suivants se partagent une grille de
+  surcouche à 60 % de la densité nominale (`kOverlayDensity`), cousue par-dessus. Le dernier fil
+  atteint ainsi ≈ 60 % de couverture à l'arrivée, total ≤ 160 %.
+- **Profils** : `GradientThread::curve` façonne la transition qui mène à ce fil. Les poids
+  `w_s = 1 − c(u)`, `w_{s+1} = c(u)` restent de somme 1 ; un profil non linéaire est
+  échantillonné (8 arrêts par transition), jamais appliqué à `t` couche par couche.
+- Radial et courbe : `t` varie le long d'une rangée, qui est alors découpée entre fils ;
+  textures `Feathered`/`Stippled` : le bruit sur `t` rend les frontières irrégulières.
+- Hachures croisées : grilles d'angles différents, sans partage ; elles reçoivent les mêmes
+  poids (somme 1, surcouche à 60 %) mais pas la garantie de couverture.
+
+Compatibilité : `shared_rows` absent (anciens projets) = ancien comportement, octet pour octet.
+Toute modification d'un fondu le reconstruit sur la grille partagée.
+
 ## Fondu de couleurs à deux fils
 
 Idée de Liu et al. (*Directionality-Aware Design of Embroidery Patterns*,

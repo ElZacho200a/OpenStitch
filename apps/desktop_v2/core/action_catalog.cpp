@@ -11,6 +11,7 @@
 #include <numbers>
 
 #include "fade_service.hpp"
+#include "file_io.hpp"
 #include "openstitch/document/machine_profile.hpp"
 
 namespace openstitch::desktop_v2 {
@@ -227,6 +228,20 @@ std::vector<ActionDef> makeCatalog() {
         out.push_back(std::move(a));
     }
     {
+        // CX08 : fusion par ICommand (InsertDesignCommand), pas par lot JSON.
+        ActionDef a;
+        a.id = "file.insert_design";
+        a.label = "Insérer un design…";
+        a.group = "Fichier";
+        a.fields = {fileField("file", "Projet .osp ou broderie machine", "")};
+        a.run = [](DocumentSession& session, const Values& v, const ActionContext&) {
+            const std::string& file = v.at("file"); // UTF-8
+            return insertDesign(session,
+                                std::filesystem::path(std::u8string(file.begin(), file.end())));
+        };
+        out.push_back(std::move(a));
+    }
+    {
         ActionDef a;
         a.id = "text.add";
         a.label = "Ajouter du texte…";
@@ -304,7 +319,8 @@ std::vector<ActionDef> makeCatalog() {
                     choiceField("strategy", "Stratégie",
                                 {{"skeleton", "Squelette"},
                                  {"parallel_sweep", "Balayage parallèle"},
-                                 {"medial_axis", "Axe médian"}})};
+                                 {"medial_axis", "Axe médian"},
+                                 {"guided_satin", "Satin guidé"}})};
         a.build = [](const Values& v, const ActionContext& c, std::string&) {
             return perObject(c, "auto_satin",
                              R"(,"spacing_mm":)" + num(number(v, "spacing_mm")) +
@@ -533,15 +549,15 @@ std::vector<ActionDef> makeCatalog() {
         out.push_back(std::move(a));
     }
 
-    // --- Fondu de deux fils (ICommand : `run`, pas de lot JSON) ----------------------------
+    // --- Fondu de fils (ICommand : `run`, pas de lot JSON) ; même moteur que l'inspecteur ------
     {
         ActionDef a;
         a.id = "fade.create";
-        a.label = "Fondu de deux fils…";
+        a.label = "Fondu de fils…";
         a.group = "Fondu";
         a.needsSelection = true;
-        a.fields = {textField("foreground", "Fil du dessus (#RRGGBB)", "#FF8800", true),
-                    boolField("complementary", "Rampes de densité opposées", true)};
+        a.fields = {textField("foreground", "Fil d'arrivée (#RRGGBB)", "#FF8800", true),
+                    boolField("complementary", "Répartition complémentaire", true)};
         a.run = [](DocumentSession& session, const Values& v, const ActionContext& c) {
             const std::string& hex = v.at("foreground");
             unsigned channel[3] = {0, 0, 0};
@@ -552,7 +568,7 @@ std::vector<ActionDef> makeCatalog() {
                 valid = ec == std::errc() && end == begin + 2;
             }
             if (!valid) {
-                return ServiceResult{false, "Fil du dessus : couleur au format #RRGGBB attendue."};
+                return ServiceResult{false, "Fil d'arrivée : couleur au format #RRGGBB attendue."};
             }
             const unsigned r = channel[0];
             const unsigned g = channel[1];

@@ -4,9 +4,14 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <list>
 #include <map>
+#include <memory>
+#include <mutex>
 #include <numbers>
+#include <unordered_map>
 
+#include "chunk_cache.hpp"
 #include "openstitch/geometry/offset.hpp"
 #include "openstitch/stitch_generation/adaptive_pull.hpp"
 #include "openstitch/stitch_generation/running_stitch.hpp"
@@ -237,7 +242,14 @@ bool in_region(const EdgeIndex& index, PointD p) {
     }
     constexpr double kEps2 = 1e-4; // 0,01 Âµm : marge numÃ©rique, pas une tolÃ©rance gÃ©omÃ©trique
     bool onBoundary = false;
-    std::vector<char> parity(index.poly_count(), 0);
+    // Parités réutilisées d'un appel à l'autre (appelé des milliers de fois par liaison) : seules
+    // les cases touchées sont remises à zéro, au lieu d'allouer un vecteur par polygone.
+    thread_local std::vector<char> parity;
+    thread_local std::vector<std::size_t> touched;
+    if (parity.size() < index.poly_count()) {
+        parity.resize(index.poly_count(), 0);
+    }
+    touched.clear();
     index.for_edges(p.y, p.y, [&](const EdgeIndex::Edge& e) {
         if (point_seg_dist2(p, e.c, e.d) < kEps2) {
             onBoundary = true;
@@ -246,20 +258,19 @@ bool in_region(const EdgeIndex& index, PointD p) {
         const PointD b = e.c;
         if (((a.y > p.y) != (b.y > p.y)) && (p.x < (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x)) {
             parity[e.poly] = static_cast<char>(!parity[e.poly]);
+            touched.push_back(e.poly);
         }
     });
-    if (onBoundary) {
-        return true;
-    }
-    if (!parity[0]) {
-        return false;
-    }
-    for (std::size_t i = 1; i < parity.size(); ++i) {
-        if (parity[i]) {
-            return false;
+    bool inside = parity[0] != 0;
+    for (const std::size_t poly : touched) {
+        if (poly != 0 && parity[poly]) {
+            inside = false;
         }
     }
-    return true;
+    for (const std::size_t poly : touched) {
+        parity[poly] = 0;
+    }
+    return onBoundary || inside;
 }
 
 // La liaison [a,b] (dans le repÃ¨re des rangÃ©es) est-elle un trajet cousu
@@ -298,10 +309,22 @@ bool connector_invalid(const EdgeIndex& index, PointD a, PointD b, double edgeTo
     if (abLen < 1e-6) {
         return !in_region(index, a);
     }
-    std::vector<double> ts{0.0, 1.0};
+    // Réutilisé d'un appel à l'autre (aucun appel imbriqué : in_region et near_boundary n'y
+    // touchent pas).
+    thread_local std::vector<double> ts;
+    ts.assign({0.0, 1.0});
+    // Rejet en x : les bandes ne trient qu'en y, un long segment y parcourt toutes les arêtes de
+    // sa bande. Une arête dont l'étendue en x est disjointe de celle de [a,b] de plus d'1 µm ne
+    // peut pas le couper (tolérances paramétriques de 1e-9 bien inférieures) : même résultat.
+    constexpr double kXMargin = 1.0;
+    const double xLo = std::min(a.x, b.x) - kXMargin;
+    const double xHi = std::max(a.x, b.x) + kXMargin;
     index.for_edges(std::min(a.y, b.y), std::max(a.y, b.y), [&](const EdgeIndex::Edge& e) {
         const PointD c = e.c;
         const PointD d = e.d;
+        if (std::max(c.x, d.x) < xLo || std::min(c.x, d.x) > xHi) {
+            return;
+        }
         const double dcx = d.x - c.x;
         const double dcy = d.y - c.y;
         const double cdLen = std::sqrt(dcx * dcx + dcy * dcy);
@@ -1038,17 +1061,18 @@ bool RegionSegmentTester::stays_inside(Vec2um a, Vec2um b, Micrometers edge_tole
     return !connector_invalid(impl_->index, pa, pb, std::max(0.0, double(edge_tolerance.value)));
 }
 
-struct HiddenRouter::Impl {
-    // Au plus ce nombre de points de passage (les moins dÃ©tournÃ©s) sont retenus par trajet :
-    // le graphe de visibilitÃ© reste petit mÃªme sur une forme criblÃ©e de trous.
-    static constexpr std::size_t kMaxCandidates = 24;
-
-    Impl(const geometry::PathSet& region_, Micrometers inset_, double cap_um)
-        : region(region_), inset(inset_), tester(region_), cap(cap_um) {}
+// État coûteux d'un routeur, fonction de la seule géométrie (région, retrait) : index des arêtes,
+// points de passage (contour rentré par Clipper) et visibilités déjà testées entre eux. Il est
+// gardé d'une génération à l'autre (cf. `RouterCache`) : régler la densité ou l'angle d'un objet
+// le régénère avec la même géométrie, et ces tests ne sont pas refaits. Résultat inchangé :
+// ce ne sont que des valeurs pures de la géométrie.
+struct RouterState {
+    RouterState(const geometry::PathSet& region_, Micrometers inset_)
+        : region(region_), inset(inset_), tester(region_) {}
 
     // Points de passage, calculÃ©s au premier besoin seulement : un trajet droit suffit dans la
     // plupart des cas et le dÃ©calage du contour (Clipper) coÃ»te plus cher que le test.
-    void ensure_waypoints() const {
+    void ensure_waypoints() {
         if (ready) {
             return;
         }
@@ -1079,16 +1103,136 @@ struct HiddenRouter::Impl {
         }
     }
 
+    // Visibilité stricte entre deux points de passage, mémoïsée : les liaisons successives d'une
+    // région explorent largement les mêmes paires (5,6 M de tests pour le fond de tentabrode).
+    // Clé (ensemble, i, j) ORDONNÉE : le test n'est pas exactement symétrique en virgule
+    // flottante. Recherche exacte seulement, l'ordre n'est jamais parcouru.
+    bool visible(int set, std::size_t i, std::size_t j, Vec2um p, Vec2um q) {
+        const std::uint64_t key = (std::uint64_t(set) << 62) | (std::uint64_t(i) << 31) | j;
+        if (const auto it = visibility.find(key); it != visibility.end()) {
+            return it->second;
+        }
+        const bool v = tester.stays_inside(p, q);
+        if (visibility.size() < kMaxVisibilityEntries) {
+            visibility.emplace(key, v);
+        }
+        return v;
+    }
+
+    // Mémoire estimée (octets), pour le budget du cache.
+    [[nodiscard]] std::size_t bytes() const {
+        std::size_t nodes = region.outer.nodes.size();
+        for (const auto& hole : region.holes) {
+            nodes += hole.nodes.size();
+        }
+        return sizeof(RouterState) + nodes * (sizeof(geometry::PathNode) + 96) +
+               (waypoints.size() + boundary.size()) * sizeof(Vec2um) + visibility.size() * 48;
+    }
+
+    static constexpr std::size_t kMaxVisibilityEntries = 4'000'000;
     geometry::PathSet region;
     Micrometers inset;
     RegionSegmentTester tester;
-    double cap;
-    mutable bool ready{false};
-    mutable std::vector<Vec2um> waypoints;
-    mutable std::vector<Vec2um> boundary;
+    bool ready{false};
+    std::vector<Vec2um> waypoints;
+    std::vector<Vec2um> boundary;
+    std::unordered_map<std::uint64_t, bool> visibility;
 };
 
 namespace {
+
+// États de routeur libres, du plus récemment rendu au plus ancien, sous un budget mémoire. Un
+// routeur EMPRUNTE l'état de sa géométrie (clé exacte : région entière et retrait) et le rend à
+// sa destruction : deux fils ne partagent jamais un état. Suit l'activation du cache de points.
+struct RouterCache {
+    static constexpr std::size_t kBudgetBytes = 64U * 1024U * 1024U;
+    std::mutex mutex;
+    std::list<std::unique_ptr<RouterState>> free;
+    std::size_t bytes{0};
+};
+
+RouterCache& router_cache() {
+    static RouterCache instance;
+    return instance;
+}
+
+std::unique_ptr<RouterState> take_router_state(const geometry::PathSet& region, Micrometers inset) {
+    if (chunk_cache_enabled()) {
+        RouterCache& c = router_cache();
+        const std::lock_guard<std::mutex> lock(c.mutex);
+        for (auto it = c.free.begin(); it != c.free.end(); ++it) {
+            if ((*it)->inset == inset && (*it)->region == region) {
+                auto state = std::move(*it);
+                c.bytes -= std::min(c.bytes, state->bytes());
+                c.free.erase(it);
+                return state;
+            }
+        }
+    }
+    return std::make_unique<RouterState>(region, inset);
+}
+
+void give_router_state(std::unique_ptr<RouterState> state) {
+    if (!state || !chunk_cache_enabled()) {
+        return;
+    }
+    const std::size_t size = state->bytes();
+    if (size > RouterCache::kBudgetBytes) {
+        return;
+    }
+    RouterCache& c = router_cache();
+    const std::lock_guard<std::mutex> lock(c.mutex);
+    c.free.push_front(std::move(state));
+    c.bytes += size;
+    while (c.bytes > RouterCache::kBudgetBytes && c.free.size() > 1) {
+        c.bytes -= std::min(c.bytes, c.free.back()->bytes());
+        c.free.pop_back();
+    }
+}
+
+} // namespace
+
+void clear_router_cache() {
+    RouterCache& c = router_cache();
+    const std::lock_guard<std::mutex> lock(c.mutex);
+    c.free.clear();
+    c.bytes = 0;
+}
+
+struct HiddenRouter::Impl {
+    // Au plus ce nombre de points de passage (les moins dÃ©tournÃ©s) sont retenus par trajet :
+    // le graphe de visibilitÃ© reste petit mÃªme sur une forme criblÃ©e de trous. 24 ne gardait
+    // qu'un amas serré autour du segment direct, insuffisant pour contourner un obstacle
+    // (mesure sur `sample/`, coupes : 334 avec 24, 268 avec 48, 229 avec 96).
+    static constexpr std::size_t kMaxCandidates = 96;
+
+    Impl(const geometry::PathSet& region_, Micrometers inset_, double cap_um)
+        : state(take_router_state(region_, inset_)), tester(state->tester),
+          waypoints(state->waypoints), boundary(state->boundary), cap(cap_um) {}
+    ~Impl() { give_router_state(std::move(state)); }
+    Impl(const Impl&) = delete;
+    Impl& operator=(const Impl&) = delete;
+
+    void ensure_waypoints() const { state->ensure_waypoints(); }
+    bool visible(int set, std::size_t i, std::size_t j, Vec2um p, Vec2um q) const {
+        return state->visible(set, i, j, p, q);
+    }
+
+    std::unique_ptr<RouterState> state; // emprunté au cache, rendu à la destruction
+    const RegionSegmentTester& tester;
+    const std::vector<Vec2um>& waypoints;
+    const std::vector<Vec2um>& boundary;
+    double cap;
+};
+
+namespace {
+
+// Tolérance au bord (µm) des SEULS tronçons qui touchent une extrémité du trajet. Les fins
+// de rangée d'un remplissage dépassent le bord de la région (compensation de tirage) : testées
+// strictement, elles ne « voient » aucun point de passage et la liaison échoue avant toute
+// recherche (mesure sur `sample/` : 368 échecs sur 544 liaisons tentées). Le fil y reste sous la
+// bordure, comme pour `kLinkEdgeTol` ; les tronçons entre points de passage restent stricts.
+constexpr Micrometers kEndpointEdgeTol{300};
 
 double distance_um(Vec2um a, Vec2um b) {
     return std::hypot(static_cast<double>(a.x.value) - static_cast<double>(b.x.value),
@@ -1108,14 +1252,14 @@ std::vector<Vec2um> HiddenRouter::route(Vec2um a, Vec2um b) const {
     if (direct <= 0.0) {
         return {};
     }
-    if (direct <= impl_->cap && impl_->tester.stays_inside(a, b)) {
+    if (direct <= impl_->cap && impl_->tester.stays_inside(a, b, kEndpointEdgeTol)) {
         return {a, b};
     }
 
     // Plus court chemin (Dijkstra) a -> b par ces points de passage, dont chaque segment reste
     // dans la rÃ©gion. Candidats : ceux dont le dÃ©tour a -> w -> b tient sous le cap, les moins
     // dÃ©tournÃ©s d'abord (Ã©galitÃ©s : ordre de crÃ©ation, donc dÃ©terministe).
-    const auto search = [&](const std::vector<Vec2um>& points) -> std::vector<Vec2um> {
+    const auto search = [&](const std::vector<Vec2um>& points, int set) -> std::vector<Vec2um> {
         struct Candidate {
             double detour;
             std::size_t index;
@@ -1127,37 +1271,67 @@ std::vector<Vec2um> HiddenRouter::route(Vec2um a, Vec2um b) const {
                 candidates.push_back({detour, i});
             }
         }
-        // total-order-ok: cle (h, indice) ou (rangee, borne, indice) totale
-        std::sort(candidates.begin(), candidates.end(), [](const Candidate& l, const Candidate& r) {
+        const auto byDetour = [](const Candidate& l, const Candidate& r) {
             return l.detour != r.detour ? l.detour < r.detour : l.index < r.index;
-        });
+        };
+        // Ordre total : ne trier que les `kMaxCandidates` retenus donne les mêmes candidats, dans
+        // le même ordre, qu'un tri complet suivi d'une troncature.
         if (candidates.size() > Impl::kMaxCandidates) {
-            candidates.resize(Impl::kMaxCandidates);
+            const auto keep =
+                candidates.begin() + static_cast<std::ptrdiff_t>(Impl::kMaxCandidates);
+            std::nth_element(candidates.begin(), keep, candidates.end(), byDetour);
+            candidates.erase(keep, candidates.end());
         }
+        // total-order-ok: cle (detour, indice) totale
+        std::sort(candidates.begin(), candidates.end(), byDetour);
         if (candidates.empty()) {
             return {};
         }
         std::vector<Vec2um> nodes{a};
+        std::vector<std::size_t> pointIndex{0}; // indice dans points (points de passage)
         for (const Candidate& c : candidates) {
             nodes.push_back(points[c.index]);
+            pointIndex.push_back(c.index);
         }
         nodes.push_back(b);
+        pointIndex.push_back(0);
         const std::size_t n = nodes.size();
         const std::size_t last = n - 1;
 
         // VisibilitÃ© depuis a et vers b, calculÃ©e UNE fois : si l'une des deux extrÃ©mitÃ©s ne
         // voit aucun point de passage, aucun chemin n'existe et l'on s'arrÃªte tout de suite
         // (la majoritÃ© des Ã©checs), sans explorer le graphe.
-        std::vector<char> seenFromA(n, 0), seesB(n, 0);
+        // Tests mémoïsés et faits à la demande (-1 : pas encore testé) : l'existence d'une
+        // visibilité s'arrête au premier point visible et A* ne consulte ensuite que les nœuds
+        // qu'il relâche ; mêmes booléens qu'un calcul complet, moins de tests.
+        std::vector<signed char> fromA(n, -1), toB(n, -1);
+        const auto seenFromA = [&](std::size_t i) {
+            if (i == last) {
+                return false; // a -> b direct déjà refusé avant la recherche
+            }
+            if (fromA[i] < 0) {
+                fromA[i] = impl_->tester.stays_inside(a, nodes[i], kEndpointEdgeTol) ? 1 : 0;
+            }
+            return fromA[i] != 0;
+        };
+        const auto seesB = [&](std::size_t i) {
+            if (toB[i] < 0) {
+                toB[i] = impl_->tester.stays_inside(nodes[i], b, kEndpointEdgeTol) ? 1 : 0;
+            }
+            return toB[i] != 0;
+        };
         bool anyFromA = false;
-        bool anyToB = false;
-        for (std::size_t i = 1; i < last; ++i) {
-            seenFromA[i] = impl_->tester.stays_inside(a, nodes[i]) ? 1 : 0;
-            seesB[i] = impl_->tester.stays_inside(nodes[i], b) ? 1 : 0;
-            anyFromA = anyFromA || seenFromA[i];
-            anyToB = anyToB || seesB[i];
+        for (std::size_t i = 1; i < last && !anyFromA; ++i) {
+            anyFromA = seenFromA(i);
         }
-        if (!anyFromA || !anyToB) {
+        if (!anyFromA) {
+            return {};
+        }
+        bool anyToB = false;
+        for (std::size_t i = 1; i < last && !anyToB; ++i) {
+            anyToB = seesB(i);
+        }
+        if (!anyToB) {
             return {};
         }
 
@@ -1193,9 +1367,17 @@ std::vector<Vec2um> HiddenRouter::route(Vec2um a, Vec2um b) const {
                 if (nd > impl_->cap || nd >= dist[v]) {
                     continue;
                 }
-                const bool visible = u == 0      ? seenFromA[v] != 0
-                                     : v == last ? seesB[u] != 0
-                                                 : impl_->tester.stays_inside(nodes[u], nodes[v]);
+                // Borne inférieure de tout trajet passant par v : nd + |v b|. Au-delà du plafond
+                // (marge d'1 µm contre l'arrondi de l'inégalité triangulaire), v ne peut servir au
+                // chemin final ni améliorer un nœud qui y sert : on évite son test de visibilité,
+                // le plus coûteux de la recherche, surtout pour les liaisons sans issue.
+                if (v != last && nd + distance_um(nodes[v], b) > impl_->cap + 1.0) {
+                    continue;
+                }
+                const bool visible = u == 0      ? seenFromA(v)
+                                     : v == last ? seesB(u)
+                                                 : impl_->visible(set, pointIndex[u], pointIndex[v],
+                                                                  nodes[u], nodes[v]);
                 if (!visible) {
                     continue;
                 }
@@ -1215,10 +1397,10 @@ std::vector<Vec2um> HiddenRouter::route(Vec2um a, Vec2um b) const {
     };
 
     impl_->ensure_waypoints();
-    if (auto path = search(impl_->waypoints); !path.empty()) {
+    if (auto path = search(impl_->waypoints, 0); !path.empty()) {
         return path;
     }
-    return search(impl_->boundary);
+    return search(impl_->boundary, 1);
 }
 
 } // namespace openstitch::stitch_generation

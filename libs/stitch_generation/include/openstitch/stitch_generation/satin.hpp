@@ -37,6 +37,9 @@ enum class SatinCapType { Flat, Rounded, Tapered, Automatic };
 
 // Paramètres d'une colonne satin (§5.3).
 struct SatinConfig {
+    // Le rendu standard n'alloue pas de tableau de bornes de traversées.
+    // Seulement le satin multicolore en a besoin pour filtrer des stations entières.
+    bool track_stations{false};
     Micrometers density{400};            // écart entre pénétrations le long d'un rail (0,4 mm)
     Micrometers pull_compensation{0};    // élargit la colonne pour compenser la traction du fil
     bool center_underlay{false};         // sous-couche : point droit sur l'axe central
@@ -119,7 +122,11 @@ struct SatinPass {
 struct SatinResult {
     std::vector<SatinPass> underlays; // center, edge A, edge B, zigzag (selon config)
     std::vector<Vec2um> satin;        // points du zigzag principal
-    double max_width_um{0.0};         // largeur maximale (pour l'avertissement)
+    // Fin (exclusive) de chaque traversée satin dans la séquence de points.
+    // Permet le fondu multicolore par traversées complètes, y compris lorsque
+    // des points de division ont été insérés entre les deux rails.
+    std::vector<std::size_t> station_ends;
+    double max_width_um{0.0}; // largeur maximale (pour l'avertissement)
 
     // Indices dans `satin` où le fil doit être LEVÉ (saut) plutôt qu'enchaîné
     // par un point continu depuis le point précédent -- la couture reprend

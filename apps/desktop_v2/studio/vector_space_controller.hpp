@@ -9,7 +9,6 @@
 #include <QObject>
 #include <QPointer>
 #include <QString>
-#include <QTimer>
 #include <QVariantMap>
 #include <cstdint>
 #include <memory>
@@ -26,13 +25,23 @@ class GpuCanvas;
 class VectorSpaceController : public QObject {
     Q_OBJECT
     Q_PROPERTY(int shapeCount READ shapeCount NOTIFY layerChanged)
+    // Précision de la vectorisation (V1) : tolérance de simplification en mm (polygones), ou
+    // courbes de Bézier avec un écart maximal en pixels. Appliquée à updateFromSegmentation().
+    Q_PROPERTY(double precisionMm READ precisionMm WRITE setPrecisionMm NOTIFY optionsChanged)
+    Q_PROPERTY(bool curves READ curves WRITE setCurves NOTIFY optionsChanged)
+    Q_PROPERTY(double curveTolerancePx READ curveTolerancePx WRITE setCurveTolerancePx NOTIFY
+                   optionsChanged)
     Q_PROPERTY(int layerBuildCount READ layerBuildCount NOTIFY layerChanged)
+    // Publications servies depuis le cache de calques déjà rasterisés (aucun calcul).
+    Q_PROPERTY(int layerCacheHits READ layerCacheHits NOTIFY layerChanged)
     // Vrai pendant qu'un calque est rasterisé sur un worker : l'ancien reste affiché.
     Q_PROPERTY(bool layerPending READ layerPending NOTIFY layerChanged)
     Q_PROPERTY(QVariantMap selectedShape READ selectedShape NOTIFY layerChanged)
     Q_PROPERTY(QString stageState READ stageState NOTIFY layerChanged)
     Q_PROPERTY(QString stageDetail READ stageDetail NOTIFY layerChanged)
     Q_PROPERTY(QString message READ message NOTIFY messageChanged)
+    // Conversion en broderie calculée hors du fil d'interface.
+    Q_PROPERTY(bool converting READ converting NOTIFY convertingChanged)
 public:
     explicit VectorSpaceController(StudioController& studio, QObject* parent = nullptr);
     ~VectorSpaceController() override;
@@ -43,6 +52,7 @@ public:
 
     [[nodiscard]] int shapeCount() const;
     [[nodiscard]] int layerBuildCount() const { return builds_; }
+    [[nodiscard]] int layerCacheHits() const { return cacheHits_; }
     [[nodiscard]] bool layerPending() const { return pending_; }
     // Formes du calque réellement publié (peut retarder sur le document pendant `layerPending`).
     [[nodiscard]] int publishedShapeCount() const {
@@ -59,7 +69,9 @@ public:
     // Corrections de régions non répercutées (reflet de `workspace.segmentationDirty`).
     Q_INVOKABLE void setSegmentationDirty(bool dirty, const QString& reason);
     // Clic au canevas (mm scène) ; renvoie l'identifiant de forme touchée (0 : aucune).
-    Q_INVOKABLE QString pickAt(double x, double y, double toleranceMm, bool toggle);
+    // `keepSelected` (clic droit) : une forme déjà sélectionnée ne remplace pas la sélection.
+    Q_INVOKABLE QString pickAt(double x, double y, double toleranceMm, bool toggle,
+                               bool keepSelected = false);
     Q_INVOKABLE void selectShape(const QString& id, bool toggle);
 
     // Lien amont : sélectionne la région d'origine de la forme choisie (sélection partagée) ;
@@ -71,10 +83,25 @@ public:
     // dont la région a changé, ajoute celles des régions sans forme, laisse les formes à main).
     Q_INVOKABLE QVariantMap updatePlan() const;
     Q_INVOKABLE bool updateFromSegmentation();
+    // Tous les calques image segmentés en une seule étape d'annulation.
+    Q_INVOKABLE bool updateAllLayersFromSegmentation();
+    // Nombre de calques image qui portent une segmentation.
+    Q_INVOKABLE int segmentedLayerCount() const;
     // Numérise en objets de broderie les formes sans objet (UNE étape d'annulation).
     Q_INVOKABLE bool convertToEmbroidery();
+    [[nodiscard]] bool converting() const { return converting_; }
+
+public:
+    [[nodiscard]] double precisionMm() const { return precisionMm_; }
+    [[nodiscard]] bool curves() const { return curves_; }
+    [[nodiscard]] double curveTolerancePx() const { return curveTolerancePx_; }
+    void setPrecisionMm(double mm);
+    void setCurves(bool on);
+    void setCurveTolerancePx(double px);
 
 signals:
+    void convertingChanged();
+    void optionsChanged();
     void layerChanged();
     void messageChanged();
 
@@ -85,6 +112,9 @@ private:
     void startAsyncBuild(std::vector<std::uint64_t> keys);
     [[nodiscard]] std::vector<std::uint64_t> selectedShapeIds() const;
     void say(const QString& text);
+    double precisionMm_{0.2};
+    bool curves_{false};
+    double curveTolerancePx_{1.5};
 
     StudioController& studio_;
     QPointer<GpuCanvas> canvas_;
@@ -93,10 +123,24 @@ private:
     std::uint64_t statusRevision_{0};
     // Visual-only fingerprints: a stitch parameter change must not repaint vector shapes.
     std::vector<std::uint64_t> renderedVisualKeys_;
+    // Calques déjà rasterisés, du plus récent au plus ancien (clés visuelles exactes) : revenir à
+    // un état déjà vu (masquer puis ré-afficher, annuler) republie l'image sans la recalculer.
+    struct CachedLayer {
+        std::vector<std::uint64_t> keys;
+        std::shared_ptr<const VectorLayer> layer;
+    };
+    std::vector<CachedLayer> layerCache_;
+    int cacheHits_{0};
+    [[nodiscard]] std::shared_ptr<const VectorLayer>
+    cachedLayer(const std::vector<std::uint64_t>& keys);
+    void rememberLayer(const std::vector<std::uint64_t>& keys,
+                       const std::shared_ptr<const VectorLayer>& layer);
     int builds_{0};
     // Reconstruction asynchrone : une seule à la fois, les résultats périmés sont ignorés.
     TaskManager tasks_;
-    QTimer pump_;
+    // File séparée : les reconstructions de calque (tasks_.cancelAll) n'annulent pas la conversion.
+    TaskManager convertTasks_;
+    bool converting_{false};
     std::uint64_t buildRequest_{0};
     bool pending_{false};
     std::vector<std::uint64_t> pendingVisualKeys_;

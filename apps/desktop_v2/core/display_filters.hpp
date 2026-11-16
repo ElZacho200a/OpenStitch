@@ -8,6 +8,7 @@
 #include <array>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "document_services.hpp"
 
@@ -20,6 +21,27 @@ ServiceResult showOnlyColour(DocumentSession& session, const std::array<std::uin
 ServiceResult showOnlyType(DocumentSession& session, const std::string& typeId);
 // Rend tous les objets visibles ; refus s'ils le sont déjà.
 ServiceResult showAllObjects(DocumentSession& session);
+
+// Groupes de filtrage (V1 : types de points, couleurs de fil) avec leur nombre d'objets et de
+// visibles. Ordre de première apparition. Clé : `stitchTypeId` ou « #rrggbb ».
+struct FilterGroup {
+    std::string key;
+    int total{0};
+    int visible{0};
+};
+[[nodiscard]] std::vector<FilterGroup> typeGroups(const document::Project& project);
+[[nodiscard]] std::vector<FilterGroup> colourGroups(const document::Project& project);
+
+// Affiche / cache TOUS les objets d'un type ou d'une couleur, sans toucher aux autres (les filtres
+// se combinent comme les cases à cocher de la V1). Une étape d'annulation ; refus si rien ne
+// change.
+ServiceResult setTypeVisible(DocumentSession& session, const std::string& typeId, bool visible);
+ServiceResult setColourVisible(DocumentSession& session, const std::array<std::uint8_t, 3>& rgb,
+                               bool visible);
+// V1 « Toutes / Aucune / Inverser » les couleurs : mode all | none | invert.
+ServiceResult setAllColours(DocumentSession& session, const std::string& mode);
+// Cache les objets dont la forme fait moins de `minAreaMm2` (taille minimale des zones de la V1).
+ServiceResult hideSmallerThan(DocumentSession& session, double minAreaMm2);
 
 // Nombre d'objets cachés (pour griser « Tout afficher » quand il n'y a rien à faire).
 [[nodiscard]] std::size_t hiddenObjectCount(const document::Project& project);

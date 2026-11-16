@@ -23,6 +23,10 @@ ClaudeCodeProcessBackend::~ClaudeCodeProcessBackend() {
     }
 }
 
+bool ClaudeCodeProcessBackend::running() const {
+    return !process_.isNull();
+}
+
 bool ClaudeCodeProcessBackend::available() const {
     return !executable_.isEmpty() && !workspace_.isEmpty();
 }
@@ -40,34 +44,30 @@ void ClaudeCodeProcessBackend::resetConversation() {
 QStringList ClaudeCodeProcessBackend::disallowedTools() {
     return {
         QStringLiteral("Bash"),      QStringLiteral("PowerShell"),   QStringLiteral("Edit"),
-        QStringLiteral("Write"),     QStringLiteral("NotebookEdit"), QStringLiteral("Read"),
-        QStringLiteral("Glob"),      QStringLiteral("Grep"),         QStringLiteral("WebFetch"),
+        QStringLiteral("Write"),     QStringLiteral("NotebookEdit"), QStringLiteral("WebFetch"),
         QStringLiteral("WebSearch"), QStringLiteral("Task"),         QStringLiteral("Agent"),
         QStringLiteral("TodoWrite"), QStringLiteral("BashOutput"),   QStringLiteral("KillShell")};
 }
 
 QStringList ClaudeCodeProcessBackend::restrictedArguments(const QString& workspace,
                                                           const QString& sessionId) {
-    // --allowedTools ne RESTREINT PAS le catalogue : --tools le fait pour les outils
-    // intégrés, --strict-mcp-config limite les serveurs MCP à celui du workspace.
-    // dontAsk refuse sans prompt les outils non explicitement autorisés.
-    QStringList args = {QStringLiteral("-p"),
-                        QStringLiteral("--verbose"),
-                        QStringLiteral("--output-format"),
-                        QStringLiteral("stream-json"),
-                        QStringLiteral("--max-turns"),
-                        QStringLiteral("40"),
-                        QStringLiteral("--tools"),
-                        QString(),
-                        QStringLiteral("--mcp-config"),
-                        QDir(workspace).filePath(QStringLiteral(".mcp.json")),
-                        QStringLiteral("--strict-mcp-config"),
-                        QStringLiteral("--permission-mode"),
-                        QStringLiteral("dontAsk"),
-                        QStringLiteral("--allowedTools"),
-                        QStringLiteral("mcp__openstitch__*"),
-                        QStringLiteral("--disallowedTools"),
-                        disallowedTools().join(QLatin1Char(','))};
+    // Lecture seule du disque (Read, Glob, Grep) : chaque accès hors de l'espace de travail passe
+    // par l'outil de permission du pont (`live_permission`), qui demande l'accord de
+    // l'utilisateur dans OpenStitch ; les chemins de secrets sont refusés d'office. Aucun outil
+    // d'écriture ni d'exécution. --strict-mcp-config limite les serveurs MCP à celui du workspace.
+    QStringList args = {
+        QStringLiteral("-p"), QStringLiteral("--verbose"), QStringLiteral("--output-format"),
+        QStringLiteral("stream-json"), QStringLiteral("--include-partial-messages"),
+        // Un flux complet (Image, Segmentation, Vecteurs, Points, contrôles,
+        // reprises) dépasse 40 tours ; l'utilisateur garde « Annuler ».
+        QStringLiteral("--max-turns"), QStringLiteral("120"), QStringLiteral("--tools"),
+        QStringLiteral("Read,Glob,Grep"), QStringLiteral("--mcp-config"),
+        QDir(workspace).filePath(QStringLiteral(".mcp.json")),
+        QStringLiteral("--strict-mcp-config"), QStringLiteral("--permission-mode"),
+        QStringLiteral("default"), QStringLiteral("--permission-prompt-tool"),
+        QStringLiteral("mcp__openstitch__live_permission"), QStringLiteral("--allowedTools"),
+        QStringLiteral("mcp__openstitch__*"), QStringLiteral("--disallowedTools"),
+        disallowedTools().join(QLatin1Char(','))};
     const QRegularExpression uuid(
         QStringLiteral("^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$"));
     if (uuid.match(sessionId).hasMatch()) {
@@ -162,8 +162,12 @@ void ClaudeCodeProcessBackend::send(const QString& userText) {
                     if (status == QProcess::NormalExit && code == 0) {
                         emit failed(tr("Claude Code n'a pas renvoye de resultat JSON."));
                     } else {
+                        // La fin de stderr dit pourquoi (outil MCP inconnu, option refusee...).
+                        const QString why =
+                            QString::fromUtf8(proc->readAllStandardError()).trimmed().right(400);
                         emit failed(
-                            tr("Claude Code s'est termine avec une erreur (code %1).").arg(code));
+                            tr("Claude Code s'est termine avec une erreur (code %1).").arg(code) +
+                            (why.isEmpty() ? QString() : QStringLiteral(" ") + why));
                     }
                 }
                 process_ = nullptr;
@@ -239,6 +243,39 @@ QString ClaudeCodeProcessBackend::describeError(const QJsonObject& event) {
     return message;
 }
 
+// « mcp__openstitch__project_check » -> « project_check » ; outils natifs inchangés.
+QString ClaudeCodeProcessBackend::friendlyToolName(const QString& raw) {
+    static const QString prefix = QStringLiteral("mcp__openstitch__");
+    return raw.startsWith(prefix) ? raw.mid(prefix.size()) : raw;
+}
+
+// Paramètres utiles d'un appel d'outil, courts et sans contenu volumineux : chemins, motifs,
+// nombres et petits textes ; les tableaux deviennent « n éléments ».
+QString ClaudeCodeProcessBackend::compactInput(const QJsonObject& input) {
+    QStringList parts;
+    for (auto it = input.begin(); it != input.end() && parts.size() < 4; ++it) {
+        const QJsonValue& v = it.value();
+        QString shown;
+        if (v.isString()) {
+            shown = v.toString().simplified();
+            if (shown.size() > 70) {
+                shown = shown.left(67) + QStringLiteral("…");
+            }
+        } else if (v.isDouble() || v.isBool()) {
+            shown = v.isBool() ? (v.toBool() ? QStringLiteral("oui") : QStringLiteral("non"))
+                               : QString::number(v.toDouble());
+        } else if (v.isArray()) {
+            shown = tr("%n élément(s)", "", v.toArray().size());
+        } else if (v.isObject()) {
+            shown = tr("%n réglage(s)", "", v.toObject().size());
+        }
+        if (!shown.isEmpty()) {
+            parts << it.key() + QStringLiteral(" = ") + shown;
+        }
+    }
+    return parts.join(QStringLiteral(", "));
+}
+
 void ClaudeCodeProcessBackend::handleLine(const QByteArray& line) {
     if (cancelled_) {
         return;
@@ -253,23 +290,38 @@ void ClaudeCodeProcessBackend::handleLine(const QByteArray& line) {
     if (kind == QLatin1String("assistant")) {
         const QJsonObject message = event.value(QStringLiteral("message")).toObject();
         const QString messageId = message.value(QStringLiteral("id")).toString();
-        // En mode stream-json, la CLI peut reemettre un message complet : pas de doublon.
-        if (!messageId.isEmpty()) {
-            if (reportedAssistantIds_.contains(messageId)) {
-                return;
+        // La CLI émet un événement par bloc sous le MÊME id de message (texte puis tool_use),
+        // et peut réémettre un bloc : la déduplication se fait par bloc, jamais par message,
+        // sinon l'appel d'outil qui suit un texte disparaît.
+        const auto firstTime = [this, &messageId](const QString& kindTag, const QString& body) {
+            if (messageId.isEmpty()) {
+                return true;
             }
-            reportedAssistantIds_.insert(messageId);
-        }
+            const QString key = messageId + QLatin1Char('|') + kindTag + QLatin1Char('|') + body;
+            if (reportedAssistantIds_.contains(key)) {
+                return false;
+            }
+            reportedAssistantIds_.insert(key);
+            return true;
+        };
         const auto blocks = message.value(QStringLiteral("content")).toArray();
         for (const auto& value : blocks) {
             const auto block = value.toObject();
             const QString blockType = block.value(QStringLiteral("type")).toString();
             if (blockType == QLatin1String("text")) {
                 const QString text = block.value(QStringLiteral("text")).toString();
-                if (!text.trimmed().isEmpty()) {
+                if (!text.trimmed().isEmpty() && firstTime(blockType, text)) {
                     streamedText_ = true;
                     // Afficher au fil de l'eau, avant l'evenement result.
                     emit assistantText(text);
+                }
+                continue;
+            }
+            if (blockType == QLatin1String("thinking")) {
+                const QString thought =
+                    block.value(QStringLiteral("thinking")).toString().trimmed();
+                if (!thought.isEmpty() && firstTime(blockType, thought)) {
+                    emit thinking(thought);
                 }
                 continue;
             }
@@ -284,7 +336,7 @@ void ClaudeCodeProcessBackend::handleLine(const QByteArray& line) {
             CompanionToolCall tool;
             tool.tool = block.value(QStringLiteral("name")).toString();
             const QJsonObject input = block.value(QStringLiteral("input")).toObject();
-            tool.summary = tr("Action sur le projet ouvert.");
+            tool.summary = compactInput(input);
             if (input.value(QStringLiteral("query")).isString()) {
                 const QString requested = input.value(QStringLiteral("query")).toString().left(120);
                 tool.summary = tr("Cible : %1").arg(requested);
@@ -297,6 +349,26 @@ void ClaudeCodeProcessBackend::handleLine(const QByteArray& line) {
                 tool.summary = tr("%1 (approbation dans OpenStitch)").arg(action);
             }
             emit toolCalled(tool);
+        }
+        return;
+    }
+    if (kind == QLatin1String("stream_event")) {
+        // Flux partiel : seulement de quoi dire ce que fait l'agent, sans dupliquer le contenu
+        // (les blocs complets arrivent dans les messages « assistant »).
+        const QJsonObject inner = event.value(QStringLiteral("event")).toObject();
+        if (inner.value(QStringLiteral("type")).toString() ==
+            QLatin1String("content_block_start")) {
+            const QJsonObject block = inner.value(QStringLiteral("content_block")).toObject();
+            const QString blockType = block.value(QStringLiteral("type")).toString();
+            if (blockType == QLatin1String("thinking")) {
+                emit activity(tr("Réflexion…"));
+            } else if (blockType == QLatin1String("text")) {
+                emit activity(tr("Rédaction de la réponse…"));
+            } else if (blockType == QLatin1String("tool_use")) {
+                emit activity(
+                    tr("Appel de %1…")
+                        .arg(friendlyToolName(block.value(QStringLiteral("name")).toString())));
+            }
         }
         return;
     }

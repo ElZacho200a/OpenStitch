@@ -3,16 +3,18 @@
 
 // Studio -- couche « vectors » du canevas (espace Vectorisation). Construite UNIQUEMENT
 // lorsque les formes changent, jamais lors de la sélection ni au pan/zoom : les formes vectorielles
-// (`Project::vector_objects`, mm scène, Y vers le bas) sont rastérisées dans une image partagée
-// immuable, publiée comme calque d'image du canevas (nœud texture standard : fonctionne aussi
-// avec le backend logiciel de Qt Quick). Aucun objet QML par forme ni par nœud.
+// (`Project::vector_objects`, mm scène, Y vers le bas) sont triangulées pour le backend GPU (RHI),
+// qui les dessine nettes à tout zoom, et rastérisées à la demande dans une image partagée immuable
+// pour le backend logiciel de Qt Quick. Aucun objet QML par forme ni par nœud.
 
 #include <QColor>
 #include <QPainterPath>
 #include <QPointF>
 #include <QRectF>
+#include <atomic>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <vector>
 
@@ -29,6 +31,10 @@ struct VectorShape {
     std::vector<QPointF> nodes;
     QRectF bounds;
     bool locked{false};
+    // Clé visuelle (vectorVisualKeys) et triangles propres à la forme : une reconstruction
+    // réutilise ceux d'une forme inchangée au lieu de la retrianguler.
+    std::uint64_t key{0};
+    std::vector<StudioVertex> geometry;
 };
 
 class VectorLayer {
@@ -39,15 +45,33 @@ public:
     // `build(project)` pixel pour pixel (c'est le même code).
     [[nodiscard]] static std::shared_ptr<const VectorLayer>
     build(const std::vector<document::VectorObject>& shapes);
+    // Reconstruction incrémentale : `keys[i]` est la clé visuelle de `shapes[i]` ; une forme dont
+    // la clé figure dans `previous` reprend ses triangles. Sortie identique à `build(shapes)`.
+    [[nodiscard]] static std::shared_ptr<const VectorLayer>
+    build(const std::vector<document::VectorObject>& shapes, const std::vector<std::uint64_t>& keys,
+          const VectorLayer* previous);
     [[nodiscard]] const std::vector<VectorShape>& shapes() const { return shapes_; }
-    [[nodiscard]] const OverlayImage& image() const { return image_; }
+    // Triangles des formes (mm scène, couleurs prémultipliées) dans l'ordre de peinture :
+    // remplissage puis contour de chaque forme. Dessinés tels quels par le backend GPU.
+    [[nodiscard]] const std::vector<StudioVertex>& triangles() const { return triangles_; }
+    // Image des formes pour le backend logiciel, rastérisée au premier appel seulement : le
+    // chemin GPU ne la demande jamais. Sûr depuis plusieurs fils.
+    [[nodiscard]] const OverlayImage& image() const;
+    // Mémoire occupée : triangles, plus l'image si elle a été rastérisée.
+    [[nodiscard]] qint64 bytes() const;
     // Forme la plus haute sous le point (mm scène), tolérance en mm ; ignore les formes
     // verrouillées.
     [[nodiscard]] std::optional<std::uint64_t> pick(double x, double y, double toleranceMm) const;
 
 private:
+    void rasterize() const;
+
     std::vector<VectorShape> shapes_;
-    OverlayImage image_;
+    std::vector<StudioVertex> triangles_;
+    QRectF area_; // mm scène, marge comprise ; vide sans forme
+    mutable std::once_flag rasterOnce_;
+    mutable OverlayImage image_;
+    mutable std::atomic_bool rasterized_{false}; // lu par bytes() depuis un autre fil
 };
 
 } // namespace openstitch::desktop_v2::studio

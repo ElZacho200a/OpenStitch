@@ -7,13 +7,16 @@ endif()
 
 set(CMAKE_AUTOMOC ON)
 add_library(openstitch_studio_ui STATIC
-    studio_controller.cpp studio_controller.hpp
+    studio_controller.cpp perf_log.cpp studio_controller.hpp
+    usage_controller.cpp usage_controller.hpp
     history_controller.cpp history_controller.hpp
     action_controller.cpp action_controller.hpp
     edit_controller.cpp edit_controller.hpp
     file_controller.cpp file_controller.hpp
     inspector_controller.cpp inspector_controller.hpp
+    recipe_swatch_provider.cpp recipe_swatch_provider.hpp
     gpu_canvas.cpp gpu_canvas.hpp
+    frame_probe.cpp frame_probe.hpp
     canvas_renderer.cpp canvas_renderer.hpp
     realistic_scene.cpp realistic_scene.hpp
     thread_textures.cpp thread_textures.hpp
@@ -26,6 +29,8 @@ add_library(openstitch_studio_ui STATIC
     fade_controller.cpp fade_controller.hpp
     point_edit_controller.cpp point_edit_controller.hpp
     tool_controller.cpp tool_controller.hpp
+    warp_tool.cpp warp_tool.hpp
+    bucket_tool.cpp bucket_tool.hpp
     vector_controller.cpp vector_controller.hpp
     workspace_controller.cpp workspace_controller.hpp
     vector_space_controller.cpp vector_space_controller.hpp
@@ -47,27 +52,31 @@ target_include_directories(openstitch_studio_ui PUBLIC ${CMAKE_CURRENT_SOURCE_DI
 target_link_libraries(openstitch_studio_ui PUBLIC openstitch::desktop_v2_core
     openstitch::ai_segmentation openstitch::companion_backends
     openstitch::desktop_v2_live Qt6::Network Qt6::Quick
-    Qt6::QuickControls2 PRIVATE openstitch::warnings)
+    Qt6::QuickControls2 PRIVATE openstitch::warnings
+    # qTriangulate (layers/vector_layer.cpp) : formes vectorielles en triangles pour le GPU.
+    Qt6::GuiPrivate)
 
 set(studio_qml_files
     qml/Main.qml qml/HistoryPanel.qml qml/Theme.qml qml/StudioButton.qml qml/StudioIcon.qml
     qml/StudioLabel.qml qml/StudioPanel.qml qml/StudioToolTip.qml qml/StudioTextField.qml
     qml/StudioCheckBox.qml qml/StudioSwitch.qml qml/StudioSlider.qml qml/StudioSpinBox.qml
-    qml/StudioComboBox.qml
+    qml/StudioComboBox.qml qml/StudioCard.qml
     qml/SectionLabel.qml qml/ActionPalette.qml qml/ObjectTree.qml qml/LayerPanel.qml
-    qml/CanvasContextMenu.qml qml/TransformHandles.qml qml/EditBar.qml qml/FilePanel.qml
-    qml/Inspector.qml qml/ParamField.qml qml/ParamSection.qml
+    qml/CanvasContextMenu.qml qml/HoopPopover.qml qml/TransformHandles.qml qml/EditBar.qml qml/FilePanel.qml
+    qml/Inspector.qml qml/ParamField.qml qml/ParamSection.qml qml/RecipeCatalog.qml
     qml/ViewPanel.qml qml/SimulationBar.qml qml/AnalysisPanel.qml qml/ThreadPanel.qml
     qml/PreparePanel.qml qml/ImagePrepSection.qml qml/SegmentationSection.qml
     qml/RegionTools.qml qml/AiSection.qml qml/CompanionPanel.qml qml/PreferencesDialog.qml
     qml/HelpDialog.qml qml/ShortcutsSheet.qml
-    qml/SatinPanel.qml qml/FadePanel.qml qml/PointEditPanel.qml qml/DigitizeHub.qml qml/ToolRail.qml qml/ToolOptions.qml qml/ToolOverlay.qml qml/RealisticToggle.qml qml/HandlesOverlay.qml qml/PullPanel.qml qml/AppliquePanel.qml qml/FixPanel.qml qml/qmldir
+    qml/SatinPanel.qml qml/FadeProperties.qml qml/FadeStylePreview.qml qml/PointEditPanel.qml qml/DigitizeHub.qml qml/CanvasToolRail.qml qml/ToolRail.qml qml/ToolOptions.qml qml/ToolOverlay.qml qml/RealisticToggle.qml qml/HandlesOverlay.qml qml/PullPanel.qml qml/AppliquePanel.qml qml/FixPanel.qml qml/qmldir
     qml/spaces/SpaceHost.qml qml/spaces/ImageSpace.qml qml/spaces/SegmentationSpace.qml
     qml/spaces/VectorSpace.qml qml/spaces/PointsSpace.qml)
 list(APPEND studio_qml_files qml/spaces/vector/VectorShapePanel.qml)
+list(APPEND studio_qml_files qml/spaces/vector/VectorQuickBar.qml)
 # Les sous-composants d'un espace (qml/spaces/<x>/...) s'ajoutent ICI, une ligne par fichier.
 list(APPEND studio_qml_files qml/spaces/image/ImageOpStack.qml qml/spaces/image/CompareCurtain.qml
-    qml/spaces/image/CropOverlay.qml)
+    qml/spaces/image/CropOverlay.qml qml/spaces/image/ImageToolOverlay.qml
+    qml/spaces/image/ImageSizeSection.qml)
 list(APPEND studio_qml_files qml/spaces/segmentation/SegmentationPanels.qml qml/spaces/segmentation/RegionLayerControls.qml)
 list(APPEND studio_qml_files
     qml/spaces/points/PointsToolRail.qml qml/spaces/points/PointsPanelBar.qml
@@ -77,6 +86,11 @@ add_executable(openstitch_v2_studio WIN32 main.cpp)
 # Studio est l'application par défaut : openstitch.exe (la V1 devient openstitch-v1.exe).
 set_target_properties(openstitch_v2_studio PROPERTIES OUTPUT_NAME openstitch)
 target_link_libraries(openstitch_v2_studio PRIVATE openstitch::studio_ui openstitch::warnings)
+# Le serveur MCP du pont est lance depuis le build voisin (companion_launcher) : il doit etre
+# reconstruit avec le Studio, sinon un `openstitch-mcp` perime ignore les outils live recents.
+if(TARGET openstitch-mcp)
+    add_dependencies(openstitch_v2_studio openstitch-mcp)
+endif()
 qt_add_resources(openstitch_v2_studio studio_qml PREFIX "/studio" FILES ${studio_qml_files})
 
 if(WIN32 AND TARGET Qt6::windeployqt)

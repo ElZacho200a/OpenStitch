@@ -43,12 +43,13 @@ bool same_crossings(const as::SkeletonSatinResult& a, const as::SkeletonSatinRes
 TEST_CASE("strategy: strategies livrees, identifiants stables, squelette par defaut",
           "[satin_strategy]") {
     const auto all = as::available_strategies();
-    REQUIRE(all.size() == 3);
+    REQUIRE(all.size() == 4);
     CHECK(all.front() == as::SatinStrategy::Skeleton);
     CHECK(as::SkeletonSatinParameters{}.strategy == as::SatinStrategy::Skeleton);
     CHECK(as::strategy_id(as::SatinStrategy::Skeleton) == "skeleton");
     CHECK(as::strategy_id(as::SatinStrategy::ParallelSweep) == "parallel_sweep");
     CHECK(as::strategy_id(as::SatinStrategy::MedialAxis) == "medial_axis");
+    CHECK(as::strategy_id(as::SatinStrategy::Guided) == "guided_satin");
     for (const auto s : all) {
         CHECK_FALSE(as::strategy_label(s).empty());
     }

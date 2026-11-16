@@ -47,6 +47,31 @@ Window {
     readonly property var workspaceController: workspaceCtl
     readonly property var canvas: spaceHost.canvas
     WorkspaceController { id: workspaceCtl; controller: studio }
+    // Suivi en direct : quand l'agent du compagnon applique un lot, la fenêtre passe dans
+    // l'espace où son effet se voit (Image, Segmentation, Vecteurs ou Points).
+    Connections {
+        target: typeof companion !== "undefined" ? companion : null
+        function onStageRequested(space) {
+            if (workspaceCtl.current === space)
+                return
+            workspaceCtl.setCurrent(space)
+            agentFitTimer.restart()
+        }
+    }
+    // Le canevas du nouvel espace se monte après le changement : le motif est cadré ensuite,
+    // sinon l'utilisateur le voit en vignette au milieu d'un espace vide.
+    Timer {
+        id: agentFitTimer
+        interval: 150
+        onTriggered: if (window.canvas) window.canvas.fitDesign()
+    }
+    Connections {
+        target: workspaceCtl
+        function onCurrentChanged() {
+            if (typeof usage !== "undefined" && usage)
+                usage.track("space", workspaceCtl.current)
+        }
+    }
     Binding {
         target: workspaceCtl
         property: "segmentationDirty"
@@ -122,14 +147,6 @@ Window {
     function openProject() {
         if (!studio.busy)
             filePanel.requestOpen()
-    }
-
-    FileDialog {
-        id: projectDialog
-        title: qsTr("Ouvrir un projet OpenStitch")
-        fileMode: FileDialog.OpenFile
-        nameFilters: [qsTr("Projet OpenStitch (*.osp)")]
-        onAccepted: filePanel.openUrl(selectedFile)
     }
 
     function saveProject() {
@@ -224,8 +241,14 @@ Window {
         workspaceCtl.treeMode = s.treeMode === "1"
     }
 
+    // Espace Segmentation : la sélection est faite de RÉGIONS (RegionController), pas d'objets du
+    // document ; Suppr supprime alors les régions sélectionnées (une étape d'annulation).
+    readonly property bool regionsSelected: typeof regionTools !== "undefined" && regionTools !== null &&
+                                           workspaceCtl.current === "segmentation" && regionTools.selectedCount > 0
     function deleteSelection() {
-        if (toolController !== null && toolController.selectedNodeCount > 0)
+        if (window.regionsSelected)
+            regionTools.deleteSelected()
+        else if (toolController !== null && toolController.selectedNodeCount > 0)
             toolController.deleteSelectedNodes()
         else
             editor.deleteSelection()
@@ -252,6 +275,7 @@ Window {
         case "cmd.file.save-as": saveDialog.open(); break
         case "cmd.file.import-image": filePanel.importImageDialog(); break
         case "cmd.file.import-machine": filePanel.importMachineDialog(); break
+        case "cmd.file.insert-design": filePanel.insertDesignDialog(); break
         case "cmd.edit.undo": undoWithFeedback(); break
         case "cmd.edit.redo": redoWithFeedback(); break
         case "cmd.edit.duplicate": duplicateWithFeedback(); break
@@ -278,7 +302,7 @@ Window {
         case "cmd.companion.open": companionPanel.openPanel(); break
         case "cmd.companion.toggle":
             if (typeof companion !== "undefined")
-                companion.setBridgeEnabled(!companion.bridgeActive)
+                (companion.bridgeActive ? companion.setBridgeEnabled(false) : companion.prepareClaudeCode())
             break
         case "cmd.help.shortcuts": shortcutsSheet.openSheet(); break
         case "cmd.help.guide": helpDialog.show("guide"); break
@@ -311,8 +335,11 @@ Window {
     // (nudge, delete, restack) must not fire behind it.
     readonly property bool keyboardOwnedByControl: {
         const item = window.activeFocusItem
+        // `ownsKeyboard` : un contrôle composé (barre de fils d'un fondu…) qui gère lui-même
+        // flèches, Début/Fin et Suppr ; sans lui, ces touches déplaceraient ou supprimeraient
+        // l'objet sélectionné.
         return !!item && (item.cursorPosition !== undefined || item.stepSize !== undefined ||
-                          item.popup !== undefined)
+                          item.popup !== undefined || item.ownsKeyboard === true)
     }
 
     Shortcut { sequence: "Ctrl+K"; onActivated: palette.openList() }
@@ -344,6 +371,10 @@ Window {
         sequence: "Escape"
         onActivated: {
             if (window.keyboardOwnedByControl) { window.activeFocusItem.focus = false; return }
+            // L'espace courant quitte d'abord son outil modal (recadrage, pipette, règle…) : un
+            // second Shortcut « Escape » rendrait la touche ambiguë et aucun ne s'exécuterait.
+            const space = spaceHost.space
+            if (space && typeof space.cancelTool === "function" && space.cancelTool()) return
             editor.eyedropper = false
             if (!canvas || !canvas.cancelGesture()) studio.clearSelection()
         }
@@ -354,7 +385,8 @@ Window {
     Shortcut {
         sequence: "Delete"
         enabled: !window.keyboardOwnedByControl &&
-                 (studio.hasSelection || (toolController !== null && toolController.selectedNodeCount > 0))
+                 (studio.hasSelection || window.regionsSelected ||
+                  (toolController !== null && toolController.selectedNodeCount > 0))
         onActivated: window.deleteSelection()
     }
     Shortcut { sequence: "Ctrl+D"; enabled: studio.hasSelection; onActivated: window.duplicateWithFeedback() }
@@ -371,195 +403,235 @@ Window {
     Shortcut { sequence: "I"; enabled: studio.hasSelection; onActivated: editor.eyedropper = !editor.eyedropper }
     // Ctrl+1..4 (changement d'espace) : Shortcut de SpaceHost.
 
+    // Plan de travail : semis de points fixe derrière les cartes et le canevas (transparent).
+    // Dessiné une fois par taille de fenêtre ; aucun shader, donc identique en rendu logiciel.
+    Canvas {
+        id: desk
+        objectName: "studioDesk"
+        anchors.fill: parent
+        property color dot: Theme.deskDot
+        onDotChanged: requestPaint()
+        onPaint: {
+            const ctx = getContext("2d")
+            ctx.reset()
+            ctx.fillStyle = desk.dot
+            const step = Theme.deskStep
+            for (let y = step / 2; y < height; y += step)
+                for (let x = step / 2; x < width; x += step)
+                    ctx.fillRect(x, y, 1.5, 1.5)
+        }
+    }
+
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
 
-        Rectangle {
+        // En-tête flottant : marque et document à gauche, parcours des quatre espaces au centre,
+        // actions à droite. Une seule action pleine (Enregistrer, quand il y a quelque chose à
+        // enregistrer) ; le reste est discret pour laisser le canevas dominer.
+        StudioCard {
+            id: headerCard
+            objectName: "studioHeader"
+            z: 3
             Layout.fillWidth: true
-            Layout.preferredHeight: 66
-            color: Theme.panel
+            Layout.preferredHeight: 52
+            Layout.leftMargin: Theme.gap
+            Layout.rightMargin: Theme.gap
+            Layout.topMargin: Theme.gap
+
+            // Paliers de largeur : les libellés secondaires cèdent la place avant le parcours.
+            readonly property bool wide: window.width >= 1560
+            readonly property bool compact: window.width < 1280
 
             RowLayout {
+                id: headerRow
                 anchors.fill: parent
-                anchors.leftMargin: Theme.panelPadding
-                anchors.rightMargin: Theme.panelPadding
-                spacing: 12
+                anchors.leftMargin: 14
+                anchors.rightMargin: 6
+                spacing: 4
 
-                StudioIcon { name: "needle"; color: Theme.accent; implicitWidth: 28; implicitHeight: 28 }
-                ColumnLayout {
-                    spacing: 1
-                    Text {
-                        text: "OpenStitch"
-                        color: Theme.foreground
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.brandSize
-                        font.weight: Font.DemiBold
-                    }
-                    Text {
-                        text: "STUDIO"
-                        color: Theme.faint
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.captionSize
-                        font.letterSpacing: 1.6
-                    }
+                StudioIcon { name: "needle"; color: Theme.accent; implicitWidth: 22; implicitHeight: 22 }
+                Text {
+                    text: "OpenStitch"
+                    color: Theme.foreground
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.headingSize
+                    font.weight: Font.DemiBold
+                    Layout.leftMargin: 4
+                }
+                Text {
+                    objectName: "documentTitle"
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 40
+                    Layout.leftMargin: 8
+                    text: studio.title
+                    elide: Text.ElideMiddle
+                    color: Theme.muted
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.bodySize
+                }
+                Text {
+                    objectName: "dirtyIndicator"
+                    visible: studio.dirty
+                    text: headerCard.wide ? qsTr("● Modifications non enregistrées") : qsTr("● Modifié")
+                    color: Theme.warning
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.smallSize
+                    Layout.rightMargin: 8
+                    Accessible.role: Accessible.StaticText
+                    Accessible.name: qsTr("Modifications non enregistrées")
                 }
 
-                Item { Layout.fillWidth: true; Layout.minimumWidth: 10 }
+                // Emplacement du parcours : SpaceHost y installe ses quatre étapes.
+                Item {
+                    id: stepperSlot
+                    objectName: "stepperSlot"
+                    implicitWidth: spaceHost.tabsWidth
+                    implicitHeight: 40
+                }
 
-                Item { Layout.fillWidth: true; Layout.minimumWidth: 10 }
+                Item { Layout.fillWidth: true; Layout.minimumWidth: 4 }
+
+                // Cadre du document, toujours visible : un clic ouvre le réglage rapide.
+                StudioButton {
+                    objectName: "hoopButton"
+                    text: headerCard.compact ? "" : qsTr("Cadre %1").arg(spaceHost.hoopSummary())
+                    iconName: headerCard.compact ? "fit" : ""
+                    quiet: true
+                    tooltip: qsTr("Cadre : forme, dimensions, marge, Mes cadres (aussi au clic droit sur le canevas)")
+                    onClicked: spaceHost.openHoop(null, 0, 0)
+                }
 
                 StudioButton {
                     objectName: "undoButton"
-                    text: qsTr("Annuler")
                     iconName: "undo"
+                    quiet: true
                     tooltip: studio.canUndo ? qsTr("Annuler : %1").arg(studio.undoLabel) : qsTr("Rien à annuler")
+                    disabledReason: qsTr("Rien à annuler")
                     shortcutLabel: "Ctrl+Z"
-                    showShortcutLabel: window.width >= 1400
                     enabled: studio.canUndo
                     onClicked: window.undoWithFeedback()
                 }
 
                 StudioButton {
                     objectName: "redoButton"
-                    text: qsTr("Rétablir")
                     iconName: "redo"
+                    quiet: true
                     tooltip: studio.canRedo ? qsTr("Rétablir : %1").arg(studio.redoLabel) : qsTr("Rien à rétablir")
+                    disabledReason: qsTr("Rien à rétablir")
                     shortcutLabel: "Ctrl+Y"
-                    showShortcutLabel: window.width >= 1400
                     enabled: studio.canRedo
                     onClicked: window.redoWithFeedback()
                 }
 
                 StudioButton {
                     objectName: "historyToggle"
-                    text: qsTr("Historique")
+                    text: headerCard.wide ? qsTr("Historique") : ""
                     iconName: "chevron"
                     iconRotation: historyHub.opened ? 90 : 0
+                    quiet: true
                     visible: historyHub.available
                     active: historyHub.opened
                     tooltip: qsTr("Afficher les étapes du document")
                     onClicked: historyHub.opened = !historyHub.opened
                 }
 
+                Rectangle { implicitWidth: 1; implicitHeight: 18; color: Theme.border; Layout.leftMargin: 4; Layout.rightMargin: 4 }
+
                 StudioButton {
                     objectName: "fileMenuButton"
                     text: qsTr("Fichier")
-                    iconName: "open"
+                    quiet: true
                     tooltip: qsTr("Récents, imports et exports")
                     enabled: !studio.busy
                     onClicked: filePanel.openMenu()
                 }
 
                 StudioButton {
-                    objectName: "saveProjectButton"
-                    text: window.saveConfirmed ? qsTr("Enregistré") : qsTr("Enregistrer")
-                    iconName: window.saveConfirmed ? "check" : "save"
-                    tooltip: qsTr("Enregistrer le projet (Ctrl+Maj+S : sous…)")
-                    shortcutLabel: "Ctrl+S"
-                    showShortcutLabel: window.width >= 1400
-                    enabled: !studio.busy
-                    onClicked: window.saveProject()
-                }
-
-                StudioButton {
                     objectName: "openProjectButton"
+                    visible: headerCard.wide
                     text: qsTr("Ouvrir")
-                    iconName: "open"
-                    tooltip: qsTr("Ouvrir un projet .osp")
+                    quiet: true
+                    tooltip: qsTr("Ouvrir un projet, une broderie machine ou une image")
                     shortcutLabel: "Ctrl+O"
-                    showShortcutLabel: window.width >= 1400
+                    showShortcutLabel: false
                     enabled: !studio.busy
                     onClicked: window.openProject()
                 }
-            }
-        }
 
-        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }
-
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 42
-            color: Theme.surface
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: Theme.panelPadding
-                anchors.rightMargin: Theme.panelPadding
-                spacing: 10
-                StudioIcon { name: "layers"; implicitWidth: 16; implicitHeight: 16; color: Theme.faint }
-                Text {
-                    Layout.fillWidth: true
-                    text: studio.title
-                    elide: Text.ElideMiddle
-                    color: Theme.foreground
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.bodySize
-                }
-                Rectangle { implicitWidth: 1; implicitHeight: 14; color: Theme.border; Layout.leftMargin: 8; Layout.rightMargin: 8 }
-                Text {
-                    text: studio.dirty ? qsTr("● Modifications non enregistrées") : qsTr("Aucune modification en attente")
-                    color: studio.dirty ? Theme.warning : Theme.muted
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.smallSize
-                }
                 StudioButton {
                     objectName: "paletteButton"
-                    text: qsTr("Commandes")
+                    text: headerCard.compact ? "" : qsTr("Commandes")
+                    iconName: headerCard.compact ? "list" : ""
                     quiet: true
-                    implicitHeight: 28
                     tooltip: qsTr("Palette de commandes")
                     shortcutLabel: "Ctrl+K"
+                    showShortcutLabel: headerCard.wide
                     onClicked: palette.openList()
                 }
                 StudioButton {
                     objectName: "companionButton"
+                    visible: headerCard.wide
                     text: qsTr("IA")
                     quiet: true
-                    implicitHeight: 28
                     tooltip: qsTr("Compagnon IA : discussion, pont MCP, propositions")
                     shortcutLabel: "Ctrl+J"
+                    showShortcutLabel: false
                     onClicked: companionPanel.openPanel()
                 }
                 StudioButton {
                     objectName: "prefsButton"
+                    visible: !headerCard.compact
                     text: qsTr("Préférences")
                     quiet: true
-                    implicitHeight: 28
                     tooltip: qsTr("Préférences : thème, densité, animations, compagnon IA")
                     shortcutLabel: "Ctrl+,"
+                    showShortcutLabel: false
                     onClicked: prefsDialog.openDialog()
                 }
                 StudioButton {
                     objectName: "helpButton"
                     text: qsTr("Aide")
                     quiet: true
-                    implicitHeight: 28
                     tooltip: qsTr("Raccourcis, guide de prise en main, À propos")
                     shortcutLabel: "F1"
+                    showShortcutLabel: false
                     onClicked: shortcutsSheet.openSheet()
+                }
+
+                StudioButton {
+                    objectName: "saveProjectButton"
+                    text: headerCard.compact ? "" : (window.saveConfirmed ? qsTr("Enregistré") : qsTr("Enregistrer"))
+                    iconName: window.saveConfirmed ? "check" : "save"
+                    // L'action pleine n'apparaît que lorsqu'il y a réellement quelque chose à enregistrer.
+                    emphasized: studio.dirty
+                    tooltip: qsTr("Enregistrer le projet (Ctrl+Maj+S : sous…)")
+                    shortcutLabel: "Ctrl+S"
+                    showShortcutLabel: false
+                    enabled: !studio.busy
+                    onClicked: window.saveProject()
+                    Layout.leftMargin: 4
                 }
             }
         }
-
-        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }
 
         SpaceHost {
             id: spaceHost
             Layout.fillWidth: true
             Layout.fillHeight: true
             workspace: workspaceCtl
+            tabsHost: stepperSlot
             onStageFeedback: function(message, tone) { window.showFeedback(message, tone) }
 
             // L’historique du document survit au changement des quatre espaces.
             HistoryPanel { id: historyHub; anchors.fill: parent; z: 10 }
         }
 
-        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }
-
-        Rectangle {
+        // Barre d'état : simple ligne de texte posée sur le plan de travail, sans bandeau.
+        Item {
+            objectName: "studioStatusBar"
             Layout.fillWidth: true
-            Layout.preferredHeight: 30
-            color: Theme.surface
+            Layout.preferredHeight: 26
             RowLayout {
                 anchors.fill: parent
                 anchors.leftMargin: 16
@@ -595,16 +667,10 @@ Window {
                     Accessible.name: qsTr("Opération en cours")
                 }
                 Text {
-                    text: studio.commandCount.toLocaleString(Qt.locale(), "f", 0) + qsTr(" commandes")
-                    color: Theme.faint
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.smallSize
-                }
-                Rectangle { implicitWidth: 1; implicitHeight: 12; color: Theme.border }
-                Text {
                     objectName: "renderBackendLabel"
+                    visible: window.width >= 1180
                     text: canvas ? canvas.backendName : ""
-                    color: Theme.info
+                    color: Theme.faint
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.smallSize
                 }
@@ -613,13 +679,6 @@ Window {
                     visible: typeof view !== "undefined" && view.realistic
                     text: typeof view !== "undefined" ? view.realisticMode : ""
                     color: Theme.accent
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.smallSize
-                }
-                Text {
-                    visible: window.width >= 1180
-                    text: qsTr("Géométrie · ") + (canvas ? canvas.geometryBuildCount : 0)
-                    color: Theme.faint
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.smallSize
                 }
@@ -633,7 +692,12 @@ Window {
         z: 100
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        anchors.rightMargin: 20
+        // Every space's right-side inspector can reach up to Theme.inspectorWidth (VectorSpace
+        // goes further, 320px) ; anchoring at the window's edge put this toast on top of its
+        // placeholder text whenever nothing is selected (QA-STUDIO-001 POP-015, reproduction on
+        // PointsSpace with an up-to-date stage: "<espace> : résultat à jour"). Clear the widest
+        // known panel instead of the window edge.
+        anchors.rightMargin: Theme.inspectorWidth + 46
         // The FilePanel already owns a centred task toast; never overlap it.
         anchors.bottomMargin: filePanel.notificationVisible ? 108 : 48
         visible: window.feedbackText.length > 0

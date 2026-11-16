@@ -11,8 +11,9 @@ import json
 import re
 import struct
 import sys
+import zlib
 from collections import Counter
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 SCHEMA = 'openstitch.semantic/1'
 RESULT_SCHEMA = 'openstitch.semantic-validation/1'
@@ -22,46 +23,165 @@ PRIORITIES = {'protected', 'important', 'secondary', 'optional'}
 INTENTS = {None, 'unstitched', 'tatami', 'auto_satin', 'running', 'directional', 'satin'}
 DECISIONS = {'keep', 'merge', 'remove', 'review'}
 LEVELS = {'family', 'instance', 'component', 'technical'}
+# Prevent downstream mask consumers from allocating enormous pixel buffers.
+MAX_MASK_PIXELS = 100_000_000
+MAX_MASK_DIMENSION = 100_000
 
 
 def png_size(path: Path) -> tuple[int, int]:
+    """Lire les dimensions d'un PNG sans decoder les pixels.
+
+    Verifie l'IHDR et la structure/CRC des chunks, sans decoder IDAT.
+    """
     with path.open('rb') as f:
-        header = f.read(24)
-    if (len(header) != 24 or header[:8] != b'\x89PNG\r\n\x1a\n'
+        header = f.read(33)  # signature (8) + length (4) + IHDR (17) + CRC (4)
+    if (len(header) != 33 or header[:8] != b'\x89PNG\r\n\x1a\n'
             or header[12:16] != b'IHDR'):
-        raise ValueError('masque non PNG ou IHDR absent')
+        raise ValueError('masque non PNG ou IHDR tronque/absent')
+    if struct.unpack('>I', header[8:12])[0] != 13:
+        raise ValueError('longueur IHDR invalide')
+    actual_crc = zlib.crc32(header[12:29]) & 0xffffffff
+    if actual_crc != struct.unpack('>I', header[29:33])[0]:
+        raise ValueError('CRC IHDR invalide')
     width, height = struct.unpack('>II', header[16:24])
-    if width == 0 or height == 0 or width > 100000 or height > 100000:
+    if (width == 0 or height == 0 or width > MAX_MASK_DIMENSION or height > MAX_MASK_DIMENSION
+            or width * height > MAX_MASK_PIXELS):
         raise ValueError('dimensions PNG invalides')
+    bit_depth, color_type, compression, filtering, interlace = header[24:29]
+    valid_depths = {0: (1, 2, 4, 8, 16), 2: (8, 16), 3: (1, 2, 4, 8),
+                    4: (8, 16), 6: (8, 16)}
+    if (bit_depth not in valid_depths.get(color_type, ()) or compression != 0
+            or filtering != 0 or interlace not in (0, 1)):
+        raise ValueError('parametres IHDR invalides')
+    # Inspecter les chunks sans charger ni decomprimer les pixels en memoire.
+    # Un IHDR correct seul n'est pas une preuve que le masque est un PNG entier.
+    with path.open('rb') as f:
+        f.seek(33)  # IHDR deja valide, y compris son CRC.
+        seen_idat = False
+        seen_idat_data = False
+        idat_header = bytearray()  # first two zlib bytes, even across IDAT chunks
+        seen_plte = False
+        seen_trns = False
+        palette_entries = 0
+        after_idat = False
+        while True:
+            chunk_header = f.read(8)
+            if len(chunk_header) != 8:
+                raise ValueError('chunk PNG tronque ou IEND absent')
+            length, kind = struct.unpack('>I4s', chunk_header)
+            if not all(65 <= b <= 90 or 97 <= b <= 122 for b in kind):
+                raise ValueError('type de chunk PNG invalide')
+            if kind == b'IHDR':
+                raise ValueError('IHDR duplique')
+            # Unknown critical chunks cannot be ignored: their semantics may
+            # change how the image is interpreted. Ancillary chunks are safe
+            # to skip after validating their CRC.
+            if kind[0] & 0x20 == 0 and kind not in (b'PLTE', b'IDAT', b'IEND'):
+                raise ValueError('chunk PNG critique inconnu')
+            if kind[2] & 0x20:
+                raise ValueError('bit reserve du type de chunk PNG invalide')
+            if kind == b'PLTE':
+                # PNG requires the palette before IDAT and at most once.
+                # Grayscale images forbid PLTE; indexed images require it.
+                if (color_type in (0, 4) or seen_plte or seen_trns or seen_idat
+                        or length == 0 or length > 768 or length % 3
+                        or (color_type == 3 and length // 3 > (1 << bit_depth))):
+                    raise ValueError('palette PLTE invalide')
+                seen_plte = True
+                palette_entries = length // 3
+            if kind == b'tRNS':
+                # Transparency must precede IDAT, occur only once and match
+                # the PNG color type. Indexed transparency refers to PLTE.
+                if (seen_trns or seen_idat
+                        or (color_type == 0 and length != 2)
+                        or (color_type == 2 and length != 6)
+                        or (color_type == 3 and
+                            (not seen_plte or not 1 <= length <= palette_entries))
+                        or color_type in (4, 6)):
+                    raise ValueError('transparence tRNS invalide')
+                seen_trns = True
+            if kind == b'IDAT':
+                if color_type == 3 and not seen_plte:
+                    raise ValueError('palette PLTE requise avant IDAT')
+                if after_idat:
+                    raise ValueError('chunks IDAT non contigus')
+                seen_idat = True
+                seen_idat_data |= length > 0
+            elif seen_idat:
+                after_idat = True
+            # At least one IDAT byte is required for the zlib image stream;
+            # zero-length IDAT chunks alone cannot encode a PNG image.
+            if kind == b'IEND' and (length != 0 or not seen_idat_data):
+                raise ValueError('IEND invalide ou IDAT absent')
+            crc = zlib.crc32(kind)
+            remaining = length
+            transparency_data = b''
+            while remaining:
+                block = f.read(min(65536, remaining))
+                if not block:
+                    raise ValueError('donnees de chunk PNG tronquees')
+                crc = zlib.crc32(block, crc)
+                if kind == b'tRNS':
+                    # tRNS is bounded (<= 256 bytes for indexed PNG).
+                    transparency_data += block
+                if kind == b'IDAT' and len(idat_header) < 2:
+                    idat_header.extend(block[:2 - len(idat_header)])
+                remaining -= len(block)
+            stored_crc = f.read(4)
+            if len(stored_crc) != 4 or crc & 0xffffffff != struct.unpack('>I', stored_crc)[0]:
+                raise ValueError('CRC de chunk PNG invalide ou tronque')
+            if kind == b'tRNS' and color_type in (0, 2):
+                # The 16-bit tRNS fields contain native-depth samples. Values
+                # outside the IHDR bit depth are not valid transparency keys.
+                sample_format = '>H' if color_type == 0 else '>HHH'
+                samples = struct.unpack(sample_format, transparency_data)
+                if any(sample >= (1 << bit_depth) for sample in samples):
+                    raise ValueError('echantillon tRNS hors profondeur PNG')
+            if kind == b'IEND':
+                # PNG mandates a zlib/deflate stream without preset dictionary.
+                # Check its two-byte header without decompressing pixel data.
+                if len(idat_header) != 2:
+                    raise ValueError('en-tete zlib IDAT tronque')
+                cmf, flg = idat_header
+                if ((cmf & 0x0f) != 8 or (cmf >> 4) > 7
+                        or ((cmf << 8) | flg) % 31 != 0 or flg & 0x20):
+                    raise ValueError('en-tete zlib IDAT invalide')
+                if f.read(1):
+                    raise ValueError('octets apres IEND')
+                break
     return width, height
 
-
 def cycles(edges: dict[str, set[str]]) -> list[list[str]]:
-    """Retourne une preuve de cycle, triee et deterministe, si presente."""
+    """Retourne une preuve de cycle deterministe sans recursion Python.
+
+    Un manifeste peut contenir plus de regions que la limite de recursion.
+    Chaque frame conserve l'iterateur des voisins tries pour reproduire
+    l'ordre de parcours DFS et le diagnostic de la version recursive.
+    """
     state: dict[str, int] = {}
-    stack: list[str] = []
-    found: list[list[str]] = []
+    path: list[str] = []
 
-    def visit(node: str) -> None:
-        if found:
-            return
-        if state.get(node) == 1:
-            found.append(stack[stack.index(node):] + [node])
-            return
-        if state.get(node) == 2:
-            return
-        state[node] = 1
-        stack.append(node)
-        for child in sorted(edges.get(node, set())):
-            visit(child)
-        stack.pop()
-        state[node] = 2
-
-    for node in sorted(edges):
-        visit(node)
-        if found:
-            break
-    return found
+    for root in sorted(edges):
+        if state.get(root):
+            continue
+        state[root] = 1
+        path.append(root)
+        frames = [iter(sorted(edges.get(root, set())))]
+        while frames:
+            try:
+                child = next(frames[-1])
+            except StopIteration:
+                state[path.pop()] = 2
+                frames.pop()
+                continue
+            if state.get(child) == 1:
+                return [path[path.index(child):] + [child]]
+            if state.get(child) == 2:
+                continue
+            state[child] = 1
+            path.append(child)
+            frames.append(iter(sorted(edges.get(child, set()))))
+    return []
 
 
 def validate(manifest: dict, base: Path, *, skip_files: bool = False) -> dict:
@@ -80,8 +200,11 @@ def validate(manifest: dict, base: Path, *, skip_files: bool = False) -> dict:
         fail('E_SOURCE', 'source_image', 'objet source_image requis')
     else:
         w, h = source.get('width_px'), source.get('height_px')
-        if type(w) is not int or type(h) is not int or w <= 0 or h <= 0:
-            fail('E_SOURCE', 'source_image', 'dimensions width_px/height_px > 0 requises')
+        if (type(w) is not int or type(h) is not int or w <= 0 or h <= 0
+                or w > MAX_MASK_DIMENSION or h > MAX_MASK_DIMENSION
+                or w * h > MAX_MASK_PIXELS):
+            fail('E_SOURCE', 'source_image',
+                 'dimensions positives, <= 100000 par axe et <= 100000000 pixels requises')
         else:
             expected = (w, h)
     design = manifest.get('design')
@@ -135,19 +258,33 @@ def validate(manifest: dict, base: Path, *, skip_files: bool = False) -> dict:
         if mask is not None:
             if not isinstance(mask, str) or not mask:
                 fail('E_MASK', f'{where}.mask_path', 'chemin relatif non vide requis')
-            elif not skip_files:
-                target = (base / mask).resolve()
-                if not target.is_relative_to(base.resolve()):
+            else:
+                # --skip-files skips file reads, never path containment checks.
+                # Resolve symlinks before checking containment to avoid escapes.
+                try:
+                    # Paths must be relative even when an absolute path is inside base.
+                    # Portable manifests use forward slashes only. Reject Windows
+                    # drives, UNC paths and backslash traversal on every host OS.
+                    if (Path(mask).is_absolute() or PureWindowsPath(mask).drive
+                            or '\\' in mask):
+                        raise ValueError('non-portable or absolute mask path')
+                    target = (base / mask).resolve()
+                    contained = target.is_relative_to(base.resolve())
+                except (OSError, ValueError):
+                    contained = False
+                    target = None
+                if not contained:
                     fail('E_PATH', f'{where}.mask_path', 'masque en dehors du dossier du manifeste')
-                elif not target.is_file():
-                    fail('E_MISSING_MASK', f'{where}.mask_path', 'fichier introuvable')
-                else:
-                    try:
-                        dims = png_size(target)
-                        if expected and dims != expected:
-                            fail('E_MASK_SIZE', f'{where}.mask_path', f'{dims} != dimensions source {expected}')
-                    except (OSError, ValueError) as exc:
-                        fail('E_MASK_PNG', f'{where}.mask_path', str(exc))
+                elif not skip_files:
+                    if not target.is_file():
+                        fail('E_MISSING_MASK', f'{where}.mask_path', 'fichier introuvable')
+                    else:
+                        try:
+                            dims = png_size(target)
+                            if expected and dims != expected:
+                                fail('E_MASK_SIZE', f'{where}.mask_path', f'{dims} != dimensions source {expected}')
+                        except (OSError, ValueError) as exc:
+                            fail('E_MASK_PNG', f'{where}.mask_path', str(exc))
     hierarchy: dict[str, set[str]] = {sid: set() for sid in indexed}
     occlusions: dict[str, set[str]] = {sid: set() for sid in indexed}
     for sid, item in indexed.items():

@@ -13,6 +13,15 @@ Controls.CheckBox {
     padding: 2
     hoverEnabled: true
     focusPolicy: Qt.StrongFocus
+    // Journal d'usage local : jamais de texte saisi, seulement l'identifiant du contrôle.
+    Connections {
+        target: control
+        function onToggled() {
+            const id = control.objectName.length > 0 ? control.objectName : control.text
+            if (id.length > 0 && typeof usage !== "undefined" && usage)
+                usage.track("control", id, control.checked ? "on" : "off")
+        }
+    }
     font.family: Theme.fontFamily
     font.pixelSize: Theme.smallSize
     Accessible.role: Accessible.CheckBox

@@ -60,8 +60,12 @@ signals:
     void commandRequested(const QString& id);
     void actionsChanged();
     void resultChanged();
+    // Après chaque exécution (action ou commande) : identifiant et succès. Sert au journal d'usage.
+    void ran(const QString& id, bool ok);
 
 private:
+    QString runCommandImpl(const QString& id);
+    QString runImpl(const QString& id, const QVariantMap& values);
     [[nodiscard]] const ActionDef* find(const QString& id) const;
     // "" = exécutable, sinon la raison de l'indisponibilité.
     [[nodiscard]] QString commandReason(const StudioCommand& command) const;

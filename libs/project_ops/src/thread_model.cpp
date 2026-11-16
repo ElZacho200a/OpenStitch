@@ -27,10 +27,10 @@ std::size_t ThreadModel::rank_of(std::uint32_t id) const {
 }
 
 image::Image working_image(const document::Project& project) {
-    if (project.ops.empty()) {
-        return project.original;
+    if (project.imageSource().ops.empty()) {
+        return project.imageSource().original;
     }
-    auto out = image::apply_pipeline(project.original, project.ops);
+    auto out = image::apply_pipeline(project.imageSource().original, project.imageSource().ops);
     return out ? std::move(*out) : image::Image{};
 }
 

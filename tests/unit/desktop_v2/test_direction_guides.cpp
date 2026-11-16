@@ -87,6 +87,10 @@ TEST_CASE("every fill type of the list can be applied, listed and undone", "[des
         if (t.id == "auto_satin" || t.id == "tatami") {
             continue; // le satin a son test dédié ; l'objet est déjà tatami
         }
+        if (t.id == "multicolor_gradient") {
+            continue; // creation composite dediee (InspectorController::setStitchType), pas le
+                      // batch generique set_stitch_type -- comme auto_satin ci-dessus
+        }
         INFO("type " << t.id);
         const auto applied =
             f.session.applyBatch(batchSetStitchType({f.tatami}, t.id), std::string(t.label));

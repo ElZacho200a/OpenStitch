@@ -28,6 +28,12 @@ ColumnLayout {
         imageTools.clearPrepPreview()
     }
     function setValue(key, value) {
+        if (values[key] === value)
+            return
+        // The preview is a snapshot of the old parameters. Changing a slider
+        // invalidates it immediately (and cancels a still-running preview),
+        // so the user never applies settings while inspecting a stale image.
+        imageTools.clearPrepPreview()
         var v = Object.assign({}, values)
         v[key] = value
         values = v
@@ -117,7 +123,8 @@ ColumnLayout {
             }
             Text {
                 Layout.preferredWidth: 38
-                text: Number(section.values[parent.modelData.key]).toString()
+                // Arrondi d'affichage : un pas de 0,1 ne doit pas montrer 0.30000000000000004.
+                text: (Math.round(Number(section.values[parent.modelData.key]) * 100) / 100).toString()
                 horizontalAlignment: Text.AlignRight
                 color: Theme.muted; font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily
             }
@@ -140,7 +147,8 @@ ColumnLayout {
         }
         StudioButton {
             objectName: "prepCancelButton"
-            text: qsTr("Annuler l'aperçu")
+            // Pendant le calcul, le bouton arrête le calcul : son libellé le dit.
+            text: imageTools.busy && !imageTools.prepPreviewActive ? qsTr("Annuler le calcul") : qsTr("Annuler l'aperçu")
             quiet: true
             visible: imageTools.prepPreviewActive || imageTools.busy
             onClicked: imageTools.prepPreviewActive ? imageTools.clearPrepPreview() : imageTools.cancelTask()

@@ -175,7 +175,8 @@ Result<Segmentation> segment(const image::Image& img, const SegmentationOptions&
         }
     }
     if (opaqueCount == 0) {
-        return fail(ErrorCategory::UserInput, "L'image est entièrement transparente");
+        return fail_coded(ErrorCategory::UserInput, kTransparentImage,
+                          "L'image est entièrement transparente", {});
     }
 
     cv::Mat lab;
@@ -995,21 +996,14 @@ double cielab_lightness(std::array<std::uint8_t, 3> rgb) {
     return y > kEpsilon ? 116.0 * std::cbrt(y) - 16.0 : kKappa * y;
 }
 
-std::optional<BackgroundCandidate> background_candidate(const Segmentation& seg,
-                                                        const BackgroundCandidateOptions& options) {
-    std::optional<std::size_t> largest;
-    for (std::size_t s = 0; s < seg.region_slots.size(); ++s) {
-        if (seg.region_slots[s] && (!largest || seg.region_slots[s]->pixel_count >
-                                                    seg.region_slots[*largest]->pixel_count)) {
-            largest = s;
-        }
-    }
-    if (!largest || seg.width <= 0 || seg.height <= 0) {
-        return std::nullopt;
-    }
+namespace {
+
+// Mesures de fond de la couleur de la région `slot` (toutes les régions de cette couleur exacte).
+BackgroundCandidate measure_background(const Segmentation& seg, std::size_t slot,
+                                       const BackgroundCandidateOptions& options) {
     BackgroundCandidate out;
-    out.region = seg.region_slots[*largest]->id;
-    out.rgb = seg.region_slots[*largest]->rgb;
+    out.region = seg.region_slots[slot]->id;
+    out.rgb = seg.region_slots[slot]->rgb;
     out.lightness = cielab_lightness(out.rgb);
 
     // Labels (slot+1) de TOUTES les régions de cette couleur exacte.
@@ -1059,6 +1053,74 @@ std::optional<BackgroundCandidate> background_candidate(const Segmentation& seg,
         out.sides_touched == 4 && out.border_ratio >= options.min_border_ratio;
     out.recommended = lightFrame || colouredFrame;
     return out;
+}
+
+} // namespace
+
+std::optional<BackgroundCandidate> background_candidate(const Segmentation& seg,
+                                                        const BackgroundCandidateOptions& options) {
+    std::optional<std::size_t> largest;
+    for (std::size_t s = 0; s < seg.region_slots.size(); ++s) {
+        if (seg.region_slots[s] && (!largest || seg.region_slots[s]->pixel_count >
+                                                    seg.region_slots[*largest]->pixel_count)) {
+            largest = s;
+        }
+    }
+    if (!largest || seg.width <= 0 || seg.height <= 0) {
+        return std::nullopt;
+    }
+    BackgroundCandidate out = measure_background(seg, *largest, options);
+    if (out.recommended) {
+        return out;
+    }
+    // Motif recadré serré (logo qui remplit l'image) : le motif est la plus grande région et le
+    // fond n'en est qu'un liseré. Repli : une couleur CLAIRE (papier, fond blanc) qui encadre
+    // l'image (quatre bords et au moins `min_border_ratio` du pourtour). Un ciel ou une mer plein
+    // cadre n'occupe jamais tout le pourtour ; un cadre coloré (filet rouge autour d'un aplat
+    // blanc) fait partie du dessin : tous deux restent cousus.
+    std::vector<std::size_t> borderSlots;
+    const auto addBorder = [&](int x, int y) {
+        const std::uint32_t label =
+            seg.labels[static_cast<std::size_t>(y) * static_cast<std::size_t>(seg.width) +
+                       static_cast<std::size_t>(x)];
+        if (label != 0) {
+            borderSlots.push_back(label - 1);
+        }
+    };
+    for (int x = 0; x < seg.width; ++x) {
+        addBorder(x, 0);
+        addBorder(x, seg.height - 1);
+    }
+    for (int y = 0; y < seg.height; ++y) {
+        addBorder(0, y);
+        addBorder(seg.width - 1, y);
+    }
+    std::sort(borderSlots.begin(), borderSlots.end());
+    borderSlots.erase(std::unique(borderSlots.begin(), borderSlots.end()), borderSlots.end());
+    std::optional<BackgroundCandidate> framing;
+    std::vector<std::array<std::uint8_t, 3>> seen{out.rgb};
+    for (const std::size_t s : borderSlots) { // slots croissants : résultat déterministe
+        if (s >= seg.region_slots.size() || !seg.region_slots[s] ||
+            std::find(seen.begin(), seen.end(), seg.region_slots[s]->rgb) != seen.end()) {
+            continue;
+        }
+        seen.push_back(seg.region_slots[s]->rgb);
+        // Plus grande région de cette couleur : celle que l'appelant désignera.
+        std::size_t best = s;
+        for (std::size_t t = 0; t < seg.region_slots.size(); ++t) {
+            if (seg.region_slots[t] && seg.region_slots[t]->rgb == seg.region_slots[s]->rgb &&
+                seg.region_slots[t]->pixel_count > seg.region_slots[best]->pixel_count) {
+                best = t;
+            }
+        }
+        BackgroundCandidate c = measure_background(seg, best, options);
+        const bool frames = c.lightness > options.min_lightness && c.sides_touched == 4 &&
+                            c.border_ratio >= options.min_border_ratio;
+        if (frames && (!framing || c.border_ratio > framing->border_ratio)) {
+            framing = c;
+        }
+    }
+    return framing ? *framing : out;
 }
 
 image::Image render_map(const Segmentation& seg, std::optional<RegionId> highlight) {

@@ -7,6 +7,8 @@
 #include <QVariantList>
 #include <QVariantMap>
 #include <cstdint>
+#include <map>
+#include <optional>
 #include <vector>
 
 #include "image_controller.hpp"
@@ -36,6 +38,13 @@ class RegionController : public QObject {
     Q_PROPERTY(bool messageIsError READ messageIsError NOTIFY messageChanged)
     Q_PROPERTY(QString tool READ tool WRITE setTool NOTIFY toolChanged)
     Q_PROPERTY(double brushRadius READ brushRadius WRITE setBrushRadius NOTIFY toolChanged)
+    // Question en attente avant d'écraser des retouches ("" = aucune). Une seule source pour tous
+    // les panneaux : la demande mémorisée est celle que `confirmRegeneration()` exécutera.
+    Q_PROPERTY(QString confirmText READ confirmText NOTIFY confirmChanged)
+    // Mode « choisir la cible » : le prochain clic de région (liste, carte ou canevas) désigne la
+    // région qui absorbe l'unique région sélectionnée.
+    Q_PROPERTY(bool mergeTargetMode READ mergeTargetMode WRITE setMergeTargetMode NOTIFY
+                   mergeTargetModeChanged)
 public:
     RegionController(StudioController& studio, ImageController& images, QObject* parent = nullptr);
     ~RegionController() override;
@@ -57,6 +66,9 @@ public:
     [[nodiscard]] double brushRadius() const { return brushRadius_; }
     void setTool(const QString& tool);
     void setBrushRadius(double radiusPx);
+    [[nodiscard]] QString confirmText() const { return confirmText_; }
+    [[nodiscard]] bool mergeTargetMode() const { return mergeTargetMode_; }
+    void setMergeTargetMode(bool on);
 
     // --- Sélection ---------------------------------------------------------------------------
     // mode : "replace" | "toggle" | "add".
@@ -67,13 +79,25 @@ public:
     Q_INVOKABLE void selectNeighbours();
     Q_INVOKABLE void invertSelection();
     Q_INVOKABLE void selectAll();
+    // Parcours séquentiel de la liste des régions : sélection unique, retour à la première
+    // (ou à la dernière) en bout de liste. Faux si la segmentation n'a aucune région.
+    Q_INVOKABLE bool selectNextRegion();
+    Q_INVOKABLE bool selectPreviousRegion();
+    // Agrandit (pas > 0) ou réduit (pas < 0) le rayon du pinceau d'un pixel par pas, borné 1-200.
+    Q_INVOKABLE void stepBrushRadius(int steps);
     Q_INVOKABLE void clearSelection();
+    // Reprend les régions de la sélection partagée de la session (lien « Aller à la région » de
+    // l'espace Vecteurs). Faux si elle n'en contient aucune qui existe encore, ou si cette demande
+    // (révision de la sélection partagée) a déjà été reprise. Coupe le choix de cible de fusion.
+    Q_INVOKABLE bool adoptSessionSelection();
     // Objets de broderie issus des régions sélectionnées (identifiants).
     Q_INVOKABLE [[nodiscard]] QVariantList objectsOfSelection() const;
 
     // --- Retouches (chacune : UNE étape d'annulation ; "" = fait, sinon le refus) -------------
     Q_INVOKABLE QString recolorSelected(const QString& hexColor);
     Q_INVOKABLE QString mergeSelected();
+    // Merge the single selected (source) region into a user-chosen target.
+    Q_INVOKABLE QString mergeSelectedInto(double target);
     Q_INVOKABLE QString mergeWithNeighbour(double id);
     Q_INVOKABLE QString mergeColorInto(double source, double target);
     Q_INVOKABLE QString deleteSelected();
@@ -89,9 +113,14 @@ public:
     // --- Régénération des objets -------------------------------------------------------------
     // Sans `confirmed`, des retouches de points qui seraient remplacées déclenchent
     // `confirmRequested` : rien n'est modifié tant que l'utilisateur n'a pas confirmé.
-    // `settings` : max_colors, min_region_px, smoothing_px (re-segmentation si `resegment`).
+    // `settings` : max_colors, min_region_px, smoothing_radius_px (les clés de
+    // `ImageController::segmentationDefaults`), utilisées pour la re-segmentation si `resegment`.
     Q_INVOKABLE void regenerate(bool resegment, bool confirmed = false,
                                 const QVariantMap& settings = {});
+    // Exécute la demande en attente de confirmation (la même, avec les mêmes réglages) ; sans effet
+    // s'il n'y en a pas.
+    Q_INVOKABLE void confirmRegeneration();
+    Q_INVOKABLE void cancelConfirmation();
     Q_INVOKABLE void cancelTask();
 
 signals:
@@ -101,6 +130,8 @@ signals:
     void busyChanged();
     void messageChanged();
     void toolChanged();
+    void confirmChanged();
+    void mergeTargetModeChanged();
     void confirmRequested(const QString& question);
     void regenerated(int objectsBefore, int objectsAfter);
 
@@ -114,11 +145,13 @@ private:
     StudioController& studio_;
     ImageController& images_;
     DocumentSession::Token token_{};
-    QTimer pump_;
     QTimer refreshTimer_;
+    bool stepRegion(int direction);
     QVariantList regions_;
     int mapRevision_{0};
     std::uint64_t observedDocumentRevision_{0};
+    ObjectId observedImageSource_;
+    std::map<ObjectId, QString> staleSources_;
     std::vector<std::uint64_t> selected_;
     bool stale_{false};
     QString staleReason_;
@@ -127,6 +160,13 @@ private:
     bool messageIsError_{false};
     QString tool_{QStringLiteral("select")};
     double brushRadius_{4.0};
+    QString confirmText_;
+    bool pendingResegment_{false};
+    QVariantMap pendingSettings_;
+    bool mergeTargetMode_{false};
+    // Révision de la sélection partagée déjà examinée : une demande « Aller à la région » n'est
+    // reprise qu'une fois, mais chaque nouvelle demande l'est, même vers la même région.
+    std::optional<std::uint64_t> adoptedSelectionRevision_;
     std::uint64_t seenRevision_{0};
     TaskId task_{0};
     // Détruit avant les membres ci-dessus : ses rappels les utilisent.

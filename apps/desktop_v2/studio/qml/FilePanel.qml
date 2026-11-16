@@ -32,6 +32,23 @@ Item {
     function importImageDialog() { imageDialog.open() }
     function importVectorDialog() { vectorDialog.open() }
     function importMachineDialog() { machineDialog.open() }
+    function insertDesignDialog() { if (ctl) insertFileDialog.open() }
+    // CX08 : aperçu de ce qui sera inséré, puis insertion en une étape annulable.
+    function previewInsert(url) {
+        insertDialog.url = url
+        insertDialog.preview = ctl.insertDesignPreview(url)
+        insertDialog.open()
+    }
+    function insertSummary(p) {
+        if (!p || !p.ok)
+            return ""
+        var size = qsTr("%1 × %2 mm").arg(Number(p.widthMm).toFixed(1)).arg(Number(p.heightMm).toFixed(1))
+        if (p.machine)
+            return qsTr("Broderie machine : %1 points, %2 couleurs, %3. Elle arrive centrée dans le cadre.")
+                .arg(p.stitches).arg(p.colors).arg(size)
+        return qsTr("Projet : %1 formes, %2 objets de broderie, %3 textes, %4. Les objets gardent leur position et reçoivent de nouveaux identifiants.")
+            .arg(p.shapes).arg(p.embroideries).arg(p.texts).arg(size)
+    }
 
     function guardText(reason) {
         switch (reason) {
@@ -52,15 +69,44 @@ Item {
         saveExportDialog.open()
     }
 
+    // CX07 : réglages puis aperçu de ce que l'export produira, avant le choix du fichier.
+    function openExportOptions(kind) {
+        if (!ctl)
+            return
+        exportOptionsDialog.kind = kind
+        exportOptionsDialog.plan = ({})
+        exportOptionsDialog.open()
+        exportOptionsDialog.refresh()
+    }
+    function exportPlanText(kind, p) {
+        if (!p || p.ok === undefined)
+            return qsTr("Calcul de l'aperçu…")
+        if (!p.ok)
+            return p.message || qsTr("Aperçu impossible.")
+        if (kind === "image") {
+            var text = qsTr("%1 × %2 pixels pour %3 × %4 mm (cadre et points), %5 px/mm.")
+                .arg(p.width).arg(p.height)
+                .arg(Number(p.widthMm).toFixed(1)).arg(Number(p.heightMm).toFixed(1))
+                .arg(Number(p.pxPerMm).toFixed(2))
+            if (p.reduced)
+                text += " " + qsTr("Résolution abaissée : l'image dépasserait la taille maximale.")
+            return text
+        }
+        return qsTr("%1 page(s) (%2 × %3) de %4 × %5 mm pour un motif de %6 × %7 mm, à l'échelle 1:1.")
+            .arg(p.pages).arg(p.columns).arg(p.rows)
+            .arg(Number(p.pageWidthMm).toFixed(0)).arg(Number(p.pageHeightMm).toFixed(0))
+            .arg(Number(p.designWidthMm).toFixed(1)).arg(Number(p.designHeightMm).toFixed(1))
+    }
+
     function finishExport(url) {
         switch (exportKind) {
         case "machine": ctl.exportMachine(url, exportValues); break
         case "threads": ctl.exportThreadList(url); break
         case "dxf": ctl.exportDxf(url); break
         case "svg": ctl.exportSvg(url); break
-        case "image": ctl.exportImage(url, 6, 92); break
+        case "image": ctl.exportImage(url, exportOptionsDialog.pxPerMm, exportOptionsDialog.quality); break
         case "sheet": ctl.exportProductionSheet(url); break
-        case "template": ctl.exportPlacementTemplate(url, {}); break
+        case "template": ctl.exportPlacementTemplate(url, { paper: exportOptionsDialog.paper, landscape: exportOptionsDialog.landscape }); break
         }
     }
 
@@ -123,9 +169,10 @@ Item {
         title: qsTr("Ouvrir ou importer un fichier")
         fileMode: FileDialog.OpenFile
         nameFilters: {
-            var filters = [qsTr("Tous les fichiers pris en charge (*.osp *.svg *.dxf *.png *.jpg *.jpeg *.bmp *.tif *.tiff *.webp *.dst *.pes *.jef *.exp *.vp3)"),
+            var filters = [qsTr("Tous les fichiers pris en charge (*.osp *.svg *.dxf *.png *.jpg *.jpeg *.bmp *.tif *.tiff *.webp *.ora *.dst *.pes *.jef *.exp *.vp3)"),
                            qsTr("Projet OpenStitch (*.osp)"),
-                           qsTr("Image (*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.webp)"),
+                           qsTr("Images (*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.webp *.ora)"),
+                           qsTr("OpenRaster (*.ora)"),
                            qsTr("Vecteur (*.svg *.dxf)")]
             if (panel.ctl) {
                 var f = panel.ctl.readableFilters
@@ -138,9 +185,10 @@ Item {
     }
     FileDialog {
         id: imageDialog
-        title: qsTr("Choisir une image source")
-        nameFilters: [qsTr("Image (*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.webp)")]
-        onAccepted: if (panel.ctl) panel.ctl.openUrl(selectedFile)
+        title: qsTr("Importer des images en calques")
+        fileMode: FileDialog.OpenFiles
+        nameFilters: [qsTr("Image ou OpenRaster (*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.webp *.ora)")]
+        onAccepted: if (panel.ctl) panel.ctl.importImageLayers(selectedFiles)
     }
     FileDialog {
         id: vectorDialog
@@ -161,6 +209,55 @@ Item {
             return out
         }
         onAccepted: if (panel.ctl) panel.ctl.openUrl(selectedFile)
+    }
+    FileDialog {
+        id: insertFileDialog
+        objectName: "insertDesignFileDialog"
+        title: qsTr("Insérer un design dans ce projet")
+        nameFilters: {
+            var out = [qsTr("Projet OpenStitch (*.osp)")]
+            if (panel.ctl) {
+                var f = panel.ctl.readableFilters
+                for (var i = 0; i < f.length; ++i)
+                    out.push(f[i].filter)
+            }
+            return out
+        }
+        onAccepted: panel.previewInsert(selectedFile)
+    }
+    Frame {
+        id: insertDialog
+        objectName: "insertDesignDialog"
+        heading: insertDialog.preview && insertDialog.preview.name
+                 ? qsTr("Insérer « %1 » ?").arg(insertDialog.preview.name)
+                 : qsTr("Insérer un design ?")
+        property url url
+        property var preview: ({})
+        Label {
+            objectName: "insertDesignSummary"
+            text: insertDialog.preview && insertDialog.preview.ok
+                  ? panel.insertSummary(insertDialog.preview)
+                  : ((insertDialog.preview && insertDialog.preview.message) || "")
+        }
+        RowLayout {
+            Layout.alignment: Qt.AlignRight
+            spacing: 8
+            StudioButton {
+                objectName: "cancelInsertDesign"
+                text: qsTr("Annuler")
+                onClicked: insertDialog.close()
+            }
+            StudioButton {
+                objectName: "acceptInsertDesign"
+                text: qsTr("Insérer")
+                emphasized: true
+                enabled: insertDialog.preview && insertDialog.preview.ok === true
+                onClicked: {
+                    panel.ctl.insertDesign(insertDialog.url)
+                    insertDialog.close()
+                }
+            }
+        }
     }
     FileDialog {
         id: guardSaveDialog
@@ -280,9 +377,16 @@ Item {
                 onClicked: panel.ctl.clearRecent()
             }
             SectionLabel { text: qsTr("IMPORTER") }
-            Entry { text: qsTr("Une image (espace Image)…"); onClicked: panel.importImageDialog() }
+            Entry { text: qsTr("Images en calques…"); onClicked: panel.importImageDialog() }
             Entry { text: qsTr("Un SVG ou un DXF…"); onClicked: panel.importVectorDialog() }
             Entry { text: qsTr("Une broderie machine…"); onClicked: panel.importMachineDialog() }
+            Entry {
+                objectName: "insertDesignMenuEntry"
+                text: qsTr("Un design dans ce projet…")
+                tooltip: qsTr("Ajoute le contenu d'un projet .osp ou d'une broderie machine au projet ouvert, en une étape annulable")
+                enabled: panel.ctl !== null
+                onClicked: panel.insertDesignDialog()
+            }
             SectionLabel { text: qsTr("EXPORTER") }
             Entry {
                 text: qsTr("Pour la machine…")
@@ -298,9 +402,9 @@ Item {
                 shortcutLabel: "F10"
                 onClicked: panel.ctl.exportAgain()
             }
-            Entry { text: qsTr("Image (PNG, JPEG)…"); onClicked: panel.startExport("image", qsTr("Exporter l'image"), [qsTr("Image (*.png *.jpg)")], "png") }
+            Entry { objectName: "exportImageEntry"; text: qsTr("Image (PNG, JPEG)…"); onClicked: panel.openExportOptions("image") }
             Entry { text: qsTr("Fiche de production (PDF)…"); onClicked: panel.startExport("sheet", qsTr("Fiche de production"), [qsTr("PDF (*.pdf)")], "pdf") }
-            Entry { text: qsTr("Gabarit de placement 1:1 (PDF)…"); onClicked: panel.startExport("template", qsTr("Gabarit de placement"), [qsTr("PDF (*.pdf)")], "pdf") }
+            Entry { objectName: "exportTemplateEntry"; text: qsTr("Gabarit de placement 1:1 (PDF)…"); onClicked: panel.openExportOptions("template") }
             Entry { text: qsTr("Liste des fils (CSV)…"); onClicked: panel.startExport("threads", qsTr("Liste des fils"), [qsTr("CSV (*.csv)")], "csv") }
             Entry { text: qsTr("Contours en DXF…"); onClicked: panel.startExport("dxf", qsTr("Contours DXF"), [qsTr("DXF (*.dxf)")], "dxf") }
             Entry { text: qsTr("Points en SVG…"); onClicked: panel.startExport("svg", qsTr("Points SVG"), [qsTr("SVG (*.svg)")], "svg") }
@@ -363,6 +467,90 @@ Item {
     // Importer une image ouvre seulement le sélecteur de fichier : la préparation
     // a lieu dans l'espace Image, la segmentation dans l'espace suivant.
     
+    // --- Options des exports image et gabarit (CX07) -------------------------------------------
+    Connections {
+        target: panel.ctl
+        function onExportPlanReady(kind, plan) {
+            if (kind === exportOptionsDialog.kind)
+                exportOptionsDialog.plan = plan
+        }
+    }
+    Frame {
+        id: exportOptionsDialog
+        objectName: "exportOptionsDialog"
+        property string kind: "image"
+        property var plan: ({})
+        property real pxPerMm: 6
+        property int quality: 92
+        property string paper: "A4"
+        property bool landscape: false
+        readonly property var papers: ["A4", "A3", "Letter"]
+        heading: kind === "image" ? qsTr("Exporter l'image") : qsTr("Gabarit de placement 1:1")
+        function refresh() {
+            plan = ({})
+            panel.ctl.requestExportPlan(kind, { pxPerMm: pxPerMm, paper: paper, landscape: landscape })
+        }
+        RowLayout {
+            visible: exportOptionsDialog.kind === "image"
+            spacing: 8
+            Label { text: qsTr("Résolution (px/mm)") }
+            StudioSpinBox {
+                objectName: "exportImageResolution"
+                from: 1; to: 12; editable: true
+                value: exportOptionsDialog.pxPerMm
+                onValueModified: { exportOptionsDialog.pxPerMm = value; exportOptionsDialog.refresh() }
+            }
+        }
+        RowLayout {
+            visible: exportOptionsDialog.kind === "image"
+            spacing: 8
+            Label { text: qsTr("Qualité JPEG") }
+            StudioSpinBox {
+                objectName: "exportImageQuality"
+                from: 1; to: 100; editable: true
+                value: exportOptionsDialog.quality
+                onValueModified: exportOptionsDialog.quality = value
+            }
+        }
+        StudioComboBox {
+            objectName: "exportTemplatePaper"
+            visible: exportOptionsDialog.kind === "template"
+            Layout.fillWidth: true
+            model: exportOptionsDialog.papers
+            currentIndex: exportOptionsDialog.papers.indexOf(exportOptionsDialog.paper)
+            onActivated: { exportOptionsDialog.paper = exportOptionsDialog.papers[currentIndex]; exportOptionsDialog.refresh() }
+        }
+        StudioCheckBox {
+            objectName: "exportTemplateLandscape"
+            visible: exportOptionsDialog.kind === "template"
+            text: qsTr("Paysage")
+            checked: exportOptionsDialog.landscape
+            onToggled: { exportOptionsDialog.landscape = checked; exportOptionsDialog.refresh() }
+        }
+        Label {
+            objectName: "exportPlanSummary"
+            text: panel.exportPlanText(exportOptionsDialog.kind, exportOptionsDialog.plan)
+        }
+        RowLayout {
+            Layout.alignment: Qt.AlignRight
+            spacing: 8
+            StudioButton { objectName: "cancelExportOptions"; text: qsTr("Annuler"); onClicked: exportOptionsDialog.close() }
+            StudioButton {
+                objectName: "confirmExportOptions"
+                text: qsTr("Enregistrer…")
+                emphasized: true
+                enabled: exportOptionsDialog.plan && exportOptionsDialog.plan.ok === true
+                onClicked: {
+                    exportOptionsDialog.close()
+                    if (exportOptionsDialog.kind === "image")
+                        panel.startExport("image", qsTr("Exporter l'image"), [qsTr("Image (*.png *.jpg)")], "png")
+                    else
+                        panel.startExport("template", qsTr("Gabarit de placement"), [qsTr("PDF (*.pdf)")], "pdf")
+                }
+            }
+        }
+    }
+
     // --- Export pour la machine ---------------------------------------------------------------
     Frame {
         id: exportDialog

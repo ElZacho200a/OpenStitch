@@ -18,6 +18,7 @@ add_library(openstitch_auto_satin
     src/coverage.cpp
     src/medial_axis.cpp
     src/parallel_sweep.cpp
+    src/guided_satin.cpp
     src/satin_strategy.cpp
 )
 add_library(openstitch::auto_satin ALIAS openstitch_auto_satin)

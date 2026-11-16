@@ -13,3 +13,4 @@
 *.osp binary
 # SVG : traité comme texte mais fins de ligne LF pour un rendu stable
 *.svg text eol=lf
+*.sh text eol=lf

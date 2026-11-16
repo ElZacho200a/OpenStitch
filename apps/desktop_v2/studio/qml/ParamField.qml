@@ -85,6 +85,10 @@ ColumnLayout {
             id: entry
             objectName: "entry_" + root.fieldKey
             Layout.preferredWidth: 64
+            wheelStep: root.f.kind === "integer" ? 1 : (root.f.step > 0 ? root.f.step : 0)
+            wheelMin: root.f.min
+            wheelMax: root.f.max
+            wheelDecimals: root.f.kind === "integer" ? 0 : Math.max(0, Math.min(4, Math.ceil(-Math.log(root.f.step > 0 ? root.f.step : 1) / Math.LN10 - 1e-9)))
             text: root.f.text
             horizontalAlignment: TextInput.AlignRight
             color: root.error.length > 0 ? Theme.error : Theme.foreground
@@ -136,6 +140,9 @@ ColumnLayout {
         }
         StudioTextField {
             id: pointX
+            wheelStep: 1
+            wheelMin: -1000
+            wheelMax: 1000
             objectName: "pointx_" + root.fieldKey
             Layout.fillWidth: true
             text: root.f.isSet ? Number(root.f.pointX).toString() : ""
@@ -156,6 +163,9 @@ ColumnLayout {
         }
         StudioTextField {
             id: pointY
+            wheelStep: 1
+            wheelMin: -1000
+            wheelMax: 1000
             objectName: "pointy_" + root.fieldKey
             Layout.fillWidth: true
             text: root.f.isSet ? Number(root.f.pointY).toString() : ""

@@ -13,6 +13,7 @@
 
 #include "openstitch/geometry/boolean.hpp"
 #include "openstitch/geometry/polyline.hpp"
+#include "openstitch/image/ops.hpp"
 #include "openstitch/project_io/project_io.hpp"
 #include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_analysis/analyze.hpp"
@@ -80,6 +81,18 @@ const char* density_curve_name(document::DensityCurve c) {
         return "smooth";
     case document::DensityCurve::Steep:
         return "steep";
+    case document::DensityCurve::EaseIn:
+        return "ease_in";
+    case document::DensityCurve::EaseOut:
+        return "ease_out";
+    case document::DensityCurve::Convex:
+        return "convex";
+    case document::DensityCurve::Concave:
+        return "concave";
+    case document::DensityCurve::ConvexConcave:
+        return "convex_concave";
+    case document::DensityCurve::ConcaveConvex:
+        return "concave_convex";
     case document::DensityCurve::Linear:
         break;
     }
@@ -580,17 +593,22 @@ Result<json> build_project_doc(const document::Project& project, const InspectOp
     doc["schema"] = kInspectSchema;
     doc["osp_schema_version"] = project_io::kSchemaVersion;
     doc["canvas"] = canvas_json(project);
-    const double mmPerPx = project.mm_per_px.value;
+    const double mmPerPx = project.imageSource().mm_per_px.value;
     doc["resolution"] = json{{"mm_per_px", mmPerPx}, {"dpi", mmPerPx > 0.0 ? 25.4 / mmPerPx : 0.0}};
-    doc["image"] = json{{"present", project.hasImage()},
-                        {"width_px", project.original.width},
-                        {"height_px", project.original.height}};
+    json prep = json::array();
+    for (const auto& op : project.imageSource().ops) {
+        prep.push_back(image::op_name(op));
+    }
+    doc["image"] = json{{"present", project.hasActiveImage()},
+                        {"width_px", project.imageSource().original.width},
+                        {"height_px", project.imageSource().original.height},
+                        {"prep_steps", std::move(prep)}};
     doc["finishing"] = finishing_json(project.finishing);
     doc["imported_design"] = project.imported_design.has_value();
 
     json regions = json::array();
-    if (project.segmentation) {
-        for (const auto& slot : project.segmentation->region_slots) {
+    if (project.imageSource().segmentation) {
+        for (const auto& slot : project.imageSource().segmentation->region_slots) {
             if (slot) {
                 regions.push_back(json{{"id", slot->id.value},
                                        {"color", rgb_json(slot->rgb)},
@@ -808,6 +826,8 @@ const char* stitch_type_name(const document::EmbroideryObject& object) {
         return "cross_stitch";
     case 13:
         return "applique";
+    case 14:
+        return "multicolor_gradient";
     default:
         return "unknown";
     }

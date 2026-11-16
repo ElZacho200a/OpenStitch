@@ -7,6 +7,7 @@
 #include <QString>
 #include <QTimer>
 #include <QVariantList>
+#include <cstdint>
 #include <filesystem>
 #include <map>
 #include <memory>
@@ -31,6 +32,10 @@ class ViewController : public QObject {
     Q_OBJECT
     Q_PROPERTY(QString message READ message NOTIFY messageChanged)
     Q_PROPERTY(int hiddenCount READ hiddenCount NOTIFY changed)
+    // Filtres d'affichage de la V1 : types de points et couleurs de fil avec leurs effectifs.
+    // [{id, label, total, visible, checked, partial}] ; couleurs : id = « #rrggbb ».
+    Q_PROPERTY(QVariantList filterTypes READ filterTypes NOTIFY changed)
+    Q_PROPERTY(QVariantList filterColours READ filterColours NOTIFY changed)
     Q_PROPERTY(bool gridVisible READ gridVisible WRITE setGridVisible NOTIFY displayChanged)
     Q_PROPERTY(double gridStepMm READ gridStepMm WRITE setGridStepMm NOTIFY displayChanged)
     Q_PROPERTY(bool guidesVisible READ guidesVisible WRITE setGuidesVisible NOTIFY displayChanged)
@@ -38,6 +43,7 @@ class ViewController : public QObject {
     Q_PROPERTY(QVariantList guides READ guides NOTIFY displayChanged)
     Q_PROPERTY(bool layerStitches READ layerStitches WRITE setLayerStitches NOTIFY displayChanged)
     Q_PROPERTY(bool layerJumps READ layerJumps WRITE setLayerJumps NOTIFY displayChanged)
+    Q_PROPERTY(bool layerTrims READ layerTrims WRITE setLayerTrims NOTIFY displayChanged)
     Q_PROPERTY(bool layerHoop READ layerHoop WRITE setLayerHoop NOTIFY displayChanged)
     Q_PROPERTY(bool layerDensity READ layerDensity WRITE setLayerDensity NOTIFY displayChanged)
     Q_PROPERTY(bool layerRisk READ layerRisk WRITE setLayerRisk NOTIFY displayChanged)
@@ -69,6 +75,14 @@ public:
     Q_INVOKABLE bool showOnlyColour(const QString& hex);
     Q_INVOKABLE bool showOnlyType(const QString& typeId);
     Q_INVOKABLE bool showAll();
+    [[nodiscard]] QVariantList filterTypes() const;
+    [[nodiscard]] QVariantList filterColours() const;
+    Q_INVOKABLE bool setTypeVisible(const QString& typeId, bool visible);
+    Q_INVOKABLE bool setColourVisible(const QString& hex, bool visible);
+    // « all » | « none » | « invert » : toutes les couleurs affichées, masquées ou inversées.
+    Q_INVOKABLE bool setAllColours(const QString& mode);
+    // Masque les zones de moins de `minAreaMm2` (taille minimale des zones de la V1).
+    Q_INVOKABLE bool hideSmallerThan(double minAreaMm2);
 
     // --- Grid, guides, rulers, layers (display state, persisted) -----------------------------
     Q_INVOKABLE bool addGuide(bool vertical, double positionMm); // model mm, Y up
@@ -136,6 +150,8 @@ public:
     void setLayerStitches(bool value);
     [[nodiscard]] bool layerJumps() const { return layerJumps_; }
     void setLayerJumps(bool value);
+    [[nodiscard]] bool layerTrims() const { return layerTrims_; }
+    void setLayerTrims(bool value);
     [[nodiscard]] bool layerHoop() const { return layerHoop_; }
     void setLayerHoop(bool value);
     [[nodiscard]] bool layerDensity() const { return layerDensity_; }
@@ -166,7 +182,8 @@ signals:
     void realisticRefreshRequested();
 
 private:
-    struct SimData; // effective sequence prefix data, built on a worker per scene
+    std::uint64_t gateStamp_{0}; // documentStamp() au dernier changed rediffusé
+    struct SimData;              // effective sequence prefix data, built on a worker per scene
     void say(const QString& text);
     void onSceneChanged();
     void rebuildSimData();
@@ -186,8 +203,8 @@ private:
     bool rulers_{false};
     std::vector<double> guidesX_, guidesY_; // model mm (X right, Y up)
     QColor guideColor_{0, 170, 220};
-    bool layerStitches_{true}, layerJumps_{false}, layerHoop_{true}, layerDensity_{true},
-        layerRisk_{true};
+    bool layerStitches_{true}, layerJumps_{false}, layerTrims_{false}, layerHoop_{true},
+        layerDensity_{true}, layerRisk_{true};
     bool realistic_{false};
     bool lastRealisticGpu_{false};
     RealisticStyle realisticStyle_;
@@ -204,7 +221,6 @@ private:
     int spm_{800};
     double carry_{0.0};
     QTimer playTimer_;
-    QTimer pump_;
     TaskManager tasks_;
 };
 

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
+#include "openstitch/core/ids.hpp"
+
 #include <QObject>
 #include <QPointF>
 #include <QPointer>
@@ -28,6 +30,9 @@ class ImageSpaceController : public QObject {
     Q_PROPERTY(bool hasImage READ hasImage NOTIFY changed)
     Q_PROPERTY(double mmPerPx READ mmPerPx NOTIFY changed)
     Q_PROPERTY(int imageWidthPx READ imageWidthPx NOTIFY layerChanged)
+    Q_PROPERTY(double imageWidthMm READ imageWidthMm NOTIFY layerChanged)
+    Q_PROPERTY(double imageHeightMm READ imageHeightMm NOTIFY layerChanged)
+    Q_PROPERTY(bool canResize READ canResize NOTIFY changed)
     Q_PROPERTY(int imageHeightPx READ imageHeightPx NOTIFY layerChanged)
     Q_PROPERTY(int compareMode READ compareMode WRITE setCompareMode NOTIFY viewChanged)
     Q_PROPERTY(double curtain READ curtain WRITE setCurtain NOTIFY viewChanged)
@@ -42,6 +47,12 @@ class ImageSpaceController : public QObject {
     Q_PROPERTY(QString stageState READ stageState NOTIFY changed)
     Q_PROPERTY(QString stageDetail READ stageDetail NOTIFY changed)
     Q_PROPERTY(QString message READ message NOTIFY messageChanged)
+    // Outil actif au canevas : "" (sélection), "crop", "pick" (fond transparent), "measure".
+    Q_PROPERTY(QString tool READ tool WRITE setTool NOTIFY toolChanged)
+    Q_PROPERTY(int pickTolerance READ pickTolerance WRITE setPickTolerance NOTIFY toolChanged)
+    Q_PROPERTY(bool pickContiguous READ pickContiguous WRITE setPickContiguous NOTIFY toolChanged)
+    // Nombre de calques image du document (> 1 : document multi-calques, `.ora` par exemple).
+    Q_PROPERTY(int imageLayerCount READ imageLayerCount NOTIFY changed)
 public:
     ImageSpaceController(StudioController& studio, ImageController& images,
                          QObject* parent = nullptr);
@@ -58,6 +69,11 @@ public:
     void setCurtain(double fraction);
     [[nodiscard]] int layerRevision() const { return layerRevision_; }
     [[nodiscard]] QVariantList opStack() const;
+    [[nodiscard]] double imageWidthMm() const;
+    [[nodiscard]] double imageHeightMm() const;
+    // Vrai tant qu'aucun objet de broderie n'existe : l'échelle de l'image peut alors changer
+    // sans désaccord avec des objets déjà numérisés (ceux-ci se redimensionnent par la sélection).
+    [[nodiscard]] bool canResize() const;
     [[nodiscard]] bool cropActive() const { return cropActive_; }
     [[nodiscard]] double cropX() const { return cx_; }
     [[nodiscard]] double cropY() const { return cy_; }
@@ -68,6 +84,13 @@ public:
     [[nodiscard]] QString stageState() const;
     [[nodiscard]] QString stageDetail() const;
     [[nodiscard]] QString message() const { return message_; }
+    [[nodiscard]] QString tool() const;
+    void setTool(const QString& tool);
+    [[nodiscard]] int pickTolerance() const { return pickTolerance_; }
+    void setPickTolerance(int tolerance);
+    [[nodiscard]] bool pickContiguous() const { return pickContiguous_; }
+    void setPickContiguous(bool contiguous);
+    [[nodiscard]] int imageLayerCount() const;
 
     // Branche le GpuCanvas de l'espace (appelé par la QML) ; la couche est publiée aussitôt.
     Q_INVOKABLE void attachCanvas(QObject* canvas);
@@ -79,10 +102,26 @@ public:
     Q_INVOKABLE QString removeOp(int index);
     Q_INVOKABLE QString moveOp(int index, int delta);
     // Recadrage au canevas : le cadre est en pixels de l'image de travail.
+    // Redimensionne l'image source (ratio conservé : les pixels ne changent pas, seule leur taille
+    // physique). Tous les calques image changent du même facteur, pour rester alignés. Une étape
+    // d'annulation. Renvoie un message d'erreur, vide en cas de succès.
+    Q_INVOKABLE QString setImageWidthMm(double widthMm);
+    Q_INVOKABLE QString setImageHeightMm(double heightMm);
+    Q_INVOKABLE QString scaleImage(double percent);
     Q_INVOKABLE void beginCrop();
     Q_INVOKABLE void cancelCrop();
     Q_INVOKABLE void setCrop(double x, double y, double w, double h);
+    // Multi-calques : le cadre s'applique à tous les calques image de même taille de travail que
+    // le calque actif (la toile commune d'un `.ora`), en UNE étape ; les autres ne bougent pas.
     Q_INVOKABLE QString applyCrop();
+    // Pipette « fond transparent » : la couleur du pixel d'écran (sx, sy) devient transparente
+    // dans le calque actif (zone contiguë ou toute la couleur selon `pickContiguous`).
+    Q_INVOKABLE QString makeTransparentAt(double sx, double sy);
+    // Couleur (#rrggbb) du pixel d'écran dans l'image de travail, vide hors de l'image.
+    Q_INVOKABLE QString colorAt(double sx, double sy) const;
+    // Règle : une longueur mesurée de `lengthPx` pixels de l'image mesure `realMm` en vrai. Change
+    // l'échelle de TOUS les calques image d'un même facteur (leur alignement est conservé).
+    Q_INVOKABLE QString scaleFromMeasure(double lengthPx, double realMm);
     // Repères : pixel de l'image de travail <-> pixel d'écran du canevas.
     Q_INVOKABLE QPointF imageToScreen(double px, double py) const;
     Q_INVOKABLE QPointF screenToImage(double sx, double sy) const;
@@ -93,6 +132,7 @@ signals:
     void layerChanged();
     void cropChanged();
     void messageChanged();
+    void toolChanged();
 
 private:
     void refresh();
@@ -110,6 +150,7 @@ private:
     bool hadSegmentation_{false};
     bool imageChanged_{false};
     std::size_t lastOpCount_{0};
+    ObjectId observedImageSource_;
     std::uint64_t observedRevision_{std::numeric_limits<std::uint64_t>::max()};
     // Identité des images SOURCE, avant la réduction potentiellement coûteuse à 4096 px.
     bool imageKeysSet_{false};
@@ -117,6 +158,9 @@ private:
     qint64 afterKey_{0};
     double imageMmPerPx_{0};
     QString message_;
+    QString tool_;
+    int pickTolerance_{24};
+    bool pickContiguous_{true};
 };
 
 } // namespace openstitch::desktop_v2::studio

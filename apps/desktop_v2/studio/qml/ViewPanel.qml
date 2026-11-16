@@ -13,8 +13,29 @@ Item {
     property var canvasItem
     // Les espaces restent en mémoire : leurs Shortcut doivent être désactivés hors écran.
     property bool active: true
+    // Single-letter canvas shortcuts must never hijack typing in inspector/search fields.
+    // Multi-key commands (simulation, realistic view) remain window-wide.
+    readonly property bool canvasShortcutsEnabled: active && canvasItem !== undefined
+                                                   && canvasItem !== null && canvasItem.activeFocus
     // "", "view", "threads", "analysis"
     property string openPanel: ""
+    // Strict millimetre parser: rejects partial input such as "2mm" and supports
+    // a comma decimal separator for French keyboard layouts.
+    function parseMm(text) {
+        const value = String(text).trim().replace(",", ".")
+        if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(value))
+            return NaN
+        const number = Number(value)
+        return isFinite(number) ? number : NaN
+    }
+    function validGridStep(text) {
+        const mm = parseMm(text)
+        return mm >= 0.5 && mm <= 500
+    }
+    function validGuidePosition(text) {
+        const mm = parseMm(text)
+        return mm >= -5000 && mm <= 5000
+    }
     // Faux : l'espace hôte (« Points ») porte lui-même les boutons de cette barre et n'ouvre
     // qu'UN panneau latéral à la fois. Vrai : usage historique des autres espaces.
     property bool toolbarVisible: true
@@ -45,10 +66,10 @@ Item {
             Connections { target: hub.canvasItem; function onViewChanged() { inner.refreshTicks() } }
             Connections { target: view; function onDisplayChanged() { inner.refreshTicks() } }
 
-            Shortcut { sequence: "G"; enabled: hub.active; onActivated: view.gridVisible = !view.gridVisible }
-            Shortcut { sequence: "Z"; enabled: hub.active; onActivated: view.zoomRectangle() }
-            Shortcut { sequence: "1"; enabled: hub.active; onActivated: view.zoomActualSize() }
-            Shortcut { sequence: "Shift+F"; enabled: hub.active; onActivated: view.zoomSelection() }
+            Shortcut { sequence: "G"; enabled: hub.canvasShortcutsEnabled; onActivated: view.gridVisible = !view.gridVisible }
+            Shortcut { sequence: "Z"; enabled: hub.canvasShortcutsEnabled; onActivated: view.zoomRectangle() }
+            Shortcut { sequence: "1"; enabled: hub.canvasShortcutsEnabled; onActivated: view.zoomActualSize() }
+            Shortcut { sequence: "Shift+F"; enabled: hub.canvasShortcutsEnabled; onActivated: view.zoomSelection() }
             Shortcut { sequence: "Alt+Left"; enabled: hub.active; onActivated: view.zoomPreviousView() }
             Shortcut { sequence: "Ctrl+L"; enabled: hub.active; onActivated: view.simActive ? view.stopSimulation() : view.startSimulation() }
             Shortcut { sequence: "Ctrl+Shift+T"; enabled: hub.active; onActivated: view.toggleRealistic() }
@@ -78,15 +99,25 @@ Item {
               active: hub.toolbarVisible
               anchors.top: parent.top
               anchors.right: parent.right
-              anchors.margins: 10
-              sourceComponent: Row {
+              // Fond de carte : la barre reste lisible au-dessus d'une image claire.
+              sourceComponent: Rectangle {
+                implicitWidth: viewToolbarRow.implicitWidth + 12
+                implicitHeight: viewToolbarRow.implicitHeight + 12
+                radius: Theme.cardRadius
+                color: Theme.panel
+                border.color: Theme.divider
+               Row {
+                id: viewToolbarRow
                 objectName: "viewToolbar"
+                x: 6
+                y: 6
                 spacing: 4
                 StudioButton { objectName: "realisticButton2"; text: qsTr("Réaliste"); shortcutLabel: "Ctrl+Shift+T"; tooltip: qsTr("Rendu réaliste (fils en relief, ombre, tissu)"); checkable: true; checked: view.realistic; onClicked: view.toggleRealistic() }
                 StudioButton { objectName: "viewPanelButton"; text: qsTr("Vue"); checkable: true; checked: hub.openPanel === "view"; onClicked: hub.toggle("view") }
                 StudioButton { objectName: "threadsPanelButton"; text: qsTr("Fils"); checkable: true; checked: hub.openPanel === "threads"; onClicked: hub.toggle("threads") }
                 StudioButton { objectName: "analysisPanelButton"; text: qsTr("Analyse"); checkable: true; checked: hub.openPanel === "analysis"; onClicked: hub.toggle("analysis") }
                 StudioButton { objectName: "simulationButton"; text: qsTr("Simulation"); shortcutLabel: "Ctrl+L"; checkable: true; checked: view.simActive; enabled: view.simReady; onClicked: view.simActive ? view.stopSimulation() : view.startSimulation() }
+               }
               }
             }
 
@@ -103,12 +134,12 @@ Item {
                 Behavior on scale { NumberAnimation { duration: Theme.feedbackSlowMs; easing.type: Easing.OutCubic } }
                 anchors.top: parent.top
                 anchors.right: parent.right
-                anchors.topMargin: hub.toolbarVisible ? 54 : 12
-                anchors.rightMargin: hub.toolbarVisible ? 10 : 12
-                anchors.bottomMargin: hub.toolbarVisible ? 70 : 12
+                anchors.topMargin: hub.toolbarVisible ? Theme.controlHeight + 12 + Theme.gap : 0
+                anchors.rightMargin: 0
+                anchors.bottomMargin: hub.toolbarVisible ? 70 : 0
                 anchors.bottom: parent.bottom
                 width: Math.min(340, parent.width - 40)
-                radius: Theme.radius
+                radius: Theme.cardRadius
                 color: Theme.panel
                 border.color: Theme.divider
 
@@ -158,6 +189,100 @@ Item {
                                 }
                             }
                         }
+                        // Filtres de la V1 : types de points, couleurs de fil (Toutes / Aucune / Inverser) et
+                        // taille minimale des zones. Chaque action = UNE étape d'annulation ; l'état affiché
+                        // vient des objets eux-mêmes (aucun état parallèle).
+                        Text {
+                            objectName: "filterIndicator"
+                            Layout.fillWidth: true
+                            visible: view.hiddenCount > 0
+                            text: qsTr("%1 objet(s) masqué(s) par un filtre").arg(view.hiddenCount)
+                            color: Theme.warning
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.smallSize
+                            wrapMode: Text.WordWrap
+                        }
+                        Text { text: qsTr("Types de points"); color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize }
+                        Flow {
+                            objectName: "filterTypesFlow"
+                            Layout.fillWidth: true
+                            spacing: 2
+                            Repeater {
+                                model: view.filterTypes
+                                delegate: StudioCheckBox {
+                                    required property var modelData
+                                    objectName: "filterType_" + modelData.id
+                                    text: modelData.label + " (" + modelData.visible + "/" + modelData.total + ")"
+                                    checked: modelData.checked
+                                    tristate: false
+                                    opacity: modelData.partial ? 0.7 : 1
+                                    onToggled: view.setTypeVisible(modelData.id, checked)
+                                    palette.windowText: Theme.foreground
+                                }
+                            }
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 4
+                            Text { text: qsTr("Couleurs de fil"); color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize; Layout.fillWidth: true }
+                            StudioButton { objectName: "coloursAllButton"; text: qsTr("Toutes"); quiet: true; onClicked: view.setAllColours("all") }
+                            StudioButton { objectName: "coloursNoneButton"; text: qsTr("Aucune"); quiet: true; onClicked: view.setAllColours("none") }
+                            StudioButton { objectName: "coloursInvertButton"; text: qsTr("Inverser"); quiet: true; onClicked: view.setAllColours("invert") }
+                        }
+                        Flow {
+                            objectName: "filterColoursFlow"
+                            Layout.fillWidth: true
+                            spacing: 2
+                            Repeater {
+                                model: view.filterColours
+                                delegate: Row {
+                                    id: colourRow
+                                    required property var modelData
+                                    spacing: 2
+                                    Rectangle {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: 16
+                                        height: 16
+                                        radius: 3
+                                        color: colourRow.modelData.id
+                                        border.width: 1
+                                        border.color: Theme.outline
+                                    }
+                                    StudioCheckBox {
+                                        objectName: "filterColour_" + colourRow.modelData.id
+                                        text: colourRow.modelData.visible + "/" + colourRow.modelData.total
+                                        checked: colourRow.modelData.checked
+                                        opacity: colourRow.modelData.partial ? 0.7 : 1
+                                        onToggled: view.setColourVisible(colourRow.modelData.id, checked)
+                                        palette.windowText: Theme.foreground
+                                        Accessible.name: qsTr("Couleur %1").arg(colourRow.modelData.id)
+                                    }
+                                }
+                            }
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 6
+                            Text { text: qsTr("Taille min. des zones (mm²)"); color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize }
+                            StudioTextField {
+                                id: minAreaField
+                                objectName: "minAreaField"
+                                implicitWidth: 60
+                                text: "4.0"
+                                wheelStep: 0.5
+                                wheelMin: 0.1
+                                wheelMax: 10000
+                                invalid: isNaN(parseFloat(text.replace(",", "."))) || parseFloat(text.replace(",", ".")) <= 0
+                                Accessible.name: qsTr("Taille minimale des zones en mm²")
+                            }
+                            StudioButton {
+                                objectName: "hideSmallButton"
+                                text: qsTr("Masquer les petites")
+                                enabled: !minAreaField.invalid
+                                tooltip: qsTr("Masque les zones plus petites que cette taille")
+                                onClicked: view.hideSmallerThan(parseFloat(minAreaField.text.replace(",", ".")))
+                            }
+                        }
                         Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Theme.divider }
                         SectionLabel { text: qsTr("RENDU RÉALISTE") }
                         RealisticToggle { objectName: "realisticPanelToggle"; Layout.fillWidth: true }
@@ -167,6 +292,7 @@ Item {
                             spacing: 2
                             StudioCheckBox { objectName: "layerStitchesBox"; text: qsTr("Points"); checked: view.layerStitches; onToggled: view.layerStitches = checked; palette.windowText: Theme.foreground }
                             StudioCheckBox { objectName: "layerJumpsBox"; text: qsTr("Sauts"); checked: view.layerJumps; onToggled: view.layerJumps = checked; palette.windowText: Theme.foreground }
+                            StudioCheckBox { objectName: "layerTrimsBox"; text: qsTr("Coupes"); checked: view.layerTrims; onToggled: view.layerTrims = checked; palette.windowText: Theme.foreground }
                             StudioCheckBox { objectName: "layerHoopBox"; text: qsTr("Cadre"); checked: view.layerHoop; onToggled: view.layerHoop = checked; palette.windowText: Theme.foreground }
                             StudioCheckBox { objectName: "layerDensityBox"; text: qsTr("Densité"); checked: view.layerDensity; onToggled: view.layerDensity = checked; palette.windowText: Theme.foreground }
                             StudioCheckBox { objectName: "layerRiskBox"; text: qsTr("Risque tissu"); checked: view.layerRisk; onToggled: view.layerRisk = checked; palette.windowText: Theme.foreground }
@@ -183,16 +309,75 @@ Item {
                         RowLayout {
                             Layout.fillWidth: true
                             Text { text: qsTr("Pas (mm)"); color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize }
-                            StudioTextField { id: stepField; objectName: "gridStepField"; implicitWidth: 70; text: view.gridStepMm; onEditingFinished: view.gridStepMm = parseFloat(text) }
+                            StudioTextField {
+                                id: stepField
+                                objectName: "gridStepField"
+                                wheelStep: 0.5
+                                wheelMin: 0.5
+                                wheelMax: 100
+                                implicitWidth: 70
+                                text: view.gridStepMm
+                                invalid: !hub.validGridStep(text)
+                                Accessible.name: qsTr("Pas de grille en millimètres")
+                                onEditingFinished: {
+                                    if (hub.validGridStep(text))
+                                        view.gridStepMm = hub.parseMm(text)
+                                    else
+                                        text = String(view.gridStepMm)
+                                }
+                            }
                             Text { text: qsTr("Guide (mm)"); color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize }
-                            StudioTextField { id: guideField; objectName: "guideField"; implicitWidth: 70; text: "0" }
+                            StudioTextField {
+                                id: guideField
+                                objectName: "guideField"
+                                wheelStep: 1
+                                implicitWidth: 70
+                                text: "0"
+                                invalid: !hub.validGuidePosition(text)
+                                Accessible.name: qsTr("Position du guide en millimètres")
+                            }
                         }
                         Flow {
                             Layout.fillWidth: true
                             spacing: 4
-                            StudioButton { objectName: "addVGuideButton"; text: qsTr("Guide vertical"); onClicked: view.addGuide(true, parseFloat(guideField.text)) }
-                            StudioButton { objectName: "addHGuideButton"; text: qsTr("Guide horizontal"); onClicked: view.addGuide(false, parseFloat(guideField.text)) }
+                            StudioButton { objectName: "addVGuideButton"; text: qsTr("Guide vertical"); enabled: hub.validGuidePosition(guideField.text); onClicked: view.addGuide(true, hub.parseMm(guideField.text)) }
+                            StudioButton { objectName: "addHGuideButton"; text: qsTr("Guide horizontal"); enabled: hub.validGuidePosition(guideField.text); onClicked: view.addGuide(false, hub.parseMm(guideField.text)) }
                             StudioButton { objectName: "clearGuidesButton"; text: qsTr("Effacer les guides"); enabled: view.guides.length > 0; onClicked: view.clearGuides() }
+                        }
+                        Flow {
+                            Layout.fillWidth: true
+                            spacing: 4
+                            visible: view.guides.length > 0
+                            Repeater {
+                                model: view.guides
+                                delegate: StudioButton {
+                                    required property var modelData
+                                    required property int index
+                                    objectName: "removeGuide_" + index
+                                    quiet: true
+                                    text: (modelData.vertical ? qsTr("V ") : qsTr("H ")) + modelData.positionMm.toFixed(1) + qsTr(" mm  ✕")
+                                    tooltip: qsTr("Supprimer ce guide")
+                                    onClicked: view.removeGuide(index)
+                                }
+                            }
+                        }
+                        Flow {
+                            Layout.fillWidth: true
+                            spacing: 4
+                            Text { text: qsTr("Couleur des guides"); color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize }
+                            Repeater {
+                                model: [ { name: qsTr("Cyan"), color: Theme.guideCyan }, { name: qsTr("Rouge"), color: Theme.guideRed },
+                                         { name: qsTr("Vert"), color: Theme.guideGreen }, { name: qsTr("Magenta"), color: Theme.guideMagenta } ]
+                                delegate: StudioButton {
+                                    required property var modelData
+                                    required property int index
+                                    objectName: "guideColor_" + index
+                                    quiet: true
+                                    text: modelData.name
+                                    tooltip: qsTr("Colorer les guides en %1").arg(modelData.name.toLowerCase())
+                                    onClicked: view.setGuideColor(modelData.color)
+                                }
+                            }
                         }
                         Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Theme.divider }
                         SectionLabel { text: qsTr("ZOOM") }
@@ -206,8 +391,20 @@ Item {
                         }
                         RowLayout {
                             Layout.fillWidth: true
-                            StudioTextField { id: calibField; objectName: "calibrateField"; implicitWidth: 70; placeholderText: qsTr("mm réels") }
-                            StudioButton { objectName: "calibrateButton"; text: qsTr("Étalonner le 100 % sur 100 mm"); onClicked: view.calibrateZoom100(parseFloat(calibField.text), 100) }
+                            StudioTextField {
+                                id: calibField
+                                objectName: "calibrateField"
+                                implicitWidth: 70
+                                placeholderText: qsTr("mm réels")
+                                invalid: text.trim().length > 0 && !(hub.parseMm(text) >= 1)
+                                Accessible.name: qsTr("Longueur mesurée à l'écran en millimètres")
+                            }
+                            StudioButton {
+                                objectName: "calibrateButton"
+                                text: qsTr("Étalonner le 100 % sur 100 mm")
+                                enabled: hub.parseMm(calibField.text) >= 1
+                                onClicked: view.calibrateZoom100(hub.parseMm(calibField.text), 100)
+                            }
                         }
                         Text {
                             objectName: "viewMessage"

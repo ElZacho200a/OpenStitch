@@ -9,7 +9,11 @@ Controls.Menu {
     id: menu
     objectName: "canvasContextMenu"
     readonly property bool hasSelection: editor.selectedCount > 0
-    function openAt(x, y) { popup(x, y) }
+    property real atX: 0
+    property real atY: 0
+    // Réglage du cadre, commun à tous les canevas (ouvert par SpaceHost).
+    signal hoopRequested(real x, real y)
+    function openAt(x, y) { atX = x; atY = y; popup(x, y) }
 
     Controls.Menu {
         title: qsTr("Sélection")
@@ -34,7 +38,7 @@ Controls.Menu {
         }
     }
     Controls.MenuSeparator { }
-    Controls.MenuItem { text: qsTr("Dupliquer"); enabled: menu.hasSelection; onTriggered: editor.duplicate(5) }
+    Controls.MenuItem { objectName: "contextDuplicate"; text: qsTr("Dupliquer"); enabled: menu.hasSelection; onTriggered: editor.duplicate(5) }
     Controls.MenuItem {
         objectName: "contextDelete"
         text: qsTr("Supprimer %1 objet(s)").arg(editor.selectedCount)
@@ -42,6 +46,26 @@ Controls.Menu {
         onTriggered: editor.deleteSelection()
     }
     Controls.MenuSeparator { }
+    // Opérations sur les formes : aussi au clic droit, là où la main est déjà.
+    Controls.Menu {
+        id: shapesMenu
+        objectName: "contextShapesMenu"
+        readonly property var vec: typeof vectors !== "undefined" ? vectors : null
+        readonly property bool two: vec !== null && vec.selectedCount > 1
+        readonly property bool some: vec !== null && vec.selectedCount > 0
+        title: qsTr("Formes")
+        enabled: some
+        Controls.MenuItem { objectName: "contextUnion"; text: qsTr("Union\tCtrl++"); enabled: shapesMenu.two; onTriggered: shapesMenu.vec.booleanOp("union") }
+        Controls.MenuItem { objectName: "contextSubtract"; text: qsTr("Soustraire\tCtrl+-"); enabled: shapesMenu.two; onTriggered: shapesMenu.vec.booleanOp("subtract") }
+        Controls.MenuItem { text: qsTr("Intersection\tCtrl+*"); enabled: shapesMenu.two; onTriggered: shapesMenu.vec.booleanOp("intersect") }
+        Controls.MenuItem { text: qsTr("Exclusion\tCtrl+^"); enabled: shapesMenu.two; onTriggered: shapesMenu.vec.booleanOp("exclude") }
+        Controls.MenuSeparator { }
+        Controls.MenuItem { text: qsTr("Séparer\tCtrl+Maj+K"); enabled: shapesMenu.some; onTriggered: shapesMenu.vec.breakApart() }
+        Controls.MenuItem { text: qsTr("Simplifier"); enabled: shapesMenu.some; onTriggered: shapesMenu.vec.simplify(0.1) }
+        Controls.MenuItem { text: qsTr("Lisser"); enabled: shapesMenu.some; onTriggered: shapesMenu.vec.smooth(0.15) }
+        Controls.MenuItem { text: qsTr("Combler les trous"); enabled: shapesMenu.some; onTriggered: shapesMenu.vec.fillHoles(4) }
+        Controls.MenuItem { text: qsTr("Convertir en courbes"); enabled: shapesMenu.some; onTriggered: shapesMenu.vec.convertToCurves() }
+    }
     Controls.Menu {
         title: qsTr("Transformer")
         enabled: menu.hasSelection
@@ -72,6 +96,12 @@ Controls.Menu {
     }
     Controls.MenuItem { text: qsTr("Grouper"); enabled: editor.selectedCount > 1; onTriggered: editor.group("") }
     Controls.MenuItem { text: qsTr("Dégrouper"); enabled: menu.hasSelection; onTriggered: editor.ungroup() }
+    Controls.MenuSeparator { }
+    Controls.MenuItem {
+        objectName: "contextHoop"
+        text: qsTr("Cadre…")
+        onTriggered: menu.hoopRequested(menu.atX, menu.atY)
+    }
     Controls.Menu {
         id: layerMenu
         title: qsTr("Déplacer vers le calque")

@@ -6,6 +6,7 @@
 #include <exception>
 #include <nlohmann/json.hpp>
 
+#include "json_serialize.hpp"
 #include "openstitch/project_io/project_io.hpp"
 
 namespace openstitch::project_io {
@@ -80,13 +81,15 @@ void v7_to_v8(json&) {}
 // v8 -> v9 : calques (`calques`, `calque`). Absents = un seul calque implicite : rien à réécrire.
 void v8_to_v9(json&) {}
 
+void v9_to_v10(json&) {}
+
 struct Step {
     int from;
     const char* description;
     void (*apply)(json&);
 };
 
-constexpr std::array<Step, 8> kSteps{{
+constexpr std::array<Step, 9> kSteps{{
     {1, "satin: barreaux (rungs) et cadre (canvas) par defaut", &v1_to_v2},
     {2, "retouches manuelles: absence = objet Clean", &v2_to_v3},
     {3, "satin: maxWidthHard absent = 48 mm", &v3_to_v4},
@@ -95,6 +98,7 @@ constexpr std::array<Step, 8> kSteps{{
     {6, "methode d'auto-satin: absence = squelette", &v6_to_v7},
     {7, "typographie des textes: absence = pas de crenage manuel ni de ligatures", &v7_to_v8},
     {8, "calques du document: absence = un seul calque implicite", &v8_to_v9},
+    {9, "sources image par calque: absence = source historique", &v9_to_v10},
 }};
 
 // La table doit couvrir exactement 1 .. kMaxReadableSchemaVersion-1, sans trou.
@@ -135,7 +139,23 @@ Result<std::string> migrate_project_json(std::string_view jsonText) {
         if (root.is_discarded() || !root.is_object()) {
             return fail(ErrorCategory::InvalidFile, "project.json illisible");
         }
-        const int version = declared_schema_version(jsonText);
+        if (auto migrated = detail::migrate_project_json_in_place(root); !migrated) {
+            return std::unexpected(migrated.error());
+        }
+        return root.dump();
+    } catch (const std::exception& ex) {
+        return fail(ErrorCategory::InvalidFile, "Migration du projet impossible", ex.what());
+    }
+}
+
+Result<void> detail::migrate_project_json_in_place(json& root) {
+    try {
+        if (!root.is_object()) {
+            return fail(ErrorCategory::InvalidFile, "project.json illisible");
+        }
+        const auto versionIt = root.find("schemaVersion");
+        const int version =
+            (versionIt != root.end() && versionIt->is_number_integer()) ? versionIt->get<int>() : 0;
         if (version > kMaxReadableSchemaVersion) {
             return fail(ErrorCategory::UnsupportedFormat,
                         "Ce projet a été créé par une version plus récente d'OpenStitch "
@@ -152,7 +172,7 @@ Result<std::string> migrate_project_json(std::string_view jsonText) {
             kSteps[static_cast<std::size_t>(v - 1)].apply(root);
         }
         root["schemaVersion"] = kMaxReadableSchemaVersion;
-        return root.dump();
+        return {};
     } catch (const std::exception& ex) {
         return fail(ErrorCategory::InvalidFile, "Migration du projet impossible", ex.what());
     }

@@ -25,6 +25,10 @@ class InspectorController : public QObject {
     Q_OBJECT
     Q_PROPERTY(int count READ count NOTIFY changed)
     Q_PROPERTY(int revision READ revision NOTIFY changed)
+    // Couleur COMMUNE de la sélection (« #rrggbb »), vide si elle varie ou si rien n'est
+    // sélectionné.
+    Q_PROPERTY(QString colour READ colour NOTIFY changed)
+    Q_PROPERTY(bool colourMixed READ colourMixed NOTIFY changed)
     Q_PROPERTY(QString typeId READ typeId NOTIFY changed)
     Q_PROPERTY(QString typeLabel READ typeLabel NOTIFY changed)
     Q_PROPERTY(bool typeMixed READ typeMixed NOTIFY changed)
@@ -39,6 +43,9 @@ class InspectorController : public QObject {
     Q_PROPERTY(bool showAdvanced READ showAdvanced WRITE setShowAdvanced NOTIFY changed)
     Q_PROPERTY(bool allPresets READ allPresets WRITE setAllPresets NOTIFY changed)
     Q_PROPERTY(QVariantList presets READ presets NOTIFY changed)
+    // Built-in stitch recipes (STCH-CROS-01): [{id, name, nameEn, target, label, note,
+    // approximation}], fixed order.
+    Q_PROPERTY(QVariantList recipes READ recipes CONSTANT)
     Q_PROPERTY(QString message READ message NOTIFY messageChanged)
     Q_PROPERTY(bool messageOk READ messageOk NOTIFY messageChanged)
 public:
@@ -50,6 +57,8 @@ public:
     // (a slider being dragged must survive the refresh its own edit triggers).
     [[nodiscard]] int revision() const { return revision_; }
     Q_INVOKABLE [[nodiscard]] QVariantMap field(const QString& key) const;
+    [[nodiscard]] QString colour() const;
+    [[nodiscard]] bool colourMixed() const;
     [[nodiscard]] QString typeId() const;
     [[nodiscard]] QString typeLabel() const;
     [[nodiscard]] bool typeMixed() const;
@@ -77,10 +86,13 @@ public:
     // [{index, name, typeId, typeLabel, matches}] ; only the presets of the selected type unless
     // `allPresets`.
     [[nodiscard]] QVariantList presets() const;
+    [[nodiscard]] QVariantList recipes() const;
     [[nodiscard]] QString message() const { return message_; }
     [[nodiscard]] bool messageOk() const { return ok_; }
 
     // Every call returns "" on success, otherwise the readable refusal (document untouched).
+    // Change la couleur de TOUTE la sélection (types de points différents compris) : une étape.
+    Q_INVOKABLE QString setColour(const QString& hex);
     Q_INVOKABLE QString setParam(const QString& key, double value);
     // Typed entry: accepts "0,35" and "0.35"; text that is not a number is refused, not guessed.
     Q_INVOKABLE QString setParamText(const QString& key, const QString& text);
@@ -96,6 +108,11 @@ public:
     Q_INVOKABLE QString applyPreset(int index);
     Q_INVOKABLE QString renamePreset(int index, const QString& name);
     Q_INVOKABLE QString removePreset(int index);
+    // Applies a built-in recipe (type and settings) to the selection, one undo step.
+    Q_INVOKABLE QString applyRecipe(const QString& id);
+    // Installs the `image://recipe/` thumbnail provider on `item`'s QML engine if missing
+    // (idempotent): the catalogue works in every host, the app and the QML tests alike.
+    Q_INVOKABLE bool installRecipeSwatches(QObject* item) const;
 signals:
     void changed();
     void messageChanged();

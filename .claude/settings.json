@@ -8,6 +8,16 @@
       {
         "hooks": [
           {
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/local-first-guard.sh\"",
+            "timeout": 5,
+            "type": "command"
+          }
+        ],
+        "matcher": "Agent|Edit|Write|MultiEdit"
+      },
+      {
+        "hooks": [
+          {
             "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/git-guard.sh\"",
             "timeout": 5,
             "type": "command"

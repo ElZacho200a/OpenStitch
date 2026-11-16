@@ -227,6 +227,9 @@ build_studio_scene(std::shared_ptr<const document::Project> project, std::uint64
     const double halfW = scene->project->canvas.width.value / 2000.0;
     const double halfH = scene->project->canvas.height.value / 2000.0;
     scene->hoop = {-halfW, -halfH, halfW, halfH};
+    scene->hoopShape = scene->project->canvas.shape;
+    scene->hoopCornerMm = scene->project->canvas.corner_radius.value / 1000.0;
+    scene->hoopMarginMm = scene->project->canvas.margin.value / 1000.0;
     scene->bounds = scene->hoop;
 
     std::map<std::uint64_t, std::array<std::uint8_t, 3>> colours;
@@ -346,6 +349,25 @@ build_studio_scene(std::shared_ptr<const document::Project> project, std::uint64
             if (!inserted) {
                 include(found->second, extent);
             }
+        }
+    }
+    // Une couche MulticolorGradient reste un objet physique pour l'ordre de couture et l'export,
+    // mais Studio sélectionne l'ancre logique. Donne à cette ancre l'union des bornes de ses
+    // couches afin que le cadre de sélection et les poignées couvrent tout le fondu.
+    for (const auto& object : scene->project->embroidery_objects) {
+        if (!object.multi_blend) {
+            continue;
+        }
+        const auto* anchor = scene->project->findEmbroidery(object.multi_blend->group);
+        const auto layerBounds = scene->objectBounds.find(object.id.value);
+        if (anchor == nullptr || !anchor->is_multicolor_gradient() ||
+            layerBounds == scene->objectBounds.end()) {
+            continue;
+        }
+        auto [found, inserted] =
+            scene->objectBounds.try_emplace(anchor->id.value, layerBounds->second);
+        if (!inserted) {
+            include(found->second, layerBounds->second);
         }
     }
     if (task.cancelled()) {

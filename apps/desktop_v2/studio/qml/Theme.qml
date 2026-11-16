@@ -33,6 +33,11 @@ QtObject {
     readonly property color accentSoft: light ? "#f6d9e6" : "#4b344c"
     readonly property color accentInk: light ? "#ffffff" : "#281a28"
     readonly property color success: light ? "#2c6b4b" : "#93d5b9"
+    // Couleurs proposées pour les guides du canevas (panneau Vue).
+    readonly property color guideCyan: "#00bcd4"
+    readonly property color guideRed: "#e53935"
+    readonly property color guideGreen: "#43a047"
+    readonly property color guideMagenta: "#d81b60"
 
     // Shared visual rhythm; avoid local type scales and duplicated sizes.
     // Qt falls back to the system sans-serif if the variable face is unavailable.
@@ -49,6 +54,15 @@ QtObject {
     readonly property int controlHeight: Math.round(38 * densityScale)
     readonly property int rowHeight: Math.round(42 * densityScale)
     readonly property int radius: 8
+    // Cartes flottantes (StudioCard) : rayon, écart entre cartes et avec les bords, ombre portée.
+    readonly property int cardRadius: 14
+    readonly property int gap: 10
+    readonly property color shadow: "#000000"
+    readonly property real shadowOpacity: light ? 0.07 : 0.20
+    readonly property int shadowOffset: 4
+    // Plan de travail : semis de points discret derrière les cartes et le canevas.
+    readonly property color deskDot: light ? "#d5d9e2" : "#262d3b"
+    readonly property int deskStep: 24
     readonly property int animationMs: reducedMotion ? 0 : 150
     readonly property int feedbackFastMs: reducedMotion ? 0 : 90
     readonly property int feedbackSlowMs: reducedMotion ? 0 : 200

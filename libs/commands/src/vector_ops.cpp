@@ -36,8 +36,40 @@ void remap_color_blend_links(std::vector<document::EmbroideryObject>& copies,
                 copy.color_blend->partner = partner->second;
             }
         }
+        if (copy.multi_blend) {
+            const auto group = remap.find(copy.multi_blend->group);
+            if (group == remap.end()) {
+                copy.multi_blend.reset();
+            } else {
+                copy.multi_blend->group = group->second;
+            }
+        }
     }
     for (auto& copy : copies) {
+        if (copy.multi_blend) {
+            const auto tag = *copy.multi_blend;
+            std::vector<bool> found(tag.count, false);
+            bool valid = tag.count >= 1 && tag.count <= 8;
+            if (valid) {
+                for (const auto& other : copies) {
+                    if (!other.multi_blend || other.multi_blend->group != tag.group) {
+                        continue;
+                    }
+                    const auto& link = *other.multi_blend;
+                    if (link.count != tag.count || link.index >= tag.count || found[link.index] ||
+                        other.source_vector != copy.source_vector ||
+                        link.complementary != tag.complementary) {
+                        valid = false;
+                        break;
+                    }
+                    found[link.index] = true;
+                }
+            }
+            if (!valid ||
+                !std::all_of(found.begin(), found.end(), [](bool value) { return value; })) {
+                copy.multi_blend.reset();
+            }
+        }
         if (!copy.color_blend) {
             continue;
         }
@@ -301,9 +333,11 @@ PasteResult make_paste_command(document::Project& project, const document::Objec
         document::VectorObject copy = source;
         copy.id = project.object_ids.next();
         copy.text_owner.reset();
-        if (copy.source_region &&
-            (!project.segmentation || project.segmentation->find(*copy.source_region) == nullptr)) {
+        const auto* imageSource = project.findImageSource(copy.source_image);
+        if (copy.source_region && (imageSource == nullptr || !imageSource->segmentation ||
+                                   !imageSource->segmentation->find(*copy.source_region))) {
             copy.source_region.reset();
+            copy.source_image = {};
         }
         remap.emplace_back(source.id, copy.id);
         out.pasted.push_back(copy.id);

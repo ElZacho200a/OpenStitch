@@ -52,4 +52,11 @@ render_preview(std::shared_ptr<const document::Project> project, std::uint64_t r
                const RenderSettings& settings, const TaskContext& task,
                std::optional<std::size_t> upToCommand = std::nullopt);
 
+// Plan de l'image que `render_preview` produirait avec ces réglages, SANS la rendre : même
+// séquence, même fenêtre (cadre ∪ points), même plafond de pixels. Champs de taille et de repère
+// renseignés ; `png` vide, `hits` nul. `px_per_mm` peut être inférieur à la demande (plafond).
+[[nodiscard]] Result<PreviewImage> plan_preview(std::shared_ptr<const document::Project> project,
+                                                const RenderSettings& settings,
+                                                const TaskContext& task);
+
 } // namespace openstitch::desktop_v2

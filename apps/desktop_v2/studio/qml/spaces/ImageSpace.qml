@@ -56,9 +56,46 @@ Item {
     Component.onCompleted: { if (active) activate() }
     Component.onDestruction: deactivate()
 
+    // Barre latérale commune : recadrer, fond transparent (pipette), règle d'échelle. Dans un
+    // document multi-calques (`.ora`), recadrage et échelle gardent les calques alignés ; la
+    // pipette agit sur le calque actif.
+    StudioCard {
+        id: imageRailCard
+        objectName: "imageRailCard"
+        visible: root.hasImage && root.space !== null
+        anchors.left: parent.left
+        anchors.top: parent.top
+        anchors.margins: Theme.gap
+        width: Theme.controlHeight + 16
+        height: Math.min(imageRail.implicitHeight + 16, root.height - 2 * Theme.gap)
+        CanvasToolRail {
+            id: imageRail
+            anchors.top: parent.top
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.topMargin: 8
+            canvas: spaceCanvas
+            workspaceActive: root.active
+            toolPrefix: "imageTool_"
+            fitTooltip: qsTr("Cadrer l'image dans la fenêtre")
+            entries: [
+                { id: "crop", icon: "crop", label: qsTr("Recadrer : dessiner un cadre sur l'image"), shortcut: "C", group: "geometrie" },
+                { id: "measure", icon: "measure", label: qsTr("Règle : donner l'échelle d'après une longueur connue"), shortcut: "M", group: "geometrie" },
+                { id: "pick", icon: "transparent", label: qsTr("Fond transparent : cliquer la couleur du fond"), shortcut: "Maj+I", group: "couleur" }
+            ]
+            activeTool: root.space ? root.space.tool : ""
+            onToolTriggered: id => { if (root.space) root.space.tool = id }
+            onFitRequested: if (root.space) root.space.fit()
+        }
+    }
+
     Item {
         id: viewport
-        anchors.fill: parent
+        // Le canevas s'arrête au bord du panneau : l'image n'est jamais cachée dessous.
+        anchors.left: imageRailCard.visible ? imageRailCard.right : parent.left
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        anchors.right: sidePanel.visible ? sidePanel.left : parent.right
+        anchors.margins: Theme.gap
         clip: true
 
         GpuCanvas {
@@ -81,18 +118,23 @@ Item {
             space: root.space
             viewTick: root.viewTick
         }
+        ImageToolOverlay {
+            anchors.fill: parent
+            space: root.space
+            viewTick: root.viewTick
+        }
 
-        // Barre d'outils de l'image : avant/après, ajuster, recadrer.
+        // Barre d'affichage de l'image : avant / après / rideau (les outils sont dans la barre latérale).
         Rectangle {
             objectName: "imageToolbar"
-            x: 12
-            y: 12
-            width: Math.min(parent.width - 24, toolRow.implicitWidth + 16)
+            x: 0
+            y: 0
+            width: Math.min(parent.width, toolRow.implicitWidth + 16)
             clip: true
             height: Theme.controlHeight + 12
-            radius: Theme.radius
+            radius: Theme.cardRadius
             color: Theme.panel
-            border.color: Theme.border
+            border.color: Theme.divider
             visible: root.hasImage
             // Never clip actions silently: the toolbar remains scrollable on narrow canvases.
             Flickable {
@@ -125,21 +167,6 @@ Item {
                         onClicked: root.space.compareMode = modelData.mode
                     }
                 }
-                StudioButton {
-                    objectName: "imageFit"
-                    text: qsTr("Ajuster")
-                    tooltip: qsTr("Cadrer l'image dans la fenêtre")
-                    quiet: true
-                    onClicked: root.space.fit()
-                }
-                StudioButton {
-                    objectName: "imageCropTool"
-                    text: qsTr("Recadrer")
-                    tooltip: qsTr("Dessiner un cadre de recadrage sur l'image")
-                    checkable: true
-                    checked: root.space && root.space.cropActive
-                    onClicked: root.space.cropActive ? root.space.cancelCrop() : root.space.beginCrop()
-                }
                 }
             }
         }
@@ -151,9 +178,9 @@ Item {
             anchors.centerIn: parent
             width: Math.min(420, parent.width - 64)
             height: emptyColumn.implicitHeight + 36
-            radius: Theme.radius
-            color: Theme.surface
-            border.color: Theme.border
+            radius: Theme.cardRadius
+            color: Theme.panel
+            border.color: Theme.divider
             ColumnLayout {
                 id: emptyColumn
                 anchors.centerIn: parent
@@ -183,46 +210,61 @@ Item {
             canvasItem: spaceCanvas
         }
 
-        // Panneau de l'espace : prétraitements (ImagePrepSection existant) + pile d'opérations.
-        Rectangle {
-            id: sidePanel
-            objectName: "imageSidePanel"
-            visible: root.hasImage && root.prepReady
-            anchors.right: parent.right
-            anchors.top: parent.top
-            anchors.bottom: parent.bottom
-            anchors.topMargin: 100
-            width: Math.min(340, Math.max(180, parent.width * 0.38))
-            color: Theme.panel
-            border.color: Theme.border
-            Controls.ScrollView {
-                anchors.fill: parent
-                anchors.margins: 8
-                contentWidth: availableWidth
-                clip: true
-                ColumnLayout {
-                    width: Math.max(0, sidePanel.width - 28)
-                    spacing: 10
-                    Loader {
-                        Layout.fillWidth: true
-                        active: root.prepReady
-                        sourceComponent: ImagePrepSection {
-                            showThumbnails: false
-                            showHistory: false
-                        }
+    }
+
+    // Panneau de l'espace : prétraitements (ImagePrepSection existant) + pile d'opérations.
+    StudioCard {
+        id: sidePanel
+        objectName: "imageSidePanel"
+        visible: root.hasImage && root.prepReady
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        anchors.margins: Theme.gap
+        width: Math.min(340, Math.max(180, root.width * 0.38))
+        Controls.ScrollView {
+            anchors.fill: parent
+            anchors.margins: 8
+            contentWidth: availableWidth
+            clip: true
+            ColumnLayout {
+                width: Math.max(0, sidePanel.width - 28)
+                StudioComboBox {
+                    objectName: "imageLayerSelector"
+                    enabled: !studio.busy
+                    Layout.fillWidth: true
+                    // Un seul calque : rien à choisir (même règle que les autres espaces).
+                    visible: root.prepReady && imageTools.imageLayers.length > 1
+                    model: root.prepReady ? imageTools.imageLayers : []
+                    currentIndex: root.prepReady ? imageTools.imageLayerIndex : -1
+                    Accessible.name: qsTr("Calque image actif")
+                    onActivated: index => imageTools.selectImageLayer(index)
+                }
+                spacing: 10
+                ImageSizeSection {
+                    Layout.fillWidth: true
+                    space: root.space
+                }
+                Loader {
+                    Layout.fillWidth: true
+                    active: root.prepReady
+                    sourceComponent: ImagePrepSection {
+                        showThumbnails: false
+                        showHistory: false
                     }
-                    ImageOpStack {
-                        Layout.fillWidth: true
-                        space: root.space
-                    }
+                }
+                ImageOpStack {
+                    Layout.fillWidth: true
+                    space: root.space
                 }
             }
         }
     }
 
-    Shortcut {
-        sequence: "Escape"
-        enabled: root.active && root.space && root.space.cropActive
-        onActivated: root.space.cancelCrop()
+    // Appelé par le Shortcut « Escape » de Main.qml : vrai si un outil modal a été quitté.
+    function cancelTool() {
+        if (!root.active || !root.space || root.space.tool === "") return false
+        root.space.tool = ""
+        return true
     }
 }

@@ -1,10 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "image_controller.hpp"
 
+#include "segmentation_settings.hpp"
+#include "task_pump.hpp"
+
+#include <set>
+
 #include <algorithm>
 #include <cmath>
 
 #include "openstitch/ai_segmentation/backend_registry.hpp"
+#include "openstitch/commands/composite_command.hpp"
 #include "openstitch/commands/project_commands.hpp"
 #include "segmentation_preview.hpp"
 #include "source_image_tools.hpp"
@@ -12,6 +18,11 @@
 namespace openstitch::desktop_v2::studio {
 
 namespace {
+
+struct SegmentedLayers {
+    std::vector<std::pair<ObjectId, segmentation::Segmentation>> layers;
+    int skippedTransparent{0};
+};
 
 QString fromUtf8(const std::string& text) {
     return QString::fromUtf8(text.data(), static_cast<qsizetype>(text.size()));
@@ -45,7 +56,7 @@ QImage toQImage(const image::Image& img) {
 
 std::uint64_t originalKey(const document::Project& project) {
     // Empreinte légère de l'image source : taille + quelques octets échantillonnés.
-    const auto& o = project.original;
+    const auto& o = project.imageSource().original;
     std::uint64_t key = (static_cast<std::uint64_t>(o.width) << 32) ^
                         static_cast<std::uint64_t>(o.height) ^ o.rgba.size();
     const std::size_t step = std::max<std::size_t>(1, o.rgba.size() / 61);
@@ -97,7 +108,7 @@ ServiceResult runPrep(DocumentSession& session, const QString& kind, const QVari
         request.h = static_cast<int>(numberOr(p, "h", 0));
     } else if (kind == QLatin1String("median") || kind == QLatin1String("bilateral") ||
                kind == QLatin1String("flatten")) {
-        if (!session.project().hasImage()) {
+        if (!session.project().hasActiveImage()) {
             return refuse("Le projet n'a pas d'image source.");
         }
         const double raw = numberOr(p, "strength", 1.0);
@@ -115,7 +126,7 @@ ServiceResult runPrep(DocumentSession& session, const QString& kind, const QVari
         session.execute(std::make_unique<commands::AppendImageOpCommand>(std::move(op)));
         return {true, {}};
     } else if (kind == QLatin1String("quantize")) {
-        if (!session.project().hasImage()) {
+        if (!session.project().hasActiveImage()) {
             return refuse("Le projet n'a pas d'image source.");
         }
         const double raw = numberOr(p, "colors", 8.0);
@@ -200,19 +211,30 @@ QImage PrepareImageProvider::requestImage(const QString& id, QSize* size,
 
 ImageController::ImageController(StudioController& studio, QObject* parent)
     : QObject(parent), studio_(studio) {
-    pump_.setInterval(16);
-    connect(&pump_, &QTimer::timeout, this, [this] { tasks_.pump(); });
-    pump_.start();
+    attachTaskPump(tasks_, this);
     refreshTimer_.setSingleShot(true);
     refreshTimer_.setInterval(0);
     connect(&refreshTimer_, &QTimer::timeout, this, [this] { refreshNow(); });
     token_ = studio_.session().subscribe([this](ChangeKind kind) {
-        if (kind == ChangeKind::Replaced) {
+        const auto source = studio_.session().project().imageSourceId();
+        if (kind == ChangeKind::Replaced || source != observedImageSource_) {
+            observedImageSource_ = source;
             lastOriginalKey_ = 0;
             lastOps_.clear();
-            prepPreview_ = false;
-            segPreview_ = false;
-            segInfo_.clear();
+            if (refreshTask_ != 0) {
+                (void)tasks_.cancel(refreshTask_);
+                refreshTask_ = 0;
+            }
+            const bool hadImage = width_ > 0 && height_ > 0;
+            width_ = height_ = 0;
+            images_->set(QStringLiteral("before"), {});
+            images_->set(QStringLiteral("after"), {});
+            clearPrepPreview();
+            cancelSegmentationPreview();
+            if (hadImage) {
+                ++imageRevision_;
+                emit imagesChanged();
+            }
         }
         scheduleRefresh();
     });
@@ -220,22 +242,90 @@ ImageController::ImageController(StudioController& studio, QObject* parent)
 }
 
 ImageController::~ImageController() {
-    pump_.stop();
     tasks_.cancelAll();
     studio_.session().unsubscribe(token_);
 }
 
 bool ImageController::hasImage() const {
-    return studio_.session().project().hasImage();
+    return studio_.session().project().hasActiveImage();
+}
+
+QStringList ImageController::imageLayers() const {
+    const auto& project = studio_.session().project();
+    QStringList layers;
+    if (!project.original.empty()) {
+        layers.append(tr("Image source"));
+    }
+    for (const auto& calque : project.calques) {
+        if (project.findImageSource(calque.id) != nullptr) {
+            layers.append(fromUtf8(calque.name));
+        }
+    }
+    return layers;
+}
+
+int ImageController::imageLayerIndex() const {
+    const auto& project = studio_.session().project();
+    const auto selected = project.imageSourceId();
+    int index = project.original.empty() ? 0 : 1;
+    if (!selected.valid()) {
+        return index == 0 ? -1 : 0;
+    }
+    for (const auto& calque : project.calques) {
+        if (calque.id == selected) {
+            return index;
+        }
+        if (project.findImageSource(calque.id) != nullptr) {
+            ++index;
+        }
+    }
+    return -1;
+}
+
+void ImageController::selectImageLayer(int index) {
+    if (index < 0) {
+        return;
+    }
+    auto& session = studio_.session();
+    const auto& project = session.project();
+    if (!project.original.empty() && index-- == 0) {
+        session.selectImageSource({});
+        return;
+    }
+    for (const auto& calque : project.calques) {
+        if (project.findImageSource(calque.id) != nullptr && index-- == 0) {
+            session.selectImageSource(calque.id);
+            return;
+        }
+    }
 }
 
 bool ImageController::hasSegmentation() const {
-    return studio_.session().project().segmentation.has_value();
+    return studio_.session().project().imageSource().segmentation.has_value();
 }
 
 int ImageController::regionCount() const {
-    const auto& seg = studio_.session().project().segmentation;
+    const auto& seg = studio_.session().project().imageSource().segmentation;
     return seg ? static_cast<int>(seg->region_count()) : 0;
+}
+
+double ImageController::mmPerPx() const {
+    return studio_.session().project().imageSource().mm_per_px.value;
+}
+
+int ImageController::colorCount() const {
+    const auto& seg = studio_.session().project().imageSource().segmentation;
+    if (!seg) {
+        return 0;
+    }
+    std::set<std::uint32_t> colours;
+    for (const auto& slot : seg->region_slots) {
+        if (slot) {
+            colours.insert((static_cast<std::uint32_t>(slot->rgb[0]) << 16) |
+                           (static_cast<std::uint32_t>(slot->rgb[1]) << 8) | slot->rgb[2]);
+        }
+    }
+    return static_cast<int>(colours.size());
 }
 
 QVariantList ImageController::prepCatalog() const {
@@ -308,20 +398,20 @@ void ImageController::trackOps() {
 
 void ImageController::refreshNow() {
     const auto& project = studio_.session().project();
-    const std::uint64_t key = project.hasImage() ? originalKey(project) : 0;
-    const bool same = key == lastOriginalKey_ && project.ops == lastOps_;
+    const std::uint64_t key = project.hasActiveImage() ? originalKey(project) : 0;
+    const bool same = key == lastOriginalKey_ && project.imageSource().ops == lastOps_;
     trackOps();
     if (same) {
         emit changed();
         return;
     }
     lastOriginalKey_ = key;
-    lastOps_ = project.ops;
+    lastOps_ = project.imageSource().ops;
     if (refreshTask_ != 0) {
         (void)tasks_.cancel(refreshTask_);
         refreshTask_ = 0;
     }
-    if (!project.hasImage()) {
+    if (!project.hasActiveImage()) {
         width_ = height_ = 0;
         images_->set(QStringLiteral("before"), {});
         images_->set(QStringLiteral("after"), {});
@@ -341,7 +431,7 @@ void ImageController::refreshNow() {
             if (task.cancelled()) {
                 return cancelled_error();
             }
-            return ImagePair{toQImage(snapshot->original), toQImage(*after)};
+            return ImagePair{toQImage(snapshot->imageSource().original), toQImage(*after)};
         },
         [this](Result<ImagePair>&& r) {
             refreshTask_ = 0;
@@ -442,12 +532,11 @@ void ImageController::clearPrepPreview() {
 }
 
 segmentation::SegmentationOptions ImageController::optionsFrom(const QVariantMap& map) const {
+    const auto chosen = segmentationSettingsFrom(map, {});
     segmentation::SegmentationOptions options;
-    options.max_colors = std::clamp(static_cast<int>(numberOr(map, "max_colors", 8)), 2, 64);
-    options.min_region_px =
-        std::clamp(static_cast<int>(numberOr(map, "min_region_px", 16)), 1, 100000);
-    options.smoothing_radius_px =
-        std::clamp(static_cast<int>(numberOr(map, "smoothing_radius_px", 3)), 0, 10);
+    options.max_colors = chosen.max_colors;
+    options.min_region_px = chosen.min_region_px;
+    options.smoothing_radius_px = chosen.smoothing_radius_px;
     return options;
 }
 
@@ -486,8 +575,17 @@ void ImageController::previewSegmentation(const QVariantMap& optionsMap) {
                 QImage(r->rgba.data(), r->width, r->height, r->width * 4, QImage::Format_RGBA8888)
                     .copy());
             segPreview_ = true;
-            segInfo_ = QStringLiteral("%1 régions, la plus petite %2 px (%3 s)")
+            std::set<std::uint32_t> previewColours;
+            for (std::size_t i = 0; i + 3 < r->rgba.size(); i += 4) {
+                if (r->rgba[i + 3] != 0) {
+                    previewColours.insert((static_cast<std::uint32_t>(r->rgba[i]) << 16) |
+                                          (static_cast<std::uint32_t>(r->rgba[i + 1]) << 8) |
+                                          r->rgba[i + 2]);
+                }
+            }
+            segInfo_ = QStringLiteral("%1 régions, %2 couleurs, la plus petite %3 px (%4 s)")
                            .arg(r->regions)
+                           .arg(previewColours.size())
                            .arg(r->smallestRegionPx)
                            .arg(r->seconds, 0, 'f', 2);
             ++imageRevision_;
@@ -512,67 +610,114 @@ void ImageController::cancelSegmentationPreview() {
     emit previewChanged();
 }
 
-void ImageController::applySegmentation(const QVariantMap& optionsMap) {
+void ImageController::applySegmentation(const QVariantMap& options) {
+    startSegmentation(options, false);
+}
+
+void ImageController::applySegmentationToAllLayers(const QVariantMap& options) {
+    startSegmentation(options, true);
+}
+
+void ImageController::startSegmentation(const QVariantMap& optionsMap, bool allLayers) {
     if (!hasImage()) {
-        setMessage(QStringLiteral("Le projet n'a pas d'image source."), true);
+        setMessage(tr("Le projet n'a pas d'image source."), true);
         return;
     }
     if (applyTask_ != 0) {
         (void)tasks_.cancel(applyTask_);
         applyTask_ = 0;
     }
+    cancelSegmentationPreview();
     const auto options = optionsFrom(optionsMap);
-    const auto snapshot = studio_.session().snapshot();
-    const auto revision = studio_.session().revision();
-    setBusy(true, QStringLiteral("Segmentation de l'image"));
-    applyTask_ = tasks_.submit<segmentation::Segmentation>(
-        "Segmentation de l'image",
-        [snapshot, options](const TaskContext& task) -> Result<segmentation::Segmentation> {
-            auto working = processedImage(*snapshot);
-            if (!working) {
-                return std::unexpected(working.error());
+    auto& session = studio_.session();
+    const auto snapshot = session.snapshot();
+    const auto revision = session.revision();
+
+    std::vector<ObjectId> sources;
+    if (allLayers) {
+        if (snapshot->hasImage()) {
+            sources.emplace_back();
+        }
+        for (const auto& calque : snapshot->calques) {
+            if (snapshot->findImageSource(calque.id) != nullptr) {
+                sources.push_back(calque.id);
             }
-            auto seg = segmentation::segment(*working, options);
-            if (!seg) {
-                return std::unexpected(seg.error());
-            }
-            if (task.cancelled()) {
-                return cancelled_error();
-            }
-            // Couleur de chaque région = moyenne réelle de l'image (comme `segment_image`).
-            for (auto& slot : seg->region_slots) {
-                if (slot) {
-                    if (const auto mean =
-                            segmentation::region_mean_color(*seg, *working, slot->id)) {
-                        slot->rgb = *mean;
+        }
+    } else {
+        sources.push_back(snapshot->imageSourceId());
+    }
+    const auto label = allLayers ? tr("Segmentation des calques") : tr("Segmentation de l'image");
+    setBusy(true, label);
+    applyTask_ = tasks_.submit<SegmentedLayers>(
+        label.toStdString(),
+        [snapshot, options, sources = std::move(sources),
+         allLayers](const TaskContext& task) -> Result<SegmentedLayers> {
+            SegmentedLayers result;
+            result.layers.reserve(sources.size());
+            for (const ObjectId id : sources) {
+                auto seg = segmentImageSource(*snapshot->findImageSource(id), options, task);
+                if (!seg) {
+                    if (allLayers && seg.error().code == segmentation::kTransparentImage) {
+                        ++result.skippedTransparent;
+                        continue;
                     }
+                    auto error = std::move(seg.error());
+                    if (allLayers && id.valid() && error.category != ErrorCategory::Cancelled) {
+                        error.message = snapshot->findCalque(id)->name + " : " + error.message;
+                    }
+                    return std::unexpected(std::move(error));
                 }
+                result.layers.emplace_back(id, std::move(*seg));
             }
-            return std::move(*seg);
+            return result;
         },
-        [this, revision](Result<segmentation::Segmentation>&& r) {
+        [this, revision, allLayers](Result<SegmentedLayers>&& result) {
             applyTask_ = 0;
             setBusy(false);
-            if (!r) {
-                setMessage(QStringLiteral("Segmentation impossible : ") + errorText(r.error()),
+            if (!result) {
+                setMessage(tr("Segmentation impossible : %1").arg(errorText(result.error())), true);
+                return;
+            }
+            auto& current = studio_.session();
+            if (current.revision() != revision) {
+                setMessage(tr("Le document a changé pendant le calcul : relancez la segmentation."),
                            true);
                 return;
             }
-            if (studio_.session().revision() != revision) {
-                setMessage(QStringLiteral("Le document a changé pendant le calcul : relancez la "
-                                          "segmentation."),
-                           true);
+            if (result->layers.empty()) {
+                setMessage(
+                    tr("Aucun calque à segmenter : les images sont entièrement transparentes."),
+                    true);
                 return;
             }
-            const int regions = static_cast<int>(r->region_count());
-            studio_.session().execute(
-                std::make_unique<commands::SetSegmentationCommand>(std::move(*r)));
-            cancelSegmentationPreview();
-            setMessage(QStringLiteral("Image segmentée en %1 régions (Ctrl+Z pour annuler). Les "
-                                      "objets sont à régénérer.")
-                           .arg(regions),
-                       false);
-            emit segmentationApplied(regions);
+            if (allLayers) {
+                auto command =
+                    std::make_unique<commands::CompositeCommand>("Segmenter tous les calques");
+                for (auto& [source, seg] : result->layers) {
+                    command->add(
+                        std::make_unique<commands::SetSegmentationCommand>(std::move(seg), source));
+                }
+                current.execute(std::move(command));
+                auto message = tr("%n calque(s) segmenté(s). Ctrl+Z pour annuler.", nullptr,
+                                  static_cast<int>(result->layers.size()));
+                if (result->skippedTransparent > 0) {
+                    message += QStringLiteral(" ") + tr("%n calque(s) transparent(s) ignoré(s).",
+                                                        nullptr, result->skippedTransparent);
+                }
+                setMessage(message);
+            } else {
+                auto& [source, seg] = result->layers.front();
+                const int regions = static_cast<int>(seg.region_count());
+                current.execute(
+                    std::make_unique<commands::SetSegmentationCommand>(std::move(seg), source));
+                setMessage(tr("Image segmentée en %1 régions (Ctrl+Z pour annuler). Les objets "
+                              "sont à régénérer.")
+                               .arg(regions));
+            }
+            for (const auto& layer : result->layers) {
+                emit segmentationAppliedToLayer(layer.first);
+            }
+            emit segmentationApplied(regionCount());
         });
 }
 

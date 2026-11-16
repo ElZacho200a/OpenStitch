@@ -8,6 +8,8 @@
 #include <optional>
 #include <unordered_map>
 
+#include "openstitch/document/multi_blend.hpp"
+
 namespace openstitch::project_io::detail {
 
 namespace {
@@ -138,6 +140,15 @@ json op_to_json(const image::ImageOp& op) {
                 j = {{"type", "clahe"}, {"clipLimit", o.clip_limit}};
             } else if constexpr (std::is_same_v<T, image::SharpenOp>) {
                 j = {{"type", "sharpen"}, {"amount", o.amount}};
+            } else if constexpr (std::is_same_v<T, image::ColorToAlphaOp>) {
+                j = {{"type", "colorToAlpha"},
+                     {"r", o.r},
+                     {"g", o.g},
+                     {"b", o.b},
+                     {"tolerance", o.tolerance},
+                     {"contiguous", o.contiguous},
+                     {"seedX", o.seed_x},
+                     {"seedY", o.seed_y}};
             }
             return j;
         },
@@ -188,6 +199,16 @@ Result<image::ImageOp> op_from_json(const json& j) {
     if (type == "sharpen") {
         return image::SharpenOp{j.value("amount", 1.0)};
     }
+    if (type == "colorToAlpha") {
+        const image::ColorToAlphaOp d;
+        return image::ColorToAlphaOp{j.value("r", d.r),
+                                     j.value("g", d.g),
+                                     j.value("b", d.b),
+                                     j.value("tolerance", d.tolerance),
+                                     j.value("contiguous", d.contiguous),
+                                     j.value("seedX", d.seed_x),
+                                     j.value("seedY", d.seed_y)};
+    }
     return fail(ErrorCategory::InvalidFile, "Opération d'image inconnue : " + type);
 }
 
@@ -236,6 +257,10 @@ json params_to_json(const document::StitchParams& params) {
                 }
                 if (p.edge_outline) {
                     j["edgeOutline"] = true;
+                }
+                if (p.couching_spacing.value != 0) {
+                    j["couchingSpacing"] = p.couching_spacing.value;
+                    j["couchingTieSpacing"] = p.couching_tie_spacing.value;
                 }
                 if (p.entry_point) {
                     j["entryPoint"] = {{"x", p.entry_point->x.value},
@@ -388,6 +413,32 @@ json params_to_json(const document::StitchParams& params) {
                     if (g.curve != document::DensityCurve::Linear) {
                         j["densityGradient"]["curve"] = static_cast<int>(g.curve);
                     }
+                    if (g.texture != document::DensityTexture::None) {
+                        j["densityGradient"]["texture"] = static_cast<int>(g.texture);
+                        j["densityGradient"]["textureStrength"] =
+                            std::clamp(g.texture_strength, 0.0, 1.0);
+                        j["densityGradient"]["textureSeed"] = g.texture_seed;
+                    }
+                    if (g.geometry != document::DensityGeometry::Linear) {
+                        j["densityGradient"]["geometry"] = static_cast<int>(g.geometry);
+                    }
+                    if (g.curve_bend != 0.0) {
+                        j["densityGradient"]["bend"] = g.curve_bend;
+                    }
+                    if (!g.density_stops.empty()) {
+                        auto stops = json::array();
+                        for (const auto& stop : g.density_stops) {
+                            // Grille partagée : [position, poids, début de tranche].
+                            stops.push_back(
+                                g.shared_rows
+                                    ? json::array({stop.position, stop.weight, stop.lower})
+                                    : json::array({stop.position, stop.weight}));
+                        }
+                        j["densityGradient"]["densityStops"] = std::move(stops);
+                        if (g.shared_rows) {
+                            j["densityGradient"]["sharedRows"] = true;
+                        }
+                    }
                 }
             } else if constexpr (std::is_same_v<T, document::AutoSatinParams>) {
                 json guides = json::array();
@@ -514,6 +565,9 @@ json params_to_json(const document::StitchParams& params) {
                      {"stitchLength", p.stitch_length.value},
                      {"minLength", p.min_length.value},
                      {"hiddenUnderpath", p.hidden_underpath}};
+                if (p.scatter != 0.0) {
+                    j["scatter"] = p.scatter;
+                }
             } else if constexpr (std::is_same_v<T, document::RadialFillParams> ||
                                  std::is_same_v<T, document::SpiralFillParams>) {
                 // HP-STI-008 / 009 : mêmes clés, `type` distinct.
@@ -538,6 +592,9 @@ json params_to_json(const document::StitchParams& params) {
                      {"stitchLength", p.stitch_length.value},
                      {"inset", p.inset.value},
                      {"hiddenUnderpath", p.hidden_underpath}};
+                if (p.tie_down.value != 0) {
+                    j["tieDown"] = p.tie_down.value;
+                }
             } else if constexpr (std::is_same_v<T, document::CrossStitchParams>) {
                 j = {{"type", "crossStitch"},
                      {"cell", p.cell.value},
@@ -545,6 +602,68 @@ json params_to_json(const document::StitchParams& params) {
                      {"fullCross", p.full_cross},
                      {"passes", p.passes},
                      {"hiddenUnderpath", p.hidden_underpath}};
+            } else if constexpr (std::is_same_v<T, document::MulticolorGradientParams>) {
+                // Fondu multicolore (mission 2026-11-14) : ancre sans point propre. `palette` et
+                // `transition` sont la seule source de vérité documentaire ; les couches
+                // physiques (satin/tatami/directionnel tagués MultiBlendLink) sont régénérées,
+                // jamais relues pour reconstruire l'ancre (comme `density_stops`, jamais écrits
+                // ici : reconstruits par le moteur pour chaque couche).
+                json palette = json::array();
+                for (const auto& thread : p.palette) {
+                    json entry = {{"rgb", rgb_to_json(thread.rgb)}};
+                    if (thread.curve != document::DensityCurve::Linear) {
+                        entry["curve"] = static_cast<int>(thread.curve);
+                    }
+                    if (thread.thread) {
+                        entry["thread"] = {{"chart", thread.thread->chart_id},
+                                           {"code", thread.thread->code}};
+                    }
+                    palette.push_back(std::move(entry));
+                }
+                const auto& g = p.transition;
+                json transition = {{"fromX", g.from.x.value},
+                                   {"fromY", g.from.y.value},
+                                   {"toX", g.to.x.value},
+                                   {"toY", g.to.y.value},
+                                   {"spacingFrom", g.spacing_from.value},
+                                   {"spacingTo", g.spacing_to.value}};
+                if (g.interpolate_density) {
+                    transition["interpolateDensity"] = true;
+                }
+                if (g.curve != document::DensityCurve::Linear) {
+                    transition["curve"] = static_cast<int>(g.curve);
+                }
+                if (g.texture != document::DensityTexture::None) {
+                    transition["texture"] = static_cast<int>(g.texture);
+                    transition["textureStrength"] = std::clamp(g.texture_strength, 0.0, 1.0);
+                    transition["textureSeed"] = g.texture_seed;
+                }
+                if (g.geometry != document::DensityGeometry::Linear) {
+                    transition["geometry"] = static_cast<int>(g.geometry);
+                }
+                if (g.curve_bend != 0.0) {
+                    transition["bend"] = g.curve_bend;
+                }
+                j = {{"type", "multicolorGradient"},
+                     {"method", std::string(document::gradient_method_id(p.method))},
+                     {"palette", std::move(palette)},
+                     {"transition", std::move(transition)},
+                     {"complementary", p.complementary}};
+                if (p.satin_density.value != 400) {
+                    j["satinDensity"] = p.satin_density.value;
+                }
+                if (p.crosshatch_layers != 2) {
+                    j["crosshatchLayers"] = p.crosshatch_layers;
+                }
+                if (p.crosshatch_angle.radians != 0.0) {
+                    j["crosshatchAngle"] = p.crosshatch_angle.radians;
+                }
+                if (p.stitch_angle) {
+                    j["stitchAngle"] = p.stitch_angle->radians;
+                }
+                if (p.end_density != 0.15) {
+                    j["endDensity"] = p.end_density;
+                }
             }
             // HP-STI-033 : compensation du tirage (clés écrites seulement hors défaut).
             if constexpr (std::is_same_v<T, document::ContourFillParams> ||
@@ -610,6 +729,9 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.underlay_zigzag = j.value("underlayZigzag", false);
         p.row_end_clip = Micrometers{std::clamp(j.value("rowEndClip", 0), 0, 5'000)};
         p.edge_outline = j.value("edgeOutline", false);
+        p.couching_spacing = Micrometers{std::clamp(j.value("couchingSpacing", 0), 0, 20'000)};
+        p.couching_tie_spacing =
+            Micrometers{std::clamp(j.value("couchingTieSpacing", 3'000), 1'000, 7'000)};
         if (j.contains("entryPoint")) {
             p.entry_point = Vec2um{Micrometers{j.at("entryPoint").at("x")},
                                    Micrometers{j.at("entryPoint").at("y")}};
@@ -770,15 +892,62 @@ Result<document::StitchParams> params_from_json(const json& j) {
             grad.interpolate_density = g.value("interpolateDensity", false);
             // Valeur inconnue (fichier édité à la main ou plus récent) : linéaire.
             const int curve = g.value("curve", 0);
-            grad.curve = curve == static_cast<int>(document::DensityCurve::Smooth)
-                             ? document::DensityCurve::Smooth
-                         : curve == static_cast<int>(document::DensityCurve::Steep)
-                             ? document::DensityCurve::Steep
-                         : curve == static_cast<int>(document::DensityCurve::EaseIn)
-                             ? document::DensityCurve::EaseIn
-                         : curve == static_cast<int>(document::DensityCurve::EaseOut)
-                             ? document::DensityCurve::EaseOut
-                             : document::DensityCurve::Linear;
+            // Conserver les identifiants historiques 0..4 ; les profils 5..8
+            // sont optionnels. Les valeurs inconnues sont toujours rejetees.
+            grad.curve = document::DensityCurve::Linear;
+            if (curve >= 0 && curve <= static_cast<int>(document::DensityCurve::ConcaveConvex)) {
+                grad.curve = static_cast<document::DensityCurve>(curve);
+            }
+            const int texture = g.value("texture", 0);
+            grad.texture = texture == 1   ? document::DensityTexture::Feathered
+                           : texture == 2 ? document::DensityTexture::Stippled
+                           : texture == 3 ? document::DensityTexture::LongShort
+                                          : document::DensityTexture::None;
+            // Les valeurs indéfinies ne doivent pas provoquer de calcul non borné.
+            if (grad.texture != document::DensityTexture::None) {
+                const double raw = g.value("textureStrength", 0.35);
+                grad.texture_strength = std::isfinite(raw) ? std::clamp(raw, 0.0, 1.0) : 0.35;
+                auto textureSeed =
+                    strict_uint32(g.value("textureSeed", json(1)), "densityGradient.textureSeed");
+                if (!textureSeed)
+                    return std::unexpected(textureSeed.error());
+                grad.texture_seed = *textureSeed;
+            }
+            const int geometry = g.value("geometry", 0);
+            grad.geometry = document::is_valid_density_geometry(geometry)
+                                ? static_cast<document::DensityGeometry>(geometry)
+                                : document::DensityGeometry::Linear;
+            const double bend = g.value("bend", 0.0);
+            grad.curve_bend = std::isfinite(bend) ? std::clamp(bend, -1.0, 1.0) : 0.0;
+            if (g.contains("densityStops")) {
+                const auto& stops = g.at("densityStops");
+                grad.shared_rows = g.value("sharedRows", false);
+                // Jusqu'à 7 transitions × 8 échantillons + 1 arrêts (profils courbes).
+                const std::size_t maxStops = 64;
+                const std::size_t arity = grad.shared_rows ? 3 : 2;
+                if (!stops.is_array() || stops.size() < 2 || stops.size() > maxStops) {
+                    return fail(ErrorCategory::InvalidFile, "Fondu : profil de densité invalide.");
+                }
+                double previous = -1.0;
+                for (const auto& point : stops) {
+                    if (!point.is_array() || point.size() != arity || !point[0].is_number() ||
+                        !point[1].is_number() || (arity == 3 && !point[2].is_number())) {
+                        return fail(ErrorCategory::InvalidFile,
+                                    "Fondu : arrêt de densité invalide.");
+                    }
+                    const double position = point[0].get<double>();
+                    const double weight = point[1].get<double>();
+                    const double lower = arity == 3 ? point[2].get<double>() : 0.0;
+                    if (!std::isfinite(position) || !std::isfinite(weight) ||
+                        !std::isfinite(lower) || position < 0.0 || position > 1.0 || weight < 0.0 ||
+                        weight > 1.0 || lower < 0.0 || lower + weight > 1.0 + 1e-6 ||
+                        position <= previous) {
+                        return fail(ErrorCategory::InvalidFile, "Fondu : poids hors limites.");
+                    }
+                    grad.density_stops.push_back({position, weight, lower});
+                    previous = position;
+                }
+            }
             p.density_gradient = grad;
         }
         if (j.contains("seed")) {
@@ -983,7 +1152,7 @@ Result<document::StitchParams> params_from_json(const json& j) {
         // Motif le long d'un chemin (HP-STI-002) : clés optionnelles, valeurs bornées.
         document::MotifRunParams p;
         const int motif = j.value("motif", static_cast<int>(p.motif));
-        if (motif < 0 || motif > static_cast<int>(document::MotifId::Scallop)) {
+        if (motif < 0 || motif > static_cast<int>(document::MotifId::Seed)) {
             return fail(ErrorCategory::InvalidFile, "motifRun : motif inconnu");
         }
         p.motif = static_cast<document::MotifId>(motif);
@@ -999,7 +1168,7 @@ Result<document::StitchParams> params_from_json(const json& j) {
         // Remplissage à motif (HP-STI-006) : clés optionnelles, valeurs bornées.
         document::MotifFillParams p;
         const int motif = j.value("motif", static_cast<int>(p.motif));
-        if (motif < 0 || motif > static_cast<int>(document::MotifId::Scallop)) {
+        if (motif < 0 || motif > static_cast<int>(document::MotifId::Seed)) {
             return fail(ErrorCategory::InvalidFile, "motifFill : motif inconnu");
         }
         p.motif = static_cast<document::MotifId>(motif);
@@ -1012,6 +1181,8 @@ Result<document::StitchParams> params_from_json(const json& j) {
             Micrometers{std::clamp(j.value("stitchLength", p.stitch_length.value), 1'000, 7'000)};
         p.min_length = Micrometers{std::clamp(j.value("minLength", p.min_length.value), 0, 7'000)};
         p.hidden_underpath = j.value("hiddenUnderpath", p.hidden_underpath);
+        const double scatter = j.value("scatter", 0.0);
+        p.scatter = std::isfinite(scatter) ? std::clamp(scatter, 0.0, 1.0) : 0.0;
         read_simple_pull(j, p);
         return document::StitchParams{p};
     }
@@ -1051,6 +1222,7 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.stitch_length = Micrometers{std::clamp(j.value("stitchLength", 3'000), 1'000, 7'000)};
         p.inset = Micrometers{std::clamp(j.value("inset", 200), 0, 10'000)};
         p.hidden_underpath = j.value("hiddenUnderpath", true);
+        p.tie_down = Micrometers{std::clamp(j.value("tieDown", 0), 0, 4'000)};
         read_simple_pull(j, p);
         return document::StitchParams{p};
     }
@@ -1065,6 +1237,119 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.full_cross = j.value("fullCross", true);
         p.passes = std::clamp(j.value("passes", 1), 1, 3);
         p.hidden_underpath = j.value("hiddenUnderpath", true);
+        return document::StitchParams{p};
+    }
+    if (type == "multicolorGradient") {
+        // Ancre du fondu multicolore (mission 2026-11-14) : `method` obligatoire et persisté par
+        // nom (jamais par entier, comme `AutoSatinStrategy`) -- une méthode inconnue (fichier
+        // d'une version plus récente) est REFUSÉE, jamais substituée.
+        if (!j.contains("method") || !j.at("method").is_string()) {
+            return fail(ErrorCategory::InvalidFile, "multicolorGradient : « method » manquant");
+        }
+        const auto method = document::parse_gradient_method(j.at("method").get<std::string>());
+        if (!method) {
+            return fail(ErrorCategory::InvalidFile,
+                        "multicolorGradient : méthode « " + j.at("method").get<std::string>() +
+                            " » inconnue (fichier d'une version plus récente de OpenStitch)");
+        }
+        document::MulticolorGradientParams p;
+        p.method = *method;
+        p.complementary = j.value("complementary", true);
+        if (!j.contains("palette") || !j.at("palette").is_array() || j.at("palette").empty() ||
+            j.at("palette").size() > 8) {
+            return fail(ErrorCategory::InvalidFile,
+                        "multicolorGradient : « palette » doit porter de 1 à 8 fils");
+        }
+        for (const auto& pj : j.at("palette")) {
+            if (!pj.is_object() || !pj.contains("rgb")) {
+                return fail(ErrorCategory::InvalidFile,
+                            "multicolorGradient : fil de palette mal formé");
+            }
+            document::GradientThread thread;
+            thread.rgb = rgb_from_json(pj.at("rgb"));
+            const int curve = pj.value("curve", 0);
+            if (curve < 0 || curve > static_cast<int>(document::DensityCurve::ConcaveConvex)) {
+                return fail(ErrorCategory::InvalidFile,
+                            "multicolorGradient : courbe de fil inconnue");
+            }
+            thread.curve = static_cast<document::DensityCurve>(curve);
+            if (pj.contains("thread")) {
+                const auto& tj = pj.at("thread");
+                if (!tj.is_object() || !tj.contains("chart") || !tj.contains("code")) {
+                    return fail(ErrorCategory::InvalidFile,
+                                "multicolorGradient : fil de nuancier mal formé");
+                }
+                thread.thread = thread_palette::ThreadKey{tj.at("chart").get<std::string>(),
+                                                          tj.at("code").get<std::string>()};
+            }
+            p.palette.push_back(std::move(thread));
+        }
+        if (j.contains("transition")) {
+            const auto& tj = j.at("transition");
+            for (const char* key : {"fromX", "fromY", "toX", "toY", "spacingFrom", "spacingTo"}) {
+                if (!tj.contains(key)) {
+                    return fail(ErrorCategory::InvalidFile,
+                                std::string("multicolorGradient : transition.") + key +
+                                    " manquant");
+                }
+            }
+            document::DensityGradient g;
+            g.from = Vec2um{Micrometers{tj.at("fromX").get<std::int32_t>()},
+                            Micrometers{tj.at("fromY").get<std::int32_t>()}};
+            g.to = Vec2um{Micrometers{tj.at("toX").get<std::int32_t>()},
+                          Micrometers{tj.at("toY").get<std::int32_t>()}};
+            g.spacing_from = Micrometers{tj.at("spacingFrom").get<std::int32_t>()};
+            g.spacing_to = Micrometers{tj.at("spacingTo").get<std::int32_t>()};
+            g.interpolate_density = tj.value("interpolateDensity", false);
+            if (tj.contains("curve")) {
+                const int curve = tj.at("curve").get<int>();
+                if (curve < 0 || curve > static_cast<int>(document::DensityCurve::ConcaveConvex)) {
+                    return fail(ErrorCategory::InvalidFile,
+                                "multicolorGradient : transition.curve inconnue");
+                }
+                g.curve = static_cast<document::DensityCurve>(curve);
+            }
+            if (tj.contains("texture")) {
+                const int texture = tj.at("texture").get<int>();
+                if (texture < 0 ||
+                    texture > static_cast<int>(document::DensityTexture::LongShort)) {
+                    return fail(ErrorCategory::InvalidFile,
+                                "multicolorGradient : transition.texture inconnue");
+                }
+                g.texture = static_cast<document::DensityTexture>(texture);
+                g.texture_strength =
+                    std::clamp(tj.value("textureStrength", g.texture_strength), 0.0, 1.0);
+                g.texture_seed = tj.value("textureSeed", g.texture_seed);
+            }
+            if (tj.contains("geometry")) {
+                const int geometry = tj.at("geometry").get<int>();
+                if (!document::is_valid_density_geometry(geometry)) {
+                    return fail(ErrorCategory::InvalidFile,
+                                "multicolorGradient : transition.geometry inconnue");
+                }
+                g.geometry = static_cast<document::DensityGeometry>(geometry);
+            }
+            g.curve_bend = tj.value("bend", 0.0);
+            p.transition = g;
+        }
+        p.satin_density = Micrometers{std::clamp(j.value("satinDensity", 400), 100, 2'000)};
+        p.crosshatch_layers = std::clamp(j.value("crosshatchLayers", 2), 2, 3);
+        const double crosshatchAngle = j.value("crosshatchAngle", 0.0);
+        if (!std::isfinite(crosshatchAngle)) {
+            return fail(ErrorCategory::InvalidFile,
+                        "multicolorGradient : crosshatchAngle invalide");
+        }
+        p.crosshatch_angle = Angle{crosshatchAngle};
+        if (j.contains("stitchAngle")) {
+            const double stitchAngle = j.at("stitchAngle").get<double>();
+            if (!std::isfinite(stitchAngle)) {
+                return fail(ErrorCategory::InvalidFile,
+                            "multicolorGradient : stitchAngle invalide");
+            }
+            p.stitch_angle = Angle{stitchAngle};
+        }
+        const double endDensity = j.value("endDensity", 0.15);
+        p.end_density = std::isfinite(endDensity) ? std::clamp(endDensity, 0.0, 1.0) : 0.15;
         return document::StitchParams{p};
     }
     return fail(ErrorCategory::InvalidFile, "Type de point inconnu : " + type);
@@ -1451,9 +1736,70 @@ document::TextObject text_from_json(const json& j) {
 
 } // namespace
 
+namespace {
+
+void write_image_source(json& j, const document::ImageSource& source) {
+    j["mmPerPx"] = source.mm_per_px.value;
+    j["ops"] = json::array();
+    for (const auto& op : source.ops) {
+        j["ops"].push_back(op_to_json(op));
+    }
+
+    if (source.segmentation) {
+        const auto& seg = *source.segmentation;
+        json s;
+        s["width"] = seg.width;
+        s["height"] = seg.height;
+        s["regions"] = json::array();
+        for (const auto& slot : seg.region_slots) {
+            if (slot) {
+                s["regions"].push_back({{"id", slot->id.value},
+                                        {"rgb", rgb_to_json(slot->rgb)},
+                                        {"pixels", slot->pixel_count}});
+            } else {
+                s["regions"].push_back(nullptr);
+            }
+        }
+        j["segmentation"] = s;
+    }
+}
+
+Result<void> read_image_source(const json& j, document::ImageSource& source) {
+    source.mm_per_px = Millimeters{j.at("mmPerPx").get<double>()};
+    for (const auto& op : j.at("ops")) {
+        auto parsed = op_from_json(op);
+        if (!parsed) {
+            return std::unexpected(parsed.error());
+        }
+        source.ops.push_back(std::move(*parsed));
+    }
+
+    if (j.contains("segmentation")) {
+        const auto& s = j.at("segmentation");
+        segmentation::Segmentation seg;
+        seg.width = s.at("width");
+        seg.height = s.at("height");
+        for (const auto& r : s.at("regions")) {
+            if (r.is_null()) {
+                seg.region_slots.push_back(std::nullopt);
+            } else {
+                segmentation::Region region;
+                region.id = RegionId{r.at("id").get<std::uint64_t>()};
+                region.rgb = rgb_from_json(r.at("rgb"));
+                region.pixel_count = r.at("pixels").get<std::size_t>();
+                seg.region_slots.push_back(region);
+            }
+        }
+        // labels remplis plus tard par project_io (binaire).
+        source.segmentation = std::move(seg);
+    }
+    return {};
+}
+
+} // namespace
+
 json project_to_json(const document::Project& project) {
     json j;
-    j["mmPerPx"] = project.mm_per_px.value;
     j["objectIdLast"] = project.object_ids.last();
     j["canvas"] = {{"width", project.canvas.width.value}, {"height", project.canvas.height.value}};
     if (project.canvas.margin.value > 0) {
@@ -1472,27 +1818,14 @@ json project_to_json(const document::Project& project) {
         j["machine"] = project.machine_id;
     }
 
-    j["ops"] = json::array();
-    for (const auto& op : project.ops) {
-        j["ops"].push_back(op_to_json(op));
-    }
-
-    if (project.segmentation) {
-        const auto& seg = *project.segmentation;
-        json s;
-        s["width"] = seg.width;
-        s["height"] = seg.height;
-        s["regions"] = json::array();
-        for (const auto& slot : seg.region_slots) {
-            if (slot) {
-                s["regions"].push_back({{"id", slot->id.value},
-                                        {"rgb", rgb_to_json(slot->rgb)},
-                                        {"pixels", slot->pixel_count}});
-            } else {
-                s["regions"].push_back(nullptr);
-            }
+    write_image_source(j, project);
+    if (!project.image_sources.empty()) {
+        j["imageSources"] = json::array();
+        for (const auto& layer : project.image_sources) {
+            json source = {{"calque", layer.calque.value}};
+            write_image_source(source, layer.source);
+            j["imageSources"].push_back(std::move(source));
         }
-        j["segmentation"] = s;
     }
 
     if (!project.calques.empty()) {
@@ -1583,6 +1916,9 @@ json project_to_json(const document::Project& project) {
         }
         if (v.source_region) {
             vo["sourceRegion"] = v.source_region->value;
+            if (v.source_image.valid()) {
+                vo["sourceImage"] = v.source_image.value;
+            }
         }
         if (v.text_owner) {
             vo["textOwner"] = v.text_owner->value;
@@ -1644,6 +1980,12 @@ json project_to_json(const document::Project& project) {
         if (e.color_blend) {
             eo["colorBlend"] = {{"partner", e.color_blend->partner.value},
                                 {"foreground", e.color_blend->foreground}};
+        }
+        if (e.multi_blend) {
+            eo["multiBlend"] = {{"group", e.multi_blend->group.value},
+                                {"index", e.multi_blend->index},
+                                {"count", e.multi_blend->count},
+                                {"complementary", e.multi_blend->complementary}};
         }
         if (!e.overrides.empty()) {
             eo["overrides"] = json::array();
@@ -1723,7 +2065,6 @@ json project_to_json(const document::Project& project) {
 Result<document::Project> project_from_json(const json& j) {
     document::Project project;
     try {
-        project.mm_per_px = Millimeters{j.at("mmPerPx").get<double>()};
         project.object_ids.reset(j.value("objectIdLast", std::uint64_t{0}));
         // Cadre : optionnel (les projets antérieurs n'en avaient pas -> 100x100).
         if (j.contains("canvas")) {
@@ -1761,32 +2102,23 @@ Result<document::Project> project_from_json(const json& j) {
         }
         project.machine_id = j.value("machine", std::string());
 
-        for (const auto& op : j.at("ops")) {
-            auto parsed = op_from_json(op);
-            if (!parsed) {
-                return std::unexpected(parsed.error());
-            }
-            project.ops.push_back(std::move(*parsed));
+        if (auto read = read_image_source(j, project); !read) {
+            return std::unexpected(read.error());
         }
 
-        if (j.contains("segmentation")) {
-            const auto& s = j.at("segmentation");
-            segmentation::Segmentation seg;
-            seg.width = s.at("width");
-            seg.height = s.at("height");
-            for (const auto& r : s.at("regions")) {
-                if (r.is_null()) {
-                    seg.region_slots.push_back(std::nullopt);
-                } else {
-                    segmentation::Region region;
-                    region.id = RegionId{r.at("id").get<std::uint64_t>()};
-                    region.rgb = rgb_from_json(r.at("rgb"));
-                    region.pixel_count = r.at("pixels").get<std::size_t>();
-                    seg.region_slots.push_back(region);
+        if (j.contains("imageSources")) {
+            for (const auto& entry : j.at("imageSources")) {
+                document::ImageSourceLayer layer;
+                layer.calque = ObjectId{entry.at("calque").get<std::uint64_t>()};
+                if (auto read = read_image_source(entry, layer.source); !read) {
+                    return std::unexpected(read.error());
                 }
+                if (!layer.calque.valid() || project.findImageSource(layer.calque) != nullptr) {
+                    return fail(ErrorCategory::InvalidFile,
+                                "Identifiant de source image invalide ou duplique");
+                }
+                project.image_sources.push_back(std::move(layer));
             }
-            // labels remplis plus tard par project_io (binaire).
-            project.segmentation = std::move(seg);
         }
 
         if (j.contains("groups")) {
@@ -1876,6 +2208,7 @@ Result<document::Project> project_from_json(const json& j) {
             v.locked = vo.value("locked", false);
             if (vo.contains("sourceRegion")) {
                 v.source_region = RegionId{vo.at("sourceRegion").get<std::uint64_t>()};
+                v.source_image = ObjectId{vo.value("sourceImage", std::uint64_t{0})};
             }
             if (vo.contains("textOwner")) {
                 v.text_owner = ObjectId{vo.at("textOwner").get<std::uint64_t>()};
@@ -1947,6 +2280,28 @@ Result<document::Project> project_from_json(const json& j) {
 
             // Métadonnée facultative : entier uint64 exact (jamais via double) et rôle
             // strictement booléen. Les liens orphelins restent lisibles mais ne se résolvent pas.
+            if (eo.contains("multiBlend")) {
+                const auto& link = eo.at("multiBlend");
+                if (!link.is_object() || !link.contains("group") || !link.contains("index") ||
+                    !link.contains("count") || !link["index"].is_number_integer() ||
+                    !link["count"].is_number_integer() ||
+                    (link.contains("complementary") && !link["complementary"].is_boolean())) {
+                    return fail(ErrorCategory::InvalidFile, "Fondu multicolore mal formé.");
+                }
+                const auto group = strict_uint64(link.at("group"), "multiBlend.group");
+                if (!group) {
+                    return std::unexpected(group.error());
+                }
+                const int index = link["index"].get<int>();
+                const int count = link["count"].get<int>();
+                if (*group == 0 || count < 1 || count > 8 || index < 0 || index >= count) {
+                    return fail(ErrorCategory::InvalidFile,
+                                "Indices de fondu multicolore invalides.");
+                }
+                e.multi_blend = document::MultiBlendLink{
+                    ObjectId{*group}, static_cast<std::uint8_t>(index),
+                    static_cast<std::uint8_t>(count), link.value("complementary", true)};
+            }
             if (eo.contains("colorBlend")) {
                 const auto& link = eo.at("colorBlend");
                 if (!link.is_object() || !link.contains("partner") ||
@@ -2014,6 +2369,32 @@ Result<document::Project> project_from_json(const json& j) {
             }
 
             project.embroidery_objects.push_back(std::move(e));
+        }
+
+        // Rupture de compatibilité acceptée (mission 2026-11-14) : un fondu multicolore est
+        // désormais un objet ANCRE autonome (`MulticolorGradientParams`), jamais une propriété
+        // implicite de la première couche. Un groupe `multiBlend` dont l'ancre ne résout pas
+        // (projet d'avant cette refonte, ou fichier corrompu) est REFUSÉ explicitement -- jamais
+        // silencieusement tronqué ou rechargé comme orphelin. Les projets sans fondu multicolore
+        // ne sont pas concernés.
+        {
+            std::vector<ObjectId> seenGroups;
+            for (const auto& object : project.embroidery_objects) {
+                if (!object.multi_blend) {
+                    continue;
+                }
+                const ObjectId group = object.multi_blend->group;
+                if (std::find(seenGroups.begin(), seenGroups.end(), group) != seenGroups.end()) {
+                    continue;
+                }
+                seenGroups.push_back(group);
+                if (!document::find_gradient_group(project, object.id)) {
+                    return fail(ErrorCategory::InvalidFile,
+                                "Ce projet utilise un ancien format de fondu multicolore non pris "
+                                "en charge par cette version d'OpenStitch. Ouvrez-le avec une "
+                                "version antérieure, ou recréez le fondu multicolore.");
+                }
+            }
         }
 
         // Finitions (Lots E/F) : bloc absent = projet antérieur, aucune

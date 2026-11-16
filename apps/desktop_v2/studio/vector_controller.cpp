@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "vector_controller.hpp"
 
+#include "document_services.hpp"
+
 #include <algorithm>
 #include <cmath>
 
@@ -38,7 +40,9 @@ VectorController::VectorController(StudioController& studio, QObject* parent)
 std::vector<std::uint64_t> VectorController::ids() const {
     std::vector<std::uint64_t> out;
     for (const auto& t : studio_.session().selection().targets()) {
-        if (t.kind == TargetKind::EmbroideryObject) {
+        // Formes vectorielles pas encore converties comprises : les opérations de forme
+        // agissent sur la géométrie, avec ou sans objet de broderie.
+        if (t.kind == TargetKind::EmbroideryObject || t.kind == TargetKind::VectorObject) {
             out.push_back(t.id);
         }
     }
@@ -66,7 +70,10 @@ bool VectorController::apply(const std::string& batch, const QString& label, boo
     if (selectCreated) {
         std::vector<Target> created;
         for (const auto id : createdObjectIds(result.report)) {
-            created.push_back({TargetKind::EmbroideryObject, id});
+            const bool embroidery =
+                studio_.session().project().findEmbroidery(ObjectId{id}) != nullptr;
+            created.push_back(
+                {embroidery ? TargetKind::EmbroideryObject : TargetKind::VectorObject, id});
         }
         if (!created.empty()) {
             studio_.session().selection().replace(std::move(created));
@@ -113,6 +120,20 @@ bool VectorController::breakApart() {
                std::to_string(selected[i]) + "}";
     }
     return apply(wrap(ops), QStringLiteral("Séparer les morceaux"), true);
+}
+
+bool VectorController::offsetShapes(double offsetMm) {
+    const auto result = openstitch::desktop_v2::offsetShapes(studio_.session(), ids(), offsetMm);
+    say(result.ok ? QStringLiteral("Forme décalée créée.")
+                  : QString::fromStdString(result.message));
+    return result.ok;
+}
+
+bool VectorController::outlineShapes(double widthMm) {
+    const auto result = openstitch::desktop_v2::outlineShapes(studio_.session(), ids(), widthMm);
+    say(result.ok ? QStringLiteral("Contour créé autour de la sélection.")
+                  : QString::fromStdString(result.message));
+    return result.ok;
 }
 
 bool VectorController::simplify(double toleranceMm) {

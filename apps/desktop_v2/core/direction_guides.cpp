@@ -49,8 +49,66 @@ std::optional<document::DirectionalFillParams> paramsFor(const document::Project
 } // namespace
 
 int directionGuideCount(const document::Project& project, std::uint64_t objectId) {
+    if (const auto* obj = project.findEmbroidery(ObjectId{objectId})) {
+        if (const auto* satin = std::get_if<document::AutoSatinParams>(&obj->params)) {
+            return static_cast<int>(satin->guides.size());
+        }
+    }
     const auto* dir = directionalOf(project, objectId);
     return dir != nullptr ? static_cast<int>(dir->guides.size()) : -1;
+}
+
+std::vector<std::vector<PointMm>> autoSatinGuidePaths(const document::Project& project,
+                                                      std::uint64_t objectId) {
+    std::vector<std::vector<PointMm>> out;
+    const auto* obj = project.findEmbroidery(ObjectId{objectId});
+    const auto* satin = obj ? std::get_if<document::AutoSatinParams>(&obj->params) : nullptr;
+    if (!satin) {
+        return out;
+    }
+    for (const auto& guide : satin->guides) {
+        std::vector<PointMm> path;
+        for (const Vec2um p : guide.path) {
+            path.push_back({to_millimeters(p.x).value, to_millimeters(p.y).value});
+        }
+        // Preserve indices even for legacy single-angle guides with no path.
+        out.push_back(std::move(path));
+    }
+    return out;
+}
+
+ServiceResult moveAutoSatinGuideNode(DocumentSession& session, std::uint64_t objectId,
+                                     std::size_t guideIndex, std::size_t nodeIndex, PointMm to) {
+    const auto* obj = session.project().findEmbroidery(ObjectId{objectId});
+    const auto* satin = obj ? std::get_if<document::AutoSatinParams>(&obj->params) : nullptr;
+    if (!satin || guideIndex >= satin->guides.size()) {
+        return {false, "Sélectionnez un guide de satin valide."};
+    }
+    if (!std::isfinite(to.x) || !std::isfinite(to.y) || std::fabs(to.x) > kMaxCoordMm ||
+        std::fabs(to.y) > kMaxCoordMm) {
+        return {false, "Position du guide hors limites."};
+    }
+    auto params = *satin;
+    auto& guide = params.guides[guideIndex];
+    if (guide.path.size() < 2 || nodeIndex >= guide.path.size()) {
+        return {false, "Nœud de guide inconnu."};
+    }
+    const Vec2um point = toUm(to);
+    if ((nodeIndex > 0 && guide.path[nodeIndex - 1] == point) ||
+        (nodeIndex + 1 < guide.path.size() && guide.path[nodeIndex + 1] == point)) {
+        return {false, "Deux nœuds voisins ne peuvent pas être confondus."};
+    }
+    if (guide.path[nodeIndex] == point) {
+        return {true, {}};
+    }
+    guide.path[nodeIndex] = point;
+    guide.anchor = guide.path.front();
+    const auto dx = static_cast<double>(guide.path[1].x.value) - guide.path[0].x.value;
+    const auto dy = static_cast<double>(guide.path[1].y.value) - guide.path[0].y.value;
+    guide.angle = Angle{std::atan2(dy, dx)};
+    session.execute(std::make_unique<commands::EditAutoSatinCommand>(
+        ObjectId{objectId}, std::move(params), "Déplacer un nœud de guide satin"));
+    return {true, {}};
 }
 
 int breakLineCount(const document::Project& project, std::uint64_t objectId) {
@@ -84,6 +142,35 @@ ServiceResult addDirectionGuide(DocumentSession& session, std::uint64_t objectId
         return {false, std::string("Il faut au moins deux points distincts pour tracer une ") +
                            what + "."};
     }
+    if (pts.size() > 1024) {
+        return {false, "Un guide doit contenir au plus 1024 points."};
+    }
+    // An auto-satin guide must NOT convert the object to directional fill. For
+    // the Guided strategy, the curve is the editable central line. Other auto
+    // satin strategies retain their existing interpretation of curved guides.
+    if (const auto* satin = std::get_if<document::AutoSatinParams>(&emb->params)) {
+        if (isBreak) {
+            return {false,
+                    "Une ligne de rupture n'est pas prise en charge par le satin automatique."};
+        }
+        if (satin->guides.size() >= 64) {
+            return {false, "64 guides au maximum pour un satin automatique."};
+        }
+        auto params = *satin;
+        const Vec2um delta{Micrometers{pts[1].x.value - pts[0].x.value},
+                           Micrometers{pts[1].y.value - pts[0].y.value}};
+        document::AutoSatinGuide guide;
+        guide.anchor = pts.front();
+        const double dy = static_cast<double>(delta.y.value);
+        const double dx = static_cast<double>(delta.x.value);
+        guide.angle = Angle{std::atan2(dy, dx)};
+        guide.absolute = true;
+        guide.path = std::move(pts);
+        params.guides.push_back(std::move(guide));
+        session.execute(std::make_unique<commands::EditAutoSatinCommand>(
+            ObjectId{objectId}, std::move(params), "Tracer un guide de satin"));
+        return {true, {}};
+    }
     auto params = paramsFor(session.project(), *emb);
     if (!params) {
         return {false, "Cet objet n'a pas de contour source : impossible de le guider."};
@@ -113,6 +200,21 @@ ServiceResult addDirectionGuide(DocumentSession& session, std::uint64_t objectId
 
 ServiceResult clearDirectionGuides(DocumentSession& session, std::uint64_t objectId,
                                    bool breakLines) {
+    if (const auto* obj = session.project().findEmbroidery(ObjectId{objectId})) {
+        if (const auto* satin = std::get_if<document::AutoSatinParams>(&obj->params)) {
+            if (breakLines) {
+                return {false, "Ce satin ne contient pas de lignes de rupture."};
+            }
+            if (satin->guides.empty()) {
+                return {false, "Aucun guide de satin à effacer."};
+            }
+            auto params = *satin;
+            params.guides.clear();
+            session.execute(std::make_unique<commands::EditAutoSatinCommand>(
+                ObjectId{objectId}, std::move(params), "Effacer les guides de satin"));
+            return {true, {}};
+        }
+    }
     const auto* dir = directionalOf(session.project(), objectId);
     if (dir == nullptr) {
         return {false, "Cet objet n'est pas un remplissage directionnel."};

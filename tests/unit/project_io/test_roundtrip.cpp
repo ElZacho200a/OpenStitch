@@ -8,6 +8,7 @@
 
 #include "json_serialize.hpp"
 #include "openstitch/document/color_blend.hpp"
+#include "openstitch/document/multi_blend.hpp"
 #include "openstitch/project_io/project_io.hpp"
 
 using namespace openstitch;
@@ -54,6 +55,7 @@ document::Project rich_project() {
     project.ops.push_back(image::FlattenOp{3});
     project.ops.push_back(image::ClaheOp{3.5});
     project.ops.push_back(image::SharpenOp{0.5});
+    project.ops.push_back(image::ColorToAlphaOp{12, 34, 56, 20, false, 0, 0});
     project.ops.push_back(image::CoherentLinesOp{1.5, 2.0, 0.99, 0.9, 2, 4});
 
     segmentation::Segmentation seg;
@@ -222,6 +224,43 @@ TEST_CASE("blend core: legacy JSON omits relation and keeps spacing interpolatio
     CHECK(project_io::detail::project_to_json(*loaded) == json);
 }
 
+TEST_CASE("fade textures roundtrip and legacy files retain the regular method", "[blend_core]") {
+    auto project = rich_project();
+    document::DirectionalFillParams params;
+    params.density_gradient = document::DensityGradient{um(0, 0), um(5'000, 0), Micrometers{400},
+                                                        Micrometers{1'600}, true};
+    project.embroidery_objects[1].params = params;
+    const auto regular = project_io::detail::project_to_json(project);
+    const auto& oldGradient = regular["embroideryObjects"][1]["params"]["densityGradient"];
+    CHECK_FALSE(oldGradient.contains("texture"));
+    CHECK_FALSE(oldGradient.contains("textureStrength"));
+    CHECK_FALSE(oldGradient.contains("textureSeed"));
+
+    for (const auto method :
+         {document::DensityTexture::Feathered, document::DensityTexture::Stippled,
+          document::DensityTexture::LongShort}) {
+        auto& gradient =
+            std::get<document::DirectionalFillParams>(project.embroidery_objects[1].params)
+                .density_gradient;
+        gradient->texture = method;
+        gradient->texture_strength = 0.48;
+        gradient->texture_seed = 971;
+        const auto encoded = project_io::detail::project_to_json(project);
+        const auto decoded = project_io::detail::project_from_json(encoded);
+        REQUIRE(decoded);
+        CHECK(decoded->embroidery_objects[1].params == project.embroidery_objects[1].params);
+        CHECK(project_io::detail::project_to_json(*decoded) == encoded);
+    }
+    auto malformed = project_io::detail::project_to_json(project);
+    malformed["embroideryObjects"][1]["params"]["densityGradient"]["texture"] = 999;
+    const auto fallback = project_io::detail::project_from_json(malformed);
+    REQUIRE(fallback);
+    const auto& fallbackParams =
+        std::get<document::DirectionalFillParams>(fallback->embroidery_objects[1].params);
+    REQUIRE(fallbackParams.density_gradient);
+    CHECK(fallbackParams.density_gradient->texture == document::DensityTexture::None);
+}
+
 TEST_CASE("density curve is persisted only when not linear", "[blend_core]") {
     auto project = rich_project();
     document::DirectionalFillParams params;
@@ -362,7 +401,7 @@ TEST_CASE("projet complet : save puis load = memes donnees") {
     CHECK(loaded->original.rgba == original.original.rgba);
 
     // Ops.
-    REQUIRE(loaded->ops.size() == 8);
+    REQUIRE(loaded->ops.size() == 9);
     CHECK(std::holds_alternative<image::GrayscaleOp>(loaded->ops[0]));
     CHECK(std::holds_alternative<image::QuantizeOp>(loaded->ops[1]));
     REQUIRE(std::holds_alternative<image::BilateralDenoiseOp>(loaded->ops[3]));
@@ -370,8 +409,10 @@ TEST_CASE("projet complet : save puis load = memes donnees") {
     CHECK(std::get<image::FlattenOp>(loaded->ops[4]).strength == 3);
     CHECK(std::get<image::ClaheOp>(loaded->ops[5]).clip_limit == 3.5);
     CHECK(std::get<image::SharpenOp>(loaded->ops[6]).amount == 0.5);
-    REQUIRE(std::holds_alternative<image::CoherentLinesOp>(loaded->ops[7]));
-    CHECK(std::get<image::CoherentLinesOp>(loaded->ops[7]) ==
+    CHECK(std::get<image::ColorToAlphaOp>(loaded->ops[7]) ==
+          image::ColorToAlphaOp{12, 34, 56, 20, false, 0, 0});
+    REQUIRE(std::holds_alternative<image::CoherentLinesOp>(loaded->ops[8]));
+    CHECK(std::get<image::CoherentLinesOp>(loaded->ops[8]) ==
           image::CoherentLinesOp{1.5, 2.0, 0.99, 0.9, 2, 4});
 
     // Segmentation.
@@ -736,4 +777,88 @@ TEST_CASE("bord irregulier : defaut non ecrit, cles absentes relues au defaut") 
     CHECK(a.jagged == document::SatinJagged::None);
     CHECK(a.jagged_amplitude == Micrometers{1'500});
     CHECK(a.jagged_seed == 1u);
+}
+
+TEST_CASE("fondu multicolore : ancre et couches, save puis load = memes parametres") {
+    document::Project project;
+    document::VectorObject vec;
+    vec.id = project.object_ids.next();
+    vec.paths.push_back(geometry::PathSet{square_path(), {}});
+    project.vector_objects.push_back(vec);
+
+    document::EmbroideryObject anchor;
+    anchor.id = project.object_ids.next();
+    anchor.name = "fondu";
+    anchor.source_vector = vec.id;
+    document::MulticolorGradientParams gradient;
+    gradient.method = document::GradientMethod::LongAndShort;
+    gradient.complementary = false;
+    gradient.palette = {
+        document::GradientThread{{255, 0, 0}, std::nullopt, document::DensityCurve::Linear},
+        document::GradientThread{{0, 255, 0},
+                                 thread_palette::ThreadKey{"madeira_polyneon", "1919"},
+                                 document::DensityCurve::Smooth},
+        document::GradientThread{{0, 0, 255}, std::nullopt, document::DensityCurve::Steep}};
+    gradient.transition.from = um(0, 0);
+    gradient.transition.to = um(10'000, 0);
+    gradient.transition.spacing_from = Micrometers{300};
+    gradient.transition.spacing_to = Micrometers{500};
+    gradient.transition.texture = document::DensityTexture::LongShort;
+    gradient.transition.texture_strength = 0.6;
+    gradient.transition.geometry = document::DensityGeometry::Radial;
+    gradient.transition.curve_bend = 0.25;
+    gradient.crosshatch_layers = 3;
+    gradient.crosshatch_angle = Angle{0.4};
+    anchor.params = gradient;
+    project.embroidery_objects.push_back(anchor);
+
+    for (std::uint8_t i = 0; i < 3; ++i) {
+        document::EmbroideryObject layer;
+        layer.id = project.object_ids.next();
+        layer.source_vector = vec.id;
+        layer.params = document::DirectionalFillParams{};
+        layer.multi_blend = document::MultiBlendLink{anchor.id, i, 3, false};
+        project.embroidery_objects.push_back(layer);
+    }
+
+    const auto json = project_io::detail::project_to_json(project);
+    const auto loaded = project_io::detail::project_from_json(json);
+    REQUIRE(loaded.has_value());
+    REQUIRE(loaded->embroidery_objects.size() == 4);
+    REQUIRE(loaded->embroidery_objects[0].is_multicolor_gradient());
+    const auto& back =
+        std::get<document::MulticolorGradientParams>(loaded->embroidery_objects[0].params);
+    CHECK(back == gradient);
+
+    const auto group = document::find_gradient_group(*loaded, loaded->embroidery_objects[0].id);
+    REQUIRE(group.has_value());
+    CHECK(group->anchor == anchor.id);
+    CHECK(group->layers.size() == 3);
+}
+
+TEST_CASE("fondu multicolore : groupe multiBlend sans ancre valide est refuse explicitement") {
+    document::Project project;
+    document::VectorObject vec;
+    vec.id = project.object_ids.next();
+    vec.paths.push_back(geometry::PathSet{square_path(), {}});
+    project.vector_objects.push_back(vec);
+
+    // Ancien format (avant cette refonte) : le groupe pointe vers la premiere couche elle-meme,
+    // qui n'est PAS une ancre MulticolorGradientParams -- jamais produit par le code actuel,
+    // mais c'est exactement ce qu'un .osp ecrit par une version anterieure a PR341 contiendrait.
+    document::EmbroideryObject first;
+    first.id = project.object_ids.next();
+    first.source_vector = vec.id;
+    first.params = document::TatamiParams{};
+    first.multi_blend = document::MultiBlendLink{first.id, 0, 2, true};
+    document::EmbroideryObject second;
+    second.id = project.object_ids.next();
+    second.source_vector = vec.id;
+    second.params = document::TatamiParams{};
+    second.multi_blend = document::MultiBlendLink{first.id, 1, 2, true};
+    project.embroidery_objects = {first, second};
+
+    const auto json = project_io::detail::project_to_json(project);
+    const auto loaded = project_io::detail::project_from_json(json);
+    REQUIRE_FALSE(loaded.has_value());
 }

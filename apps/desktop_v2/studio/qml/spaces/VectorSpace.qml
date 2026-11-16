@@ -59,6 +59,15 @@ Item {
         ignoreUnknownSignals: true
         function onLayerChanged() { root.publish() }
     }
+    // L'outil nœuds a ses réglages dans « Édition » : y basculer au lieu de les laisser cachés.
+    Connections {
+        target: root.toolController
+        ignoreUnknownSignals: true
+        function onActiveToolChanged() {
+            if (root.active && root.toolController.activeTool === "node.edit")
+                vectorInspectorTabs.currentIndex = 1
+        }
+    }
     Connections {
         target: root.workspace
         ignoreUnknownSignals: true
@@ -71,81 +80,39 @@ Item {
         }
     }
 
+    // Même habillage que l'espace Points : cartes flottantes sur le plan de travail.
     RowLayout {
         anchors.fill: parent
-        spacing: 0
+        anchors.margins: Theme.gap
+        spacing: Theme.gap
 
-        Rectangle {
-            Layout.preferredWidth: Theme.railWidth
-            Layout.fillHeight: true
-            color: Theme.panel
-            ColumnLayout {
+        StudioCard {
+            objectName: "vectorRailCard"
+            Layout.alignment: Qt.AlignTop
+            Layout.preferredWidth: Theme.controlHeight + 16
+            Layout.preferredHeight: Math.min(vectorRail.implicitHeight + 16, root.height - 2 * Theme.gap)
+            ToolRail {
+                id: vectorRail
                 anchors.top: parent.top
                 anchors.horizontalCenter: parent.horizontalCenter
-                anchors.topMargin: 12
-                spacing: 6
-                StudioButton {
-                    objectName: "vectorSelectToolButton"
-                    iconName: "select"
-                    tooltip: studio.selectionTool.label
-                    shortcutLabel: studio.selectionTool.shortcut
-                    quiet: true
-                    active: !spaceCanvas.panMode && (!root.toolController || root.toolController.activeTool === "select")
-                    onClicked: { spaceCanvas.panMode = false; if (root.toolController) root.toolController.activeTool = "select" }
-                }
-                StudioButton {
-                    objectName: "vectorPanToolButton"
-                    iconName: "pan"
-                    tooltip: studio.panTool.label
-                    shortcutLabel: studio.panTool.shortcut
-                    quiet: true
-                    active: spaceCanvas.panMode
-                    onClicked: { spaceCanvas.panMode = true; if (root.toolController) root.toolController.activeTool = "select" }
-                }
-                Rectangle {
-                    Layout.alignment: Qt.AlignHCenter
-                    Layout.topMargin: 4
-                    Layout.bottomMargin: 4
-                    implicitWidth: 24
-                    implicitHeight: 1
-                    color: Theme.divider
-                }
-                ToolRail { Layout.alignment: Qt.AlignHCenter; workspaceActive: root.active }
-                Rectangle {
-                    visible: root.toolController !== null
-                    Layout.alignment: Qt.AlignHCenter
-                    Layout.topMargin: 4
-                    Layout.bottomMargin: 4
-                    implicitWidth: 24
-                    implicitHeight: 1
-                    color: Theme.divider
-                }
-                StudioButton {
-                    objectName: "vectorFitToolButton"
-                    iconName: "fit"
-                    tooltip: qsTr("Ajuster le motif à la fenêtre")
-                    shortcutLabel: "F"
-                    quiet: true
-                    onClicked: spaceCanvas.fitDesign()
-                }
+                anchors.topMargin: 8
+                canvas: spaceCanvas
+                workspaceActive: root.active
             }
         }
-
-        Rectangle { Layout.preferredWidth: 1; Layout.fillHeight: true; color: Theme.divider }
 
         ColumnLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
             spacing: 0
 
-            Rectangle {
+            Item {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 43
-                color: Theme.background
+                Layout.preferredHeight: 34
                 RowLayout {
                     anchors.fill: parent
-                    anchors.leftMargin: 20
-                    anchors.rightMargin: 20
+                    anchors.leftMargin: 8
+                    anchors.rightMargin: 8
                     SectionLabel { text: qsTr("FORMES VECTORIELLES") }
                     Item { Layout.fillWidth: true }
                     Text {
@@ -173,7 +140,11 @@ Item {
                     tools: root.toolController
                     layers: root.canvasLayers
                     focus: true
+                    onContextMenuRequested: function(x, y, objectId) { contextMenu.openAt(x, y) }
                 }
+
+                // Clic droit : mêmes actions de sélection que dans l'espace Points.
+                CanvasContextMenu { id: contextMenu }
 
                 ToolOverlay {
                     objectName: "toolOverlay"
@@ -185,6 +156,14 @@ Item {
                     objectName: "transformHandles"
                     anchors.fill: parent
                     canvas: spaceCanvas
+                }
+
+                VectorQuickBar {
+                    anchors.top: parent.top
+                    anchors.topMargin: 8
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    spaceActive: root.active
+                    z: 5
                 }
 
                 ColumnLayout {
@@ -224,15 +203,26 @@ Item {
             }
         }
 
-        Rectangle { Layout.preferredWidth: 1; Layout.fillHeight: true; color: Theme.divider }
-
-        Rectangle {
+        StudioCard {
+            objectName: "vectorSideCard"
             Layout.preferredWidth: 320
             Layout.fillHeight: true
-            color: Theme.panel
             ColumnLayout {
                 anchors.fill: parent
+                anchors.margins: 2
                 spacing: 0
+                StudioComboBox {
+                    objectName: "vectorImageLayerSelector"
+                    enabled: !studio.busy
+                    Layout.fillWidth: true
+                    Layout.margins: Theme.panelPadding
+                    readonly property bool ready: typeof imageTools !== "undefined"
+                    visible: ready && imageTools.imageLayers.length > 1
+                    model: ready ? imageTools.imageLayers : []
+                    currentIndex: ready ? imageTools.imageLayerIndex : -1
+                    Accessible.name: qsTr("Calque à vectoriser")
+                    onActivated: index => imageTools.selectImageLayer(index)
+                }
                 VectorShapePanel {
                     id: shapePanel
                     Layout.fillWidth: true
@@ -255,7 +245,7 @@ Item {
                     property int currentIndex: 0
                     Layout.fillWidth: true
                     Layout.preferredHeight: Theme.controlHeight + 12
-                    color: Theme.panel
+                    color: "transparent"
                     RowLayout {
                         anchors.fill: parent
                         anchors.leftMargin: 12
@@ -301,17 +291,19 @@ Item {
                         contentWidth: availableWidth
                         Controls.ScrollBar.horizontal.policy: Controls.ScrollBar.AlwaysOff
 
+                        // Options de l'outil et opérations sur les formes d'abord : ce sont
+                        // les actions propres à cet espace ; l'EditBar générique suit.
                         ColumnLayout {
                             width: vectorActionsScroll.availableWidth
                             spacing: 8
-                            EditBar {
+                            ToolOptions {
+                                visible: root.toolController !== null
                                 Layout.fillWidth: true
                                 Layout.leftMargin: 12
                                 Layout.rightMargin: 12
                                 Layout.topMargin: 12
                             }
-                            ToolOptions {
-                                visible: root.toolController !== null
+                            EditBar {
                                 Layout.fillWidth: true
                                 Layout.leftMargin: 12
                                 Layout.rightMargin: 12

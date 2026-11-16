@@ -46,15 +46,17 @@ std::array<StageStatus, 4> computeStageStatus(const document::Project& project,
     std::array<StageStatus, 4> out;
 
     // --- image -------------------------------------------------------------------------------
-    const bool hasImage = !project.original.empty();
-    out[0] = hasImage ? make(StageId::Image, StageState::UpToDate,
-                             "Image de travail : " + std::to_string(project.original.width) +
-                                 " x " + std::to_string(project.original.height) + " px, " +
-                                 std::to_string(project.ops.size()) + " retouche(s)")
-                      : make(StageId::Image, StageState::Empty, "Aucune image dans le projet");
+    const bool hasImage = !project.imageSource().original.empty();
+    out[0] =
+        hasImage
+            ? make(StageId::Image, StageState::UpToDate,
+                   "Image de travail : " + std::to_string(project.imageSource().original.width) +
+                       " x " + std::to_string(project.imageSource().original.height) + " px, " +
+                       std::to_string(project.imageSource().ops.size()) + " retouche(s)")
+            : make(StageId::Image, StageState::Empty, "Aucune image dans le projet");
 
     // --- segmentation ------------------------------------------------------------------------
-    const bool hasSegmentation = project.segmentation.has_value();
+    const bool hasSegmentation = project.imageSource().segmentation.has_value();
     const std::string reason =
         inputs.dirtyReason.empty() ? "des régions ont été retouchées" : inputs.dirtyReason;
     const bool segmentationStale = hasSegmentation && inputs.segmentationDirty;
@@ -67,16 +69,18 @@ std::array<StageStatus, 4> computeStageStatus(const document::Project& project,
         out[1] = make(StageId::Segmentation, StageState::Stale,
                       "Segmentation obsolète : " + reason + ", formes pas à jour");
     } else {
-        out[1] = make(StageId::Segmentation, StageState::UpToDate,
-                      std::to_string(project.segmentation->region_count()) + " région(s)");
+        out[1] =
+            make(StageId::Segmentation, StageState::UpToDate,
+                 std::to_string(project.imageSource().segmentation->region_count()) + " région(s)");
     }
 
     // --- vectorisation -----------------------------------------------------------------------
     const auto& vectors = project.vector_objects;
     std::size_t orphans = 0;
     for (const auto& vector : vectors) {
-        if (vector.source_region &&
-            (!hasSegmentation || project.segmentation->find(*vector.source_region) == nullptr)) {
+        const auto* source = project.findImageSource(vector.source_image);
+        if (vector.source_region && (source == nullptr || !source->segmentation ||
+                                     !source->segmentation->find(*vector.source_region))) {
             ++orphans;
         }
     }
@@ -116,6 +120,42 @@ std::array<StageStatus, 4> computeStageStatus(const document::Project& project,
                       std::to_string(objects.size()) + " objet(s) de broderie");
     }
     return out;
+}
+
+std::optional<StageId> stageForOperation(std::string_view op) {
+    for (const std::string_view neutral : {"set_canvas", "set_machine", "rename", "set_semantic",
+                                           "group", "ungroup", "set_visible", "set_locked"}) {
+        if (op == neutral) {
+            return std::nullopt;
+        }
+    }
+    if (op == "set_source_image" || op.starts_with("image_")) {
+        return StageId::Image;
+    }
+    if (op == "segment_image" || op.starts_with("seg_")) {
+        return StageId::Segmentation;
+    }
+    if (op == "vectorize_segmentation" || op == "remove_small_pieces" || op == "fill_small_holes" ||
+        op == "import_svg" || op == "import_dxf") {
+        return StageId::Vector;
+    }
+    return StageId::Points;
+}
+
+std::optional<StageId> stageForLiveTool(std::string_view tool,
+                                        const std::vector<std::string>& operations) {
+    if (tool == "project_digitize" || tool == "semantic_import" || tool == "semantic_replace") {
+        return StageId::Points;
+    }
+    if (tool != "project_apply") {
+        return std::nullopt;
+    }
+    for (auto it = operations.rbegin(); it != operations.rend(); ++it) {
+        if (const auto stage = stageForOperation(*it)) {
+            return stage;
+        }
+    }
+    return std::nullopt;
 }
 
 } // namespace openstitch::desktop_v2

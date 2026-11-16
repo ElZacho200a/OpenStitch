@@ -4,7 +4,9 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
+#include <string>
 #include <utility>
 
 #include "debug_dump.hpp"
@@ -82,11 +84,11 @@ Result<std::vector<image::ImageOp>> parse_pre_spec(const std::string& spec) {
         return ops;
     }
     const auto bad = [&](const std::string& item, const std::string& why) {
-        return fail(ErrorCategory::UserInput,
-                    "traitement d'image invalide « " + item + " » : " + why,
-                    "grammaire : median[:1|2] bilateral[:1..3] flatten[:1..3] clahe[:C] "
-                    "sharpen[:A] quantize[:N] contrast:B:C "
-                    "gray crop:x:y:w:h flip:h|v rotate:1..3, séparés par « + »");
+        return fail(
+            ErrorCategory::UserInput, "traitement d'image invalide « " + item + " » : " + why,
+            "grammaire : median[:1|2] bilateral[:1..3] flatten[:1..3] clahe[:C] "
+            "sharpen[:A] quantize[:N] contrast:B:C "
+            "gray crop:x:y:w:h flip:h|v rotate:1..3 transparent:RRGGBB[:T], séparés par « + »");
     };
     for (const auto& item : split_on(spec, '+')) {
         const auto f = split_on(item, ':');
@@ -138,6 +140,20 @@ Result<std::vector<image::ImageOp>> parse_pre_spec(const std::string& spec) {
                 return bad(item, "netteté 0 à 3");
             }
             ops.emplace_back(image::SharpenOp{*v});
+        } else if (name == "transparent" && (argc == 1 || argc == 2)) {
+            // Couleur hexadécimale rendue transparente dans toute l'image, tolérance 0..255.
+            const auto tol = intArg(2, 24);
+            const std::string& hex = f[1];
+            const bool hexOk = hex.size() == 6 &&
+                               hex.find_first_not_of("0123456789abcdefABCDEF") == std::string::npos;
+            if (!hexOk || !tol || *tol < 0 || *tol > 255) {
+                return bad(item, "couleur RRGGBB et tolérance 0 à 255");
+            }
+            const auto rgb = std::stoul(hex, nullptr, 16);
+            ops.emplace_back(image::ColorToAlphaOp{static_cast<std::uint8_t>((rgb >> 16) & 0xFF),
+                                                   static_cast<std::uint8_t>((rgb >> 8) & 0xFF),
+                                                   static_cast<std::uint8_t>(rgb & 0xFF), *tol,
+                                                   false, 0, 0});
         } else if (name == "gray" && argc == 0) {
             ops.emplace_back(image::GrayscaleOp{});
         } else if (name == "crop" && argc == 4) {
@@ -516,34 +532,35 @@ Result<DigitizeReport> digitize_image_into(document::Project& project,
     say(log, "Image : " + std::to_string(loaded->width) + " x " + std::to_string(loaded->height) +
                  " px (alpha source : " + (loaded->source_had_alpha ? "oui" : "non") + ")");
 
-    project.mm_per_px = Millimeters{25.4 / s.dpi};
-    project.original = *loaded;
+    project.imageSource().mm_per_px = Millimeters{25.4 / s.dpi};
+    project.imageSource().original = *loaded;
     // Lignes cohérentes (FDoG) : la photo devient des traits noirs sur fond blanc ; la
     // segmentation et le mode contours travaillent ensuite dessus.
     if (s.coherent_lines) {
-        const auto lines = image::apply_op(project.original, image::CoherentLinesOp{});
+        const auto lines =
+            image::apply_op(project.imageSource().original, image::CoherentLinesOp{});
         if (!lines) {
             return fail(ErrorCategory::OperationImpossible,
                         "extraction des lignes impossible : " + lines.error().message,
                         "retirez --coherent-lines ou essayez une image plus grande");
         }
-        project.original = *lines;
+        project.imageSource().original = *lines;
         say(log, "Lignes cohérentes (FDoG) appliquées avant la segmentation");
     }
 
-    // Traitements d'image avant segmentation : non destructifs (`project.ops`), la segmentation et
-    // les analyses travaillent sur l'image de travail.
+    // Traitements d'image avant segmentation : non destructifs (`project.imageSource().ops`), la
+    // segmentation et les analyses travaillent sur l'image de travail.
     auto preOps = parse_pre_spec(s.pre);
     if (!preOps) {
         return std::unexpected(preOps.error());
     }
-    image::Image working = project.original;
+    image::Image working = project.imageSource().original;
     if (!preOps->empty()) {
         auto processed = [&] {
-            const auto bytes = project.original.rgba.size();
+            const auto bytes = project.imageSource().original.rgba.size();
             const pipeline_profile::Scope profile(pipeline_profile::Stage::Preprocess, bytes,
                                                   bytes);
-            return image::apply_pipeline(project.original, *preOps);
+            return image::apply_pipeline(project.imageSource().original, *preOps);
         }();
         if (!processed) {
             return fail(ErrorCategory::OperationImpossible,
@@ -551,7 +568,7 @@ Result<DigitizeReport> digitize_image_into(document::Project& project,
                         "vérifier --pre (recadrage dans l'image, forces valides)");
         }
         working = std::move(*processed);
-        project.ops = *preOps;
+        project.imageSource().ops = *preOps;
         say(log, "Traitement d'image avant segmentation : " + s.pre + " (" +
                      std::to_string(working.width) + " x " + std::to_string(working.height) +
                      " px)");
@@ -585,8 +602,8 @@ Result<DigitizeReport> digitize_image_into(document::Project& project,
         }
         report.regions = seg->region_count();
         say(log, "Régions segmentées : " + std::to_string(report.regions));
-        project.segmentation = std::move(*seg);
-        candidate = segmentation::background_candidate(*project.segmentation);
+        project.imageSource().segmentation = std::move(*seg);
+        candidate = segmentation::background_candidate(*project.imageSource().segmentation);
     }
     report.background_candidate = candidate;
 
@@ -613,8 +630,9 @@ Result<DigitizeReport> digitize_image_into(document::Project& project,
                  (report.background_auto ? " (automatique)" : " (option explicite)"));
 
     autodigitize::LineLayerMasks debugMasks;
-    const DigitizeSource src{project.segmentation ? &*project.segmentation : nullptr, &working,
-                             project.mm_per_px};
+    const DigitizeSource src{
+        project.imageSource().segmentation ? &*project.imageSource().segmentation : nullptr,
+        &working, project.imageSource().mm_per_px};
     auto outcome = [&] {
         const pipeline_profile::Scope profile(pipeline_profile::Stage::Digitize);
         return digitize_objects(src, project.object_ids, s, skipLargest, log,

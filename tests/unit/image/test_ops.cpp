@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <set>
+#include <vector>
 
 #include "openstitch/image/ops.hpp"
 
@@ -251,4 +252,81 @@ TEST_CASE("contraste local et nettete : changent l'image, alpha intact, parametr
     CHECK(apply_op(img, SharpenOp{0.0})->rgba == img.rgba);
     CHECK_FALSE(apply_op(img, ClaheOp{0.5}).has_value());
     CHECK_FALSE(apply_op(img, SharpenOp{3.5}).has_value());
+}
+
+TEST_CASE("debruitage median par bandes : identique a une mediane naive, bords et jonctions") {
+    // Image haute (plusieurs bandes de 64 lignes, dernière incomplète), pixels pseudo-aléatoires :
+    // chaque jonction de bandes doit voir ses vraies voisines, les bords de l'image répliqués.
+    Image img;
+    img.width = 23;
+    img.height = 151;
+    img.source_had_alpha = true;
+    img.rgba.resize(static_cast<std::size_t>(img.width) * static_cast<std::size_t>(img.height) * 4);
+    std::uint32_t state = 12345;
+    for (auto& v : img.rgba) {
+        state = state * 1664525U + 1013904223U;
+        v = static_cast<std::uint8_t>(state >> 24);
+    }
+    for (int strength = 1; strength <= 2; ++strength) {
+        const int r = strength; // noyau 3 ou 5
+        const auto out = apply_op(img, MedianDenoiseOp{strength});
+        REQUIRE(out.has_value());
+        bool same = true;
+        std::vector<std::uint8_t> window;
+        for (int y = 0; y < img.height && same; ++y) {
+            for (int x = 0; x < img.width && same; ++x) {
+                for (int ch = 0; ch < 4; ++ch) {
+                    window.clear();
+                    for (int dy = -r; dy <= r; ++dy) {
+                        for (int dx = -r; dx <= r; ++dx) {
+                            const int sx = std::clamp(x + dx, 0, img.width - 1);
+                            const int sy = std::clamp(y + dy, 0, img.height - 1);
+                            window.push_back(pixel(img, sx, sy)[ch]);
+                        }
+                    }
+                    std::nth_element(window.begin(), window.begin() + window.size() / 2,
+                                     window.end());
+                    if (pixel(*out, x, y)[ch] != window[window.size() / 2]) {
+                        same = false;
+                        UNSCOPED_INFO("force " << strength << " x=" << x << " y=" << y << " canal "
+                                               << ch);
+                    }
+                }
+            }
+        }
+        CHECK(same);
+    }
+}
+
+TEST_CASE("fond transparent : zone contigue depuis le point, ou toute la couleur") {
+    // 6x3 : blanc | noir (colonne 2) | blanc ; le blanc de droite n'est pas relié au point (0,0).
+    Image img;
+    img.width = 6;
+    img.height = 3;
+    img.rgba.assign(6 * 3 * 4, 255);
+    for (int y = 0; y < 3; ++y) {
+        auto* px = img.rgba.data() + (y * 6 + 2) * 4;
+        px[0] = px[1] = px[2] = 0;
+    }
+    const auto alpha = [](const Image& im, int x, int y) { return im.rgba[(y * 6 + x) * 4 + 3]; };
+
+    const auto zone = apply_op(img, ColorToAlphaOp{250, 250, 250, 10, true, 0, 0});
+    REQUIRE(zone.has_value());
+    CHECK(zone->source_had_alpha);
+    CHECK(alpha(*zone, 0, 0) == 0);
+    CHECK(alpha(*zone, 1, 2) == 0);
+    CHECK(alpha(*zone, 2, 1) == 255); // le trait noir arrête le remplissage
+    CHECK(alpha(*zone, 4, 1) == 255); // blanc non relié : intact
+    CHECK(zone->rgba[0] == 255);      // la couleur est conservée, seul l'alpha change
+
+    const auto all = apply_op(img, ColorToAlphaOp{250, 250, 250, 10, false, 0, 0});
+    REQUIRE(all.has_value());
+    CHECK(alpha(*all, 4, 1) == 0);
+    CHECK(alpha(*all, 2, 1) == 255);
+
+    // Tolérance trop étroite : rien ne change ; déterminisme ; entrées invalides refusées.
+    CHECK(apply_op(img, ColorToAlphaOp{240, 240, 240, 5, true, 0, 0})->rgba == img.rgba);
+    CHECK(apply_op(img, ColorToAlphaOp{250, 250, 250, 10, true, 0, 0})->rgba == zone->rgba);
+    CHECK_FALSE(apply_op(img, ColorToAlphaOp{0, 0, 0, 300, false, 0, 0}).has_value());
+    CHECK_FALSE(apply_op(img, ColorToAlphaOp{0, 0, 0, 10, true, 6, 0}).has_value());
 }

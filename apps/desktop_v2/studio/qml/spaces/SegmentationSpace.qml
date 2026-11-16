@@ -23,7 +23,9 @@ Item {
     property bool showSource: true
 
     // Couches dessinées par CE canevas : image dessous (réalisée par l'espace Image), régions.
-    readonly property var canvasLayers: ({ sourceImage: root.showSource, regions: true,
+    // Pendant l'aperçu en direct, l'image prévisualisée remplace les régions du projet.
+    readonly property bool previewing: root.hasTools && imageTools.segPreviewActive
+    readonly property var canvasLayers: ({ sourceImage: root.showSource, regions: !root.previewing,
                                            stitches: false, selectionOverlays: false })
 
     // --- état publié et action « mettre à jour » du bandeau -----------------------------------
@@ -48,11 +50,21 @@ Item {
         root.publish()
     }
     function deactivate() {
+        // Un aperçu laissé actif réapparaîtrait à la place des régions au retour dans l'espace.
+        // Annule aussi un aperçu encore en calcul (il réapparaîtrait au retour dans l'espace).
+        if (root.hasTools)
+            imageTools.cancelSegmentationPreview()
         if (root.seg) root.seg.detach()
         if (root.workspace) {
             root.workspace.clearStageStatus(root.spaceId)
             root.workspace.setStageAction(root.spaceId, "", false)
         }
+    }
+    // Appelé par le Shortcut « Escape » de Main.qml : pinceau ou gomme -> sélection.
+    function cancelTool() {
+        if (!root.active || !root.hasTools || regionTools.tool === "select") return false
+        regionTools.tool = "select"
+        return true
     }
     onActiveChanged: { if (active) activate(); else deactivate() }
     Component.onCompleted: { if (active) activate() }
@@ -71,12 +83,42 @@ Item {
         }
     }
 
+    // Barre latérale commune : outils modaux du canevas (pinceau et gomme de frontière). Les actions
+    // ponctuelles (fusionner, nettoyer, recolorer…) restent dans le panneau.
+    StudioCard {
+        id: segRailCard
+        objectName: "segmentationRailCard"
+        visible: root.hasTools
+        anchors.left: parent.left
+        anchors.top: parent.top
+        anchors.margins: Theme.gap
+        width: Theme.controlHeight + 16
+        height: Math.min(segRail.implicitHeight + 16, root.height - 2 * Theme.gap)
+        CanvasToolRail {
+            id: segRail
+            anchors.top: parent.top
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.topMargin: 8
+            canvas: spaceCanvas
+            workspaceActive: root.active
+            toolPrefix: "regionTool_"
+            entries: [
+                { id: "brush", icon: "brush", label: qsTr("Pinceau de frontière : peindre la région choisie"), shortcut: "U", group: "regions" },
+                { id: "erase", icon: "eraser", label: qsTr("Gomme : retirer de la région choisie"), shortcut: "Maj+U", group: "regions" }
+            ]
+            activeTool: root.hasTools && regionTools.tool !== "select" ? regionTools.tool : ""
+            onToolTriggered: id => { if (root.hasTools) regionTools.tool = id === "" ? "select" : id }
+            onFitRequested: spaceCanvas.fitDesign()
+        }
+    }
+
     Item {
         id: viewport
-        anchors.left: parent.left
+        anchors.left: segRailCard.visible ? segRailCard.right : parent.left
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         anchors.right: panelLoader.active ? panelLoader.left : parent.right
+        anchors.margins: Theme.gap
         clip: true
 
         GpuCanvas {
@@ -88,6 +130,86 @@ Item {
             tools: root.toolController
             layers: root.canvasLayers
             focus: true
+        }
+
+        // Aperçu de segmentation en direct SUR le canevas : l'image prévisualisée (mêmes dimensions
+        // que l'image de travail, centrée) est posée à l'échelle de la caméra. Aucun calcul ici.
+        Image {
+            id: livePreview
+            objectName: "segmentationLivePreview"
+            property int cameraTick: 0
+            readonly property var cam: { cameraTick; return spaceCanvas.viewState() }
+            readonly property double wMm: root.hasTools ? imageTools.imageWidth * imageTools.mmPerPx : 0
+            readonly property double hMm: root.hasTools ? imageTools.imageHeight * imageTools.mmPerPx : 0
+            visible: root.previewing && wMm > 0
+            enabled: false
+            cache: false
+            smooth: true
+            fillMode: Image.Stretch
+            source: visible ? "image://prepare/segmentation?rev=" + imageTools.imageRevision : ""
+            width: wMm * cam.zoom
+            height: hMm * cam.zoom
+            x: parent.width / 2 + (-wMm / 2 - cam.centerX) * cam.zoom
+            y: parent.height / 2 + (-hMm / 2 - cam.centerY) * cam.zoom
+            Connections {
+                target: spaceCanvas
+                function onViewChanged() { livePreview.cameraTick++ }
+            }
+        }
+
+        // Options de l'outil actif (pinceau, gomme) posées sur le canevas, à côté de la barre :
+        // rayon et dernier message de l'outil (un refus reste visible quel que soit l'onglet).
+        Rectangle {
+            objectName: "regionToolOptions"
+            visible: root.hasTools && regionTools.tool !== "select"
+            x: 8
+            y: 8
+            width: Math.min(parent.width - 16, optionsRow.implicitWidth + 20)
+            height: Theme.controlHeight + 12
+            radius: Theme.cardRadius
+            color: Theme.panel
+            border.color: Theme.divider
+            RowLayout {
+                id: optionsRow
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.left: parent.left
+                anchors.leftMargin: 10
+                spacing: 6
+                StudioLabel {
+                    text: qsTr("Rayon")
+                    tone: "foreground"
+                    wrapMode: Text.NoWrap
+                }
+                StudioButton {
+                    objectName: "brushSmaller"
+                    text: "−"
+                    quiet: true
+                    tooltip: qsTr("Pinceau : rayon plus petit")
+                    onClicked: regionTools.stepBrushRadius(-1)
+                }
+                StudioSpinBox {
+                    objectName: "regionBrushRadius"
+                    from: 1; to: 200; editable: true
+                    value: root.hasTools ? regionTools.brushRadius : 1
+                    Accessible.name: qsTr("Rayon du pinceau (px)")
+                    onValueModified: regionTools.brushRadius = value
+                }
+                StudioButton {
+                    objectName: "brushLarger"
+                    text: "+"
+                    quiet: true
+                    tooltip: qsTr("Pinceau : rayon plus grand")
+                    onClicked: regionTools.stepBrushRadius(1)
+                }
+                StudioLabel {
+                    objectName: "regionToolMessage"
+                    visible: text.length > 0
+                    text: root.hasTools ? regionTools.message : ""
+                    wrapMode: Text.NoWrap
+                    elide: Text.ElideRight
+                    Layout.maximumWidth: 320
+                }
+            }
         }
 
         // Reflect actual image / region processing activity, not an estimated percentage.
@@ -184,9 +306,9 @@ Item {
             visible: root.seg !== null && !root.seg.hasSegmentation
             width: Math.min(380, parent.width - 64)
             height: emptyColumn.implicitHeight + 36
-            radius: Theme.radius
-            color: Theme.surface
-            border.color: Theme.border
+            radius: Theme.cardRadius
+            color: Theme.panel
+            border.color: Theme.divider
             ColumnLayout {
                 id: emptyColumn
                 anchors.centerIn: parent
@@ -217,7 +339,6 @@ Item {
             id: controlsLoader
             anchors.left: parent.left
             anchors.bottom: parent.bottom
-            anchors.margins: 12
             active: root.seg !== null
             sourceComponent: RegionLayerControls {
                 seg: root.seg
@@ -243,6 +364,8 @@ Item {
         anchors.right: parent.right
         anchors.top: parent.top
         anchors.bottom: parent.bottom
+        anchors.margins: Theme.gap
+        anchors.leftMargin: 0
         width: Math.min(340, Math.max(180, root.width * 0.38))
         active: root.hasTools
         sourceComponent: SegmentationPanels {}

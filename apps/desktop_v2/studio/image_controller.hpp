@@ -51,7 +51,11 @@ private:
 class ImageController : public QObject {
     Q_OBJECT
     Q_PROPERTY(bool hasImage READ hasImage NOTIFY changed)
+    Q_PROPERTY(QStringList imageLayers READ imageLayers NOTIFY changed)
+    Q_PROPERTY(int imageLayerIndex READ imageLayerIndex NOTIFY changed)
     Q_PROPERTY(int imageWidth READ imageWidth NOTIFY changed)
+    // Taille physique d'un pixel de travail (mm) : place l'aperçu de segmentation sur le canevas.
+    Q_PROPERTY(double mmPerPx READ mmPerPx NOTIFY changed)
     Q_PROPERTY(int imageHeight READ imageHeight NOTIFY changed)
     Q_PROPERTY(QStringList ops READ ops NOTIFY changed)
     Q_PROPERTY(int imageRevision READ imageRevision NOTIFY imagesChanged)
@@ -64,6 +68,8 @@ class ImageController : public QObject {
     Q_PROPERTY(QString segPreviewInfo READ segPreviewInfo NOTIFY previewChanged)
     Q_PROPERTY(bool hasSegmentation READ hasSegmentation NOTIFY changed)
     Q_PROPERTY(int regionCount READ regionCount NOTIFY changed)
+    // Nombre de couleurs DISTINCTES de la segmentation du projet (<= « couleurs maximum »).
+    Q_PROPERTY(int colorCount READ colorCount NOTIFY changed)
     Q_PROPERTY(QVariantList prepCatalog READ prepCatalog CONSTANT)
     Q_PROPERTY(QVariantMap segmentationDefaults READ segmentationDefaults CONSTANT)
     Q_PROPERTY(QVariantList aiBackends READ aiBackends NOTIFY aiChanged)
@@ -80,7 +86,11 @@ public:
     }
 
     [[nodiscard]] bool hasImage() const;
+    [[nodiscard]] QStringList imageLayers() const;
+    [[nodiscard]] int imageLayerIndex() const;
+    Q_INVOKABLE void selectImageLayer(int index);
     [[nodiscard]] int imageWidth() const { return width_; }
+    [[nodiscard]] double mmPerPx() const;
     [[nodiscard]] int imageHeight() const { return height_; }
     [[nodiscard]] QStringList ops() const { return ops_; }
     [[nodiscard]] int imageRevision() const { return imageRevision_; }
@@ -93,6 +103,7 @@ public:
     [[nodiscard]] QString segPreviewInfo() const { return segInfo_; }
     [[nodiscard]] bool hasSegmentation() const;
     [[nodiscard]] int regionCount() const;
+    [[nodiscard]] int colorCount() const;
     [[nodiscard]] QVariantList prepCatalog() const;
     [[nodiscard]] QVariantMap segmentationDefaults() const;
     [[nodiscard]] QVariantList aiBackends() const { return ai_; }
@@ -114,6 +125,7 @@ public:
     // Segmente l'image de travail et installe la segmentation (UNE étape d'annulation). Les objets
     // existants ne sont pas régénérés : `segmentationApplied()` le signale à « Régions ».
     Q_INVOKABLE void applySegmentation(const QVariantMap& options);
+    Q_INVOKABLE void applySegmentationToAllLayers(const QVariantMap& options);
     Q_INVOKABLE void cancelTask();
 
     // --- Segmentation IA (backends déclarés dans les réglages IA) ---------------------------
@@ -129,6 +141,7 @@ signals:
     // Une opération d'image ou une segmentation a changé le document : les objets sont obsolètes.
     void prepApplied(const QString& label);
     void segmentationApplied(int regions);
+    void segmentationAppliedToLayer(ObjectId source);
 
 private:
     void setMessage(const QString& text, bool error = false);
@@ -136,18 +149,19 @@ private:
     void scheduleRefresh();
     void refreshNow();
     void trackOps();
+    void startSegmentation(const QVariantMap& options, bool allLayers);
     [[nodiscard]] segmentation::SegmentationOptions optionsFrom(const QVariantMap& map) const;
 
     StudioController& studio_;
     std::shared_ptr<PrepareImages> images_{std::make_shared<PrepareImages>()};
     DocumentSession::Token token_{};
-    QTimer pump_;
     QTimer refreshTimer_;
     int width_{0};
     int height_{0};
     QStringList ops_;
     std::vector<image::ImageOp> lastOps_;
     std::uint64_t lastOriginalKey_{0};
+    ObjectId observedImageSource_;
     int imageRevision_{0};
     bool busy_{false};
     QString busyLabel_;

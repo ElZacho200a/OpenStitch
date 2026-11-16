@@ -10,6 +10,7 @@ namespace openstitch::desktop_v2::studio {
 namespace {
 constexpr double kGripPx = 9.0;
 constexpr double kClickPx = 3.0;
+constexpr double kStopPx = 12.0; // rayon des poignées numérotées des fils (px)
 
 double dist2(PointMm a, PointMm b) {
     const double dx = a.x - b.x;
@@ -38,8 +39,13 @@ DigitizeGestures::DigitizeGestures(StudioController& studio, PointEditController
             rebuildStatic();
         }
     });
+    connect(&fade_, &FadeController::selectedThreadChanged, this, [this] {
+        if (mode_ == QLatin1String("fade")) {
+            rebuildStatic();
+        }
+    });
     connect(&satin_, &SatinController::changed, this, [this] {
-        if (mode_ == QLatin1String("satin")) {
+        if (mode_ == QLatin1String("satin") || mode_ == QLatin1String("guide")) {
             rebuildStatic();
         }
     });
@@ -77,15 +83,17 @@ QString DigitizeGestures::hint() const {
                   "plage ; Ctrl : ajouter ; Alt+clic : insérer ; Suppr : supprimer.");
     }
     if (mode_ == QLatin1String("fade")) {
-        return tr(
-            "Glissez les poignées de l'axe : début, fin, centre ou rotation (Maj : symétrique).");
+        return tr("Cliquez un fil numéroté pour le régler ; glissez le premier ou le dernier pour "
+                  "placer la transition, la ligne pour la déplacer, le carré pour la tourner "
+                  "(Maj : symétrique).");
     }
     if (mode_ == QLatin1String("satin")) {
         return tr("Glissez un nœud de rail ou une extrémité de barreau ; Alt+clic sur un rail : "
                   "insérer un nœud ; Maj+clic sur un barreau : le retirer.");
     }
     if (mode_ == QLatin1String("guide")) {
-        return tr("Tracez un guide de direction à main levée sur le remplissage.");
+        return tr("Tracez un guide sur le remplissage ; sur le satin guidé, glissez ses nœuds "
+                  "pour remodeler la ligne centrale.");
     }
     if (mode_ == QLatin1String("break")) {
         return tr("Tracez une ligne de rupture à travers le remplissage.");
@@ -108,6 +116,16 @@ std::vector<DigitizeGestures::Grip> DigitizeGestures::grips() const {
     std::vector<Grip> out;
     const auto id = satinId();
     if (id == 0) {
+        return out;
+    }
+    if (mode_ == QLatin1String("guide")) {
+        const auto paths = satin_.autoSatinGuidePaths();
+        for (int guide = 0; guide < paths.size(); ++guide) {
+            const auto points = paths[guide].toList();
+            for (int node = 0; node < points.size(); ++node) {
+                out.push_back({Grip::Type::GuideNode, guide, node, mapPoint(points[node].toMap())});
+            }
+        }
         return out;
     }
     const auto& project = studio_.session().project();
@@ -158,6 +176,46 @@ int DigitizeGestures::fadeHandleAt(PointMm p) const {
         if (d <= bestD) {
             bestD = d;
             best = h;
+        }
+    }
+    return best;
+}
+
+PointMm DigitizeGestures::fadeStopPos(const QVariantMap& axis, int index, int count) {
+    const auto a = fadeHandlePos(axis, 0);
+    const auto b = fadeHandlePos(axis, 1);
+    const double t = count > 1 ? static_cast<double>(index) / static_cast<double>(count - 1) : 0.0;
+    return {a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t};
+}
+
+bool DigitizeGestures::nearFadeLine(const QVariantMap& axis, PointMm p) const {
+    if (axis.isEmpty()) {
+        return false;
+    }
+    const auto a = fadeHandlePos(axis, 0);
+    const auto b = fadeHandlePos(axis, 1);
+    const double dx = b.x - a.x, dy = b.y - a.y;
+    const double len2 = dx * dx + dy * dy;
+    const double t =
+        len2 > 0.0 ? std::clamp(((p.x - a.x) * dx + (p.y - a.y) * dy) / len2, 0.0, 1.0) : 0.0;
+    const double tol = kGripPx / scale_;
+    return dist2({a.x + dx * t, a.y + dy * t}, p) <= tol * tol;
+}
+
+int DigitizeGestures::fadeStopAt(PointMm p) const {
+    const auto axis = fade_.axis();
+    const int count = static_cast<int>(fade_.colors().size());
+    if (axis.isEmpty() || count < 2) {
+        return -1;
+    }
+    const double tol = kStopPx / scale_;
+    int best = -1;
+    double bestD = tol * tol;
+    for (int i = 0; i < count; ++i) {
+        const double d = dist2(fadeStopPos(axis, i, count), p);
+        if (d <= bestD) {
+            bestD = d;
+            best = i;
         }
     }
     return best;
@@ -246,8 +304,24 @@ bool DigitizeGestures::press(double x, double y, double pxPerMm, Qt::KeyboardMod
         }
     } else if (mode_ == QLatin1String("fade")) {
         fadeHandle_ = fadeHandleAt(anchor_);
-        if (fadeHandle_ < 0) {
-            return false;
+        const int count = static_cast<int>(fade_.colors().size());
+        const auto axis = fade_.axis();
+        fadeOffset_ = {};
+        if (fadeHandle_ == 0 || fadeHandle_ == 1) {
+            // Le premier et le dernier fil SONT les extrémités de la transition.
+            fade_.setSelectedThread(fadeHandle_ == 0 ? 0 : count - 1);
+        } else if (fadeHandle_ != 3) {
+            // Un fil du milieu ou la ligne : un clic désigne le fil, un glissé déplace le fondu.
+            const int stop = fadeStopAt(anchor_);
+            if (stop >= 0) {
+                fade_.setSelectedThread(stop);
+                note(tr("Fil %1 désigné : réglez-le dans l'inspecteur.").arg(stop + 1));
+            } else if (fadeHandle_ != 2 && !nearFadeLine(axis, anchor_)) {
+                return false;
+            }
+            fadeHandle_ = 2;
+            const auto centre = fadeHandlePos(axis, 2);
+            fadeOffset_ = {centre.x - anchor_.x, centre.y - anchor_.y};
         }
         fadePreview_ = fade_.axis();
         drag_ = Drag::Fade;
@@ -276,6 +350,14 @@ bool DigitizeGestures::press(double x, double y, double pxPerMm, Qt::KeyboardMod
             note(tr("Sélectionnez un remplissage."), false);
             return false;
         }
+        if (mode_ == QLatin1String("guide")) {
+            grip_ = gripAt(anchor_);
+            if (grip_ && grip_->type == Grip::Type::GuideNode) {
+                drag_ = Drag::GuideNode;
+                rebuildDynamic();
+                return true;
+            }
+        }
         stroke_.push_back(anchor_);
         drag_ = Drag::Stroke;
     } else if (mode_ == QLatin1String("rungs")) {
@@ -297,8 +379,9 @@ void DigitizeGestures::move(double x, double y, Qt::KeyboardModifiers mods) {
         travelled_ = true;
     }
     if (drag_ == Drag::Fade) {
-        const auto preview = fade_.previewHandle(fadeHandle_, current_.x, current_.y,
-                                                 mods.testFlag(Qt::ShiftModifier));
+        const auto preview =
+            fade_.previewHandle(fadeHandle_, current_.x + fadeOffset_.x, current_.y + fadeOffset_.y,
+                                mods.testFlag(Qt::ShiftModifier));
         if (!preview.isEmpty()) {
             fadePreview_ = preview;
         }
@@ -349,8 +432,8 @@ void DigitizeGestures::release(double x, double y, Qt::KeyboardModifiers mods) {
         break;
     case Drag::Fade:
         if (travelled) {
-            ok = fade_.commitHandle(fadeHandle_, current.x, current.y,
-                                    mods.testFlag(Qt::ShiftModifier));
+            ok = fade_.commitHandle(fadeHandle_, current.x + fadeOffset_.x,
+                                    current.y + fadeOffset_.y, mods.testFlag(Qt::ShiftModifier));
             note(fade_.message(), ok);
         }
         break;
@@ -371,6 +454,12 @@ void DigitizeGestures::release(double x, double y, Qt::KeyboardModifiers mods) {
                 ok = satin_.moveRung(grip->index, a.x, a.y, b.x, b.y);
                 note(satin_.message(), ok);
             }
+        }
+        break;
+    case Drag::GuideNode:
+        if (travelled && grip) {
+            ok = satin_.moveAutoSatinGuidePoint(grip->side, grip->index, current.x, current.y);
+            note(satin_.message(), ok);
         }
         break;
     case Drag::Stroke:
@@ -474,12 +563,34 @@ void DigitizeGestures::rebuildStatic() {
                                {toScene(fadeHandlePos(axis, 0)), toScene(fadeHandlePos(axis, 1))}});
             static_.push_back({HandleItem::Kind::Line,
                                {toScene(fadeHandlePos(axis, 2)), toScene(fadeHandlePos(axis, 3))}});
-            HandleItem handles{HandleItem::Kind::Handle, {}};
-            for (int h = 0; h < 4; ++h) {
-                handles.points.push_back(toScene(fadeHandlePos(axis, h)));
+            // Début et fin sont dessinés par les fils numérotés qui les occupent ; la ligne et
+            // les fils du milieu déplacent le fondu, le carré au bout du bras le tourne.
+            static_.push_back({HandleItem::Kind::Handle, {toScene(fadeHandlePos(axis, 3))}});
+            const auto colours = fade_.colors();
+            HandleItem stops{HandleItem::Kind::Stop, {}};
+            stops.selected = fade_.selectedThread();
+            const int count = static_cast<int>(colours.size());
+            for (int i = 0; i < count; ++i) {
+                stops.points.push_back(toScene(fadeStopPos(axis, i, count)));
+                stops.colors.push_back(colours[i].toString());
             }
-            static_.push_back(std::move(handles));
+            static_.push_back(std::move(stops));
         }
+    } else if (mode_ == QLatin1String("guide")) {
+        const auto paths = satin_.autoSatinGuidePaths();
+        HandleItem handles{HandleItem::Kind::Handle, {}};
+        for (const auto& raw : paths) {
+            HandleItem line{HandleItem::Kind::Line, {}};
+            for (const auto& rawPoint : raw.toList()) {
+                const auto p = mapPoint(rawPoint.toMap());
+                line.points.push_back(toScene(p));
+                handles.points.push_back(toScene(p));
+            }
+            if (line.points.size() >= 2) {
+                static_.push_back(std::move(line));
+            }
+        }
+        static_.push_back(std::move(handles));
     } else if (mode_ == QLatin1String("satin") && satin_.isSatin()) {
         const auto id = satinId();
         const auto& project = studio_.session().project();
@@ -526,7 +637,8 @@ void DigitizeGestures::rebuildDynamic() {
             {HandleItem::Kind::Ghost,
              {toScene(fadeHandlePos(fadePreview_, 0)), toScene(fadeHandlePos(fadePreview_, 1))}});
         dynamic_.push_back({HandleItem::Kind::Active, {toScene(current_)}});
-    } else if ((drag_ == Drag::RailNode || drag_ == Drag::RungEnd) && grip_) {
+    } else if ((drag_ == Drag::RailNode || drag_ == Drag::RungEnd || drag_ == Drag::GuideNode) &&
+               grip_) {
         dynamic_.push_back({HandleItem::Kind::Active, {toScene(current_)}});
         dynamic_.push_back({HandleItem::Kind::Ghost, {toScene(grip_->pos), toScene(current_)}});
     } else if (drag_ == Drag::Stroke) {

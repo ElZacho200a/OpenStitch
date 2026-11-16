@@ -92,6 +92,12 @@ struct TatamiParams {
     // Passe de contour cousue PAR-DESSUS le remplissage (point droit le long du bord et des
     // trous) : masque les bouts de rangées. Faux = aucune (historique).
     bool edge_outline{false};
+    // Couchage (STCH-CROS-01, point de Bayeux) : le tatami devient la couche POSÉE, traversée
+    // perpendiculairement par des fils de couchage espacés de `couching_spacing` (0 = aucun,
+    // historique ; borné à [2 ; 20] mm) et attachés tous les `couching_tie_spacing` (3 mm,
+    // borné à [1 ; 7] mm) par un petit point en travers. Cf. `stitch_generation::couching_pass`.
+    Micrometers couching_spacing{0};
+    Micrometers couching_tie_spacing{3'000};
 
     bool operator==(const TatamiParams&) const = default;
 };
@@ -107,6 +113,54 @@ enum class DensityCurve : std::uint8_t {
     Steep = 2,
     EaseIn = 3,  // départ lent, arrivée rapide
     EaseOut = 4, // départ rapide, arrivée lente
+    // Transition cubique lente puis fortement croissante.
+    Convex = 5,
+    // Transition cubique rapide puis adoucie.
+    Concave = 6,
+    // Plateaux longs aux deux extremites.
+    ConvexConcave = 7,
+    // Transition rapide aux bords, plateau central.
+    ConcaveConvex = 8,
+};
+
+// Une texture modifie la position de la transition sans déplacer les points
+// à chaque interaction souris. Les deux fils utilisent le même champ spatial
+// déterministe, ce qui préserve leur complémentarité de densité.
+// None garde EXACTEMENT le comportement des anciens .osp.
+enum class DensityTexture : std::uint8_t {
+    None = 0,
+    Feathered = 1, // frontière lissée et irrégulière
+    Stippled = 2,  // tramage spatial à petites cellules
+    LongShort = 3, // passé empiétant : alternance de longueurs de points
+};
+
+enum class DensityGeometry : std::uint8_t {
+    Linear = 0,
+    Radial = 1,
+    Curved = 2,
+    // Fondus (2026-11-15) : bandes en spirale autour de `from` (rayon |to - from|, nombre de
+    // tours porté par `curve_bend` × 4, le signe donne le sens) ; position = onde triangle, donc
+    // continue partout, les fils allant du premier au dernier puis revenant à chaque bras.
+    Spiral = 3,
+    // Du bord de la forme (t = 0) vers son cœur (t = 1) : distance au contour le plus proche
+    // rapportée à la plus grande distance intérieure. `from`/`to` ne servent pas.
+    Contour = 4,
+};
+
+[[nodiscard]] constexpr bool is_valid_density_geometry(int value) {
+    return value >= 0 && value <= static_cast<int>(DensityGeometry::Contour);
+}
+
+// Noeuds d'une densité de fil normalisée le long de l'axe : 0 = aucune
+// couture, 1 = densité de référence. Cette série permet de décrire une rampe
+// montante puis descendante pour les couleurs INTERMEDIAIRES du camaïeu.
+struct DensityStop {
+    double position{0.0};
+    double weight{1.0};
+    // Grille partagée (`DensityGradient::shared_rows`) : début de la tranche de rangées
+    // possédée par la couche, [lower ; lower + weight) ⊂ [0 ; 1]. Ignoré sinon.
+    double lower{0.0};
+    bool operator==(const DensityStop&) const = default;
 };
 
 // Dégradé de densité d'un remplissage directionnel : l'écart entre lignes de
@@ -123,6 +177,22 @@ struct DensityGradient {
     // linéaire de son inverse (densité), pour des rampes de couleurs complémentaires.
     bool interpolate_density{false};
     DensityCurve curve{DensityCurve::Linear};
+    DensityTexture texture{DensityTexture::None};
+    // [0, 1], bornée à la lecture et au calcul ; mêmes paramètres sur les
+    // deux couches pour obtenir un fondu complémentaire.
+    double texture_strength{0.35};
+    std::uint32_t texture_seed{1};
+    // Absents dans les anciens projets : aucune modification de leur génération.
+    DensityGeometry geometry{DensityGeometry::Linear};
+    double curve_bend{0.0};
+    std::vector<DensityStop> density_stops;
+    // Fondu à grille partagée : toutes les couches d'un fondu tracent les MÊMES rangées
+    // (écart uniforme `spacing_from`) et chacune ne coud que les segments dont la tranche
+    // [lower ; lower + weight) contient le seuil de la rangée. Les tranches des couches
+    // complémentaires partitionnent [0 ; 1] : couverture exacte, aucune rangée doublée.
+    // Faux (anciens projets) : densité indépendante par couche, génération inchangée.
+    // La courbe des transitions est déjà intégrée aux arrêts : `curve` n'y est pas appliquée.
+    bool shared_rows{false};
 
     bool operator==(const DensityGradient&) const = default;
 };
@@ -321,6 +391,7 @@ enum class AutoSatinStrategy : std::uint8_t {
     Skeleton = 0,      // squelette raster Zhang-Suen (moteur historique)
     ParallelSweep = 1, // balayage parallèle à angle constant
     MedialAxis = 2,    // axe médian vectoriel (Voronoï des segments du contour)
+    Guided = 3,        // ligne centrale dessinée et traversées normales (satin guidé)
 };
 
 // Identifiant stable (fichier `.osp`, CLI, API programmatique) et lecture inverse. `nullopt` pour
@@ -333,6 +404,8 @@ enum class AutoSatinStrategy : std::uint8_t {
         return "parallel_sweep";
     case AutoSatinStrategy::MedialAxis:
         return "medial_axis";
+    case AutoSatinStrategy::Guided:
+        return "guided_satin";
     }
     return "skeleton";
 }
@@ -340,7 +413,7 @@ enum class AutoSatinStrategy : std::uint8_t {
 [[nodiscard]] constexpr std::optional<AutoSatinStrategy>
 parse_auto_satin_strategy(std::string_view id) {
     for (const auto s : {AutoSatinStrategy::Skeleton, AutoSatinStrategy::ParallelSweep,
-                         AutoSatinStrategy::MedialAxis}) {
+                         AutoSatinStrategy::MedialAxis, AutoSatinStrategy::Guided}) {
         if (id == auto_satin_strategy_id(s)) {
             return s;
         }
@@ -437,7 +510,8 @@ struct ContourFillParams {
 
 // Motifs de base (HP-STI-002 / HP-STI-006) : petites séquences normalisées définies dans
 // `stitch_generation::motif_pattern`. Ajouter en fin seulement (valeur persistée dans le .osp).
-enum class MotifId : std::uint8_t { Wave, Zigzag, Leaf, Heart, Diamond, Scallop };
+// `Seed` (STCH-CROS-01) : point de semis, un court point droit cousu trois fois.
+enum class MotifId : std::uint8_t { Wave, Zigzag, Leaf, Heart, Diamond, Scallop, Seed };
 
 // Motif le long d'un chemin (« motif run », HP-STI-002) : le motif est répété par abscisse
 // curviligne le long de chaque contour de la source, orienté selon la tangente.
@@ -466,6 +540,10 @@ struct MotifFillParams {
     bool hidden_underpath{true};          // liaisons longues cousues cachées (au lieu de sauts)
     Micrometers pull_compensation{0};     // HP-STI-033 : depassement du contour, 0-3 mm (defaut 0)
     PullMode pull_mode{PullMode::Manual}; // HP-STI-033 : Manual ou Auto
+    // Dispersion (STCH-CROS-01, semis) : chaque instance est déplacée d'au plus
+    // `scatter` x pas / 2 sur chaque axe et tournée d'au plus `scatter` x 180°, par un hachage
+    // déterministe de sa cellule (aucune graine stockée). [0 ; 1], 0 = grille régulière.
+    double scatter{0.0};
 
     bool operator==(const MotifFillParams&) const = default;
 };
@@ -515,6 +593,10 @@ struct CrosshatchFillParams {
     bool hidden_underpath{true};
     Micrometers pull_compensation{0};     // HP-STI-033 : depassement du contour, 0-3 mm (defaut 0)
     PullMode pull_mode{PullMode::Manual}; // HP-STI-033 : Manual ou Auto
+    // Treillis attaché (STCH-CROS-01) : longueur de la petite barre diagonale cousue à chaque
+    // croisement des deux premières couches, qui maintient le fil posé. 0 = aucune (historique) ;
+    // bornée à [1,2 ; 4] mm, ignorée si `row_spacing` < 1 mm.
+    Micrometers tie_down{0};
 
     bool operator==(const CrosshatchFillParams&) const = default;
 };
@@ -555,6 +637,97 @@ struct AppliqueParams {
     bool operator==(const AppliqueParams&) const = default;
 };
 
+// Méthode de génération d'un fondu multicolore (mission 2026-11-14 : le fondu devient un
+// type de broderie autonome, la méthode un simple paramètre de cet objet). Chaque méthode
+// réutilise un générateur existant par couche physique (cf. project_ops::gradient_fill) :
+// `Directional`/`LongAndShort`/`ControlledScatter` sont le même remplissage directionnel à
+// `DensityGradient` complémentaire, seule `texture` change ; `SatinInterlaced` entrelace des
+// colonnes satin sur les mêmes rails (réels ou dérivés du contour) ; `CrossHatching` superpose
+// des remplissages directionnels à guide droit, un angle par groupe de couches. Valeurs
+// persistées par NOM dans le .osp (jamais par entier), comme `AutoSatinStrategy`.
+enum class GradientMethod : std::uint8_t {
+    Directional = 0,
+    SatinInterlaced = 1,
+    LongAndShort = 2,
+    ControlledScatter = 3,
+    CrossHatching = 4,
+};
+
+[[nodiscard]] constexpr std::string_view gradient_method_id(GradientMethod method) {
+    switch (method) {
+    case GradientMethod::Directional:
+        return "directional";
+    case GradientMethod::SatinInterlaced:
+        return "satin_interlaced";
+    case GradientMethod::LongAndShort:
+        return "long_and_short";
+    case GradientMethod::ControlledScatter:
+        return "controlled_scatter";
+    case GradientMethod::CrossHatching:
+        return "cross_hatching";
+    }
+    return "directional";
+}
+
+[[nodiscard]] constexpr std::optional<GradientMethod> parse_gradient_method(std::string_view id) {
+    for (const auto m : {GradientMethod::Directional, GradientMethod::SatinInterlaced,
+                         GradientMethod::LongAndShort, GradientMethod::ControlledScatter,
+                         GradientMethod::CrossHatching}) {
+        if (id == gradient_method_id(m)) {
+            return m;
+        }
+    }
+    return std::nullopt;
+}
+
+// Un fil de la palette (HP : fondu multicolore autonome). `curve` : profil de la TRANSITION qui
+// mène du fil précédent à celui-ci (sans effet pour le premier fil) ; les poids des fils gardent
+// une somme de 1 quel que soit le mélange de profils. `thread` facultatif : couleur libre si
+// absent (comme `EmbroideryObject::thread`), jamais déduit d'une bibliothèque non chargée ; une
+// réédition conserve la référence de toute couleur inchangée.
+struct GradientThread {
+    std::array<std::uint8_t, 3> rgb{};
+    std::optional<thread_palette::ThreadKey> thread;
+    DensityCurve curve{DensityCurve::Linear};
+
+    bool operator==(const GradientThread&) const = default;
+};
+
+// Paramètres du FONDU MULTICOLORE (mission 2026-11-14) : type de broderie autonome, distinct
+// d'un satin ou d'un tatami. Porté par un objet « ancre » sans point propre (exclu de la
+// génération, cf. `is_multicolor_gradient`) qui suit la géométrie de `source_vector` comme les
+// autres remplissages. La génération matérialise `palette.size()` COUCHES PHYSIQUES internes —
+// de vrais `EmbroideryObject` (satin/tatami/directionnel selon `method`), tagués vers cette
+// ancre par `MultiBlendLink` (`group` = id de l'ancre) — jamais exposées comme des objets
+// indépendants à éditer manuellement dans Studio (cf. docs/studio-fondus-camaieu-architecture.md).
+// Changer `method` régénère ces couches SANS toucher `palette` ni `transition`.
+struct MulticolorGradientParams {
+    GradientMethod method{GradientMethod::Directional};
+    // 1 à 8 fils, de l'arrière vers l'avant (ordre de couture). Un seul fil : dégradé de
+    // densité monochrome, de plein (t = 0) à `end_density` (t = 1). Validé par
+    // `project_ops::make_create_multicolor_gradient_object_command`, pas par le modèle.
+    std::vector<GradientThread> palette;
+    // Vrai : les fils se partagent UNE grille de rangées (couverture exacte). Faux : premier fil
+    // plein, les suivants cousus par-dessus sur une grille de surcouche à 60 % de densité.
+    bool complementary{true};
+    // Axe, géométrie (linéaire/radiale/courbe), courbe et texture communs ; `density_stops` est
+    // reconstruit par le moteur pour chaque couche (ignoré ici, comme `templateGradient`).
+    DensityGradient transition;
+    // SatinInterlaced uniquement : espacement des barreaux (équivalent SatinParams::density).
+    Micrometers satin_density{400};
+    // CrossHatching uniquement : 2 (perpendiculaires) ou 3 (à 60°) groupes d'angle, et l'angle
+    // de la première couche ; les couches suivantes tournent de 180°/`crosshatch_layers`.
+    int crosshatch_layers{2};
+    Angle crosshatch_angle{0.0};
+    // Remplissages (hors satin et hachures) : angle imposé aux lignes de couture, indépendant
+    // de l'axe du fondu. Absent : lignes perpendiculaires à l'axe (comportement historique).
+    std::optional<Angle> stitch_angle;
+    // Fondu d'un seul fil uniquement : densité relative à l'arrivée, [0 ; 1].
+    double end_density{0.15};
+
+    bool operator==(const MulticolorGradientParams&) const = default;
+};
+
 // Un objet de broderie porte un TYPE de point sous forme de variant. Chaque
 // type suit la géométrie d'un objet vectoriel source (contour pour running,
 // région pleine pour tatami) ou porte la sienne (satin). La séparation
@@ -565,7 +738,7 @@ using StitchParams =
     std::variant<RunningStitchParams, TatamiParams, SatinParams, DirectionalFillParams,
                  AutoSatinParams, BlanketStitchParams, ContourFillParams, MotifRunParams,
                  MotifFillParams, RadialFillParams, SpiralFillParams, CrosshatchFillParams,
-                 CrossStitchParams, AppliqueParams>;
+                 CrossStitchParams, AppliqueParams, MulticolorGradientParams>;
 
 // Type de point autorisé après retouche manuelle (Lot 8 MVP, §2 du cadrage) :
 // seule transition permise, Stitch <-> Jump — pas de Trim/ColorChange/Stop,
@@ -626,6 +799,19 @@ struct ColorBlendLink {
     bool operator==(const ColorBlendLink&) const = default;
 };
 
+// Groupe de fils N-aire : un seul identifiant logique, une couche cousue
+// par fil, et un ordre stable dans la séquence machine. Les couleurs et les
+// profils de points restent la propriété des couches (pas de données doublées).
+// Pas de conversion automatique des anciens couples ColorBlendLink.
+struct MultiBlendLink {
+    ObjectId group;
+    std::uint8_t index{0};
+    std::uint8_t count{0};
+    bool complementary{true};
+
+    bool operator==(const MultiBlendLink&) const = default;
+};
+
 // Interprétation visuelle enregistrée dans le fichier OSP, non dans le nom utilisateur.
 struct SemanticAnnotation {
     std::string role;
@@ -670,6 +856,7 @@ struct EmbroideryObject {
     // l'affichage. Écrit/lu dans le .osp (schéma v6, champ `thread`).
     std::optional<thread_palette::ThreadKey> thread;
     std::optional<ColorBlendLink> color_blend;
+    std::optional<MultiBlendLink> multi_blend;
     std::optional<SemanticAnnotation> semantic; // reconnaissance persistée et facultative
 
     [[nodiscard]] bool is_tatami() const { return std::holds_alternative<TatamiParams>(params); }
@@ -706,6 +893,12 @@ struct EmbroideryObject {
     }
     [[nodiscard]] bool is_cross_stitch() const {
         return std::holds_alternative<CrossStitchParams>(params);
+    }
+    // Ancre d'un fondu multicolore (mission 2026-11-14) : zéro point propre, exclue de la
+    // génération (cf. `stitch_generation::generate` et `effective_sequence`) ; ses couches
+    // physiques sont les AUTRES objets du projet tagués vers elle par `MultiBlendLink`.
+    [[nodiscard]] bool is_multicolor_gradient() const {
+        return std::holds_alternative<MulticolorGradientParams>(params);
     }
 };
 

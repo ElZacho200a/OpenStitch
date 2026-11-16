@@ -9,6 +9,7 @@
 #include <QColor>
 #include <QObject>
 #include <QString>
+#include <QStringList>
 #include <QVariantList>
 #include <QVariantMap>
 #include <cstdint>
@@ -29,11 +30,36 @@ class FadeController : public QObject {
     Q_PROPERTY(QColor foreground READ foreground NOTIFY changed)
     Q_PROPERTY(QColor background READ background NOTIFY changed)
     Q_PROPERTY(bool complementary READ complementary NOTIFY changed)
+    Q_PROPERTY(int texture READ texture NOTIFY changed)
+    Q_PROPERTY(int geometry READ geometry NOTIFY changed)
+    Q_PROPERTY(int method READ method NOTIFY changed)
+    Q_PROPERTY(double satinDensityMm READ satinDensityMm NOTIFY changed)
+    Q_PROPERTY(int crosshatchLayers READ crosshatchLayers NOTIFY changed)
+    Q_PROPERTY(double crosshatchAngleDeg READ crosshatchAngleDeg NOTIFY changed)
+    Q_PROPERTY(double angle READ angle NOTIFY changed)
+    Q_PROPERTY(double spacingMm READ spacingMm NOTIFY changed)
+    Q_PROPERTY(bool customStitchAngle READ customStitchAngle NOTIFY changed)
+    Q_PROPERTY(double stitchAngleDeg READ stitchAngleDeg NOTIFY changed)
+    Q_PROPERTY(double endDensity READ endDensity NOTIFY changed)
+    Q_PROPERTY(bool multiFade READ multiFade NOTIFY changed)
+    Q_PROPERTY(bool satinTarget READ satinTarget NOTIFY changed)
+    Q_PROPERTY(QVariantList colors READ colors NOTIFY changed)
     Q_PROPERTY(int curve READ curve NOTIFY changed)
     Q_PROPERTY(QString summary READ summary NOTIFY changed)
     Q_PROPERTY(QVariantMap axis READ axis NOTIFY changed)
     Q_PROPERTY(QVariantList curves READ curves CONSTANT)
+    Q_PROPERTY(QVariantList methods READ methods CONSTANT)
+    // Technique unique présentée à l'utilisateur : méthode + aspect (cf. `styles`).
+    Q_PROPERTY(int style READ style NOTIFY changed)
+    Q_PROPERTY(QVariantList styles READ styles CONSTANT)
     Q_PROPERTY(QVariantList curveProfile READ curveProfile NOTIFY changed)
+    // Fil de nuancier de chaque couleur (« Marque code · nom », vide pour une couleur libre).
+    Q_PROPERTY(QStringList threadLabels READ threadLabels NOTIFY changed)
+    // Fil désigné, partagé par la barre de fils de l'inspecteur et les poignées du canevas.
+    Q_PROPERTY(
+        int selectedThread READ selectedThread WRITE setSelectedThread NOTIFY selectedThreadChanged)
+    // Transition simplifiée : 0 douce (linéaire), 1 moyenne (lissée), 2 nette ; -1 autre profil.
+    Q_PROPERTY(int softness READ softness NOTIFY changed)
     Q_PROPERTY(QString message READ message NOTIFY messageChanged)
     Q_PROPERTY(bool lastOk READ lastOk NOTIFY messageChanged)
 public:
@@ -41,35 +67,122 @@ public:
     ~FadeController() override;
 
     [[nodiscard]] QString objectId() const;
-    [[nodiscard]] bool hasFade() const { return settings_.has_value(); }
-    [[nodiscard]] bool canCreate() const { return id_ != 0 && !settings_ && incompat_.isEmpty(); }
+    [[nodiscard]] bool hasFade() const {
+        return settings_.has_value() || multiSettings_.has_value();
+    }
+    [[nodiscard]] bool multiFade() const { return multiSettings_.has_value(); }
+    [[nodiscard]] bool satinTarget() const;
+    [[nodiscard]] bool canCreate() const { return id_ != 0 && !hasFade() && incompat_.isEmpty(); }
     [[nodiscard]] QString incompatibility() const { return incompat_; }
     [[nodiscard]] QColor foreground() const;
     [[nodiscard]] QColor background() const;
-    [[nodiscard]] bool complementary() const { return settings_ && settings_->complementary; }
-    [[nodiscard]] int curve() const { return axis_ ? static_cast<int>(axis_->curve) : 0; }
+    [[nodiscard]] bool complementary() const {
+        return multiSettings_ ? multiSettings_->complementary
+                              : settings_ && settings_->complementary;
+    }
+    [[nodiscard]] int texture() const {
+        return multiSettings_ ? multiSettings_->texture : settings_ ? settings_->texture : 0;
+    }
+    [[nodiscard]] int geometry() const {
+        return multiSettings_ ? multiSettings_->geometry : settings_ ? settings_->geometry : 0;
+    }
+    [[nodiscard]] int method() const { return multiSettings_ ? multiSettings_->method : 0; }
+    [[nodiscard]] double satinDensityMm() const {
+        return multiSettings_ ? multiSettings_->satinDensityMm : 0.4;
+    }
+    [[nodiscard]] int crosshatchLayers() const {
+        return multiSettings_ ? multiSettings_->crosshatchLayers : 2;
+    }
+    [[nodiscard]] double crosshatchAngleDeg() const {
+        return multiSettings_ ? multiSettings_->crosshatchAngleDeg : 0.0;
+    }
+    [[nodiscard]] double angle() const;
+    [[nodiscard]] double spacingMm() const {
+        return multiSettings_ ? multiSettings_->spacingMm : 0.0;
+    }
+    [[nodiscard]] bool customStitchAngle() const {
+        return multiSettings_ && multiSettings_->customStitchAngle;
+    }
+    [[nodiscard]] double stitchAngleDeg() const {
+        return multiSettings_ ? multiSettings_->stitchAngleDeg : 0.0;
+    }
+    [[nodiscard]] double endDensity() const {
+        return multiSettings_ ? multiSettings_->endDensity : 0.15;
+    }
+    [[nodiscard]] QVariantList colors() const;
+    [[nodiscard]] int curve() const;
     [[nodiscard]] QString summary() const;
     [[nodiscard]] QVariantMap axis() const { return axisMap(axis_); }
     [[nodiscard]] QVariantList curves() const;
+    [[nodiscard]] QVariantList methods() const;
+    [[nodiscard]] int style() const;
+    [[nodiscard]] QVariantList styles() const;
     [[nodiscard]] QVariantList curveProfile() const;
+    [[nodiscard]] QStringList threadLabels() const { return threadLabels_; }
+    [[nodiscard]] int selectedThread() const { return selectedThread_; }
+    void setSelectedThread(int index);
+    [[nodiscard]] int softness() const;
     [[nodiscard]] QString message() const { return message_; }
     [[nodiscard]] bool lastOk() const { return ok_; }
 
     Q_INVOKABLE bool create(const QColor& foreground, bool complementary);
+    Q_INVOKABLE bool createWithTexture(const QColor& foreground, bool complementary, int texture);
+    Q_INVOKABLE bool setTexture(int texture);
+    Q_INVOKABLE bool setGeometry(int geometry);
+    Q_INVOKABLE bool setAngle(double degrees);
+    Q_INVOKABLE bool createMulticolor(const QVariantList& colors, bool complementary, int texture,
+                                      int geometry);
+    Q_INVOKABLE bool editMulticolor(const QVariantList& colors, bool complementary, int texture,
+                                    int geometry);
+    Q_INVOKABLE bool createMulticolorAdvanced(const QVariantList& colors, bool complementary,
+                                              int texture, int geometry, int method,
+                                              double satinDensityMm, int crosshatchLayers,
+                                              double crosshatchAngleDeg);
+    Q_INVOKABLE bool editMulticolorAdvanced(const QVariantList& colors, bool complementary,
+                                            int texture, int geometry, int method,
+                                            double satinDensityMm, int crosshatchLayers,
+                                            double crosshatchAngleDeg);
     Q_INVOKABLE bool edit(const QColor& foreground, bool complementary);
     Q_INVOKABLE bool remove();
     // handle : 0 Start, 1 End, 2 Move, 3 Rotate. Aperçu = géométrie pure, aucun point régénéré.
     Q_INVOKABLE QVariantMap previewHandle(int handle, double xMm, double yMm, bool symmetric) const;
     Q_INVOKABLE bool commitHandle(int handle, double xMm, double yMm, bool symmetric);
     Q_INVOKABLE bool setCurve(int curve);
+    Q_INVOKABLE int layerCurve(int layer) const;
+    Q_INVOKABLE bool setLayerCurve(int layer, int curve);
     // Inverse le sens du fondu (début <-> fin) : une étape d'annulation.
     Q_INVOKABLE bool reverse();
+    // Réglages appliqués IMMÉDIATEMENT (un pas d'annulation chacun), sans bouton « Appliquer ».
+    // Un ancien fondu à deux fils est converti au fondu multicolore à sa première modification.
+    Q_INVOKABLE bool setColors(const QVariantList& colors);
+    Q_INVOKABLE bool setStyle(int style);
+    Q_INVOKABLE bool setComplementary(bool complementary);
+    Q_INVOKABLE bool setSatinDensity(double mm);
+    Q_INVOKABLE bool setCrosshatch(int layers, double angleDeg);
+    // Écart entre rangées (mm, 0,1 à 4) des fondus remplis et hachurés.
+    Q_INVOKABLE bool setSpacing(double mm);
+    // `custom` faux : lignes perpendiculaires à l'axe du fondu ; vrai : angle imposé (degrés).
+    Q_INVOKABLE bool setStitchAngle(bool custom, double degrees);
+    // Fondu d'un seul fil : densité d'arrivée en pourcentage (0 à 100).
+    Q_INVOKABLE bool setEndDensity(double percent);
+    // Barre de fils : chaque geste est UN pas d'annulation et désigne le fil concerné.
+    // Ajoute après `after` un fil à mi-chemin de ses voisins (ou distinct du dernier).
+    Q_INVOKABLE bool insertThread(int after);
+    Q_INVOKABLE bool removeThread(int index);
+    // Échange le fil `index` avec son voisin (`offset` = -1 ou +1) dans l'ordre de couture.
+    Q_INVOKABLE bool moveThread(int index, int offset);
+    Q_INVOKABLE bool setThreadColor(int index, const QString& hex);
+    Q_INVOKABLE bool setSoftness(int softness);
 signals:
     void changed();
     void messageChanged();
+    void selectedThreadChanged();
 
 private:
     void refresh();
+    // Réglages multicolores actuels, y compris ceux déduits d'un ancien fondu à deux fils.
+    [[nodiscard]] std::optional<MultiFadeSettings> current() const;
+    bool apply(const MultiFadeSettings& next, const QString& success);
     bool report(const ServiceResult& result, const QString& success);
     bool refuse(const QString& why);
     [[nodiscard]] static QVariantMap axisMap(const std::optional<FadeAxisView>& view);
@@ -79,8 +192,12 @@ private:
     std::vector<Target> lastSeenSelection_;
     std::uint64_t id_{0};
     std::optional<FadeSettings> settings_;
+    std::optional<MultiFadeSettings> multiSettings_;
+    int multiCurve_{0};
     std::optional<FadeAxisView> axis_;
     QString incompat_;
+    QStringList threadLabels_;
+    int selectedThread_{0};
     QString message_;
     bool ok_{true};
 };

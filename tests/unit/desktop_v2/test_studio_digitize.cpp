@@ -24,6 +24,7 @@
 #include "file_controller.hpp"
 #include "gpu_canvas.hpp"
 #include "inspector_controller.hpp"
+#include "openstitch/document/multi_blend.hpp"
 #include "openstitch/project_ops/factory.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
 #include "point_edit_controller.hpp"
@@ -102,9 +103,12 @@ private slots:
     void pointEditPersistsInOsp();
     void fadeJourney();
     void fadeMatchesTheService();
+    void multicolorFadeJourney();
     void satinColumnJourney();
     void directionGuidesJourney();
     void autoSatinThroughTheActionPalette();
+    void autoGuidesThroughTheActionPalette();
+    void guidedAutoSatinGuideStaysAutoSatin();
     void textLetteringJourney();
     void mainQmlHostsDigitizePanels();
 };
@@ -258,7 +262,7 @@ void StudioDigitizeTest::fadeJourney() {
     QTRY_VERIFY(rig.fade.hasFade());
     QVERIFY(!rig.fade.axis().isEmpty());
     QVERIFY(!rig.fade.summary().isEmpty());
-    QCOMPARE(rig.fade.curves().size(), 5);
+    QCOMPARE(rig.fade.curves().size(), 9);
     QCOMPARE(rig.fade.curveProfile().size(), 32);
     const auto faded = sequenceOf(rig.session);
 
@@ -283,6 +287,35 @@ void StudioDigitizeTest::fadeJourney() {
     QVERIFY(again.fade.setCurve(1));
     QCOMPARE(again.steps(), d2 + 2);
     QCOMPARE(again.fade.curve(), 1);
+    QVERIFY(again.fade.setCurve(8));
+    QCOMPARE(again.fade.curve(), 8);
+    QVERIFY(again.session.undo());
+    QTRY_COMPARE(again.fade.curve(), 1);
+    // Méthodes de fondu : géométrie pure en prévisualisation ; une
+    // commande annulable par changement de texture, sans pseudo-RNG global.
+    QCOMPARE(again.fade.texture(), 0);
+    const auto beforeTexture = again.steps();
+    QVERIFY(again.fade.setTexture(1));
+    QTRY_COMPARE(again.fade.texture(), 1);
+    QCOMPARE(again.steps(), beforeTexture + 1);
+    const auto feathered = sequenceOf(again.session);
+    QVERIFY(feathered.commands != faded.commands);
+    QVERIFY(again.fade.setTexture(2));
+    QTRY_COMPARE(again.fade.texture(), 2);
+    QCOMPARE(again.steps(), beforeTexture + 2);
+    const auto stippled = sequenceOf(again.session);
+    QVERIFY(stippled.commands != feathered.commands);
+    const auto same = again.steps();
+    QVERIFY(again.fade.setTexture(2));
+    QCOMPARE(again.steps(), same);
+    QVERIFY(!again.fade.setTexture(4)); // 0..3 sont valides, 4 est inconnu
+    QCOMPARE(again.steps(), same);
+    QVERIFY(again.session.undo());
+    QTRY_COMPARE(again.fade.texture(), 1);
+    QVERIFY(sequenceOf(again.session).commands == feathered.commands);
+    QVERIFY(again.session.undo());
+    QTRY_COMPARE(again.fade.texture(), 0);
+
     QVERIFY(!again.fade.setCurve(42)); // unknown curve: readable refusal
     QVERIFY(!again.fade.lastOk());
     QVERIFY(again.session.undo());
@@ -321,6 +354,92 @@ void StudioDigitizeTest::fadeMatchesTheService() {
     viaService.addRect();
     QVERIFY(createFade(viaService.session, viaService.id, FadeSettings{{200, 30, 30}, true}).ok);
     QVERIFY(sequenceOf(viaController.session).commands == sequenceOf(viaService.session).commands);
+}
+
+void StudioDigitizeTest::multicolorFadeJourney() {
+    Rig rig;
+    rig.addRect();
+    rig.select(rig.id);
+    QVERIFY(rig.fade.canCreate());
+    const auto original = sequenceOf(rig.session);
+    const auto depth = rig.steps();
+    const QVariantList colors{QStringLiteral("#142350"), QStringLiteral("#355c93"),
+                              QStringLiteral("#739cca"), QStringLiteral("#b6d5e4")};
+    QVERIFY(rig.fade.createMulticolor(colors, true, 1, 0));
+    QTRY_VERIFY(rig.fade.multiFade());
+    QCOMPARE(rig.fade.colors().size(), 4);
+    QCOMPARE(rig.session.project().embroidery_objects.size(), std::size_t{5}); // ancre + 4 couches
+    QCOMPARE(rig.steps(), depth + 1);
+    QVERIFY(sequenceOf(rig.session).commands != original.commands);
+
+    // Les couches restent physiques pour la couture, mais ne sont jamais des objets éditables
+    // indépendants : arbre et clic canevas renvoient à l'ancre logique.
+    QCOMPARE(rig.studio.objects().size(), 1);
+    const auto group = document::find_gradient_group(rig.session.project(), ObjectId{rig.id});
+    QVERIFY(group.has_value());
+    QVERIFY(!group->layers.empty());
+    rig.studio.selectObject(QString::number(group->layers.front().value));
+    QCOMPARE(rig.studio.primarySelectionId(), QString::number(rig.id));
+
+    // Profils individuels comme Hatch Multi Blend : modification isolée,
+    // refus sans mutation, et réédition des couleurs sans perdre le choix.
+    const auto beforeProfile = rig.steps();
+    QCOMPARE(rig.fade.layerCurve(1), 0);
+    QVERIFY(rig.fade.setLayerCurve(1, 3));
+    QTRY_COMPARE(rig.fade.layerCurve(1), 3);
+    QCOMPARE(rig.fade.layerCurve(0), 0);
+    QCOMPARE(rig.steps(), beforeProfile + 1);
+    QVERIFY(rig.fade.setLayerCurve(1, 3));
+    QCOMPARE(rig.steps(), beforeProfile + 1);
+    QVERIFY(!rig.fade.setLayerCurve(9, 0));
+    QVERIFY(!rig.fade.setLayerCurve(1, 99));
+    QCOMPARE(rig.steps(), beforeProfile + 1);
+    QVERIFY(rig.session.undo());
+    QTRY_COMPARE(rig.fade.layerCurve(1), 0);
+    QVERIFY(rig.fade.setLayerCurve(1, 4));
+    QTRY_COMPARE(rig.fade.layerCurve(1), 4);
+    // Le profil global doit réellement effacer la personnalisation,
+    // même si l'ID global reste déjà « Linéaire ».
+    QVERIFY(rig.fade.setCurve(0));
+    QTRY_COMPARE(rig.fade.layerCurve(1), 0);
+    QVERIFY(rig.fade.setLayerCurve(1, 4));
+    QTRY_COMPARE(rig.fade.layerCurve(1), 4);
+
+    // Déplacer la géométrie est atomique et réutilise les mêmes 4 couches.
+    QVERIFY(rig.fade.setGeometry(1)); // radial
+    QTRY_COMPARE(rig.fade.geometry(), 1);
+    QVERIFY(rig.fade.setTexture(3)); // passé empiétant
+    QTRY_COMPARE(rig.fade.texture(), 3);
+    QVERIFY(rig.fade.editMulticolor(colors, true, 3, 1));
+    QTRY_COMPARE(rig.fade.layerCurve(1), 4);
+    // Inverser ne doit pas laisser les profils attachés aux anciens indices.
+    QVERIFY(rig.fade.reverse());
+    QTRY_COMPARE(rig.fade.layerCurve(2), 4);
+    QVERIFY(rig.fade.reverse());
+    QTRY_COMPARE(rig.fade.layerCurve(1), 4);
+    // Deux fils voisins identiques : refusé (un seul fil est en revanche un dégradé valide).
+    QVERIFY(!rig.fade.editMulticolor({QStringLiteral("#abcdef"), QStringLiteral("#abcdef")}, true,
+                                     3, 1));
+    const auto beforeNoop = rig.steps();
+    QVERIFY(rig.fade.setTexture(3));
+    QCOMPARE(rig.steps(), beforeNoop);
+
+    QVariantList smaller = colors;
+    smaller.removeLast();
+    QVERIFY(rig.fade.editMulticolor(smaller, true, 3, 1));
+    QTRY_COMPARE(rig.fade.colors().size(), 3);
+    QTRY_COMPARE(rig.fade.layerCurve(1), 4);
+    QCOMPARE(rig.session.project().embroidery_objects.size(), std::size_t{4}); // ancre + 3 couches
+
+    QVERIFY(rig.fade.remove());
+    QTRY_VERIFY(!rig.fade.hasFade());
+    QCOMPARE(rig.session.project().embroidery_objects.size(), std::size_t{1});
+
+    while (rig.steps() > depth) {
+        QVERIFY(rig.session.undo());
+    }
+    QCOMPARE(rig.session.project().embroidery_objects.size(), std::size_t{1});
+    QVERIFY(sequenceOf(rig.session).commands == original.commands);
 }
 
 void StudioDigitizeTest::satinColumnJourney() {
@@ -401,6 +520,25 @@ void StudioDigitizeTest::directionGuidesJourney() {
     QVERIFY(sequenceOf(rig.session).commands == base.commands);
 }
 
+void StudioDigitizeTest::autoGuidesThroughTheActionPalette() {
+    Rig rig;
+    const auto r = rig.session.applyBatch(batchAddRect({0, 0}, 40, 6), "Bande");
+    QVERIFY(r.committed);
+    rig.id = *createdObjectId(r.report);
+    const auto base = sequenceOf(rig.session);
+    rig.select(rig.id);
+    const auto depth = rig.steps();
+    // The catalog action works from the shape's medial axis: one undoable step that converts the
+    // tatami to a directional fill and replaces its guides.
+    QCOMPARE(rig.actions.run(QStringLiteral("fill.guides"), {}), QString());
+    QCOMPARE(rig.steps(), depth + 1);
+    rig.select(rig.id);
+    QTRY_VERIFY(rig.satin.guideCount() >= 1);
+    QVERIFY(sequenceOf(rig.session).commands != base.commands);
+    QVERIFY(rig.session.undo());
+    QVERIFY(sequenceOf(rig.session).commands == base.commands);
+}
+
 void StudioDigitizeTest::autoSatinThroughTheActionPalette() {
     Rig rig;
     const auto r = rig.session.applyBatch(batchAddRect({0, 0}, 40, 6), "Bande");
@@ -411,7 +549,7 @@ void StudioDigitizeTest::autoSatinThroughTheActionPalette() {
     const auto depth = rig.steps();
     QVERIFY(!rig.actions.run(QStringLiteral("satin.auto"), {{"spacing_mm", "9"}}).isEmpty());
     QCOMPARE(rig.steps(), depth); // out of range: refused, nothing changed
-    for (const char* strategy : {"skeleton", "parallel_sweep", "medial_axis"}) {
+    for (const char* strategy : {"skeleton", "parallel_sweep", "medial_axis", "guided_satin"}) {
         QCOMPARE(rig.actions.run(QStringLiteral("satin.auto"),
                                  {{"spacing_mm", "0.35"}, {"strategy", strategy}}),
                  QString());
@@ -420,6 +558,43 @@ void StudioDigitizeTest::autoSatinThroughTheActionPalette() {
         QVERIFY(rig.session.undo());
         QVERIFY(sequenceOf(rig.session).commands == base.commands);
     }
+}
+
+void StudioDigitizeTest::guidedAutoSatinGuideStaysAutoSatin() {
+    Rig rig;
+    rig.addRect();
+    rig.select(rig.id);
+    QCOMPARE(rig.actions.run(QStringLiteral("satin.auto"),
+                             {{"spacing_mm", "0.4"}, {"strategy", "guided_satin"}}),
+             QString());
+    rig.select(rig.id);
+    const auto* before = rig.session.project().findEmbroidery(ObjectId{rig.id});
+    QVERIFY(before != nullptr);
+    QVERIFY(std::holds_alternative<document::AutoSatinParams>(before->params));
+    const auto depth = rig.steps();
+    const auto point = [](double x, double y) { return QVariantMap{{"x", x}, {"y", y}}; };
+    QVERIFY(rig.satin.addGuide({point(-10, 0), point(0, 1), point(10, 0)}, false));
+    QCOMPARE(rig.steps(), depth + 1);
+    const auto* after = rig.session.project().findEmbroidery(ObjectId{rig.id});
+    QVERIFY(after != nullptr);
+    const auto* satin = std::get_if<document::AutoSatinParams>(&after->params);
+    QVERIFY(satin != nullptr); // no accidental conversion to directional fill
+    QVERIFY(satin->strategy == document::AutoSatinStrategy::Guided);
+    QCOMPARE(satin->guides.size(), std::size_t{1});
+    QCOMPARE(satin->guides.front().path.size(), std::size_t{3});
+    QVERIFY(rig.satin.clearGuides(false));
+    const auto* cleared = rig.session.project().findEmbroidery(ObjectId{rig.id});
+    QVERIFY(cleared != nullptr);
+    const auto* params = std::get_if<document::AutoSatinParams>(&cleared->params);
+    QVERIFY(params != nullptr);
+    QVERIFY(params->guides.empty());
+    QVERIFY(rig.session.undo());
+    QVERIFY(rig.session.undo());
+    const auto* restored = rig.session.project().findEmbroidery(ObjectId{rig.id});
+    QVERIFY(restored != nullptr);
+    const auto* restoredParams = std::get_if<document::AutoSatinParams>(&restored->params);
+    QVERIFY(restoredParams != nullptr);
+    QVERIFY(restoredParams->guides.empty());
 }
 
 void StudioDigitizeTest::textLetteringJourney() {
@@ -525,20 +700,298 @@ void StudioDigitizeTest::mainQmlHostsDigitizePanels() {
     QVERIFY(press(window, "pointDiscard"));
     QTRY_COMPARE(pointEdit.state(), QStringLiteral("clean"));
 
-    // Fade panel.
-    QVERIFY(press(window, "fadePanelButton"));
-    QTRY_VERIFY(fade.canCreate());
-    QVERIFY(press(window, "fadeCreate"));
-    studio.selectObject(QString::number(session.project().embroidery_objects.front().id.value));
-    QTRY_VERIFY(fade.hasFade());
-    QVERIFY(press(window, "fadeCurve2"));
-    QCOMPARE(fade.curve(), 2);
-    QVERIFY(press(window, "fadeRemove"));
-    QTRY_VERIFY(!fade.hasFade());
+    // F26-02: the real QML form must reject malformed distances, accept French
+    // decimal commas as 0.5 mm (not parseFloat's erroneous 0 mm), and preserve undo.
+    auto* dxField = named(window, "pointMoveDx");
+    auto* dyField = named(window, "pointMoveDy");
+    auto* moveButton = named(window, "pointMove");
+    QVERIFY(dxField && dyField && moveButton);
+    const auto pointList = pointEdit.pointsIn(-1000, -1000, 1000, 1000, 0);
+    int firstMovable = -1;
+    for (const auto& item : pointList) {
+        const auto point = item.toMap();
+        if (point.value(QStringLiteral("movable")).toBool()) {
+            firstMovable = point.value(QStringLiteral("index")).toInt();
+            break;
+        }
+    }
+    QVERIFY(firstMovable >= 0);
+    QVERIFY(pointEdit.selectPoint(firstMovable, false));
+    const auto beforeMove = sequenceOf(session);
+    const auto beforeMoveDepth = session.undoNames().size();
 
-    // Satin panel.
+    QVERIFY(dxField->setProperty("text", QStringLiteral("0,5mm")));
+    QTRY_VERIFY(!moveButton->isEnabled());
+    QVERIFY(dxField->property("invalid").toBool());
+    QCOMPARE(session.undoNames().size(), beforeMoveDepth);
+    QVERIFY(dxField->setProperty("text", QStringLiteral("")));
+    QTRY_VERIFY(!moveButton->isEnabled());
+    QVERIFY(dxField->setProperty("text", QStringLiteral("0,5")));
+    QVERIFY(dyField->setProperty("text", QStringLiteral("0")));
+    QTRY_VERIFY(moveButton->isEnabled());
+    QVERIFY(press(window, "pointMove"));
+    QCOMPARE(session.undoNames().size(), beforeMoveDepth + 1);
+    QVERIFY(sequenceOf(session).commands != beforeMove.commands);
+    QVERIFY(session.undo());
+    QVERIFY(sequenceOf(session).commands == beforeMove.commands);
+
+    // Un SEUL éditeur de fondu : la section de l'inspecteur (plus de tiroir ni d'outil dédié).
+    // Chaque réglage d'un fondu existant s'applique immédiatement, en un pas d'annulation.
+    QVERIFY(!named(window, "fadePanelButton"));
+    auto* inlineFade = named(window, "inspectorFadeSection");
+    QVERIFY(inlineFade);
+    // Le fondu est un type de points à part : un tatami ne propose pas d'y passer.
+    QTRY_VERIFY(fade.canCreate());
+    QVERIFY(!inlineFade->isVisible());
+    // Création par le sélecteur de type, puis réglages appliqués immédiatement.
+    QVERIFY(inspector.setStitchType(QStringLiteral("multicolor_gradient")).isEmpty());
+    QTRY_VERIFY(fade.multiFade());
+    QTRY_VERIFY(inlineFade->isVisible());
+    QCOMPARE(fade.colors().size(), 2);
+    // Barre de fils : le fil désigné se règle dans la carte.
+    QTRY_VERIFY(named(window, "inspectorFadeThread1") != nullptr);
+    QVERIFY(press(window, "inspectorFadeThread1"));
+    auto* arrival = named(window, "inspectorFadeSelectedColor");
+    QVERIFY(arrival);
+    QVERIFY(arrival->setProperty("text", QStringLiteral("#ZZZZZZ")));
+    QVERIFY(arrival->property("invalid").toBool());
+    QVERIFY(arrival->setProperty("text", QStringLiteral("#3388aa")));
+    QVERIFY(QMetaObject::invokeMethod(arrival, "editingFinished"));
+    QTRY_COMPARE(fade.colors().at(1).toString(), QStringLiteral("#3388aa"));
+    QVERIFY(press(window, "inspectorFadeAddColor")); // après le fil 2 : devient le fil 3
+    QTRY_VERIFY(named(window, "inspectorFadeThread2") != nullptr);
+    QTRY_VERIFY(fade.multiFade());
+    QCOMPARE(fade.colors().size(), 3);
+    QCOMPARE(fade.colors().at(1).toString(), QStringLiteral("#3388aa"));
+    QCOMPARE(session.project().embroidery_objects.size(), std::size_t{4}); // ancre + 3 couches
+    QCOMPARE(fade.threadLabels().size(), 3); // couleurs libres : libellés vides, jamais absents
+    // L'axe est éditable au canevas pour un fondu multicolore.
+    QVERIFY(!fade.axis().isEmpty());
+    QVERIFY(named(window, "inspectorFadeEditAxis"));
+
+    const auto stepDepth = [&] { return session.undoNames().size(); };
+    auto fadeDepth = stepDepth();
+    QVERIFY(press(window, "inspectorFadeModeOverlay"));
+    QTRY_VERIFY(!fade.complementary());
+    QCOMPARE(stepDepth(), fadeDepth + 1);
+    // Style en tuiles : « Peint » = passé empiétant, réellement appliqué depuis le QML.
+    fadeDepth = stepDepth();
+    QVERIFY(press(window, "inspectorFadeStyle2"));
+    QTRY_COMPARE(fade.method(), 2);
+    QCOMPARE(fade.style(), 2);
+    QCOMPARE(stepDepth(), fadeDepth + 1);
+    // Transition simplifiée : « Nette » = profil raide, un pas.
+    fadeDepth = stepDepth();
+    QVERIFY(press(window, "inspectorFadeSoftness2"));
+    QTRY_COMPARE(fade.curve(), 2);
+    QCOMPARE(fade.softness(), 2);
+    QCOMPARE(stepDepth(), fadeDepth + 1);
+    // Direction en flèches : vers le haut = 90°, un pas, annulable exactement.
+    fadeDepth = stepDepth();
+    QVERIFY(press(window, "inspectorFadeDirection90"));
+    QTRY_VERIFY(std::abs(fade.angle() - 90.0) < 0.01);
+    QCOMPARE(stepDepth(), fadeDepth + 1);
+    QTRY_VERIFY(named(window, "inspectorFadeDirection90")->property("checked").toBool());
+    QVERIFY(session.undo());
+    QTRY_VERIFY(std::abs(fade.angle()) < 0.01);
+    QVERIFY(session.redo());
+    QTRY_VERIFY(std::abs(fade.angle() - 90.0) < 0.01);
+
+    // Plus de réglages : géométrie courbe, angle exact, profil détaillé.
+    QVERIFY(!named(window, "inspectorFadeAdvancedSection")->isVisible());
+    QVERIFY(press(window, "inspectorFadeAdvanced"));
+    QTRY_VERIFY(named(window, "inspectorFadeAdvancedSection")->isVisible());
+    fadeDepth = stepDepth();
+    QVERIFY(press(window, "inspectorFadeGeometry2"));
+    QTRY_COMPARE(fade.geometry(), 2);
+    QCOMPARE(stepDepth(), fadeDepth + 1);
+    auto* curveBox = named(window, "inspectorFadeCurve");
+    QVERIFY(curveBox);
+    QVERIFY(QMetaObject::invokeMethod(curveBox, "activated", Q_ARG(int, 3)));
+    QTRY_COMPARE(fade.curve(), 3);
+    QCOMPARE(fade.softness(), -1); // profil hors des trois choix simples
+    auto* angleField = named(window, "inspectorFadeAngle");
+    QVERIFY(angleField);
+    QTRY_VERIFY(angleField->isVisible());
+    fadeDepth = stepDepth();
+    QVERIFY(angleField->setProperty("text", QStringLiteral("30")));
+    QVERIFY(QMetaObject::invokeMethod(angleField, "editingFinished"));
+    QTRY_VERIFY(std::abs(fade.angle() - 30.0) < 0.01);
+    QCOMPARE(stepDepth(), fadeDepth + 1);
+
+    // Carte du fil : ajouter, déplacer, retirer ; chaque geste est un pas et désigne le fil.
+    QVERIFY(press(window, "inspectorFadeThread0"));
+    QTRY_COMPARE(fade.selectedThread(), 0);
+    QVERIFY(!named(window, "inspectorFadeMoveLeft")->isEnabled());
+    fadeDepth = stepDepth();
+    QVERIFY(press(window, "inspectorFadeAddColor"));
+    QTRY_COMPARE(fade.colors().size(), 4);
+    QCOMPARE(fade.selectedThread(), 1);
+    QCOMPARE(stepDepth(), fadeDepth + 1);
+    QCOMPARE(session.project().embroidery_objects.size(), std::size_t{5}); // ancre + 4 couches
+    const auto added = fade.colors().at(1).toString();
+    QVERIFY(press(window, "inspectorFadeMoveRight"));
+    QTRY_COMPARE(fade.colors().at(2).toString(), added);
+    QCOMPARE(fade.selectedThread(), 2);
+    QVERIFY(press(window, "inspectorFadeRemoveThread"));
+    QTRY_COMPARE(fade.colors().size(), 3);
+    QVERIFY(!fade.colors().contains(QVariant(added)));
+    QVERIFY(press(window, "inspectorFadeThread0"));
+    QVERIFY(press(window, "inspectorFadeRemoveThread"));
+    QTRY_COMPARE(fade.colors().size(), 2);
+    QCOMPARE(fade.colors().at(0).toString(), QStringLiteral("#3388aa"));
+    QVERIFY(named(window, "inspectorFadeRemoveThread")->isEnabled()); // 1 fil : dégradé
+    // Clavier : la barre se parcourt aux flèches, Ctrl+flèche déplace le fil (un pas).
+    auto* bar = named(window, "inspectorFadeThreadBar");
+    QVERIFY(bar);
+    bar->forceActiveFocus();
+    QTRY_VERIFY(bar->hasActiveFocus());
+    QTest::keyClick(window, Qt::Key_Home);
+    QTRY_COMPARE(fade.selectedThread(), 0);
+    QTest::keyClick(window, Qt::Key_Right);
+    QTRY_COMPARE(fade.selectedThread(), 1);
+    fadeDepth = stepDepth();
+    QTest::keyClick(window, Qt::Key_Left, Qt::ControlModifier);
+    QTRY_COMPARE(fade.colors().at(1).toString(), QStringLiteral("#3388aa"));
+    QCOMPARE(fade.selectedThread(), 0);
+    QCOMPARE(stepDepth(), fadeDepth + 1);
+    // Suppr dans la barre retire le fil désigné, jamais l'objet : il reste un dégradé d'un fil.
+    fadeDepth = stepDepth();
+    QTest::keyClick(window, Qt::Key_Delete);
+    QTRY_COMPARE(fade.colors().size(), 1);
+    QCOMPARE(stepDepth(), fadeDepth + 1);
+    QVERIFY(fade.hasFade());
+    QTRY_VERIFY(named(window, "inspectorFadeEndDensity")->isVisible());
+    auto* endDensity = named(window, "inspectorFadeEndDensity");
+    fadeDepth = stepDepth();
+    QVERIFY(endDensity->setProperty("text", QStringLiteral("101")));
+    QTRY_VERIFY(endDensity->property("invalid").toBool());
+    QVERIFY(QMetaObject::invokeMethod(endDensity, "editingFinished"));
+    QCOMPARE(stepDepth(), fadeDepth);
+    QVERIFY(endDensity->setProperty("text", QStringLiteral("30")));
+    QVERIFY(QMetaObject::invokeMethod(endDensity, "editingFinished"));
+    QTRY_VERIFY(std::abs(fade.endDensity() - 0.3) < 1e-6);
+    QCOMPARE(stepDepth(), fadeDepth + 1);
+    QVERIFY(session.undo()); // restore density before the existing palette undo checks
+    QVERIFY(!named(window, "inspectorFadeRemoveThread")->isEnabled());
+    QVERIFY(session.undo());
+    QTRY_COMPARE(fade.colors().size(), 2);
+    QVERIFY(session.undo());
+    QTRY_COMPARE(fade.colors().at(0).toString(), QStringLiteral("#3388aa"));
+    // Inverser retourne l'axe (géométrie courbe ici) sans changer l'ordre de couture.
+    const double beforeReverse = fade.angle();
+    QVERIFY(press(window, "inspectorFadeReverse"));
+    QTRY_VERIFY(std::abs(std::abs(fade.angle() - beforeReverse) - 180.0) < 0.01);
+    QCOMPARE(fade.colors().at(0).toString(), QStringLiteral("#3388aa"));
+    // Formes d'un clic (contour, spirale), direction des points et écart des rangées.
+    fadeDepth = stepDepth();
+    QVERIFY(press(window, "inspectorFadeShape4"));
+    QTRY_COMPARE(fade.geometry(), 4);
+    QCOMPARE(stepDepth(), fadeDepth + 1);
+    QVERIFY(!named(window, "inspectorFadeEditAxis")->isVisible()); // pas d'axe à placer
+    QVERIFY(press(window, "inspectorFadeShape3"));
+    QTRY_COMPARE(fade.geometry(), 3);
+    QVERIFY(press(window, "inspectorFadeStitchCustom"));
+    QTRY_VERIFY(fade.customStitchAngle());
+    auto* stitchAngle = named(window, "inspectorFadeStitchAngle");
+    QVERIFY(stitchAngle && stitchAngle->isEnabled());
+    QVERIFY(stitchAngle->setProperty("text", QStringLiteral("45")));
+    QVERIFY(QMetaObject::invokeMethod(stitchAngle, "editingFinished"));
+    QTRY_VERIFY(std::abs(fade.stitchAngleDeg() - 45.0) < 0.01);
+    fadeDepth = stepDepth();
+    QVERIFY(stitchAngle->setProperty("text", QStringLiteral("45deg")));
+    QTRY_VERIFY(stitchAngle->property("invalid").toBool());
+    QTRY_VERIFY(!named(window, "inspectorFadeStitchCustom")->isEnabled());
+    QVERIFY(QMetaObject::invokeMethod(stitchAngle, "editingFinished"));
+    QCOMPARE(stepDepth(), fadeDepth);
+    QVERIFY(stitchAngle->setProperty("text", QStringLiteral("45")));
+    auto* spacing = named(window, "inspectorFadeSpacing");
+    QVERIFY(spacing && spacing->isVisible());
+    fadeDepth = stepDepth();
+    QVERIFY(spacing->setProperty("text", QStringLiteral("0,09")));
+    QTRY_VERIFY(spacing->property("invalid").toBool());
+    QVERIFY(QMetaObject::invokeMethod(spacing, "editingFinished"));
+    QCOMPARE(stepDepth(), fadeDepth);
+    QVERIFY(spacing->setProperty("text", QStringLiteral("0,6")));
+    QVERIFY(QMetaObject::invokeMethod(spacing, "editingFinished"));
+    QTRY_VERIFY(std::abs(fade.spacingMm() - 0.6) < 1e-6);
+    QCOMPARE(stepDepth(), fadeDepth + 1);
+    QVERIFY(press(window, "inspectorFadeStyle5"));
+    QTRY_COMPARE(fade.method(), 1); // satin follows its rails, not a free stitch angle
+    QTRY_VERIFY(!named(window, "inspectorFadeStitchCustom")->isVisible());
+    QTRY_VERIFY(!spacing->isVisible());
+    QVERIFY(press(window, "inspectorFadeRemove"));
+    QTRY_VERIFY(!fade.hasFade());
+    QCOMPARE(session.project().embroidery_objects.size(), std::size_t{1});
+
+    // Satin panel: F19-02, numeric rail moves use full validated values
+    // and bound node indices, not partial parseFloat("0,5") == 0.
     QVERIFY(press(window, "satinPanelButton"));
     QVERIFY(named(window, "satinPanel")->isVisible());
+    // F23-01/F23-02: actual QML controls create undoable directional guides
+    // and break lines using millimetre coordinates (without any stub action).
+    auto* startX = named(window, "guideStartX");
+    auto* startY = named(window, "guideStartY");
+    auto* endX = named(window, "guideEndX");
+    auto* endY = named(window, "guideEndY");
+    auto* addGuideButton = named(window, "addDirectionGuide");
+    auto* addBreakButton = named(window, "addBreakLine");
+    QVERIFY(startX && startY && endX && endY && addGuideButton && addBreakButton);
+    QVERIFY(startX->setProperty("text", QStringLiteral("-10mm")));
+    QVERIFY(startY->setProperty("text", QStringLiteral("-5")));
+    QVERIFY(endX->setProperty("text", QStringLiteral("10")));
+    QVERIFY(endY->setProperty("text", QStringLiteral("5")));
+    QTRY_VERIFY(!addGuideButton->isEnabled());
+    QVERIFY(startX->setProperty("text", QStringLiteral("-10,0")));
+    QTRY_VERIFY(addGuideButton->isEnabled());
+    const auto guideDepth = session.undoNames().size();
+    QVERIFY(press(window, "addDirectionGuide"));
+    QCOMPARE(session.undoNames().size(), guideDepth + 1);
+    QTRY_VERIFY(satin.guideCount() >= 1);
+    QVERIFY(press(window, "addBreakLine"));
+    QCOMPARE(session.undoNames().size(), guideDepth + 2);
+    QTRY_VERIFY(satin.breakLineCount() >= 1);
+    QVERIFY(session.undo());
+    QVERIFY(session.undo());
+    const auto rung = [](double x, double y0, double y1) {
+        return QVariantMap{{"ax", x}, {"ay", y0}, {"bx", x}, {"by", y1}};
+    };
+    const auto satinId = satin.createFromRungs({rung(-10, 0, 4), rung(0, 1, 5), rung(10, 0, 4)});
+    QVERIFY(!satinId.isEmpty());
+    studio.selectObject(satinId);
+    QTRY_VERIFY(satin.isSatin());
+
+    // Le satin passe par le meme editeur de l'inspecteur : satin entrelace.
+    QTRY_VERIFY(fade.satinTarget());
+    QTRY_VERIFY(fade.canCreate());
+    QVERIFY(!named(window, "inspectorFadeSection")->isVisible());
+    QVERIFY(inspector.setStitchType(QStringLiteral("multicolor_gradient")).isEmpty());
+    QTRY_VERIFY(fade.multiFade());
+    QCOMPARE(fade.colors().size(), 2);
+    QCOMPARE(fade.style(), 5);
+    QVERIFY(press(window, "inspectorFadeRemove"));
+    QTRY_VERIFY(!fade.hasFade());
+    // Le panneau Satin est resté ouvert (le fondu n'a plus de tiroir qui le remplaçait).
+    if (hub->property("openPanel").toString() != QStringLiteral("satin")) {
+        QVERIFY(press(window, "satinPanelButton"));
+    }
+    QTRY_COMPARE(hub->property("openPanel").toString(), QStringLiteral("satin"));
+    auto* xField = named(window, "satinNodeX");
+    auto* yField = named(window, "satinNodeY");
+    auto* railNode = named(window, "satinNode");
+    auto* moveRail = named(window, "satinMoveNode");
+    QVERIFY(xField && yField && railNode && moveRail);
+    QTRY_COMPARE(railNode->property("to").toInt(), 2);
+    QVERIFY(xField->setProperty("text", QStringLiteral("0,5mm")));
+    QVERIFY(yField->setProperty("text", QStringLiteral("1,5")));
+    QTRY_VERIFY(!moveRail->isEnabled());
+    QVERIFY(xField->property("invalid").toBool());
+    QVERIFY(xField->setProperty("text", QStringLiteral("0,5")));
+    QTRY_VERIFY(moveRail->isEnabled());
+    const auto railDepth = session.undoNames().size();
+    QVERIFY(press(window, "satinMoveNode"));
+    QCOMPARE(session.undoNames().size(), railDepth + 1);
+    QVERIFY(session.undo());
     QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join('\n')));
 }
 

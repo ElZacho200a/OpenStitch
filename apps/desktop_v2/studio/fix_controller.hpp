@@ -83,7 +83,6 @@ private:
     int running_{0};
     std::optional<FixPlan> plan_;
     std::optional<ThreadReductionPreview> reduction_;
-    QTimer pump_;
     TaskManager tasks_;
 };
 

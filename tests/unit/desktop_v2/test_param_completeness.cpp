@@ -36,7 +36,7 @@ MemberCounts memberCounts() {
     using namespace document;
     // Chaque ligne ne compile que si le nombre de noms est exactement celui des membres.
     OS_COUNT_MEMBERS(RunningStitchParams, a, b, c, d, e)
-    OS_COUNT_MEMBERS(TatamiParams, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q)
+    OS_COUNT_MEMBERS(TatamiParams, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s)
     OS_COUNT_MEMBERS(DirectionalFillParams, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s,
                      t, u, v, w)
     OS_COUNT_MEMBERS(SatinParams, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v,
@@ -46,26 +46,28 @@ MemberCounts memberCounts() {
     OS_COUNT_MEMBERS(BlanketStitchParams, a, b, c, d)
     OS_COUNT_MEMBERS(ContourFillParams, a, b, c, d, e, f, g, h)
     OS_COUNT_MEMBERS(MotifRunParams, a, b, c, d, e, f)
-    OS_COUNT_MEMBERS(MotifFillParams, a, b, c, d, e, f, g, h, i, j, k)
+    OS_COUNT_MEMBERS(MotifFillParams, a, b, c, d, e, f, g, h, i, j, k, l)
     OS_COUNT_MEMBERS(RadialFillParams, a, b, c, d, e, f, g, h)
     OS_COUNT_MEMBERS(SpiralFillParams, a, b, c, d, e, f, g, h, i)
-    OS_COUNT_MEMBERS(CrosshatchFillParams, a, b, c, d, e, f, g, h)
+    OS_COUNT_MEMBERS(CrosshatchFillParams, a, b, c, d, e, f, g, h, i)
     OS_COUNT_MEMBERS(CrossStitchParams, a, b, c, d, e)
     OS_COUNT_MEMBERS(AppliqueParams, a, b, c, d, e, f, g, h)
+    OS_COUNT_MEMBERS(MulticolorGradientParams, a, b, c, d, e, f, g, h, i)
     return {{{"running", 5},
-             {"tatami", 17},
+             {"tatami", 19},
              {"directional", 23},
              {"satin", 35},
              {"auto_satin", 33},
              {"blanket", 4},
              {"contour_fill", 8},
              {"motif_run", 6},
-             {"motif_fill", 11},
+             {"motif_fill", 12},
              {"radial", 8},
              {"spiral", 9},
-             {"crosshatch", 8},
+             {"crosshatch", 9},
              {"cross_stitch", 5},
-             {"applique", 8}}};
+             {"applique", 8},
+             {"multicolor_gradient", 9}}};
 }
 
 // Membres de structure SANS champ dans le registre de `set_params` (donc sans réglage) : chacun a
@@ -75,6 +77,11 @@ const std::map<std::string, std::set<std::string>>& unregisteredMembers() {
         // Identité de section dans un réseau satin décomposé : dérivée par la décomposition
         // (`SatinSectionTopology`), jamais saisie.
         {"satin", {"topology", "border"}},
+        // Palette, transition et direction des points (angle facultatif) du fondu multicolore :
+        // édition par la commande dédiée
+        // (`make_create/edit_multicolor_gradient_command`), pas par un champ numérique simple
+        // (comme `rail_a`/`rail_b` pour le satin).
+        {"multicolor_gradient", {"palette", "transition", "stitch_angle"}},
     };
     return k;
 }
@@ -161,7 +168,7 @@ TEST_CASE("every engine parameter field is exposed by param_spec or excluded wit
           "[desktop_v2][params][completeness]") {
     const auto registry = engineRegistry();
     const auto counts = memberCounts();
-    REQUIRE(registry.size() == 14);
+    REQUIRE(registry.size() == 15);
     std::size_t engineFields = 0;
     std::size_t exposed = 0;
     std::size_t excluded = 0;
@@ -202,27 +209,29 @@ TEST_CASE("every engine parameter field is exposed by param_spec or excluded wit
     }
     // Le recensement chiffré (consigné dans le CSV de la famille J).
     CHECK(exposed + excluded == engineFields);
-    CHECK(excluded == 4); // rail_a, rail_b, topology, border
-    CHECK(exposed == 176);
+    CHECK(excluded == 7);  // rail_a, rail_b, topology, border, palette, transition, stitch_angle
+    CHECK(exposed == 186); // + tie_down_mm, couching_*_mm, scatter (STCH-CROS-01)
 }
 
 TEST_CASE("every table row reads back from a default object, inside its own range",
           "[desktop_v2][params][completeness]") {
     using namespace document;
-    const std::map<std::string, StitchParams> defaults{{"running", RunningStitchParams{}},
-                                                       {"tatami", TatamiParams{}},
-                                                       {"satin", SatinParams{}},
-                                                       {"directional", DirectionalFillParams{}},
-                                                       {"auto_satin", AutoSatinParams{}},
-                                                       {"blanket", BlanketStitchParams{}},
-                                                       {"contour_fill", ContourFillParams{}},
-                                                       {"motif_run", MotifRunParams{}},
-                                                       {"motif_fill", MotifFillParams{}},
-                                                       {"radial", RadialFillParams{}},
-                                                       {"spiral", SpiralFillParams{}},
-                                                       {"crosshatch", CrosshatchFillParams{}},
-                                                       {"cross_stitch", CrossStitchParams{}},
-                                                       {"applique", AppliqueParams{}}};
+    const std::map<std::string, StitchParams> defaults{
+        {"running", RunningStitchParams{}},
+        {"tatami", TatamiParams{}},
+        {"satin", SatinParams{}},
+        {"directional", DirectionalFillParams{}},
+        {"auto_satin", AutoSatinParams{}},
+        {"blanket", BlanketStitchParams{}},
+        {"contour_fill", ContourFillParams{}},
+        {"motif_run", MotifRunParams{}},
+        {"motif_fill", MotifFillParams{}},
+        {"radial", RadialFillParams{}},
+        {"spiral", SpiralFillParams{}},
+        {"crosshatch", CrosshatchFillParams{}},
+        {"cross_stitch", CrossStitchParams{}},
+        {"applique", AppliqueParams{}},
+        {"multicolor_gradient", MulticolorGradientParams{}}};
     REQUIRE(defaults.size() == paramTypeIds().size());
     for (const auto typeId : paramTypeIds()) {
         EmbroideryObject probe;

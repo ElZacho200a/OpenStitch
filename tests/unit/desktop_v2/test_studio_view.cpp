@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <QFileInfo>
 #include <QGuiApplication>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQmlError>
@@ -96,6 +99,14 @@ private slots:
     void colorFilmReductionAndFabricAreUndoable();
     void diagnosticsDensityRiskAndOptimisation();
     void hoopsAndMachine();
+    void simulationPauseStartEndAndColourJumps();
+    void guidesAddRemoveAndColour();
+    void analysisClearsDensityRiskAndDiscardsProposal();
+    void chartImportAndOwnedThreadAssignment();
+    void displayFiltersByTypeColourAndSize();
+    void statusEventsDoNotReloadThreadsFiltersOrTree();
+    void statisticsAndFidelityOfTheEmbroidery();
+    void perfLogRecordsSceneRebuildsOnlyWhenEnabled();
     void initTestCase();
     void mainQmlHostsEveryPanel();
 };
@@ -261,9 +272,13 @@ void StudioViewTest::metadataBatchDoesNotRebuildStitches() {
     const auto hidden = rig.session.applyBatch(hide, "Hide");
     QVERIFY(hidden.committed);
     QVERIFY(rig.session.lastChangeAffectsEmbroidery());
+    // L'ancienne géométrie reste affichée (périmée) jusqu'à l'arrivée de la nouvelle : pas de
+    // disparition ni de recréation entre-temps.
+    QVERIFY(rig.studio.scene() == initial);
+    QVERIFY(rig.studio.sceneStale());
+    QTRY_VERIFY_WITH_TIMEOUT(!rig.studio.busy() && rig.studio.scene() != initial, 15'000);
+    QVERIFY(!rig.studio.sceneStale());
     QVERIFY(scenes.count() > 0);
-    QTRY_VERIFY_WITH_TIMEOUT(!rig.studio.busy() && rig.studio.scene(), 15'000);
-    QVERIFY(rig.studio.scene() != initial);
 }
 
 void StudioViewTest::threadPlanColorwaysAndSewingOrder() {
@@ -537,16 +552,97 @@ void StudioViewTest::mainQmlHostsEveryPanel() {
     QTRY_VERIFY(named(window, "showAllButton")->isEnabled());
     QVERIFY(press(window, "showAllButton"));
     QCOMPARE(view.hiddenCount(), 0);
+    QVERIFY(named(window, "filterTypesFlow"));
+    QVERIFY(named(window, "filterColoursFlow"));
+    QVERIFY(named(window, "coloursAllButton") && named(window, "coloursNoneButton") &&
+            named(window, "coloursInvertButton"));
+    QVERIFY(named(window, "minAreaField") && named(window, "hideSmallButton"));
+    QVERIFY(press(window, "coloursNoneButton"));
+    QCOMPARE(view.hiddenCount(), static_cast<int>(session.project().embroidery_objects.size()));
+    QTRY_VERIFY(named(window, "filterIndicator")->isVisible());
+    QVERIFY(press(window, "coloursAllButton"));
+    QCOMPARE(view.hiddenCount(), 0);
+    // Réglages détaillés du rendu réaliste (V1) : curseurs, tissu, armure, qualité.
+    QVERIFY(named(window, "renderAdvancedBox"));
+    QVERIFY(press(window, "renderAdvancedBox"));
+    auto* sheen = named(window, "renderParam_sheen");
+    QVERIFY(sheen);
+    QTRY_VERIFY(sheen->isVisible());
+    QVERIFY(std::abs(sheen->property("value").toDouble() -
+                     analysis.renderSettings().value("sheen").toDouble()) < 1e-6);
+    QVERIFY(analysis.setRenderSetting(QStringLiteral("sheen"), QStringLiteral("0.9")));
+    QTRY_VERIFY(std::abs(sheen->property("value").toDouble() - 0.9) < 1e-6);
+    QVERIFY(named(window, "renderParam_px_per_mm") && named(window, "renderParam_thread_mm") &&
+            named(window, "renderParam_relief") && named(window, "renderParam_twist") &&
+            named(window, "renderParam_shadow") && named(window, "renderParam_fabric_relief"));
+    QVERIFY(named(window, "renderFabricButton") && named(window, "renderFabricSwatch"));
+    const bool weave = analysis.renderSettings().value("fabricWeave").toBool();
+    QVERIFY(press(window, "renderWeaveBox"));
+    QCOMPARE(analysis.renderSettings().value("fabricWeave").toBool(), !weave);
+    QVERIFY(press(window, "renderQualityBox"));
+    QCOMPARE(analysis.renderSettings().value("preset").toString().isEmpty() ||
+                 !analysis.renderSettings().value("highQuality").toBool(),
+             true);
     QVERIFY(press(window, "gridBox"));
     QVERIFY(view.gridVisible());
     QVERIFY(canvas->overlays()->grid);
+    // F38-02: invalid/partial spacing must never change the model. A French
+    // decimal comma is interpreted as a decimal separator, not a suffix.
+    auto* gridStep = named(window, "gridStepField");
+    QVERIFY(gridStep);
+    const double originalGrid = view.gridStepMm();
+    QVERIFY(gridStep->setProperty("text", QStringLiteral("2mm")));
+    QTRY_VERIFY(gridStep->property("invalid").toBool());
+    gridStep->forceActiveFocus();
+    QTest::keyClick(window, Qt::Key_Return);
+    QCOMPARE(view.gridStepMm(), originalGrid);
+    QVERIFY(gridStep->setProperty("text", QStringLiteral("2,5")));
+    gridStep->forceActiveFocus();
+    QTest::keyClick(window, Qt::Key_Return);
+    QTRY_COMPARE(view.gridStepMm(), 2.5);
     QVERIFY(press(window, "rulersBox"));
     QVERIFY(view.rulersVisible());
     QVERIFY(press(window, "addVGuideButton"));
     QCOMPARE(view.guides().size(), 1);
     QCOMPARE(canvas->overlays()->guidesX.size(), std::size_t{1});
+    // F38-02: malformed guide coordinates cannot enter the document's view
+    // state; decimal comma coordinates are passed with their fractional part.
+    auto* guideCoordinate = named(window, "guideField");
+    auto* addVertical = named(window, "addVGuideButton");
+    QVERIFY(guideCoordinate && addVertical);
+    QVERIFY(guideCoordinate->setProperty("text", QStringLiteral("12,5mm")));
+    QTRY_VERIFY(!addVertical->isEnabled());
+    QCOMPARE(view.guides().size(), 1);
+    QVERIFY(guideCoordinate->setProperty("text", QStringLiteral("12,5")));
+    QTRY_VERIFY(addVertical->isEnabled());
+    QVERIFY(press(window, "addVGuideButton"));
+    QCOMPARE(view.guides().size(), 2);
+    QCOMPARE(canvas->overlays()->guidesX.size(), std::size_t{2});
+    // Supprimer un guide depuis la liste, puis colorer les guides.
+    QTRY_VERIFY(named(window, "removeGuide_1") != nullptr);
+    QVERIFY(press(window, "removeGuide_1"));
+    QCOMPARE(view.guides().size(), 1);
+    QTRY_COMPARE(canvas->overlays()->guidesX.size(), std::size_t{1});
+    QSignalSpy guideColourChanged(&view, &ViewController::displayChanged);
+    QVERIFY(press(window, "guideColor_1"));
+    QCOMPARE(guideColourChanged.count(), 1);
+    QVERIFY(press(window, "addVGuideButton")); // le test suivant attend deux guides
+    QCOMPARE(view.guides().size(), 2);
+    QTRY_COMPARE(canvas->overlays()->guidesX.size(), std::size_t{2});
     QVERIFY(press(window, "zoom100Button"));
     QVERIFY(std::abs(canvas->zoom() - view.pixelsPerMmAt100()) < 1e-6);
+    // F38-04: a physical calibration is only actionable for a complete
+    // measured length, and accepts decimal comma input.
+    auto* calibration = named(window, "calibrateField");
+    auto* calibrationButton = named(window, "calibrateButton");
+    QVERIFY(calibration && calibrationButton);
+    QVERIFY(!calibrationButton->isEnabled());
+    QVERIFY(calibration->setProperty("text", QStringLiteral("20mm")));
+    QTRY_VERIFY(!calibrationButton->isEnabled());
+    QVERIFY(calibration->setProperty("text", QStringLiteral("100,0")));
+    QTRY_VERIFY(calibrationButton->isEnabled());
+    QVERIFY(press(window, "calibrateButton"));
+    QVERIFY(view.pixelsPerMmAt100() > 0);
 
     // Zoom rectangle through the real canvas gesture (one-shot rubber band).
     canvas->fitDesign();
@@ -602,6 +698,21 @@ void StudioViewTest::mainQmlHostsEveryPanel() {
     QVERIFY(!threads.colorways().isEmpty());
     QVERIFY(named(window, "colorwayRename0"));
 
+    // F37-02: a single-key View shortcut must not steal letters while the user
+    // edits a text field; once the canvas regains focus the same shortcut works.
+    auto* textEntry = named(window, "colorwayNameField");
+    auto* pointsCanvas = named(window, "studioCanvas");
+    QVERIFY(textEntry && pointsCanvas);
+    textEntry->forceActiveFocus();
+    QTRY_VERIFY(textEntry->hasActiveFocus());
+    const bool gridInitiallyVisible = view.gridVisible();
+    QTest::keyClick(window, Qt::Key_G);
+    QCOMPARE(view.gridVisible(), gridInitiallyVisible);
+    pointsCanvas->forceActiveFocus();
+    QTRY_VERIFY(pointsCanvas->hasActiveFocus());
+    QTest::keyClick(window, Qt::Key_G);
+    QTRY_COMPARE(view.gridVisible(), !gridInitiallyVisible);
+
     QVERIFY(press(window, "threadTab_fabric"));
     QVERIFY(named(window, "threadFabricApply"));
     QVERIFY(named(window, "threadFabricColor"));
@@ -642,17 +753,293 @@ void StudioViewTest::mainQmlHostsEveryPanel() {
     QVERIFY(press(window, "simulationButton"));
     QVERIFY(view.simActive());
     QTRY_VERIFY(named(window, "simNextStitch") != nullptr);
+    // F29-02: transport remains reachable on narrow canvases, and buttons
+    // communicate the true bounds of the stitch sequence.
+    auto* simBar = named(window, "simulationBar");
+    auto* scroll = named(window, "simulationTransportScroll");
+    QVERIFY(simBar && scroll);
+    QVERIFY(simBar->setProperty("width", 420.0));
+    QTRY_VERIFY(scroll->property("contentWidth").toDouble() > scroll->width());
+    QTRY_VERIFY(!named(window, "simPrevStitch")->isEnabled());
     QVERIFY(press(window, "simNextStitch"));
     QCOMPARE(view.simPosition(), 1);
     QVERIFY(press(window, "simPlayButton"));
     QVERIFY(view.playing());
     view.advance(600'000);
     QCOMPARE(view.simPosition(), view.simTotal());
+    QTRY_VERIFY(!named(window, "simNextStitch")->isEnabled());
+    QTRY_VERIFY(!named(window, "simToEnd")->isEnabled());
+    view.setSimPosition(0);
+    QTRY_VERIFY(named(window, "simToEnd")->isEnabled());
     QVERIFY(press(window, "simToEnd"));
     QVERIFY(press(window, "simClose"));
     QVERIFY(!view.simActive());
 
     QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join('\n')));
+}
+
+// pause / début / fin / couleur suivante et précédente : la lecture s'arrête et la position suit.
+void StudioViewTest::simulationPauseStartEndAndColourJumps() {
+    Rig rig;
+    rig.view.startSimulation();
+    rig.view.play();
+    QVERIFY(rig.view.playing());
+    rig.view.pause();
+    QVERIFY(!rig.view.playing());
+    rig.view.toEnd();
+    QCOMPARE(rig.view.simPosition(), rig.view.simTotal());
+    rig.view.toStart();
+    QCOMPARE(rig.view.simPosition(), 0);
+    QVERIFY(!rig.view.playing());
+    rig.view.nextColour();
+    const int afterNext = rig.view.simPosition();
+    QVERIFY(afterNext > 0);
+    QVERIFY(!rig.view.playing());
+    rig.view.previousColour();
+    QVERIFY(rig.view.simPosition() < afterNext);
+    QVERIFY(rig.view.simPosition() >= 0);
+}
+
+// Repères : ajout, suppression par index (index invalide refusé), couleur (signal d'affichage).
+void StudioViewTest::guidesAddRemoveAndColour() {
+    Rig rig;
+    const auto before = rig.view.guides().size();
+    QVERIFY(rig.view.addGuide(true, 10.0));
+    QCOMPARE(rig.view.guides().size(), before + 1);
+    QVERIFY(!rig.view.removeGuide(99));
+    QVERIFY(!rig.view.removeGuide(-1));
+    QCOMPARE(rig.view.guides().size(), before + 1);
+    QSignalSpy changed(&rig.view, &ViewController::displayChanged);
+    rig.view.setGuideColor(QColor(QStringLiteral("#ff0000")));
+    QCOMPARE(changed.count(), 1);
+    rig.view.setGuideColor(QColor(QStringLiteral("#ff0000"))); // même couleur : aucun signal
+    QCOMPARE(changed.count(), 1);
+    QVERIFY(rig.view.removeGuide(static_cast<int>(before)));
+    QCOMPARE(rig.view.guides().size(), before);
+}
+
+// Effacer la carte de densité / de risque et rejeter une proposition d'ordre : l'état publié
+// repasse à « non prêt » avec son signal, sans toucher au document.
+void StudioViewTest::analysisClearsDensityRiskAndDiscardsProposal() {
+    Rig rig;
+    const auto depth = rig.session.undoNames().size();
+    rig.analysis.computeDensity();
+    QTRY_VERIFY_WITH_TIMEOUT(rig.analysis.densityReady(), 15'000);
+    QSignalSpy density(&rig.analysis, &AnalysisController::densityChanged);
+    rig.analysis.clearDensity();
+    QVERIFY(!rig.analysis.densityReady());
+    QCOMPARE(density.count(), 1);
+    rig.analysis.computeFabricRisk();
+    QTRY_VERIFY_WITH_TIMEOUT(rig.analysis.riskReady(), 15'000);
+    QSignalSpy risk(&rig.analysis, &AnalysisController::riskChanged);
+    rig.analysis.clearFabricRisk();
+    QVERIFY(!rig.analysis.riskReady());
+    QCOMPARE(risk.count(), 1);
+    rig.analysis.proposeOrder(0, false);
+    QTRY_VERIFY_WITH_TIMEOUT(rig.analysis.proposalReady(), 15'000);
+    rig.analysis.discardProposal();
+    QVERIFY(!rig.analysis.proposalReady());
+    QCOMPARE(rig.session.undoNames().size(), depth);
+}
+
+// Import d'un nuancier (refus d'une URL distante ou d'un fichier absent) et assignation d'un fil
+// possédé à un fil du projet : une étape d'annulation, refus hors de « Mes fils ».
+void StudioViewTest::chartImportAndOwnedThreadAssignment() {
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const auto cfg = std::filesystem::path(directory.path().toStdWString());
+    DocumentSession session;
+    StudioController studio(session);
+    session.replaceProject(fixture(), true);
+    ThreadController threads(studio, cfg);
+
+    QVERIFY(!threads.importChart(QUrl(QStringLiteral("https://example.org/chart.csv"))));
+    QVERIFY(
+        !threads.importChart(QUrl::fromLocalFile(directory.filePath(QStringLiteral("none.csv")))));
+    const QString csvPath = directory.filePath(QStringLiteral("mes_fils.csv"));
+    QFile csv(csvPath);
+    QVERIFY(csv.open(QIODevice::WriteOnly | QIODevice::Text));
+    csv.write("code,name,hex\n1001,Rouge vif,#C8102E\n1002,Bleu nuit,#0B1F4D\n");
+    csv.close();
+    const auto chartsBefore = threads.charts().size();
+    QSignalSpy changed(&threads, &ThreadController::chartsChanged);
+    QVERIFY(threads.importChart(QUrl::fromLocalFile(csvPath)));
+    QCOMPARE(threads.charts().size(), chartsBefore + 1);
+    QVERIFY(changed.count() >= 1);
+
+    const QString chart = threads.charts().first().toMap().value("id").toString();
+    const QString code =
+        threads.nearestToEntry(0, chart, 1).first().toMap().value("code").toString();
+    QVERIFY(!threads.assignOwnedThread(0, chart, code)); // pas dans Mes fils
+    QVERIFY(!threads.assignOwnedThread(-1, chart, code));
+    QVERIFY(!threads.assignOwnedThread(999, chart, code));
+    QVERIFY(threads.setOwnedThread(chart, code, true));
+    const auto depth = session.undoNames().size();
+    QVERIFY(threads.assignOwnedThread(0, chart, code));
+    QCOMPARE(session.undoNames().size(), depth + 1);
+    QVERIFY(session.project().embroidery_objects[0].thread.has_value());
+    QVERIFY(session.undo());
+    QVERIFY(!session.project().embroidery_objects[0].thread.has_value());
+}
+
+// Filtres d'affichage riches (V1) : types de points, couleurs de fil (Toutes / Aucune / Inverser)
+// et taille minimale des zones ; chaque action est une étape d'annulation et l'état vient des
+// objets.
+void StudioViewTest::displayFiltersByTypeColourAndSize() {
+    Rig rig;
+    const auto total = static_cast<int>(rig.session.project().embroidery_objects.size());
+    QVERIFY(total >= 2);
+    const auto types = rig.view.filterTypes();
+    const auto colours = rig.view.filterColours();
+    QVERIFY(!types.isEmpty() && !colours.isEmpty());
+    int typeSum = 0;
+    for (const auto& t : types) {
+        typeSum += t.toMap().value("total").toInt();
+    }
+    int colourSum = 0;
+    for (const auto& c : colours) {
+        colourSum += c.toMap().value("total").toInt();
+    }
+    QCOMPARE(typeSum, total);
+    QCOMPARE(colourSum, total);
+    QCOMPARE(rig.view.hiddenCount(), 0);
+
+    const auto depth = rig.session.undoNames().size();
+    const QString hex = colours.first().toMap().value("id").toString();
+    const int colourTotal = colours.first().toMap().value("total").toInt();
+    QVERIFY(rig.view.setColourVisible(hex, false));
+    QCOMPARE(rig.session.undoNames().size(), depth + 1);
+    QCOMPARE(rig.view.hiddenCount(), colourTotal);
+    QVERIFY(!rig.view.filterColours().first().toMap().value("checked").toBool());
+    QVERIFY(!rig.view.setColourVisible(hex, false)); // déjà masquée : refus lisible
+    QVERIFY(!rig.view.setColourVisible(QStringLiteral("pas-une-couleur"), false));
+    QVERIFY(rig.view.setColourVisible(hex, true));
+    QCOMPARE(rig.view.hiddenCount(), 0);
+
+    const QString typeId = types.first().toMap().value("id").toString();
+    const int typeTotal = types.first().toMap().value("total").toInt();
+    QVERIFY(rig.view.setTypeVisible(typeId, false));
+    QCOMPARE(rig.view.hiddenCount(), typeTotal);
+    QVERIFY(rig.session.undo());
+    QCOMPARE(rig.view.hiddenCount(), 0);
+    QVERIFY(!rig.view.setTypeVisible(QStringLiteral("type-inconnu"), false));
+
+    QVERIFY(rig.view.setAllColours(QStringLiteral("none")));
+    QCOMPARE(rig.view.hiddenCount(), total);
+    QVERIFY(!rig.view.setAllColours(QStringLiteral("none")));
+    QVERIFY(rig.view.setAllColours(QStringLiteral("invert")));
+    QCOMPARE(rig.view.hiddenCount(), 0);
+    QVERIFY(!rig.view.setAllColours(QStringLiteral("all")));
+    QVERIFY(!rig.view.setAllColours(QStringLiteral("n-importe-quoi")));
+
+    QVERIFY(!rig.view.hideSmallerThan(0.0));
+    QVERIFY(!rig.view.hideSmallerThan(-3.0));
+    QVERIFY(!rig.view.hideSmallerThan(1.0e-9)); // aucune zone aussi petite
+}
+
+// Un événement de statut (survol, progression, message) émet StudioController::changed sans rien
+// changer au document : les listes de fils, les filtres et l'arbre d'objets ne sont PAS rediffusés
+// (sinon QML les recalcule à chaque événement). Un vrai changement les rediffuse.
+void StudioViewTest::statusEventsDoNotReloadThreadsFiltersOrTree() {
+    Rig rig;
+    EditController editor(rig.studio);
+    QSignalSpy threads(&rig.threads, &ThreadController::changed);
+    QSignalSpy view(&rig.view, &ViewController::changed);
+    QSignalSpy tree(&editor, &EditController::treeChanged);
+    for (int i = 0; i < 5; ++i) {
+        emit rig.studio.changed();
+    }
+    QCOMPARE(threads.count(), 0);
+    QCOMPARE(view.count(), 0);
+    QCOMPARE(tree.count(), 0);
+
+    const auto id = rig.session.project().embroidery_objects.front().id.value;
+    rig.studio.selectObject(QString::number(id)); // la sélection change vraiment
+    QTRY_VERIFY(threads.count() >= 1);
+    QVERIFY(view.count() >= 1);
+    QVERIFY(tree.count() >= 1);
+    threads.clear();
+    view.clear();
+    tree.clear();
+    QVERIFY(rig.view.setColourVisible(
+        rig.view.filterColours().first().toMap().value("id").toString(), false));
+    QTRY_VERIFY(threads.count() >= 1); // le document a changé
+    QVERIFY(view.count() >= 1);
+    QVERIFY(tree.count() >= 1);
+}
+
+// Statistiques de broderie (V1) : chiffres de la séquence effective ; fidélité à l'image : mesure
+// asynchrone, déclarée périmée dès que le motif change, effaçable.
+void StudioViewTest::statisticsAndFidelityOfTheEmbroidery() {
+    Rig rig;
+    const auto stats = rig.analysis.statistics();
+    QVERIFY(stats.value("ready").toBool());
+    QVERIFY(stats.value("stitches").toULongLong() > 0);
+    QVERIFY(stats.value("widthMm").toDouble() > 0.0);
+    QVERIFY(stats.value("threadM").toDouble() > 0.0);
+    QVERIFY(stats.value("text").toString().contains(QStringLiteral("Points :")));
+    QVERIFY(stats.value("text").toString().contains(QStringLiteral("Fil cousu estimé")));
+
+    QVERIFY(!rig.analysis.fidelityReady());
+    rig.analysis.measureFidelity();
+    QTRY_VERIFY_WITH_TIMEOUT(rig.analysis.fidelityReady() || !rig.analysis.lastOk(), 30'000);
+    if (rig.analysis.lastOk()) {
+        QVERIFY(!rig.analysis.fidelityText().isEmpty());
+        QVERIFY(!rig.analysis.fidelityStale());
+        const auto id = rig.session.project().embroidery_objects.front().id.value;
+        QVERIFY(rig.view.setColourVisible(
+            QColor(rig.session.project().embroidery_objects.front().rgb[0],
+                   rig.session.project().embroidery_objects.front().rgb[1],
+                   rig.session.project().embroidery_objects.front().rgb[2])
+                .name(),
+            false));
+        Q_UNUSED(id);
+        QTRY_VERIFY(rig.analysis.fidelityStale());
+        rig.analysis.clearFidelity();
+        QVERIFY(!rig.analysis.fidelityReady());
+    }
+}
+
+// Journal de performance : désactivé par défaut (aucun fichier), activé par OPENSTITCH_PERF_LOG ;
+// il consigne la durée réelle de chaque reconstruction de scène avec sa ventilation.
+void StudioViewTest::perfLogRecordsSceneRebuildsOnlyWhenEnabled() {
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString path = directory.filePath(QStringLiteral("perf.jsonl"));
+    qunsetenv("OPENSTITCH_PERF_LOG");
+    {
+        Rig rig; // chargement du projet : une reconstruction de scène
+        QVERIFY(!QFileInfo::exists(path));
+    }
+    qputenv("OPENSTITCH_PERF_LOG", path.toUtf8());
+    {
+        Rig rig;
+        const auto id = rig.session.project().embroidery_objects.front().id.value;
+        QVERIFY(rig.view.setColourVisible(
+            QColor(rig.session.project().embroidery_objects.front().rgb[0],
+                   rig.session.project().embroidery_objects.front().rgb[1],
+                   rig.session.project().embroidery_objects.front().rgb[2])
+                .name(),
+            false));
+        Q_UNUSED(id);
+        QTRY_VERIFY_WITH_TIMEOUT(!rig.studio.busy() && !rig.studio.sceneStale(), 15'000);
+    }
+    qunsetenv("OPENSTITCH_PERF_LOG");
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    int rebuilds = 0;
+    while (!file.atEnd()) {
+        const auto doc = QJsonDocument::fromJson(file.readLine());
+        QVERIFY(doc.isObject());
+        const auto object = doc.object();
+        if (object.value("event").toString() == QStringLiteral("scene.rebuild")) {
+            ++rebuilds;
+            QVERIFY(object.value("wallMs").toDouble() >= 0.0);
+            QVERIFY(object.value("objects").toDouble() > 0.0);
+            QVERIFY(object.contains("effectiveSequenceMs") && object.contains("verticesMs"));
+        }
+    }
+    QVERIFY2(rebuilds >= 2, "chargement + masquage = au moins deux reconstructions");
 }
 
 QTEST_MAIN(StudioViewTest)

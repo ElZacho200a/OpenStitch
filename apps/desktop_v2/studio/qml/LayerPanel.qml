@@ -16,6 +16,16 @@ ColumnLayout {
                                       ? objectTree.currentLayer
                                       : (editor.layers.length > 0 ? editor.layers[0].id : "")
 
+    Connections {
+        target: studio
+        function onDocumentReplaced() {
+            objectTree.currentLayer = ""
+            objectTree.dragActive = false
+            renameField.visible = false
+            renameField.text = ""
+        }
+    }
+
     Flow {
         objectName: "layerActionsFlow"
         Layout.fillWidth: true
@@ -31,6 +41,14 @@ ColumnLayout {
             implicitHeight: 28
             tooltip: qsTr("Créer un calque au-dessus")
             onClicked: editor.addLayer(qsTr("Calque %1").arg(editor.layers.length + 1))
+        }
+        StudioButton {
+            objectName: "layerDuplicateButton"
+            text: qsTr("Dupl.")
+            implicitHeight: 28
+            enabled: panel.layerId.length > 0
+            tooltip: qsTr("Dupliquer le calque et ses objets")
+            onClicked: editor.duplicateLayer(panel.layerId)
         }
         StudioButton {
             objectName: "layerRenameButton"

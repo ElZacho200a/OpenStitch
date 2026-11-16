@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "applique_controller.hpp"
+#include "change_gate.hpp"
 
 #include <filesystem>
 
@@ -10,7 +11,14 @@ namespace openstitch::desktop_v2::studio {
 AppliqueController::AppliqueController(StudioController& studio, InspectorController& inspector,
                                        QObject* parent)
     : QObject(parent), studio_(studio), inspector_(inspector) {
-    connect(&studio_, &StudioController::changed, this, [this] { emit changed(); });
+    gateStamp_ = documentStamp(studio_);
+    connect(&studio_, &StudioController::changed, this, [this] {
+        const auto stamp = documentStamp(studio_);
+        if (stamp != gateStamp_) {
+            gateStamp_ = stamp;
+            emit changed();
+        }
+    });
 }
 
 std::uint64_t AppliqueController::selectedApplique() const {

@@ -3,8 +3,8 @@
 
 // Desktop V2 -- prétraitement de l'image source : luminosité / contraste, retournements, rotations,
 // niveaux de gris, netteté, contraste local (CLAHE) et recadrage. Chaque étape est UNE
-// `AppendImageOpCommand` annulable ajoutée à la pile `project.ops` ; la segmentation existante est
-// invalidée par le moteur (il faut la recalculer). Sans Qt.
+// `AppendImageOpCommand` annulable ajoutée à la pile `project.imageSource().ops` ; la segmentation
+// existante est invalidée par le moteur (il faut la recalculer). Sans Qt.
 
 #include <string>
 #include <vector>

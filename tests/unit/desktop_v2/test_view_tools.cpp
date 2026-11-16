@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 
 #include "document_session.hpp"
 #include "edit_batch.hpp"
 #include "openstitch/project_ops/factory.hpp"
+#include "openstitch/stitch_generation/overrides.hpp"
 #include "preview_service.hpp"
+#include "render_settings.hpp"
 #include "view_tools.hpp"
 
 using namespace openstitch;
@@ -110,4 +113,86 @@ TEST_CASE("the preview PNG export writes a valid image and refuses bad resolutio
     cancelled.stop = stop.get_token();
     CHECK(export_preview_png(s.snapshot(), out, 4.0, cancelled).error().category ==
           ErrorCategory::Cancelled);
+}
+
+namespace {
+// Largeur et hauteur lues dans l'en-tête IHDR d'un PNG (octets 16 à 23, gros-boutiste).
+std::pair<int, int> pngSize(const fs::path& file) {
+    std::ifstream in(file, std::ios::binary);
+    unsigned char header[24] = {};
+    in.read(reinterpret_cast<char*>(header), 24);
+    const auto be = [&](int at) {
+        return (header[at] << 24) | (header[at + 1] << 16) | (header[at + 2] << 8) | header[at + 3];
+    };
+    return {be(16), be(20)};
+}
+} // namespace
+
+TEST_CASE("the image export plan announces exactly the size of the written PNG",
+          "[desktop_v2][view][export_plan]") {
+    auto s = withRect();
+    for (const double pxPerMm : {1.0, 4.0, 7.5}) {
+        const auto plan = plan_image_export(s.snapshot(), pxPerMm, TaskContext{});
+        REQUIRE(plan.has_value());
+        CHECK_FALSE(plan->reduced);
+        CHECK(plan->pxPerMm == Catch::Approx(pxPerMm));
+        const fs::path out = fs::temp_directory_path() / "openstitch_v2_plan.png";
+        REQUIRE(export_preview_png(s.snapshot(), out, pxPerMm, TaskContext{}).has_value());
+        const auto [w, h] = pngSize(out);
+        CHECK(w == plan->width);
+        CHECK(h == plan->height);
+        // Échelle 1:1 : pixels = millimètres de la fenêtre × résolution.
+        CHECK(plan->widthMm * pxPerMm == Catch::Approx(w).margin(1.0));
+        CHECK(plan->heightMm * pxPerMm == Catch::Approx(h).margin(1.0));
+        fs::remove(out);
+    }
+    // Hors de la plage du rendu : refus, jamais une résolution corrigée en silence.
+    CHECK_FALSE(plan_image_export(s.snapshot(), 0.5, TaskContext{}).has_value());
+    CHECK_FALSE(plan_image_export(s.snapshot(), kMaxPxPerMm + 1, TaskContext{}).has_value());
+    CHECK_FALSE(export_preview_png(s.snapshot(), fs::temp_directory_path() / "x.png",
+                                   kMaxPxPerMm + 1, TaskContext{})
+                    .has_value());
+}
+
+TEST_CASE("the placement template plan matches the pages and paper of the written PDF",
+          "[desktop_v2][view][export_plan]") {
+    auto s = withRect();
+    CHECK_FALSE(placement_template_options("A5", false, "x").has_value());
+    struct Case {
+        const char* paper;
+        bool landscape;
+        double widthPt;
+        double heightPt;
+    };
+    for (const Case c : {Case{"A4", false, 595.28, 841.89}, Case{"A3", true, 1190.55, 841.89},
+                         Case{"Letter", false, 612.0, 792.0}}) {
+        const auto options = placement_template_options(c.paper, c.landscape, "Essai");
+        REQUIRE(options.has_value());
+        const auto plan = plan_placement_template(*s.snapshot(), *options, TaskContext{});
+        REQUIRE(plan.has_value());
+        CHECK(plan->pages == plan->columns * plan->rows);
+        CHECK(plan->pages >= 1);
+        CHECK(plan->designWidthMm > 0.0);
+        CHECK(plan->pageWidthMm * 72.0 / 25.4 == Catch::Approx(c.widthPt).margin(0.01));
+        CHECK(plan->pageHeightMm * 72.0 / 25.4 == Catch::Approx(c.heightPt).margin(0.01));
+
+        const auto sequence = stitch_generation::effective_sequence(*s.snapshot());
+        REQUIRE(sequence.has_value());
+        const auto pdf = stitch_analysis::placement_template_to_pdf(
+            stitch_analysis::make_placement_template(*sequence, *options));
+        std::size_t pages = 0;
+        for (auto at = pdf.find("/Type /Page "); at != std::string::npos;
+             at = pdf.find("/Type /Page ", at + 1)) {
+            ++pages;
+        }
+        CHECK(pages == plan->pages);
+        char mediaBox[64];
+        std::snprintf(mediaBox, sizeof mediaBox, "/MediaBox [0 0 %.2f %.2f]", c.widthPt,
+                      c.heightPt);
+        CHECK(pdf.find(mediaBox) != std::string::npos);
+    }
+    // Sans point : refus clair.
+    document::Project empty;
+    const auto options = placement_template_options("A4", false, "");
+    CHECK_FALSE(plan_placement_template(empty, *options, TaskContext{}).has_value());
 }

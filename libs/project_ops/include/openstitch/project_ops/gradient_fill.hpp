@@ -11,6 +11,7 @@
 #include "openstitch/core/error.hpp"
 #include "openstitch/core/ids.hpp"
 #include "openstitch/document/color_blend.hpp"
+#include "openstitch/document/multi_blend.hpp"
 #include "openstitch/document/project.hpp"
 #include "openstitch/thread_palette/thread.hpp"
 
@@ -107,5 +108,58 @@ make_edit_gradient_fill_command(const document::Project& project, ObjectId layer
 // retire la rampe du fond. UN pas d'annulation.
 [[nodiscard]] Result<std::unique_ptr<commands::ICommand>>
 make_remove_gradient_fill_command(const document::Project& project, ObjectId layer);
+
+// Fondu multicolore AUTONOME (mission 2026-11-14) : spec complète d'un objet ancre
+// (`document::MulticolorGradientParams`), méthode explicite et palette persistante.
+struct MulticolorGradientSpec {
+    document::GradientMethod method{document::GradientMethod::Directional};
+    std::vector<document::GradientThread> palette; // 1..8, de l'arrière vers l'avant
+    document::DensityGradient transition;
+    bool complementary{true};
+    Micrometers satin_density{400}; // SatinInterlaced uniquement
+    int crosshatch_layers{2};       // CrossHatching uniquement
+    Angle crosshatch_angle{0.0};    // CrossHatching uniquement
+    // Remplissages hors satin/hachures : angle des lignes de couture (absent = perpendiculaire
+    // à l'axe du fondu).
+    std::optional<Angle> stitch_angle;
+    double end_density{0.15}; // un seul fil : densité relative à l'arrivée
+
+    bool operator==(const MulticolorGradientSpec&) const = default;
+};
+
+// Relit la spec complète depuis l'ancre OU n'importe quelle couche du groupe.
+[[nodiscard]] std::optional<MulticolorGradientSpec>
+describe_multicolor_gradient(const document::Project& project, ObjectId anchorOrMember);
+
+// Fondu multicolore utilisable sans réglage (comme `default_gradient_fill`) : deux fils
+// distincts. `fill` satin -> méthode SatinInterlaced (rails dérivés automatiquement s'il n'en a
+// pas) ; sinon méthode Directional avec l'axe/les couleurs de `default_gradient_fill`. nullopt si
+// `fill` n'est pas un remplissage compatible ou si sa forme est vide/dégénérée.
+[[nodiscard]] std::optional<MulticolorGradientSpec>
+default_multicolor_gradient(const document::Project& project, ObjectId fill);
+
+// Raison courte et affichable pour laquelle `fill` ne peut pas devenir un fondu multicolore
+// autonome (déjà un fondu, source introuvable, type incompatible…). Vide si compatible. Pour
+// `SatinInterlaced` sans rails valides sur `fill`, compatible quand même : les rails sont dérivés
+// automatiquement du contour source (`stitch_generation::rails_from_contour`) -- refusé seulement
+// si CE contour est trop petit/dégénéré pour en tirer deux rails (forme compacte, pas allongée).
+[[nodiscard]] std::string multicolor_gradient_incompatibility(const document::Project& project,
+                                                              ObjectId fill,
+                                                              document::GradientMethod method);
+
+// Crée l'ancre et les `palette.size()` couches physiques, UN pas d'annulation. `fill` devient
+// l'ancre (même id, conserve sa position) ; les couches sont de nouveaux objets insérés juste
+// après. Changer `method` dans un `make_edit_...` ultérieur régénère les couches sans toucher
+// `palette` ni `transition`.
+[[nodiscard]] Result<std::unique_ptr<commands::ICommand>>
+make_create_multicolor_gradient_command(document::Project& project, ObjectId fill,
+                                        const MulticolorGradientSpec& spec);
+
+[[nodiscard]] Result<std::unique_ptr<commands::ICommand>>
+make_edit_multicolor_gradient_command(document::Project& project, ObjectId anchorOrMember,
+                                      const MulticolorGradientSpec& spec);
+
+[[nodiscard]] Result<std::unique_ptr<commands::ICommand>>
+make_remove_multicolor_gradient_command(const document::Project& project, ObjectId anchorOrMember);
 
 } // namespace openstitch::project_ops

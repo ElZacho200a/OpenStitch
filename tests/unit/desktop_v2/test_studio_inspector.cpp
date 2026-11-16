@@ -7,6 +7,7 @@
 #include <QQuickStyle>
 #include <QQuickWindow>
 #include <QTemporaryDir>
+#include <QWheelEvent>
 #include <QtTest/QtTest>
 
 #include <algorithm>
@@ -19,6 +20,8 @@
 #include "inspector_model.hpp"
 #include "object_labels.hpp"
 #include "openstitch/commands/project_commands.hpp"
+#include "openstitch/document/multi_blend.hpp"
+#include "openstitch/document/stitch_recipes.hpp"
 #include "openstitch/formats/dst.hpp"
 #include "openstitch/project_io/project_io.hpp"
 #include "openstitch/project_ops/factory.hpp"
@@ -153,13 +156,18 @@ private slots:
     void refusalsNeverCorrectSilently();
     void burstOfEditsIsOneUndoStep();
     void mixedValuesAndMultiEdit();
+    void rowSpacingIsSharedBetweenTatamiAndSatin();
+    void colourOfTheSelectionIncludingMixedTypes();
     void resetToDefaults();
     void stitchTypeConversion();
+    void multicolorGradientType();
     void searchAndLevels();
     void machineOutputIsByteIdentical();
     void persistsInTheOspFile();
     void presetsLifecycle();
+    void recipesApplyThroughControllerAndQml();
     void qmlInspectorEditsThroughTheController();
+    void sliderWheelRequiresFocusAndOtherwiseScrollsThePanel();
 };
 
 void StudioInspectorTest::initTestCase() {
@@ -245,7 +253,7 @@ void StudioInspectorTest::everySpecFieldIsExposedAndEditable() {
             }
         }
     }
-    QVERIFY(specFields == 176); // the complete table lists every engine setting of the 14 types
+    QVERIFY(specFields == 180); // the complete table lists every engine setting of the 14 types
     QCOMPARE(exposed, specFields);
     QCOMPARE(typesWithSpecs.size(), static_cast<std::size_t>(14));
 }
@@ -406,6 +414,93 @@ void StudioInspectorTest::mixedValuesAndMultiEdit() {
     QVERIFY(!inspector.setParam(QString::fromStdString(tatamiOnly), 0.4).isEmpty());
 }
 
+// Couleur de la sélection : commune ou « différentes », changée d'un coup pour des types de points
+// différents (une étape d'annulation), refus d'une couleur invalide ou d'une sélection vide.
+void StudioInspectorTest::colourOfTheSelectionIncludingMixedTypes() {
+    DocumentSession session;
+    auto created = project_ops::create_empty_project({});
+    session.replaceProject(std::move(*created), true);
+    const auto a = addRect(session, 0, 0);
+    const auto b = addRect(session, 40, 0);
+    StudioController studio(session);
+    InspectorController inspector(studio);
+    select(session, {});
+    QVERIFY(!inspector.setColour(QStringLiteral("#ff0000")).isEmpty()); // rien de sélectionné
+    QVERIFY(session.applyBatch(batchSetStitchType({b}, "directional"), "Type").committed);
+    select(session, {a, b});
+    QVERIFY(inspector.typeMixed());
+    const auto depth = session.undoNames().size();
+    QVERIFY(!inspector.setColour(QStringLiteral("pas-une-couleur")).isEmpty());
+    QCOMPARE(session.undoNames().size(), depth);
+
+    QVERIFY(inspector.setColour(QStringLiteral("#ff0000")).isEmpty());
+    QCOMPARE(session.undoNames().size(), depth + 1);
+    QCOMPARE(object(session, a).rgb, (std::array<std::uint8_t, 3>{255, 0, 0}));
+    QCOMPARE(object(session, b).rgb, (std::array<std::uint8_t, 3>{255, 0, 0}));
+    QCOMPARE(inspector.colour(), QStringLiteral("#ff0000"));
+    QVERIFY(!inspector.colourMixed());
+
+    QVERIFY(inspector.setColour(QStringLiteral("#00ff00")).isEmpty());
+    select(session, {a});
+    QVERIFY(inspector.setColour(QStringLiteral("#0000ff")).isEmpty());
+    select(session, {a, b});
+    QVERIFY(inspector.colour().isEmpty());
+    QVERIFY(inspector.colourMixed());
+    QVERIFY(session.undo());
+    QVERIFY(!inspector.colourMixed());
+    QCOMPARE(inspector.colour(), QStringLiteral("#00ff00"));
+}
+
+// Tatami et satin partagent l'écart entre rangées (clés différentes : `row_spacing_mm`,
+// `spacing_mm`, `density_mm`) et les réglages de tirage : dans une sélection mixte ils forment UN
+// réglage commun, lu et écrit sous la clé de chaque type, en une étape d'annulation.
+void StudioInspectorTest::rowSpacingIsSharedBetweenTatamiAndSatin() {
+    DocumentSession session;
+    auto created = project_ops::create_empty_project({});
+    session.replaceProject(std::move(*created), true);
+    const auto a = addRect(session, 0, 0);
+    const auto b = addRect(session, 40, 0);
+    StudioController studio(session);
+    InspectorController inspector(studio);
+    QVERIFY(session.applyBatch(batchSetStitchType({b}, "auto_satin"), "Type").committed);
+    select(session, {a, b});
+    QVERIFY(inspector.typeMixed());
+    const auto spacing = fieldOf(inspector, QStringLiteral("row_spacing_mm"));
+    QVERIFY2(!spacing.isEmpty(), "l'écart entre rangées doit être commun au tatami et au satin");
+    QVERIFY(!fieldOf(inspector, QStringLiteral("pull_compensation_mm")).isEmpty());
+    QVERIFY(!fieldOf(inspector, QStringLiteral("pull_mode")).isEmpty());
+    QVERIFY(!fieldOf(inspector, QStringLiteral("underlay_edge")).isEmpty());
+    // Les clés propres à un seul type ne sont pas proposées.
+    QVERIFY(fieldOf(inspector, QStringLiteral("spacing_mm")).isEmpty());
+
+    const auto depth = session.undoNames().size();
+    QVERIFY(inspector.setParam(QStringLiteral("row_spacing_mm"), 0.8).isEmpty());
+    QCOMPARE(session.undoNames().size(), depth + 1);
+    QVERIFY(std::abs(*readParam(object(session, a), "row_spacing_mm") - 0.8) < 1e-6);
+    QVERIFY(std::abs(*readParam(object(session, b), "spacing_mm") - 0.8) < 1e-6);
+    QVERIFY(!fieldOf(inspector, QStringLiteral("row_spacing_mm"))
+                 .value(QStringLiteral("mixed"))
+                 .toBool());
+    // Une valeur hors de la plage commune est refusée sans rien changer.
+    QVERIFY(!inspector.setParam(QStringLiteral("row_spacing_mm"), 9.0).isEmpty());
+    QVERIFY(std::abs(*readParam(object(session, b), "spacing_mm") - 0.8) < 1e-6);
+
+    // Valeurs différentes : « — » ; la remise à zéro renvoie chaque type à son propre défaut.
+    QVERIFY(session.undo());
+    select(session, {a});
+    QVERIFY(inspector.setParam(QStringLiteral("row_spacing_mm"), 0.3).isEmpty());
+    select(session, {a, b});
+    QVERIFY(fieldOf(inspector, QStringLiteral("row_spacing_mm"))
+                .value(QStringLiteral("mixed"))
+                .toBool());
+    QVERIFY(inspector.resetParam(QStringLiteral("row_spacing_mm")).isEmpty());
+    QVERIFY(fieldOf(inspector, QStringLiteral("row_spacing_mm"))
+                .value(QStringLiteral("isDefault"))
+                .toBool());
+    QVERIFY(session.undo());
+    QVERIFY(inspector.resetAll().isEmpty());
+}
+
 void StudioInspectorTest::resetToDefaults() {
     DocumentSession session;
     auto created = project_ops::create_empty_project({});
@@ -454,6 +549,57 @@ void StudioInspectorTest::stitchTypeConversion() {
     QVERIFY(inspector.setStitchType(QStringLiteral("contour_fill")).isEmpty());
     QCOMPARE(inspector.typeId(), QStringLiteral("contour_fill"));
     QVERIFY(inspector.fields().size() > 0); // concentric: its table is complete since family J
+}
+
+// Mission 2026-11-14 : « Fondu multicolore » est un véritable type de points dans le sélecteur,
+// pas un adaptateur virtuel QML (PR #341) ; le choisir crée réellement l'ancre
+// (MulticolorGradientParams) et ses couches physiques, en un seul pas d'annulation.
+void StudioInspectorTest::multicolorGradientType() {
+    DocumentSession session;
+    auto created = project_ops::create_empty_project({});
+    session.replaceProject(std::move(*created), true);
+    const auto id = addRect(session);
+    select(session, {id});
+    StudioController studio(session);
+    InspectorController inspector(studio);
+    QCOMPARE(inspector.typeId(), QStringLiteral("tatami"));
+
+    QVERIFY(std::ranges::any_of(settableStitchTypes(),
+                                [](const auto& t) { return t.id == "multicolor_gradient"; }));
+
+    const auto depth = session.undoNames().size();
+    QVERIFY(inspector.setStitchType(QStringLiteral("multicolor_gradient")).isEmpty());
+    QCOMPARE(session.undoNames().size(), depth + 1); // un seul pas, malgre l'ancre + N couches
+    QCOMPARE(inspector.typeId(), QStringLiteral("multicolor_gradient"));
+
+    const auto group = document::find_gradient_group(session.project(), ObjectId{id});
+    QVERIFY(group.has_value());
+    QCOMPARE(group->anchor.value, id);
+    QVERIFY(group->layers.size() >= 2);
+    const auto* anchor = session.project().findEmbroidery(ObjectId{id});
+    QVERIFY(anchor != nullptr);
+    QVERIFY(anchor->is_multicolor_gradient());
+    const auto& params = std::get<document::MulticolorGradientParams>(anchor->params);
+    QCOMPARE(params.palette.size(), group->layers.size());
+
+    // Choisir un AUTRE type retire reellement l'ancre et ses couches (jamais une conversion en
+    // place qui les laisserait orphelines) : un pas pour le retrait (l'ancre redevient le
+    // remplissage uni de sa premiere couche, ici "directional"), puis -- la cible ("tatami")
+    // differant de ce remplissage uni -- un second pas de conversion generique.
+    const auto depthAfterCreate = session.undoNames().size();
+    QVERIFY(inspector.setStitchType(QStringLiteral("tatami")).isEmpty());
+    QCOMPARE(session.undoNames().size(), depthAfterCreate + 2);
+    QCOMPARE(inspector.typeId(), QStringLiteral("tatami"));
+    QVERIFY(!document::find_gradient_group(session.project(), ObjectId{id}).has_value());
+
+    QVERIFY(session.undo()); // revient au remplissage directionnel uni (fin du retrait)
+    QCOMPARE(inspector.typeId(), QStringLiteral("directional"));
+    QVERIFY(!document::find_gradient_group(session.project(), ObjectId{id}).has_value());
+    QVERIFY(session.undo()); // revient au fondu multicolore
+    QCOMPARE(inspector.typeId(), QStringLiteral("multicolor_gradient"));
+    QVERIFY(session.undo()); // revient au tatami d'origine
+    QCOMPARE(inspector.typeId(), QStringLiteral("tatami"));
+    QCOMPARE(session.undoNames().size(), depth);
 }
 
 void StudioInspectorTest::searchAndLevels() {
@@ -640,6 +786,73 @@ void StudioInspectorTest::presetsLifecycle() {
     QVERIFY(!inspector.removePreset(7).isEmpty());
 }
 
+void StudioInspectorTest::recipesApplyThroughControllerAndQml() {
+    DocumentSession session;
+    auto created = project_ops::create_empty_project({});
+    session.replaceProject(std::move(*created), true);
+    const auto id = addRect(session);
+    StudioController studio(session);
+    InspectorController inspector(studio);
+    QVERIFY(!inspector.applyRecipe(QStringLiteral("stem-stitch")).isEmpty()); // no selection
+    select(session, {id});
+    const auto recipes = inspector.recipes();
+    QCOMPARE(recipes.size(), static_cast<qsizetype>(document::stitch_recipes().size()));
+    QVERIFY(!inspector.applyRecipe(QStringLiteral("no-such-recipe")).isEmpty());
+    const auto depth = session.undoNames().size();
+    QVERIFY(inspector.applyRecipe(QStringLiteral("cross-stitch")).isEmpty());
+    QCOMPARE(session.undoNames().size(), depth + 1); // one undo step
+    QVERIFY(object(session, id).params == document::find_stitch_recipe("cross-stitch")->params);
+    QVERIFY(session.undo());
+    QVERIFY(object(session, id).is_tatami());
+
+    // The Studio inspector exposes the catalogue: choose, read the note, apply.
+    QQmlEngine engine;
+    engine.rootContext()->setContextProperty(QStringLiteral("inspector"), &inspector);
+    QQmlComponent component(&engine, QUrl(QStringLiteral("qrc:/studio/qml/Inspector.qml")));
+    QVERIFY2(component.status() == QQmlComponent::Ready, qPrintable(component.errorString()));
+    QQuickWindow window;
+    std::unique_ptr<QObject> item(component.create());
+    auto* root = qobject_cast<QQuickItem*>(item.get());
+    QVERIFY(root != nullptr);
+    root->setParentItem(window.contentItem());
+    root->setSize({320, 1600});
+    QTRY_VERIFY(findItem(root, QStringLiteral("recipeCatalog")) != nullptr);
+    auto* catalog = findItem(root, QStringLiteral("recipeCatalog"));
+    // One OpenStitch-rendered tile per recipe.
+    for (const auto& r : document::stitch_recipes()) {
+        QTRY_VERIFY(findItem(root, QStringLiteral("recipeTile_") + QString::fromUtf8(r.id)) !=
+                    nullptr);
+    }
+    // Filters and search narrow the tiles (presentation only).
+    catalog->setProperty("filter", QStringLiteral("approximation"));
+    QTRY_VERIFY(findItem(root, QStringLiteral("recipeTile_cross-stitch")) == nullptr);
+    QVERIFY(findItem(root, QStringLiteral("recipeTile_split-stitch")) != nullptr);
+    catalog->setProperty("filter", QStringLiteral("all"));
+    auto* search = findItem(root, QStringLiteral("recipeSearch"));
+    QVERIFY(search != nullptr);
+    search->setProperty("text", QStringLiteral("BAYEUX"));
+    QTRY_VERIFY(findItem(root, QStringLiteral("recipeTile_cross-stitch")) == nullptr);
+    QVERIFY(findItem(root, QStringLiteral("recipeTile_bayeux-stitch")) != nullptr);
+    search->setProperty("text", QString());
+    // Optional visual proof (no pixel assertion): OPENSTITCH_CAPTURE_DIR=<dir> saves the catalogue.
+    if (const QByteArray dir = qgetenv("OPENSTITCH_CAPTURE_DIR"); !dir.isEmpty()) {
+        window.resize(320, 1600);
+        window.show();
+        QTest::qWait(1500); // asynchronous thumbnails
+        window.grabWindow().save(QString::fromLocal8Bit(dir) +
+                                 QStringLiteral("/recipe-catalog.png"));
+    }
+    // Selecting a simulation shows its warning; Apply converts the selection.
+    const auto* split = document::find_stitch_recipe("split-stitch");
+    QVERIFY(split != nullptr && split->fidelity == document::RecipeFidelity::Approximation);
+    catalog->setProperty("selectedId", QStringLiteral("split-stitch"));
+    auto* note = findItem(root, QStringLiteral("recipeNote"));
+    QVERIFY(note != nullptr);
+    QTRY_VERIFY(note->property("text").toString().contains(QStringLiteral("Simulation")));
+    QMetaObject::invokeMethod(findItem(root, QStringLiteral("applyRecipe")), "clicked");
+    QVERIFY(object(session, id).params == split->params);
+}
+
 void StudioInspectorTest::qmlInspectorEditsThroughTheController() {
     DocumentSession session;
     auto created = project_ops::create_empty_project({});
@@ -703,6 +916,79 @@ void StudioInspectorTest::qmlInspectorEditsThroughTheController() {
     QMetaObject::invokeMethod(reset, "clicked");
     QTRY_VERIFY(std::abs(*readParam(object(session, id), "row_spacing_mm") -
                          document::TatamiParams{}.row_spacing.value / 1000.0) < 1e-6);
+
+    // Sections fold and unfold: a folded section hides its fields, unfolding restores them.
+    auto* collapseAll = find("collapseAllSections");
+    auto* expandAll = find("expandAllSections");
+    QVERIFY(collapseAll != nullptr);
+    QVERIFY(expandAll != nullptr);
+    QVERIFY(find("param_row_spacing_mm") != nullptr);
+    QMetaObject::invokeMethod(collapseAll, "clicked");
+    QTRY_VERIFY(find("param_row_spacing_mm") == nullptr);
+    QMetaObject::invokeMethod(expandAll, "clicked");
+    QTRY_VERIFY(find("param_row_spacing_mm") != nullptr);
+}
+
+// QA-STUDIO-001 LAY-023: scrolling the inspector with the wheel while it happens to pass
+// over a slider must not silently change that slider's value -- only an already-focused
+// slider (clicked or tabbed to) should react to the wheel.
+void StudioInspectorTest::sliderWheelRequiresFocusAndOtherwiseScrollsThePanel() {
+    DocumentSession session;
+    auto created = project_ops::create_empty_project({});
+    session.replaceProject(std::move(*created), true);
+    const auto id = addRect(session);
+    StudioController studio(session);
+    InspectorController inspector(studio);
+    QQmlEngine engine;
+    QStringList qmlWarnings;
+    connect(&engine, &QQmlEngine::warnings, this, [&](const QList<QQmlError>& errors) {
+        for (const auto& e : errors) {
+            qmlWarnings.push_back(e.toString());
+        }
+    });
+    engine.rootContext()->setContextProperty(QStringLiteral("inspector"), &inspector);
+    QQmlComponent component(&engine, QUrl(QStringLiteral("qrc:/studio/qml/Inspector.qml")));
+    QVERIFY2(component.status() == QQmlComponent::Ready, qPrintable(component.errorString()));
+    QQuickWindow window;
+    // Shorter than the panel's content so the Flickable actually has room to scroll.
+    window.resize(320, 260);
+    std::unique_ptr<QObject> created_item(component.create());
+    QVERIFY2(created_item != nullptr, qPrintable(component.errorString()));
+    auto* root = qobject_cast<QQuickItem*>(created_item.get());
+    QVERIFY(root != nullptr);
+    root->setParentItem(window.contentItem());
+    root->setSize({320, 260});
+    select(session, {id});
+    QTRY_VERIFY(root->isVisible());
+    const auto find = [&](const char* name) { return findItem(root, QString::fromLatin1(name)); };
+    QTRY_VERIFY2(find("slider_row_spacing_mm") != nullptr,
+                 qPrintable(qmlWarnings.join(QLatin1Char(10))));
+    auto* slider = find("slider_row_spacing_mm");
+    auto* flick = find("inspectorFlick");
+    QVERIFY(flick != nullptr);
+    QTRY_VERIFY(flick->property("contentHeight").toDouble() > flick->height() + 10.0);
+
+    const auto sendWheel = [&] {
+        const QPointF scene =
+            slider->mapToScene(QPointF(slider->width() / 2, slider->height() / 2));
+        QWheelEvent wheel(scene, window.mapToGlobal(scene.toPoint()), QPoint(), QPoint(0, 120),
+                          Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+        QCoreApplication::sendEvent(&window, &wheel);
+        return wheel.isAccepted();
+    };
+
+    // Not focused: the slider must leave the wheel alone (unaccepted, free to scroll an
+    // ancestor Flickable) instead of silently changing its value.
+    QVERIFY(!slider->hasActiveFocus());
+    const double valueBefore = *readParam(object(session, id), "row_spacing_mm");
+    QVERIFY(!sendWheel());
+    QCOMPARE(*readParam(object(session, id), "row_spacing_mm"), valueBefore);
+
+    // Focused (as a click would leave it): the wheel now adjusts the value, as in V1.
+    slider->forceActiveFocus();
+    QTRY_VERIFY(slider->hasActiveFocus());
+    QVERIFY(sendWheel());
+    QTRY_VERIFY(*readParam(object(session, id), "row_spacing_mm") != valueBefore);
 }
 
 QTEST_MAIN(StudioInspectorTest)

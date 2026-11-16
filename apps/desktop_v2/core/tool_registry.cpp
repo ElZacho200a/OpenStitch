@@ -95,7 +95,7 @@ ToolRegistry ToolRegistry::builtin() {
     r.add({"eyedropper", "Pipette", "I", static_cast<std::uint8_t>(D | N | P | Z), Gesture::Pick,
            "Eyedropper"});
     r.add({"warp-brush", "Pinceau de déformation", "W", D, Gesture::Stroke, "Brush"});
-    r.add({"bucket", "Pot de peinture", "G", Z, Gesture::Pick, "Bucket"});
+    r.add({"bucket", "Pot de peinture", "Alt+G", Z, Gesture::Pick, "Bucket"});
     r.add({"click-to-stitch", "Clic-pour-broder", "A", static_cast<std::uint8_t>(N | Z),
            Gesture::Pick, "ClickToStitch"});
     r.add({"detail-brush", "Zones de détail", "Q", Z, Gesture::Stroke, "DetailBrush"});
@@ -103,7 +103,8 @@ ToolRegistry ToolRegistry::builtin() {
     // Édition directe des nœuds du contour (poignées, glisser, insertion par double-clic).
     r.add({"node.edit", "Nœuds du contour", "B", static_cast<std::uint8_t>(D | N), Gesture::Pick,
            ""});
-    // Axe d'un fondu de deux fils : début et fin de la transition, déplacement, rotation.
+    // Axe d'un fondu : début et fin de la transition, déplacement, rotation (bouton
+    // « Ajuster l'axe au canevas » de l'inspecteur).
     r.add({"fade.axis", "Axe du fondu", "L", static_cast<std::uint8_t>(D | N), Gesture::Pick, ""});
     // Correction de la segmentation après numérisation : choisir, supprimer, fusionner des régions.
     r.add({"region.edit", "Régions", "X", Z, Gesture::Pick, ""});
