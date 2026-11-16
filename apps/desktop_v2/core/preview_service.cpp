@@ -19,10 +19,14 @@ Result<PreviewImage> render_preview(std::shared_ptr<const document::Project> pro
     return render_preview(std::move(project), revision, settings, task, upToCommand);
 }
 
-Result<PreviewImage> render_preview(std::shared_ptr<const document::Project> project,
-                                    std::uint64_t revision, const RenderSettings& rawSettings,
-                                    const TaskContext& task,
-                                    std::optional<std::size_t> upToCommand) {
+namespace {
+
+// Rendu complet, ou seulement le plan de l'image (`planOnly` : arrêt juste après le choix de la
+// fenêtre, png vide) -- une seule source pour la taille réelle de l'image.
+Result<PreviewImage> renderOrPlan(std::shared_ptr<const document::Project> project,
+                                  std::uint64_t revision, const RenderSettings& rawSettings,
+                                  const TaskContext& task, std::optional<std::size_t> upToCommand,
+                                  bool planOnly) {
     const RenderSettings settings = clamped(rawSettings);
     const double pxPerMm = settings.pxPerMm;
     if (!project) {
@@ -92,6 +96,19 @@ Result<PreviewImage> render_preview(std::shared_ptr<const document::Project> pro
     if (task.cancelled()) {
         return cancelled_error();
     }
+    if (planOnly) {
+        PreviewImage plan;
+        plan.width = view.width;
+        plan.height = view.height;
+        plan.px_per_mm = view.px_per_mm;
+        plan.origin_x_mm = view.rect.x0;
+        plan.origin_y_mm = view.rect.y0;
+        plan.hoop_half_w_mm = hoopHalfW;
+        plan.hoop_half_h_mm = hoopHalfH;
+        plan.command_count = sequence->commands.size();
+        plan.revision = revision;
+        return plan;
+    }
     // Simulation : seuls les premiers points sont dessinés (cadre et sélection : séquence
     // complète).
     const auto drawn = upToCommand && *upToCommand < sequence->commands.size()
@@ -148,6 +165,20 @@ Result<PreviewImage> render_preview(std::shared_ptr<const document::Project> pro
         out.hits = std::make_shared<const HitIndex>(HitIndex::build(idSegments));
     }
     return out;
+}
+
+} // namespace
+
+Result<PreviewImage> render_preview(std::shared_ptr<const document::Project> project,
+                                    std::uint64_t revision, const RenderSettings& settings,
+                                    const TaskContext& task,
+                                    std::optional<std::size_t> upToCommand) {
+    return renderOrPlan(std::move(project), revision, settings, task, upToCommand, false);
+}
+
+Result<PreviewImage> plan_preview(std::shared_ptr<const document::Project> project,
+                                  const RenderSettings& settings, const TaskContext& task) {
+    return renderOrPlan(std::move(project), 0, settings, task, std::nullopt, true);
 }
 
 } // namespace openstitch::desktop_v2

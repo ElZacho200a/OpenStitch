@@ -1,0 +1,4 @@
+id,statut,preuve,controleur,composant
+cx07-export-image-options,TESTED,test_view_tools [export_plan] + StudioFilesTest::exportOptionsShowThePlanBeforeWriting - Debug,FileController::requestExportPlan/exportImage,FilePanel.qml exportOptionsDialog
+cx07-template-options,TESTED,test_view_tools [export_plan] + StudioFilesTest::exportOptionsShowThePlanBeforeWriting - Debug,FileController::requestExportPlan/exportPlacementTemplate,FilePanel.qml exportOptionsDialog
+cx07-print,TODO,impression Qt PrintSupport non câblée dans Studio (CX07-b),,

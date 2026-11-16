@@ -376,6 +376,7 @@ graphiques. C'est **le premier mur** : la majorité des machines domestiques
 - Hatch : export d'une image réaliste pour montrer au client.
 - À faire : rendu hors écran du rendu réaliste (HP-VIEW-001) à une résolution
   choisie, fond transparent ou couleur tissu.
+- Studio (2026-11-16, CX07-a) : résolution (1 à 12 px/mm) et qualité JPEG choisies avant l'export, taille réelle en pixels annoncée (`plan_image_export`, même fenêtre et même plafond que le rendu). Correctif : l'export acceptait jusqu'à 20 px/mm alors que le rendu borne à 12 ; il refuse désormais au-delà de 12 au lieu d'écrire une image moins résolue sans le dire.
 - Modules : `apps/desktop` (le rendu Qt), éventuellement un rendu cœur
   simplifié dans `formats` pour la CLI.
 - Dépend de : HP-VIEW-001.
@@ -2623,6 +2624,7 @@ hors cadre, déplacement sans coupe), résumé avant export DST.
 
 ### HP-PROD-003 — Gabarit de placement imprimé à l'échelle 1:1 [P1] — ◐ Partiel (2026-10-26)
 - Livré (2026-10-26) : Gabarit de placement 1:1 (`make_placement_template`, pages A4 / Lettre recouvertes de 10 mm, axes, croix, équerres, règle 100 mm), PDF vectoriel déterministe, CLI `--placement-template`, dialogue bureau avec aperçu et impression. Reste : contrôle sur imprimante réelle.
+- Studio (2026-11-16, CX07-a) : réglages du gabarit avant l'export (papier A4 / A3 / Letter, paysage) avec le nombre de pages et l'emprise annoncés par le même pavage (`plan_placement_template`) ; le papier est choisi dans le cœur (`placement_template_options`). Reste Studio : impression (CX07-b), contrôle sur imprimante réelle.
 - Hatch : impression du design à taille réelle avec croix de centrage et axes.
 - À faire : impression 1:1 vérifiée (règle imprimée de 10 cm), sur plusieurs
   pages si besoin.
@@ -4608,6 +4610,7 @@ ouvrant le lot (§0.1).
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-11-16 | Claude (CX07-a, réglages et aperçu des exports image et gabarit) | **HP-FMT-011 ☑** (précisé) et **HP-PROD-003 ◐** (inchangé : impression Studio et contrôle physique restent). Dialogue d'options de Studio : px/mm et qualité JPEG avec taille en pixels annoncée ; papier et orientation avec pages et emprise annoncées ; calculs hors fil d'interface (`FileController::requestExportPlan`). `render_preview` gagne un mode « plan seulement » (`plan_preview`) : une seule source pour la taille de l'image. Correctif de la plage 1-20 px/mm, bornée en silence à 12 par le rendu. Tests : `test_view_tools.cpp` (taille PNG = plan à 1, 4 et 7,5 px/mm ; pages et MediaBox du PDF = plan pour A4, A3 paysage, Letter) et `test_studio_files.cpp::exportOptionsShowThePlanBeforeWriting` (vraie scène QML). |
 | 2026-11-16 | Claude (CX08-a, insertion de design dans Studio) | **HP-FILE-007 ◐** (inchangé : position, calques et coloris restent à faire). Câblage Studio de `InsertDesignCommand` : aperçu sans modification puis insertion en une étape d'annulation, refus clair et document intact pour un fichier illisible ou une broderie machine à côté d'objets éditables. Tests : `test_file_io.cpp` (3 cas, OSP et DST réels issus de `run_digitize`) et `test_studio_files.cpp::insertDesignPreviewThenOneUndoStep` (vraie scène QML). |
 | 2026-11-15 | Codex (reprise PR #336, QA après fusion) | **HP-STI-011 ◐** maintenu. Les fixtures multicolores utilisent la grille partagée introduite par #345 (profils à trois composantes, courbes échantillonnées, surcouche à 60 %). Matrice Windows réactivée pour toutes les PR et `main` ; tests des fixtures et test PNG inclus dans le workflow Python. Vérifié avec le CLI officiel `94768773` : 20/20 variantes + 6/6 grands motifs ; suite Python 144 tests, 1 ignoré prévu, test PNG réussi. Pas de validation textile. |
 | 2026-11-15 | Claude (types de fondu) | **HP-STI-011 ◐** (inchangé, validation textile en attente). Retours d'utilisation : (1) l'éditeur de fondu n'apparaît plus sur un tatami (`Inspector.qml`, `fadeCtl.hasFade`) ; création par le type « Fondu multicolore », un satin y devient un satin entrelacé ; (2) espacement des rangées réglable (`FadeController::setSpacing`, `transition.spacing_from/to`), enregistré à la création et conservé aux rééditions ; (3) types : `DensityGeometry::Spiral` et `Contour` (`ContourDistance` dans `directional_fill.cpp`), `MulticolorGradientParams::stitch_angle` (direction des points), palette d'un seul fil avec `end_density` (clés `.osp` `stitchAngle`, `endDensity`, géométries 3 et 4). Correctif : hachures croisées cousues dans une seule direction (écart variable hérité de l'axe). Tests : 6 cas `fade types` (project_ops), service et parcours QML. Notion non mis à jour dans cette session (mission ciblée). |
