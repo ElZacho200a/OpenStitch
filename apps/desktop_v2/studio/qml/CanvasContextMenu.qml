@@ -46,6 +46,26 @@ Controls.Menu {
         onTriggered: editor.deleteSelection()
     }
     Controls.MenuSeparator { }
+    // Opérations sur les formes : aussi au clic droit, là où la main est déjà.
+    Controls.Menu {
+        id: shapesMenu
+        objectName: "contextShapesMenu"
+        readonly property var vec: typeof vectors !== "undefined" ? vectors : null
+        readonly property bool two: vec !== null && vec.selectedCount > 1
+        readonly property bool some: vec !== null && vec.selectedCount > 0
+        title: qsTr("Formes")
+        enabled: some
+        Controls.MenuItem { objectName: "contextUnion"; text: qsTr("Union\tCtrl++"); enabled: shapesMenu.two; onTriggered: shapesMenu.vec.booleanOp("union") }
+        Controls.MenuItem { objectName: "contextSubtract"; text: qsTr("Soustraire\tCtrl+-"); enabled: shapesMenu.two; onTriggered: shapesMenu.vec.booleanOp("subtract") }
+        Controls.MenuItem { text: qsTr("Intersection\tCtrl+*"); enabled: shapesMenu.two; onTriggered: shapesMenu.vec.booleanOp("intersect") }
+        Controls.MenuItem { text: qsTr("Exclusion\tCtrl+^"); enabled: shapesMenu.two; onTriggered: shapesMenu.vec.booleanOp("exclude") }
+        Controls.MenuSeparator { }
+        Controls.MenuItem { text: qsTr("Séparer\tCtrl+Maj+K"); enabled: shapesMenu.some; onTriggered: shapesMenu.vec.breakApart() }
+        Controls.MenuItem { text: qsTr("Simplifier"); enabled: shapesMenu.some; onTriggered: shapesMenu.vec.simplify(0.1) }
+        Controls.MenuItem { text: qsTr("Lisser"); enabled: shapesMenu.some; onTriggered: shapesMenu.vec.smooth(0.15) }
+        Controls.MenuItem { text: qsTr("Combler les trous"); enabled: shapesMenu.some; onTriggered: shapesMenu.vec.fillHoles(4) }
+        Controls.MenuItem { text: qsTr("Convertir en courbes"); enabled: shapesMenu.some; onTriggered: shapesMenu.vec.convertToCurves() }
+    }
     Controls.Menu {
         title: qsTr("Transformer")
         enabled: menu.hasSelection

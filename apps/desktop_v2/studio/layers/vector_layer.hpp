@@ -31,6 +31,10 @@ struct VectorShape {
     std::vector<QPointF> nodes;
     QRectF bounds;
     bool locked{false};
+    // Clé visuelle (vectorVisualKeys) et triangles propres à la forme : une reconstruction
+    // réutilise ceux d'une forme inchangée au lieu de la retrianguler.
+    std::uint64_t key{0};
+    std::vector<StudioVertex> geometry;
 };
 
 class VectorLayer {
@@ -41,6 +45,11 @@ public:
     // `build(project)` (c'est le même code).
     [[nodiscard]] static std::shared_ptr<const VectorLayer>
     build(const std::vector<document::VectorObject>& shapes);
+    // Reconstruction incrémentale : `keys[i]` est la clé visuelle de `shapes[i]` ; une forme dont
+    // la clé figure dans `previous` reprend ses triangles. Sortie identique à `build(shapes)`.
+    [[nodiscard]] static std::shared_ptr<const VectorLayer>
+    build(const std::vector<document::VectorObject>& shapes, const std::vector<std::uint64_t>& keys,
+          const VectorLayer* previous);
     [[nodiscard]] const std::vector<VectorShape>& shapes() const { return shapes_; }
     // Triangles des formes (mm scène, couleurs prémultipliées) dans l'ordre de peinture :
     // remplissage puis contour de chaque forme. Dessinés tels quels par le backend GPU.

@@ -60,6 +60,10 @@ signals:
     void failed(const QString& message); // réseau, quota, refus… (non bloquant)
     void usage(quint64 inputTokens, quint64 outputTokens); // cumul de la demande, si connu
     void finished(); // fin du tour (succès, échec ou annulation)
+    // Réflexion de l'agent (texte complet d'un bloc) et activité courante (« Réflexion… »,
+    // « Appel de project_check… ») : l'interface montre que ça travaille, et sur quoi.
+    void thinking(const QString& text);
+    void activity(const QString& label);
 };
 
 } // namespace openstitch::desktop

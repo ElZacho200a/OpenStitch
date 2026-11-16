@@ -2,6 +2,9 @@
 // Studio -- famille H : compagnon IA (faux fournisseur scripté, aucun réseau ni clé réelle),
 // palette universelle, préférences, aide, focus clavier du canevas. Vrai moteur, vraie coque QML.
 #include <QClipboard>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
@@ -125,8 +128,18 @@ QQuickItem* deepItem(QQuickItem* root, const QString& name) {
     return nullptr;
 }
 
+// Environnement de lancement factice : aucun terminal réel, l'appel est enregistré.
+struct FakeLaunch {
+    int calls{0};
+    QString program;
+    QStringList args;
+    QString workDir;
+};
+
 struct Rig {
     QTemporaryDir dir;
+    QTemporaryDir appDir;
+    std::shared_ptr<FakeLaunch> launch = std::make_shared<FakeLaunch>();
     agent::MemorySecretStore secrets;
     std::shared_ptr<Script> script = std::make_shared<Script>();
     std::shared_ptr<std::string> seenKey = std::make_shared<std::string>();
@@ -144,7 +157,28 @@ struct Rig {
          [this](const std::string& key, const std::string&) {
              return std::static_pointer_cast<agent::IAgentProvider>(
                  std::make_shared<ScriptedProvider>(script, seenKey, key));
-         }}};
+         },
+         fakeLauncher()}};
+
+    desktop::ClaudeCodeLauncher::Env fakeLauncher() {
+        QFile(appDir.filePath(QStringLiteral("openstitch-mcp.exe"))).open(QIODevice::WriteOnly);
+        desktop::ClaudeCodeLauncher::Env env;
+        env.findExecutable = [](const QString& name) {
+            return name == QStringLiteral("claude") ? QStringLiteral("claude-fake") : QString();
+        };
+        auto state = launch;
+        env.startDetached = [state](const QString& program, const QStringList& args,
+                                    const QString& workDir) {
+            ++state->calls;
+            state->program = program;
+            state->args = args;
+            state->workDir = workDir;
+            return true;
+        };
+        env.appDir = appDir.path();
+        env.dataDir = dir.filePath(QStringLiteral("data"));
+        return env;
+    }
     QQmlApplicationEngine engine;
     QStringList warnings;
     QQuickWindow* window{nullptr};
@@ -188,7 +222,10 @@ private slots:
         qmlRegisterUncreatableType<ToolController>("OpenStitch.Studio", 1, 0, "ToolController",
                                                    QStringLiteral("Provided by the application"));
     }
-    void init() { QSettings().clear(); }
+    void init() {
+        QSettings().clear();
+        desktop::companion_settings::setAutoApply(false); // les tests attendent la carte
+    }
     void canvasRegainsKeyboardFocusAfterClick();
     void paletteListsCommandsWithoutAccentsAndStates();
     void forgetSessionClearsAndPersists();
@@ -200,6 +237,7 @@ private slots:
     void documentReplacementRejectsPendingProposal();
     void keyIsOnlyInTheSecretStore();
     void bridgeFollowsTheOpenDocument();
+    void autoModeAppliesWithoutAskingAndStaysUndoable();
     void companionPanelAndDialogsOpenFromQml();
 };
 
@@ -602,6 +640,32 @@ void StudioCompanionTest::keyIsOnlyInTheSecretStore() {
     QVERIFY(!rig.companion.providerReady());
 }
 
+void StudioCompanionTest::autoModeAppliesWithoutAskingAndStaysUndoable() {
+    Rig rig;
+    open(rig, false);
+    desktop::companion_settings::setAutoApply(true);
+    QVERIFY(rig.companion.autoApply());
+    QVERIFY(rig.companion.setApiKey(QString::fromLatin1(kKey)));
+    rig.companion.setProviderEnabled(true);
+    const auto before = colour(rig);
+    const auto steps = rig.session.undoNames().size();
+    rig.script->replies = {toolReply("project_apply",
+                                     "{\"operations\":[{\"op\":\"set_color\",\"object\":101,"
+                                     "\"rgb\":\"#FF0000\"}]}"),
+                           textReply("Fait.")};
+    QVERIFY(rig.companion.send(QStringLiteral("passe l'objet en rouge")));
+    QTRY_VERIFY_WITH_TIMEOUT(
+        rig.companion.messages().last().toMap().value(QStringLiteral("text")).toString() == "Fait.",
+        10'000);
+    QVERIFY(!rig.companion.proposalPending()); // aucune carte : application directe
+    QCOMPARE(colour(rig), (std::array<std::uint8_t, 3>{255, 0, 0}));
+    QCOMPARE(rig.session.undoNames().size(), steps + 1); // l'historique garde UNE étape
+    QCOMPARE(rig.companion.events().front().toMap().value(QStringLiteral("outcome")).toString(),
+             QStringLiteral("applied"));
+    rig.companion.undoLast();
+    QCOMPARE(colour(rig), before);
+}
+
 void StudioCompanionTest::bridgeFollowsTheOpenDocument() {
     Rig rig;
     open(rig, false);
@@ -612,9 +676,27 @@ void StudioCompanionTest::bridgeFollowsTheOpenDocument() {
     const auto session = rig.session.liveBridge().session_id();
     rig.session.replaceProject(anchorProject(), true); // nouveau document : nouvelle session
     QVERIFY(rig.session.liveBridge().session_id() != session);
-    QVERIFY(rig.companion.prepareClaudeCode().isEmpty());
+    QVERIFY(rig.companion.openClaudeCodeTerminal().isEmpty());
     QVERIFY(QGuiApplication::clipboard()->text().contains(QStringLiteral("--live")));
-    QVERIFY(rig.companion.setBridgeEnabled(false).isEmpty());
+    // Claude Code est lancé tout seul, dans un workspace relié à CE processus avec les skills.
+    QCOMPARE(rig.launch->calls, 1);
+    QVERIFY(!rig.launch->workDir.isEmpty());
+    QFile mcpConfig(QDir(rig.launch->workDir).filePath(QStringLiteral(".mcp.json")));
+    QVERIFY(mcpConfig.open(QIODevice::ReadOnly));
+    const auto mcpText = QString::fromUtf8(mcpConfig.readAll());
+    QVERIFY(mcpText.contains(QStringLiteral("--live")));
+    QVERIFY(mcpText.contains(QString::number(QCoreApplication::applicationPid())));
+    QVERIFY(QFileInfo::exists(QDir(rig.launch->workDir)
+                                  .filePath(QStringLiteral(".claude/skills/openstitch-live-edit/"
+                                                           "SKILL.md"))));
+    // Mode intégré : Claude Code devient le fournisseur du chat, SANS ouvrir de terminal.
+    QVERIFY(!rig.companion.claudeCodeActive());
+    QVERIFY(rig.companion.prepareClaudeCode().isEmpty());
+    QVERIFY(rig.companion.claudeCodeActive());
+    QVERIFY(rig.companion.providerReady());
+    QCOMPARE(rig.launch->calls, 1); // inchangé : aucun terminal supplémentaire
+    QVERIFY(rig.companion.setBridgeEnabled(false).isEmpty()); // couper le pont détache l'agent
+    QVERIFY(!rig.companion.claudeCodeActive());
     QVERIFY(!rig.companion.bridgeActive());
     rig.companion.setFullyDisabled(true);
     QVERIFY(!rig.companion.setBridgeEnabled(true).isEmpty()); // désactivé : refus

@@ -827,8 +827,23 @@ void GpuCanvas::mousePressEvent(QMouseEvent* event) {
                event->button() == Qt::LeftButton) {
         // Espace Vectorisation : le clic choisit une FORME (couche vectors), pas un objet de
         // points.
-        const auto p = camera_.screenToWorld({lastMouse_.x(), lastMouse_.y()});
-        vectorPicker_(p.x, p.y, 5.0 / camera_.scale(), ctrl, false);
+        // Poignées et glisser dans la boîte d'abord : sans cela, l'espace Vecteurs ne pouvait
+        // ni redimensionner, ni pivoter, ni déplacer la sélection.
+        const int handle = editor_ ? handleAt(lastMouse_) : -1;
+        if (handle >= 0) {
+            gesture_ = Gesture::Handle;
+            handle_ = handle;
+            handleBox_ = selectionRect();
+        } else {
+            const auto p = camera_.screenToWorld({lastMouse_.x(), lastMouse_.y()});
+            const bool inBox = selectionRect().contains(lastMouse_);
+            const auto picked = vectorPicker_(p.x, p.y, 5.0 / camera_.scale(), ctrl, inBox);
+            if (!ctrl && editor_ && selectionRect().contains(lastMouse_) && editor_->beginMove()) {
+                gesture_ = Gesture::Move;
+            } else if (!ctrl && editor_ && picked.isEmpty()) {
+                gesture_ = Gesture::Marquee; // cadre de sélection sur le vide
+            }
+        }
     } else if (controller_ && scene_ && event->button() == Qt::LeftButton) {
         const auto p = camera_.screenToWorld({lastMouse_.x(), lastMouse_.y()});
         const auto hit = scene_->pick(p.x, p.y, 5.0 / camera_.scale());

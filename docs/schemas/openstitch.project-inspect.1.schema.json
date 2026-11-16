@@ -76,6 +76,12 @@
         },
         "height_px": {
           "type": "integer"
+        },
+        "prep_steps": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       },
       "required": [

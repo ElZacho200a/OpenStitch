@@ -216,7 +216,9 @@ void ToolController::setSnapRadiusPx(int value) {
 std::vector<std::uint64_t> ToolController::selectedIds() const {
     std::vector<std::uint64_t> ids;
     for (const auto& t : studio_.session().selection().targets()) {
-        if (t.kind == TargetKind::EmbroideryObject) {
+        // Les formes vectorielles pas encore converties en broderie restent éditables
+        // (nœuds, découpe) : `node_edit` résout l'un ou l'autre via `sourceOf`.
+        if (t.kind == TargetKind::EmbroideryObject || t.kind == TargetKind::VectorObject) {
             ids.push_back(t.id);
         }
     }

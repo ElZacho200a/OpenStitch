@@ -16,6 +16,7 @@
 
 #include "document_session.hpp"
 #include "openstitch/mcp/live.hpp"
+#include "stage_status.hpp"
 
 namespace openstitch::desktop_v2 {
 
@@ -42,12 +43,27 @@ public:
     LiveCompanion& operator=(const LiveCompanion&) = delete;
 
     [[nodiscard]] mcp::LiveService& service() { return *service_; }
+    // Ouvrir / enregistrer sont propres à l'hôte (chemin courant, tâches asynchrones, récents) :
+    // sans ces actions, project_open et project_save répondent « indisponible ».
+    void setHostActions(mcp::LiveHostActions actions) {
+        service_->set_host_actions(std::move(actions));
+    }
     [[nodiscard]] const std::vector<CompanionEvent>& events() const { return events_; }
     [[nodiscard]] std::size_t appliedCount() const;
     [[nodiscard]] std::size_t refusedCount() const;
 
     // Appelé à chaque nouvel événement du journal (fil GUI) : l'interface se met à jour.
     void setOnChanged(std::function<void()> fn) { onChanged_ = std::move(fn); }
+
+    // Décide si une demande sera montrée à l'utilisateur (outil -> vrai). Faux = approuvée
+    // d'office (mode automatique) : le pont ne calcule pas l'aperçu avant/après. Absent : vrai.
+    void setPreviewWanted(std::function<bool(const std::string&)> fn) {
+        previewWanted_ = std::move(fn);
+    }
+
+    // Appelé (fil GUI) juste avant chaque demande d'application, avec l'espace où son effet se
+    // voit : l'interface y bascule pour que l'utilisateur suive l'agent étape par étape.
+    void setOnStage(std::function<void(StageId)> fn) { onStage_ = std::move(fn); }
 
     // L'application se ferme ou désactive le pont : plus aucun appel d'agent ne peut aboutir.
     void close();
@@ -63,6 +79,8 @@ private:
     std::unique_ptr<mcp::LiveService> service_;
     std::vector<CompanionEvent> events_;
     std::function<void()> onChanged_;
+    std::function<bool(const std::string&)> previewWanted_;
+    std::function<void(StageId)> onStage_;
 };
 
 } // namespace openstitch::desktop_v2

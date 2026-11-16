@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
+#include <vector>
+
+#include <optional>
+
 // Desktop V2 / Studio -- état des QUATRE ÉTAPES du pipeline, lu dans le document :
 // image -> segmentation -> vectorisation -> points. Pure fonction du `Project` (et d'un drapeau
 // d'interface), sans Qt : l'adaptateur `WorkspaceController` n'ajoute que la plomberie.
@@ -51,5 +55,19 @@ struct StageInputs {
 [[nodiscard]] std::string_view stageIdName(StageId id);
 // "empty" | "upToDate" | "stale" | "blocked".
 [[nodiscard]] std::string_view stageStateName(StageState state);
+
+// Espace où l'on VOIT l'effet d'une opération de lot (`project_apply`, pont du compagnon) : le
+// Studio y bascule pendant que l'agent travaille. Image : image source et prétraitements ;
+// Segmentation : `segment_image`, `seg_*` ; Vecteurs : formes ; tout le reste touche aux objets de
+// broderie, donc Points. Aucun espace (nullopt) pour une opération NEUTRE, qui ne change pas ce
+// qu'on regarde (cadre, machine, noms, mémoire sémantique, groupes, visibilité, verrou) : la
+// fenêtre reste où elle est.
+[[nodiscard]] std::optional<StageId> stageForOperation(std::string_view op);
+// Lot ou outil complet : l'espace de la DERNIÈRE opération non neutre (là où le résultat
+// apparaît).
+// `tool` : project_digitize / semantic_import / semantic_replace -> Points ; outils de fichier et
+// de permission -> aucun changement d'espace.
+[[nodiscard]] std::optional<StageId> stageForLiveTool(std::string_view tool,
+                                                      const std::vector<std::string>& operations);
 
 } // namespace openstitch::desktop_v2
