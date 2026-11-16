@@ -14,6 +14,7 @@ add_library(openstitch_studio_ui STATIC
     edit_controller.cpp edit_controller.hpp
     file_controller.cpp file_controller.hpp
     inspector_controller.cpp inspector_controller.hpp
+    recipe_swatch_provider.cpp recipe_swatch_provider.hpp
     gpu_canvas.cpp gpu_canvas.hpp
     frame_probe.cpp frame_probe.hpp
     canvas_renderer.cpp canvas_renderer.hpp
@@ -62,7 +63,7 @@ set(studio_qml_files
     qml/StudioComboBox.qml qml/StudioCard.qml
     qml/SectionLabel.qml qml/ActionPalette.qml qml/ObjectTree.qml qml/LayerPanel.qml
     qml/CanvasContextMenu.qml qml/TransformHandles.qml qml/EditBar.qml qml/FilePanel.qml
-    qml/Inspector.qml qml/ParamField.qml qml/ParamSection.qml
+    qml/Inspector.qml qml/ParamField.qml qml/ParamSection.qml qml/RecipeCatalog.qml
     qml/ViewPanel.qml qml/SimulationBar.qml qml/AnalysisPanel.qml qml/ThreadPanel.qml
     qml/PreparePanel.qml qml/ImagePrepSection.qml qml/SegmentationSection.qml
     qml/RegionTools.qml qml/AiSection.qml qml/CompanionPanel.qml qml/PreferencesDialog.qml

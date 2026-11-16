@@ -21,6 +21,7 @@
 #include "object_labels.hpp"
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/document/multi_blend.hpp"
+#include "openstitch/document/stitch_recipes.hpp"
 #include "openstitch/formats/dst.hpp"
 #include "openstitch/project_io/project_io.hpp"
 #include "openstitch/project_ops/factory.hpp"
@@ -164,6 +165,7 @@ private slots:
     void machineOutputIsByteIdentical();
     void persistsInTheOspFile();
     void presetsLifecycle();
+    void recipesApplyThroughControllerAndQml();
     void qmlInspectorEditsThroughTheController();
     void sliderWheelRequiresFocusAndOtherwiseScrollsThePanel();
 };
@@ -251,7 +253,7 @@ void StudioInspectorTest::everySpecFieldIsExposedAndEditable() {
             }
         }
     }
-    QVERIFY(specFields == 176); // the complete table lists every engine setting of the 14 types
+    QVERIFY(specFields == 180); // the complete table lists every engine setting of the 14 types
     QCOMPARE(exposed, specFields);
     QCOMPARE(typesWithSpecs.size(), static_cast<std::size_t>(14));
 }
@@ -782,6 +784,73 @@ void StudioInspectorTest::presetsLifecycle() {
     QVERIFY(inspector.removePreset(0).isEmpty());
     QCOMPARE(session.project().stitch_presets.size(), static_cast<std::size_t>(1));
     QVERIFY(!inspector.removePreset(7).isEmpty());
+}
+
+void StudioInspectorTest::recipesApplyThroughControllerAndQml() {
+    DocumentSession session;
+    auto created = project_ops::create_empty_project({});
+    session.replaceProject(std::move(*created), true);
+    const auto id = addRect(session);
+    StudioController studio(session);
+    InspectorController inspector(studio);
+    QVERIFY(!inspector.applyRecipe(QStringLiteral("stem-stitch")).isEmpty()); // no selection
+    select(session, {id});
+    const auto recipes = inspector.recipes();
+    QCOMPARE(recipes.size(), static_cast<qsizetype>(document::stitch_recipes().size()));
+    QVERIFY(!inspector.applyRecipe(QStringLiteral("no-such-recipe")).isEmpty());
+    const auto depth = session.undoNames().size();
+    QVERIFY(inspector.applyRecipe(QStringLiteral("cross-stitch")).isEmpty());
+    QCOMPARE(session.undoNames().size(), depth + 1); // one undo step
+    QVERIFY(object(session, id).params == document::find_stitch_recipe("cross-stitch")->params);
+    QVERIFY(session.undo());
+    QVERIFY(object(session, id).is_tatami());
+
+    // The Studio inspector exposes the catalogue: choose, read the note, apply.
+    QQmlEngine engine;
+    engine.rootContext()->setContextProperty(QStringLiteral("inspector"), &inspector);
+    QQmlComponent component(&engine, QUrl(QStringLiteral("qrc:/studio/qml/Inspector.qml")));
+    QVERIFY2(component.status() == QQmlComponent::Ready, qPrintable(component.errorString()));
+    QQuickWindow window;
+    std::unique_ptr<QObject> item(component.create());
+    auto* root = qobject_cast<QQuickItem*>(item.get());
+    QVERIFY(root != nullptr);
+    root->setParentItem(window.contentItem());
+    root->setSize({320, 1600});
+    QTRY_VERIFY(findItem(root, QStringLiteral("recipeCatalog")) != nullptr);
+    auto* catalog = findItem(root, QStringLiteral("recipeCatalog"));
+    // One OpenStitch-rendered tile per recipe.
+    for (const auto& r : document::stitch_recipes()) {
+        QTRY_VERIFY(findItem(root, QStringLiteral("recipeTile_") + QString::fromUtf8(r.id)) !=
+                    nullptr);
+    }
+    // Filters and search narrow the tiles (presentation only).
+    catalog->setProperty("filter", QStringLiteral("approximation"));
+    QTRY_VERIFY(findItem(root, QStringLiteral("recipeTile_cross-stitch")) == nullptr);
+    QVERIFY(findItem(root, QStringLiteral("recipeTile_split-stitch")) != nullptr);
+    catalog->setProperty("filter", QStringLiteral("all"));
+    auto* search = findItem(root, QStringLiteral("recipeSearch"));
+    QVERIFY(search != nullptr);
+    search->setProperty("text", QStringLiteral("BAYEUX"));
+    QTRY_VERIFY(findItem(root, QStringLiteral("recipeTile_cross-stitch")) == nullptr);
+    QVERIFY(findItem(root, QStringLiteral("recipeTile_bayeux-stitch")) != nullptr);
+    search->setProperty("text", QString());
+    // Optional visual proof (no pixel assertion): OPENSTITCH_CAPTURE_DIR=<dir> saves the catalogue.
+    if (const QByteArray dir = qgetenv("OPENSTITCH_CAPTURE_DIR"); !dir.isEmpty()) {
+        window.resize(320, 1600);
+        window.show();
+        QTest::qWait(1500); // asynchronous thumbnails
+        window.grabWindow().save(QString::fromLocal8Bit(dir) +
+                                 QStringLiteral("/recipe-catalog.png"));
+    }
+    // Selecting a simulation shows its warning; Apply converts the selection.
+    const auto* split = document::find_stitch_recipe("split-stitch");
+    QVERIFY(split != nullptr && split->fidelity == document::RecipeFidelity::Approximation);
+    catalog->setProperty("selectedId", QStringLiteral("split-stitch"));
+    auto* note = findItem(root, QStringLiteral("recipeNote"));
+    QVERIFY(note != nullptr);
+    QTRY_VERIFY(note->property("text").toString().contains(QStringLiteral("Simulation")));
+    QMetaObject::invokeMethod(findItem(root, QStringLiteral("applyRecipe")), "clicked");
+    QVERIFY(object(session, id).params == split->params);
 }
 
 void StudioInspectorTest::qmlInspectorEditsThroughTheController() {
