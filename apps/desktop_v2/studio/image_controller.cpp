@@ -10,6 +10,7 @@
 #include <cmath>
 
 #include "openstitch/ai_segmentation/backend_registry.hpp"
+#include "openstitch/commands/composite_command.hpp"
 #include "openstitch/commands/project_commands.hpp"
 #include "segmentation_preview.hpp"
 #include "source_image_tools.hpp"
@@ -17,6 +18,11 @@
 namespace openstitch::desktop_v2::studio {
 
 namespace {
+
+struct SegmentedLayers {
+    std::vector<std::pair<ObjectId, segmentation::Segmentation>> layers;
+    int skippedTransparent{0};
+};
 
 QString fromUtf8(const std::string& text) {
     return QString::fromUtf8(text.data(), static_cast<qsizetype>(text.size()));
@@ -604,67 +610,114 @@ void ImageController::cancelSegmentationPreview() {
     emit previewChanged();
 }
 
-void ImageController::applySegmentation(const QVariantMap& optionsMap) {
+void ImageController::applySegmentation(const QVariantMap& options) {
+    startSegmentation(options, false);
+}
+
+void ImageController::applySegmentationToAllLayers(const QVariantMap& options) {
+    startSegmentation(options, true);
+}
+
+void ImageController::startSegmentation(const QVariantMap& optionsMap, bool allLayers) {
     if (!hasImage()) {
-        setMessage(QStringLiteral("Le projet n'a pas d'image source."), true);
+        setMessage(tr("Le projet n'a pas d'image source."), true);
         return;
     }
     if (applyTask_ != 0) {
         (void)tasks_.cancel(applyTask_);
         applyTask_ = 0;
     }
+    cancelSegmentationPreview();
     const auto options = optionsFrom(optionsMap);
-    const auto snapshot = studio_.session().snapshot();
-    const auto revision = studio_.session().revision();
-    setBusy(true, QStringLiteral("Segmentation de l'image"));
-    applyTask_ = tasks_.submit<segmentation::Segmentation>(
-        "Segmentation de l'image",
-        [snapshot, options](const TaskContext& task) -> Result<segmentation::Segmentation> {
-            auto working = processedImage(*snapshot);
-            if (!working) {
-                return std::unexpected(working.error());
+    auto& session = studio_.session();
+    const auto snapshot = session.snapshot();
+    const auto revision = session.revision();
+
+    std::vector<ObjectId> sources;
+    if (allLayers) {
+        if (snapshot->hasImage()) {
+            sources.emplace_back();
+        }
+        for (const auto& calque : snapshot->calques) {
+            if (snapshot->findImageSource(calque.id) != nullptr) {
+                sources.push_back(calque.id);
             }
-            auto seg = segmentation::segment(*working, options);
-            if (!seg) {
-                return std::unexpected(seg.error());
-            }
-            if (task.cancelled()) {
-                return cancelled_error();
-            }
-            // Couleur de chaque région = moyenne réelle de l'image (comme `segment_image`).
-            for (auto& slot : seg->region_slots) {
-                if (slot) {
-                    if (const auto mean =
-                            segmentation::region_mean_color(*seg, *working, slot->id)) {
-                        slot->rgb = *mean;
+        }
+    } else {
+        sources.push_back(snapshot->imageSourceId());
+    }
+    const auto label = allLayers ? tr("Segmentation des calques") : tr("Segmentation de l'image");
+    setBusy(true, label);
+    applyTask_ = tasks_.submit<SegmentedLayers>(
+        label.toStdString(),
+        [snapshot, options, sources = std::move(sources),
+         allLayers](const TaskContext& task) -> Result<SegmentedLayers> {
+            SegmentedLayers result;
+            result.layers.reserve(sources.size());
+            for (const ObjectId id : sources) {
+                auto seg = segmentImageSource(*snapshot->findImageSource(id), options, task);
+                if (!seg) {
+                    if (allLayers && seg.error().code == segmentation::kTransparentImage) {
+                        ++result.skippedTransparent;
+                        continue;
                     }
+                    auto error = std::move(seg.error());
+                    if (allLayers && id.valid() && error.category != ErrorCategory::Cancelled) {
+                        error.message = snapshot->findCalque(id)->name + " : " + error.message;
+                    }
+                    return std::unexpected(std::move(error));
                 }
+                result.layers.emplace_back(id, std::move(*seg));
             }
-            return std::move(*seg);
+            return result;
         },
-        [this, revision](Result<segmentation::Segmentation>&& r) {
+        [this, revision, allLayers](Result<SegmentedLayers>&& result) {
             applyTask_ = 0;
             setBusy(false);
-            if (!r) {
-                setMessage(QStringLiteral("Segmentation impossible : ") + errorText(r.error()),
+            if (!result) {
+                setMessage(tr("Segmentation impossible : %1").arg(errorText(result.error())), true);
+                return;
+            }
+            auto& current = studio_.session();
+            if (current.revision() != revision) {
+                setMessage(tr("Le document a changé pendant le calcul : relancez la segmentation."),
                            true);
                 return;
             }
-            if (studio_.session().revision() != revision) {
-                setMessage(QStringLiteral("Le document a changé pendant le calcul : relancez la "
-                                          "segmentation."),
-                           true);
+            if (result->layers.empty()) {
+                setMessage(
+                    tr("Aucun calque à segmenter : les images sont entièrement transparentes."),
+                    true);
                 return;
             }
-            const int regions = static_cast<int>(r->region_count());
-            studio_.session().execute(
-                std::make_unique<commands::SetSegmentationCommand>(std::move(*r)));
-            cancelSegmentationPreview();
-            setMessage(QStringLiteral("Image segmentée en %1 régions (Ctrl+Z pour annuler). Les "
-                                      "objets sont à régénérer.")
-                           .arg(regions),
-                       false);
-            emit segmentationApplied(regions);
+            if (allLayers) {
+                auto command =
+                    std::make_unique<commands::CompositeCommand>("Segmenter tous les calques");
+                for (auto& [source, seg] : result->layers) {
+                    command->add(
+                        std::make_unique<commands::SetSegmentationCommand>(std::move(seg), source));
+                }
+                current.execute(std::move(command));
+                auto message = tr("%n calque(s) segmenté(s). Ctrl+Z pour annuler.", nullptr,
+                                  static_cast<int>(result->layers.size()));
+                if (result->skippedTransparent > 0) {
+                    message += QStringLiteral(" ") + tr("%n calque(s) transparent(s) ignoré(s).",
+                                                        nullptr, result->skippedTransparent);
+                }
+                setMessage(message);
+            } else {
+                auto& [source, seg] = result->layers.front();
+                const int regions = static_cast<int>(seg.region_count());
+                current.execute(
+                    std::make_unique<commands::SetSegmentationCommand>(std::move(seg), source));
+                setMessage(tr("Image segmentée en %1 régions (Ctrl+Z pour annuler). Les objets "
+                              "sont à régénérer.")
+                               .arg(regions));
+            }
+            for (const auto& layer : result->layers) {
+                emit segmentationAppliedToLayer(layer.first);
+            }
+            emit segmentationApplied(regionCount());
         });
 }
 

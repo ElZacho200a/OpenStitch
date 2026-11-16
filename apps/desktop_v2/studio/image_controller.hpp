@@ -125,6 +125,7 @@ public:
     // Segmente l'image de travail et installe la segmentation (UNE étape d'annulation). Les objets
     // existants ne sont pas régénérés : `segmentationApplied()` le signale à « Régions ».
     Q_INVOKABLE void applySegmentation(const QVariantMap& options);
+    Q_INVOKABLE void applySegmentationToAllLayers(const QVariantMap& options);
     Q_INVOKABLE void cancelTask();
 
     // --- Segmentation IA (backends déclarés dans les réglages IA) ---------------------------
@@ -140,6 +141,7 @@ signals:
     // Une opération d'image ou une segmentation a changé le document : les objets sont obsolètes.
     void prepApplied(const QString& label);
     void segmentationApplied(int regions);
+    void segmentationAppliedToLayer(ObjectId source);
 
 private:
     void setMessage(const QString& text, bool error = false);
@@ -147,6 +149,7 @@ private:
     void scheduleRefresh();
     void refreshNow();
     void trackOps();
+    void startSegmentation(const QVariantMap& options, bool allLayers);
     [[nodiscard]] segmentation::SegmentationOptions optionsFrom(const QVariantMap& map) const;
 
     StudioController& studio_;

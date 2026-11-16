@@ -118,6 +118,18 @@ ColumnLayout {
             onClicked: imageTools.busy ? imageTools.cancelTask() : imageTools.cancelSegmentationPreview()
         }
     }
+    StudioButton {
+        objectName: "segmentAllLayersButton"
+        Layout.fillWidth: true
+        visible: imageTools.imageLayers.length > 1
+        enabled: !imageTools.busy && !studio.busy
+        text: qsTr("Segmenter tous les calques")
+        tooltip: qsTr("Recalcule les régions de chaque image avec ces réglages. L’ensemble est annulable.")
+        onClicked: {
+            livePreview.stop()
+            imageTools.applySegmentationToAllLayers(section.options)
+        }
+    }
     Text {
         Layout.fillWidth: true
         visible: imageTools.busy

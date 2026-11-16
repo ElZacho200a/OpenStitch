@@ -16,6 +16,10 @@
 #include "openstitch/core/task_control.hpp"
 #include "openstitch/segmentation/segmentation.hpp"
 
+namespace openstitch::document {
+struct ImageSource;
+}
+
 namespace openstitch::desktop_v2 {
 
 struct SegmentationPreview {
@@ -28,6 +32,10 @@ struct SegmentationPreview {
     double seconds{0.0};
     segmentation::SegmentationOptions options; // réglages qui ont produit cet aperçu
 };
+
+[[nodiscard]] Result<segmentation::Segmentation>
+segmentImageSource(const document::ImageSource& source,
+                   const segmentation::SegmentationOptions& options, const TaskContext& task);
 
 // Charge `image` et la segmente avec `options`. Erreur du moteur sinon (fichier illisible…).
 [[nodiscard]] Result<SegmentationPreview>

@@ -72,8 +72,14 @@ RegionController::RegionController(StudioController& studio, ImageController& im
     });
     connect(&images_, &ImageController::prepApplied, this,
             [this] { setStale(true, QStringLiteral("l'image a été retraitée")); });
-    connect(&images_, &ImageController::segmentationApplied, this,
-            [this](int) { setStale(true, QStringLiteral("l'image a été re-segmentée")); });
+    connect(&images_, &ImageController::segmentationAppliedToLayer, this, [this](ObjectId source) {
+        const auto reason = tr("l'image a été re-segmentée");
+        if (source == observedImageSource_) {
+            setStale(true, reason);
+        } else {
+            staleSources_.insert_or_assign(source, reason);
+        }
+    });
     scheduleRefresh();
 }
 
