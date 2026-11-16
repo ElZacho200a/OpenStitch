@@ -587,10 +587,21 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& input,
     // Exclure seulement le plus gros MORCEAU laissait les autres fragments du
     // même fond se faire numériser comme de vrais objets ; exclure toute
     // région de cette couleur EXACTE couvre le fond dans son ensemble.
-    const std::optional<std::array<std::uint8_t, 3>> backgroundRgb =
-        options.skip_largest_region && input.region_slots[largestSlot]
-            ? std::optional{input.region_slots[largestSlot]->rgb}
-            : std::nullopt;
+    // Motif recadré serré : la plus grande région est le motif, pas le fond. Si
+    // `background_candidate` reconnaît une autre couleur qui encadre l'image, c'est elle le fond
+    // (même règle que la recommandation affichée par la CLI et le bureau).
+    const std::optional<std::array<std::uint8_t, 3>> backgroundRgb = [&] {
+        std::optional<std::array<std::uint8_t, 3>> rgb;
+        if (!options.skip_largest_region || !input.region_slots[largestSlot]) {
+            return rgb;
+        }
+        rgb = input.region_slots[largestSlot]->rgb;
+        if (const auto candidate = segmentation::background_candidate(input);
+            candidate && candidate->recommended) {
+            rgb = candidate->rgb;
+        }
+        return rgb;
+    }();
 
     // Fragments (Lot D, audit marine plein cadre) : sur une COPIE de travail
     // (la segmentation de l'utilisateur reste intacte), retire d'abord les

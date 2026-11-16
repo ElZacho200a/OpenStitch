@@ -314,6 +314,30 @@ TEST_CASE(
     CHECK_FALSE(result->vectors.empty());
 }
 
+// Audit IA-DATA-01 (formes synthétiques passées dans `project digitize`) : un motif qui remplit
+// presque toute l'image est la plus grande région ; l'ancien choix ignorait alors le MOTIF... ou,
+// en mode automatique, rien du tout, et le liseré blanc était brodé en tatami autour du motif.
+TEST_CASE("logo recadre serre -> le cadre blanc est ignore, le motif est brode") {
+    image::Image img = blank(40, 30);
+    for (int y = 0; y < 30; ++y) {
+        for (int x = 0; x < 40; ++x) {
+            const bool motif = x >= 3 && x < 37 && y >= 3 && y < 27; // 816 px contre 384
+            set_px(img, x, y, motif ? 30 : 255, motif ? 100 : 255, motif ? 200 : 255);
+        }
+    }
+    const auto seg = segmentation::segment(img, {.max_colors = 2, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+
+    IdGenerator<ObjectId> ids;
+    AutoOptions o = opts();
+    o.skip_largest_region = true;
+    const auto result = auto_digitize(*seg, ids, o);
+    REQUIRE(result.has_value());
+    REQUIRE(result->vectors.size() == 1);
+    CHECK(result->vectors.front().rgb[2] > 150); // le motif bleu (couleur quantifiée)
+    CHECK(result->vectors.front().rgb[0] < 100);
+}
+
 TEST_CASE("identifiants uniques, objets editables, deterministe") {
     image::Image img = blank(30, 30);
     for (int y = 0; y < 30; ++y) {
