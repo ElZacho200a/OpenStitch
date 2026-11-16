@@ -75,6 +75,10 @@ struct StudioSceneSnapshot {
     std::size_t commandCount{0};
     double threadWidthMm{0.22};
     stitch_render::RectMm hoop;
+    // Forme réelle du cadre, rayon des coins et marge de sécurité (affichage du tambour).
+    document::HoopShape hoopShape{document::HoopShape::Rectangle};
+    double hoopCornerMm{0};
+    double hoopMarginMm{0};
     stitch_render::RectMm bounds; // hoop union thread geometry, suitable for fit
     std::vector<StudioSegment> segments;
     std::vector<StudioVertex> vertices;

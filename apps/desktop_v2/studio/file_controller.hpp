@@ -124,6 +124,10 @@ public:
     Q_INVOKABLE [[nodiscard]] QVariantMap currentHoop() const;
     Q_INVOKABLE QString applyHoop(const QString& hoopId, double marginMm);
     Q_INVOKABLE QString applyCustomHoop(double widthMm, double heightMm, double marginMm);
+    // Cadre complet en UNE commande annulable : forme (« rectangle », « ellipse », « rounded »),
+    // dimensions, rayon des coins (forme « rounded ») et marge, en mm.
+    Q_INVOKABLE QString applyHoopSpec(const QString& shape, double widthMm, double heightMm,
+                                      double cornerRadiusMm, double marginMm);
     Q_INVOKABLE QString applyMachine(const QString& machineId);
     Q_INVOKABLE QString saveCurrentHoopAs(const QString& name);
     Q_INVOKABLE QString applyUserHoop(const QString& name);

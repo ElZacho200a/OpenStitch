@@ -19,6 +19,7 @@
 #include <filesystem>
 
 #include "action_controller.hpp"
+#include "canvas_renderer.hpp"
 #include "digitize_pipeline.hpp"
 #include "edit_controller.hpp"
 #include "file_controller.hpp"
@@ -137,6 +138,55 @@ private slots:
         QCOMPARE(pieces[1].srcPx.left(), 25.0);
         view.mode = SourceCompare::Before;
         QCOMPARE(sourceImagePieces(view).size(), std::size_t{1});
+    }
+
+    // Le tambour est dessiné dans tous les espaces. Sans la couche des points, l'anneau est creux :
+    // aucun triangle ne couvre l'intérieur du cadre (l'image, les régions, les formes restent
+    // visibles) ; avec les points, le fond de tissu le recouvre.
+    void hoopRingIsHollowWithoutStitches() {
+        const HoopDisplay hoop{{-50.0, -50.0, 50.0, 50.0}};
+        const auto covers = [](const std::vector<StudioVertex>& v, double x, double y) {
+            for (std::size_t i = 0; i + 2 < v.size(); i += 3) {
+                const double area = (v[i + 1].x - v[i].x) * (v[i + 2].y - v[i].y) -
+                                    (v[i + 1].y - v[i].y) * (v[i + 2].x - v[i].x);
+                if (std::abs(area) < 1e-9) {
+                    continue; // triangle plat (coins vifs) : ne couvre rien
+                }
+                const auto side = [&](const StudioVertex& a, const StudioVertex& b) {
+                    return (b.x - a.x) * (y - a.y) - (b.y - a.y) * (x - a.x);
+                };
+                const double d0 = side(v[i], v[i + 1]);
+                const double d1 = side(v[i + 1], v[i + 2]);
+                const double d2 = side(v[i + 2], v[i]);
+                const bool neg = d0 < 0 || d1 < 0 || d2 < 0;
+                const bool pos = d0 > 0 || d1 > 0 || d2 > 0;
+                if (!(neg && pos)) {
+                    return true;
+                }
+            }
+            return false;
+        };
+        const auto hollow = hoopVertices(hoop, false);
+        QVERIFY(!hollow.empty());
+        QVERIFY(!covers(hollow, 0.0, 0.0));
+        QVERIFY(!covers(hollow, 40.0, -40.0));
+        QVERIFY(covers(hollow, -50.0 - 0.5, 0.0)); // l'anneau entoure le cadre
+        QVERIFY(covers(hoopVertices(hoop, true), 0.0, 0.0));
+        QVERIFY(covers(hoopVertices(hoop, true), 45.0, 45.0)); // coin du rectangle : tissu
+
+        // Forme réelle : un rond ne couvre pas le coin de sa boîte englobante.
+        const HoopDisplay round{{-50.0, -50.0, 50.0, 50.0}, document::HoopShape::Ellipse};
+        QVERIFY(covers(hoopVertices(round, true), 0.0, 0.0));
+        QVERIFY(!covers(hoopVertices(round, true), 45.0, 45.0));
+        QVERIFY(!covers(hoopVertices(round, false), 0.0, 0.0));
+        QVERIFY(covers(hoopVertices(round, false), 0.0, -50.0 - 0.5)); // anneau sur le cercle
+
+        // Marge : la zone brodable est tracée en retrait, sans fond.
+        HoopDisplay margin = hoop;
+        margin.marginMm = 10.0;
+        const auto withMargin = hoopVertices(margin, false);
+        QVERIFY(covers(withMargin, -40.0 + 0.05, 0.0));
+        QVERIFY(!covers(withMargin, -30.0, 0.0));
     }
 
     void importingRasterBeginsWithImageOnlyAndSegmentationIsExplicit() {
@@ -310,6 +360,9 @@ private slots:
         QVERIFY(canvas);
         QVERIFY(canvas->layers().value("sourceImage").toBool());
         QVERIFY(!canvas->layers().value("stitches").toBool());
+        // Le cadre est construit aussi dans l'espace Image (il ne dépend plus de la couche des
+        // points).
+        QTRY_VERIFY_WITH_TIMEOUT(canvas->geometryBuildCount() > 0, 5'000);
         QTRY_VERIFY_WITH_TIMEOUT(canvas->sourceImage().data != nullptr, 5'000);
         QCOMPARE(canvas->sourceImage().data->after.width(), images.imageWidth());
         QCOMPARE(canvas->sourceImage().data->after.height(), images.imageHeight());

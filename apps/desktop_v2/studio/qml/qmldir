@@ -1,6 +1,7 @@
 singleton Theme 1.0 Theme.qml
 ActionPalette 1.0 ActionPalette.qml
 FilePanel 1.0 FilePanel.qml
+HoopPopover 1.0 HoopPopover.qml
 Inspector 1.0 Inspector.qml
 RecipeCatalog 1.0 RecipeCatalog.qml
 ParamField 1.0 ParamField.qml
