@@ -493,6 +493,36 @@ TEST_CASE("fond blanc ne touchant que 2 bords -> pas recommande par defaut") {
     CHECK(lax->recommended);
 }
 
+TEST_CASE("logo recadre serre : le liseré blanc qui encadre est le fond, pas le motif") {
+    // Motif bleu de 36x26 dans une image 40x30 : le motif est la plus grande région (78 %), le
+    // blanc n'est qu'un cadre de 2 px. Avant : candidate = le motif, non recommandé, fond brodé.
+    const auto img = framed(40, 30, {250, 250, 250}, {30, 100, 200}, 2, 2, 38, 28);
+    const auto seg = segment(img, {.max_colors = 2, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+    const auto cand = background_candidate(*seg);
+    REQUIRE(cand.has_value());
+    CHECK(cand->lightness > 90.0);
+    CHECK(cand->sides_touched == 4);
+    CHECK(cand->border_ratio > 0.99);
+    CHECK(cand->area_ratio < 0.3);
+    CHECK(cand->recommended);
+    // La voie « pourtour » désactivée, on retrouve l'ancien comportement.
+    const auto off = background_candidate(*seg, {.min_border_ratio = 2.0});
+    REQUIRE(off.has_value());
+    CHECK(off->rgb[2] > 150); // le motif bleu
+    CHECK_FALSE(off->recommended);
+}
+
+TEST_CASE("plein cadre : une petite region qui ne fait pas tout le tour n'est pas le fond") {
+    // Mer (plus grande) et bande de ciel clair en haut sur 3 bords : rien n'encadre l'image.
+    const auto img = framed(40, 30, {6, 101, 60}, {240, 240, 245}, 0, 0, 40, 8);
+    const auto seg = segment(img, {.max_colors = 2, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+    const auto cand = background_candidate(*seg);
+    REQUIRE(cand.has_value());
+    CHECK_FALSE(cand->recommended);
+}
+
 TEST_CASE("region_adjacency : longueurs de frontiere des quatre quadrants") {
     const auto seg = segment(quadrants(), {.max_colors = 4, .min_region_px = 1});
     REQUIRE(seg.has_value());
