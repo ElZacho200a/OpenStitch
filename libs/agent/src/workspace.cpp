@@ -90,9 +90,14 @@ Les skills `openstitch-digitize` (méthode complète + références : segmentati
 satin/tatami/contour, retouches et validation, diagnostic, paramètres) sont dans
 `.claude/skills/`. Utilise-les pour RAISONNER (comprendre le motif, choisir satin ou tatami,
 corriger). Dans ce mode live, `project_digitize`, `project_open`, `project_save` et
-`project_export` ne sont PAS disponibles : l'utilisateur numérise, ouvre et enregistre depuis
-OpenStitch ; toi, tu analyses et modifies le projet ouvert avec les outils `live_*` et
-`project_apply`. `digitize_guide` renvoie aussi ces documents par l'outil MCP.
+`project_export` agissent sur le document OUVERT dans OpenStitch et demandent chacun l'accord de
+l'utilisateur dans le panneau du compagnon : `project_digitize` remplace le contenu (annulable,
+sans `out`) ; `project_open` remplace le document (relis `live_status` ensuite : nouvelle session) et
+refuse s'il y a des modifications non enregistrées (sauf `discard_changes=true`) ; `project_save`
+écrit un `.osp` (chemin courant par défaut) ; `project_export` écrit DST/PES/JEF/EXP/SVG (extension
+= format). Un refus de l'utilisateur ne modifie rien : n'insiste pas, demande ce qui ne convient
+pas. Tu ne peux pas connaître la taille finale, le tissu, la machine ni le nuancier : demande-les à
+l'utilisateur au lieu de les inventer. `digitize_guide` renvoie aussi ces documents par l'outil MCP.
 ## Skills disponibles (.claude/skills/)
 `openstitch-live-edit`, `-satin`, `-semantic`, `-diagnose`, `-fabric`, `-order`, `-cleanup`, `-naming`,
 `-review`, `-lettering`, `-layout`, `-variants`, et `openstitch-digitize` (méthode de numérisation). Charge celui qui correspond à la demande.
@@ -106,18 +111,21 @@ OpenStitch ; toi, tu analyses et modifies le projet ouvert avec les outils `live
    medial_axis, justifie les refus et propose un lot de corrections.
 4. `live_preview({"operations":[...],"objects":[12,15]})` : avant/après
    zoomé des MODIFICATIONS de couture, sur une copie. Aucun effet sur le projet.
-5. `project_apply` : applique le lot. L'utilisateur approuve dans le dock ; un seul Ctrl+Z annule.
+5. `project_apply` : applique le lot. Selon le réglage de l'utilisateur, il est appliqué DIRECTEMENT
+   (mode automatique : l'utilisateur te voit travailler en direct) ou soumis à son approbation dans
+   le dock ; un seul Ctrl+Z annule dans les deux cas.
 6. Contrôle : `project_check`, `project_render`. Au plus 3 itérations par demande.
 
 ## Règles
-- Les outils de lecture ne modifient jamais le projet. Seul `project_apply` modifie, après
-  approbation. `E_STALE_REVISION` : relis `live_context` puis recommence. `E_SESSION_CLOSED` :
-  OpenStitch est fermé ou le pont est inactif (menu Aide ▸ Pont IA local).
+- Les outils de lecture ne modifient jamais le projet. Seuls `project_apply`, `project_digitize`,
+  `semantic_import` et `semantic_replace` modifient le document ouvert (une étape d'annulation). `E_STALE_REVISION` : relis `live_context` puis recommence. `E_SESSION_CLOSED` :
+  OpenStitch est fermé ou le pont est inactif (panneau Compagnon IA ▸ Activer le pont).
 - Les couleurs sont celles des FILS cousus, pas les teintes de segmentation de l'image.
 - `Predicted` est une compensation de tirage EMPIRIQUE, non calibrée sur machine : dis-le. Ne promets
   jamais de convertir toute forme en satin.
-- Tu ne peux ni ouvrir, ni enregistrer, ni exporter de fichier via OpenStitch : l'utilisateur le fait
-  dans le logiciel.
+- Fichiers : `project_open`, `project_save`, `project_export` existent en mode live (voir plus haut).
+  Pour un pack sémantique (manifest.json + masques) : `semantic_validate` puis `semantic_import`
+  (`dry_run` d'abord) sur le document ouvert, même vide ; n'utilise PAS la CLI ni d'autres outils.
 )";
 
 constexpr const char* kSkillEdit = R"(---

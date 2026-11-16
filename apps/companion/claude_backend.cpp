@@ -46,6 +46,12 @@ QString model() {
 void setModel(const QString& model) {
     QSettings().setValue(QStringLiteral("ai/companion/model"), model);
 }
+bool autoApply() {
+    return QSettings().value(QStringLiteral("ai/companion/autoApply"), true).toBool();
+}
+void setAutoApply(bool on) {
+    QSettings().setValue(QStringLiteral("ai/companion/autoApply"), on);
+}
 bool autoSemanticAnalysis() {
     return QSettings().value(QStringLiteral("ai/companion/autoSemantic"), false).toBool();
 }

@@ -70,7 +70,9 @@ Controls.Popup {
             font.family: Theme.fontFamily
             font.pixelSize: Theme.smallSize
             text: !panel.hasCompanion ? "" : companion.bridgeActive
-                  ? qsTr("Pont actif : un agent (Claude Code) peut lire et proposer des changements sur le document ouvert. Chaque modification demande votre accord.")
+                  ? (companion.claudeCodeActive
+                     ? qsTr("Claude Code est branché : écrivez votre demande ci-dessous. Il travaille sur le document ouvert, et chaque étape reste annulable (Ctrl+Z).")
+                     : qsTr("Pont actif : un agent externe peut lire et modifier le document ouvert. Chaque étape reste annulable (Ctrl+Z)."))
                   : qsTr("Pont coupé : aucun agent externe n'est relié au document.")
             Accessible.role: Accessible.StaticText
             Accessible.name: text
@@ -80,21 +82,30 @@ Controls.Popup {
             StudioButton {
                 objectName: "companionBridgeToggle"
                 text: panel.hasCompanion && companion.bridgeActive ? qsTr("Couper le pont") : qsTr("Activer le pont")
-                tooltip: qsTr("Relier ou détacher un agent MCP du document ouvert")
+                tooltip: qsTr("Active le pont et branche Claude Code directement dans ce panneau (sans terminal)")
                 onClicked: {
-                    const refusal = companion.setBridgeEnabled(!companion.bridgeActive)
+                    // Activer = relier ET lancer Claude Code (terminal, MCP, skills) ; couper = détacher.
+                    const refusal = companion.bridgeActive ? companion.setBridgeEnabled(false)
+                                                           : companion.prepareClaudeCode()
                     bridgeError.text = refusal
                 }
             }
             StudioButton {
                 objectName: "companionOpenClaudeCode"
-                text: qsTr("Ouvrir Claude Code")
-                tooltip: qsTr("Active le pont et copie la commande de branchement de Claude Code")
+                text: qsTr("Dans un terminal")
+                tooltip: qsTr("Option secondaire : ouvre Claude Code dans un terminal externe, relié à ce document")
                 onClicked: {
-                    const refusal = companion.prepareClaudeCode()
-                    bridgeError.text = refusal !== "" ? refusal : qsTr("Commande copiée : collez-la dans un terminal.")
+                    const refusal = companion.openClaudeCodeTerminal()
+                    bridgeError.text = refusal !== "" ? refusal : qsTr("Claude Code est lancé dans un terminal.")
                 }
             }
+        }
+        StudioCheckBox {
+            objectName: "companionAutoApply"
+            Layout.fillWidth: true
+            text: qsTr("Mode automatique : l'IA travaille en direct, sans validation (Ctrl+Z annule)")
+            checked: panel.hasCompanion && companion.autoApply
+            onToggled: companion.autoApply = checked
         }
         Text {
             id: bridgeError
@@ -164,11 +175,28 @@ Controls.Popup {
                         }
                     }
                 }
-                Repeater {
+                Text {
+                    Layout.fillWidth: true
+                    visible: itemList.count > 6
+                    text: qsTr("%1 opérations").arg(itemList.count)
+                    color: Theme.faint
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.smallSize
+                }
+                // Liste bornée et défilante : un lot de centaines d'opérations ne doit jamais
+                // pousser les boutons Rejeter / Appliquer hors du panneau.
+                ListView {
+                    id: itemList
+                    objectName: "companionProposalItems"
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: Math.min(contentHeight, 150)
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
                     model: panel.hasCompanion ? companion.proposal.items : []
+                    Controls.ScrollBar.vertical: Controls.ScrollBar { policy: Controls.ScrollBar.AsNeeded }
                     delegate: Text {
                         required property var modelData
-                        Layout.fillWidth: true
+                        width: ListView.view.width - 10
                         text: "• " + modelData.text
                         color: Theme.muted
                         wrapMode: Text.WordWrap

@@ -132,10 +132,141 @@ TEST_CASE("live policy classifies tools", "[live]") {
     CHECK(mcp::live_policy("project_inspect") == mcp::LivePolicy::Read);
     CHECK(mcp::live_policy("project_render") == mcp::LivePolicy::Read);
     CHECK(mcp::live_policy("project_apply") == mcp::LivePolicy::Apply);
-    for (const char* tool : {"project_open", "project_new", "project_digitize", "project_save",
-                             "project_export", "project_restore", "project_checkpoint", "bash"}) {
+    CHECK(mcp::live_policy("project_digitize") == mcp::LivePolicy::Replace);
+    for (const char* tool : {"project_open", "project_save", "project_export"}) {
+        CHECK(mcp::live_policy(tool) == mcp::LivePolicy::HostFile);
+    }
+    for (const char* tool : {"project_new", "project_close", "project_restore",
+                             "project_checkpoint", "bash"}) {
         CHECK(mcp::live_policy(tool) == mcp::LivePolicy::Denied);
     }
+}
+
+namespace {
+
+std::string error_text(const json& out) {
+    return out["content"][0]["text"].get<std::string>();
+}
+
+std::filesystem::path scratch_dir(const char* name) {
+    const auto dir = std::filesystem::temp_directory_path() / (std::string("os-live-") + name);
+    std::error_code ec;
+    std::filesystem::remove_all(dir, ec);
+    std::filesystem::create_directories(dir);
+    return dir;
+}
+
+std::string path_arg(const std::filesystem::path& path) {
+    return json(path.generic_string()).dump();
+}
+
+} // namespace
+
+TEST_CASE("live digitize replaces the open document in one approved undo step", "[live]") {
+    Doc d;
+    const auto image = std::filesystem::path(OPENSTITCH_FIXTURES_DIR) / "cli" / "logo_small.png";
+    const std::string args = "{\"image\":" + path_arg(image) + "}";
+    d.gate.answer = false;
+    const auto refused = parse(d.service.call("project_digitize", args));
+    CHECK(refused["isError"].get<bool>());
+    CHECK(error_text(refused).find("E_APPROVAL_DENIED") != std::string::npos);
+    CHECK(d.project.embroidery_objects.size() == 2);
+    CHECK_FALSE(d.stack.canUndo());
+
+    d.gate.answer = true;
+    const auto out = parse(d.service.call("project_digitize", args));
+    REQUIRE_FALSE(out["isError"].get<bool>());
+    CHECK(out["live"]["applied"].get<bool>());
+    CHECK(d.gate.last.tool == "project_digitize");
+    CHECK(!d.gate.last.warnings.empty());
+    REQUIRE_FALSE(d.project.embroidery_objects.empty());
+    CHECK(d.project.embroidery_objects.front().name != "Broderie"); // contenu remplacé
+    CHECK(d.stack.undoNames().size() == 1);
+    REQUIRE(d.stack.undo(d.project));
+    CHECK(d.project.embroidery_objects.size() == 2);
+}
+
+TEST_CASE("live digitize refuses to write a file by itself", "[live]") {
+    Doc d;
+    const auto out =
+        parse(d.service.call("project_digitize", "{\"image\":\"x.png\",\"out\":\"y.osp\"}"));
+    CHECK(out["isError"].get<bool>());
+    CHECK(d.gate.asked == 0);
+}
+
+TEST_CASE("live export writes a machine file only after approval", "[live]") {
+    Doc d;
+    const auto dir = scratch_dir("export");
+    const auto target = dir / "motif.dst";
+    const std::string args = "{\"path\":" + path_arg(target) + ",\"format\":\"dst\"}";
+
+    d.gate.answer = false;
+    const auto refused = parse(d.service.call("project_export", args));
+    CHECK(refused["isError"].get<bool>());
+    CHECK_FALSE(std::filesystem::exists(target));
+
+    d.gate.answer = true;
+    const auto out = parse(d.service.call("project_export", args));
+    REQUIRE_FALSE(out["isError"].get<bool>());
+    CHECK(std::filesystem::exists(target));
+    CHECK(std::filesystem::file_size(target) > 0);
+    CHECK_FALSE(std::filesystem::exists(dir / "motif.dst.part"));
+    CHECK(d.stack.canUndo() == false); // rien ne change dans le document
+
+    const auto wrong = parse(d.service.call(
+        "project_export", "{\"path\":" + path_arg(dir / "motif.pes") + ",\"format\":\"dst\"}"));
+    CHECK(wrong["isError"].get<bool>()); // l'extension doit suivre le format
+    std::error_code ec;
+    std::filesystem::remove_all(dir, ec);
+}
+
+TEST_CASE("live save and open go through the host and need approval", "[live]") {
+    Doc d;
+    const auto dir = scratch_dir("savefile");
+    std::string saved;
+    std::string opened;
+    mcp::LiveHostActions host;
+    host.current_path = [] { return std::string{}; };
+    host.save_project = [&saved](const std::string& path, std::string&) {
+        saved = path;
+        return true;
+    };
+    host.open_project = [&opened](const std::string& path, std::string&) {
+        opened = path;
+        return true;
+    };
+    d.service.set_host_actions(host);
+
+    const auto target = dir / "demo.osp";
+    const auto no_path = parse(d.service.call("project_save", "{}"));
+    CHECK(no_path["isError"].get<bool>()); // jamais enregistré : « path » requis
+    const auto bad_ext =
+        parse(d.service.call("project_save", "{\"path\":" + path_arg(dir / "demo.txt") + "}"));
+    CHECK(bad_ext["isError"].get<bool>());
+    CHECK(d.gate.asked == 0);
+
+    d.gate.answer = false;
+    CHECK(parse(d.service.call("project_save", "{\"path\":" + path_arg(target) + "}"))["isError"]
+              .get<bool>());
+    CHECK(saved.empty());
+    d.gate.answer = true;
+    CHECK_FALSE(parse(d.service.call("project_save", "{\"path\":" + path_arg(target) + "}"))["isError"]
+                    .get<bool>());
+    CHECK(saved == target.generic_string());
+
+    // Document modifié : l'ouverture exige discard_changes (Doc::info.dirty = true).
+    const auto guarded =
+        parse(d.service.call("project_open", "{\"path\":" + path_arg(target) + "}"));
+    CHECK(guarded["isError"].get<bool>());
+    CHECK(opened.empty());
+    // Fichier introuvable : refusé avant toute demande à l'utilisateur.
+    const int before = d.gate.asked;
+    const auto missing = parse(d.service.call(
+        "project_open", "{\"path\":" + path_arg(dir / "absent.osp") + ",\"discard_changes\":true}"));
+    CHECK(missing["isError"].get<bool>());
+    CHECK(d.gate.asked == before);
+    std::error_code ec;
+    std::filesystem::remove_all(dir, ec);
 }
 
 TEST_CASE("live read tool runs on a copy and never asks approval", "[live]") {
@@ -285,8 +416,12 @@ TEST_CASE("live mode server lists only allowed tools plus live_status", "[live]"
     CHECK(names.contains("project_inspect"));
     CHECK(names.contains("project_apply"));
     CHECK(names.contains("live_status"));
-    CHECK_FALSE(names.contains("project_open"));
-    CHECK_FALSE(names.contains("project_export"));
+    CHECK(names.contains("project_open"));
+    CHECK(names.contains("project_save"));
+    CHECK(names.contains("project_export"));
+    CHECK(names.contains("project_digitize"));
+    CHECK_FALSE(names.contains("project_new"));
+    CHECK_FALSE(names.contains("project_checkpoint"));
 
     const auto call =
         live.handle("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":"

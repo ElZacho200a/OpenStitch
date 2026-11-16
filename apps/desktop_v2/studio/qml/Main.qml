@@ -284,7 +284,7 @@ Window {
         case "cmd.companion.open": companionPanel.openPanel(); break
         case "cmd.companion.toggle":
             if (typeof companion !== "undefined")
-                companion.setBridgeEnabled(!companion.bridgeActive)
+                (companion.bridgeActive ? companion.setBridgeEnabled(false) : companion.prepareClaudeCode())
             break
         case "cmd.help.shortcuts": shortcutsSheet.openSheet(); break
         case "cmd.help.guide": helpDialog.show("guide"); break

@@ -30,7 +30,25 @@ inline constexpr std::size_t kLiveMaxRequestBytes =
 enum class LivePolicy {
     Read,   // lecture : exécutée sur une copie figée, aucune confirmation
     Apply,  // mutation : approbation explicite (sauf `dry_run`)
-    Denied, // jamais exposé en mode live (fichier, cycle de vie, checkpoints de session)
+    // Numérisation d'une image : calculée sur une copie, puis REMPLACE le contenu du document
+    // ouvert en une étape d'annulation, après approbation explicite (avant/après montrés).
+    Replace,
+    // Fichiers de l'hôte : ouvrir / enregistrer / exporter. Approbation explicite avant toute
+    // lecture de document ou écriture disque ; l'hôte doit fournir `LiveHostActions`.
+    HostFile,
+    Denied, // jamais exposé en mode live (cycle de vie, checkpoints de session)
+};
+
+// Actions que seul l'hôte sait faire (fil GUI). Un membre vide = action indisponible : l'outil
+// répond alors `E_REFUSED`.
+struct LiveHostActions {
+    // Chemin du document ouvert ("" = jamais enregistré).
+    std::function<std::string()> current_path;
+    // Ouvre un .osp (remplace le document ; nouvelle session, historique vierge). Peut être
+    // asynchrone : `true` = ouverture lancée.
+    std::function<bool(const std::string& path, std::string& error)> open_project;
+    // Enregistre le document ouvert (`path` vide = chemin courant). `true` = écrit.
+    std::function<bool(const std::string& path, std::string& error)> save_project;
 };
 
 // Politique par outil (ADR §6). Inconnu = `Denied`.
@@ -128,6 +146,9 @@ public:
     LiveService(project_ops::LiveBridge& bridge, IApprovalGate& gate, InfoProvider info,
                 std::function<void()> on_applied = {});
 
+    // Active project_open / project_save pour cet hôte (export et numérisation n'en ont pas besoin).
+    void set_host_actions(LiveHostActions actions) { host_ = std::move(actions); }
+
     // Fil GUI.
     [[nodiscard]] std::shared_ptr<LivePendingCall> begin(const std::string& tool,
                                                          const std::string& args_json);
@@ -145,6 +166,7 @@ private:
     IApprovalGate& gate_;
     InfoProvider info_;
     std::function<void()> on_applied_;
+    LiveHostActions host_;
 };
 
 // Protocole d'un client local : une ligne JSON par requête, une par réponse.

@@ -42,6 +42,11 @@ public:
     LiveCompanion& operator=(const LiveCompanion&) = delete;
 
     [[nodiscard]] mcp::LiveService& service() { return *service_; }
+    // Ouvrir / enregistrer sont propres à l'hôte (chemin courant, tâches asynchrones, récents) :
+    // sans ces actions, project_open et project_save répondent « indisponible ».
+    void setHostActions(mcp::LiveHostActions actions) {
+        service_->set_host_actions(std::move(actions));
+    }
     [[nodiscard]] const std::vector<CompanionEvent>& events() const { return events_; }
     [[nodiscard]] std::size_t appliedCount() const;
     [[nodiscard]] std::size_t refusedCount() const;

@@ -23,6 +23,10 @@ ClaudeCodeProcessBackend::~ClaudeCodeProcessBackend() {
     }
 }
 
+bool ClaudeCodeProcessBackend::running() const {
+    return !process_.isNull();
+}
+
 bool ClaudeCodeProcessBackend::available() const {
     return !executable_.isEmpty() && !workspace_.isEmpty();
 }
