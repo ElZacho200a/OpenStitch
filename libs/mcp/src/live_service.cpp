@@ -275,6 +275,7 @@ struct LivePendingCall::Impl {
     std::optional<ChoiceRequest> ask; // live_ask_user (réponse au retour sur le fil GUI)
     std::shared_ptr<const document::Project> final_project; // issu d'un project_apply réussi
     ApplyPreview apply_preview; // rendus et écarts montrés avant l'approbation
+    bool want_preview{true};    // faux en mode automatique : l'aperçu ne serait jamais montré
     // Outils de fichier (HostFile) : cible validée, format, fichier d'export calculé hors du fil
     // GUI dans un dossier temporaire (copié vers la cible seulement après approbation).
     std::string target_text;
@@ -373,14 +374,18 @@ void LivePendingCall::run() {
     if (c.policy == LivePolicy::Replace && !c.result.is_error && session.project) {
         c.final_project = std::make_shared<const document::Project>(std::move(*session.project));
         try {
-            c.apply_preview = build_apply_preview(*c.snapshot.project, *c.final_project);
+            if (c.want_preview) {
+                c.apply_preview = build_apply_preview(*c.snapshot.project, *c.final_project);
+            }
         } catch (const std::exception&) {
             // Confort seulement : l'échec de l'aperçu n'empêche pas la demande d'approbation.
         }
     } else if (c.policy == LivePolicy::Apply && !c.dry_run && !c.result.is_error && session.dirty) {
         c.final_project = std::make_shared<const document::Project>(std::move(*session.project));
         try {
-            c.apply_preview = build_apply_preview(*c.snapshot.project, *c.final_project);
+            if (c.want_preview) {
+                c.apply_preview = build_apply_preview(*c.snapshot.project, *c.final_project);
+            }
         } catch (const std::exception&) {
             // L'aperçu est un confort : son échec n'empêche jamais la demande d'approbation.
         }
@@ -411,6 +416,7 @@ std::shared_ptr<LivePendingCall> LiveService::begin(const std::string& tool,
     auto call = std::make_shared<LivePendingCall>();
     auto& c = *call->impl_;
     c.tool = tool;
+    c.want_preview = gate_.wants_preview(tool);
 
     if (tool == "live_status") {
         const LiveDocumentInfo info = info_ ? info_() : LiveDocumentInfo{};

@@ -118,6 +118,13 @@ public:
     }
     // Fil GUI. true = l'utilisateur approuve ; l'approbation vaut pour CETTE demande seulement.
     virtual bool approve(const ApprovalRequest& request) = 0;
+    // Fil GUI, au début de l'appel. false = la demande sera approuvée sans être montrée (mode
+    // automatique) : l'aperçu avant/après (deux rendus et deux mesures complètes du projet) est
+    // alors inutile et n'est pas calculé.
+    [[nodiscard]] virtual bool wants_preview(const std::string& tool) const {
+        (void)tool;
+        return true;
+    }
 };
 
 // Un appel d'outil en cours : `begin` (fil GUI) fige un instantané, `run` calcule sur la copie

@@ -55,26 +55,19 @@ QStringList ClaudeCodeProcessBackend::restrictedArguments(const QString& workspa
     // par l'outil de permission du pont (`live_permission`), qui demande l'accord de
     // l'utilisateur dans OpenStitch ; les chemins de secrets sont refusés d'office. Aucun outil
     // d'écriture ni d'exécution. --strict-mcp-config limite les serveurs MCP à celui du workspace.
-    QStringList args = {QStringLiteral("-p"),
-                        QStringLiteral("--verbose"),
-                        QStringLiteral("--output-format"),
-                        QStringLiteral("stream-json"),
-                        QStringLiteral("--include-partial-messages"),
-                        QStringLiteral("--max-turns"),
-                        QStringLiteral("40"),
-                        QStringLiteral("--tools"),
-                        QStringLiteral("Read,Glob,Grep"),
-                        QStringLiteral("--mcp-config"),
-                        QDir(workspace).filePath(QStringLiteral(".mcp.json")),
-                        QStringLiteral("--strict-mcp-config"),
-                        QStringLiteral("--permission-mode"),
-                        QStringLiteral("default"),
-                        QStringLiteral("--permission-prompt-tool"),
-                        QStringLiteral("mcp__openstitch__live_permission"),
-                        QStringLiteral("--allowedTools"),
-                        QStringLiteral("mcp__openstitch__*"),
-                        QStringLiteral("--disallowedTools"),
-                        disallowedTools().join(QLatin1Char(','))};
+    QStringList args = {
+        QStringLiteral("-p"), QStringLiteral("--verbose"), QStringLiteral("--output-format"),
+        QStringLiteral("stream-json"), QStringLiteral("--include-partial-messages"),
+        // Un flux complet (Image, Segmentation, Vecteurs, Points, contrôles,
+        // reprises) dépasse 40 tours ; l'utilisateur garde « Annuler ».
+        QStringLiteral("--max-turns"), QStringLiteral("120"), QStringLiteral("--tools"),
+        QStringLiteral("Read,Glob,Grep"), QStringLiteral("--mcp-config"),
+        QDir(workspace).filePath(QStringLiteral(".mcp.json")),
+        QStringLiteral("--strict-mcp-config"), QStringLiteral("--permission-mode"),
+        QStringLiteral("default"), QStringLiteral("--permission-prompt-tool"),
+        QStringLiteral("mcp__openstitch__live_permission"), QStringLiteral("--allowedTools"),
+        QStringLiteral("mcp__openstitch__*"), QStringLiteral("--disallowedTools"),
+        disallowedTools().join(QLatin1Char(','))};
     const QRegularExpression uuid(
         QStringLiteral("^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$"));
     if (uuid.match(sessionId).hasMatch()) {

@@ -14,6 +14,7 @@
 #include "gpu_canvas.hpp"
 #include "openstitch/commands/composite_command.hpp"
 #include "openstitch/commands/project_commands.hpp"
+#include "openstitch/project_ops/revectorize.hpp"
 #include "openstitch/vectorization/vectorize.hpp"
 #include "stage_status.hpp"
 
@@ -31,73 +32,12 @@ const document::EmbroideryObject* embroideryOf(const document::Project& project,
     return nullptr;
 }
 
-// Résultat d'une revectorisation des régions de la segmentation courante.
-struct Fresh {
-    std::vector<std::pair<ObjectId, std::vector<geometry::PathSet>>> replace;
-    std::vector<document::VectorObject> add; // id à réserver à l'exécution
-    int keep{0};
-    int orphan{0};
-};
-
-Fresh revectorize(const document::Project& project, double simplifyMm, bool curves,
-                  double curveTolerancePx) {
-    Fresh out;
-    if (!project.imageSource().segmentation) {
-        return out;
-    }
-    std::vector<RegionId> ids;
-    for (const auto& slot : project.imageSource().segmentation->region_slots) {
-        if (slot) {
-            ids.push_back(slot->id);
-        }
-    }
-    const vectorization::VectorizeOptions options{
-        .mm_per_px = project.imageSource().mm_per_px,
-        .simplify_tolerance = to_micrometers(Millimeters{simplifyMm}),
-        .curve_tolerance =
-            curves ? Micrometers{static_cast<std::int32_t>(std::lround(
-                         curveTolerancePx * project.imageSource().mm_per_px.value * 1000.0))}
-                   : Micrometers{0},
-        .detail_mask = &project.imageSource().detail_mask};
-    const auto results =
-        vectorization::vectorize_regions(*project.imageSource().segmentation, ids, options);
-    for (std::size_t i = 0; i < ids.size(); ++i) {
-        if (!results[i]) {
-            continue;
-        }
-        const document::VectorObject* existing = nullptr;
-        for (const auto& shape : project.vector_objects) {
-            if (project.fromActiveImage(shape) && *shape.source_region == ids[i]) {
-                existing = &shape;
-                break;
-            }
-        }
-        if (existing != nullptr) {
-            if (existing->paths == *results[i]) {
-                ++out.keep;
-            } else {
-                out.replace.emplace_back(existing->id, *results[i]);
-            }
-        } else if (!results[i]->empty()) {
-            document::VectorObject shape;
-            shape.name = "Région " + std::to_string(ids[i].value);
-            shape.source_region = ids[i];
-            shape.source_image = project.imageSourceId();
-            shape.calque = !shape.source_image.valid() && !project.image_sources.empty()
-                               ? project.calques.front().id
-                               : shape.source_image;
-            shape.rgb = project.imageSource().segmentation->find(ids[i])->rgb;
-            shape.paths = *results[i];
-            out.add.push_back(std::move(shape));
-        }
-    }
-    for (const auto& shape : project.vector_objects) {
-        if (project.fromActiveImage(shape) &&
-            project.imageSource().segmentation->find(*shape.source_region) == nullptr) {
-            ++out.orphan;
-        }
-    }
-    return out;
+// Revectorisation partagée avec l'opération `vectorize_segmentation` (project_ops).
+project_ops::RevectorizePlan revectorize(const document::Project& project, double simplifyMm,
+                                         bool curves, double curveTolerancePx) {
+    return project_ops::revectorize(
+        project,
+        {.precision_mm = simplifyMm, .curves = curves, .curve_tolerance_px = curveTolerancePx});
 }
 
 // One key per vector in painter order. semantic_geometry_fingerprint is translation

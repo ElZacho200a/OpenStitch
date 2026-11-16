@@ -85,6 +85,8 @@ void register_group_ops(
 
 void register_convert_ops(
     std::vector<OpSpec>& out); // op_convert.cpp : vecteurs -> broderie (HP-AUTO-012)
+void register_step_ops(
+    std::vector<OpSpec>& out); // op_steps.cpp : étapes Image et Vecteurs du flux Studio
 
 // Aides communes (implémentées dans json_common.cpp).
 // Lit un identifiant d'objet de broderie existant dans `ctx.args[key]` ; refus nommé sinon.

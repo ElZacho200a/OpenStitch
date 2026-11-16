@@ -29,6 +29,10 @@ public:
         return allowed;
     }
 
+    [[nodiscard]] bool wants_preview(const std::string& tool) const override {
+        return !owner_.previewWanted_ || owner_.previewWanted_(tool);
+    }
+
 private:
     LiveCompanion& owner_;
 };

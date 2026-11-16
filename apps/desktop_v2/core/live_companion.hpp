@@ -54,6 +54,12 @@ public:
     // Appelé à chaque nouvel événement du journal (fil GUI) : l'interface se met à jour.
     void setOnChanged(std::function<void()> fn) { onChanged_ = std::move(fn); }
 
+    // Décide si une demande sera montrée à l'utilisateur (outil -> vrai). Faux = approuvée
+    // d'office (mode automatique) : le pont ne calcule pas l'aperçu avant/après. Absent : vrai.
+    void setPreviewWanted(std::function<bool(const std::string&)> fn) {
+        previewWanted_ = std::move(fn);
+    }
+
     // L'application se ferme ou désactive le pont : plus aucun appel d'agent ne peut aboutir.
     void close();
 
@@ -68,6 +74,7 @@ private:
     std::unique_ptr<mcp::LiveService> service_;
     std::vector<CompanionEvent> events_;
     std::function<void()> onChanged_;
+    std::function<bool(const std::string&)> previewWanted_;
 };
 
 } // namespace openstitch::desktop_v2
