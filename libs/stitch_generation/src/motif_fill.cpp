@@ -3,6 +3,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <numbers>
 
 #include "openstitch/stitch_generation/motif_run.hpp"
 #include "pull_grow.hpp"
@@ -41,6 +43,22 @@ bool region_contains(const geometry::PathSet& region, double x, double y) {
     return true;
 }
 
+// Hachage entier déterministe (splitmix64) d'une cellule de la grille et d'un canal.
+std::uint64_t cell_hash(long long i, long long j, std::uint64_t channel) {
+    std::uint64_t z =
+        static_cast<std::uint64_t>(i) * 0x9E3779B97F4A7C15ULL ^
+        (static_cast<std::uint64_t>(j) + 0x632BE59BD9B4E019ULL) * 0xBF58476D1CE4E5B9ULL ^
+        channel * 0x94D049BB133111EBULL;
+    z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ULL;
+    z = (z ^ (z >> 27)) * 0x94D049BB133111EBULL;
+    return z ^ (z >> 31);
+}
+
+// [-0,5 ; 0,5[ depuis les 53 bits de poids fort : identique sur toute plateforme.
+double centered_unit(std::uint64_t h) {
+    return static_cast<double>(h >> 11) * (1.0 / 9007199254740992.0) - 0.5;
+}
+
 Vec2um to_um(double x, double y) {
     return {Micrometers{static_cast<std::int32_t>(std::llround(x))},
             Micrometers{static_cast<std::int32_t>(std::llround(y))}};
@@ -73,6 +91,8 @@ std::vector<FillStitch> fill_motif(const geometry::PathSet& baseRegion,
         std::clamp(static_cast<double>(params.min_length.value), 0.0, maxStitch);
 
     const std::vector<MotifLocal> local = motif_local_points(params.motif, size, size, maxStitch);
+    const double scatter =
+        std::isfinite(params.scatter) ? std::clamp(params.scatter, 0.0, 1.0) : 0.0;
     const double cx = (x0 + x1) / 2.0;
     const double cy = (y0 + y1) / 2.0;
     const double ca = std::cos(params.angle.radians);
@@ -93,8 +113,19 @@ std::vector<FillStitch> fill_motif(const geometry::PathSet& baseRegion,
             const double a =
                 (static_cast<double>(i) + (params.stagger && odd ? 0.5 : 0.0)) * spacing;
             const double b = static_cast<double>(j) * spacing;
-            const double gx = cx + ca * a - sa * b;
-            const double gy = cy + sa * a + ca * b;
+            double gx = cx + ca * a - sa * b;
+            double gy = cy + sa * a + ca * b;
+            double ia = ca; // orientation de l'instance (grille, puis rotation dispersée)
+            double ib = sa;
+            if (scatter > 0.0) {
+                gx += scatter * spacing * centered_unit(cell_hash(i, j, 1));
+                gy += scatter * spacing * centered_unit(cell_hash(i, j, 2));
+                const double turn =
+                    params.angle.radians +
+                    scatter * std::numbers::pi * (centered_unit(cell_hash(i, j, 3)) + 0.5);
+                ia = std::cos(turn);
+                ib = std::sin(turn);
+            }
             if (gx < x0 - size || gx > x1 + size || gy < y0 - size || gy > y1 + size) {
                 continue;
             }
@@ -110,8 +141,8 @@ std::vector<FillStitch> fill_motif(const geometry::PathSet& baseRegion,
             };
             for (const MotifLocal& m : local) {
                 const double lu = m.u - size / 2.0;
-                const double px = gx + ca * lu - sa * m.v;
-                const double py = gy + sa * lu + ca * m.v;
+                const double px = gx + ia * lu - ib * m.v;
+                const double py = gy + ib * lu + ia * m.v;
                 if (region_contains(region, px, py)) {
                     const Vec2um p = to_um(px, py);
                     if (run.empty() || run.back() != p) {

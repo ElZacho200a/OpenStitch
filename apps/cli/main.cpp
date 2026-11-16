@@ -34,6 +34,7 @@
 #include "openstitch/core/log.hpp"
 #include "openstitch/document/embroidery_object.hpp"
 #include "openstitch/document/project.hpp"
+#include "openstitch/document/stitch_recipes.hpp"
 #include "openstitch/formats/dst.hpp"
 #include "openstitch/formats/format_registry.hpp"
 #include "openstitch/formats/machine_design.hpp"
@@ -329,6 +330,32 @@ read_machine_sequence(const std::string& path) {
     const std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(file)),
                                           std::istreambuf_iterator<char>());
     return info->decode(bytes);
+}
+
+// Catalogue des recettes de points (STCH-CROS-01, ADR 0007) : `apply_recipe` les applique.
+int run_recipes(bool json) {
+    const auto& recipes = openstitch::document::stitch_recipes();
+    if (json) {
+        fmt::print("[");
+        for (std::size_t i = 0; i < recipes.size(); ++i) {
+            const auto& r = recipes[i];
+            fmt::print("{}{{\"id\":{},\"version\":{},\"name_fr\":{},\"name_en\":{},"
+                       "\"target\":{},\"fidelity\":{},\"source\":{},\"note\":{}}}",
+                       i == 0 ? "" : ",", json_str(std::string(r.id)), r.version,
+                       json_str(std::string(r.name_fr)), json_str(std::string(r.name_en)),
+                       json_str(std::string(openstitch::document::recipe_target_id(r.target))),
+                       json_str(std::string(openstitch::document::recipe_fidelity_id(r.fidelity))),
+                       json_str(std::string(r.source_url)), json_str(std::string(r.note)));
+        }
+        fmt::print("]\n");
+        return 0;
+    }
+    for (const auto& r : recipes) {
+        fmt::print("{:<24} {:<8} {:<14} {} ({})\n", r.id,
+                   openstitch::document::recipe_target_id(r.target),
+                   openstitch::document::recipe_fidelity_id(r.fidelity), r.name_fr, r.name_en);
+    }
+    return 0;
 }
 
 int run_stats(const std::string& path, bool json) {
@@ -1767,6 +1794,11 @@ int main(int argc, char** argv) {
         ->check(CLI::PositiveNumber);
     info_cmd->add_flag("--json", json_out, "Sortie JSON sur stdout");
 
+    auto* recipes_cmd = app.add_subcommand(
+        "recipes", "Liste les recettes de points intégrées (opération apply_recipe)");
+    recipes_cmd->group(kMain);
+    recipes_cmd->add_flag("--json", json_out, "Sortie JSON sur stdout");
+
     std::string dst_path;
     auto* stats_cmd =
         app.add_subcommand("stats", "Statistiques d'un fichier de broderie (DST, PES, JEF, EXP)");
@@ -2061,6 +2093,9 @@ int main(int argc, char** argv) {
 
     if (info_cmd->parsed()) {
         return run_info(image_path, dpi, json_out);
+    }
+    if (recipes_cmd->parsed()) {
+        return run_recipes(json_out);
     }
     if (stats_cmd->parsed()) {
         return run_stats(dst_path, json_out);

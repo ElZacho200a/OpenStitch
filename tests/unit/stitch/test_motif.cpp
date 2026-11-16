@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <set>
 #include <vector>
 
 #include "openstitch/stitch_generation/motif_fill.hpp"
@@ -151,4 +152,36 @@ TEST_CASE("motif fill: deterministic, angle rotates the grid, tiny region yields
     CHECK(!rotated.empty());
     CHECK(rotated != a);
     CHECK(fill_motif(rect_mm(0, 0, 0.2, 0.2), params).size() <= 4);
+}
+
+// STCH-CROS-01 L3b : semis (motif Seed + dispersion déterministe).
+TEST_CASE("motif fill scatter: seeds move and turn deterministically, stay inside") {
+    document::MotifFillParams params;
+    params.motif = document::MotifId::Seed;
+    params.size = Micrometers{1'500};
+    params.spacing = Micrometers{3'000};
+    params.inset = Micrometers{0};
+    const auto region = rect_mm(0, 0, 30, 20);
+    const auto grid = fill_motif(region, params);
+    REQUIRE(!grid.empty());
+    params.scatter = 0.0;
+    CHECK(fill_motif(region, params) == grid); // 0 = historical grid
+    params.scatter = 0.8;
+    const auto seeded = fill_motif(region, params);
+    REQUIRE(!seeded.empty());
+    CHECK(seeded == fill_motif(region, params)); // deterministic, no stored seed
+    CHECK(seeded != grid);
+    std::set<std::pair<int, int>> directions; // the seeds are not all parallel any more
+    for (std::size_t i = 1; i < seeded.size(); ++i) {
+        CHECK(seeded[i].pos.x.value >= 0);
+        CHECK(seeded[i].pos.x.value <= 30'000);
+        CHECK(seeded[i].pos.y.value >= 0);
+        CHECK(seeded[i].pos.y.value <= 20'000);
+        if (!seeded[i].jump) {
+            const int dx = seeded[i].pos.x.value - seeded[i - 1].pos.x.value;
+            const int dy = seeded[i].pos.y.value - seeded[i - 1].pos.y.value;
+            directions.insert({dx / 300, dy / 300});
+        }
+    }
+    CHECK(directions.size() > 8);
 }

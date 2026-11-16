@@ -85,6 +85,7 @@ TEST_CASE("crosshatch fill: osp round-trip keeps every setting") {
     p.stitch_length = Micrometers{2'500};
     p.inset = Micrometers{300};
     p.hidden_underpath = false;
+    p.tie_down = Micrometers{1'800}; // STCH-CROS-01 : treillis attache
     CHECK(std::get<document::CrosshatchFillParams>(round_trip(p, "os_crosshatch_rt.osp")) == p);
 }
 

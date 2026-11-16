@@ -206,7 +206,7 @@ DocumentSession::BatchResult DocumentSession::applyBatch(std::string_view batchJ
         if (op == "set_color" || op == "set_visible" || op == "set_join") {
             return false;
         }
-        if (op == "set_connector" || op == "set_stitch_type") {
+        if (op == "set_connector" || op == "set_stitch_type" || op == "apply_recipe") {
             return false;
         }
         if (op == "set_params" || op == "set_order" || op == "optimize_order") {

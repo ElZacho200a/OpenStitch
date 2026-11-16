@@ -36,7 +36,7 @@ constexpr std::string_view kStrategy =
 constexpr std::string_view kBlanketStyle = "blanket|Boutonnière;zigzag|Zigzag";
 constexpr std::string_view kBlanketSide = "left|Gauche;right|Droite;center|Centré";
 constexpr std::string_view kMotif =
-    "wave|Vague;zigzag|Zigzag;leaf|Feuille;heart|Coeur;diamond|Losange;scallop|Feston";
+    "wave|Vague;zigzag|Zigzag;leaf|Feuille;heart|Coeur;diamond|Losange;scallop|Feston;seed|Graine";
 constexpr std::string_view kTack = "straight|Droit;zigzag|Zigzag;blanket|Boutonnière";
 constexpr std::string_view kGradientMethod =
     "directional|Directionnel;satin_interlaced|Satin entrelacé;long_and_short|Passé empiétant;"
@@ -62,6 +62,10 @@ const std::vector<ParamSpec>& table() {
         {"tatami", "row_end_clip_mm", "Raccourcissement des fins de rangée", K::Number, 0.0, 5.0,
          0.1, "mm"},
         {"tatami", "edge_outline", "Contour de bordure", K::Bool, 0, 1, 1, ""},
+        {"tatami", "couching_spacing_mm", "Couchage : écart des fils (Bayeux)", K::Number, 0.0,
+         20.0, 0.5, "mm"},
+        {"tatami", "couching_tie_spacing_mm", "Couchage : écart des attaches", K::Number, 1.0, 7.0,
+         0.1, "mm"},
         {"directional", "stagger", "Décalage des rangées (motif en quinconce)", K::Integer, 1, 8, 1,
          ""},
         {"directional", "spacing_regularity", "Régularité de l'écart", K::Number, 0.0, 1.0, 0.05,
@@ -223,14 +227,14 @@ std::vector<ParamSpec> completeTable() {
          0.05, "mm"});
     add({"contour_fill", "pull_mode", "Mode de compensation", K::Choice, 0, 3, 1, "", kPull});
     // Motif le long du contour et remplissage à motif.
-    add({"motif_run", "motif", "Motif", K::Choice, 0, 5, 1, "", kMotif});
+    add({"motif_run", "motif", "Motif", K::Choice, 0, 6, 1, "", kMotif});
     add({"motif_run", "size_mm", "Hauteur du motif", K::Number, 0.5, 40.0, 0.5, "mm"});
     add({"motif_run", "spacing_mm", "Longueur d'une répétition", K::Number, 1.0, 100.0, 0.5, "mm"});
     add({"motif_run", "stitch_length_mm", "Longueur de point", K::Number, 1.0, 7.0, 0.1, "mm"});
     add({"motif_run", "min_length_mm", "Longueur minimale d'un point", K::Number, 0.0, 7.0, 0.1,
          "mm"});
     add({"motif_run", "alternate", "Motif en miroir une fois sur deux", K::Bool, 0, 1, 1, ""});
-    add({"motif_fill", "motif", "Motif", K::Choice, 0, 5, 1, "", kMotif});
+    add({"motif_fill", "motif", "Motif", K::Choice, 0, 6, 1, "", kMotif});
     add({"motif_fill", "size_mm", "Taille du motif", K::Number, 0.5, 40.0, 0.5, "mm"});
     add({"motif_fill", "spacing_mm", "Pas de la grille", K::Number, 1.0, 100.0, 0.5, "mm"});
     add({"motif_fill", "angle_deg", "Angle de la grille", K::Number, -360.0, 360.0, 5.0, "°"});
@@ -243,6 +247,7 @@ std::vector<ParamSpec> completeTable() {
     add({"motif_fill", "pull_compensation_mm", "Compensation de tirage", K::Number, 0.0, 3.0, 0.05,
          "mm"});
     add({"motif_fill", "pull_mode", "Mode de compensation", K::Choice, 0, 3, 1, "", kPull});
+    add({"motif_fill", "scatter", "Dispersion (semis)", K::Number, 0.0, 1.0, 0.05, ""});
     // Radial.
     add({"radial", "row_spacing_mm", "Écart entre rayons", K::Number, 0.1, 10.0, 0.05, "mm"});
     add({"radial", "stitch_length_mm", "Longueur de point", K::Number, 1.0, 7.0, 0.1, "mm"});
@@ -272,6 +277,8 @@ std::vector<ParamSpec> completeTable() {
     add({"crosshatch", "pull_compensation_mm", "Compensation de tirage", K::Number, 0.0, 3.0, 0.05,
          "mm"});
     add({"crosshatch", "pull_mode", "Mode de compensation", K::Choice, 0, 3, 1, "", kPull});
+    add({"crosshatch", "tie_down_mm", "Attaches aux croisements (treillis)", K::Number, 0.0, 4.0,
+         0.1, "mm"});
     // Point de croix et appliqué (complètent les lignes de base).
     add({"cross_stitch", "hidden_underpath", "Liaisons cachées", K::Bool, 0, 1, 1, ""});
     add({"applique", "tack", "Point de maintien", K::Choice, 0, 2, 1, "", kTack});
@@ -533,6 +540,8 @@ Opt readP(const document::TatamiParams& p, std::string_view key) {
     PS_MM("row_end_clip_mm", row_end_clip);
     PS_B("edge_outline", edge_outline);
     PS_PT("entry_point_mm", entry_point);
+    PS_MM("couching_spacing_mm", couching_spacing);
+    PS_MM("couching_tie_spacing_mm", couching_tie_spacing);
     return std::nullopt;
 }
 
@@ -660,6 +669,7 @@ Opt readP(const document::MotifFillParams& p, std::string_view key) {
     PS_B("hidden_underpath", hidden_underpath);
     PS_MM("pull_compensation_mm", pull_compensation);
     PS_E("pull_mode", pull_mode);
+    PS_N("scatter", scatter);
     return std::nullopt;
 }
 
@@ -697,6 +707,7 @@ Opt readP(const document::CrosshatchFillParams& p, std::string_view key) {
     PS_B("hidden_underpath", hidden_underpath);
     PS_MM("pull_compensation_mm", pull_compensation);
     PS_E("pull_mode", pull_mode);
+    PS_MM("tie_down_mm", tie_down);
     return std::nullopt;
 }
 

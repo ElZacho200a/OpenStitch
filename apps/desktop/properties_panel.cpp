@@ -2579,7 +2579,7 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 auto* motif = new QComboBox(body_);
                 motif->setObjectName(QStringLiteral("combo_%1Motif").arg(pfx));
                 motif->addItems({tr("Vague"), tr("Zigzag"), tr("Feuille"), tr("Cœur"),
-                                 tr("Losange"), tr("Feston")});
+                                 tr("Losange"), tr("Feston"), tr("Graine")});
                 motif->setCurrentIndex(static_cast<int>(p.motif));
                 auto* size = mmSpin(to_millimeters(p.size).value, 40.0, 0.5,
                                     tr("Hauteur du motif (carré en remplissage). 0,5 – 40 mm."));
