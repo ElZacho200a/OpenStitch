@@ -603,6 +603,8 @@ Item {
                         objectName: root.prefix + "Spacing"
                         Layout.fillWidth: true
                         invalid: isNaN(root.numberFromInput(text))
+                                 || root.numberFromInput(text) < 0.1
+                                 || root.numberFromInput(text) > 4.0
                         onEditingFinished: {
                             const value = root.numberFromInput(text)
                             if (!isNaN(value) && Math.abs(value - root.controller.spacingMm) > 1e-6)
@@ -621,6 +623,8 @@ Item {
                         objectName: root.prefix + "EndDensity"
                         Layout.fillWidth: true
                         invalid: isNaN(root.numberFromInput(text))
+                                 || root.numberFromInput(text) < 0
+                                 || root.numberFromInput(text) > 100
                         onEditingFinished: {
                             const value = root.numberFromInput(text)
                             if (!isNaN(value) && Math.abs(value - root.controller.endDensity * 100) > 0.5)
@@ -711,13 +715,13 @@ Item {
                     // Direction des POINTS, indépendante de l'axe des couleurs (hachures : leurs
                     // propres directions).
                     StudioLabel {
-                        visible: !root.crosshatchStyle
+                        visible: !root.crosshatchStyle && !root.satinStyle
                         text: qsTr("Points")
                     }
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 4
-                        visible: !root.crosshatchStyle
+                        visible: !root.crosshatchStyle && !root.satinStyle
                         StudioButton {
                             objectName: root.prefix + "StitchAuto"
                             Layout.fillWidth: true
@@ -733,8 +737,9 @@ Item {
                             text: qsTr("Angle")
                             checkable: true
                             checked: root.ready && root.controller.customStitchAngle
+                            enabled: root.ready && !isNaN(root.numberFromInput(stitchAngleField.text))
                             tooltip: qsTr("Choisir l'angle des points, quel que soit le sens du fondu")
-                            onClicked: root.controller.setStitchAngle(true, root.numberFromInput(stitchAngleField.text) || 0)
+                            onClicked: root.controller.setStitchAngle(true, root.numberFromInput(stitchAngleField.text))
                         }
                         StudioTextField {
                             id: stitchAngleField

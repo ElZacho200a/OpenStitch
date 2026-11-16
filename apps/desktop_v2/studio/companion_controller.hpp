@@ -60,7 +60,8 @@ public:
         desktop::ClaudeCompanionBackend::ProviderFactory factory; // vide = fournisseur réel
     };
 
-    explicit CompanionController(StudioController& studio, Options options = {},
+    explicit CompanionController(StudioController& studio);
+    explicit CompanionController(StudioController& studio, Options options,
                                  QObject* parent = nullptr);
     ~CompanionController() override;
 
