@@ -772,6 +772,33 @@ void FileController::importVector(const QString& path, const QString& stitchType
                    .arg(QFileInfo(path).fileName()));
 }
 
+QVariantMap FileController::insertDesignPreview(const QUrl& url) const {
+    const QString path = url.isLocalFile() ? url.toLocalFile() : url.toString();
+    const auto preview = previewDesignInsert(studio_.session().project(), toPath(path));
+    return {{QStringLiteral("ok"), preview.ok},
+            {QStringLiteral("message"), QString::fromStdString(preview.message)},
+            {QStringLiteral("name"), QFileInfo(path).fileName()},
+            {QStringLiteral("machine"), preview.machine},
+            {QStringLiteral("shapes"), static_cast<qulonglong>(preview.shapes)},
+            {QStringLiteral("embroideries"), static_cast<qulonglong>(preview.embroideries)},
+            {QStringLiteral("texts"), static_cast<qulonglong>(preview.texts)},
+            {QStringLiteral("stitches"), static_cast<qulonglong>(preview.stitches)},
+            {QStringLiteral("colors"), static_cast<qulonglong>(preview.colors)},
+            {QStringLiteral("widthMm"), preview.widthMm},
+            {QStringLiteral("heightMm"), preview.heightMm}};
+}
+
+bool FileController::insertDesign(const QUrl& url) {
+    const QString path = url.isLocalFile() ? url.toLocalFile() : url.toString();
+    const auto result = desktop_v2::insertDesign(studio_.session(), toPath(path));
+    if (!result.ok) {
+        setMessage(QString::fromStdString(result.message), true);
+        return false;
+    }
+    setMessage(QStringLiteral("Design inséré : %1 (annulable)").arg(QFileInfo(path).fileName()));
+    return true;
+}
+
 // --- Exports -----------------------------------------------------------------------------------
 
 QVariantList FileController::machineFormats() const {
