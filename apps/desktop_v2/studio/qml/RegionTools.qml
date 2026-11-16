@@ -26,9 +26,12 @@ ColumnLayout {
     }
     // Sourced from the active SegmentationSection in Studio, not hardcoded defaults.
     property var segmentationOptions: imageTools.segmentationDefaults
+    // Copie des réglages envoyés avec la dernière demande (diagnostic et tests).
+    property var pendingOptions: ({})
     function requestRegeneration(resegment) {
         // RegionController freezes these settings while the overwrite confirmation is shown.
-        regionTools.regenerate(resegment, false, Object.assign({}, segmentationOptions))
+        pendingOptions = Object.assign({}, segmentationOptions)
+        regionTools.regenerate(resegment, false, pendingOptions)
     }
     property int islandPx: 12
     property int holePx: 12

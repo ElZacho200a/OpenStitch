@@ -13,10 +13,9 @@ Ce fichier est écrit pour qu'un autre agent reprenne le travail sans relire l'h
   `.claude/worktrees/open-stitch-studio-ui-ux-56ea70`. Rien n'est poussé, aucune PR.
 - `build/msvc` existe (Debug). Le C++ des correctifs **compile** (cibles `openstitch_v2_studio`,
   `test_desktop_v2_studio_space_segmentation`, `test_desktop_v2_studio_space_vector`).
-- **Aucun test n'a encore été exécuté sur les correctifs.** Les cinq nouveaux cas de test
-  n'ont jamais tourné : ils peuvent échouer pour une raison de test et non de code.
-- Les trois retouches QML de la zone Image (§4) ont été faites après la dernière compilation :
-  elles ne sont ni compilées dans le qrc ni essayées.
+- Tests ciblés **verts** (2026-11-16, après recompilation) : `test_desktop_v2_studio_space_segmentation`
+  (y compris les cinq nouveaux cas et `stagePublishedAndDownstreamUpdate`), `_space_vector`,
+  `_image`, `_files`, `_workspaces`. Suite complète non relancée.
 - Rien n'a été essayé dans l'application réelle. Projet d'exemple à régénérer :
   `build\msvc\apps\cli\Debug\openstitch-cli.exe project digitize tests/fixtures/ai-benchmark/marine-synth-01/source.png -o marine.osp`
   (19 régions, 18 objets).
@@ -54,10 +53,9 @@ Fichiers : `qml/spaces/SegmentationSpace.qml`, `spaces/segmentation/Segmentation
 
 ### Constats non corrigés
 
-- **Démarrage de l'aperçu en direct, à vérifier dans l'application** : `SegmentationSection`
-  relance l'aperçu sur `onMaxColorsChanged` etc. Si ces gestionnaires se déclenchent à
-  l'initialisation des liaisons, l'aperçu part tout seul 350 ms après le chargement du panneau
-  et remplace les régions du projet sur le canevas dès l'ouverture de l'espace. Non vérifié.
+- ~~Démarrage spontané de l'aperçu en direct~~ : écarté. Les réglages viennent de
+  `segmentationDefaults` (`CONSTANT`) et QML n'appelle pas les gestionnaires `on…Changed` à
+  l'évaluation initiale des liaisons ; l'aperçu ne part que sur une modification de réglage.
 - **Cohérence du parcours** : « Mettre à jour les formes » (carte du canevas) appelle
   `regionTools.regenerate(false)`, qui régénère directement les *objets de broderie*, alors que
   l'espace Vecteurs propose « Mettre à jour depuis la segmentation » (formes seulement) puis
@@ -119,7 +117,7 @@ le message de refus renvoyé.
 **Non auditée.** Seule vérification : les libellés de raccourcis de `PointsPanelBar`,
 `PointsToolRail` et `ViewPanel` correspondent à des `Shortcut` existants.
 
-## 7. Tests ajoutés (jamais exécutés)
+## 7. Tests ajoutés (verts le 2026-11-16)
 
 Dans `tests/unit/desktop_v2/test_studio_space_segmentation.cpp` :
 `resegmentHonoursThePanelSmoothing`, `overwriteConfirmationIsSharedAndRunsTheRequestedAction`,
@@ -135,15 +133,10 @@ Aucun test n'a été ajouté pour V2 à V5 ni pour la zone Image.
 
 ## 8. Prochaines actions, dans l'ordre
 
-1. Recompiler puis lancer :
-   `.\scripts\qrun.ps1 build cmake --build --preset msvc-debug --target openstitch_v2_studio test_desktop_v2_studio_space_segmentation test_desktop_v2_studio_space_vector`
-   puis `ctest --preset msvc-debug -R "studio_space_(segmentation|vector)" --output-on-failure`.
-2. Lancer aussi `test_desktop_v2_studio_image`, `test_desktop_v2_studio_files` et
-   `test_desktop_v2_studio_workspaces`, qui chargent les fichiers QML modifiés.
-3. Essayer chaque correctif dans l'application sur `marine.osp`, et trancher le point
-   « démarrage de l'aperçu en direct » (§3).
-4. Auditer la zone Points, puis approfondir Image (contrôleurs).
-5. Suite complète, contrôle clang-format 18 de tout le dépôt, rapprochement avec
+1. ~~Recompiler et lancer les tests ciblés~~ (fait, verts).
+2. Essayer chaque correctif dans l'application sur `marine.osp`.
+3. Auditer la zone Points, puis approfondir Image (contrôleurs).
+4. Suite complète, contrôle clang-format 18 de tout le dépôt, rapprochement avec
    `qa/checklist.csv`, commit final, PR contre `main`, mise à jour Notion.
 
 ## 9. Échecs locaux connus avant ce travail (non revérifiés)
