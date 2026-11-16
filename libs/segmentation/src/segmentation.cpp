@@ -175,7 +175,8 @@ Result<Segmentation> segment(const image::Image& img, const SegmentationOptions&
         }
     }
     if (opaqueCount == 0) {
-        return fail(ErrorCategory::UserInput, "L'image est entièrement transparente");
+        return fail_coded(ErrorCategory::UserInput, kTransparentImage,
+                          "L'image est entièrement transparente", {});
     }
 
     cv::Mat lab;
