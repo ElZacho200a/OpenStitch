@@ -120,6 +120,57 @@ def bbox(document):
 def tag(group, index, count, comp=True):
     return {"group": group, "index": index, "count": count, "complementary": comp}
 
+
+def shape_curve(curve, t):
+    """Sample the public monotone profiles when constructing an OSP fixture."""
+    if curve == 0:
+        return t
+    if curve == 1:
+        return t * t * (3 - 2 * t)
+    if curve == 2:
+        return t ** 3 * (t * (6 * t - 15) + 10)
+    if curve == 3:
+        return t * t
+    if curve == 4:
+        return t * (2 - t)
+    if curve == 5:
+        return t ** 3
+    if curve == 6:
+        return 1 - (1 - t) ** 3
+    if curve == 7:
+        return 4 * t ** 3 if t <= 0.5 else 1 - 4 * (1 - t) ** 3
+    if curve == 8:
+        return (0.5 * (1 - (1 - 2 * t) ** 3) if t <= 0.5 else
+                0.5 + 0.5 * (2 * t - 1) ** 3)
+    raise ValueError(f"Unknown density curve: {curve}")
+
+
+def shared_density_stops(n, layer, curve, complementary):
+    """OSP triples [position, weight, lower] partition a COMMON row lattice.
+
+    Shared rows do not apply `curve` a second time. Nonlinear profiles therefore
+    need samples inside each color transition, as in the native object editor.
+    """
+    samples = 1 if curve == 0 else 8
+    stops = []
+    for transition in range(n - 1):
+        for k in range(0 if transition == 0 else 1, samples + 1):
+            u = shape_curve(curve, k / samples)
+            weights = [0.0] * n
+            weights[transition] = 1 - u
+            weights[transition + 1] = u
+            position = (transition + k / samples) / (n - 1)
+            if complementary:
+                lower, weight = sum(weights[:layer]), weights[layer]
+            elif layer == 0:
+                lower, weight = 0.0, 1.0
+            else:
+                lower, weight = sum(weights[1:layer]), weights[layer]
+            stops.append([position, weight, lower])
+    stops[-1][0] = 1.0
+    return stops
+
+
 def gradient(box, texture=0, geometry=0, curve=1, layer=None, n=2, comp=True):
     x0, y0, x1, y1 = box
     cy = (y0 + y1) // 2
@@ -140,10 +191,11 @@ def gradient(box, texture=0, geometry=0, curve=1, layer=None, n=2, comp=True):
     if geometry == 2:
         g["bend"] = 0.65
     if layer is not None:
-        g["densityStops"] = [
-            [j / (n - 1), (1.0 if j == layer else 0.0) if comp else
-             (1.0 if layer == 0 else (0.30 if j == layer else 0.0))]
-            for j in range(n)]
+        g["sharedRows"] = True
+        g["densityStops"] = shared_density_stops(n, layer, curve, comp)
+        if not comp and layer != 0:
+            # Native overlay layers share a second lattice at 60% density.
+            g["spacingFrom"] = g["spacingTo"] = 700  # 420 / 0.60
     return g
 
 def make_variant(doc, name, n, texture=0, geometry=0, comp=True, satin=False, legacy=False):
@@ -214,8 +266,11 @@ def make_variant(doc, name, n, texture=0, geometry=0, comp=True, satin=False, le
             p["underlayParallel"] = False
             p["underlayZigzag"] = False
             p["densityGradient"] = gradient(shape_box, texture, geometry,
+                                            curve=1 if legacy else curve,
                                             layer=None if legacy else i,
                                             n=n, comp=comp)
+            if not legacy:
+                p["rowSpacing"] = p["densityGradient"]["spacingFrom"]
             if curve:
                 p["densityGradient"]["curve"] = curve
             if legacy:
@@ -447,7 +502,8 @@ def build():
     for name,n,texture,geo,complementary,satin,legacy in cases:
         entry = {"name": name, "n": n, "texture": texture,
                  "geometry": geo, "complementary": complementary,
-                 "satin": satin, "legacy": legacy}
+                 "satin": satin, "legacy": legacy,
+                 "shared_rows": not satin and not legacy}
         target = OUT / f"{name}.osp"
         try:
             patch_osp(base, target,

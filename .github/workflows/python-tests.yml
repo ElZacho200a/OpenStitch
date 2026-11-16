@@ -5,12 +5,14 @@ on:
     paths:
       - 'scripts/**'
       - 'tests/scripts/**'
+      - 'tests/test_qa_pr336*.py'
       - '.github/workflows/python-tests.yml'
   push:
     branches: [main]
     paths:
       - 'scripts/**'
       - 'tests/scripts/**'
+      - 'tests/test_qa_pr336*.py'
       - '.github/workflows/python-tests.yml'
 
 permissions:
@@ -26,3 +28,5 @@ jobs:
           python-version: '3.11'
       - name: Tous les tests Python (échoue si un test_*.py casse)
         run: python3 -m unittest discover -s tests/scripts -v
+      - name: Intégrité des previews de fondus
+        run: python3 -m unittest discover -s tests -p 'test_qa_pr336*.py' -v
