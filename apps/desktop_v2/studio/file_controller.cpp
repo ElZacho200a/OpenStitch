@@ -22,6 +22,7 @@
 #include "export_settings.hpp"
 #include "file_io.hpp"
 #include "openstitch/commands/calque_commands.hpp"
+#include "openstitch/document/hoop_library.hpp"
 #include "openstitch/formats/svg.hpp"
 #include "openstitch/image/image.hpp"
 #include "openstitch/project_io/openraster.hpp"
@@ -34,6 +35,30 @@
 namespace openstitch::desktop_v2::studio {
 
 namespace {
+
+// Forme du cadre telle que la voit le QML : « rectangle », « ellipse », « rounded ».
+QString hoopShapeName(document::HoopShape shape) {
+    switch (shape) {
+    case document::HoopShape::Ellipse:
+        return QStringLiteral("ellipse");
+    case document::HoopShape::RoundedRectangle:
+        return QStringLiteral("rounded");
+    case document::HoopShape::Rectangle:
+        break;
+    }
+    return QStringLiteral("rectangle");
+}
+QString userHoopShapeName(UserHoopShape shape) {
+    switch (shape) {
+    case UserHoopShape::Ellipse:
+        return QStringLiteral("ellipse");
+    case UserHoopShape::RoundedRectangle:
+        return QStringLiteral("rounded");
+    case UserHoopShape::Rectangle:
+        break;
+    }
+    return QStringLiteral("rectangle");
+}
 
 QString fromUtf8(const std::string& text) {
     return QString::fromUtf8(text.data(), static_cast<qsizetype>(text.size()));
@@ -1279,7 +1304,9 @@ QVariantList FileController::hoops() const {
                                    {QStringLiteral("family"), fromUtf8(h.family)},
                                    {QStringLiteral("name"), fromUtf8(h.name)},
                                    {QStringLiteral("widthMm"), h.widthMm},
-                                   {QStringLiteral("heightMm"), h.heightMm}});
+                                   {QStringLiteral("heightMm"), h.heightMm},
+                                   {QStringLiteral("shape"), hoopShapeName(h.shape)},
+                                   {QStringLiteral("cornerRadiusMm"), h.cornerRadiusMm}});
     }
     return list;
 }
@@ -1302,14 +1329,38 @@ QVariantList FileController::userHoops() const {
         list.push_back(QVariantMap{{QStringLiteral("name"), fromUtf8(h.name)},
                                    {QStringLiteral("widthMm"), h.widthMm},
                                    {QStringLiteral("heightMm"), h.heightMm},
-                                   {QStringLiteral("marginMm"), h.marginMm}});
+                                   {QStringLiteral("marginMm"), h.marginMm},
+                                   {QStringLiteral("shape"), userHoopShapeName(h.shape)},
+                                   {QStringLiteral("cornerRadiusMm"), h.cornerRadiusMm}});
     }
     return list;
 }
 
 QVariantMap FileController::currentHoop() const {
     const auto& project = studio_.session().project();
-    return {{QStringLiteral("id"), fromUtf8(currentHoopId(project))},
+    const auto& canvas = project.canvas;
+    const auto mm = [](Micrometers v) { return static_cast<double>(v.value) / 1000.0; };
+    // Libellé : cadre de la bibliothèque, sinon cadre de « Mes cadres » identique, sinon vide.
+    const auto id = currentHoopId(project);
+    QString label;
+    if (const auto* spec = document::find_hoop(id)) {
+        label = QString::fromUtf8(spec->name.data(), static_cast<qsizetype>(spec->name.size()));
+    } else {
+        for (const auto& h : userHoops_) {
+            const auto here = userHoopFromProject(project, h.name);
+            if (here.shape == h.shape && here.widthMm == h.widthMm && here.heightMm == h.heightMm &&
+                here.cornerRadiusMm == h.cornerRadiusMm && here.marginMm == h.marginMm) {
+                label = fromUtf8(h.name);
+                break;
+            }
+        }
+    }
+    return {{QStringLiteral("id"), fromUtf8(id)},
+            {QStringLiteral("label"), label},
+            {QStringLiteral("shape"), hoopShapeName(canvas.shape)},
+            {QStringLiteral("widthMm"), mm(canvas.width)},
+            {QStringLiteral("heightMm"), mm(canvas.height)},
+            {QStringLiteral("cornerRadiusMm"), mm(canvas.corner_radius)},
             {QStringLiteral("marginMm"), currentMarginMm(project)}};
 }
 
@@ -1331,6 +1382,28 @@ QString FileController::applyCustomHoop(double widthMm, double heightMm, double 
         refusalOf(desktop_v2::applyCustomHoop(studio_.session(), widthMm, heightMm, marginMm));
     setMessage(refusal.isEmpty() ? QStringLiteral("Cadre personnalisé appliqué.") : refusal,
                !refusal.isEmpty());
+    return refusal;
+}
+
+QString FileController::applyHoopSpec(const QString& shape, double widthMm, double heightMm,
+                                      double cornerRadiusMm, double marginMm) {
+    UserHoop hoop;
+    hoop.name = "cadre";
+    hoop.shape = shape == QLatin1String("ellipse")   ? UserHoopShape::Ellipse
+                 : shape == QLatin1String("rounded") ? UserHoopShape::RoundedRectangle
+                                                     : UserHoopShape::Rectangle;
+    hoop.widthMm = widthMm;
+    hoop.heightMm = heightMm;
+    hoop.cornerRadiusMm = cornerRadiusMm;
+    hoop.marginMm = marginMm;
+    const auto refusal = refusalOf(desktop_v2::applyUserHoop(studio_.session(), hoop));
+    // « Déjà celui-là » n'est pas une erreur pour un réglage en direct.
+    if (refusal.isEmpty()) {
+        setMessage(QStringLiteral("Cadre %1 × %2 mm appliqué.")
+                       .arg(QString::number(widthMm, 'f', 0), QString::number(heightMm, 'f', 0)));
+    } else if (!refusal.startsWith(QStringLiteral("Le cadre est déjà"))) {
+        setMessage(refusal, true);
+    }
     return refusal;
 }
 

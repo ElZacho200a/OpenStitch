@@ -474,6 +474,16 @@ Window {
 
                 Item { Layout.fillWidth: true; Layout.minimumWidth: 4 }
 
+                // Cadre du document, toujours visible : un clic ouvre le réglage rapide.
+                StudioButton {
+                    objectName: "hoopButton"
+                    text: headerCard.compact ? "" : qsTr("Cadre %1").arg(spaceHost.hoopSummary())
+                    iconName: headerCard.compact ? "fit" : ""
+                    quiet: true
+                    tooltip: qsTr("Cadre : forme, dimensions, marge, Mes cadres (aussi au clic droit sur le canevas)")
+                    onClicked: spaceHost.openHoop(null, 0, 0)
+                }
+
                 StudioButton {
                     objectName: "undoButton"
                     iconName: "undo"

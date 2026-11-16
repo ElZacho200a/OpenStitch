@@ -62,7 +62,7 @@ set(studio_qml_files
     qml/StudioCheckBox.qml qml/StudioSwitch.qml qml/StudioSlider.qml qml/StudioSpinBox.qml
     qml/StudioComboBox.qml qml/StudioCard.qml
     qml/SectionLabel.qml qml/ActionPalette.qml qml/ObjectTree.qml qml/LayerPanel.qml
-    qml/CanvasContextMenu.qml qml/TransformHandles.qml qml/EditBar.qml qml/FilePanel.qml
+    qml/CanvasContextMenu.qml qml/HoopPopover.qml qml/TransformHandles.qml qml/EditBar.qml qml/FilePanel.qml
     qml/Inspector.qml qml/ParamField.qml qml/ParamSection.qml qml/RecipeCatalog.qml
     qml/ViewPanel.qml qml/SimulationBar.qml qml/AnalysisPanel.qml qml/ThreadPanel.qml
     qml/PreparePanel.qml qml/ImagePrepSection.qml qml/SegmentationSection.qml

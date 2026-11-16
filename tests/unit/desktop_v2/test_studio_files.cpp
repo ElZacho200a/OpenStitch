@@ -190,6 +190,7 @@ private slots:
     void batchSegmentationSkipsTransparentImage();
     void autosaveRecoveryAndDiscard();
     void hoopMachineAndUserHoops();
+    void hoopQuickSettingsAreOneUndoStepEach();
 };
 
 void StudioFilesTest::imagesStayIndependentThroughStitchesAndSave() {
@@ -1417,6 +1418,63 @@ void StudioFilesTest::hoopMachineAndUserHoops() {
     QVERIFY(rig.files->applyUserHoop(QStringLiteral("Mon cadre")).isEmpty());
     QVERIFY(rig.files->removeUserHoop(QStringLiteral("Mon cadre")).isEmpty());
     QVERIFY(rig.files->userHoops().isEmpty());
+}
+
+// Réglage rapide du cadre (en-tête, clic droit des canevas) : forme, dimensions, rayon, marge en
+// une commande annulable ; « Mes cadres » garde la forme ; le cadre courant est relu après annuler.
+void StudioFilesTest::hoopQuickSettingsAreOneUndoStepEach() {
+    QTemporaryDir state;
+    QVERIFY(state.isValid());
+    Rig rig(state.path(), true);
+    QVERIFY2(rig.window, qPrintable(rig.warnings.join(QStringLiteral(" | "))));
+    rig.session.replaceProject(studioFixture(), true);
+
+    // API : forme réelle, refus clair d'un cadre invalide, déjà-celui-là sans erreur affichée.
+    QVERIFY(rig.files->applyHoopSpec(QStringLiteral("ellipse"), 150.0, 120.0, 0.0, 4.0).isEmpty());
+    auto hoop = rig.files->currentHoop();
+    QCOMPARE(hoop.value(QStringLiteral("shape")).toString(), QStringLiteral("ellipse"));
+    QCOMPARE(hoop.value(QStringLiteral("widthMm")).toDouble(), 150.0);
+    QCOMPARE(hoop.value(QStringLiteral("heightMm")).toDouble(), 120.0);
+    QCOMPARE(hoop.value(QStringLiteral("marginMm")).toDouble(), 4.0);
+    QCOMPARE(rig.session.project().canvas.shape, document::HoopShape::Ellipse);
+    QVERIFY(!rig.files->applyHoopSpec(QStringLiteral("ellipse"), 150.0, 120.0, 0.0, 4.0).isEmpty());
+    QVERIFY(!rig.files->messageIsError());
+    QVERIFY(!rig.files->applyHoopSpec(QStringLiteral("rectangle"), 5.0, 120.0, 0.0, 0.0).isEmpty());
+    QCOMPARE(rig.session.project().canvas.width.value, 150'000);
+    QVERIFY(rig.files->saveCurrentHoopAs(QStringLiteral("Ovale atelier")).isEmpty());
+    const auto mine = rig.files->userHoops().front().toMap();
+    QCOMPARE(mine.value(QStringLiteral("shape")).toString(), QStringLiteral("ellipse"));
+    QCOMPARE(rig.files->currentHoop().value(QStringLiteral("label")).toString(),
+             QStringLiteral("Ovale atelier"));
+    QVERIFY(
+        !rig.files->hoops().front().toMap().value(QStringLiteral("shape")).toString().isEmpty());
+
+    // Vraie scène QML : le panneau s'ouvre depuis l'hôte des espaces, applique en une étape.
+    auto* host = rig.window->findChild<QObject*>(QStringLiteral("spaceHost"));
+    QVERIFY(host);
+    QVERIFY(rig.window->findChild<QObject*>(QStringLiteral("hoopButton")));
+    QVERIFY(QMetaObject::invokeMethod(host, "openHoop", Q_ARG(QVariant, QVariant()),
+                                      Q_ARG(QVariant, 0), Q_ARG(QVariant, 0)));
+    auto* pop = rig.window->findChild<QObject*>(QStringLiteral("hoopPopover"));
+    QVERIFY(pop);
+    QTRY_VERIFY(pop->property("opened").toBool());
+    auto* width = rig.window->findChild<QObject*>(QStringLiteral("hoopWidthSpin"));
+    auto* radius = rig.window->findChild<QObject*>(QStringLiteral("hoopRadiusSpin"));
+    QVERIFY(width && radius);
+    QCOMPARE(width->property("value").toInt(), 150); // relu du document à l'ouverture
+    width->setProperty("value", 200);
+    pop->setProperty("shape", QStringLiteral("rounded"));
+    radius->setProperty("value", 15);
+    QVERIFY(QMetaObject::invokeMethod(pop, "applyNow"));
+    QVERIFY(rig.studio.canUndo());
+    QCOMPARE(rig.session.project().canvas.width.value, 200'000);
+    QCOMPARE(rig.session.project().canvas.shape, document::HoopShape::RoundedRectangle);
+    QCOMPARE(rig.session.project().canvas.corner_radius.value, 15'000);
+
+    rig.studio.undo(); // le panneau ouvert se relit sur le document
+    QCOMPARE(rig.session.project().canvas.width.value, 150'000);
+    QTRY_COMPARE(width->property("value").toInt(), 150);
+    QCOMPARE(pop->property("shape").toString(), QStringLiteral("ellipse"));
 }
 
 QTEST_MAIN(StudioFilesTest)

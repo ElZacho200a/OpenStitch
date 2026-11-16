@@ -227,6 +227,9 @@ build_studio_scene(std::shared_ptr<const document::Project> project, std::uint64
     const double halfW = scene->project->canvas.width.value / 2000.0;
     const double halfH = scene->project->canvas.height.value / 2000.0;
     scene->hoop = {-halfW, -halfH, halfW, halfH};
+    scene->hoopShape = scene->project->canvas.shape;
+    scene->hoopCornerMm = scene->project->canvas.corner_radius.value / 1000.0;
+    scene->hoopMarginMm = scene->project->canvas.margin.value / 1000.0;
     scene->bounds = scene->hoop;
 
     std::map<std::uint64_t, std::array<std::uint8_t, 3>> colours;
