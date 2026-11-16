@@ -90,6 +90,45 @@ TEST_CASE("bornes : mesure des segments hors plage, sauts ignores") {
     CHECK(m.long_left == 1);
 }
 
+// Audit IA-DATA-01 : un tatami compensé (pull_mode Auto de l'auto-numérisation) gardait un point
+// court à chaque demi-tour oblique, car les bouts de rangée dépassent de la région et la corde de
+// fusion était testée contre la région nue (212 points courts sur un U de 780 points).
+TEST_CASE("bornes : la compensation du tirage n'empeche plus la fusion des demi-tours") {
+    const auto shortCount = [](std::int32_t pullUm) {
+        document::Project project;
+        document::VectorObject vec;
+        vec.id = project.object_ids.next();
+        geometry::Path p;
+        p.closed = true;
+        const auto node = [](std::int32_t x, std::int32_t y) {
+            return geometry::PathNode{Vec2um{Micrometers{x}, Micrometers{y}},
+                                      geometry::NodeType::Corner, std::nullopt, std::nullopt};
+        };
+        // Carré, rangées à 0° : bords perpendiculaires aux rangées, chaque demi-tour mesure
+        // l'espacement des rangées (0,4 mm), sous le minimum de 0,5 mm.
+        p.nodes = {node(0, 0), node(20'000, 0), node(20'000, 20'000), node(0, 20'000)};
+        vec.paths.push_back(geometry::PathSet{p, {}});
+        project.vector_objects.push_back(vec);
+        document::EmbroideryObject emb;
+        emb.id = project.object_ids.next();
+        emb.source_vector = vec.id;
+        document::TatamiParams tp;
+        tp.pull_compensation = Micrometers{pullUm};
+        emb.params = tp;
+        project.embroidery_objects.push_back(emb);
+        project.finishing.enabled = true;
+        project.finishing.filter_short_stitches = true;
+        project.finishing.min_stitch_length = Micrometers{500};
+        const auto seq = effective_sequence(project);
+        REQUIRE(seq.has_value());
+        return measure_length_bounds(seq->commands, 500, 0).short_left;
+    };
+    const auto without = shortCount(0);
+    const auto with = shortCount(300);
+    CAPTURE(without, with);
+    CHECK(with <= without + 2);
+}
+
 TEST_CASE("bornes : activees, aucune sequence effective ne depasse le maximum (tous types)") {
     document::Project project;
     for (int i = 0; i < 3; ++i) {

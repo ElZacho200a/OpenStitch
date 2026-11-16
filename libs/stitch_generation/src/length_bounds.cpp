@@ -5,8 +5,12 @@
 #include <cmath>
 #include <cstdint>
 #include <map>
+#include <type_traits>
+#include <variant>
 
+#include "openstitch/stitch_generation/pull_auto.hpp"
 #include "openstitch/stitch_generation/tatami.hpp"
+#include "pull_grow.hpp"
 
 namespace openstitch::stitch_generation {
 
@@ -18,15 +22,44 @@ using stitch::StitchPass;
 
 // Surfaces de référence des objets (objet vectoriel suivi), pour vérifier qu'une fusion de
 // points ne fait jamais sortir le fil de sa région.
-std::map<std::uint64_t, const std::vector<geometry::PathSet>*>
-object_regions(const document::Project& project) {
-    std::map<std::uint64_t, const std::vector<geometry::PathSet>*> out;
+struct ObjectRegion {
+    const std::vector<geometry::PathSet>* paths{nullptr};
+    const document::EmbroideryObject* object{nullptr};
+};
+
+std::map<std::uint64_t, ObjectRegion> object_regions(const document::Project& project) {
+    std::map<std::uint64_t, ObjectRegion> out;
     for (const auto& obj : project.embroidery_objects) {
         if (const auto* vec = project.findObject(obj.source_vector)) {
-            out[obj.id.value] = &vec->paths;
+            out[obj.id.value] = {&vec->paths, &obj};
         }
     }
     return out;
+}
+
+// Compensation du tirage EFFECTIVE d'un remplissage sur un morceau (mode Auto résolu comme à la
+// génération). Les bouts de rangée dépassent volontairement de la région de cette valeur : une
+// fusion dont la corde reste dans ce dépassement ne fait pas sortir le fil plus loin que le
+// moteur ne l'a déjà posé. Sans cela, le demi-tour court entre deux rangées compensées n'était
+// jamais fusionné (corde partant d'un bout hors région) : 212 points courts sur un U de 780.
+Micrometers effective_fill_pull(const document::EmbroideryObject& obj,
+                                const geometry::PathSet& piece) {
+    return std::visit(
+        [&](const auto& p) -> Micrometers {
+            using P = std::decay_t<decltype(p)>;
+            if constexpr (std::is_same_v<P, document::TatamiParams> ||
+                          std::is_same_v<P, document::DirectionalFillParams> ||
+                          std::is_same_v<P, document::RadialFillParams> ||
+                          std::is_same_v<P, document::SpiralFillParams> ||
+                          std::is_same_v<P, document::ContourFillParams> ||
+                          std::is_same_v<P, document::MotifFillParams> ||
+                          std::is_same_v<P, document::CrosshatchFillParams>) {
+                return resolve_pull_compensation(p, piece).pull_compensation;
+            } else {
+                return Micrometers{0};
+            }
+        },
+        obj.params);
 }
 
 bool is_protected(const StitchCommand& c) {
@@ -49,8 +82,9 @@ std::vector<StitchCommand> merge_short(const std::vector<StitchCommand>& cmds,
         }
         auto [tit, inserted] = testers.try_emplace(source.value);
         if (inserted) {
-            for (const auto& set : *it->second) {
-                tit->second.emplace_back(set);
+            for (const auto& set : *it->second.paths) {
+                tit->second.emplace_back(
+                    detail::grown_for_pull(set, effective_fill_pull(*it->second.object, set)));
             }
         }
         return std::any_of(tit->second.begin(), tit->second.end(),
