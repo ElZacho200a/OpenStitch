@@ -32,6 +32,23 @@ Item {
     function importImageDialog() { imageDialog.open() }
     function importVectorDialog() { vectorDialog.open() }
     function importMachineDialog() { machineDialog.open() }
+    function insertDesignDialog() { if (ctl) insertFileDialog.open() }
+    // CX08 : aperçu de ce qui sera inséré, puis insertion en une étape annulable.
+    function previewInsert(url) {
+        insertDialog.url = url
+        insertDialog.preview = ctl.insertDesignPreview(url)
+        insertDialog.open()
+    }
+    function insertSummary(p) {
+        if (!p || !p.ok)
+            return ""
+        var size = qsTr("%1 × %2 mm").arg(Number(p.widthMm).toFixed(1)).arg(Number(p.heightMm).toFixed(1))
+        if (p.machine)
+            return qsTr("Broderie machine : %1 points, %2 couleurs, %3. Elle arrive centrée dans le cadre.")
+                .arg(p.stitches).arg(p.colors).arg(size)
+        return qsTr("Projet : %1 formes, %2 objets de broderie, %3 textes, %4. Les objets gardent leur position et reçoivent de nouveaux identifiants.")
+            .arg(p.shapes).arg(p.embroideries).arg(p.texts).arg(size)
+    }
 
     function guardText(reason) {
         switch (reason) {
@@ -165,6 +182,55 @@ Item {
         onAccepted: if (panel.ctl) panel.ctl.openUrl(selectedFile)
     }
     FileDialog {
+        id: insertFileDialog
+        objectName: "insertDesignFileDialog"
+        title: qsTr("Insérer un design dans ce projet")
+        nameFilters: {
+            var out = [qsTr("Projet OpenStitch (*.osp)")]
+            if (panel.ctl) {
+                var f = panel.ctl.readableFilters
+                for (var i = 0; i < f.length; ++i)
+                    out.push(f[i].filter)
+            }
+            return out
+        }
+        onAccepted: panel.previewInsert(selectedFile)
+    }
+    Frame {
+        id: insertDialog
+        objectName: "insertDesignDialog"
+        heading: insertDialog.preview && insertDialog.preview.name
+                 ? qsTr("Insérer « %1 » ?").arg(insertDialog.preview.name)
+                 : qsTr("Insérer un design ?")
+        property url url
+        property var preview: ({})
+        Label {
+            objectName: "insertDesignSummary"
+            text: insertDialog.preview && insertDialog.preview.ok
+                  ? panel.insertSummary(insertDialog.preview)
+                  : ((insertDialog.preview && insertDialog.preview.message) || "")
+        }
+        RowLayout {
+            Layout.alignment: Qt.AlignRight
+            spacing: 8
+            StudioButton {
+                objectName: "cancelInsertDesign"
+                text: qsTr("Annuler")
+                onClicked: insertDialog.close()
+            }
+            StudioButton {
+                objectName: "acceptInsertDesign"
+                text: qsTr("Insérer")
+                emphasized: true
+                enabled: insertDialog.preview && insertDialog.preview.ok === true
+                onClicked: {
+                    panel.ctl.insertDesign(insertDialog.url)
+                    insertDialog.close()
+                }
+            }
+        }
+    }
+    FileDialog {
         id: guardSaveDialog
         objectName: "guardSaveDialog"
         title: qsTr("Enregistrer le projet")
@@ -285,6 +351,13 @@ Item {
             Entry { text: qsTr("Images en calques…"); onClicked: panel.importImageDialog() }
             Entry { text: qsTr("Un SVG ou un DXF…"); onClicked: panel.importVectorDialog() }
             Entry { text: qsTr("Une broderie machine…"); onClicked: panel.importMachineDialog() }
+            Entry {
+                objectName: "insertDesignMenuEntry"
+                text: qsTr("Un design dans ce projet…")
+                tooltip: qsTr("Ajoute le contenu d'un projet .osp ou d'une broderie machine au projet ouvert, en une étape annulable")
+                enabled: panel.ctl !== null
+                onClicked: panel.insertDesignDialog()
+            }
             SectionLabel { text: qsTr("EXPORTER") }
             Entry {
                 text: qsTr("Pour la machine…")

@@ -92,6 +92,11 @@ public:
     Q_INVOKABLE void importImage(const QString& path, const QVariantMap& options);
     Q_INVOKABLE void importImageLayers(const QVariantList& urls);
     Q_INVOKABLE void importVector(const QString& path, const QString& stitchType = {});
+    // CX08 : insère un projet .osp ou une broderie machine dans le projet ouvert. L'aperçu lit le
+    // fichier sans rien modifier (ok, message, machine, shapes, embroideries, texts, stitches,
+    // colors, widthMm, heightMm) ; l'insertion est UNE étape d'annulation, refus clair sinon.
+    Q_INVOKABLE [[nodiscard]] QVariantMap insertDesignPreview(const QUrl& url) const;
+    Q_INVOKABLE bool insertDesign(const QUrl& url);
 
     // --- Exports ----------------------------------------------------------------------------
     Q_INVOKABLE [[nodiscard]] QVariantMap exportOptions() const;

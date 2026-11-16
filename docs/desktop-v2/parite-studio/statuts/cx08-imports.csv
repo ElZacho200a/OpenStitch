@@ -1,0 +1,2 @@
+id,statut,preuve,controleur,composant
+cx08-insert-design,TESTED,test_file_io [insert] + StudioFilesTest::insertDesignPreviewThenOneUndoStep - Debug,FileController::insertDesignPreview/insertDesign + action file.insert_design,FilePanel.qml insertDesignDialog

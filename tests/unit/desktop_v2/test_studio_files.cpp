@@ -166,6 +166,7 @@ private slots:
     void openingMessageIsReplacedOnceLoadedInsteadOfLingering();
     void dropAndCommandLineDispatchByExtension();
     void machineExportImportRoundTrip();
+    void insertDesignPreviewThenOneUndoStep();
     void overflowExportRequiresExplicitConfirmation();
     void exportsAreDeterministicAndRepeatable();
     void documentExportsWriteRealFiles();
@@ -911,6 +912,73 @@ void StudioFilesTest::machineExportImportRoundTrip() {
     rig.files->exportMachine(url(dir, "x.abc"));
     QVERIFY(rig.files->messageIsError());
     QVERIFY(!QFileInfo::exists(dir.filePath(QStringLiteral("x.abc"))));
+}
+
+// CX08 : Fichier > Insérer un design. Aperçu dans la vraie boîte QML, insertion en une étape
+// d'annulation avec des identifiants neufs ; un fichier illisible ne peut pas être validé.
+void StudioFilesTest::insertDesignPreviewThenOneUndoStep() {
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    Rig rig({}, true);
+    QVERIFY(rig.window);
+    QTRY_VERIFY_WITH_TIMEOUT(rig.window->isExposed(), 5'000);
+    const QString source = osp(dir, "motif.osp", studioFixture());
+    QVERIFY(!source.isEmpty());
+    rig.session.replaceProject(studioFixture(), true);
+
+    auto* panel = rig.window->findChild<QObject*>(QStringLiteral("filePanel"));
+    auto* dialog = rig.window->findChild<QObject*>(QStringLiteral("insertDesignDialog"));
+    auto* summary = rig.window->findChild<QObject*>(QStringLiteral("insertDesignSummary"));
+    auto* accept = rig.window->findChild<QQuickItem*>(QStringLiteral("acceptInsertDesign"));
+    auto* cancel = rig.window->findChild<QQuickItem*>(QStringLiteral("cancelInsertDesign"));
+    QVERIFY(panel);
+    QVERIFY(dialog);
+    QVERIFY(summary);
+    QVERIFY(accept);
+    QVERIFY(cancel);
+    QVERIFY(rig.window->findChild<QQuickItem*>(QStringLiteral("insertDesignMenuEntry")));
+
+    // Aperçu : rien n'est modifié tant que l'utilisateur n'a pas validé.
+    const auto depth = rig.session.undoNames().size();
+    QVERIFY(QMetaObject::invokeMethod(
+        panel, "previewInsert", Q_ARG(QVariant, QVariant::fromValue(QUrl::fromLocalFile(source)))));
+    QTRY_VERIFY_WITH_TIMEOUT(dialog->property("visible").toBool(), 3'000);
+    QVERIFY2(summary->property("text").toString().contains(QStringLiteral("2 objets")),
+             qPrintable(summary->property("text").toString()));
+    QVERIFY(accept->isEnabled());
+    QCOMPARE(rig.session.project().embroidery_objects.size(), std::size_t{2});
+    QVERIFY(QMetaObject::invokeMethod(accept, "click"));
+    QTRY_VERIFY_WITH_TIMEOUT(!dialog->property("visible").toBool(), 3'000);
+
+    const auto& project = rig.session.project();
+    QCOMPARE(project.embroidery_objects.size(), std::size_t{4});
+    QCOMPARE(project.vector_objects.size(), std::size_t{4});
+    QCOMPARE(rig.session.undoNames().size(), depth + 1);
+    for (std::size_t i = 2; i < 4; ++i) {
+        QVERIFY(project.embroidery_objects[i].id.value > secondId); // ids jamais réutilisés
+    }
+    QVERIFY(!rig.files->messageIsError());
+    QVERIFY(rig.session.undo());
+    QCOMPARE(rig.session.project().embroidery_objects.size(), std::size_t{2});
+
+    // Fichier illisible : refus affiché, bouton Insérer désactivé, document intact.
+    const QString junk = dir.filePath(QStringLiteral("abime.osp"));
+    {
+        QFile file(junk);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write("pas une archive");
+    }
+    QVERIFY(QMetaObject::invokeMethod(
+        panel, "previewInsert", Q_ARG(QVariant, QVariant::fromValue(QUrl::fromLocalFile(junk)))));
+    QTRY_VERIFY_WITH_TIMEOUT(dialog->property("visible").toBool(), 3'000);
+    QVERIFY(!accept->isEnabled());
+    QVERIFY(!summary->property("text").toString().isEmpty());
+    QVERIFY(QMetaObject::invokeMethod(cancel, "click"));
+    QTRY_VERIFY_WITH_TIMEOUT(!dialog->property("visible").toBool(), 3'000);
+    QVERIFY(!rig.files->insertDesign(QUrl::fromLocalFile(junk)));
+    QVERIFY(rig.files->messageIsError());
+    QCOMPARE(rig.session.project().embroidery_objects.size(), std::size_t{2});
+    QVERIFY(rig.warnings.isEmpty());
 }
 
 void StudioFilesTest::overflowExportRequiresExplicitConfirmation() {
