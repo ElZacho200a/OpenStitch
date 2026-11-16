@@ -419,16 +419,17 @@ OpStatus read_shape_targets(const OpContext& ctx, std::vector<ObjectId>& out) {
     }
     for (std::size_t i = 0; i < it->size(); ++i) {
         const auto& item = (*it)[i];
-        const auto* emb = item.is_number_unsigned()
-                              ? ctx.project.findEmbroidery(ObjectId{item.get<std::uint64_t>()})
-                              : nullptr;
-        if (emb == nullptr) {
+        // Objet de broderie ou forme vectorielle pas encore convertie.
+        const ObjectId vector = item.is_number_unsigned()
+                                    ? shape_vector_of(ctx.project, item.get<std::uint64_t>())
+                                    : ObjectId{};
+        if (!vector.valid()) {
             return OpStatus::failure(code::kUnknownObject,
                                      "objects[" + std::to_string(i) + "] : objet introuvable",
                                      "voir `project inspect --json` pour les identifiants");
         }
-        if (std::find(out.begin(), out.end(), emb->source_vector) == out.end()) {
-            out.push_back(emb->source_vector);
+        if (std::find(out.begin(), out.end(), vector) == out.end()) {
+            out.push_back(vector);
         }
     }
     return OpStatus::success();

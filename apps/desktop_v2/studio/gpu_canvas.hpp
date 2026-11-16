@@ -114,7 +114,7 @@ public:
     // VectorSpaceController ; `picker` reçoit (x, y, tolérance mm, ctrl) pour un clic au canevas.
     // (x mm, y mm, tolérance mm, Ctrl, menu contextuel). Pour le menu, une forme déjà
     // sélectionnée sous le curseur garde la sélection multiple.
-    using VectorPicker = std::function<void(double, double, double, bool, bool)>;
+    using VectorPicker = std::function<QString(double, double, double, bool, bool)>;
     void setVectorLayer(std::shared_ptr<const VectorLayer> layer);
     void setVectorPicker(VectorPicker picker) { vectorPicker_ = std::move(picker); }
     [[nodiscard]] const std::shared_ptr<const VectorLayer>& vectorLayer() const {

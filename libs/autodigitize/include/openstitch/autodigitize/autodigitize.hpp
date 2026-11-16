@@ -9,6 +9,7 @@
 #include "openstitch/core/ids.hpp"
 #include "openstitch/core/units.hpp"
 #include "openstitch/document/embroidery_object.hpp"
+#include "openstitch/document/project.hpp"
 #include "openstitch/document/vector_object.hpp"
 #include "openstitch/geometry/path.hpp"
 #include "openstitch/segmentation/segmentation.hpp"
@@ -165,6 +166,20 @@ struct AutoOptions {
 // mm), le débord fragmente les remplissages (mesuré : 0,15 mm -> 25 000 sauts, 0,3 mm -> 8 500, 0,5
 // mm -> 1 100 pour 1 900 sans l'option).
 void apply_solid_block(AutoOptions& options, double overlap_mm = 0.5);
+
+// Débord des tatamis sous leurs voisins brodés, sur un projet DÉJÀ converti (bouton « Convertir »,
+// opération `overlap_fills`) : même règle que `fill_overlap` dans l'autonumérisation. Pour chaque
+// tatami issu d'une région de l'image active : nouveau contour de sa forme = (forme rentrée de son
+// `inset`) ∪ (bande de ±overlap sur les frontières partagées) ; l'appelant pose ensuite `inset` =
+// 0. Les bords extérieurs et le contact avec le fond non brodé gardent le retrait. Un tatami dont
+// `inset` vaut déjà 0 est sauté (idempotent) ; verrouillés ignorés. Ne modifie pas le projet.
+struct FillOverlapChange {
+    ObjectId vector;
+    ObjectId embroidery;
+    std::vector<geometry::PathSet> paths;
+};
+[[nodiscard]] std::vector<FillOverlapChange> plan_fill_overlap(const document::Project& project,
+                                                               Micrometers overlap);
 
 // Objets produits par l'autonumérisation : toujours EDITABLES (§13). Le type
 // de chaque objet est choisi par la taille de sa region : tatami pour les zones

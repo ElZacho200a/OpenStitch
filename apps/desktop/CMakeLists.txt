@@ -61,10 +61,6 @@ add_library(openstitch_desktop_widgets STATIC
     main_window_ux.cpp
     live_server.cpp
     companion_dock.cpp
-    companion_launcher.cpp
-    companion_launcher.hpp
-    claude_code_process_backend.cpp
-    claude_code_process_backend.hpp
     main_window_preferences.cpp
     general_preferences_dialog.cpp
     general_preferences_dialog.hpp

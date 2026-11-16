@@ -7,6 +7,8 @@
 #include <QEventLoop>
 #include <QFileInfo>
 #include <QGuiApplication>
+#include <QRegularExpression>
+#include <QUrl>
 
 #include "../live/live_server.hpp"
 
@@ -75,8 +77,67 @@ LiveCompanion& CompanionController::ensureCompanion() {
                 return title.empty() ? std::string("(sans titre)") : title;
             });
         companion_->setOnChanged([this] { emit changed(); });
+        // Fichiers : l'agent passe par les mêmes chemins que le menu Fichier (état, récents).
+        mcp::LiveHostActions host;
+        host.current_path = [this] { return studio_.path().toStdString(); };
+        host.open_project = [this](const std::string& path, std::string&) {
+            studio_.openProject(QUrl::fromLocalFile(QString::fromStdString(path)));
+            return true; // asynchrone : l'agent relit live_status
+        };
+        host.save_project = [this](const std::string& path, std::string& error) {
+            const QString target = QString::fromStdString(path);
+            const bool ok = QDir::cleanPath(target) == QDir::cleanPath(studio_.path())
+                                ? studio_.saveProject()
+                                : studio_.saveProjectAs(QUrl::fromLocalFile(target));
+            if (!ok) {
+                error = studio_.status().toStdString();
+            }
+            return ok;
+        };
+        companion_->setHostActions(std::move(host));
+        // Même règle que askApproval : en mode automatique, lots et numérisation passent sans
+        // carte, donc sans aperçu avant/après (quatre passes complètes du moteur évitées).
+        companion_->setOnStage([this](StageId stage) {
+            emit stageRequested(QString::fromLatin1(stageIdName(stage).data()));
+        });
+        companion_->setPreviewWanted([this](const std::string& tool) {
+            const bool undoable = tool == "project_apply" || tool == "project_digitize";
+            return !(undoable && autoApply() && !fullyDisabled());
+        });
     }
     return *companion_;
+}
+
+void CompanionController::wire(desktop::CompanionBackend* backend) {
+    using B = desktop::CompanionBackend;
+    connect(backend, &B::assistantText, this,
+            [this](const QString& text) { append(QStringLiteral("assistant"), text); });
+    connect(backend, &B::toolCalled, this, [this](const desktop::CompanionToolCall& call) {
+        // Le NOM de l'outil est toujours montré (titre), le résumé dit sur quoi il porte.
+        append(call.isError ? QStringLiteral("error") : QStringLiteral("tool"),
+               call.summary + (call.refusal.isEmpty() ? QString() : " — " + call.refusal),
+               call.tool.startsWith(QStringLiteral("mcp__openstitch__"))
+                   ? call.tool.mid(QStringLiteral("mcp__openstitch__").size())
+                   : call.tool);
+    });
+    connect(backend, &B::thinking, this,
+            [this](const QString& text) { append(QStringLiteral("thinking"), text); });
+    connect(backend, &B::activity, this, [this](const QString& label) {
+        activity_ = label;
+        emit changed();
+    });
+    connect(backend, &B::failed, this, [this](const QString& message) {
+        error_ = message;
+        append(QStringLiteral("error"), message);
+    });
+    connect(backend, &B::usage, this, [this](quint64 in, quint64 out) {
+        usage_ = tr("%1 jetons envoyés, %2 reçus").arg(in).arg(out);
+        emit changed();
+    });
+    connect(backend, &B::finished, this, [this] {
+        activity_.clear();
+        emit changed();
+    });
 }
 
 desktop::ClaudeCompanionBackend& CompanionController::ensureBackend() {
@@ -84,22 +145,7 @@ desktop::ClaudeCompanionBackend& CompanionController::ensureBackend() {
         auto& live = ensureCompanion();
         backend_ =
             new desktop::ClaudeCompanionBackend(live.service(), secrets(), options_.factory, this);
-        using B = desktop::CompanionBackend;
-        connect(backend_, &B::assistantText, this,
-                [this](const QString& text) { append(QStringLiteral("assistant"), text); });
-        connect(backend_, &B::toolCalled, this, [this](const desktop::CompanionToolCall& call) {
-            append(call.isError ? QStringLiteral("error") : QStringLiteral("tool"),
-                   call.summary + (call.refusal.isEmpty() ? QString() : " — " + call.refusal));
-        });
-        connect(backend_, &B::failed, this, [this](const QString& message) {
-            error_ = message;
-            append(QStringLiteral("error"), message);
-        });
-        connect(backend_, &B::usage, this, [this](quint64 in, quint64 out) {
-            usage_ = tr("%1 jetons envoyés, %2 reçus").arg(in).arg(out);
-            emit changed();
-        });
-        connect(backend_, &B::finished, this, [this] { emit changed(); });
+        wire(backend_);
     }
     return *backend_;
 }
@@ -143,11 +189,18 @@ QVariantList CompanionController::events() const {
 }
 
 bool CompanionController::providerReady() const {
+    if (codeBackend_ != nullptr) {
+        return codeBackend_->available();
+    }
     return backend_ != nullptr ? backend_->available()
                                : (!fullyDisabled() && providerEnabled() && hasApiKey());
 }
 
 QString CompanionController::providerName() const {
+    if (codeBackend_ != nullptr) {
+        return tr("Claude Code installé sur cet ordinateur (votre compte) : les échanges passent "
+                  "par votre CLI ; il n'agit que par les outils MCP d'OpenStitch.");
+    }
     return tr("Anthropic (Claude) : les messages et résultats d'outils sont envoyés à "
               "api.anthropic.com");
 }
@@ -174,8 +227,18 @@ bool CompanionController::fullyDisabled() const {
     return desktop::companion_settings::fullyDisabled();
 }
 
+bool CompanionController::autoApply() const {
+    return desktop::companion_settings::autoApply();
+}
+
+void CompanionController::setAutoApply(bool on) {
+    desktop::companion_settings::setAutoApply(on);
+    emit changed();
+}
+
 bool CompanionController::busy() const {
-    return backend_ != nullptr && backend_->running();
+    return (backend_ != nullptr && backend_->running()) ||
+           (codeBackend_ != nullptr && codeBackend_->running());
 }
 
 void CompanionController::setModel(const QString& model) {
@@ -196,6 +259,7 @@ void CompanionController::setFullyDisabled(bool off) {
     if (off) {
         (void)setBridgeEnabled(false);
         cancel();
+        dropClaudeCode();
     }
     if (backend_ != nullptr) {
         backend_->refresh();
@@ -205,6 +269,7 @@ void CompanionController::setFullyDisabled(bool off) {
 
 QString CompanionController::setBridgeEnabled(bool on) {
     if (!on) {
+        dropClaudeCode(); // sans pont, l'agent intégré n'a plus de document à qui parler
         if (server_) {
             // Invalide aussi les calculs déjà en cours : plus rien ne peut être appliqué.
             studio_.session().liveBridge().reset();
@@ -236,10 +301,21 @@ QString CompanionController::setBridgeEnabled(bool on) {
     return {};
 }
 
-void CompanionController::append(const QString& role, const QString& text) {
-    messages_.push_back(
-        QVariantMap{{QStringLiteral("role"), role}, {QStringLiteral("text"), text}});
+void CompanionController::append(const QString& role, const QString& text, const QString& title) {
+    messages_.push_back(QVariantMap{{QStringLiteral("role"), role},
+                                    {QStringLiteral("text"), text},
+                                    {QStringLiteral("title"), title}});
     emit changed();
+}
+
+QString CompanionController::grantFolder(const QString& path) {
+    const QFileInfo info(path);
+    const QString dir = info.isDir() ? info.absoluteFilePath() : info.absolutePath();
+    if (!ensureCompanion().service().grant_read_dir(
+            QDir::fromNativeSeparators(dir).toStdString())) {
+        return tr("Ce dossier ne peut pas être confié à l'agent (introuvable ou sensible).");
+    }
+    return {};
 }
 
 bool CompanionController::send(const QString& text) {
@@ -251,8 +327,13 @@ bool CompanionController::send(const QString& text) {
         append(QStringLiteral("error"), tr("Le compagnon IA est désactivé."));
         return false;
     }
-    auto& backend = ensureBackend();
-    backend.refresh();
+    desktop::CompanionBackend* active = codeBackend_;
+    if (active == nullptr) {
+        auto& api = ensureBackend();
+        api.refresh();
+        active = &api;
+    }
+    auto& backend = *active;
     if (!backend.available()) {
         error_ = tr("Aucun fournisseur prêt : activez-le et enregistrez une clé API dans les "
                     "préférences (Compagnon IA).");
@@ -260,7 +341,28 @@ bool CompanionController::send(const QString& text) {
         return false;
     }
     error_.clear();
+    activity_ = tr("Envoi à Claude…");
     append(QStringLiteral("user"), trimmed);
+    // Un dossier nommé dans SA demande vaut accord de lecture (le texte vient de l'utilisateur,
+    // jamais d'un fichier ni d'un outil) : l'agent peut alors lire le pack sans rien demander.
+    static const QRegularExpression pathPattern(
+        QStringLiteral(R"((?:[A-Za-z]:[\\/]|/)[^\s"'<>|*?]+)"));
+    auto matches = pathPattern.globalMatch(trimmed);
+    while (matches.hasNext()) {
+        QString candidate = matches.next().captured(0);
+        while (candidate.endsWith(QLatin1Char('.')) || candidate.endsWith(QLatin1Char(',')) ||
+               candidate.endsWith(QLatin1Char(';')) || candidate.endsWith(QLatin1Char(')'))) {
+            candidate.chop(1);
+        }
+        if (QFileInfo::exists(candidate) && grantFolder(candidate).isEmpty()) {
+            const QFileInfo info(candidate);
+            append(QStringLiteral("tool"),
+                   tr("Accès en lecture accordé au dossier : %1")
+                       .arg(QDir::toNativeSeparators(info.isDir() ? info.absoluteFilePath()
+                                                                  : info.absolutePath())),
+                   tr("Accès en lecture"));
+        }
+    }
     backend.send(trimmed);
     emit changed();
     return true;
@@ -269,6 +371,9 @@ bool CompanionController::send(const QString& text) {
 void CompanionController::cancel() {
     if (backend_ != nullptr) {
         backend_->cancel();
+    }
+    if (codeBackend_ != nullptr) {
+        codeBackend_->cancel();
     }
     if (loop_ != nullptr) {
         reject();
@@ -282,6 +387,9 @@ void CompanionController::resetConversation() {
     }
     if (backend_ != nullptr) {
         backend_->resetConversation();
+    }
+    if (codeBackend_ != nullptr) {
+        codeBackend_->resetConversation();
     }
     messages_.clear();
     usage_.clear();
@@ -299,11 +407,23 @@ void CompanionController::onDocumentReplaced() {
     if (backend_ != nullptr) {
         backend_->resetConversation();
     }
+    if (codeBackend_ != nullptr) {
+        codeBackend_->resetConversation();
+    }
     messages_.clear();
     usage_.clear();
 }
 
 bool CompanionController::askApproval(const mcp::ApprovalRequest& request) {
+    // Mode automatique : l'agent travaille en direct, sans carte de validation. Les modifications
+    // du document (lot, numérisation) sont annulables pas à pas ; les actions de fichier ne le
+    // sont pas : elles ne passent seules que si rien n'est écrasé ni perdu (aucune réserve).
+    if (autoApply() && !fullyDisabled()) {
+        const bool undoable = request.tool == "project_apply" || request.tool == "project_digitize";
+        if (undoable || request.warnings.empty()) {
+            return true; // le journal d'activité garde la trace de l'application
+        }
+    }
     if (loop_ != nullptr) { // une proposition attend déjà : refus, jamais d'empilement
         return false;
     }
@@ -384,13 +504,54 @@ void CompanionController::clearApiKey() {
     emit changed();
 }
 
+void CompanionController::dropClaudeCode() {
+    if (codeBackend_ == nullptr) {
+        return;
+    }
+    codeBackend_->resetConversation();
+    codeBackend_->deleteLater();
+    codeBackend_ = nullptr;
+    emit changed();
+}
+
 QString CompanionController::prepareClaudeCode() {
+    const auto refusal = setBridgeEnabled(true);
+    if (!refusal.isEmpty()) {
+        return refusal;
+    }
+    const auto env =
+        options_.launcher ? *options_.launcher : desktop::ClaudeCodeLauncher::systemEnv();
+    QString executable;
+    QString workspace;
+    const auto ready = desktop::ClaudeCodeLauncher::prepare(env, executable, workspace);
+    if (ready != desktop::ClaudeCodeLauncher::Result::Started) {
+        return desktop::ClaudeCodeLauncher::describe(ready);
+    }
+    if (codeBackend_ != nullptr) { // un seul processus Claude Code par conversation
+        codeBackend_->resetConversation();
+        codeBackend_->deleteLater();
+    }
+    codeBackend_ = new desktop::ClaudeCodeProcessBackend(executable, workspace, this);
+    wire(codeBackend_);
+    error_.clear();
+    emit changed();
+    return {};
+}
+
+QString CompanionController::openClaudeCodeTerminal() {
     const auto refusal = setBridgeEnabled(true);
     if (!refusal.isEmpty()) {
         return refusal;
     }
     if (auto* clipboard = QGuiApplication::clipboard()) {
         clipboard->setText(connectionCommand());
+    }
+    const auto env =
+        options_.launcher ? *options_.launcher : desktop::ClaudeCodeLauncher::systemEnv();
+    const auto result = desktop::ClaudeCodeLauncher::launch(env);
+    if (result != desktop::ClaudeCodeLauncher::Result::Started) {
+        return desktop::ClaudeCodeLauncher::describe(result) + QLatin1Char(' ') +
+               tr("La commande de branchement manuel est dans le presse-papiers.");
     }
     return {};
 }

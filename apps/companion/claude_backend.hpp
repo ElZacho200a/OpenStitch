@@ -23,6 +23,10 @@ void setProviderEnabled(bool on);
 void setFullyDisabled(bool off);
 [[nodiscard]] QString model();
 void setModel(const QString& model);
+// Mode automatique (activé par défaut) : l'agent modifie le document en direct, sans validation à
+// chaque lot ; tout reste annulable pas à pas. Désactivé : chaque lot demande un accord.
+[[nodiscard]] bool autoApply();
+void setAutoApply(bool on);
 // Analyse sémantique automatique au lancement de Claude sur un projet non vide (activée par
 // défaut : désactivée pour éviter un envoi de rendus et un coût involontaires).
 [[nodiscard]] bool autoSemanticAnalysis();
