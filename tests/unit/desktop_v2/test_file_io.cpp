@@ -9,6 +9,7 @@
 #include "document_session.hpp"
 #include "file_io.hpp"
 #include "openstitch/formats/format_registry.hpp"
+#include "openstitch/project_io/project_io.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
 
 using namespace openstitch;
@@ -104,4 +105,125 @@ TEST_CASE("DXF export then import round-trips the vector outlines in one undo st
         "Importer un DXF");
     CHECK_FALSE(absent.committed);
     fs::remove(file);
+}
+
+namespace {
+
+// Projet numérisé réel (fixture tentabrode) et sa broderie DST, écrits dans le dossier temporaire.
+struct InsertFixtures {
+    document::Project project;
+    fs::path osp;
+    fs::path dst;
+};
+
+InsertFixtures makeInsertFixtures() {
+    DigitizeRequest request;
+    request.image = fs::path(OPENSTITCH_FIXTURES_DIR) / "tentabrode.png";
+    request.target_height_mm = 30.0;
+    request.settings.max_colors = 3;
+    auto digitized = run_digitize(request, TaskContext{});
+    REQUIRE(digitized.has_value());
+    InsertFixtures out;
+    out.project = std::move(digitized->project);
+    out.osp = fs::temp_directory_path() / "os_v2_insert_source.osp";
+    REQUIRE(project_io::save_project(out.osp, out.project).has_value());
+    const auto sequence = stitch_generation::effective_sequence(out.project);
+    REQUIRE(sequence.has_value());
+    const auto bytes = formats::find_format("dst")->encode(*sequence);
+    REQUIRE(bytes.has_value());
+    out.dst = fs::temp_directory_path() / "os_v2_insert_source.dst";
+    std::ofstream file(out.dst, std::ios::binary | std::ios::trunc);
+    file.write(reinterpret_cast<const char*>(bytes->data()),
+               static_cast<std::streamsize>(bytes->size()));
+    return out;
+}
+
+} // namespace
+
+TEST_CASE("inserting a project adds its objects with fresh ids in one undo step",
+          "[desktop_v2][files][insert]") {
+    const auto fx = makeInsertFixtures();
+    DocumentSession session;
+    session.replaceProject(fx.project, true);
+    const auto shapes = session.project().vector_objects.size();
+    const auto embroideries = session.project().embroidery_objects.size();
+    REQUIRE(embroideries > 0);
+
+    const auto preview = previewDesignInsert(session.project(), fx.osp);
+    REQUIRE(preview.ok);
+    CHECK_FALSE(preview.machine);
+    CHECK(preview.shapes == shapes);
+    CHECK(preview.embroideries == embroideries);
+    CHECK(preview.widthMm > 0.0);
+    CHECK(preview.heightMm > 0.0);
+    CHECK(session.project().embroidery_objects.size() == embroideries); // l'aperçu ne modifie rien
+
+    const auto depth = session.undoNames().size();
+    REQUIRE(insertDesign(session, fx.osp).ok);
+    CHECK(session.undoNames().size() == depth + 1);
+    CHECK(session.project().vector_objects.size() == 2 * shapes);
+    CHECK(session.project().embroidery_objects.size() == 2 * embroideries);
+    std::vector<std::uint64_t> ids;
+    for (const auto& o : session.project().embroidery_objects) {
+        ids.push_back(o.id.value);
+    }
+    std::sort(ids.begin(), ids.end());
+    CHECK(std::adjacent_find(ids.begin(), ids.end()) == ids.end()); // aucun id réutilisé
+
+    REQUIRE(session.undo());
+    CHECK(session.project().embroidery_objects.size() == embroideries);
+    CHECK(session.project().vector_objects.size() == shapes);
+    fs::remove(fx.osp);
+    fs::remove(fx.dst);
+}
+
+TEST_CASE("inserting machine embroidery fills an empty project and is refused next to objects",
+          "[desktop_v2][files][insert]") {
+    const auto fx = makeInsertFixtures();
+    DocumentSession session;
+    session.replaceProject(document::Project{}, true);
+    const auto preview = previewDesignInsert(session.project(), fx.dst);
+    REQUIRE(preview.ok);
+    CHECK(preview.machine);
+    CHECK(preview.stitches > 100);
+    CHECK(preview.widthMm > 0.0);
+    REQUIRE(insertDesign(session, fx.dst).ok);
+    REQUIRE(session.project().imported_design.has_value());
+    CHECK(session.project().imported_design->sequence.commands.size() == preview.stitches);
+    REQUIRE(session.undo());
+    CHECK_FALSE(session.project().imported_design.has_value());
+
+    // Projet avec objets éditables : refus clair, document inchangé.
+    session.replaceProject(fx.project, true);
+    const auto before = session.project().embroidery_objects.size();
+    const auto depth = session.undoNames().size();
+    CHECK_FALSE(previewDesignInsert(session.project(), fx.dst).ok);
+    const auto refused = insertDesign(session, fx.dst);
+    CHECK_FALSE(refused.ok);
+    CHECK_FALSE(refused.message.empty());
+    CHECK(session.undoNames().size() == depth);
+    CHECK(session.project().embroidery_objects.size() == before);
+    CHECK_FALSE(session.project().imported_design.has_value());
+    fs::remove(fx.osp);
+    fs::remove(fx.dst);
+}
+
+TEST_CASE("inserting an unreadable or unsupported file is refused and leaves the document intact",
+          "[desktop_v2][files][insert]") {
+    DocumentSession session;
+    session.replaceProject(document::Project{}, true);
+    const fs::path junk = fs::temp_directory_path() / "os_v2_insert_junk.osp";
+    {
+        std::ofstream out(junk, std::ios::binary | std::ios::trunc);
+        out << "pas une archive";
+    }
+    for (const fs::path& file :
+         {junk, fs::temp_directory_path() / "os_v2_insert_absent.dst", fs::path("photo.png")}) {
+        const auto preview = previewDesignInsert(session.project(), file);
+        CHECK_FALSE(preview.ok);
+        CHECK_FALSE(preview.message.empty());
+        CHECK_FALSE(insertDesign(session, file).ok);
+    }
+    CHECK_FALSE(session.canUndo());
+    fs::remove(junk);
 }

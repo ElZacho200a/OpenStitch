@@ -138,7 +138,18 @@ enum class DensityGeometry : std::uint8_t {
     Linear = 0,
     Radial = 1,
     Curved = 2,
+    // Fondus (2026-11-15) : bandes en spirale autour de `from` (rayon |to - from|, nombre de
+    // tours porté par `curve_bend` × 4, le signe donne le sens) ; position = onde triangle, donc
+    // continue partout, les fils allant du premier au dernier puis revenant à chaque bras.
+    Spiral = 3,
+    // Du bord de la forme (t = 0) vers son cœur (t = 1) : distance au contour le plus proche
+    // rapportée à la plus grande distance intérieure. `from`/`to` ne servent pas.
+    Contour = 4,
 };
+
+[[nodiscard]] constexpr bool is_valid_density_geometry(int value) {
+    return value >= 0 && value <= static_cast<int>(DensityGeometry::Contour);
+}
 
 // Noeuds d'une densité de fil normalisée le long de l'axe : 0 = aucune
 // couture, 1 = densité de référence. Cette série permet de décrire une rampe
@@ -692,7 +703,8 @@ struct GradientThread {
 // Changer `method` régénère ces couches SANS toucher `palette` ni `transition`.
 struct MulticolorGradientParams {
     GradientMethod method{GradientMethod::Directional};
-    // 2 à 8 fils, de l'arrière vers l'avant (ordre de couture). Validé par
+    // 1 à 8 fils, de l'arrière vers l'avant (ordre de couture). Un seul fil : dégradé de
+    // densité monochrome, de plein (t = 0) à `end_density` (t = 1). Validé par
     // `project_ops::make_create_multicolor_gradient_object_command`, pas par le modèle.
     std::vector<GradientThread> palette;
     // Vrai : les fils se partagent UNE grille de rangées (couverture exacte). Faux : premier fil
@@ -707,6 +719,11 @@ struct MulticolorGradientParams {
     // de la première couche ; les couches suivantes tournent de 180°/`crosshatch_layers`.
     int crosshatch_layers{2};
     Angle crosshatch_angle{0.0};
+    // Remplissages (hors satin et hachures) : angle imposé aux lignes de couture, indépendant
+    // de l'axe du fondu. Absent : lignes perpendiculaires à l'axe (comportement historique).
+    std::optional<Angle> stitch_angle;
+    // Fondu d'un seul fil uniquement : densité relative à l'arrivée, [0 ; 1].
+    double end_density{0.15};
 
     bool operator==(const MulticolorGradientParams&) const = default;
 };

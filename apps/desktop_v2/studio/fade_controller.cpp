@@ -25,7 +25,7 @@ QColor colour(const std::array<std::uint8_t, 3>& c) {
 namespace {
 std::optional<MultiFadeSettings> multiSettingsOf(const QVariantList& inputs, bool complementary,
                                                  int texture, int geometry) {
-    if (inputs.size() < 2 || inputs.size() > 8) {
+    if (inputs.empty() || inputs.size() > 8) {
         return std::nullopt;
     }
     MultiFadeSettings settings;
@@ -208,8 +208,8 @@ bool FadeController::removeThread(int index) {
     if (index < 0 || index >= count) {
         return refuse(QStringLiteral("Fil inconnu."));
     }
-    if (count <= 2) {
-        return refuse(QStringLiteral("Un fondu garde au moins 2 fils."));
+    if (count <= 1) {
+        return refuse(QStringLiteral("Un fondu garde au moins 1 fil."));
     }
     next.colors.erase(next.colors.begin() + index);
     if (hasRepeatedNeighbour(next.colors)) {
@@ -218,7 +218,7 @@ bool FadeController::removeThread(int index) {
     if (!apply(next, QStringLiteral("Fil %1 retiré.").arg(index + 1))) {
         return false;
     }
-    setSelectedThread(std::min(index, count - 2));
+    setSelectedThread(std::max(0, std::min(index, count - 2)));
     return true;
 }
 
@@ -428,13 +428,7 @@ bool FadeController::apply(const MultiFadeSettings& next, const QString& success
     if (id_ == 0 || !hasFade()) {
         return refuse(QStringLiteral("Sélectionnez un fondu."));
     }
-    if (multiSettings_ && multiSettings_->colors == next.colors &&
-        multiSettings_->complementary == next.complementary &&
-        multiSettings_->texture == next.texture && multiSettings_->geometry == next.geometry &&
-        multiSettings_->method == next.method &&
-        multiSettings_->satinDensityMm == next.satinDensityMm &&
-        multiSettings_->crosshatchLayers == next.crosshatchLayers &&
-        multiSettings_->crosshatchAngleDeg == next.crosshatchAngleDeg) {
+    if (multiSettings_ && *multiSettings_ == next) {
         return true; // aucune commande pour un réglage inchangé
     }
     return report(editMultiFade(studio_.session(), id_, next), success);
@@ -448,7 +442,7 @@ bool FadeController::setColors(const QVariantList& colors) {
     const auto parsed = multiSettingsOf(colors, base->complementary, base->texture, base->geometry);
     if (!parsed) {
         return refuse(
-            QStringLiteral("Choisissez entre 2 et 8 fils #rrggbb, chacun différent du précédent."));
+            QStringLiteral("Choisissez entre 1 et 8 fils #rrggbb, chacun différent du précédent."));
     }
     auto next = *base;
     next.colors = parsed->colors;
@@ -494,6 +488,35 @@ bool FadeController::setCrosshatch(int layers, double angleDeg) {
     next->crosshatchLayers = layers;
     next->crosshatchAngleDeg = angleDeg;
     return apply(*next, QStringLiteral("Hachures croisées modifiées."));
+}
+
+bool FadeController::setSpacing(double mm) {
+    auto next = current();
+    if (!next || !std::isfinite(mm) || mm < 0.1 || mm > 4.0) {
+        return refuse(QStringLiteral("Espacement des rangées entre 0,1 et 4 mm."));
+    }
+    next->spacingMm = std::round(mm * 1000.0) / 1000.0;
+    return apply(*next, QStringLiteral("Espacement des rangées modifié."));
+}
+
+bool FadeController::setStitchAngle(bool custom, double degrees) {
+    auto next = current();
+    if (!next || !std::isfinite(degrees)) {
+        return refuse(QStringLiteral("Direction des points invalide."));
+    }
+    next->customStitchAngle = custom;
+    next->stitchAngleDeg = custom ? std::remainder(degrees, 180.0) : 0.0;
+    return apply(*next, custom ? QStringLiteral("Direction des points imposée.")
+                               : QStringLiteral("Points perpendiculaires au fondu."));
+}
+
+bool FadeController::setEndDensity(double percent) {
+    auto next = current();
+    if (!next || !std::isfinite(percent) || percent < 0.0 || percent > 100.0) {
+        return refuse(QStringLiteral("Densité d'arrivée entre 0 et 100 %."));
+    }
+    next->endDensity = std::round(percent) / 100.0;
+    return apply(*next, QStringLiteral("Densité d'arrivée modifiée."));
 }
 
 QVariantList FadeController::curveProfile() const {
@@ -566,7 +589,7 @@ bool FadeController::setGeometry(int geometry) {
     if (satinTarget()) {
         return refuse(QStringLiteral("Le fondu satin suit ses rails de couture."));
     }
-    if (id_ == 0 || !hasFade() || geometry < 0 || geometry > 2) {
+    if (id_ == 0 || !hasFade() || !document::is_valid_density_geometry(geometry)) {
         return refuse(QStringLiteral("Géométrie inconnue ou aucun fondu."));
     }
     if (this->geometry() == geometry) {
@@ -588,8 +611,8 @@ bool FadeController::setAngle(double degrees) {
     if (id_ == 0 || !hasFade()) {
         return refuse(QStringLiteral("Aucun fondu à orienter."));
     }
-    if (geometry() == 1) {
-        return refuse(QStringLiteral("Un fondu radial n'a pas d'angle d'axe visible."));
+    if (geometry() == 1 || geometry() == 4) {
+        return refuse(QStringLiteral("Un fondu radial ou qui suit le contour n'a pas d'axe."));
     }
     return report(openstitch::desktop_v2::setFadeAngle(studio_.session(), id_, degrees),
                   QStringLiteral("Angle du fondu modifié."));

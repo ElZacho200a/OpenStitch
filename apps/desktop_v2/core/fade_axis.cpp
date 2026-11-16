@@ -232,6 +232,8 @@ ServiceResult reverseFade(DocumentSession& session, std::uint64_t objectId) {
         // Un champ radial (centre -> rayon) ou un satin n'a pas de sens d'axe : l'ordre
         // des fils s'inverse.
         if (multi->transition.geometry == document::DensityGeometry::Radial ||
+            multi->transition.geometry == document::DensityGeometry::Spiral ||
+            multi->transition.geometry == document::DensityGeometry::Contour ||
             multi->method == document::GradientMethod::SatinInterlaced) {
             std::reverse(multi->palette.begin(), multi->palette.end());
         } else {
