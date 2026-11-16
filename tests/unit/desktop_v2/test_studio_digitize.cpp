@@ -862,6 +862,17 @@ void StudioDigitizeTest::mainQmlHostsDigitizePanels() {
     QCOMPARE(stepDepth(), fadeDepth + 1);
     QVERIFY(fade.hasFade());
     QTRY_VERIFY(named(window, "inspectorFadeEndDensity")->isVisible());
+    auto* endDensity = named(window, "inspectorFadeEndDensity");
+    fadeDepth = stepDepth();
+    QVERIFY(endDensity->setProperty("text", QStringLiteral("101")));
+    QTRY_VERIFY(endDensity->property("invalid").toBool());
+    QVERIFY(QMetaObject::invokeMethod(endDensity, "editingFinished"));
+    QCOMPARE(stepDepth(), fadeDepth);
+    QVERIFY(endDensity->setProperty("text", QStringLiteral("30")));
+    QVERIFY(QMetaObject::invokeMethod(endDensity, "editingFinished"));
+    QTRY_VERIFY(std::abs(fade.endDensity() - 0.3) < 1e-6);
+    QCOMPARE(stepDepth(), fadeDepth + 1);
+    QVERIFY(session.undo()); // restore density before the existing palette undo checks
     QVERIFY(!named(window, "inspectorFadeRemoveThread")->isEnabled());
     QVERIFY(session.undo());
     QTRY_COMPARE(fade.colors().size(), 2);
@@ -887,13 +898,28 @@ void StudioDigitizeTest::mainQmlHostsDigitizePanels() {
     QVERIFY(stitchAngle->setProperty("text", QStringLiteral("45")));
     QVERIFY(QMetaObject::invokeMethod(stitchAngle, "editingFinished"));
     QTRY_VERIFY(std::abs(fade.stitchAngleDeg() - 45.0) < 0.01);
+    fadeDepth = stepDepth();
+    QVERIFY(stitchAngle->setProperty("text", QStringLiteral("45deg")));
+    QTRY_VERIFY(stitchAngle->property("invalid").toBool());
+    QTRY_VERIFY(!named(window, "inspectorFadeStitchCustom")->isEnabled());
+    QVERIFY(QMetaObject::invokeMethod(stitchAngle, "editingFinished"));
+    QCOMPARE(stepDepth(), fadeDepth);
+    QVERIFY(stitchAngle->setProperty("text", QStringLiteral("45")));
     auto* spacing = named(window, "inspectorFadeSpacing");
     QVERIFY(spacing && spacing->isVisible());
     fadeDepth = stepDepth();
+    QVERIFY(spacing->setProperty("text", QStringLiteral("0,09")));
+    QTRY_VERIFY(spacing->property("invalid").toBool());
+    QVERIFY(QMetaObject::invokeMethod(spacing, "editingFinished"));
+    QCOMPARE(stepDepth(), fadeDepth);
     QVERIFY(spacing->setProperty("text", QStringLiteral("0,6")));
     QVERIFY(QMetaObject::invokeMethod(spacing, "editingFinished"));
     QTRY_VERIFY(std::abs(fade.spacingMm() - 0.6) < 1e-6);
     QCOMPARE(stepDepth(), fadeDepth + 1);
+    QVERIFY(press(window, "inspectorFadeStyle5"));
+    QTRY_COMPARE(fade.method(), 1); // satin follows its rails, not a free stitch angle
+    QTRY_VERIFY(!named(window, "inspectorFadeStitchCustom")->isVisible());
+    QTRY_VERIFY(!spacing->isVisible());
     QVERIFY(press(window, "inspectorFadeRemove"));
     QTRY_VERIFY(!fade.hasFade());
     QCOMPARE(session.project().embroidery_objects.size(), std::size_t{1});

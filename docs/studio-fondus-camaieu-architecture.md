@@ -190,8 +190,37 @@ rangées, des types manquants.
   perpendiculaire à l'axe (une seule direction). Écart désormais uniforme : les directions
   croisées sont réellement cousues.
 
-Tests : `fade types: …` (`test_gradient_fill.cpp`, 6 cas), service desktop
+Tests : `fade types: …` (`test_gradient_fill.cpp`, 8 cas), service desktop
 (`test_fade_service.cpp`) et parcours QML (`test_studio_digitize`). Non validé sur tissu.
+
+### Reprise et vérification de la PR #355 (15 novembre 2026)
+
+Intégration de `main` (`94768773`) et compilation complète en Release sous GCC 14,
+Qt 6.8.2. Les fabriques de commandes refusent désormais une densité d'arrivée hors
+de `[0 ; 1]` ou un angle non fini avant toute allocation d'identifiant ou mutation.
+Le panneau signale les espacements et pourcentages hors bornes ; une saisie d'angle
+invalide désactive « Angle » au lieu de remplacer silencieusement la valeur par zéro.
+La direction libre des points est masquée pour le satin, dont les rails pilotent
+les traversées. Le constructeur du compagnon utilise une surcharge délégante pour
+rester compilable avec GCC.
+
+Preuves locales : 32 cas / 2 191 assertions `[project_ops][gradient]`, 16 cas /
+351 assertions `[desktop_v2][fade]`, parcours QML complet passé avec refus des
+valeurs invalides sans étape d'annulation. Les géométries spirale et contour sont
+également rééditées, sauvegardées et rechargées avec une séquence de points identique.
+Sept exemples créés par les commandes publiques couvrent spirale, contour, contour
+avec trou, un fil, angle 45°, hachures croisées et satin entrelacé : génération
+déterministe, réouverture OSP, rendu PNG et export DST. Captures réelles de Studio
+pour la spirale et le dégradé d'un seul fil. Ces contrôles logiciels ne remplacent
+pas un essai textile ; un satin de 20 mm reste susceptible de produire de longs
+points et ne constitue pas un échantillon de couture validé.
+
+Suite CTest complète : 2 633 tests passés, aucun échec (167,43 s). Le test de
+persistance a ensuite été renforcé par une réédition explicite avant sauvegarde,
+puis les 32 cas de fondu ont été rejoués. Les sept DST représentatifs, dont un satin
+de 3,2 mm de large, comportent le nombre attendu de changements de fil et un pas
+cousu maximal de 4,19 mm. Le PDF régénéré est lisible (312 pages) ; son rapport
+conserve les quatre liens de chapitres inconnus déjà signalés sur `main`.
 
 ## Deux notions, deux emplacements
 
