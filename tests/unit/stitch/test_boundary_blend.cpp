@@ -9,6 +9,7 @@
 
 #include "openstitch/geometry/boolean.hpp"
 #include "openstitch/stitch_generation/boundary_blend.hpp"
+#include "openstitch/stitch_generation/directional_fill.hpp"
 #include "openstitch/stitch_generation/row_mask.hpp"
 
 using namespace openstitch;
@@ -208,6 +209,100 @@ TEST_CASE("boundary blend: oblique frontier and determinism", "[boundary_blend]"
     const auto f2 = fill_boundary_blend_tatami(a, params(0.3), b, params(0.3), {});
     REQUIRE(f1.has_value());
     REQUIRE(f2.has_value());
+    CHECK(f1->a == f2->a);
+    CHECK(f1->b == f2->b);
+}
+
+// --- L1c : directionnel ------------------------------------------------------------------
+
+namespace {
+
+document::DirectionalFillParams directional_params(std::int32_t gx0, std::int32_t gy0,
+                                                   std::int32_t gx1, std::int32_t gy1) {
+    document::DirectionalFillParams p;
+    p.inset = Micrometers{0};
+    geometry::Path guide;
+    guide.closed = false;
+    guide.nodes = {geometry::PathNode{at(gx0, gy0), geometry::NodeType::Corner, {}, {}},
+                   geometry::PathNode{at(gx1, gy1), geometry::NodeType::Corner, {}, {}}};
+    p.guides = {guide};
+    return p;
+}
+
+double sewn_length(const std::vector<FillStitch>& f, double lo, double hi) {
+    double sum = 0.0;
+    for (std::size_t i = 1; i < f.size(); ++i) {
+        const FillStitch& p = f[i - 1];
+        const FillStitch& q = f[i];
+        if (q.jump || q.travel) {
+            continue;
+        }
+        const double mid = 0.5 * (p.pos.x.value + q.pos.x.value);
+        if (mid >= lo && mid < hi) {
+            sum += std::hypot(static_cast<double>(q.pos.x.value - p.pos.x.value),
+                              static_cast<double>(q.pos.y.value - p.pos.y.value));
+        }
+    }
+    return sum;
+}
+
+} // namespace
+
+TEST_CASE("directional row mask: null mask is identical to plain directional",
+          "[boundary_blend][directional]") {
+    const auto region = rect(0, 0, 20'000, 12'000);
+    const auto p = directional_params(0, 2'000, 20'000, 10'000);
+    CHECK(fill_directional(region, p, nullptr) == fill_directional(region, p));
+}
+
+TEST_CASE("directional row mask: half density keeps about half the lines",
+          "[boundary_blend][directional]") {
+    const auto region = rect(0, 0, 20'000, 12'000);
+    const auto p = directional_params(0, 6'000, 20'000, 6'000);
+    const DensityRowMask half([](Vec2um) { return 0.5; }, DensityRowMask::Slice::Lower);
+    const double full = sewn_length(fill_directional(region, p), 0.0, 20'000.0);
+    const double kept = sewn_length(fill_directional(region, p, &half), 0.0, 20'000.0);
+    REQUIRE(full > 0.0);
+    CHECK(kept / full == Catch::Approx(0.5).margin(0.12));
+}
+
+TEST_CASE("boundary blend: tatami against directional overlaps to about one layer",
+          "[boundary_blend][directional]") {
+    const auto a = rect(0, 0, 10'000, 10'000);
+    const auto b = rect(10'000, 0, 10'000, 10'000);
+    const BoundaryBlendFillParams pa{params(0.0)};
+    const BoundaryBlendFillParams pb{directional_params(10'000, 0, 20'000, 10'000)};
+    const auto fills = fill_boundary_blend(a, pa, b, pb, BoundaryBlendSpec{});
+    REQUIRE(fills.has_value());
+    REQUIRE_FALSE(fills->a.empty());
+    REQUIRE_FALSE(fills->b.empty());
+    // B ne descend pas dans A au-delà de la demi-bande (2,5 mm) plus un demi-point.
+    for (const FillStitch& s : fills->b) {
+        CHECK(s.pos.x.value >= 7'500 - 1'500 - 2);
+    }
+    const auto plainA = fill_tatami(a, params());
+    const auto plainB = fill_directional(b, std::get<document::DirectionalFillParams>(pb));
+    // Couverture des deux zones réunies ≈ celle des deux aplats, liaisons comprises.
+    const double blended =
+        sewn_length(fills->a, 7'500.0, 12'500.0) + sewn_length(fills->b, 7'500.0, 12'500.0);
+    const double plain =
+        sewn_length(plainA, 7'500.0, 12'500.0) + sewn_length(plainB, 7'500.0, 12'500.0);
+    INFO("blended " << blended << " plain " << plain);
+    CHECK(blended >= 0.75 * plain);
+    CHECK(blended <= 1.3 * plain);
+}
+
+TEST_CASE("boundary blend: directional pair is deterministic", "[boundary_blend][directional]") {
+    const auto a = rect(0, 0, 10'000, 10'000);
+    const auto b = rect(10'000, 0, 10'000, 10'000);
+    const BoundaryBlendFillParams pa{directional_params(0, 0, 10'000, 10'000)};
+    const BoundaryBlendFillParams pb{directional_params(10'000, 10'000, 20'000, 0)};
+    const auto f1 = fill_boundary_blend(a, pa, b, pb, BoundaryBlendSpec{});
+    const auto f2 = fill_boundary_blend(a, pa, b, pb, BoundaryBlendSpec{});
+    REQUIRE(f1.has_value());
+    REQUIRE(f2.has_value());
+    CHECK_FALSE(f1->a.empty());
+    CHECK_FALSE(f1->b.empty());
     CHECK(f1->a == f2->a);
     CHECK(f1->b == f2->b);
 }

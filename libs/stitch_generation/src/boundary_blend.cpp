@@ -48,6 +48,14 @@ public:
         return sideA_ ? threshold < dA : threshold >= dA;
     }
 
+    [[nodiscard]] double coverage(Vec2um p) const override {
+        if (!field_.near_frontier(p)) {
+            return 1.0;
+        }
+        const double dA = field_.density_a(p);
+        return sideA_ ? dA : 1.0 - dA;
+    }
+
 private:
     const BoundaryBlendField& field_;
     bool sideA_;
@@ -216,20 +224,39 @@ Result<BoundaryBlendFills> fill_boundary_blend_tatami(const geometry::PathSet& a
                                                       const geometry::PathSet& b,
                                                       const document::TatamiParams& params_b,
                                                       const BoundaryBlendSpec& spec) {
+    return fill_boundary_blend(a, BoundaryBlendFillParams{params_a}, b,
+                               BoundaryBlendFillParams{params_b}, spec);
+}
+
+Result<BoundaryBlendFills> fill_boundary_blend(const geometry::PathSet& a,
+                                               const BoundaryBlendFillParams& params_a,
+                                               const geometry::PathSet& b,
+                                               const BoundaryBlendFillParams& params_b,
+                                               const BoundaryBlendSpec& spec) {
+    const auto stitchLength = [](const BoundaryBlendFillParams& p) {
+        return std::visit([](const auto& v) { return v.stitch_length.value; }, p);
+    };
     // Une case de pénétrations au-delà de la demi-bande (cf. `plan_boundary_blend`).
-    const Micrometers margin{std::max(params_a.stitch_length.value, params_b.stitch_length.value)};
+    const Micrometers margin{std::max(stitchLength(params_a), stitchLength(params_b))};
     auto plan = plan_boundary_blend(a, b, spec, margin);
     if (!plan) {
         return std::unexpected(plan.error());
     }
     const BoundaryRowMask maskA(*plan->field, true);
     const BoundaryRowMask maskB(*plan->field, false);
+    const auto fillLayer = [](const geometry::PathSet& region, const BoundaryBlendFillParams& p,
+                              const RowMask& mask) {
+        if (const auto* tatami = std::get_if<document::TatamiParams>(&p)) {
+            return fill_tatami(region, *tatami, &mask);
+        }
+        return fill_directional(region, std::get<document::DirectionalFillParams>(p), &mask);
+    };
     BoundaryBlendFills fills;
     for (const auto& region : plan->region_a) {
-        append_fill(fills.a, fill_tatami(region, params_a, &maskA));
+        append_fill(fills.a, fillLayer(region, params_a, maskA));
     }
     for (const auto& region : plan->region_b) {
-        append_fill(fills.b, fill_tatami(region, params_b, &maskB));
+        append_fill(fills.b, fillLayer(region, params_b, maskB));
     }
     return fills;
 }

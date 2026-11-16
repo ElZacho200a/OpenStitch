@@ -1022,10 +1022,10 @@ plus.
   détection automatique dans la numérisation ; **validation sur tissu** de la grille
   partagée (pièce-test 3 fils, complémentaire et superposition) ; **fondu à la frontière
   entre deux zones** (rampe selon la distance à la limite commune, zones conservées) :
-  spécification `docs/studio-fondu-frontiere-spec.md`. Lots L1a (masque de rangées du tatami)
-  et L1b (frontière commune, champ de densité, paire tatami–tatami) livrés le 2026-11-16, pas
-  encore branchés ; restent L1c (directionnel), L2 (lien, commandes, `.osp`, CLI), L3 (Studio),
-  L4, L5.
+  spécification `docs/studio-fondu-frontiere-spec.md`. Lots L1a (masque de rangées du
+  tatami), L1b (frontière commune, champ de densité, paire tatami–tatami) et L1c (directionnel, en
+  superposition) livrés le 2026-11-16, pas encore branchés ; restent L2 (lien, commandes,
+  `.osp`, CLI), L3 (Studio), L4, L5.
 - Dépend de : HP-STI-010.
 
 ### HP-STI-012 — Point de croix [P2] — ◐ Partiel (2026-10-31)
@@ -4626,6 +4626,7 @@ ouvrant le lot (§0.1).
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-11-16 | Claude (fondu à la frontière, L1c) | **HP-STI-011 ◐** (inchangé). `fill_directional(…, const RowMask*)` (seuil par rang de ligne de courant, superposition) et `fill_boundary_blend` (tatami ou directionnel de chaque côté) ; `RowMask::coverage` pour refuser les liaisons dans les zones où le fil est absent. Rien de branché. |
 | 2026-11-16 | Claude (fondu à la frontière, L1b) | **HP-STI-011 ◐** (inchangé). `geometry::shared_frontier` (bord de A à moins de la tolérance de B, chemins ouverts Clipper2, bouts rognés) et `polyline_band` ; `stitch_generation::plan_boundary_blend` / `fill_boundary_blend_tatami` : zones prolongées dans la demi-bande de l'autre, densité selon la distance signée à la frontière, décision du masque par case de pénétrations. Partition exacte à grille commune, superposition à angles croisés ; directionnel reporté en L1c ; rien de branché. |
 | 2026-11-16 | Claude (fondu à la frontière, spec + L1a) | **HP-STI-011 ◐** (inchangé). Spécification `docs/studio-fondu-frontiere-spec.md` (fondu selon la distance à la limite de deux zones, zones conservées, tatami en dégradé natif). L1a : `RowMask` / `DensityRowMask` / `row_threshold` et `fill_tatami(…, const RowMask*)` (grille ancrée, découpe aux pénétrations, liaison à la prochaine rangée gardée) ; sans masque, sortie identique octet pour octet ; aucun appelant branché. |
 | 2026-11-16 | Claude (barre d'outils commune des espaces Studio) | **HP-AUTO-006 ◐** (inchangé, précisé) et **HP-OBJ-024 ◐** (inchangé, précisé). Barre latérale commune `CanvasToolRail` dans les quatre espaces (outils modaux seulement : Sélection, Main, outils de l'espace par groupe, Ajuster) ; pinceau et gomme de Segmentation sortis du panneau ; espace Image : Recadrer, Règle d'échelle, Fond transparent (`ColorToAlphaOp`). Multi-calques : l'échelle change tous les calques du même facteur et le recadrage s'applique à tous les calques de même taille de travail, en une étape ; la pipette agit sur le calque actif. |

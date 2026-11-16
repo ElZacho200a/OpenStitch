@@ -17,6 +17,7 @@
 #include "openstitch/geometry/polyline.hpp"
 #include "openstitch/geometry/primitives.hpp"
 #include "openstitch/stitch_generation/adaptive_pull.hpp"
+#include "openstitch/stitch_generation/row_mask.hpp"
 
 namespace openstitch::stitch_generation {
 
@@ -2142,6 +2143,69 @@ void append_owned_runs(const std::vector<P2>& pts, const SpacingField& field, do
     }
 }
 
+// Seuils des lignes d'un secteur sous un MASQUE de rangées (fondu à la frontière,
+// docs/studio-fondu-frontiere-spec.md §6) : rang de chaque ligne le long de la normale à la
+// direction moyenne des lignes (moyenne sur l'angle doublé, une ligne et son opposée comptent
+// pareil), puis suite de Weyl du nombre d'or. Les lignes de courant dépendent de la région :
+// deux couches de régions différentes ne partagent pas leurs lignes, le fondu directionnel est
+// donc toujours une superposition (couverture ≈ d_A + d_B), jamais une partition exacte.
+std::vector<double> masked_line_thresholds(const std::vector<Traced>& traced) {
+    double c2 = 0.0;
+    double s2 = 0.0;
+    for (const Traced& t : traced) {
+        if (t.pts.size() < 2) {
+            continue;
+        }
+        const P2 d = t.pts.back() - t.pts.front();
+        const double a = std::atan2(d.y, d.x);
+        const double len = std::sqrt(dot(d, d));
+        c2 += len * std::cos(2.0 * a);
+        s2 += len * std::sin(2.0 * a);
+    }
+    const double mean = 0.5 * std::atan2(s2, c2);
+    const P2 normal{-std::sin(mean), std::cos(mean)};
+    std::vector<std::pair<double, std::size_t>> keys;
+    keys.reserve(traced.size());
+    for (std::size_t li = 0; li < traced.size(); ++li) {
+        P2 sum{};
+        for (const P2 p : traced[li].pts) {
+            sum = sum + p;
+        }
+        const double n = static_cast<double>(std::max<std::size_t>(1, traced[li].pts.size()));
+        keys.push_back({dot(sum * (1.0 / n), normal), li});
+    }
+    // total-order-ok: cle (projection, indice) totale
+    std::sort(keys.begin(), keys.end());
+    std::vector<double> result(traced.size(), 0.0);
+    for (std::size_t rank = 0; rank < keys.size(); ++rank) {
+        result[keys[rank].second] = row_threshold(static_cast<std::int64_t>(rank));
+    }
+    return result;
+}
+
+// Morceaux d'une ligne de pénétrations gardés par le masque (décision au milieu de chaque
+// intervalle ; pas de partition à garantir, cf. `masked_line_thresholds`).
+void append_masked_runs(const std::vector<P2>& pts, const RowMask& mask, double threshold,
+                        std::vector<std::vector<P2>>& out) {
+    std::vector<P2> run;
+    for (std::size_t k = 1; k < pts.size(); ++k) {
+        if (mask.keeps(to_um((pts[k - 1] + pts[k]) * 0.5), threshold)) {
+            if (run.empty()) {
+                run.push_back(pts[k - 1]);
+            }
+            run.push_back(pts[k]);
+        } else if (!run.empty()) {
+            if (run.size() >= 2) {
+                out.push_back(std::move(run));
+            }
+            run.clear();
+        }
+    }
+    if (run.size() >= 2) {
+        out.push_back(std::move(run));
+    }
+}
+
 struct SectorLines {
     std::vector<Traced> traced;
     std::vector<std::vector<P2>> stitched; // lignes retenues (≥ 2 pénétrations)
@@ -2150,11 +2214,12 @@ struct SectorLines {
 std::vector<SectorLines> compute_lines(const geometry::PathSet& region,
                                        const std::vector<Sector>& sectors,
                                        const document::DirectionalFillParams& params,
-                                       bool withStitches) {
+                                       bool withStitches, const RowMask* mask = nullptr) {
     std::vector<SectorLines> result;
     const SpacingField spacing = make_spacing_field(params, &region);
     // Grille partagée : mêmes rangées dans toutes les couches, chacune garde sa tranche.
-    const bool partition = spacing.sharedRows && spacing.partial();
+    // Un masque de rangées (fondu à la frontière) remplace la grille partagée.
+    const bool partition = mask == nullptr && spacing.sharedRows && spacing.partial();
     StitchPlan plan;
     plan.target = static_cast<double>(params.stitch_length.value);
     plan.stagger = params.stagger;
@@ -2172,8 +2237,9 @@ std::vector<SectorLines> compute_lines(const geometry::PathSet& region,
         sl.traced = tracer.run();
         regularize_lines(sl.traced, sectors[si], spacing, params.spacing_regularity);
         if (withStitches) {
-            const auto thresholds =
-                partition ? row_thresholds(sl.traced, spacing) : std::vector<double>{};
+            const auto thresholds = partition ? row_thresholds(sl.traced, spacing)
+                                    : mask    ? masked_line_thresholds(sl.traced)
+                                              : std::vector<double>{};
             for (std::size_t li = 0; li < sl.traced.size(); ++li) {
                 const auto key =
                     static_cast<std::int64_t>(si) * 1'000'000 + static_cast<std::int64_t>(li);
@@ -2183,6 +2249,8 @@ std::vector<SectorLines> compute_lines(const geometry::PathSet& region,
                 }
                 if (partition) {
                     append_owned_runs(pts, spacing, thresholds[li], sl.stitched);
+                } else if (mask != nullptr) {
+                    append_masked_runs(pts, *mask, thresholds[li], sl.stitched);
                 } else {
                     sl.stitched.push_back(std::move(pts));
                 }
@@ -2251,12 +2319,18 @@ directional_stitch_lines(const geometry::PathSet& region,
 
 std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
                                          const document::DirectionalFillParams& params) {
+    return fill_directional(region, params, nullptr);
+}
+
+std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
+                                         const document::DirectionalFillParams& params,
+                                         const RowMask* mask) {
     std::vector<FillStitch> out;
     const auto sectors = build_sectors(region, params);
     if (sectors.empty()) {
         return out;
     }
-    const auto lines = compute_lines(region, sectors, params, true);
+    const auto lines = compute_lines(region, sectors, params, true, mask);
     const double spacing = clamp_spacing(params);
     const double L =
         std::clamp(static_cast<double>(params.stitch_length.value), kMinTarget, kMaxTarget);
@@ -2267,7 +2341,11 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
     // 4 × l'écart MAXIMAL traverserait la zone dense (long fil parasite).
     const SpacingField field = make_spacing_field(params, &region);
     const auto& gradient = params.density_gradient;
-    const bool masked = gradient && density_mask_is_sparse(*gradient);
+    const bool masked = mask != nullptr || (gradient && density_mask_is_sparse(*gradient));
+    // Poids de présence du fil : masque de rangées s'il y en a un, sinon dégradé de densité.
+    const auto presence = [&](P2 p) {
+        return mask != nullptr ? mask->coverage(to_um(p)) : field.densityWeight(p);
+    };
     // Dans un fondu N-aire, un fil devient rare hors de sa zone. Le rayon
     // de semis peut être 4 mm à ces endroits, mais ce n'est PAS une permission
     // de coudre un long fil diagonal entre deux lignes isolées.
@@ -2300,7 +2378,7 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
             // concernent que les courts candidats dans la grille de voisinage.
             const P2 step = b - a;
             for (const double t : {0.0, 0.25, 0.5, 0.75, 1.0}) {
-                if (field.densityWeight(a + step * t) < 0.2) {
+                if (presence(a + step * t) < 0.2) {
                     return false;
                 }
             }

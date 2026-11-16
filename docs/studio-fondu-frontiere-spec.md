@@ -38,6 +38,18 @@ HP-STI-010 (dégradé de densité).
   Des points plus courts dans la bande sont une piste pour la recette physique.
 - Le directionnel (géométrie `Boundary`, grille ancrée) devient un lot à part, **L1c**, et le
   SVG doré passe en L2 (il lui faut l'opération CLI).
+- 2026-11-16, **L1c livré** (branche `feat/fondu-frontiere-l1c`, empilée sur L1b) :
+  `fill_directional(region, params, const RowMask*)` et `fill_boundary_blend` (variante
+  tatami ou directionnel de chaque côté). Les lignes de courant du directionnel dépendent de la
+  région : deux régions différentes ne partagent jamais leurs lignes, donc un fondu qui touche
+  un directionnel est **toujours en superposition** (couverture ≈ d_A + d_B). Seuil d'une
+  ligne : rang le long de la normale à la direction moyenne des lignes, suite de Weyl. Le masque
+  remplace la grille partagée existante ; liaisons courtes, refusées là où le fil couvre moins
+  de 20 % des rangées (`RowMask::coverage`). Pas de `DensityGeometry::Boundary` : le masque vit
+  à côté du `DensityGradient`, qui reste inchangé. Une zone directionnelle déjà en dégradé de
+  densité sera refusée en L2 (combinaison non définie). Tests `[directional]` : masque nul
+  identique, demi-densité ≈ moitié des lignes, tatami contre directionnel ≈ une couche,
+  déterminisme.
 - Écart au découpage initial : le **branchement du masque dans le directionnel** passe en
   L1b. La grille partagée actuelle classe ses rangées par rang dans la région ; l'ancrer
   changerait la sortie des fondus directionnels existants, ce qui doit se faire avec la
@@ -289,7 +301,7 @@ tissu dans la bande. Statut « Validé » seulement après cette recette.
 |---|---|---|
 | L1a ☑ | Masque de rangées : grille ancrée, seuils par `k`, surcharge `fill_tatami(…, RowMask*)` ; non-régression octet pour octet sans masque | `stitch_generation` |
 | L1b ☑ | `shared_frontier`, `polyline_band`, champ de densité, régions prolongées, paire tatami–tatami dans les deux régimes, tests cœur | `geometry`, `stitch_generation` |
-| L1c | `DensityGeometry::Boundary`, branchement du masque dans le directionnel (grille ancrée), combinaisons directionnel–directionnel et tatami–directionnel | `document`, `stitch_generation` |
+| L1c ☑ | Masque dans le directionnel (superposition), `fill_boundary_blend` pour les trois combinaisons | `stitch_generation` |
 | L2 | Lien, commandes, `.osp`, opération CLI / MCP, codes d'erreur | `document`, `commands`, `project_ops`, `project_io` |
 | L3 | Studio : action, poignées de bande, panneau, QTest | `apps/desktop_v2` |
 | L4 | Frontière dessinée à la main | `geometry`, Studio |
