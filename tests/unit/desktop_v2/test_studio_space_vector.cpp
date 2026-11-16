@@ -652,6 +652,8 @@ private slots:
         QCOMPARE(rig.session.project().embroidery_objects.size(), std::size_t{0});
         const auto undoBefore = steps(rig);
         QVERIFY(rig.stage.convertToEmbroidery());
+        QVERIFY(rig.stage.converting()); // l'interface reste libre pendant le calcul
+        QTRY_VERIFY_WITH_TIMEOUT(!rig.stage.converting(), 15'000);
         QVERIFY(rig.session.project().embroidery_objects.size() >= 1);
         QCOMPARE(steps(rig), undoBefore + 1);
         QVERIFY(rig.session.undo());

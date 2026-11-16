@@ -281,6 +281,7 @@ void StudioFilesTest::imagesStayIndependentThroughStitchesAndSave() {
         QVERIFY(vectors.updateFromSegmentation());
     }
     QVERIFY(vectors.convertToEmbroidery());
+    QTRY_VERIFY_WITH_TIMEOUT(!vectors.converting(), 15'000); // calcul hors du fil d'interface
     for (const ObjectId layer : {lower, upper}) {
         QVERIFY(std::ranges::any_of(project.embroidery_objects, [&](const auto& object) {
             const auto* shape = project.findObject(object.source_vector);
@@ -395,7 +396,11 @@ void StudioFilesTest::openRasterThroughStudioPoints() {
     QVERIFY(QMetaObject::invokeMethod(vectorPicker, "activated", Q_ARG(int, 0)));
     QCOMPARE(project.imageSourceId(), leaves);
     QTRY_VERIFY_WITH_TIMEOUT(click(QStringLiteral("vectorUpdateButton")), 5'000);
-    QTRY_VERIFY_WITH_TIMEOUT(click(QStringLiteral("vectorConvertButton")), 5'000);
+    // Un seul clic (QTRY réévalue l'expression) ; la conversion tourne hors du fil d'interface.
+    auto* convert = findVisualItem(window->contentItem(), QStringLiteral("vectorConvertButton"));
+    QTRY_VERIFY_WITH_TIMEOUT(convert && convert->isVisible() && convert->isEnabled(), 5'000);
+    QVERIFY(QMetaObject::invokeMethod(convert, "click"));
+    QTRY_VERIFY_WITH_TIMEOUT(!project.embroidery_objects.empty(), 15'000);
 
     workspace->setCurrent(QStringLiteral("points"));
     QTRY_VERIFY_WITH_TIMEOUT(rig.studio.scene() && !rig.studio.busy(), 15'000);

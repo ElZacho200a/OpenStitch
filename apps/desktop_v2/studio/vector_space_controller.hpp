@@ -41,6 +41,8 @@ class VectorSpaceController : public QObject {
     Q_PROPERTY(QString stageState READ stageState NOTIFY layerChanged)
     Q_PROPERTY(QString stageDetail READ stageDetail NOTIFY layerChanged)
     Q_PROPERTY(QString message READ message NOTIFY messageChanged)
+    // Conversion en broderie calculée hors du fil d'interface.
+    Q_PROPERTY(bool converting READ converting NOTIFY convertingChanged)
 public:
     explicit VectorSpaceController(StudioController& studio, QObject* parent = nullptr);
     ~VectorSpaceController() override;
@@ -88,6 +90,7 @@ public:
     Q_INVOKABLE int segmentedLayerCount() const;
     // Numérise en objets de broderie les formes sans objet (UNE étape d'annulation).
     Q_INVOKABLE bool convertToEmbroidery();
+    [[nodiscard]] bool converting() const { return converting_; }
 
 public:
     [[nodiscard]] double precisionMm() const { return precisionMm_; }
@@ -98,6 +101,7 @@ public:
     void setCurveTolerancePx(double px);
 
 signals:
+    void convertingChanged();
     void optionsChanged();
     void layerChanged();
     void messageChanged();
@@ -135,6 +139,9 @@ private:
     int builds_{0};
     // Reconstruction asynchrone : une seule à la fois, les résultats périmés sont ignorés.
     TaskManager tasks_;
+    // File séparée : les reconstructions de calque (tasks_.cancelAll) n'annulent pas la conversion.
+    TaskManager convertTasks_;
+    bool converting_{false};
     std::uint64_t buildRequest_{0};
     bool pending_{false};
     std::vector<std::uint64_t> pendingVisualKeys_;

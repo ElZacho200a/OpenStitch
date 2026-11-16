@@ -12,6 +12,7 @@
 #include <algorithm>
 
 #include "gpu_canvas.hpp"
+#include "openstitch/autodigitize/vector_convert.hpp"
 #include "openstitch/commands/composite_command.hpp"
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/project_ops/revectorize.hpp"
@@ -82,6 +83,7 @@ VectorSpaceController::VectorSpaceController(StudioController& studio, QObject* 
             &VectorSpaceController::layerChanged);
     connect(&studio_, &StudioController::changed, this, &VectorSpaceController::refresh);
     attachTaskPump(tasks_, this);
+    attachTaskPump(convertTasks_, this);
     refresh();
 }
 
@@ -554,17 +556,54 @@ bool VectorSpaceController::updateAllLayersFromSegmentation() {
 }
 
 bool VectorSpaceController::convertToEmbroidery() {
-    const auto result = studio_.session().applyBatch(
-        R"({"schema":"openstitch.batch/1","operations":[{"op":"convert_vectors"}]})",
-        "Convertir les formes en broderie");
-    if (!result.committed) {
-        const auto& outcomes = result.report.outcomes;
-        say(tr("Conversion refusée : %1")
-                .arg(outcomes.empty() ? tr("aucun effet")
-                                      : QString::fromStdString(outcomes.back().message)));
+    if (converting_) {
         return false;
     }
-    say(tr("Formes converties en objets de broderie."));
+    // La classification de chaque forme (tatami, contour…) est longue sur un gros motif : elle
+    // tourne sur un instantané, hors du fil d'interface ; seul l'ajout du lot (une commande
+    // annulable) se fait ici, et seulement si le document n'a pas changé entre-temps.
+    auto snapshot = studio_.session().snapshot();
+    const auto revision = studio_.session().revision();
+    converting_ = true;
+    emit convertingChanged();
+    say(tr("Conversion en broderie…"));
+    convertTasks_.submit<autodigitize::VectorConversion>(
+        "studio.convert-vectors",
+        [snapshot](const TaskContext& task) -> Result<autodigitize::VectorConversion> {
+            if (task.cancelled()) {
+                return cancelled_error();
+            }
+            autodigitize::AutoOptions options;
+            options.mm_per_px = snapshot->imageSource().mm_per_px;
+            auto ids = snapshot->object_ids; // copie : les vrais identifiants sont pris au retour
+            return autodigitize::convert_vectors_to_embroidery(*snapshot, ids, options);
+        },
+        [this, revision](Result<autodigitize::VectorConversion>&& result) {
+            converting_ = false;
+            emit convertingChanged();
+            if (!result) {
+                say(tr("Conversion refusée : %1")
+                        .arg(QString::fromStdString(result.error().message)));
+                return;
+            }
+            auto& session = studio_.session();
+            if (session.revision() != revision) {
+                say(tr("Le document a changé pendant la conversion : relancez-la."));
+                return;
+            }
+            if (result->embroideries.empty()) {
+                say(tr("Conversion refusée : aucun objet de broderie produit"));
+                return;
+            }
+            for (auto& embroidery : result->embroideries) {
+                embroidery.id = session.allocateObjectId();
+            }
+            const auto count = result->embroideries.size();
+            session.execute(std::make_unique<commands::AddObjectBatchCommand>(
+                std::vector<document::VectorObject>{}, std::move(result->embroideries),
+                "Numériser les formes vectorielles"));
+            say(tr("%1 forme(s) converties en objets de broderie.").arg(count));
+        });
     return true;
 }
 
