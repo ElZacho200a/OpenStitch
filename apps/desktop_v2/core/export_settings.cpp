@@ -172,7 +172,8 @@ std::vector<HoopChoice> hoopChoices() {
     std::vector<HoopChoice> out;
     for (const auto& h : document::hoop_library()) {
         out.push_back({std::string(h.id), std::string(h.family), std::string(h.name),
-                       static_cast<double>(h.width_mm), static_cast<double>(h.height_mm)});
+                       static_cast<double>(h.width_mm), static_cast<double>(h.height_mm), h.shape,
+                       static_cast<double>(h.corner_radius_mm)});
     }
     return out;
 }

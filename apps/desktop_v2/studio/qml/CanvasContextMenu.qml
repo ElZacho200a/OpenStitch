@@ -9,7 +9,11 @@ Controls.Menu {
     id: menu
     objectName: "canvasContextMenu"
     readonly property bool hasSelection: editor.selectedCount > 0
-    function openAt(x, y) { popup(x, y) }
+    property real atX: 0
+    property real atY: 0
+    // Réglage du cadre, commun à tous les canevas (ouvert par SpaceHost).
+    signal hoopRequested(real x, real y)
+    function openAt(x, y) { atX = x; atY = y; popup(x, y) }
 
     Controls.Menu {
         title: qsTr("Sélection")
@@ -72,6 +76,12 @@ Controls.Menu {
     }
     Controls.MenuItem { text: qsTr("Grouper"); enabled: editor.selectedCount > 1; onTriggered: editor.group("") }
     Controls.MenuItem { text: qsTr("Dégrouper"); enabled: menu.hasSelection; onTriggered: editor.ungroup() }
+    Controls.MenuSeparator { }
+    Controls.MenuItem {
+        objectName: "contextHoop"
+        text: qsTr("Cadre…")
+        onTriggered: menu.hoopRequested(menu.atX, menu.atY)
+    }
     Controls.Menu {
         id: layerMenu
         title: qsTr("Déplacer vers le calque")

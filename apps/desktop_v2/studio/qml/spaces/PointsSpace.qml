@@ -20,6 +20,8 @@ import "points"
 // espaces : docs/desktop-v2/23-espaces-studio.md.
 Item {
     id: root
+    // Clic droit → « Cadre… » : SpaceHost ouvre le réglage rapide du cadre à ce point du canevas.
+    signal hoopRequested(real x, real y)
     objectName: "pointsSpace"
     required property var workspace
     property bool active: false
@@ -191,7 +193,10 @@ Item {
                     canvas: spaceCanvas
                 }
 
-                CanvasContextMenu { id: contextMenu }
+                CanvasContextMenu {
+                    id: contextMenu
+                    onHoopRequested: function(x, y) { root.hoopRequested(x, y) }
+                }
 
                 // Les deux hubs ne dessinent plus de boutons : la barre de panneaux les pilote.
                 DigitizeHub {

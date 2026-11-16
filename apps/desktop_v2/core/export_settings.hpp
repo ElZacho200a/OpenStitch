@@ -49,6 +49,8 @@ struct HoopChoice {
     std::string name;
     double widthMm{0.0};
     double heightMm{0.0};
+    document::HoopShape shape{document::HoopShape::Rectangle};
+    double cornerRadiusMm{0.0};
 };
 struct MachineChoice {
     std::string id;

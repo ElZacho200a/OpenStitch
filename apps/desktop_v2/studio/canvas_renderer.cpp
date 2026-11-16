@@ -4,6 +4,7 @@
 #include <QElapsedTimer>
 #include <QImage>
 #include <QPainter>
+#include <QPainterPath>
 #include <QQuickWindow>
 #include <QSGGeometryNode>
 #include <QSGOpacityNode>
@@ -70,62 +71,135 @@ HoopLook hoopLook(const stitch_render::RectMm& h) {
     return {ring, ring * 2.4, std::clamp(h.width() * 0.10, 6.0, 30.0), ring * 1.5};
 }
 
-// Rectangle arrondi plein, en éventail autour de son centre (sommets non indexés).
-void roundedRectangle(Vertices& out, double x0, double y0, double x1, double y1, double radius,
-                      QColor color) {
-    constexpr int kArc = 8; // segments par coin
-    const double r = std::min({radius, (x1 - x0) / 2.0, (y1 - y0) / 2.0});
-    const double cx = (x0 + x1) / 2.0;
-    const double cy = (y0 + y1) / 2.0;
-    struct Corner {
-        double x, y, start;
-    };
+// Contour fermé d'un cadre centré en (cx, cy), demi-côtés hw x hh : quatre quarts de 16 segments,
+// toujours le même nombre de points quelle que soit la forme, pour que deux contours (anneau
+// extérieur et intérieur) se correspondent point à point. Rectangle = coins de rayon `radius`
+// (0 : coins vifs, points confondus) ; ellipse inscrite dans hw x hh.
+constexpr int kQuarter = 16;
+using Outline = std::vector<std::pair<double, double>>;
+
+Outline outline(double cx, double cy, double hw, double hh, document::HoopShape shape,
+                double radius) {
+    hw = std::max(0.0, hw);
+    hh = std::max(0.0, hh);
     const double pi = std::numbers::pi;
-    const Corner corners[4] = {{x1 - r, y0 + r, -pi / 2.0},
-                               {x1 - r, y1 - r, 0.0},
-                               {x0 + r, y1 - r, pi / 2.0},
-                               {x0 + r, y0 + r, pi}};
-    std::vector<std::pair<double, double>> ring;
-    ring.reserve(4 * (kArc + 1));
-    for (const auto& c : corners) {
-        for (int i = 0; i <= kArc; ++i) {
-            const double a = c.start + (pi / 2.0) * i / kArc;
-            ring.emplace_back(c.x + r * std::cos(a), c.y + r * std::sin(a));
+    const double r = std::clamp(radius, 0.0, std::min(hw, hh));
+    const double sx[4] = {1, -1, -1, 1};
+    const double sy[4] = {1, 1, -1, -1};
+    Outline out;
+    out.reserve(4 * (kQuarter + 1));
+    for (int q = 0; q < 4; ++q) {
+        for (int k = 0; k <= kQuarter; ++k) {
+            const double a = (pi / 2.0) * (q + static_cast<double>(k) / kQuarter);
+            if (shape == document::HoopShape::Ellipse) {
+                out.emplace_back(cx + hw * std::cos(a), cy + hh * std::sin(a));
+            } else {
+                out.emplace_back(cx + sx[q] * (hw - r) + r * std::cos(a),
+                                 cy + sy[q] * (hh - r) + r * std::sin(a));
+            }
         }
     }
-    const auto vertex = [color](double x, double y) {
-        return StudioVertex{static_cast<float>(x),
-                            static_cast<float>(y),
-                            static_cast<std::uint8_t>(color.red()),
-                            static_cast<std::uint8_t>(color.green()),
-                            static_cast<std::uint8_t>(color.blue()),
-                            255};
-    };
+    return out;
+}
+
+StudioVertex colouredVertex(double x, double y, QColor color) {
+    return StudioVertex{static_cast<float>(x),
+                        static_cast<float>(y),
+                        static_cast<std::uint8_t>(color.red()),
+                        static_cast<std::uint8_t>(color.green()),
+                        static_cast<std::uint8_t>(color.blue()),
+                        255};
+}
+
+// Surface pleine du contour, en éventail autour de (cx, cy).
+void fan(Vertices& out, double cx, double cy, const Outline& ring, QColor color) {
     for (std::size_t i = 0; i < ring.size(); ++i) {
         const auto& a = ring[i];
         const auto& b = ring[(i + 1) % ring.size()];
         out.insert(out.end(),
-                   {vertex(cx, cy), vertex(a.first, a.second), vertex(b.first, b.second)});
+                   {colouredVertex(cx, cy, color), colouredVertex(a.first, a.second, color),
+                    colouredVertex(b.first, b.second, color)});
     }
 }
 
-// `fabric` faux (espaces sans points : image, segmentation, vecto) : anneau creux, sans fond de
-// tissu, pour ne jamais masquer l'image, les régions ou les formes posées dans le cadre.
-void appendHoop(Vertices& out, const stitch_render::RectMm& h, bool fabric) {
+// Bande entre deux contours de même taille (point i de l'un face au point i de l'autre).
+void band(Vertices& out, const Outline& outer, const Outline& inner, QColor color) {
+    for (std::size_t i = 0; i < outer.size(); ++i) {
+        const std::size_t j = (i + 1) % outer.size();
+        const auto v = [color](const std::pair<double, double>& p) {
+            return colouredVertex(p.first, p.second, color);
+        };
+        out.insert(out.end(),
+                   {v(outer[i]), v(outer[j]), v(inner[i]), v(inner[i]), v(outer[j]), v(inner[j])});
+    }
+}
+
+// Rectangle arrondi plein (patte de serrage).
+void roundedRectangle(Vertices& out, double x0, double y0, double x1, double y1, double radius,
+                      QColor color) {
+    const double cx = (x0 + x1) / 2.0;
+    const double cy = (y0 + y1) / 2.0;
+    fan(out, cx, cy,
+        outline(cx, cy, (x1 - x0) / 2.0, (y1 - y0) / 2.0, document::HoopShape::RoundedRectangle,
+                radius),
+        color);
+}
+
+// Les contours du tambour, partagés par le chemin GPU et le chemin logiciel.
+struct HoopOutlines {
+    Outline outer;  // bord extérieur de l'anneau
+    Outline inner;  // bord du cadre (zone de broderie déclarée)
+    Outline edge;   // liseré intérieur
+    Outline usable; // zone brodable (cadre moins la marge) ; vide sans marge
+    Outline usableEdge;
+};
+
+HoopOutlines hoopOutlines(const HoopDisplay& hoop) {
+    const auto& h = hoop.rect;
     const auto look = hoopLook(h);
     const double cx = (h.x0 + h.x1) / 2.0;
+    const double cy = (h.y0 + h.y1) / 2.0;
+    const double hw = h.width() / 2.0;
+    const double hh = h.height() / 2.0;
+    const double edge = std::max(0.2, look.ring * 0.08);
+    // Rectangle : coins intérieurs vifs, anneau extérieur arrondi (aspect historique).
+    const double inner = hoop.shape == document::HoopShape::RoundedRectangle ? hoop.cornerMm : 0.0;
+    const double outer =
+        hoop.shape == document::HoopShape::Rectangle ? look.radius : inner + look.ring;
+    HoopOutlines o;
+    o.outer = outline(cx, cy, hw + look.ring, hh + look.ring, hoop.shape, outer);
+    o.inner = outline(cx, cy, hw, hh, hoop.shape, inner);
+    o.edge = outline(cx, cy, hw - edge, hh - edge, hoop.shape, inner - edge);
+    if (hoop.marginMm > 0.0 && hoop.marginMm < std::min(hw, hh)) {
+        const double m = hoop.marginMm;
+        const double line = std::max(0.15, look.ring * 0.05);
+        o.usable = outline(cx, cy, hw - m, hh - m, hoop.shape, inner - m);
+        o.usableEdge = outline(cx, cy, hw - m - line, hh - m - line, hoop.shape, inner - m - line);
+    }
+    return o;
+}
+
+const QColor kHoopUsable(112, 166, 214); // zone brodable (marge de sécurité)
+
+// `fabric` faux (espaces sans points : image, segmentation, vecto) : anneau creux, sans fond de
+// tissu, pour ne jamais masquer l'image, les régions ou les formes posées dans le cadre.
+void appendHoop(Vertices& out, const HoopDisplay& hoop, bool fabric) {
+    const auto& h = hoop.rect;
+    const auto look = hoopLook(h);
+    const double cx = (h.x0 + h.x1) / 2.0;
+    const double cy = (h.y0 + h.y1) / 2.0;
+    const auto o = hoopOutlines(hoop);
     // Patte de serrage, derrière l'anneau.
     roundedRectangle(out, cx - look.tabW / 2.0, h.y0 - look.ring - look.tabH, cx + look.tabW / 2.0,
                      h.y0, look.ring * 0.5, kHoopEdge);
+    band(out, o.outer, o.inner, kHoopRing);
     if (fabric) {
-        roundedRectangle(out, h.x0 - look.ring, h.y0 - look.ring, h.x1 + look.ring,
-                         h.y1 + look.ring, look.radius, kHoopRing);
-        rectangle(out, h.x0, h.y0, h.x1, h.y1, kHoopFabric);
-    } else {
-        border(out, {h.x0 - look.ring, h.y0 - look.ring, h.x1 + look.ring, h.y1 + look.ring},
-               look.ring, kHoopRing);
+        fan(out, cx, cy, o.inner, kHoopFabric);
     }
-    border(out, h, std::max(0.2, look.ring * 0.08), kHoopEdge);
+    band(out, o.inner, o.edge, kHoopEdge);
+    if (!o.usable.empty()) {
+        band(out, o.usable, o.usableEdge, kHoopUsable);
+    }
 }
 
 void appendGeometry(QSGNode& parent, const Vertices& vertices) {
@@ -565,7 +639,7 @@ public:
             root->stitches.batches.clear();
             if (state.scene) {
                 Vertices frame;
-                appendHoop(frame, state.scene->hoop, state.layers.stitches);
+                appendHoop(frame, hoopDisplay(*state.scene), state.layers.stitches);
                 appendGeometry(*root->frame, frame);
                 static const std::vector<StudioVertex> kNoVertices;
                 const auto& vertices = state.layers.stitches ? state.scene->vertices : kNoVertices;
@@ -752,32 +826,42 @@ public:
         const CanvasOverlays defaults;
         const CanvasOverlays& overlays = state.overlays ? *state.overlays : defaults;
         if (state.scene && overlays.showHoop) {
-            // Même tambour que le chemin GPU (appendHoop), peint au lieu d'être triangulé ; sans
-            // la couche des points, anneau creux sans fond de tissu.
-            const auto& h = state.scene->hoop;
-            const bool fabric = state.layers.stitches;
+            // Mêmes contours que le chemin GPU (appendHoop), peints au lieu d'être triangulés ;
+            // sans la couche des points, anneau creux sans fond de tissu.
+            const auto hoop = hoopDisplay(*state.scene);
+            const auto& h = hoop.rect;
             const auto look = hoopLook(h);
             const double cx = (h.x0 + h.x1) / 2.0;
+            const auto o = hoopOutlines(hoop);
+            const auto polygon = [](const Outline& ring) {
+                QPolygonF poly;
+                poly.reserve(static_cast<qsizetype>(ring.size()));
+                for (const auto& [x, y] : ring) {
+                    poly << QPointF(x, y);
+                }
+                return poly;
+            };
+            const auto fillBand = [&](const Outline& outer, const Outline& inner, QColor color) {
+                QPainterPath path;
+                path.setFillRule(Qt::OddEvenFill);
+                path.addPolygon(polygon(outer));
+                path.addPolygon(polygon(inner));
+                painter.fillPath(path, color);
+            };
             painter.setPen(Qt::NoPen);
             painter.setBrush(kHoopEdge);
             painter.drawRoundedRect(QRectF(cx - look.tabW / 2.0, h.y0 - look.ring - look.tabH,
                                            look.tabW, look.ring + look.tabH),
                                     look.ring * 0.5, look.ring * 0.5);
-            const QRectF outer(h.x0 - look.ring, h.y0 - look.ring, h.width() + 2 * look.ring,
-                               h.height() + 2 * look.ring);
-            if (fabric) {
-                painter.setBrush(kHoopRing);
-                painter.drawRoundedRect(outer, look.radius, look.radius);
+            fillBand(o.outer, o.inner, kHoopRing);
+            if (state.layers.stitches) {
                 painter.setBrush(kHoopFabric);
-            } else {
-                painter.setBrush(Qt::NoBrush);
-                painter.setPen(
-                    QPen(kHoopRing, look.ring, Qt::SolidLine, Qt::SquareCap, Qt::MiterJoin));
-                painter.drawRect(outer.adjusted(look.ring / 2.0, look.ring / 2.0, -look.ring / 2.0,
-                                                -look.ring / 2.0));
+                painter.drawPolygon(polygon(o.inner));
             }
-            painter.setPen(QPen(kHoopEdge, std::max(0.2, look.ring * 0.08)));
-            painter.drawRect(QRectF(h.x0, h.y0, h.width(), h.height()));
+            fillBand(o.inner, o.edge, kHoopEdge);
+            if (!o.usable.empty()) {
+                fillBand(o.usable, o.usableEdge, kHoopUsable);
+            }
             painter.setBrush(Qt::NoBrush);
         }
         // Backend logiciel : l'image des formes, rastérisée une seule fois par calque.
@@ -880,10 +964,14 @@ const CanvasRenderBackend& softwareBackend() {
     return renderer;
 }
 
-std::vector<StudioVertex> hoopVertices(const stitch_render::RectMm& hoop, bool fabric) {
+std::vector<StudioVertex> hoopVertices(const HoopDisplay& hoop, bool fabric) {
     Vertices out;
     appendHoop(out, hoop, fabric);
     return out;
+}
+
+HoopDisplay hoopDisplay(const StudioSceneSnapshot& scene) {
+    return {scene.hoop, scene.hoopShape, scene.hoopCornerMm, scene.hoopMarginMm};
 }
 
 } // namespace openstitch::desktop_v2::studio

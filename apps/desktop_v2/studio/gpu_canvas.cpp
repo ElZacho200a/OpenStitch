@@ -770,7 +770,9 @@ void GpuCanvas::mousePressEvent(QMouseEvent* event) {
     const bool ctrl = event->modifiers().testFlag(Qt::ControlModifier);
     if (event->button() == Qt::RightButton) {
         std::optional<std::uint64_t> id;
-        if (controller_ && scene_) {
+        // Sans la couche des points (image, segmentation, vecto), le clic droit ne choisit aucun
+        // objet cousu : il ouvre seulement le menu du canevas.
+        if (controller_ && scene_ && layers_.stitches) {
             const auto p = camera_.screenToWorld({lastMouse_.x(), lastMouse_.y()});
             id = scene_->pick(p.x, p.y, 5.0 / camera_.scale());
             if (id && std::ranges::find(selection_, Target{TargetKind::EmbroideryObject, *id}) ==
