@@ -47,6 +47,21 @@ case "plus": return "M4 10 L16 10 M10 4 L10 16";
         case "edit": return "M3 17 L3 13 L13 3 L17 7 L7 17 Z M11 5 L15 9";
         case "tree": return "M4 3 L4 17 M4 6 L10 6 M4 11 L10 11 M4 16 L10 16 M10 4 L17 4 L17 8 L10 8 Z";
         case "list": return "M4 5 L17 5 M4 10 L17 10 M4 15 L17 15";
+        // Outils de la barre latérale des espaces (CanvasToolRail).
+        case "crop": return "M5 2 L5 15 L18 15 M2 5 L15 5 L15 18";
+        case "transparent": return "M3 3 L17 3 L17 17 L3 17 Z M3 10 L10 10 L10 17 M10 3 L10 10 L17 10";
+        case "rectangle": return "M3 5 L17 5 L17 15 L3 15 Z";
+        case "ellipse": return "M2.5 10 A7.5 5.5 0 1 1 17.5 10 A7.5 5.5 0 1 1 2.5 10 Z";
+        case "polygon": return "M3 15 L5 5 L12 3 L17 9 L12 17 Z";
+        case "regular": return "M10 2.5 L16.5 6.25 L16.5 13.75 L10 17.5 L3.5 13.75 L3.5 6.25 Z";
+        case "bezier": return "M3 16 C3 8 17 12 17 4 M3 16 L7 10 M17 4 L13 10";
+        case "freeform": return "M3 14 C5 8 7 16 10 10 C12 6 14 14 17 6";
+        case "node": return "M3 15 L10 4 L17 15 Z M1.5 13.5 L4.5 13.5 L4.5 16.5 L1.5 16.5 Z M8.5 2.5 L11.5 2.5 L11.5 5.5 L8.5 5.5 Z M15.5 13.5 L18.5 13.5 L18.5 16.5 L15.5 16.5 Z";
+        case "knife": return "M3 17 L14 6 L17 3 L16 8 L6 18 Z M11 9 L13 11";
+        case "warp": return "M3 7 C6 4 8 10 11 7 C14 4 16 10 17 7 M3 13 C6 10 8 16 11 13 C14 10 16 16 17 13";
+        case "bucket": return "M4 9 L10 3 L16 9 L10 15 Z M4 9 L16 9 M17 12 C17 14 18 15 18 16 A1 1 0 1 1 16 16 C16 15 17 14 17 12";
+        case "brush": return "M17 3 L9 11 M9 11 C6 11 5 13 5 14 C5 16 3 17 3 17 C6 17 9 16 9 13 Z";
+        case "eraser": return "M8 17 L3 12 L11 4 L17 10 L10 17 Z M7 8 L13 14 M10 17 L17 17";
         default: return "";
         }
     }

@@ -56,10 +56,42 @@ Item {
     Component.onCompleted: { if (active) activate() }
     Component.onDestruction: deactivate()
 
+    // Barre latérale commune : recadrer, fond transparent (pipette), règle d'échelle. Dans un
+    // document multi-calques (`.ora`), recadrage et échelle gardent les calques alignés ; la
+    // pipette agit sur le calque actif.
+    StudioCard {
+        id: imageRailCard
+        objectName: "imageRailCard"
+        visible: root.hasImage && root.space !== null
+        anchors.left: parent.left
+        anchors.top: parent.top
+        anchors.margins: Theme.gap
+        width: Theme.controlHeight + 16
+        height: Math.min(imageRail.implicitHeight + 16, root.height - 2 * Theme.gap)
+        CanvasToolRail {
+            id: imageRail
+            anchors.top: parent.top
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.topMargin: 8
+            canvas: spaceCanvas
+            workspaceActive: root.active
+            toolPrefix: "imageTool_"
+            fitTooltip: qsTr("Cadrer l'image dans la fenêtre")
+            entries: [
+                { id: "crop", icon: "crop", label: qsTr("Recadrer : dessiner un cadre sur l'image"), shortcut: "C", group: "geometrie" },
+                { id: "measure", icon: "measure", label: qsTr("Règle : donner l'échelle d'après une longueur connue"), shortcut: "M", group: "geometrie" },
+                { id: "pick", icon: "transparent", label: qsTr("Fond transparent : cliquer la couleur du fond"), shortcut: "Maj+I", group: "couleur" }
+            ]
+            activeTool: root.space ? root.space.tool : ""
+            onToolTriggered: id => { if (root.space) root.space.tool = id }
+            onFitRequested: if (root.space) root.space.fit()
+        }
+    }
+
     Item {
         id: viewport
         // Le canevas s'arrête au bord du panneau : l'image n'est jamais cachée dessous.
-        anchors.left: parent.left
+        anchors.left: imageRailCard.visible ? imageRailCard.right : parent.left
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         anchors.right: sidePanel.visible ? sidePanel.left : parent.right
@@ -86,8 +118,13 @@ Item {
             space: root.space
             viewTick: root.viewTick
         }
+        ImageToolOverlay {
+            anchors.fill: parent
+            space: root.space
+            viewTick: root.viewTick
+        }
 
-        // Barre d'outils de l'image : avant/après, ajuster, recadrer.
+        // Barre d'affichage de l'image : avant / après / rideau (les outils sont dans la barre latérale).
         Rectangle {
             objectName: "imageToolbar"
             x: 0
@@ -129,21 +166,6 @@ Item {
                         checked: root.space && root.space.compareMode === modelData.mode
                         onClicked: root.space.compareMode = modelData.mode
                     }
-                }
-                StudioButton {
-                    objectName: "imageFit"
-                    text: qsTr("Ajuster")
-                    tooltip: qsTr("Cadrer l'image dans la fenêtre")
-                    quiet: true
-                    onClicked: root.space.fit()
-                }
-                StudioButton {
-                    objectName: "imageCropTool"
-                    text: qsTr("Recadrer")
-                    tooltip: qsTr("Dessiner un cadre de recadrage sur l'image")
-                    checkable: true
-                    checked: root.space && root.space.cropActive
-                    onClicked: root.space.cropActive ? root.space.cancelCrop() : root.space.beginCrop()
                 }
                 }
             }
@@ -239,9 +261,10 @@ Item {
         }
     }
 
-    Shortcut {
-        sequence: "Escape"
-        enabled: root.active && root.space && root.space.cropActive
-        onActivated: root.space.cancelCrop()
+    // Appelé par le Shortcut « Escape » de Main.qml : vrai si un outil modal a été quitté.
+    function cancelTool() {
+        if (!root.active || !root.space || root.space.tool === "") return false
+        root.space.tool = ""
+        return true
     }
 }
