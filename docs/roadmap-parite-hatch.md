@@ -1020,7 +1020,11 @@ plus.
 - Hatch : deux couches de dégradés inverses qui se mélangent.
 - À faire : placement libre d'un fil le long de l'axe ; assistant « camaïeu depuis mes fils » ;
   détection automatique dans la numérisation ; **validation sur tissu** de la grille
-  partagée (pièce-test 3 fils, complémentaire et superposition).
+  partagée (pièce-test 3 fils, complémentaire et superposition) ; **fondu à la frontière
+  entre deux zones** (rampe selon la distance à la limite commune, zones conservées) :
+  spécification `docs/studio-fondu-frontiere-spec.md`. Lot L1a livré le 2026-11-16 (masque
+  de rangées du tatami, pas encore branché) ; restent L1b (frontière, géométrie `Boundary`,
+  directionnel), L2 (lien, commandes, `.osp`, CLI), L3 (Studio), L4, L5.
 - Dépend de : HP-STI-010.
 
 ### HP-STI-012 — Point de croix [P2] — ◐ Partiel (2026-10-31)
@@ -4621,6 +4625,7 @@ ouvrant le lot (§0.1).
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-11-16 | Claude (fondu à la frontière, spec + L1a) | **HP-STI-011 ◐** (inchangé). Spécification `docs/studio-fondu-frontiere-spec.md` (fondu selon la distance à la limite de deux zones, zones conservées, tatami en dégradé natif). L1a : `RowMask` / `DensityRowMask` / `row_threshold` et `fill_tatami(…, const RowMask*)` (grille ancrée, découpe aux pénétrations, liaison à la prochaine rangée gardée) ; sans masque, sortie identique octet pour octet ; aucun appelant branché. |
 | 2026-11-16 | Claude (barre d'outils commune des espaces Studio) | **HP-AUTO-006 ◐** (inchangé, précisé) et **HP-OBJ-024 ◐** (inchangé, précisé). Barre latérale commune `CanvasToolRail` dans les quatre espaces (outils modaux seulement : Sélection, Main, outils de l'espace par groupe, Ajuster) ; pinceau et gomme de Segmentation sortis du panneau ; espace Image : Recadrer, Règle d'échelle, Fond transparent (`ColorToAlphaOp`). Multi-calques : l'échelle change tous les calques du même facteur et le recadrage s'applique à tous les calques de même taille de travail, en une étape ; la pipette agit sur le calque actif. |
 | 2026-11-15 | Codex (F43-01, segmentation en lot) | HP-OBJ-024 reste partiel. Un bouton Studio segmente les sources du document avec les mêmes réglages et un seul pas d’annulation. |
 | 2026-11-16 | Claude (IA-DATA-01 L0+L1) | Roadmap : aucune entrée HP (chantier IA hors parité, Notion IA-DATA-01). Audit des sources (`docs/ai/ia-data-sources.csv` : seul le générateur synthétique est approuvé, aucune donnée tierce ingérée) ; `scripts/ia_data_corpus.py` génère des formes à graine fixe (7 familles, cas minuscules, fins, très concaves) et mesure 9 candidats par forme via `openstitch-cli project apply/check/density` (statuts measured/refused/empty/failed, aucun label) ; corpus et manifeste SHA-256 identiques octet pour octet ; 16 tests Python, dont une intégration moteur facultative. Doc `docs/ai/ia-data-01.md`. |

@@ -3,6 +3,7 @@ option(OPENSTITCH_EXPERIMENTAL_TATAMI_SCAN "Enable the opt-in tatami scanline be
 add_library(openstitch_stitch_generation
     src/running_stitch.cpp
     src/tatami.cpp
+    src/row_mask.cpp
     src/directional_fill.cpp
     src/color_blend.cpp
     src/satin.cpp
