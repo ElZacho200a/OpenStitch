@@ -571,6 +571,19 @@ void MainWindowTest::claudeCodeProcessParsesStructuredEvents() {
     QCOMPARE(text.at(0).at(0).toString(), QStringLiteral("Trois objets orange"));
     QCOMPARE(usage.size(), 1);
     QCOMPARE(usage.at(0).at(0).toULongLong(), quint64{120});
+
+    // Un même message émis bloc par bloc : le texte puis l'appel d'outil, tous deux montrés,
+    // et la réémission du texte ignorée.
+    QSignalSpy text2(&backend, &CompanionBackend::assistantText);
+    QSignalSpy tools2(&backend, &CompanionBackend::toolCalled);
+    backend.ingestEventForTest(
+        R"({"type":"assistant","message":{"id":"m1","content":[{"type":"text","text":"Je lance l'import."}]}})");
+    backend.ingestEventForTest(
+        R"({"type":"assistant","message":{"id":"m1","content":[{"type":"tool_use","id":"t2","name":"mcp__openstitch__semantic_import","input":{}}]}})");
+    backend.ingestEventForTest(
+        R"({"type":"assistant","message":{"id":"m1","content":[{"type":"text","text":"Je lance l'import."}]}})");
+    QCOMPARE(text2.size(), 1);
+    QCOMPARE(tools2.size(), 1);
 }
 
 void MainWindowTest::claudeCodeLaunchIsRestricted() {

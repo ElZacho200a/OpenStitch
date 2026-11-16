@@ -107,7 +107,9 @@ void CompanionController::wire(desktop::CompanionBackend* backend) {
         // Le NOM de l'outil est toujours montré (titre), le résumé dit sur quoi il porte.
         append(call.isError ? QStringLiteral("error") : QStringLiteral("tool"),
                call.summary + (call.refusal.isEmpty() ? QString() : " — " + call.refusal),
-               call.tool);
+               call.tool.startsWith(QStringLiteral("mcp__openstitch__"))
+                   ? call.tool.mid(QStringLiteral("mcp__openstitch__").size())
+                   : call.tool);
     });
     connect(backend, &B::thinking, this,
             [this](const QString& text) { append(QStringLiteral("thinking"), text); });
@@ -348,7 +350,8 @@ bool CompanionController::send(const QString& text) {
             append(QStringLiteral("tool"),
                    tr("Accès en lecture accordé au dossier : %1")
                        .arg(QDir::toNativeSeparators(info.isDir() ? info.absoluteFilePath()
-                                                                  : info.absolutePath())));
+                                                                  : info.absolutePath())),
+                   tr("Accès en lecture"));
         }
     }
     backend.send(trimmed);

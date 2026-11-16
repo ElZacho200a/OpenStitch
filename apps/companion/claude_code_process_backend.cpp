@@ -297,20 +297,27 @@ void ClaudeCodeProcessBackend::handleLine(const QByteArray& line) {
     if (kind == QLatin1String("assistant")) {
         const QJsonObject message = event.value(QStringLiteral("message")).toObject();
         const QString messageId = message.value(QStringLiteral("id")).toString();
-        // En mode stream-json, la CLI peut reemettre un message complet : pas de doublon.
-        if (!messageId.isEmpty()) {
-            if (reportedAssistantIds_.contains(messageId)) {
-                return;
+        // La CLI émet un événement par bloc sous le MÊME id de message (texte puis tool_use),
+        // et peut réémettre un bloc : la déduplication se fait par bloc, jamais par message,
+        // sinon l'appel d'outil qui suit un texte disparaît.
+        const auto firstTime = [this, &messageId](const QString& kindTag, const QString& body) {
+            if (messageId.isEmpty()) {
+                return true;
             }
-            reportedAssistantIds_.insert(messageId);
-        }
+            const QString key = messageId + QLatin1Char('|') + kindTag + QLatin1Char('|') + body;
+            if (reportedAssistantIds_.contains(key)) {
+                return false;
+            }
+            reportedAssistantIds_.insert(key);
+            return true;
+        };
         const auto blocks = message.value(QStringLiteral("content")).toArray();
         for (const auto& value : blocks) {
             const auto block = value.toObject();
             const QString blockType = block.value(QStringLiteral("type")).toString();
             if (blockType == QLatin1String("text")) {
                 const QString text = block.value(QStringLiteral("text")).toString();
-                if (!text.trimmed().isEmpty()) {
+                if (!text.trimmed().isEmpty() && firstTime(blockType, text)) {
                     streamedText_ = true;
                     // Afficher au fil de l'eau, avant l'evenement result.
                     emit assistantText(text);
@@ -320,7 +327,7 @@ void ClaudeCodeProcessBackend::handleLine(const QByteArray& line) {
             if (blockType == QLatin1String("thinking")) {
                 const QString thought =
                     block.value(QStringLiteral("thinking")).toString().trimmed();
-                if (!thought.isEmpty()) {
+                if (!thought.isEmpty() && firstTime(blockType, thought)) {
                     emit thinking(thought);
                 }
                 continue;

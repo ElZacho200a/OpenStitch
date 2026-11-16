@@ -157,6 +157,37 @@ bool sensitive_path(std::string path) {
     return false;
 }
 
+// Résultat d'outil trop long que Claude Code a lui-même enregistré pour l'espace de travail
+// du compagnon : …/.claude/projects/<…studio-companion-workspace…>/<session>/tool-results/<f>.
+// Le relire est la suite normale d'un appel MCP, jamais une ouverture d'autre chose.
+bool own_tool_result(std::string path) {
+    for (char& ch : path) {
+        ch = ch == '\\' ? '/' : static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    }
+    if (path.find("/../") != std::string::npos || path.ends_with("/..")) {
+        return false;
+    }
+    const std::string root = "/.claude/projects/";
+    const auto at = path.find(root);
+    if (at == std::string::npos) {
+        return false;
+    }
+    // Segments après projects/ : <projet>/<session>/tool-results/<fichier>, exactement.
+    std::vector<std::string> parts;
+    std::size_t begin = at + root.size();
+    while (begin <= path.size()) {
+        const auto end = path.find('/', begin);
+        parts.push_back(
+            path.substr(begin, end == std::string::npos ? std::string::npos : end - begin));
+        if (end == std::string::npos) {
+            break;
+        }
+        begin = end + 1;
+    }
+    return parts.size() == 4 && parts[0].find("studio-companion-workspace") != std::string::npos &&
+           !parts[1].empty() && parts[2] == "tool-results" && !parts[3].empty();
+}
+
 std::string normalized_path(std::string path) {
     for (char& ch : path) {
         ch = ch == '\\' ? '/' : static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
@@ -430,7 +461,8 @@ std::shared_ptr<LivePendingCall> LiveService::begin(const std::string& tool,
         } else if (!path.empty() && sensitive_path(path)) {
             c.immediate = permission_reply(
                 false, input, "accès refusé : ce chemin contient des secrets ou identifiants");
-        } else if (path.empty() || read_allowed_.contains(name + "|" + path) ||
+        } else if (path.empty() || own_tool_result(path) ||
+                   read_allowed_.contains(name + "|" + path) ||
                    std::any_of(granted_dirs_.begin(), granted_dirs_.end(),
                                [&path](const std::string& dir) {
                                    const std::string p = normalized_path(path);

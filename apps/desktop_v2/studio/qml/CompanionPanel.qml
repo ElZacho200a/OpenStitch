@@ -258,7 +258,12 @@ Controls.Popup {
             clip: true
             spacing: 6
             model: panel.hasCompanion ? companion.messages : []
-            onCountChanged: positionViewAtEnd()
+            // Suit le bas tant que l'utilisateur n'est pas remonté lire : les messages
+            // arrivent en flux (le texte grandit sans changer le nombre de lignes).
+            property bool followEnd: true
+            onMovementEnded: followEnd = atYEnd
+            onCountChanged: if (followEnd) Qt.callLater(positionViewAtEnd)
+            onContentHeightChanged: if (followEnd) Qt.callLater(positionViewAtEnd)
             delegate: Item {
                 id: row
                 required property var modelData

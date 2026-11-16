@@ -575,6 +575,16 @@ TEST_CASE("live granted folders open reads without asking, except secrets", "[li
     // « .. » ne sort pas du dossier accordé : l'utilisateur est sollicité.
     CHECK(ask(dir.generic_string() + "/../../secret.txt") == "deny");
     CHECK(d.gate.asked == 2);
+    // Résultat MCP trop long enregistré par Claude Code : relu sans question ; le reste de
+    // ~/.claude (transcriptions, autres projets) reste soumis à l'utilisateur.
+    const std::string proj = "C:/Users/u/.claude/projects/"
+                             "C--Users-u-AppData-Local-OpenStitch-Studio-companion-workspace-1";
+    CHECK(ask(proj + "/abc/tool-results/mcp-openstitch-project_check-1.txt") == "allow");
+    CHECK(d.gate.asked == 2);
+    CHECK(ask(proj + "/abc.jsonl") == "deny");
+    CHECK(ask("C:/Users/u/.claude/projects/autre/abc/tool-results/x.txt") == "deny");
+    CHECK(ask(proj + "/abc/tool-results/../../x.jsonl") == "deny");
+    CHECK(d.gate.asked == 5);
     std::error_code ec;
     std::filesystem::remove_all(dir, ec);
 }
