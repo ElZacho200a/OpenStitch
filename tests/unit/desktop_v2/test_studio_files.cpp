@@ -84,6 +84,18 @@ QByteArray bytes(const QString& path) {
     return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray();
 }
 
+QQuickItem* findVisualItem(QQuickItem* item, const QString& name) {
+    if (item->objectName() == name) {
+        return item;
+    }
+    for (auto* child : item->childItems()) {
+        if (auto* found = findVisualItem(child, name)) {
+            return found;
+        }
+    }
+    return nullptr;
+}
+
 std::vector<ObjectId> sewnLayerOrder(const document::Project& project) {
     std::vector<ObjectId> order;
     if (const auto sequence = stitch_generation::effective_sequence(project); sequence) {
@@ -175,6 +187,7 @@ private slots:
     void imageAndVectorImports();
     void imagesStayIndependentThroughStitchesAndSave();
     void openRasterThroughStudioPoints();
+    void batchSegmentationSkipsTransparentImage();
     void autosaveRecoveryAndDiscard();
     void hoopMachineAndUserHoops();
 };
@@ -314,11 +327,16 @@ void StudioFilesTest::openRasterThroughStudioPoints() {
     engine.addImageProvider(QStringLiteral("prepare"), images.createProvider());
     engine.load(QUrl(QStringLiteral("qrc:/studio/qml/Main.qml")));
     QVERIFY(!engine.rootObjects().empty());
-    auto* window = engine.rootObjects().front();
+    auto* window = qobject_cast<QQuickWindow*>(engine.rootObjects().front());
+    QVERIFY(window);
     auto* workspace = window->findChild<WorkspaceController*>();
     QVERIFY(workspace);
+    const auto ready = [window](const QString& name) {
+        auto* item = findVisualItem(window->contentItem(), name);
+        return item && item->isVisible() && item->isEnabled();
+    };
     const auto click = [window](const QString& name) {
-        auto* item = window->findChild<QQuickItem*>(name);
+        auto* item = findVisualItem(window->contentItem(), name);
         return item && item->isVisible() && item->isEnabled() &&
                QMetaObject::invokeMethod(item, "click");
     };
@@ -338,16 +356,32 @@ void StudioFilesTest::openRasterThroughStudioPoints() {
     QVERIFY(project.embroidery_objects.empty());
 
     workspace->setCurrent(QStringLiteral("segmentation"));
-    QTRY_VERIFY_WITH_TIMEOUT(click(QStringLiteral("segmentEmptyButton")), 5'000);
-    QTRY_VERIFY_WITH_TIMEOUT(!images.busy() && images.regionCount() > 0, 15'000);
-    QVERIFY(!project.findImageSource(flower)->segmentation);
+    const auto beforeSegmentation = rig.session.historyPosition();
+    // Le bouton se désactive dès que le clic démarre la tâche (imageTools.busy) : attendre qu'il
+    // soit cliquable puis cliquer une seule fois, sans réévaluer l'action elle-même (un aperçu en
+    // direct automatique peut aussi occuper imageTools.busy quelques secondes au premier accès).
+    QTRY_VERIFY_WITH_TIMEOUT(ready(QStringLiteral("segmentAllLayersButton")), 15'000);
+    QVERIFY(click(QStringLiteral("segmentAllLayersButton")));
+    QTRY_VERIFY_WITH_TIMEOUT(!images.busy() && project.findImageSource(leaves)->segmentation &&
+                                 project.findImageSource(flower)->segmentation,
+                             15'000);
+    QCOMPARE(project.imageSourceId(), leaves);
+    QCOMPARE(rig.session.historyPosition(), beforeSegmentation + 1);
+    QVERIFY(project.vector_objects.empty());
+    QVERIFY(project.embroidery_objects.empty());
+    QVERIFY(project.findImageSource(leaves)->segmentation->region_count() > 0);
+    QVERIFY(project.findImageSource(flower)->segmentation->region_count() > 0);
     auto* regionPicker = window->findChild<QObject*>(QStringLiteral("segmentationLayerSelector"));
     QVERIFY(regionPicker);
     QVERIFY(QMetaObject::invokeMethod(regionPicker, "activated", Q_ARG(int, 1)));
     QCOMPARE(project.imageSourceId(), flower);
-    QTRY_VERIFY_WITH_TIMEOUT(click(QStringLiteral("segmentEmptyButton")), 5'000);
-    QTRY_VERIFY_WITH_TIMEOUT(!images.busy() && images.regionCount() > 0, 15'000);
+    QVERIFY(rig.session.undo());
+    QVERIFY(!project.findImageSource(leaves)->segmentation);
+    QVERIFY(!project.findImageSource(flower)->segmentation);
+    QVERIFY(rig.session.redo());
+    QCOMPARE(project.imageSourceId(), flower);
     QVERIFY(project.findImageSource(leaves)->segmentation);
+    QVERIFY(project.findImageSource(flower)->segmentation);
 
     workspace->setCurrent(QStringLiteral("vector"));
     QTRY_VERIFY_WITH_TIMEOUT(click(QStringLiteral("vectorUpdateButton")), 5'000);
@@ -378,6 +412,38 @@ void StudioFilesTest::openRasterThroughStudioPoints() {
     const auto saved = project_io::load_project(std::filesystem::path(savedPath.toStdWString()));
     QVERIFY(saved.has_value());
     QVERIFY(sewnLayerOrder(*saved) == expected);
+}
+
+void StudioFilesTest::batchSegmentationSkipsTransparentImage() {
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    QImage source(32, 32, QImage::Format_ARGB32);
+    const auto solid = url(dir, "plein.png");
+    const auto transparent = url(dir, "transparent.png");
+    source.fill(Qt::red);
+    QVERIFY(source.save(solid.toLocalFile()));
+    source.fill(Qt::transparent);
+    QVERIFY(source.save(transparent.toLocalFile()));
+
+    Rig rig;
+    ImageController images(rig.studio);
+    QSignalSpy imported(rig.files.get(), &FileController::imageImported);
+    rig.files->importImageLayers({solid, transparent});
+    QTRY_COMPARE_WITH_TIMEOUT(imported.count(), 1, 10'000);
+    const auto& project = rig.session.project();
+    QCOMPARE(project.image_sources.size(), std::size_t{2});
+    const auto before = rig.session.historyPosition();
+    images.applySegmentationToAllLayers({});
+    images.cancelTask();
+    QCOMPARE(rig.session.historyPosition(), before);
+
+    images.applySegmentationToAllLayers({});
+    QTRY_VERIFY_WITH_TIMEOUT(!images.busy() && project.image_sources.front().source.segmentation,
+                             10'000);
+    QCOMPARE(rig.session.historyPosition(), before + 1);
+    QVERIFY(!project.image_sources.back().source.segmentation);
+    QVERIFY(!images.messageIsError());
+    QVERIFY(images.message().contains(QStringLiteral("transparent")));
 }
 
 void StudioFilesTest::initTestCase() {
