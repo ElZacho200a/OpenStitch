@@ -115,4 +115,18 @@ public:
 [[nodiscard]] const CanvasRenderBackend& sceneGraphBackend();
 [[nodiscard]] const CanvasRenderBackend& softwareBackend();
 
+// Cadre à dessiner : boîte englobante (mm scène), forme réelle, rayon des coins et marge de
+// sécurité (zone brodable tracée en retrait quand elle n'est pas nulle).
+struct HoopDisplay {
+    stitch_render::RectMm rect;
+    document::HoopShape shape{document::HoopShape::Rectangle};
+    double cornerMm{0};
+    double marginMm{0};
+};
+[[nodiscard]] HoopDisplay hoopDisplay(const StudioSceneSnapshot& scene);
+
+// Triangles du tambour (affichage seulement). `fabric` vrai : fond de tissu plein (espace Points) ;
+// faux : anneau creux qui laisse voir l'image, les régions ou les formes posées dans le cadre.
+[[nodiscard]] std::vector<StudioVertex> hoopVertices(const HoopDisplay& hoop, bool fabric);
+
 } // namespace openstitch::desktop_v2::studio

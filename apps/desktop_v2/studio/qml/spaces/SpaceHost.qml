@@ -126,6 +126,51 @@ Item {
         switchTo(workspace.current)
     }
 
+    // --- Cadre : accessible depuis l'en-tête et le clic droit de TOUS les canevas -------------
+    // `openHoop(item, x, y)` ouvre le réglage rapide au point donné ; sans point, en haut à droite.
+    function openHoop(item, x, y) {
+        if (typeof files === "undefined" || files === null)
+            return
+        if (item)
+            hoopPopover.openAt(item, x, y)
+        else
+            hoopPopover.openAt(host, host.width - hoopPopover.width - 16, 8)
+    }
+    function hoopSummary() {
+        if (typeof files === "undefined" || files === null)
+            return ""
+        studio.commandCount // relu à chaque changement du document
+        const h = files.currentHoop()
+        return qsTr("%1 × %2 mm").arg(Math.round(h.widthMm)).arg(Math.round(h.heightMm))
+    }
+    HoopPopover {
+        id: hoopPopover
+        parent: host
+        ctl: typeof files !== "undefined" ? files : null
+    }
+    // Espaces sans menu d'objets (image, segmentation, vecto) : clic droit = menu du canevas.
+    Controls.Menu {
+        id: canvasMenu
+        objectName: "spaceCanvasMenu"
+        property real atX: 0
+        property real atY: 0
+        Controls.MenuItem {
+            objectName: "canvasMenuHoop"
+            text: qsTr("Cadre (%1)…").arg(host.hoopSummary())
+            onTriggered: host.openHoop(host.canvas, canvasMenu.atX, canvasMenu.atY)
+        }
+    }
+    Connections {
+        target: host.loadedId !== "points" ? host.canvas : null
+        ignoreUnknownSignals: true
+        function onContextMenuRequested(x, y, objectId) {
+            canvasMenu.atX = x
+            canvasMenu.atY = y
+            const p = host.canvas.mapToItem(host, x, y)
+            canvasMenu.popup(host, p.x, p.y)
+        }
+    }
+
     Shortcut { sequence: "Ctrl+1"; onActivated: host.workspace.setCurrent("image") }
     Shortcut { sequence: "Ctrl+2"; onActivated: host.workspace.setCurrent("segmentation") }
     Shortcut { sequence: "Ctrl+3"; onActivated: host.workspace.setCurrent("vector") }
@@ -347,7 +392,10 @@ Item {
                 active: internal.visitedPoints
                 visible: internal.loadedId === "points"
                 asynchronous: false
-                sourceComponent: PointsSpace { workspace: host.workspace }
+                sourceComponent: PointsSpace {
+                    workspace: host.workspace
+                    onHoopRequested: function(x, y) { host.openHoop(host.canvas, x, y) }
+                }
                 onLoaded: host.activateSpace("points", item)
             }
         }

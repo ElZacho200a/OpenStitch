@@ -712,7 +712,9 @@ QSGNode* GpuCanvas::updatePaintNode(QSGNode* oldNode, UpdatePaintNodeData*) {
     const auto api = window()->rendererInterface()->graphicsApi();
     const auto& backend =
         api == QSGRendererInterface::Software ? softwareBackend() : sceneGraphBackend();
-    CanvasRenderState state{layers_.stitches ? scene_ : nullptr,
+    // Scène transmise dans tous les espaces : le cadre en fait partie. Le rendu ne construit ses
+    // points que si la couche « stitches » est active.
+    CanvasRenderState state{scene_,
                             camera_,
                             layers_.selectionOverlays ? selection_ : std::vector<Target>{},
                             selectionRevision_,
@@ -773,7 +775,9 @@ void GpuCanvas::mousePressEvent(QMouseEvent* event) {
             // forme déjà sélectionnée (numérisée ou non) garde la sélection multiple pour le menu.
             const auto p = camera_.screenToWorld({lastMouse_.x(), lastMouse_.y()});
             vectorPicker_(p.x, p.y, 5.0 / camera_.scale(), false, true);
-        } else if (controller_ && scene_) {
+        } else if (controller_ && scene_ && layers_.stitches) {
+            // Sans la couche des points (image, segmentation), le clic droit ne choisit aucun
+            // objet cousu : il ouvre seulement le menu du canevas.
             const auto p = camera_.screenToWorld({lastMouse_.x(), lastMouse_.y()});
             id = scene_->pick(p.x, p.y, 5.0 / camera_.scale());
             if (id && std::ranges::find(selection_, Target{TargetKind::EmbroideryObject, *id}) ==
