@@ -110,19 +110,18 @@ jobs:
 
       # Un seul binaire fait foi : le CLI construit sur le SHA de cette PR,
       # pas une ancienne archive téléchargée d'une CI précédente.
-      - name: QA fondu réel PR336 — 20 variantes / OSP / DST / previews
-        if: github.event_name == 'pull_request' && github.event.pull_request.number == 336
+      - name: QA fondus — 20 variantes / OSP / DST / previews
         shell: pwsh
         env:
           PYTHONUTF8: "1"
-          OPENSTITCH_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          OPENSTITCH_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           $env:OPENSTITCH_CLI = Join-Path $PWD "build/msvc/apps/cli/Release/openstitch-cli.exe"
           python scripts/qa_pr336_gradients.py
           if ($LASTEXITCODE -ne 0) { throw 'QA fondu : generation OSP/DST/PNG impossible' }
 
-      - name: Upload fondu PR336 — vrais projets, exports et previews
-        if: always() && github.event_name == 'pull_request' && github.event.pull_request.number == 336
+      - name: Upload fondus — vrais projets, exports et previews
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: qa-pr336-current-commit
