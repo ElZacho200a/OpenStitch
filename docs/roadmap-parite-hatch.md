@@ -2122,6 +2122,9 @@ tout utilisateur de Hatch fait Ctrl+C/Ctrl+V, sélection rectangle, rotation.
   OSP v10. Les formes dérivées rejoignent leur calque et conservent un lien vers
   leur région d’origine. La recette vérifie l’indépendance de deux calques,
   l’annulation après changement de source et l’ordre des points après réouverture.
+- La commande **Segmenter tous les calques** applique les réglages courants aux
+  sources du projet en une étape annulable. La recette Studio vérifie les régions
+  par calque ainsi que l’annulation et le rétablissement après changement de source.
 - Reste : effets **liés** (une forme d'un calque supérieur qui suit/découpe ses cibles) ;
   sélection d'un calque entier au canevas ; calques dans la CLI `project` (inspect, opérations) ;
   glisser une forme d'un calque à l'autre dans la liste Document ; réordonner les calques par
@@ -4597,6 +4600,7 @@ ouvrant le lot (§0.1).
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-11-15 | Codex (F43-01, segmentation en lot) | HP-OBJ-024 reste partiel. Un bouton Studio segmente les sources du document avec les mêmes réglages et un seul pas d’annulation. |
 | 2026-11-15 | Codex (F43-01, import en calques Studio) | HP-OBJ-024 reste partiel. Import d’un lot raster ou d’un document OpenRaster, préparation et segmentation par source, rattachement des formes et des points au calque, OSP v10. |
 | 2026-11-15 | Claude (fondus accessibles, PR #345) | **HP-STI-011 ◐** (inchangé, validation textile en attente). Éditeur du fondu simplifié d'après trois maquettes (barre de fils retenue, avec les fils numérotés du canevas) : barre de fils et carte du fil désigné (`selectedThread`, `threadLabels`, `insertThread`/`removeThread`/`moveThread`/`setThreadColor`, clavier), tuiles de style illustrées (`FadeStylePreview.qml`), flèches de direction, transition Douce / Moyenne / Nette (`softness`), « Plus de réglages » replié ; canevas : pastilles numérotées (`HandleItem::Kind::Stop`), clic = désigner, glisser un fil du milieu ou la ligne = déplacer sans saut. Reste : placement libre d'un fil, assistant camaïeu. |
 | 2026-11-14 | Claude (refonte des fondus, après PR #341) | **HP-STI-011 ◐** (précisé, reste ◐ jusqu'à la validation textile). Audit mesuré puis correctifs : (1) moteur à **grille de rangées partagée** (`shared_rows`, `lower`, `row_thresholds`/`append_owned_runs` dans `directional_fill.cpp`) — couverture 88–112 % au lieu de 73–191 % ; (2) superposition à 60 % (le dernier fil plafonnait à 30 %) ; (3) `GradientThread::curve` = profil de la transition, poids de somme 1 (des profils différents par fil donnaient 191 %) ; (4) fils de nuancier conservés par couleur à toute réédition, palette relue depuis les couches (le panneau Fils fait foi) ; (5) poignées, zone, profil et inversion du canevas sur les fondus multicolores (`fade_axis.cpp` ne lisait que l'ancien couple) ; (6) `createFade`/`editFade` passent par le moteur multicolore (un seul moteur) ; (7) UI : éditeur unique dans l'inspecteur, réglages appliqués immédiatement, technique unique (méthode + aspect), retrait du tiroir Fondu (barre de panneaux et hub) et de l'outil « Geste fondu » (bouton « Ajuster l'axe au canevas »). Anciens fondus : génération inchangée tant qu'ils ne sont pas modifiés. Notion indisponible dans la session : lot non réservé. |

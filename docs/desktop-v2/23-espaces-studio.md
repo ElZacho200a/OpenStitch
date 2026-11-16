@@ -19,7 +19,10 @@ Studio applique une échelle commune au lot, celle de l'image active s'il y en a
 une ou celle qui donne 100 mm de hauteur à la première toile. Les fichiers
 séparés sont centrés. Dans un `.ora`, la toile commune conserve l'alignement
 des calques et les zones transparentes. La préparation et la segmentation
-s'appliquent au calque choisi dans le panneau de chaque espace. Les vecteurs
+s'appliquent au calque choisi dans le panneau de chaque espace. Dans
+**Segmentation**, **Segmenter tous les calques** applique les réglages courants à
+toutes les images en une étape annulable. Les images entièrement transparentes
+sont ignorées. Les vecteurs
 issus de ce calque y sont ajoutés, puis les points suivent la pile de couture.
 
 Quand l'import réussit, le Studio active automatiquement **Image** (`Ctrl+1`). L'ouverture

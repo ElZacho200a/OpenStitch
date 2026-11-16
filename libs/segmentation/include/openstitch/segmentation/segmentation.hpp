@@ -14,6 +14,8 @@
 
 namespace openstitch::segmentation {
 
+inline constexpr auto kTransparentImage = "E_SEGMENT_TRANSPARENT_IMAGE";
+
 // Une région connexe issue de la quantification. Deux régions distinctes
 // restent distinctes même si elles partagent la même couleur (§4.3).
 struct Region {

@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <limits>
 #include <optional>
+#include <stdexcept>
 #include <unordered_map>
 #include <utility>
 #include <variant>
@@ -50,31 +51,40 @@ private:
 // le calcul, qui peut échouer, a lieu AVANT la création de la commande).
 class SetSegmentationCommand final : public ICommand {
 public:
-    explicit SetSegmentationCommand(std::optional<segmentation::Segmentation> next)
-        : next_(std::move(next)) {}
+    explicit SetSegmentationCommand(std::optional<segmentation::Segmentation> next,
+                                    std::optional<ObjectId> source = std::nullopt)
+        : stored_(std::move(next)), source_(source) {}
 
     // Échange par déplacement dans les deux sens : l'historique ne garde
     // qu'UN exemplaire de chaque segmentation (carte de labels de 4 octets
     // par pixel), jamais une copie de celle qui est active dans le projet
-    // (audit perf 2026-09, docs/performance-audit.md). `revert` rend
-    // `next_` pour un `redo` ultérieur.
+    // (audit perf 2026-09, docs/performance-audit.md).
     void apply(document::Project& project) override {
-        previous_ = std::move(project.imageSource().segmentation);
-        project.imageSource().segmentation = std::move(next_);
-        next_.reset();
+        std::swap(target(project).segmentation, stored_);
     }
-    void revert(document::Project& project) override {
-        next_ = std::move(project.imageSource().segmentation);
-        project.imageSource().segmentation = std::move(previous_);
-        previous_.reset();
-    }
+    void revert(document::Project& project) override { apply(project); }
     [[nodiscard]] std::string name() const override { return "Segmenter l'image"; }
 
     [[nodiscard]] bool affectsEmbroidery() const override { return false; }
 
 private:
-    std::optional<segmentation::Segmentation> next_;
-    std::optional<segmentation::Segmentation> previous_;
+    document::ImageSource& target(document::Project& project) const {
+        if (!source_) {
+            return project.imageSource();
+        }
+        if (!source_->valid()) {
+            return project;
+        }
+        const auto entry =
+            std::ranges::find(project.image_sources, *source_, &document::ImageSourceLayer::calque);
+        if (entry == project.image_sources.end()) {
+            throw std::logic_error("Source de segmentation absente");
+        }
+        return entry->source;
+    }
+
+    std::optional<segmentation::Segmentation> stored_;
+    std::optional<ObjectId> source_;
 };
 
 // Un trait de pinceau « zones de détail » (suite de disques peints ou effacés). Ne touche ni la
