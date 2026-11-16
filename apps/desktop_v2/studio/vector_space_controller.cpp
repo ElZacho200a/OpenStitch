@@ -367,9 +367,10 @@ void VectorSpaceController::attach(QObject* canvas) {
     if (!canvas_) {
         return;
     }
-    canvas_->setVectorPicker([this](double x, double y, double tolerance, bool toggle) {
-        pickAt(x, y, tolerance, toggle);
-    });
+    canvas_->setVectorPicker(
+        [this](double x, double y, double tolerance, bool toggle, bool keepSelected) {
+            pickAt(x, y, tolerance, toggle, keepSelected);
+        });
     if (layer_) {
         canvas_->setVectorLayer(layer_);
     }
@@ -393,7 +394,8 @@ void VectorSpaceController::setSegmentationDirty(bool dirty, const QString& reas
     refresh();
 }
 
-QString VectorSpaceController::pickAt(double x, double y, double toleranceMm, bool toggle) {
+QString VectorSpaceController::pickAt(double x, double y, double toleranceMm, bool toggle,
+                                      bool keepSelected) {
     if (!layer_) {
         return {};
     }
@@ -405,6 +407,14 @@ QString VectorSpaceController::pickAt(double x, double y, double toleranceMm, bo
         return {};
     }
     const auto id = QString::number(*hit);
+    if (keepSelected) {
+        const auto* object = embroideryOf(studio_.session().project(), *hit);
+        const Target target = object ? Target{TargetKind::EmbroideryObject, object->id.value}
+                                     : Target{TargetKind::VectorObject, *hit};
+        if (studio_.session().selection().contains(target)) {
+            return id; // menu contextuel sur la sélection en cours
+        }
+    }
     selectShape(id, toggle);
     return id;
 }

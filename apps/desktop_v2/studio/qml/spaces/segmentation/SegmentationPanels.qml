@@ -18,7 +18,8 @@ Rectangle {
     // masquerait les régions que l'on retouche (clics et pinceau porteraient sur une image qui
     // n'est pas le document).
     onTabChanged: {
-        if (tab !== 0 && typeof imageTools !== "undefined" && imageTools.segPreviewActive)
+        // Aussi pendant le calcul : un aperçu fini après le changement d'onglet réapparaîtrait.
+        if (tab !== 0 && typeof imageTools !== "undefined")
             imageTools.cancelSegmentationPreview()
     }
     color: Theme.panel

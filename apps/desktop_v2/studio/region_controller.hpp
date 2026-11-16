@@ -8,6 +8,7 @@
 #include <QVariantMap>
 #include <cstdint>
 #include <map>
+#include <optional>
 #include <vector>
 
 #include "image_controller.hpp"
@@ -86,7 +87,8 @@ public:
     Q_INVOKABLE void stepBrushRadius(int steps);
     Q_INVOKABLE void clearSelection();
     // Reprend les régions de la sélection partagée de la session (lien « Aller à la région » de
-    // l'espace Vecteurs). Faux si elle n'en contient aucune qui existe encore.
+    // l'espace Vecteurs). Faux si elle n'en contient aucune qui existe encore, ou si cette demande
+    // (révision de la sélection partagée) a déjà été reprise. Coupe le choix de cible de fusion.
     Q_INVOKABLE bool adoptSessionSelection();
     // Objets de broderie issus des régions sélectionnées (identifiants).
     Q_INVOKABLE [[nodiscard]] QVariantList objectsOfSelection() const;
@@ -162,8 +164,9 @@ private:
     bool pendingResegment_{false};
     QVariantMap pendingSettings_;
     bool mergeTargetMode_{false};
-    // Dernière sélection partagée reprise : elle n'écrase pas deux fois la sélection locale.
-    std::vector<std::uint64_t> adopted_;
+    // Révision de la sélection partagée déjà examinée : une demande « Aller à la région » n'est
+    // reprise qu'une fois, mais chaque nouvelle demande l'est, même vers la même région.
+    std::optional<std::uint64_t> adoptedSelectionRevision_;
     std::uint64_t seenRevision_{0};
     TaskId task_{0};
     // Détruit avant les membres ci-dessus : ses rappels les utilisent.

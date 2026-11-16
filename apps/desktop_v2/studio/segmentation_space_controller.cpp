@@ -83,6 +83,8 @@ void SegmentationSpaceController::attach(QObject* canvas) {
 }
 
 void SegmentationSpaceController::detach() {
+    // Un choix de cible de fusion laissé ouvert fusionnerait au retour la prochaine région cliquée.
+    regions_.setMergeTargetMode(false);
     if (auto* gpu = qobject_cast<GpuCanvas*>(canvas_.data())) {
         gpu->setRegionLayer(nullptr);
     }

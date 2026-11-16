@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "image_controller.hpp"
 
+#include "segmentation_settings.hpp"
 #include "task_pump.hpp"
 
 #include <set>
@@ -531,12 +532,11 @@ void ImageController::clearPrepPreview() {
 }
 
 segmentation::SegmentationOptions ImageController::optionsFrom(const QVariantMap& map) const {
+    const auto chosen = segmentationSettingsFrom(map, {});
     segmentation::SegmentationOptions options;
-    options.max_colors = std::clamp(static_cast<int>(numberOr(map, "max_colors", 8)), 2, 64);
-    options.min_region_px =
-        std::clamp(static_cast<int>(numberOr(map, "min_region_px", 16)), 1, 100000);
-    options.smoothing_radius_px =
-        std::clamp(static_cast<int>(numberOr(map, "smoothing_radius_px", 3)), 0, 10);
+    options.max_colors = chosen.max_colors;
+    options.min_region_px = chosen.min_region_px;
+    options.smoothing_radius_px = chosen.smoothing_radius_px;
     return options;
 }
 
