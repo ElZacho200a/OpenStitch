@@ -309,7 +309,7 @@ void VectorSpaceController::attach(QObject* canvas) {
     }
     canvas_->setVectorPicker(
         [this](double x, double y, double tolerance, bool toggle, bool keepSelected) {
-            pickAt(x, y, tolerance, toggle, keepSelected);
+            return pickAt(x, y, tolerance, toggle, keepSelected);
         });
     if (layer_) {
         canvas_->setVectorLayer(layer_);
@@ -491,6 +491,65 @@ bool VectorSpaceController::updateFromSegmentation() {
     const auto added = fresh.add.size();
     session.execute(std::move(group));
     say(tr("Formes mises à jour : %1 remplacée(s), %2 ajoutée(s).").arg(replaced).arg(added));
+    return true;
+}
+
+namespace {
+std::vector<ObjectId> segmentedSources(const document::Project& project) {
+    std::vector<ObjectId> out;
+    if (!project.original.empty() && project.segmentation) {
+        out.push_back(ObjectId{}); // image d'origine
+    }
+    for (const auto& entry : project.image_sources) {
+        if (entry.source.segmentation) {
+            out.push_back(entry.calque);
+        }
+    }
+    return out;
+}
+} // namespace
+
+int VectorSpaceController::segmentedLayerCount() const {
+    return static_cast<int>(segmentedSources(studio_.session().project()).size());
+}
+
+bool VectorSpaceController::updateAllLayersFromSegmentation() {
+    auto& session = studio_.session();
+    const auto sources = segmentedSources(session.project());
+    if (sources.empty()) {
+        say(tr("Aucun calque segmenté : rien à vectoriser."));
+        return false;
+    }
+    auto group = std::make_unique<commands::CompositeCommand>(
+        "Mettre à jour les formes de tous les calques");
+    std::size_t replaced = 0;
+    std::size_t added = 0;
+    for (const auto source : sources) {
+        auto fresh =
+            project_ops::revectorize(session.project(), {.precision_mm = precisionMm_,
+                                                         .curves = curves_,
+                                                         .curve_tolerance_px = curveTolerancePx_,
+                                                         .image_source = source});
+        replaced += fresh.replace.size();
+        added += fresh.add.size();
+        for (auto& [id, paths] : fresh.replace) {
+            group->add(std::make_unique<commands::SetVectorPathsCommand>(
+                id, std::move(paths), "Mettre à jour une forme"));
+        }
+        for (auto& shape : fresh.add) {
+            shape.id = session.allocateObjectId();
+            group->add(std::make_unique<commands::AddVectorObjectCommand>(std::move(shape)));
+        }
+    }
+    if (replaced + added == 0) {
+        say(tr("Les formes de tous les calques suivent déjà la segmentation."));
+        return false;
+    }
+    session.execute(std::move(group));
+    say(tr("%1 calque(s) : %2 forme(s) remplacée(s), %3 ajoutée(s).")
+            .arg(sources.size())
+            .arg(replaced)
+            .arg(added));
     return true;
 }
 

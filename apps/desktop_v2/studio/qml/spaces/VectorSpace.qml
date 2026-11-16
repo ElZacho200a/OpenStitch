@@ -59,6 +59,15 @@ Item {
         ignoreUnknownSignals: true
         function onLayerChanged() { root.publish() }
     }
+    // L'outil nœuds a ses réglages dans « Édition » : y basculer au lieu de les laisser cachés.
+    Connections {
+        target: root.toolController
+        ignoreUnknownSignals: true
+        function onActiveToolChanged() {
+            if (root.active && root.toolController.activeTool === "node.edit")
+                vectorInspectorTabs.currentIndex = 1
+        }
+    }
     Connections {
         target: root.workspace
         ignoreUnknownSignals: true
@@ -192,6 +201,14 @@ Item {
                     canvas: spaceCanvas
                 }
 
+                VectorQuickBar {
+                    anchors.top: parent.top
+                    anchors.topMargin: 8
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    spaceActive: root.active
+                    z: 5
+                }
+
                 ColumnLayout {
                     objectName: "vectorEmpty"
                     anchors.centerIn: parent
@@ -317,17 +334,19 @@ Item {
                         contentWidth: availableWidth
                         Controls.ScrollBar.horizontal.policy: Controls.ScrollBar.AlwaysOff
 
+                        // Options de l'outil et opérations sur les formes d'abord : ce sont
+                        // les actions propres à cet espace ; l'EditBar générique suit.
                         ColumnLayout {
                             width: vectorActionsScroll.availableWidth
                             spacing: 8
-                            EditBar {
+                            ToolOptions {
+                                visible: root.toolController !== null
                                 Layout.fillWidth: true
                                 Layout.leftMargin: 12
                                 Layout.rightMargin: 12
                                 Layout.topMargin: 12
                             }
-                            ToolOptions {
-                                visible: root.toolController !== null
+                            EditBar {
                                 Layout.fillWidth: true
                                 Layout.leftMargin: 12
                                 Layout.rightMargin: 12

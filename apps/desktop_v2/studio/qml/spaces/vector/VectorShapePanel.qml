@@ -89,20 +89,38 @@ ColumnLayout {
             color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize
         }
     }
+    // Chaque réglage et chaque action dit ce qu'il produit, en une ligne, sans survol.
     Text {
+        objectName: "vectorPrecisionHelp"
         Layout.fillWidth: true
-        text: qsTr("S'applique à « Mettre à jour depuis la segmentation ».")
-        color: Theme.faint; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize
-        wrapMode: Text.WordWrap
+        text: qsTr("Tolérance haute : contours plus simples, moins de nœuds. Basse : plus fidèle à l'image. Pris en compte à l'étape ①.")
+        color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize; wrapMode: Text.WordWrap
     }
 
     StudioButton {
         objectName: "vectorUpdateButton"
         Layout.fillWidth: true
-        text: qsTr("Mettre à jour depuis la segmentation")
+        text: qsTr("① Recalculer les formes")
         tooltip: qsTr("Régénère les formes depuis les régions (une seule étape d'annulation)")
         enabled: panel.stage !== null && panel.stage.stageState !== "blocked"
         onClicked: panel.askUpdate()
+    }
+    Text {
+        objectName: "vectorUpdateHelp"
+        Layout.fillWidth: true
+        text: qsTr("Redessine les contours depuis les régions segmentées du calque courant. Les retouches faites sur ces formes sont écrasées (confirmation demandée).")
+        color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize; wrapMode: Text.WordWrap
+    }
+    StudioButton {
+        objectName: "vectorUpdateAllButton"
+        Layout.fillWidth: true
+        // Recalculé quand les formes changent (layerChanged) ; visible dès deux calques segmentés.
+        readonly property int layers: panel.stage ? (panel.stage.shapeCount, panel.stage.segmentedLayerCount()) : 0
+        visible: layers > 1
+        text: qsTr("Vectoriser les %1 calques segmentés").arg(layers)
+        tooltip: qsTr("Met à jour les formes de tous les calques en une seule étape d'annulation")
+        enabled: !studio.busy
+        onClicked: panel.stage.updateAllLayersFromSegmentation()
     }
 
     Rectangle {
@@ -151,12 +169,18 @@ ColumnLayout {
     StudioButton {
         objectName: "vectorConvertButton"
         Layout.fillWidth: true
-        text: qsTr("Convertir en broderie")
+        text: qsTr("② Convertir en broderie")
         // Action principale de l'espace : la seule pleine du panneau.
         emphasized: enabled
         tooltip: qsTr("Crée les objets de broderie des formes qui n'en ont pas encore")
         enabled: panel.stage !== null && panel.stage.shapeCount > 0
         onClicked: panel.stage.convertToEmbroidery()
+    }
+    Text {
+        objectName: "vectorConvertHelp"
+        Layout.fillWidth: true
+        text: qsTr("Crée un objet de points (satin, remplissage…) pour chaque forme qui n'en a pas encore. Les formes déjà converties ne changent pas. Résultat dans l'espace Points.")
+        color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize; wrapMode: Text.WordWrap
     }
 
     Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }
@@ -197,7 +221,7 @@ ColumnLayout {
         objectName: "vectorGoToRegionButton"
         Layout.fillWidth: true
         readonly property var shape: panel.stage ? panel.stage.selectedShape : ({})
-        text: qsTr("Aller à la région")
+        text: qsTr("Voir la région d'origine")
         tooltip: qsTr("Ouvre l'espace Segmentation sur la région d'origine de la forme")
         enabled: shape.id !== undefined && shape.hasSource === true && shape.regionExists === true
         onClicked: panel.goToRegionRequested()

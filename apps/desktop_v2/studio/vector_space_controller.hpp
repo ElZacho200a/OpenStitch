@@ -82,6 +82,10 @@ public:
     // dont la région a changé, ajoute celles des régions sans forme, laisse les formes à main).
     Q_INVOKABLE QVariantMap updatePlan() const;
     Q_INVOKABLE bool updateFromSegmentation();
+    // Tous les calques image segmentés en une seule étape d'annulation.
+    Q_INVOKABLE bool updateAllLayersFromSegmentation();
+    // Nombre de calques image qui portent une segmentation.
+    Q_INVOKABLE int segmentedLayerCount() const;
     // Numérise en objets de broderie les formes sans objet (UNE étape d'annulation).
     Q_INVOKABLE bool convertToEmbroidery();
 

@@ -14,6 +14,39 @@ Item {
     property bool dragActive: false
     property string dragLabel: ""
     property point dragPos: Qt.point(0, 0)
+    // Calques et groupes repliés (clé « kind:id ») ; état d'affichage seulement, pas le document.
+    property var collapsed: ({})
+    // Lignes visibles + nombre d'objets sous chaque calque/groupe, depuis l'arbre plat (depth).
+    readonly property var folded: {
+        const tree = editor.tree
+        const rows = []
+        const counts = {}
+        const stack = []
+        let hideBelow = -1
+        for (let i = 0; i < tree.length; ++i) {
+            const r = tree[i]
+            while (stack.length > 0 && stack[stack.length - 1].depth >= r.depth)
+                stack.pop()
+            if (r.kind === "object")
+                for (const parent of stack)
+                    counts[parent.key] = (counts[parent.key] || 0) + 1
+            else
+                stack.push({ depth: r.depth, key: r.kind + ":" + r.id })
+            if (hideBelow >= 0 && r.depth > hideBelow)
+                continue
+            hideBelow = -1
+            rows.push(r)
+            if (r.kind !== "object" && root.collapsed[r.kind + ":" + r.id])
+                hideBelow = r.depth
+        }
+        return { rows: rows, counts: counts }
+    }
+    function setCollapsed(key, value) {
+        const next = Object.assign({}, root.collapsed)
+        if (value) next[key] = true
+        else delete next[key]
+        root.collapsed = next
+    }
 
     ListView {
         id: view
@@ -21,7 +54,7 @@ Item {
         anchors.fill: parent
         clip: true
         boundsBehavior: Flickable.StopAtBounds
-        model: editor.tree
+        model: root.folded.rows
         spacing: 1
         Controls.ScrollBar.vertical: Controls.ScrollBar { }
 
@@ -35,6 +68,12 @@ Item {
             readonly property bool isLayer: modelData.kind === "layer"
             readonly property bool isGroup: modelData.kind === "group"
             property bool renaming: false
+            readonly property string foldKey: modelData.kind + ":" + modelData.id
+            readonly property int childCount: isObject ? 0 : (root.folded.counts[foldKey] || 0)
+            readonly property bool isCollapsed: !isObject && root.collapsed[foldKey] === true
+            Accessible.description: isObject ? "" : (isCollapsed ? qsTr("replié") : qsTr("déplié"))
+            Keys.onLeftPressed: if (!row.isObject) root.setCollapsed(row.foldKey, true)
+            Keys.onRightPressed: if (!row.isObject) root.setCollapsed(row.foldKey, false)
             activeFocusOnTab: true
             Accessible.role: Accessible.ListItem
             Accessible.name: modelData.label
@@ -120,11 +159,28 @@ Item {
                 anchors.leftMargin: 8 + row.modelData.depth * 14
                 anchors.rightMargin: 6
                 spacing: 6
+                // Flèche de repli : vraie cible de clic (zone élargie), pas un simple décor.
                 Text {
+                    objectName: "treeFoldToggle"
                     visible: !row.isObject
-                    text: row.isLayer ? "▾" : "▸"
-                    color: Theme.faint
+                    opacity: row.childCount > 0 ? 1 : 0.3
+                    text: row.isCollapsed ? "▸" : "▾"
+                    color: foldArea.containsMouse ? Theme.foreground : Theme.muted
                     font.pixelSize: Theme.bodySize
+                    Layout.preferredWidth: 14
+                    horizontalAlignment: Text.AlignHCenter
+                    MouseArea {
+                        id: foldArea
+                        anchors.fill: parent
+                        anchors.margins: -8
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.setCollapsed(row.foldKey, !row.isCollapsed)
+                    }
+                    StudioToolTip {
+                        visible: foldArea.containsMouse
+                        text: row.isCollapsed ? qsTr("Déplier (→)") : qsTr("Replier (←)")
+                    }
                 }
                 Rectangle {
                     visible: row.isObject
@@ -141,6 +197,7 @@ Item {
                     Layout.fillWidth: true
                     visible: !row.renaming
                     text: row.modelData.label + (row.isObject && row.modelData.locked ? "  (verrouillé)" : "")
+                          + (row.isCollapsed ? "  · " + row.childCount : "")
                     color: row.isObject && row.modelData.selected ? Theme.foreground : Theme.muted
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.bodySize

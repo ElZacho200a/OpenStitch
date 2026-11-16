@@ -361,6 +361,24 @@ private slots:
         QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
     }
 
+    void quickBarShowsShapeOpsOnSelection() {
+        Rig rig;
+        open(rig);
+        enterSpace(rig);
+        auto* bar = deepItem(rig.window->contentItem(), QStringLiteral("vectorQuickBar"));
+        auto* unite = deepItem(rig.window->contentItem(), QStringLiteral("quickUnion"));
+        auto* split = deepItem(rig.window->contentItem(), QStringLiteral("quickBreak"));
+        QVERIFY(bar && unite && split);
+        QVERIFY(!bar->isVisible());
+        QTest::mouseClick(rig.window, Qt::LeftButton, {}, at(rig, 2.5, 0.0));
+        QTRY_VERIFY_WITH_TIMEOUT(bar->isVisible(), 3'000);
+        // One shape, converted or not: boolean ops wait for a second one, splitting is ready.
+        QCOMPARE(rig.vectors.selectedCount(), 1);
+        QVERIFY(!unite->isEnabled());
+        QVERIFY(split->isEnabled());
+        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+    }
+
     void clickSelectsAShapeAndShowsItsOrigin() {
         Rig rig;
         open(rig);

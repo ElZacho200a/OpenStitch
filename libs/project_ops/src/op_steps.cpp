@@ -23,10 +23,17 @@ namespace openstitch::project_ops {
 
 RevectorizePlan revectorize(const document::Project& project, const RevectorizeOptions& opt) {
     RevectorizePlan out;
-    if (!project.hasActiveImage() || !project.imageSource().segmentation) {
+    const ObjectId sourceId = opt.image_source.value_or(project.imageSourceId());
+    const auto* found = opt.image_source           ? project.findImageSource(sourceId)
+                        : project.hasActiveImage() ? &project.imageSource()
+                                                   : nullptr;
+    if (found == nullptr || !found->segmentation) {
         return out;
     }
-    const auto& source = project.imageSource();
+    const auto& source = *found;
+    const auto fromSource = [&](const document::VectorObject& shape) {
+        return shape.source_region && shape.source_image == sourceId;
+    };
     std::vector<RegionId> ids;
     for (const auto& slot : source.segmentation->region_slots) {
         if (slot) {
@@ -48,7 +55,7 @@ RevectorizePlan revectorize(const document::Project& project, const RevectorizeO
         }
         const document::VectorObject* existing = nullptr;
         for (const auto& shape : project.vector_objects) {
-            if (project.fromActiveImage(shape) && *shape.source_region == ids[i]) {
+            if (fromSource(shape) && *shape.source_region == ids[i]) {
                 existing = &shape;
                 break;
             }
@@ -63,7 +70,7 @@ RevectorizePlan revectorize(const document::Project& project, const RevectorizeO
             document::VectorObject shape;
             shape.name = "Région " + std::to_string(ids[i].value);
             shape.source_region = ids[i];
-            shape.source_image = project.imageSourceId();
+            shape.source_image = sourceId;
             shape.calque = !shape.source_image.valid() && !project.image_sources.empty()
                                ? project.calques.front().id
                                : shape.source_image;
@@ -73,8 +80,7 @@ RevectorizePlan revectorize(const document::Project& project, const RevectorizeO
         }
     }
     for (const auto& shape : project.vector_objects) {
-        if (project.fromActiveImage(shape) &&
-            source.segmentation->find(*shape.source_region) == nullptr) {
+        if (fromSource(shape) && source.segmentation->find(*shape.source_region) == nullptr) {
             ++out.orphan;
         }
     }

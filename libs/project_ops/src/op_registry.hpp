@@ -111,4 +111,8 @@ struct SourceImagePlan {
 [[nodiscard]] OpStatus require_embroidery(const OpContext& ctx, const char* key,
                                           const document::EmbroideryObject*& out);
 
+// Forme visée par `id` : objet de broderie (son vecteur source) ou objet vectoriel brut, pas
+// encore converti. Identifiant invalide si `id` ne désigne ni l'un ni l'autre.
+[[nodiscard]] ObjectId shape_vector_of(const document::Project& project, std::uint64_t id);
+
 } // namespace openstitch::project_ops::detail
