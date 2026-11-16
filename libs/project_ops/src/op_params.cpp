@@ -28,6 +28,7 @@
 #include "openstitch/commands/thread_commands.hpp"
 #include "openstitch/document/hoop_library.hpp"
 #include "openstitch/document/machine_profile.hpp"
+#include "openstitch/document/stitch_recipes.hpp"
 #include "openstitch/geometry/boolean.hpp"
 #include "openstitch/optimization/order.hpp"
 #include "openstitch/stitch/sequence.hpp"
@@ -202,7 +203,8 @@ const EnumTable<document::MotifId>& motif_table() {
     static const EnumTable<document::MotifId> t{
         {"wave", document::MotifId::Wave},       {"zigzag", document::MotifId::Zigzag},
         {"leaf", document::MotifId::Leaf},       {"heart", document::MotifId::Heart},
-        {"diamond", document::MotifId::Diamond}, {"scallop", document::MotifId::Scallop}};
+        {"diamond", document::MotifId::Diamond}, {"scallop", document::MotifId::Scallop},
+        {"seed", document::MotifId::Seed}};
     return t;
 }
 const EnumTable<document::SatinSplit>& split_table() {
@@ -882,6 +884,8 @@ template <> const std::vector<Field<document::TatamiParams>>& fields_of<document
         v.push_back(mm_field<P>("row_end_clip_mm", &P::row_end_clip, 0.0, 5.0));
         v.push_back(bool_field<P>("edge_outline", &P::edge_outline));
         v.push_back(point_field<P>("entry_point_mm", &P::entry_point));
+        v.push_back(mm_field<P>("couching_spacing_mm", &P::couching_spacing, 0.0, 20.0));
+        v.push_back(mm_field<P>("couching_tie_spacing_mm", &P::couching_tie_spacing, 1.0, 7.0));
         return v;
     }();
     return fields;
@@ -1039,6 +1043,7 @@ const std::vector<Field<document::MotifFillParams>>& fields_of<document::MotifFi
         v.push_back(bool_field<P>("hidden_underpath", &P::hidden_underpath));
         v.push_back(mm_field<P>("pull_compensation_mm", &P::pull_compensation, 0.0, 3.0));
         v.push_back(enum_field<P>("pull_mode", &P::pull_mode, pull_mode_table()));
+        v.push_back(ratio_field<P>("scatter", &P::scatter, 0.0, 1.0));
         return v;
     }();
     return fields;
@@ -1095,6 +1100,7 @@ fields_of<document::CrosshatchFillParams>() {
         v.push_back(bool_field<P>("hidden_underpath", &P::hidden_underpath));
         v.push_back(mm_field<P>("pull_compensation_mm", &P::pull_compensation, 0.0, 3.0));
         v.push_back(enum_field<P>("pull_mode", &P::pull_mode, pull_mode_table()));
+        v.push_back(mm_field<P>("tie_down_mm", &P::tie_down, 0.0, 4.0));
         return v;
     }();
     return fields;
@@ -1579,6 +1585,57 @@ OpSpec op_set_stitch_type() {
              {"from", from},
              {"to", type},
              {"changed", true},
+             {"removed_sections", before - ctx.project.embroidery_objects.size()}});
+    });
+    return s;
+}
+
+// STCH-CROS-01 / ADR 0007 : recette du catalogue intégré. Même conversion qu'un changement de
+// type (groupe de sections compris), un seul pas d'annulation ; seuls les paramètres restent.
+OpSpec op_apply_recipe() {
+    OpSpec s;
+    s.name = "apply_recipe";
+    s.summary = "Applique une recette de points du catalogue intégré (point de tige, Holbein, "
+                "point de croix, passé empiétant…) : type et réglages de l'objet sont remplacés. "
+                "Liste : openstitch-cli recipes.";
+    s.args = {arg("object", "object_id", "objet de broderie", true),
+              arg("recipe", "string", "identifiant de recette (openstitch-cli recipes)", true)};
+    s.example = R"({"op":"apply_recipe","object":2,"recipe":"stem-stitch"})";
+    s.apply = guarded([](OpContext& ctx) {
+        const auto& emb = need_emb(ctx, "object");
+        const ObjectId id = emb.id;
+        const std::string name = need_string(ctx.args, "recipe");
+        const auto* recipe = document::find_stitch_recipe(name);
+        if (recipe == nullptr) {
+            refuse(code::kOutOfRange, "recette « " + name + " » inconnue",
+                   "openstitch-cli recipes liste les identifiants");
+        }
+        if (emb.is_multicolor_gradient() || emb.multi_blend) {
+            refuse(code::kRefused, "objet d'un fondu multicolore",
+                   "retirez d'abord le fondu (remove_multicolor_gradient)");
+        }
+        const auto* source = ctx.project.findObject(emb.source_vector);
+        if (source == nullptr || source->paths.empty()) {
+            refuse(code::kRefused, "aucun contour source pour la recette");
+        }
+        document::StitchParams params = recipe->params;
+        if (auto* directional = std::get_if<document::DirectionalFillParams>(&params)) {
+            // Graine de l'aspect fait main propre à l'objet, comme `set_stitch_type`.
+            directional->seed = static_cast<std::uint32_t>(id.value);
+        }
+        const std::string from = stitch_type_name(emb.params);
+        const std::size_t before = ctx.project.embroidery_objects.size();
+        ctx.stack.execute(std::make_unique<commands::ConvertFillGroupCommand>(
+                              id, std::move(params), "Recette : " + std::string(recipe->name_fr)),
+                          ctx.project);
+        const auto* after = ctx.project.findEmbroidery(id);
+        return OpStatus::success(
+            {{"id", id.value},
+             {"recipe", std::string(recipe->id)},
+             {"version", recipe->version},
+             {"fidelity", std::string(document::recipe_fidelity_id(recipe->fidelity))},
+             {"from", from},
+             {"to", after != nullptr ? stitch_type_name(after->params) : from},
              {"removed_sections", before - ctx.project.embroidery_objects.size()}});
     });
     return s;
@@ -2224,6 +2281,7 @@ void register_param_ops(std::vector<OpSpec>& out) {
     out.push_back(op_set_join());
     out.push_back(op_set_connector());
     out.push_back(op_set_stitch_type());
+    out.push_back(op_apply_recipe());
     out.push_back(op_directional_guides());
     out.push_back(op_set_params());
     out.push_back(op_set_order());

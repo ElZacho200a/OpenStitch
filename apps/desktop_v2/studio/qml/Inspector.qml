@@ -417,6 +417,15 @@ Item {
                     }
                 }
             }
+
+            Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }
+
+            // Stitch recipes (STCH-CROS-01): illustrated catalogue, one undo step per apply.
+            RecipeCatalog {
+                objectName: "recipeCatalog"
+                Layout.fillWidth: true
+                ctl: root.ctl
+            }
         }
     }
 }

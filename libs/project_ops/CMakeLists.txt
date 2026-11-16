@@ -23,6 +23,7 @@ add_library(openstitch_project_ops
     src/auto_satin_service.cpp
     src/quality.cpp
     src/render.cpp
+    src/recipe_swatch.cpp
     src/thread_model.cpp
     src/analysis.cpp
     src/fabric_risk.cpp

@@ -567,6 +567,24 @@ fl… quand la police les contient), position, rotation. L'aperçu montre les co
 (texte sous 5 mm, trait trop fin, lettre cousue en tatami faute de satin possible, caractère
 absent de la police) s'affichent sous l'aperçu et dans le panneau Analyse.
 
+## Recettes de points (Studio)
+
+L'inspecteur de Studio se termine par **Recettes de points** : des points de broderie à la main
+(point de tige, Holbein, point de croix, passé empiétant, treillis, point de Bayeux, semis…)
+reproduits avec les types de points du moteur. Chaque vignette est **rendue par OpenStitch** sur
+une forme témoin. Le champ de recherche accepte le nom français ou anglais ; les filtres
+*Contours*, *Remplissages* et *Simulations* réduisent la grille. Un clic choisit la recette et
+affiche sa note ; **Appliquer à la sélection** (ou un double clic) remplace le type et les
+réglages des objets sélectionnés, en un seul pas d'annulation. Les réglages restent ensuite
+modifiables comme ceux de n'importe quel objet.
+
+Une pastille **≈** marque une *simulation* : la machine à point noué ne reproduit pas la
+boucle, le nœud ou le passage par l'envers du point à la main, seulement son aspect. Exemple :
+le semis isole chaque graine, d'où beaucoup de coupes sur une grande surface.
+
+En ligne de commande : `openstitch-cli recipes` liste les recettes, l'opération de lot
+`apply_recipe` les applique (voir [Projets en ligne de commande](cli-project.md)).
+
 ## Type de points pour plusieurs formes
 
 La sélection multiple de formes (Maj + clic, Ctrl + clic, rectangle) accepte **tous les types de

@@ -63,6 +63,8 @@ TEST_CASE("moteur : round-trip des nouveaux reglages (tatami, directionnel, sati
     tatami.pull_mode = document::PullMode::Auto; // HP-ENG-001.b
     tatami.row_end_clip = Micrometers{1'000};
     tatami.edge_outline = true;
+    tatami.couching_spacing = Micrometers{4'000}; // STCH-CROS-01 (Bayeux)
+    tatami.couching_tie_spacing = Micrometers{2'500};
     document::DirectionalFillParams directional;
     directional.underlay_mode = document::UnderlayMode::Auto;
     directional.pull_mode = document::PullMode::Adaptive; // AdaptivePullCompensation
@@ -153,6 +155,8 @@ TEST_CASE("moteur : un .osp anterieur est relu avec les defauts (comportement in
     CHECK(tatami.pull_mode == document::PullMode::Manual);
     CHECK(tatami.row_end_clip.value == 0);
     CHECK_FALSE(tatami.edge_outline);
+    CHECK(tatami.couching_spacing.value == 0);
+    CHECK(tatami.couching_tie_spacing.value == 3'000);
     const auto& satin = std::get<document::SatinParams>(project.embroidery_objects[1].params);
     CHECK(satin.underlay_mode == document::UnderlayMode::Manual);
     CHECK(satin.pull_mode == document::PullMode::Manual);

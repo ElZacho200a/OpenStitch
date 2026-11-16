@@ -5,6 +5,7 @@
 #include <array>
 
 #include "openstitch/document/project.hpp"
+#include "openstitch/document/stitch_recipes.hpp"
 #include "openstitch/image/image.hpp"
 #include "openstitch/project_ops/render.hpp"
 
@@ -85,4 +86,19 @@ TEST_CASE("rendu realiste : refus nomme sans point visible et zone vide", "[proj
     REQUIRE(cropped.has_value());
     REQUIRE(full.has_value());
     CHECK(cropped->width < full->width);
+}
+
+TEST_CASE("recipe swatches: every recipe renders a deterministic thumbnail") {
+    for (const auto& r : openstitch::document::stitch_recipes()) {
+        INFO(std::string(r.id));
+        const auto a = openstitch::project_ops::render_recipe_swatch(r.id);
+        REQUIRE(a.has_value());
+        CHECK(a->width > 20);
+        CHECK(a->height > 20);
+        CHECK_FALSE(a->png.empty());
+        const auto b = openstitch::project_ops::render_recipe_swatch(r.id);
+        REQUIRE(b.has_value());
+        CHECK(a->png == b->png);
+    }
+    CHECK_FALSE(openstitch::project_ops::render_recipe_swatch("no-such-recipe").has_value());
 }

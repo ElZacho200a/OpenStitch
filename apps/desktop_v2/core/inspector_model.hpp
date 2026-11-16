@@ -50,6 +50,10 @@ struct SettableType {
                                         const std::array<std::uint8_t, 3>& rgb);
 [[nodiscard]] std::string batchSetStitchType(const std::vector<std::uint64_t>& ids,
                                              std::string_view type);
+// Recette du catalogue intégré (`document::stitch_recipes`, opération `apply_recipe`) ; chaîne
+// vide si la recette est inconnue ou la sélection vide.
+[[nodiscard]] std::string batchApplyRecipe(const std::vector<std::uint64_t>& ids,
+                                           std::string_view recipeId);
 // Satin « comme un remplissage » : choisi dans la liste des types, il passe par l'opération
 // `auto_satin` (id `auto_satin`, celui de `stitchTypeId`). Comme dans la V1, plusieurs méthodes
 // sont essayées à la suite (squelette, balayage parallèle, axe médian, puis axe compact) : la
