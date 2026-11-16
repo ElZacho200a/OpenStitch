@@ -203,3 +203,56 @@ TEST_CASE("a chart thread set on a fade layer survives the next fade edit",
     CHECK(spec->palette[1].rgb == chartRgb);
     CHECK(spec->palette[1].thread == key);
 }
+
+TEST_CASE("fade spacing, stitch direction, shapes and single thread round-trip through the "
+          "desktop service",
+          "[desktop_v2][fade][types]") {
+    auto f = rectFill();
+    MultiFadeSettings settings;
+    settings.colors = {{10, 20, 30}, {200, 210, 220}};
+    REQUIRE(createMultiFade(f.session, f.id, settings).ok);
+    auto read = readMultiFade(f.session.project(), f.id);
+    REQUIRE(read.has_value());
+    CHECK(read->spacingMm > 0.0); // écart réellement cousu, jamais 0
+    CHECK_FALSE(read->customStitchAngle);
+
+    // Écart des rangées : un pas d'annulation, relu tel quel.
+    auto next = *read;
+    next.spacingMm = 0.65;
+    const auto depth = f.session.undoNames().size();
+    REQUIRE(editMultiFade(f.session, f.id, next).ok);
+    CHECK(f.session.undoNames().size() == depth + 1);
+    read = readMultiFade(f.session.project(), f.id);
+    REQUIRE(read.has_value());
+    CHECK(read->spacingMm == Catch::Approx(0.65));
+
+    // Direction des points imposée, puis spirale et contour : l'écart est conservé.
+    next = *read;
+    next.customStitchAngle = true;
+    next.stitchAngleDeg = 30.0;
+    next.geometry = 3;
+    REQUIRE(editMultiFade(f.session, f.id, next).ok);
+    read = readMultiFade(f.session.project(), f.id);
+    REQUIRE(read.has_value());
+    CHECK(read->customStitchAngle);
+    CHECK(read->stitchAngleDeg == Catch::Approx(30.0));
+    CHECK(read->geometry == 3);
+    CHECK(read->spacingMm == Catch::Approx(0.65));
+    next = *read;
+    next.geometry = 4;
+    REQUIRE(editMultiFade(f.session, f.id, next).ok);
+    CHECK(readMultiFade(f.session.project(), f.id)->geometry == 4);
+
+    // Un seul fil : dégradé de densité, une seule couche physique.
+    next = *readMultiFade(f.session.project(), f.id);
+    next.colors.resize(1);
+    next.endDensity = 0.3;
+    REQUIRE(editMultiFade(f.session, f.id, next).ok);
+    read = readMultiFade(f.session.project(), f.id);
+    REQUIRE(read.has_value());
+    CHECK(read->colors.size() == 1);
+    CHECK(read->endDensity == Catch::Approx(0.3));
+    const auto group = document::find_gradient_group(f.session.project(), ObjectId{f.id});
+    REQUIRE(group.has_value());
+    CHECK(group->layers.size() == 1);
+}

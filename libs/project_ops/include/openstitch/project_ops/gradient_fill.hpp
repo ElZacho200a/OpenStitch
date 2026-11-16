@@ -113,12 +113,16 @@ make_remove_gradient_fill_command(const document::Project& project, ObjectId lay
 // (`document::MulticolorGradientParams`), méthode explicite et palette persistante.
 struct MulticolorGradientSpec {
     document::GradientMethod method{document::GradientMethod::Directional};
-    std::vector<document::GradientThread> palette; // 2..8, de l'arrière vers l'avant
+    std::vector<document::GradientThread> palette; // 1..8, de l'arrière vers l'avant
     document::DensityGradient transition;
     bool complementary{true};
     Micrometers satin_density{400}; // SatinInterlaced uniquement
     int crosshatch_layers{2};       // CrossHatching uniquement
     Angle crosshatch_angle{0.0};    // CrossHatching uniquement
+    // Remplissages hors satin/hachures : angle des lignes de couture (absent = perpendiculaire
+    // à l'axe du fondu).
+    std::optional<Angle> stitch_angle;
+    double end_density{0.15}; // un seul fil : densité relative à l'arrivée
 
     bool operator==(const MulticolorGradientSpec&) const = default;
 };

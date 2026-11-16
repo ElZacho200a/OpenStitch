@@ -32,7 +32,10 @@ Item {
     readonly property var labels: hasFade ? controller.threadLabels : []
     readonly property int selected: Math.max(0, Math.min(colors.length - 1,
                                                          hasFade ? controller.selectedThread : draftSelected))
-    readonly property bool paletteValid: colors.length >= 2 && colors.length <= 8
+    // Un seul fil : dégradé de densité monochrome (sauf satin, qui alterne au moins deux fils).
+    readonly property int minThreads: satinStyle ? 2 : 1
+    readonly property bool axial: ready && (controller.geometry === 0 || controller.geometry === 2)
+    readonly property bool paletteValid: colors.length >= 1 && colors.length <= 8
         && colors.every(function(value, i) {
             return root.isHex(value) && (i === 0 || value.toLowerCase() !== colors[i - 1].toLowerCase())
         })
@@ -61,6 +64,13 @@ Item {
         { id: 0, label: qsTr("Droite") },
         { id: 1, label: qsTr("Radiale") },
         { id: 2, label: qsTr("Courbe") }
+    ]
+    // Formes de transition proposées d'emblée (la courbe reste dans « Plus de réglages »).
+    readonly property var shapes: [
+        { id: 0, label: qsTr("Droite"), help: qsTr("Les fils se succèdent le long d'une direction") },
+        { id: 1, label: qsTr("Radiale"), help: qsTr("Du centre vers le bord, en cercles") },
+        { id: 3, label: qsTr("Spirale"), help: qsTr("Bandes de fils enroulées en spirale autour du centre") },
+        { id: 4, label: qsTr("Contour"), help: qsTr("Du bord de la forme vers son cœur, en suivant le contour") }
     ]
     implicitHeight: fields.implicitHeight + 16
 
@@ -118,7 +128,7 @@ Item {
         draftSelected = index + 1
     }
     function removeAt(index) {
-        if (colors.length <= 2)
+        if (colors.length <= minThreads)
             return
         if (hasFade) {
             controller.removeThread(index)
@@ -150,12 +160,12 @@ Item {
         colorDialog.open()
     }
     function chooseDirection(angle) {
-        if (controller.geometry === 1)
+        if (!axial)
             controller.setGeometry(0)
         controller.setAngle(angle)
     }
     function directionChecked(angle) {
-        return ready && hasFade && controller.geometry !== 1 && Math.abs(controller.angle - angle) < 0.5
+        return ready && hasFade && axial && Math.abs(controller.angle - angle) < 0.5
     }
 
     function refresh() {
@@ -168,8 +178,14 @@ Item {
                 draftSelected = 0
             }
         }
-        if (hasFade && controller.geometry !== 1 && !angleField.activeFocus)
+        if (hasFade && axial && !angleField.activeFocus)
             angleField.text = Number(controller.angle).toFixed(1)
+        if (hasFade && !spacingField.activeFocus)
+            spacingField.text = Number(controller.spacingMm).toFixed(2)
+        if (hasFade && !stitchAngleField.activeFocus)
+            stitchAngleField.text = Number(controller.stitchAngleDeg).toFixed(0)
+        if (hasFade && !endDensityField.activeFocus)
+            endDensityField.text = Number(controller.endDensity * 100).toFixed(0)
     }
     onControllerChanged: Qt.callLater(refresh)
     Component.onCompleted: Qt.callLater(refresh)
@@ -218,6 +234,7 @@ Item {
                 font.pixelSize: Theme.smallSize
                 wrapMode: Text.WordWrap
                 text: !root.ready ? qsTr("Outil indisponible.")
+                      : root.hasFade && root.colors.length === 1 ? qsTr("Un seul fil : dégradé de densité, de plein à clairsemé.")
                       : root.hasFade ? qsTr("%1 fils, cousus du n° 1 au n° %1.").arg(root.colors.length)
                       : root.canCreate ? qsTr("Passez d'un fil à l'autre sur cette forme : choisissez les fils, puis créez le fondu.")
                       : root.controller.incompatibility
@@ -423,8 +440,9 @@ Item {
                             objectName: root.prefix + "RemoveThread"
                             Layout.fillWidth: true
                             text: qsTr("Retirer")
-                            enabled: root.colors.length > 2
-                            disabledReason: qsTr("Un fondu garde au moins 2 fils")
+                            enabled: root.colors.length > root.minThreads
+                            disabledReason: root.minThreads > 1 ? qsTr("Le satin entrelacé garde au moins 2 fils")
+                                                                : qsTr("Un fondu garde au moins 1 fil")
                             tooltip: qsTr("Retirer le fil %1 (Suppr)").arg(root.selected + 1)
                             onClicked: root.removeAt(root.selected)
                         }
@@ -576,6 +594,41 @@ Item {
                         Accessible.name: qsTr("Angle de la première direction de hachures, en degrés")
                     }
                 }
+                RowLayout {
+                    Layout.fillWidth: true
+                    visible: !root.satinStyle
+                    StudioLabel { text: qsTr("Espacement des rangées (mm)") }
+                    StudioTextField {
+                        id: spacingField
+                        objectName: root.prefix + "Spacing"
+                        Layout.fillWidth: true
+                        invalid: isNaN(root.numberFromInput(text))
+                        onEditingFinished: {
+                            const value = root.numberFromInput(text)
+                            if (!isNaN(value) && Math.abs(value - root.controller.spacingMm) > 1e-6)
+                                root.controller.setSpacing(value)
+                        }
+                        Accessible.name: qsTr("Écart entre les rangées de points du fondu, en millimètres")
+                        StudioToolTip { text: qsTr("Plus petit = plus dense. 0,40 mm est l'écart habituel d'un remplissage.") }
+                    }
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    visible: root.colors.length === 1
+                    StudioLabel { text: qsTr("Densité d'arrivée (%)") }
+                    StudioTextField {
+                        id: endDensityField
+                        objectName: root.prefix + "EndDensity"
+                        Layout.fillWidth: true
+                        invalid: isNaN(root.numberFromInput(text))
+                        onEditingFinished: {
+                            const value = root.numberFromInput(text)
+                            if (!isNaN(value) && Math.abs(value - root.controller.endDensity * 100) > 0.5)
+                                root.controller.setEndDensity(value)
+                        }
+                        Accessible.name: qsTr("Densité du fil à la fin du dégradé, en pourcentage du plein")
+                    }
+                }
 
                 // Fils côte à côte ou superposés.
                 StudioLabel { text: qsTr("Les fils sont…") }
@@ -608,12 +661,32 @@ Item {
                     spacing: 6
                     visible: !root.satinStyle
 
-                    StudioLabel { text: qsTr("Direction") }
+                    StudioLabel { text: qsTr("Forme") }
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 4
                         Repeater {
-                            model: root.directions
+                            model: root.shapes
+                            delegate: StudioButton {
+                                required property var modelData
+                                objectName: root.prefix + "Shape" + modelData.id
+                                Layout.fillWidth: true
+                                text: modelData.label
+                                checkable: true
+                                checked: root.ready && (root.controller.geometry === modelData.id
+                                                        || (modelData.id === 0 && root.controller.geometry === 2))
+                                tooltip: modelData.help
+                                onClicked: root.controller.setGeometry(modelData.id)
+                            }
+                        }
+                    }
+
+                    StudioLabel { text: root.axial ? qsTr("Direction") : qsTr("Sens") }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 4
+                        Repeater {
+                            model: root.axial ? root.directions : []
                             delegate: StudioButton {
                                 required property var modelData
                                 objectName: root.prefix + "Direction" + modelData.angle
@@ -626,20 +699,55 @@ Item {
                             }
                         }
                         StudioButton {
-                            objectName: root.prefix + "Radial"
-                            Layout.fillWidth: true
-                            text: "◎"
-                            checkable: true
-                            checked: root.ready && root.controller.geometry === 1
-                            tooltip: qsTr("Du centre vers le bord (radial)")
-                            onClicked: root.controller.setGeometry(1)
-                        }
-                        StudioButton {
                             objectName: root.prefix + "Reverse"
                             Layout.fillWidth: true
-                            text: "⇄"
-                            tooltip: qsTr("Inverser le sens du fondu (en radial : l'ordre des fils)")
+                            text: root.axial ? "⇄" : qsTr("⇄ Inverser l'ordre des fils")
+                            tooltip: root.axial ? qsTr("Inverser le sens du fondu")
+                                                : qsTr("Inverser l'ordre des fils (le premier passe au bout)")
                             onClicked: root.controller.reverse()
+                        }
+                    }
+
+                    // Direction des POINTS, indépendante de l'axe des couleurs (hachures : leurs
+                    // propres directions).
+                    StudioLabel {
+                        visible: !root.crosshatchStyle
+                        text: qsTr("Points")
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 4
+                        visible: !root.crosshatchStyle
+                        StudioButton {
+                            objectName: root.prefix + "StitchAuto"
+                            Layout.fillWidth: true
+                            text: qsTr("Auto")
+                            checkable: true
+                            checked: root.ready && !root.controller.customStitchAngle
+                            tooltip: qsTr("Points perpendiculaires au sens du fondu")
+                            onClicked: root.controller.setStitchAngle(false, 0)
+                        }
+                        StudioButton {
+                            objectName: root.prefix + "StitchCustom"
+                            Layout.fillWidth: true
+                            text: qsTr("Angle")
+                            checkable: true
+                            checked: root.ready && root.controller.customStitchAngle
+                            tooltip: qsTr("Choisir l'angle des points, quel que soit le sens du fondu")
+                            onClicked: root.controller.setStitchAngle(true, root.numberFromInput(stitchAngleField.text) || 0)
+                        }
+                        StudioTextField {
+                            id: stitchAngleField
+                            objectName: root.prefix + "StitchAngle"
+                            Layout.fillWidth: true
+                            enabled: root.ready && root.controller.customStitchAngle
+                            invalid: isNaN(root.numberFromInput(text))
+                            onEditingFinished: {
+                                const value = root.numberFromInput(text)
+                                if (!isNaN(value) && Math.abs(value - root.controller.stitchAngleDeg) > 1e-6)
+                                    root.controller.setStitchAngle(true, value)
+                            }
+                            Accessible.name: qsTr("Angle des points en degrés, 0 = horizontal")
                         }
                     }
 
@@ -675,7 +783,7 @@ Item {
                     StudioButton {
                         objectName: root.prefix + "EditAxis"
                         Layout.fillWidth: true
-                        visible: root.hasGestures
+                        visible: root.hasGestures && root.ready && root.controller.geometry !== 4
                         text: qsTr("Régler sur le canevas")
                         checkable: true
                         checked: root.hasGestures && digitizer.mode === "fade"
@@ -717,7 +825,7 @@ Item {
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: 4
-                            visible: root.ready && root.controller.geometry !== 1
+                            visible: root.axial
                             StudioLabel { text: qsTr("Angle exact (°)") }
                             StudioTextField {
                                 id: angleField

@@ -44,6 +44,7 @@ const std::vector<StudioCommand>& studioCommands() {
             {"cmd.file.save-as", "Enregistrer sous…", "Fichier", "Ctrl+Shift+S", "idle"},
             {"cmd.file.import-image", "Importer une image ou un SVG…", "Fichier", "", "idle"},
             {"cmd.file.import-machine", "Importer une broderie machine…", "Fichier", "", "idle"},
+            {"cmd.file.insert-design", "Insérer un design dans ce projet…", "Fichier", "", "idle"},
             {"cmd.edit.undo", "Annuler", "Édition", "Ctrl+Z", "undo"},
             {"cmd.edit.redo", "Rétablir", "Édition", "Ctrl+Y", "redo"},
             {"cmd.edit.duplicate", "Dupliquer la sélection", "Édition", "Ctrl+D", "selection"},

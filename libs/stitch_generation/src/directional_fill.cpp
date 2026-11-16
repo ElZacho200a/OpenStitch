@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <deque>
 #include <limits>
+#include <memory>
 #include <numbers>
 #include <utility>
 
@@ -600,6 +601,148 @@ private:
     std::vector<P2> values_;
 };
 
+// --- Fondu « suit le contour » --------------------------------------------------
+
+// Distance au bord le plus proche (contour extérieur et trous), échantillonnée sur une grille
+// régulière puis interpolée : t = d / d_max, 0 au bord, 1 au cœur. Calcul séquentiel et
+// déterministe (propagation du germe le plus proche en deux balayages, germes espacés d'une
+// demi-case le long des bords), O(cases + germes) au lieu de cases × arêtes.
+class ContourDistance {
+public:
+    explicit ContourDistance(const std::vector<Poly>& polys) {
+        double x0 = std::numeric_limits<double>::max();
+        double y0 = x0;
+        double x1 = std::numeric_limits<double>::lowest();
+        double y1 = x1;
+        for (const auto& poly : polys) {
+            for (const P2 p : poly) {
+                x0 = std::min(x0, p.x);
+                y0 = std::min(y0, p.y);
+                x1 = std::max(x1, p.x);
+                y1 = std::max(y1, p.y);
+            }
+        }
+        if (x0 >= x1 || y0 >= y1) {
+            return;
+        }
+        cell_ = std::max(150.0, std::max(x1 - x0, y1 - y0) / 192.0);
+        origin_ = {x0 - cell_, y0 - cell_};
+        nx_ = static_cast<int>(std::ceil((x1 - x0) / cell_)) + 3;
+        ny_ = static_cast<int>(std::ceil((y1 - y0) / cell_)) + 3;
+        std::vector<P2> seeds;
+        for (const auto& poly : polys) {
+            for (std::size_t i = 0; i < poly.size(); ++i) {
+                const P2 a = poly[i];
+                const P2 b = poly[(i + 1) % poly.size()];
+                const int steps =
+                    std::max(1, static_cast<int>(std::ceil(norm(b - a) / (0.5 * cell_))));
+                for (int k = 0; k < steps; ++k) {
+                    seeds.push_back(a + (b - a) * (static_cast<double>(k) / steps));
+                }
+            }
+        }
+        const std::size_t count = static_cast<std::size_t>(nx_) * static_cast<std::size_t>(ny_);
+        std::vector<int> nearest(count, -1);
+        dist_.assign(count, std::numeric_limits<double>::max());
+        const auto node = [&](int i, int j) { return origin_ + P2{i * cell_, j * cell_}; };
+        const auto offer = [&](int i, int j, int seed) {
+            if (i < 0 || j < 0 || i >= nx_ || j >= ny_ || seed < 0) {
+                return;
+            }
+            const std::size_t k = static_cast<std::size_t>(j) * nx_ + i;
+            const double d = norm(node(i, j) - seeds[static_cast<std::size_t>(seed)]);
+            if (d < dist_[k]) {
+                dist_[k] = d;
+                nearest[k] = seed;
+            }
+        };
+        for (std::size_t s = 0; s < seeds.size(); ++s) {
+            const int i = static_cast<int>(std::floor((seeds[s].x - origin_.x) / cell_));
+            const int j = static_cast<int>(std::floor((seeds[s].y - origin_.y) / cell_));
+            for (int dj = 0; dj <= 1; ++dj) {
+                for (int di = 0; di <= 1; ++di) {
+                    offer(i + di, j + dj, static_cast<int>(s));
+                }
+            }
+        }
+        const auto seedAt = [&](int i, int j) {
+            return i < 0 || j < 0 || i >= nx_ || j >= ny_
+                       ? -1
+                       : nearest[static_cast<std::size_t>(j) * nx_ + i];
+        };
+        constexpr std::pair<int, int> kForward[] = {{-1, 0}, {-1, -1}, {0, -1}, {1, -1}};
+        constexpr std::pair<int, int> kBackward[] = {{1, 0}, {1, 1}, {0, 1}, {-1, 1}};
+        for (int pass = 0; pass < 2; ++pass) {
+            for (int j = 0; j < ny_; ++j) {
+                for (int i = 0; i < nx_; ++i) {
+                    for (const auto& [di, dj] : kForward) {
+                        offer(i, j, seedAt(i + di, j + dj));
+                    }
+                }
+            }
+            for (int j = ny_ - 1; j >= 0; --j) {
+                for (int i = nx_ - 1; i >= 0; --i) {
+                    for (const auto& [di, dj] : kBackward) {
+                        offer(i, j, seedAt(i + di, j + dj));
+                    }
+                }
+            }
+        }
+        // Plus grande distance INTÉRIEURE (règle pair-impair, une ligne de balayage par rangée).
+        double maxInside = 0.0;
+        std::vector<double> crossings;
+        for (int j = 0; j < ny_; ++j) {
+            const double y = origin_.y + j * cell_;
+            crossings.clear();
+            for (const auto& poly : polys) {
+                for (std::size_t i = 0; i < poly.size(); ++i) {
+                    const P2 a = poly[i];
+                    const P2 b = poly[(i + 1) % poly.size()];
+                    if ((a.y <= y) != (b.y <= y)) {
+                        crossings.push_back(a.x + (y - a.y) * (b.x - a.x) / (b.y - a.y));
+                    }
+                }
+            }
+            std::sort(crossings.begin(), crossings.end());
+            for (std::size_t c = 0; c + 1 < crossings.size(); c += 2) {
+                const int i0 =
+                    std::max(0, static_cast<int>(std::ceil((crossings[c] - origin_.x) / cell_)));
+                const int i1 = std::min(
+                    nx_ - 1, static_cast<int>(std::floor((crossings[c + 1] - origin_.x) / cell_)));
+                for (int i = i0; i <= i1; ++i) {
+                    maxInside = std::max(maxInside, dist_[static_cast<std::size_t>(j) * nx_ + i]);
+                }
+            }
+        }
+        invMax_ = maxInside > 1.0 ? 1.0 / maxInside : 0.0;
+    }
+
+    // Position normalisée [0 ; 1] du point (0 pour une forme dégénérée).
+    [[nodiscard]] double at(P2 p) const {
+        if (invMax_ == 0.0) {
+            return 0.0;
+        }
+        const double fx = std::clamp((p.x - origin_.x) / cell_, 0.0, nx_ - 1.000001);
+        const double fy = std::clamp((p.y - origin_.y) / cell_, 0.0, ny_ - 1.000001);
+        const int i = static_cast<int>(fx);
+        const int j = static_cast<int>(fy);
+        const double sx = fx - i;
+        const double sy = fy - j;
+        const auto v = [&](int a, int b) { return dist_[static_cast<std::size_t>(b) * nx_ + a]; };
+        const double top = v(i, j) + (v(i + 1, j) - v(i, j)) * sx;
+        const double bottom = v(i, j + 1) + (v(i + 1, j + 1) - v(i, j + 1)) * sx;
+        return std::clamp((top + (bottom - top) * sy) * invMax_, 0.0, 1.0);
+    }
+
+private:
+    P2 origin_{};
+    double cell_{1.0};
+    int nx_{0};
+    int ny_{0};
+    std::vector<double> dist_;
+    double invMax_{0.0};
+};
+
 // --- Secteurs ------------------------------------------------------------------
 
 struct Sector {
@@ -641,6 +784,8 @@ struct SpacingField {
     // Grille partagée d'un fondu : écart uniforme, les arrêts décrivent la tranche
     // de rangées possédée par la couche (cf. `DensityGradient::shared_rows`).
     bool sharedRows{false};
+    // DensityGeometry::Contour : distance au bord, partagée par les copies du champ.
+    std::shared_ptr<const ContourDistance> contour;
 
     // Hash de coordonnées de grille : aucune allocation, état ou RNG global.
     // Un même point donne le même déplacement dans toutes les couches.
@@ -725,6 +870,10 @@ struct SpacingField {
     }
 
     [[nodiscard]] double positionAt(P2 p) const {
+        if (geometry == document::DensityGeometry::Contour && contour) {
+            const double c = std::clamp(contour->at(p) + textureAt(p), 0.0, 1.0);
+            return sharedRows ? c : shaped(curve, c);
+        }
         if (invLen2 == 0.0) {
             return 0.0;
         }
@@ -732,6 +881,14 @@ struct SpacingField {
         double t = dot(delta, axis) * invLen2;
         if (geometry == document::DensityGeometry::Radial) {
             t = std::sqrt(dot(delta, delta) * invLen2);
+        } else if (geometry == document::DensityGeometry::Spiral) {
+            // Onde triangle de période 1 : continue au raccord φ = ±π (un tour décale x de 1).
+            const double turns = std::max(0.25, 4.0 * std::abs(curveBend));
+            const double phi = std::atan2(cross(axis, delta), dot(axis, delta));
+            const double sweep = (phi + std::numbers::pi) / (2.0 * std::numbers::pi);
+            const double x =
+                turns * std::sqrt(dot(delta, delta) * invLen2) + (curveBend < 0.0 ? -sweep : sweep);
+            t = 1.0 - std::abs(2.0 * (x - std::floor(x)) - 1.0);
         } else if (geometry == document::DensityGeometry::Curved) {
             // Parabole transversale légère, indépendante de la résolution raster.
             const double lateral = cross(delta, axis) * invLen2;
@@ -824,7 +981,8 @@ struct SpacingField {
     [[nodiscard]] double cell() const { return uniform() ? lo : std::sqrt(lo * hi); }
 };
 
-SpacingField make_spacing_field(const document::DirectionalFillParams& p) {
+SpacingField make_spacing_field(const document::DirectionalFillParams& p,
+                                const geometry::PathSet* region = nullptr) {
     SpacingField f;
     if (!p.density_gradient) {
         f.lo = f.hi = f.from = f.to = clamp_spacing(p);
@@ -855,6 +1013,9 @@ SpacingField make_spacing_field(const document::DirectionalFillParams& p) {
     f.axis = to_p2(g.to) - f.origin;
     const double len2 = dot(f.axis, f.axis);
     f.invLen2 = len2 > 1.0 ? 1.0 / len2 : 0.0;
+    if (g.geometry == document::DensityGeometry::Contour && region != nullptr) {
+        f.contour = std::make_shared<const ContourDistance>(region_polys(*region));
+    }
     if (f.sharedRows) {
         f.to = f.from; // grille commune : écart uniforme pour toutes les couches
         f.lo = f.hi = f.from;
@@ -1986,11 +2147,12 @@ struct SectorLines {
     std::vector<std::vector<P2>> stitched; // lignes retenues (≥ 2 pénétrations)
 };
 
-std::vector<SectorLines> compute_lines(const std::vector<Sector>& sectors,
+std::vector<SectorLines> compute_lines(const geometry::PathSet& region,
+                                       const std::vector<Sector>& sectors,
                                        const document::DirectionalFillParams& params,
                                        bool withStitches) {
     std::vector<SectorLines> result;
-    const SpacingField spacing = make_spacing_field(params);
+    const SpacingField spacing = make_spacing_field(params, &region);
     // Grille partagée : mêmes rangées dans toutes les couches, chacune garde sa tranche.
     const bool partition = spacing.sharedRows && spacing.partial();
     StitchPlan plan;
@@ -2054,7 +2216,7 @@ trace_directional_streamlines(const geometry::PathSet& region,
                               const document::DirectionalFillParams& params) {
     std::vector<DirectionalStreamline> out;
     const auto sectors = build_sectors(region, params);
-    const auto lines = compute_lines(sectors, params, false);
+    const auto lines = compute_lines(region, sectors, params, false);
     for (std::size_t si = 0; si < lines.size(); ++si) {
         for (const auto& t : lines[si].traced) {
             DirectionalStreamline s;
@@ -2074,7 +2236,7 @@ directional_stitch_lines(const geometry::PathSet& region,
                          const document::DirectionalFillParams& params) {
     std::vector<std::vector<Vec2um>> out;
     const auto sectors = build_sectors(region, params);
-    for (const auto& sl : compute_lines(sectors, params, true)) {
+    for (const auto& sl : compute_lines(region, sectors, params, true)) {
         for (const auto& line : sl.stitched) {
             std::vector<Vec2um> um;
             um.reserve(line.size());
@@ -2094,7 +2256,7 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
     if (sectors.empty()) {
         return out;
     }
-    const auto lines = compute_lines(sectors, params, true);
+    const auto lines = compute_lines(region, sectors, params, true);
     const double spacing = clamp_spacing(params);
     const double L =
         std::clamp(static_cast<double>(params.stitch_length.value), kMinTarget, kMaxTarget);
@@ -2103,7 +2265,7 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
     // saut.
     // L'écart est local sous un dégradé de densité : une liaison cousue de
     // 4 × l'écart MAXIMAL traverserait la zone dense (long fil parasite).
-    const SpacingField field = make_spacing_field(params);
+    const SpacingField field = make_spacing_field(params, &region);
     const auto& gradient = params.density_gradient;
     const bool masked = gradient && density_mask_is_sparse(*gradient);
     // Dans un fondu N-aire, un fil devient rare hors de sa zone. Le rayon
