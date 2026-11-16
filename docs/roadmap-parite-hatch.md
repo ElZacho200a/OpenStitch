@@ -2136,6 +2136,9 @@ tout utilisateur de Hatch fait Ctrl+C/Ctrl+V, sélection rectangle, rotation.
   OSP v10. Les formes dérivées rejoignent leur calque et conservent un lien vers
   leur région d’origine. La recette vérifie l’indépendance de deux calques,
   l’annulation après changement de source et l’ordre des points après réouverture.
+- La commande **Segmenter tous les calques** applique les réglages courants aux
+  sources du projet en une étape annulable. La recette Studio vérifie les régions
+  par calque ainsi que l’annulation et le rétablissement après changement de source.
 - Reste : effets **liés** (une forme d'un calque supérieur qui suit/découpe ses cibles) ;
   sélection d'un calque entier au canevas ; calques dans la CLI `project` (inspect, opérations) ;
   glisser une forme d'un calque à l'autre dans la liste Document ; réordonner les calques par
@@ -4613,6 +4616,7 @@ ouvrant le lot (§0.1).
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-11-15 | Codex (F43-01, segmentation en lot) | HP-OBJ-024 reste partiel. Un bouton Studio segmente les sources du document avec les mêmes réglages et un seul pas d’annulation. |
 | 2026-11-16 | Claude (IA-DATA-01 L0+L1) | Roadmap : aucune entrée HP (chantier IA hors parité, Notion IA-DATA-01). Audit des sources (`docs/ai/ia-data-sources.csv` : seul le générateur synthétique est approuvé, aucune donnée tierce ingérée) ; `scripts/ia_data_corpus.py` génère des formes à graine fixe (7 familles, cas minuscules, fins, très concaves) et mesure 9 candidats par forme via `openstitch-cli project apply/check/density` (statuts measured/refused/empty/failed, aucun label) ; corpus et manifeste SHA-256 identiques octet pour octet ; 16 tests Python, dont une intégration moteur facultative. Doc `docs/ai/ia-data-01.md`. |
 | 2026-11-16 | Claude (fond d'un motif recadré serré) | **HP-AUTO-006 ◐** (inchangé, précisé). Audit par le corpus synthétique IA-DATA-01 passé dans `project digitize` : 11 formes sur 100 qui remplissent presque l'image brodaient leur liseré blanc en tatami (le motif était la plus grande région, donc la candidate, non recommandée). `background_candidate` essaie à défaut la couleur claire qui encadre l'image (4 bords, ≥ 85 % du pourtour) et `auto_digitize` ignore cette couleur ; un cadre coloré ou un ciel plein cadre restent cousus. Corpus : 11 → 0 fonds brodés, −23 % de points, 89 autres formes identiques au point près. Tests `test_segmentation` (2) et `test_autodigitize` (1). |
 | 2026-11-16 | Claude (fusion des points courts sous compensation) | **HP-ENG-008 ◐** (inchangé, précisé). `merge_short` testait la corde de fusion contre la région nue alors que les bouts de rangée d'un remplissage compensé en dépassent volontairement : aucun demi-tour n'était fusionné (212 points courts sur un U de 780 points, pull_mode Auto de l'auto-numérisation). Corde testée contre la région agrandie de la compensation effective (`resolve_pull_compensation`, `grown_for_pull`). Corpus : 5 174 → 10 points courts, −6 % de points, couverture 0,957 → 0,939. Une variante « milieu des deux bouts » n'a rien regagné (0,939). Test `test_length_bounds`. |

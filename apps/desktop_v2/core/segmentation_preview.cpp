@@ -4,9 +4,38 @@
 #include <algorithm>
 #include <chrono>
 
+#include "openstitch/document/project.hpp"
 #include "openstitch/image/image.hpp"
 
 namespace openstitch::desktop_v2 {
+
+Result<segmentation::Segmentation>
+segmentImageSource(const document::ImageSource& source,
+                   const segmentation::SegmentationOptions& options, const TaskContext& task) {
+    if (task.cancelled()) {
+        return cancelled_error();
+    }
+    auto working = image::apply_pipeline(source.original, source.ops);
+    if (!working) {
+        return std::unexpected(working.error());
+    }
+    auto segmented = segmentation::segment(*working, options);
+    if (!segmented) {
+        return std::unexpected(segmented.error());
+    }
+    if (task.cancelled()) {
+        return cancelled_error();
+    }
+    // Même couleur moyenne que l'opération `segment_image`.
+    for (auto& slot : segmented->region_slots) {
+        if (slot) {
+            if (const auto mean = segmentation::region_mean_color(*segmented, *working, slot->id)) {
+                slot->rgb = *mean;
+            }
+        }
+    }
+    return segmented;
+}
 
 Result<SegmentationPreview> previewSegmentation(const image::Image& img,
                                                 const segmentation::SegmentationOptions& options,
