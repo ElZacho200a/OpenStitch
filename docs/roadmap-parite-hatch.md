@@ -1614,6 +1614,10 @@ SAM via un worker **WSL**. ~18 s sur l'image de référence.
   blanc des nuages et de l'écume disparaissait avec le fond. **Motif recadré serré** (2026-11-16) :
   quand le motif est la plus grande région, la couleur claire qui encadre l'image devient la
   candidate (11 formes sur 100 du corpus IA-DATA-01 brodaient leur liseré blanc ; 0 après).
+  **Fond transparent à la pipette** (2026-11-16, Studio, espace Image) : traitement non destructif
+  `image::ColorToAlphaOp` (couleur ± tolérance par canal, zone contiguë depuis le clic ou toute la
+  couleur) ; les pixels deviennent transparents, donc du fond pour la segmentation. Il agit sur le
+  calque actif d'un document multi-calques ; CLI `--pre transparent:RRGGBB[:T]`.
 - À faire : choix « ne pas broder cette couleur » par couleur. Dialogue « Numérisation automatique » du
   bureau : case « Seulement le fond extérieur » (`test_main_window`).
 
@@ -4617,6 +4621,7 @@ ouvrant le lot (§0.1).
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-11-16 | Claude (barre d'outils commune des espaces Studio) | **HP-AUTO-006 ◐** (inchangé, précisé) et **HP-OBJ-024 ◐** (inchangé, précisé). Barre latérale commune `CanvasToolRail` dans les quatre espaces (outils modaux seulement : Sélection, Main, outils de l'espace par groupe, Ajuster) ; pinceau et gomme de Segmentation sortis du panneau ; espace Image : Recadrer, Règle d'échelle, Fond transparent (`ColorToAlphaOp`). Multi-calques : l'échelle change tous les calques du même facteur et le recadrage s'applique à tous les calques de même taille de travail, en une étape ; la pipette agit sur le calque actif. |
 | 2026-11-15 | Codex (F43-01, segmentation en lot) | HP-OBJ-024 reste partiel. Un bouton Studio segmente les sources du document avec les mêmes réglages et un seul pas d’annulation. |
 | 2026-11-16 | Claude (IA-DATA-01 L0+L1) | Roadmap : aucune entrée HP (chantier IA hors parité, Notion IA-DATA-01). Audit des sources (`docs/ai/ia-data-sources.csv` : seul le générateur synthétique est approuvé, aucune donnée tierce ingérée) ; `scripts/ia_data_corpus.py` génère des formes à graine fixe (7 familles, cas minuscules, fins, très concaves) et mesure 9 candidats par forme via `openstitch-cli project apply/check/density` (statuts measured/refused/empty/failed, aucun label) ; corpus et manifeste SHA-256 identiques octet pour octet ; 16 tests Python, dont une intégration moteur facultative. Doc `docs/ai/ia-data-01.md`. |
 | 2026-11-16 | Claude (fond d'un motif recadré serré) | **HP-AUTO-006 ◐** (inchangé, précisé). Audit par le corpus synthétique IA-DATA-01 passé dans `project digitize` : 11 formes sur 100 qui remplissent presque l'image brodaient leur liseré blanc en tatami (le motif était la plus grande région, donc la candidate, non recommandée). `background_candidate` essaie à défaut la couleur claire qui encadre l'image (4 bords, ≥ 85 % du pourtour) et `auto_digitize` ignore cette couleur ; un cadre coloré ou un ciel plein cadre restent cousus. Corpus : 11 → 0 fonds brodés, −23 % de points, 89 autres formes identiques au point près. Tests `test_segmentation` (2) et `test_autodigitize` (1). |

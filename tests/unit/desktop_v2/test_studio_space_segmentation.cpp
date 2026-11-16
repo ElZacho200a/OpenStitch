@@ -606,7 +606,14 @@ private slots:
         QTRY_COMPARE(rig.stage().value("state").toString(), QStringLiteral("upToDate"));
         QVERIFY(rig.press("regionTool_brush"));
         QCOMPARE(rig.regions.tool(), QStringLiteral("brush"));
-        QVERIFY(rig.press("regionTool_select"));
+        QTRY_VERIFY(rig.named("regionToolOptions")->isVisible());
+        // Échap quitte le pinceau (Shortcut de Main.qml relayé à l'espace).
+        QTest::keyClick(rig.window, Qt::Key_Escape);
+        QCOMPARE(rig.regions.tool(), QStringLiteral("select"));
+        QVERIFY(rig.press("regionTool_erase"));
+        QCOMPARE(rig.regions.tool(), QStringLiteral("erase"));
+        QVERIFY(rig.press("selectToolButton"));
+        QCOMPARE(rig.regions.tool(), QStringLiteral("select"));
         // IA : sondage des backends, repli classique explicite.
         panels->setProperty("tab", 2);
         QVERIFY(rig.press("aiProbeButton"));
