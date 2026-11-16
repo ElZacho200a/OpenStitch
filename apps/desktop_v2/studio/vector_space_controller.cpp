@@ -198,11 +198,14 @@ void VectorSpaceController::startAsyncBuild(std::vector<std::uint64_t> keys) {
     const bool software = !canvas_ || !canvas_->rhiBackend();
     tasks_.submit<std::shared_ptr<const VectorLayer>>(
         "studio.vector-layer",
-        [shapes, software](const TaskContext& task) -> Result<std::shared_ptr<const VectorLayer>> {
+        [shapes, software, workerKeys = pendingVisualKeys_,
+         previous = layer_](const TaskContext& task) -> Result<std::shared_ptr<const VectorLayer>> {
             if (task.cancelled()) {
                 return cancelled_error();
             }
-            auto layer = VectorLayer::build(*shapes);
+            // Incrémental : seules les formes modifiées sont retriangulées (un déplacement ne
+            // retriangule plus les centaines de formes du motif).
+            auto layer = VectorLayer::build(*shapes, workerKeys, previous.get());
             if (software) {
                 (void)layer->image(); // backend logiciel : rastériser ici, pas pendant la synchro
             }

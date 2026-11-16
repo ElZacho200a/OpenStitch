@@ -361,6 +361,26 @@ private slots:
         QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
     }
 
+    void incrementalLayerBuildMatchesFullBuild() {
+        Rig rig;
+        open(rig);
+        auto shapes = rig.session.project().vector_objects;
+        QVERIFY(shapes.size() >= 2);
+        std::vector<std::uint64_t> keys;
+        for (std::size_t i = 0; i < shapes.size(); ++i) {
+            keys.push_back(i + 1);
+        }
+        const auto first = VectorLayer::build(shapes, keys, nullptr);
+        QVERIFY(first->triangles() == VectorLayer::build(shapes)->triangles());
+        // One shape changes (colour, new key): the others reuse their triangles, and the
+        // result is byte-identical to a full rebuild.
+        shapes.front().rgb = {1, 2, 3};
+        keys.front() = 1000;
+        const auto next = VectorLayer::build(shapes, keys, first.get());
+        QVERIFY(next->triangles() == VectorLayer::build(shapes)->triangles());
+        QVERIFY(next->triangles() != first->triangles());
+    }
+
     void quickBarShowsShapeOpsOnSelection() {
         Rig rig;
         open(rig);
