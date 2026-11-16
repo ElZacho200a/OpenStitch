@@ -493,7 +493,7 @@ TEST_CASE("fond blanc ne touchant que 2 bords -> pas recommande par defaut") {
     CHECK(lax->recommended);
 }
 
-TEST_CASE("logo recadre serre : le liseré blanc qui encadre est le fond, pas le motif") {
+TEST_CASE("logo recadre serre : le cadre blanc fin est le fond, pas le motif") {
     // Motif bleu de 36x26 dans une image 40x30 : le motif est la plus grande région (78 %), le
     // blanc n'est qu'un cadre de 2 px. Avant : candidate = le motif, non recommandé, fond brodé.
     const auto img = framed(40, 30, {250, 250, 250}, {30, 100, 200}, 2, 2, 38, 28);

@@ -317,7 +317,7 @@ TEST_CASE(
 // Audit IA-DATA-01 (formes synthétiques passées dans `project digitize`) : un motif qui remplit
 // presque toute l'image est la plus grande région ; l'ancien choix ignorait alors le MOTIF... ou,
 // en mode automatique, rien du tout, et le liseré blanc était brodé en tatami autour du motif.
-TEST_CASE("logo recadre serre -> le liseré blanc est ignore, le motif est brode") {
+TEST_CASE("logo recadre serre -> le cadre blanc est ignore, le motif est brode") {
     image::Image img = blank(40, 30);
     for (int y = 0; y < 30; ++y) {
         for (int x = 0; x < 40; ++x) {
