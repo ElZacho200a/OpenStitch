@@ -102,7 +102,7 @@ réutilisés : un identifiant reste valide pour toute la vie de la segmentation
 | Recoloration | `recolor_region(id, rgb)` | Change la couleur représentative |
 | Carte | `render_map(highlight)` | Image RGBA (fond transparent, sélection éclaircie) |
 | Nettoyage | `remove_thin_parts(min_width_px)`, `merge_small_regions(min_px, excluded)` | Ouverture morphologique et fusion des fragments, sur la copie de travail de l'auto-numérisation (voir *Numérisation automatique*) |
-| Fond présumé | `background_candidate(options)` | Couleur de la plus grande région, surface, L*, bords touchés, recommandation (voir *Numérisation automatique*) |
+| Fond présumé | `background_candidate(options)` | Couleur de la plus grande région (ou, à défaut, couleur qui encadre l’image), surface, L*, bords touchés, recommandation (voir *Numérisation automatique*) |
 
 Note : « Supprimer » fait **disparaître** la région (retour au fond) et ne la
 fusionne pas avec une voisine — corrigé après un retour utilisateur (voir
