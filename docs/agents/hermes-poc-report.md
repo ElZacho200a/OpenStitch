@@ -99,7 +99,7 @@ Risques constatés ou documentés : suppression non demandée de fichiers, répo
 modèle trop petit pour compter ou agréger, RAM Windows très faible, injection via issues/PR (scan de contexte
 documenté mais non testé), dérive des skills (curateur en tâche de fond, première passe différée de 7 jours).
 
-**Décision proposée (à valider par l'utilisateur) : compléter l'existant, ne pas adopter.**
+**Décision (validée par l'utilisateur le 2026-11-16) : compléter l'existant, ne pas adopter.**
 1. Ne pas remplacer l'orchestration actuelle ; Hermes n'apporte pas ici de gain mesuré sur l'écriture, qui est le besoin.
 2. Faire du mapping Notion/GitHub un script déterministe, pas un agent.
 3. Option à rejouer plus tard : Hermes en lecture seule, sans `--yolo`, derrière un harnais qui vérifie
