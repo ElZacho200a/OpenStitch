@@ -167,26 +167,14 @@ ColumnLayout {
             }
         }
     }
-    RowLayout {
+    // Pinceau et gomme : barre latérale de l'espace (CanvasToolRail) ; rayon au canevas.
+    StudioLabel {
+        objectName: "regionToolHint"
+        visible: regionTools.tool !== "select"
         Layout.fillWidth: true
-        Repeater {
-            model: [ { id: "select", label: qsTr("Sélection") }, { id: "brush", label: qsTr("Pinceau") },
-                     { id: "erase", label: qsTr("Gomme") } ]
-            delegate: StudioButton {
-                required property var modelData
-                objectName: "regionTool_" + modelData.id
-                text: modelData.label
-                checkable: true
-                checked: regionTools.tool === modelData.id
-                onClicked: regionTools.tool = modelData.id
-            }
-        }
-        StudioSpinBox {
-            objectName: "regionBrushRadius"
-            from: 1; to: 200; value: regionTools.brushRadius; editable: true
-            visible: regionTools.tool !== "select"
-            onValueModified: regionTools.brushRadius = value
-        }
+        text: regionTools.tool === "brush"
+              ? qsTr("Pinceau actif : peignez sur le canevas pour agrandir la région choisie.")
+              : qsTr("Gomme active : peignez sur le canevas pour retirer de la région choisie.")
     }
 
     SectionLabel { text: qsTr("RÉGIONS (%1)").arg(regionTools.regions.length) }
@@ -205,20 +193,6 @@ ColumnLayout {
             tooltip: qsTr("Sélectionner la région suivante de la liste")
             enabled: regionTools.regions.length > 0
             onClicked: regionTools.selectNextRegion()
-        }
-        StudioButton {
-            objectName: "brushSmaller"
-            text: "−"
-            tooltip: qsTr("Pinceau : rayon plus petit")
-            visible: regionTools.tool !== "select"
-            onClicked: regionTools.stepBrushRadius(-1)
-        }
-        StudioButton {
-            objectName: "brushLarger"
-            text: "+"
-            tooltip: qsTr("Pinceau : rayon plus grand")
-            visible: regionTools.tool !== "select"
-            onClicked: regionTools.stepBrushRadius(1)
         }
     }
     Rectangle {

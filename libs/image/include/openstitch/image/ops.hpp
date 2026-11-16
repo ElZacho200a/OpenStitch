@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
+#include <cstdint>
 #include <span>
 #include <string>
 #include <variant>
@@ -101,10 +102,23 @@ struct SharpenOp {
     bool operator==(const SharpenOp&) const = default;
 };
 
+// Rendre transparent (pipette de l'espace Image) : les pixels dont chaque canal s'écarte d'au plus
+// `tolerance` de la couleur (r, g, b) deviennent transparents (alpha 0), donc du fond pour la
+// segmentation. `contiguous` : seulement la zone reliée (4-connexité) au point (seed_x, seed_y),
+// en pixels de l'image d'entrée ; sinon toute l'image. Les pixels déjà transparents laissent
+// passer le remplissage. Utile par calque d'un document multi-calques (fond d'un `.ora`).
+struct ColorToAlphaOp {
+    std::uint8_t r{255}, g{255}, b{255};
+    int tolerance{24}; // 0..255, écart maximal par canal
+    bool contiguous{true};
+    int seed_x{0}, seed_y{0};
+    bool operator==(const ColorToAlphaOp&) const = default;
+};
+
 // Nouvelles alternatives toujours AJOUTÉES EN FIN (index stables).
-using ImageOp =
-    std::variant<CropOp, FlipOp, Rotate90Op, GrayscaleOp, BrightnessContrastOp, MedianDenoiseOp,
-                 QuantizeOp, BilateralDenoiseOp, CoherentLinesOp, FlattenOp, ClaheOp, SharpenOp>;
+using ImageOp = std::variant<CropOp, FlipOp, Rotate90Op, GrayscaleOp, BrightnessContrastOp,
+                             MedianDenoiseOp, QuantizeOp, BilateralDenoiseOp, CoherentLinesOp,
+                             FlattenOp, ClaheOp, SharpenOp, ColorToAlphaOp>;
 
 // Nom lisible de l'opération (menus, historique d'annulation).
 [[nodiscard]] std::string op_name(const ImageOp& op);

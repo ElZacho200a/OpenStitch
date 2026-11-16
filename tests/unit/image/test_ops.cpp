@@ -297,3 +297,36 @@ TEST_CASE("debruitage median par bandes : identique a une mediane naive, bords e
         CHECK(same);
     }
 }
+
+TEST_CASE("fond transparent : zone contigue depuis le point, ou toute la couleur") {
+    // 6x3 : blanc | noir (colonne 2) | blanc ; le blanc de droite n'est pas relié au point (0,0).
+    Image img;
+    img.width = 6;
+    img.height = 3;
+    img.rgba.assign(6 * 3 * 4, 255);
+    for (int y = 0; y < 3; ++y) {
+        auto* px = img.rgba.data() + (y * 6 + 2) * 4;
+        px[0] = px[1] = px[2] = 0;
+    }
+    const auto alpha = [](const Image& im, int x, int y) { return im.rgba[(y * 6 + x) * 4 + 3]; };
+
+    const auto zone = apply_op(img, ColorToAlphaOp{250, 250, 250, 10, true, 0, 0});
+    REQUIRE(zone.has_value());
+    CHECK(zone->source_had_alpha);
+    CHECK(alpha(*zone, 0, 0) == 0);
+    CHECK(alpha(*zone, 1, 2) == 0);
+    CHECK(alpha(*zone, 2, 1) == 255); // le trait noir arrête le remplissage
+    CHECK(alpha(*zone, 4, 1) == 255); // blanc non relié : intact
+    CHECK(zone->rgba[0] == 255);      // la couleur est conservée, seul l'alpha change
+
+    const auto all = apply_op(img, ColorToAlphaOp{250, 250, 250, 10, false, 0, 0});
+    REQUIRE(all.has_value());
+    CHECK(alpha(*all, 4, 1) == 0);
+    CHECK(alpha(*all, 2, 1) == 255);
+
+    // Tolérance trop étroite : rien ne change ; déterminisme ; entrées invalides refusées.
+    CHECK(apply_op(img, ColorToAlphaOp{240, 240, 240, 5, true, 0, 0})->rgba == img.rgba);
+    CHECK(apply_op(img, ColorToAlphaOp{250, 250, 250, 10, true, 0, 0})->rgba == zone->rgba);
+    CHECK_FALSE(apply_op(img, ColorToAlphaOp{0, 0, 0, 300, false, 0, 0}).has_value());
+    CHECK_FALSE(apply_op(img, ColorToAlphaOp{0, 0, 0, 10, true, 6, 0}).has_value());
+}

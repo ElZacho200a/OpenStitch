@@ -140,6 +140,15 @@ json op_to_json(const image::ImageOp& op) {
                 j = {{"type", "clahe"}, {"clipLimit", o.clip_limit}};
             } else if constexpr (std::is_same_v<T, image::SharpenOp>) {
                 j = {{"type", "sharpen"}, {"amount", o.amount}};
+            } else if constexpr (std::is_same_v<T, image::ColorToAlphaOp>) {
+                j = {{"type", "colorToAlpha"},
+                     {"r", o.r},
+                     {"g", o.g},
+                     {"b", o.b},
+                     {"tolerance", o.tolerance},
+                     {"contiguous", o.contiguous},
+                     {"seedX", o.seed_x},
+                     {"seedY", o.seed_y}};
             }
             return j;
         },
@@ -189,6 +198,16 @@ Result<image::ImageOp> op_from_json(const json& j) {
     }
     if (type == "sharpen") {
         return image::SharpenOp{j.value("amount", 1.0)};
+    }
+    if (type == "colorToAlpha") {
+        const image::ColorToAlphaOp d;
+        return image::ColorToAlphaOp{j.value("r", d.r),
+                                     j.value("g", d.g),
+                                     j.value("b", d.b),
+                                     j.value("tolerance", d.tolerance),
+                                     j.value("contiguous", d.contiguous),
+                                     j.value("seedX", d.seed_x),
+                                     j.value("seedY", d.seed_y)};
     }
     return fail(ErrorCategory::InvalidFile, "Opération d'image inconnue : " + type);
 }

@@ -371,6 +371,10 @@ Window {
         sequence: "Escape"
         onActivated: {
             if (window.keyboardOwnedByControl) { window.activeFocusItem.focus = false; return }
+            // L'espace courant quitte d'abord son outil modal (recadrage, pipette, règle…) : un
+            // second Shortcut « Escape » rendrait la touche ambiguë et aucun ne s'exécuterait.
+            const space = spaceHost.space
+            if (space && typeof space.cancelTool === "function" && space.cancelTool()) return
             editor.eyedropper = false
             if (!canvas || !canvas.cancelGesture()) studio.clearSelection()
         }
