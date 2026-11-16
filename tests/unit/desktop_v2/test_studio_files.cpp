@@ -166,6 +166,7 @@ private slots:
     void openingMessageIsReplacedOnceLoadedInsteadOfLingering();
     void dropAndCommandLineDispatchByExtension();
     void machineExportImportRoundTrip();
+    void exportOptionsShowThePlanBeforeWriting();
     void overflowExportRequiresExplicitConfirmation();
     void exportsAreDeterministicAndRepeatable();
     void documentExportsWriteRealFiles();
@@ -911,6 +912,72 @@ void StudioFilesTest::machineExportImportRoundTrip() {
     rig.files->exportMachine(url(dir, "x.abc"));
     QVERIFY(rig.files->messageIsError());
     QVERIFY(!QFileInfo::exists(dir.filePath(QStringLiteral("x.abc"))));
+}
+
+// CX07 : Fichier > Exporter > Image / Gabarit ouvre les réglages ; l'aperçu annonce la taille en
+// pixels ou le nombre de pages AVANT le choix du fichier, et suit les réglages.
+void StudioFilesTest::exportOptionsShowThePlanBeforeWriting() {
+    Rig rig({}, true);
+    QVERIFY(rig.window);
+    QTRY_VERIFY_WITH_TIMEOUT(rig.window->isExposed(), 5'000);
+    rig.session.replaceProject(studioFixture(), true);
+    auto* panel = rig.window->findChild<QObject*>(QStringLiteral("filePanel"));
+    auto* dialog = rig.window->findChild<QObject*>(QStringLiteral("exportOptionsDialog"));
+    auto* summary = rig.window->findChild<QObject*>(QStringLiteral("exportPlanSummary"));
+    auto* confirm = rig.window->findChild<QQuickItem*>(QStringLiteral("confirmExportOptions"));
+    auto* cancel = rig.window->findChild<QQuickItem*>(QStringLiteral("cancelExportOptions"));
+    QVERIFY(panel && dialog && summary && confirm && cancel);
+    QSignalSpy plans(rig.files.get(), &FileController::exportPlanReady);
+
+    QVERIFY(QMetaObject::invokeMethod(panel, "openExportOptions",
+                                      Q_ARG(QVariant, QStringLiteral("image"))));
+    QTRY_VERIFY_WITH_TIMEOUT(dialog->property("visible").toBool(), 3'000);
+    QTRY_COMPARE_WITH_TIMEOUT(plans.count(), 1, 15'000);
+    const auto image = plans.takeFirst().at(1).toMap();
+    QVERIFY2(image.value(QStringLiteral("ok")).toBool(),
+             qPrintable(image.value(QStringLiteral("message")).toString()));
+    const int width6 = image.value(QStringLiteral("width")).toInt();
+    QVERIFY(width6 > 0);
+    QTRY_VERIFY_WITH_TIMEOUT(summary->property("text").toString().contains(QString::number(width6)),
+                             3'000);
+    QVERIFY(confirm->isEnabled());
+
+    // Doubler la résolution double (à un pixel près) la largeur annoncée.
+    dialog->setProperty("pxPerMm", 12.0);
+    QVERIFY(QMetaObject::invokeMethod(dialog, "refresh"));
+    QTRY_COMPARE_WITH_TIMEOUT(plans.count(), 1, 15'000);
+    const int width12 = plans.takeFirst().at(1).toMap().value(QStringLiteral("width")).toInt();
+    QVERIFY2(std::abs(width12 - 2 * width6) <= 2,
+             qPrintable(QStringLiteral("%1 vs %2").arg(width12).arg(width6)));
+    QVERIFY(QMetaObject::invokeMethod(cancel, "click"));
+    QTRY_VERIFY_WITH_TIMEOUT(!dialog->property("visible").toBool(), 3'000);
+
+    // Gabarit : nombre de pages et papier, recalculés au changement d'orientation.
+    QVERIFY(QMetaObject::invokeMethod(panel, "openExportOptions",
+                                      Q_ARG(QVariant, QStringLiteral("template"))));
+    QTRY_COMPARE_WITH_TIMEOUT(plans.count(), 1, 15'000);
+    auto tpl = plans.takeFirst();
+    QCOMPARE(tpl.at(0).toString(), QStringLiteral("template"));
+    QVERIFY(tpl.at(1).toMap().value(QStringLiteral("pages")).toInt() >= 1);
+    QCOMPARE(tpl.at(1).toMap().value(QStringLiteral("pageWidthMm")).toDouble(), 210.0);
+    dialog->setProperty("landscape", true);
+    QVERIFY(QMetaObject::invokeMethod(dialog, "refresh"));
+    QTRY_COMPARE_WITH_TIMEOUT(plans.count(), 1, 15'000);
+    QCOMPARE(plans.takeFirst().at(1).toMap().value(QStringLiteral("pageWidthMm")).toDouble(),
+             297.0);
+    QTRY_VERIFY_WITH_TIMEOUT(summary->property("text").toString().contains(QStringLiteral("page")),
+                             3'000);
+    QVERIFY(QMetaObject::invokeMethod(cancel, "click"));
+
+    // Document sans point : le gabarit est refusé, le bouton Enregistrer reste inactif.
+    rig.session.replaceProject(document::Project{}, true);
+    QVERIFY(QMetaObject::invokeMethod(panel, "openExportOptions",
+                                      Q_ARG(QVariant, QStringLiteral("template"))));
+    QTRY_COMPARE_WITH_TIMEOUT(plans.count(), 1, 15'000);
+    QVERIFY(!plans.takeFirst().at(1).toMap().value(QStringLiteral("ok")).toBool());
+    QVERIFY(!confirm->isEnabled());
+    QVERIFY(QMetaObject::invokeMethod(cancel, "click"));
+    QVERIFY(rig.warnings.isEmpty());
 }
 
 void StudioFilesTest::overflowExportRequiresExplicitConfirmation() {

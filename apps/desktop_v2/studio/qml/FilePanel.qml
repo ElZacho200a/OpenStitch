@@ -52,15 +52,44 @@ Item {
         saveExportDialog.open()
     }
 
+    // CX07 : réglages puis aperçu de ce que l'export produira, avant le choix du fichier.
+    function openExportOptions(kind) {
+        if (!ctl)
+            return
+        exportOptionsDialog.kind = kind
+        exportOptionsDialog.plan = ({})
+        exportOptionsDialog.open()
+        exportOptionsDialog.refresh()
+    }
+    function exportPlanText(kind, p) {
+        if (!p || p.ok === undefined)
+            return qsTr("Calcul de l'aperçu…")
+        if (!p.ok)
+            return p.message || qsTr("Aperçu impossible.")
+        if (kind === "image") {
+            var text = qsTr("%1 × %2 pixels pour %3 × %4 mm (cadre et points), %5 px/mm.")
+                .arg(p.width).arg(p.height)
+                .arg(Number(p.widthMm).toFixed(1)).arg(Number(p.heightMm).toFixed(1))
+                .arg(Number(p.pxPerMm).toFixed(2))
+            if (p.reduced)
+                text += " " + qsTr("Résolution abaissée : l'image dépasserait la taille maximale.")
+            return text
+        }
+        return qsTr("%1 page(s) (%2 × %3) de %4 × %5 mm pour un motif de %6 × %7 mm, à l'échelle 1:1.")
+            .arg(p.pages).arg(p.columns).arg(p.rows)
+            .arg(Number(p.pageWidthMm).toFixed(0)).arg(Number(p.pageHeightMm).toFixed(0))
+            .arg(Number(p.designWidthMm).toFixed(1)).arg(Number(p.designHeightMm).toFixed(1))
+    }
+
     function finishExport(url) {
         switch (exportKind) {
         case "machine": ctl.exportMachine(url, exportValues); break
         case "threads": ctl.exportThreadList(url); break
         case "dxf": ctl.exportDxf(url); break
         case "svg": ctl.exportSvg(url); break
-        case "image": ctl.exportImage(url, 6, 92); break
+        case "image": ctl.exportImage(url, exportOptionsDialog.pxPerMm, exportOptionsDialog.quality); break
         case "sheet": ctl.exportProductionSheet(url); break
-        case "template": ctl.exportPlacementTemplate(url, {}); break
+        case "template": ctl.exportPlacementTemplate(url, { paper: exportOptionsDialog.paper, landscape: exportOptionsDialog.landscape }); break
         }
     }
 
@@ -300,9 +329,9 @@ Item {
                 shortcutLabel: "F10"
                 onClicked: panel.ctl.exportAgain()
             }
-            Entry { text: qsTr("Image (PNG, JPEG)…"); onClicked: panel.startExport("image", qsTr("Exporter l'image"), [qsTr("Image (*.png *.jpg)")], "png") }
+            Entry { objectName: "exportImageEntry"; text: qsTr("Image (PNG, JPEG)…"); onClicked: panel.openExportOptions("image") }
             Entry { text: qsTr("Fiche de production (PDF)…"); onClicked: panel.startExport("sheet", qsTr("Fiche de production"), [qsTr("PDF (*.pdf)")], "pdf") }
-            Entry { text: qsTr("Gabarit de placement 1:1 (PDF)…"); onClicked: panel.startExport("template", qsTr("Gabarit de placement"), [qsTr("PDF (*.pdf)")], "pdf") }
+            Entry { objectName: "exportTemplateEntry"; text: qsTr("Gabarit de placement 1:1 (PDF)…"); onClicked: panel.openExportOptions("template") }
             Entry { text: qsTr("Liste des fils (CSV)…"); onClicked: panel.startExport("threads", qsTr("Liste des fils"), [qsTr("CSV (*.csv)")], "csv") }
             Entry { text: qsTr("Contours en DXF…"); onClicked: panel.startExport("dxf", qsTr("Contours DXF"), [qsTr("DXF (*.dxf)")], "dxf") }
             Entry { text: qsTr("Points en SVG…"); onClicked: panel.startExport("svg", qsTr("Points SVG"), [qsTr("SVG (*.svg)")], "svg") }
@@ -365,6 +394,90 @@ Item {
     // Importer une image ouvre seulement le sélecteur de fichier : la préparation
     // a lieu dans l'espace Image, la segmentation dans l'espace suivant.
     
+    // --- Options des exports image et gabarit (CX07) -------------------------------------------
+    Connections {
+        target: panel.ctl
+        function onExportPlanReady(kind, plan) {
+            if (kind === exportOptionsDialog.kind)
+                exportOptionsDialog.plan = plan
+        }
+    }
+    Frame {
+        id: exportOptionsDialog
+        objectName: "exportOptionsDialog"
+        property string kind: "image"
+        property var plan: ({})
+        property real pxPerMm: 6
+        property int quality: 92
+        property string paper: "A4"
+        property bool landscape: false
+        readonly property var papers: ["A4", "A3", "Letter"]
+        heading: kind === "image" ? qsTr("Exporter l'image") : qsTr("Gabarit de placement 1:1")
+        function refresh() {
+            plan = ({})
+            panel.ctl.requestExportPlan(kind, { pxPerMm: pxPerMm, paper: paper, landscape: landscape })
+        }
+        RowLayout {
+            visible: exportOptionsDialog.kind === "image"
+            spacing: 8
+            Label { text: qsTr("Résolution (px/mm)") }
+            StudioSpinBox {
+                objectName: "exportImageResolution"
+                from: 1; to: 12; editable: true
+                value: exportOptionsDialog.pxPerMm
+                onValueModified: { exportOptionsDialog.pxPerMm = value; exportOptionsDialog.refresh() }
+            }
+        }
+        RowLayout {
+            visible: exportOptionsDialog.kind === "image"
+            spacing: 8
+            Label { text: qsTr("Qualité JPEG") }
+            StudioSpinBox {
+                objectName: "exportImageQuality"
+                from: 1; to: 100; editable: true
+                value: exportOptionsDialog.quality
+                onValueModified: exportOptionsDialog.quality = value
+            }
+        }
+        StudioComboBox {
+            objectName: "exportTemplatePaper"
+            visible: exportOptionsDialog.kind === "template"
+            Layout.fillWidth: true
+            model: exportOptionsDialog.papers
+            currentIndex: exportOptionsDialog.papers.indexOf(exportOptionsDialog.paper)
+            onActivated: { exportOptionsDialog.paper = exportOptionsDialog.papers[currentIndex]; exportOptionsDialog.refresh() }
+        }
+        StudioCheckBox {
+            objectName: "exportTemplateLandscape"
+            visible: exportOptionsDialog.kind === "template"
+            text: qsTr("Paysage")
+            checked: exportOptionsDialog.landscape
+            onToggled: { exportOptionsDialog.landscape = checked; exportOptionsDialog.refresh() }
+        }
+        Label {
+            objectName: "exportPlanSummary"
+            text: panel.exportPlanText(exportOptionsDialog.kind, exportOptionsDialog.plan)
+        }
+        RowLayout {
+            Layout.alignment: Qt.AlignRight
+            spacing: 8
+            StudioButton { objectName: "cancelExportOptions"; text: qsTr("Annuler"); onClicked: exportOptionsDialog.close() }
+            StudioButton {
+                objectName: "confirmExportOptions"
+                text: qsTr("Enregistrer…")
+                emphasized: true
+                enabled: exportOptionsDialog.plan && exportOptionsDialog.plan.ok === true
+                onClicked: {
+                    exportOptionsDialog.close()
+                    if (exportOptionsDialog.kind === "image")
+                        panel.startExport("image", qsTr("Exporter l'image"), [qsTr("Image (*.png *.jpg)")], "png")
+                    else
+                        panel.startExport("template", qsTr("Gabarit de placement"), [qsTr("PDF (*.pdf)")], "pdf")
+                }
+            }
+        }
+    }
+
     // --- Export pour la machine ---------------------------------------------------------------
     Frame {
         id: exportDialog

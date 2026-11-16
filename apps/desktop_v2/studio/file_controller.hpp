@@ -108,6 +108,11 @@ public:
     Q_INVOKABLE void exportImage(const QUrl& url, double pxPerMm = 6.0, int jpegQuality = 92);
     Q_INVOKABLE void exportProductionSheet(const QUrl& url);
     Q_INVOKABLE void exportPlacementTemplate(const QUrl& url, const QVariantMap& options = {});
+    // CX07 : ce que l'export « image » (pxPerMm) ou « template » (paper, landscape) produira,
+    // calculé hors fil d'interface ; réponse par exportPlanReady(kind, plan) : ok, message, puis
+    // width/height/pxPerMm/reduced/widthMm/heightMm (image) ou pages/columns/rows/designWidthMm/
+    // designHeightMm/pageWidthMm/pageHeightMm (gabarit).
+    Q_INVOKABLE void requestExportPlan(const QString& kind, const QVariantMap& options);
     Q_INVOKABLE void cancelTask();
 
     // --- Cadre et machine -------------------------------------------------------------------
@@ -126,6 +131,7 @@ public:
     void setAutosaveIntervalMs(int ms);
 
 signals:
+    void exportPlanReady(const QString& kind, const QVariantMap& plan);
     void recentChanged();
     void messageChanged();
     void busyChanged();
