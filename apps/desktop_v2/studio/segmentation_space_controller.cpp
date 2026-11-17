@@ -126,7 +126,7 @@ void SegmentationSpaceController::updateShapes(bool confirmed) {
         regions_.confirmRegeneration(); // la demande affichée, pas une autre
         return;
     }
-    regions_.regenerate(false, confirmed, images_.segmentationDefaults());
+    regions_.regenerate(false, confirmed, images_.lastSegmentationOptions());
 }
 
 void SegmentationSpaceController::cancelConfirm() {

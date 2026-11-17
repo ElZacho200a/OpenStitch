@@ -6,13 +6,15 @@
 
 #include "openstitch/document/project.hpp"
 #include "openstitch/image/image.hpp"
+#include "openstitch/segmentation/blend_zones.hpp"
 #include "openstitch/segmentation/color_merge.hpp"
 
 namespace openstitch::desktop_v2 {
 
 Result<segmentation::Segmentation>
 segmentImageSource(const document::ImageSource& source,
-                   const segmentation::SegmentationOptions& options, const TaskContext& task) {
+                   const segmentation::SegmentationOptions& options, const TaskContext& task,
+                   bool blendZones) {
     if (task.cancelled()) {
         return cancelled_error();
     }
@@ -20,7 +22,8 @@ segmentImageSource(const document::ImageSource& source,
     if (!working) {
         return std::unexpected(working.error());
     }
-    auto segmented = segmentation::segment(*working, options);
+    auto segmented = blendZones ? segmentation::segment_blend_zones(*working, source.mm_per_px)
+                                : segmentation::segment(*working, options);
     if (!segmented) {
         return std::unexpected(segmented.error());
     }
@@ -52,12 +55,14 @@ segmentImageSource(const document::ImageSource& source,
 
 Result<SegmentationPreview> previewSegmentation(const image::Image& img,
                                                 const segmentation::SegmentationOptions& options,
-                                                const TaskContext& task) {
+                                                const TaskContext& task,
+                                                std::optional<Millimeters> blendZonesAt) {
     if (task.cancelled()) {
         return cancelled_error();
     }
     const auto start = std::chrono::steady_clock::now();
-    auto segmented = segmentation::segment(img, options);
+    auto segmented = blendZonesAt ? segmentation::segment_blend_zones(img, *blendZonesAt)
+                                  : segmentation::segment(img, options);
     if (!segmented) {
         return std::unexpected(segmented.error());
     }
