@@ -312,8 +312,9 @@ private slots:
         QVERIFY(!session.project().segmentation.has_value());
         QVERIFY(session.project().vector_objects.empty());
         QVERIFY(session.project().embroidery_objects.empty());
-        QTRY_VERIFY_WITH_TIMEOUT(named(window, QStringLiteral("segmentEmptyButton")) != nullptr,
-                                 5'000);
+        // #386 : plus de carte « Pas encore de segmentation » sur le canevas ; l'onglet
+        // Segmentation (« Appliquer ») est l'unique déclencheur.
+        QTRY_VERIFY_WITH_TIMEOUT(named(window, QStringLiteral("segApplyButton")) != nullptr, 5'000);
         segmentationSpace.segmentImage({});
         QTRY_VERIFY_WITH_TIMEOUT(session.project().segmentation.has_value(), 20'000);
         QVERIFY(session.project().vector_objects.empty());

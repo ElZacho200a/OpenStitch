@@ -391,6 +391,9 @@ private slots:
         // retrait de la bulle d'info redondante avec l'onglet Segmentation) : seul l'état réel
         // compte, pas un élément visuel.
         QVERIFY(!rig.space.hasSegmentation());
+        // L'aperçu en direct de l'onglet Segmentation peut recalculer après l'opération d'image :
+        // la demande n'est honorée qu'une fois les calculs terminés (garde canSegment).
+        QTRY_VERIFY_WITH_TIMEOUT(rig.space.canSegment(), 30'000);
         const auto stepsBefore = rig.session.undoNames().size();
         QSignalSpy applied(&rig.images, &ImageController::segmentationApplied);
         rig.workspace->requestUpdate(QStringLiteral("segmentation"));
@@ -401,7 +404,10 @@ private slots:
         // jour.
         QTRY_COMPARE(rig.stage().value("state").toString(), QStringLiteral("stale"));
         QSignalSpy regenerated(&rig.regions, &RegionController::regenerated);
-        QTRY_VERIFY(rig.press("regionRegenerate"));
+        // QTRY_VERIFY réévalue son expression une fois vraie : attendre le bouton actif, puis
+        // cliquer une seule fois (le clic lance la régénération et désactive le bouton).
+        QTRY_VERIFY(rig.named("regionRegenerate") && rig.named("regionRegenerate")->isEnabled());
+        QVERIFY(rig.press("regionRegenerate"));
         QTRY_COMPARE_WITH_TIMEOUT(regenerated.count(), 1, 60'000);
         QTRY_COMPARE(rig.stage().value("state").toString(), QStringLiteral("upToDate"));
         // Quitter l'espace : la publication est retirée (le calcul de base reprend).
