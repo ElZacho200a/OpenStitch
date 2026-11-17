@@ -15,6 +15,7 @@ add_executable(test_project_ops
     test_analysis.cpp
     test_auto_satin_service.cpp
     test_gradient_fill.cpp
+    test_image_blend.cpp
     test_live_bridge.cpp
     test_settings_profile.cpp
     test_fuzz_batches.cpp

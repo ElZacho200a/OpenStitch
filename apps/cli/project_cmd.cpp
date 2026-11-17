@@ -439,8 +439,29 @@ void add_digitize_options(CLI::App* cmd, DigitizeOptionValues& v) {
         ->check(CLI::Range(0.0, 100.0));
     cmd->add_option("--mode", s.mode,
                     "Stratégie : shapes (formes pleines, défaut) | contours (dessin au trait) | "
-                    "stipple (semis de points relié en un trait, rendu des tons)")
-        ->check(CLI::IsMember({"shapes", "contours", "stipple"}));
+                    "stipple (semis de points relié en un trait, rendu des tons) | blend (zones "
+                    "de fondu : peintures, ciels, eau ; chaque zone est un fondu de fils mélangés)")
+        ->check(CLI::IsMember({"shapes", "contours", "stipple", "blend"}));
+    cmd->add_option("--blend-threads", s.blend_threads,
+                    "Mode blend : fils de la palette de mélange (défaut : 12)")
+        ->check(CLI::Range(2, 16));
+    cmd->add_option("--blend-per-zone", s.blend_max_per_zone,
+                    "Mode blend : fils mélangés au plus par zone (défaut : 3)")
+        ->check(CLI::Range(1, 4));
+    cmd->add_option("--blend-edge", s.blend_edge,
+                    "Mode blend : force de bord qui sépare deux zones, ΔE par 0,5 mm (défaut : "
+                    "2.5 ; plus grand = moins de zones)")
+        ->check(CLI::Range(0.1, 50.0));
+    cmd->add_option("--blend-cell", s.blend_cell_mm,
+                    "Mode blend : pas de la grille de parts, en mm (défaut : 3)")
+        ->check(CLI::Range(0.5, 5.0));
+    cmd->add_flag_callback(
+        "--blend-shared-rows", [&s] { s.blend_continuous = false; },
+        "Mode blend : grille de rangées partagée (couverture exacte, plus de coupes) au lieu de "
+        "rangées continues par fil");
+    cmd->add_option("--blend-min-zone", s.blend_min_zone_mm2,
+                    "Mode blend : aire minimale d'une zone, en mm² (défaut : 25)")
+        ->check(CLI::Range(1.0, 10000.0));
     cmd->add_option("--detail", s.detail, "Mode contours : niveau de détail 0..1 (défaut : 0.5)")
         ->check(CLI::Range(0.0, 1.0));
     cmd->add_option("--technique", s.technique,

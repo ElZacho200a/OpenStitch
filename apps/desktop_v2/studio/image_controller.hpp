@@ -106,6 +106,9 @@ public:
     [[nodiscard]] int colorCount() const;
     [[nodiscard]] QVariantList prepCatalog() const;
     [[nodiscard]] QVariantMap segmentationDefaults() const;
+    // Réglages de la dernière segmentation appliquée (défauts sinon) : « Mettre à jour les formes »
+    // numérise avec eux (zones de fondu expérimentales comprises).
+    [[nodiscard]] QVariantMap lastSegmentationOptions() const;
     [[nodiscard]] QVariantList aiBackends() const { return ai_; }
     [[nodiscard]] QString aiSummary() const { return aiSummary_; }
     [[nodiscard]] bool aiBusy() const { return aiBusy_; }
@@ -153,6 +156,7 @@ private:
     [[nodiscard]] segmentation::SegmentationOptions optionsFrom(const QVariantMap& map) const;
 
     StudioController& studio_;
+    QVariantMap lastSegmentationOptions_;
     std::shared_ptr<PrepareImages> images_{std::make_shared<PrepareImages>()};
     DocumentSession::Token token_{};
     QTimer refreshTimer_;

@@ -122,7 +122,13 @@ Mêmes valeurs par défaut que le dialogue **Numérisation automatique** du bure
 | `--hidden-travel-levels LISTE` | `all` | Avec `--hidden-travel` : niveaux parmi `between` (ponts entre objets), `within` (liens dans un objet), `underlay` (ordre de la sous-couche), séparés par des virgules ; `regions` (mode avancé, plus invasif : ordre des régions d'une même couleur) n'est jamais inclus dans `all` |
 | `--hidden-travel-same-colour` | désactivé | Avec `--hidden-travel` : une surface déjà cousue du même fil compte aussi comme cachée |
 | `--hidden-travel-max MM` | 15 | Avec `--hidden-travel` : longueur maximale d'un pont |
-| `--mode` | `shapes` | `shapes` : formes pleines ; `contours` : dessin au trait (lignes médianes en point droit) ; `stipple` : semis de points relié en un trait |
+| `--mode` | `shapes` | `shapes` : formes pleines ; `contours` : dessin au trait (lignes médianes en point droit) ; `stipple` : semis de points relié en un trait ; `blend` (expérimental) : zones de fondu, chaque zone cousue en fondu de fils mélangés (voir [Auto-numérisation](auto-numerisation.md), « Zones de fondu ») |
+| `--blend-threads N` | 12 | Mode blend : fils de la palette globale de mélange (2..16) |
+| `--blend-per-zone N` | 3 | Mode blend : fils mélangés au plus par zone (1..4) |
+| `--blend-edge X` | 2.5 | Mode blend : force de bord (ΔE par 0,5 mm) qui sépare deux zones ; plus grand = moins de zones |
+| `--blend-cell MM` | 3 | Mode blend : pas de la grille de parts (0,5..5 mm) |
+| `--blend-min-zone MM2` | 25 | Mode blend : aire minimale d'une zone |
+| `--blend-shared-rows` | non | Mode blend : grille de rangées partagée (couverture exacte, plus de coupes) au lieu de rangées continues par fil |
 | `--detail 0..1` | 0.5 | Mode contours : niveau de détail |
 | `--technique` | `auto` | Mode contours : `auto`, `running` ou `legacy-satin`. `legacy-satin` : ancien satin dégradé en point droit (**pas** l'auto-satin) ; l'ancien nom `satin` est accepté avec un avertissement. |
 | `--output-svg FICHIER` | — | SVG de diagnostic en plus du DST |

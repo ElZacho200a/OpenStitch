@@ -366,7 +366,13 @@ QVariantMap ImageController::segmentationDefaults() const {
     const segmentation::SegmentationOptions defaults;
     return {{QStringLiteral("max_colors"), defaults.max_colors},
             {QStringLiteral("min_region_px"), defaults.min_region_px},
-            {QStringLiteral("smoothing_radius_px"), 3}};
+            {QStringLiteral("smoothing_radius_px"), 3},
+            {QStringLiteral("blend_zones"), false},
+            {QStringLiteral("blend_threads"), 12}};
+}
+
+QVariantMap ImageController::lastSegmentationOptions() const {
+    return lastSegmentationOptions_.isEmpty() ? segmentationDefaults() : lastSegmentationOptions_;
 }
 
 void ImageController::setMessage(const QString& text, bool error) {
@@ -551,15 +557,20 @@ void ImageController::previewSegmentation(const QVariantMap& optionsMap) {
     }
     const auto options = optionsFrom(optionsMap);
     const auto snapshot = studio_.session().snapshot();
+    // Zones de fondu (expérimental) : au pas de l'image de travail.
+    const std::optional<Millimeters> blendAt =
+        segmentationSettingsFrom(optionsMap, {}).blend_zones
+            ? std::optional<Millimeters>{snapshot->imageSource().mm_per_px}
+            : std::nullopt;
     setBusy(true, QStringLiteral("Aperçu de la segmentation"));
     segTask_ = tasks_.submit<SegmentationPreview>(
         "Aperçu de la segmentation",
-        [snapshot, options](const TaskContext& task) -> Result<SegmentationPreview> {
+        [snapshot, options, blendAt](const TaskContext& task) -> Result<SegmentationPreview> {
             auto working = processedImage(*snapshot);
             if (!working) {
                 return std::unexpected(working.error());
             }
-            return desktop_v2::previewSegmentation(*working, options, task);
+            return desktop_v2::previewSegmentation(*working, options, task, blendAt);
         },
         [this](Result<SegmentationPreview>&& r) {
             segTask_ = 0;
@@ -629,6 +640,9 @@ void ImageController::startSegmentation(const QVariantMap& optionsMap, bool allL
     }
     cancelSegmentationPreview();
     const auto options = optionsFrom(optionsMap);
+    const bool blendZones = segmentationSettingsFrom(optionsMap, {}).blend_zones;
+    // « Mettre à jour les formes » reprend ces réglages (zones de fondu comprises).
+    lastSegmentationOptions_ = optionsMap;
     auto& session = studio_.session();
     const auto snapshot = session.snapshot();
     const auto revision = session.revision();
@@ -650,12 +664,13 @@ void ImageController::startSegmentation(const QVariantMap& optionsMap, bool allL
     setBusy(true, label);
     applyTask_ = tasks_.submit<SegmentedLayers>(
         label.toStdString(),
-        [snapshot, options, sources = std::move(sources),
+        [snapshot, options, blendZones, sources = std::move(sources),
          allLayers](const TaskContext& task) -> Result<SegmentedLayers> {
             SegmentedLayers result;
             result.layers.reserve(sources.size());
             for (const ObjectId id : sources) {
-                auto seg = segmentImageSource(*snapshot->findImageSource(id), options, task);
+                auto seg =
+                    segmentImageSource(*snapshot->findImageSource(id), options, task, blendZones);
                 if (!seg) {
                     if (allLayers && seg.error().code == segmentation::kTransparentImage) {
                         ++result.skippedTransparent;

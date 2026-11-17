@@ -15,6 +15,7 @@
 #include "openstitch/commands/composite_command.hpp"
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/commands/replace_project_command.hpp"
+#include "openstitch/segmentation/blend_zones.hpp"
 #include "openstitch/segmentation/segmentation.hpp"
 
 namespace openstitch::desktop_v2 {
@@ -804,6 +805,18 @@ Result<Regeneration> regenerateObjects(std::shared_ptr<const document::Project> 
     for (auto& e : produced->objects.embroideries) {
         copy->embroidery_objects.push_back(std::move(e));
     }
+    // Zones de fondu (expérimental) : chaque zone devient un fondu, AVANT de remettre les objets
+    // dessinés à la main (seuls les objets de l'image sont concernés).
+    if (settings.mode == "blend" && !copy->embroidery_objects.empty()) {
+        project_ops::DigitizeReport report;
+        if (auto blended = project_ops::apply_blend_zones(*copy, working, settings, report);
+            !blended) {
+            return std::unexpected(blended.error());
+        }
+        if (task.cancelled()) {
+            return cancelled_error();
+        }
+    }
     if (copy->embroidery_objects.empty() && keptEmbroideries.empty()) {
         return fail(ErrorCategory::OperationImpossible, "Aucun objet de broderie généré",
                     "Les régions restantes sont trop petites ou ne forment que le fond.");
@@ -834,9 +847,14 @@ Result<Regeneration> resegmentObjects(std::shared_ptr<const document::Project> p
     if (task.cancelled()) {
         return cancelled_error();
     }
-    auto seg = segmentation::segment(working, {.max_colors = settings.max_colors,
-                                               .min_region_px = settings.min_region_px,
-                                               .smoothing_radius_px = settings.smoothing_px});
+    auto seg =
+        settings.mode == "blend"
+            ? segmentation::segment_blend_zones(working, project->imageSource().mm_per_px,
+                                                {.edge_threshold = settings.blend_edge,
+                                                 .min_zone_mm2 = settings.blend_min_zone_mm2})
+            : segmentation::segment(working, {.max_colors = settings.max_colors,
+                                              .min_region_px = settings.min_region_px,
+                                              .smoothing_radius_px = settings.smoothing_px});
     if (!seg) {
         return fail(ErrorCategory::OperationImpossible,
                     "Segmentation impossible : " + seg.error().message,

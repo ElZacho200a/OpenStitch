@@ -3,7 +3,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <map>
 #include <vector>
 
 #include "openstitch/core/units.hpp"
@@ -93,11 +92,32 @@ public:
     [[nodiscard]] std::size_t source_count() const { return sources_.size(); }
 
 private:
+    // Grandeurs d'un segment qui ne dépendent pas du point échantillonné, calculées une fois
+    // avec exactement les mêmes expressions que l'évaluation d'origine (résultat identique bit
+    // à bit, docs/performance/gpu-compute/benchmark-results.md).
+    struct Prepared {
+        double ax, ay, dx, dy;  // origine et vecteur du segment
+        double midx, midy;      // milieu ax + dx * 0,5
+        double h, dirx, diry;   // demi-longueur et direction unitaire
+        double axial_coef;      // -gain · k_axial
+        double lateral_coef;    // poisson · gain · k_lateral · h
+        double weight;          // poids de la source
+        double reject_exponent; // au-delà, poids < 1e-4 garanti (marge incluse)
+        std::uint32_t order;    // rang de couture
+    };
+
     std::vector<PullSource> sources_;
+    std::vector<Prepared> prepared_; // même indice que sources_
     FabricResponse fabric_;
     double cell_um_{1.0};
     double cutoff_um_{1.0};
-    std::map<std::int64_t, std::vector<std::uint32_t>> grid_;
+    double denom_along_{1.0};  // 2 σ_a²
+    double denom_across_{1.0}; // 2 σ_n²
+    // Index par cellule, au format CSR : clés triées, et pour la clé k les sources
+    // cell_sources_[cell_begin_[k] .. cell_begin_[k + 1]) en indices croissants.
+    std::vector<std::int64_t> cell_keys_;
+    std::vector<std::uint32_t> cell_begin_;
+    std::vector<std::uint32_t> cell_sources_;
 
     [[nodiscard]] std::int64_t key_of(std::int64_t cx, std::int64_t cy) const;
 };
