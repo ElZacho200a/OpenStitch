@@ -726,3 +726,27 @@ successifs, comparés à un calcul à neuf).
 
 **Reste.** La première génération du gros objet (ouverture du projet) garde son coût : réduire les
 candidats (`kMaxCandidates`) ou le pas de recherche changerait les liaisons, donc la broderie.
+
+## 17. Audit du 2026-11-17 : chantier R02, calcul GPU et optimisation
+
+Dossier complet : [`performance/gpu-compute/`](performance/gpu-compute/README.md).
+
+**Constats.** Sur la machine de développement (Ryzen 7 7700X, RTX 5060 Ti), la simulation du
+tirage pesait 53 % du parcours de marine sur un seul fil (95 ms). Les finitions de tentabrode
+(68 ms) étaient à plus de 80 % dans la construction de la grille des ponts cachés : chaque
+point y testait toute sa boîte englobante. La portée `hidden_travel` du profil incluait cette
+construction et faisait croire que le coût venait de la recherche de chemin.
+
+**Corrections** (`libs/stitch_generation`, sortie identique octet pour octet) :
+- `PullField` : index CSR, grandeurs par segment précalculées, rejet exact avant `exp` ;
+- simulation, carte et tirage prédit évalués en parallèle par tranches ;
+- grille des ponts cachés : intervalle utile par rangée, carré de la distance hors zone
+  ambiguë, bandes de rangées en parallèle (une seule bande à un fil) ;
+- plans des ponts pré-calculés en parallèle.
+
+**Résultats** (A/B entrelacé, p50 chauds, natif) : marine 179 → 74 ms (−58 %), tentabrode
+270 → 216 ms (−20 %), texte 40 → 32 ms (−20 %), logo inchangé. Sur un fil : −33 %, −6 %,
+−9 %. Empreintes identiques sur tous les passages.
+
+**GPU.** Le prototype D3D11 de R01, rejoué sur GPU de bureau, reste 3 à 5 fois plus lent que le
+CPU, transferts compris : pas de backend GPU dans le moteur.

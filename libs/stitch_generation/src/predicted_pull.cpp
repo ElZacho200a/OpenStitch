@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "openstitch/stitch_generation/predicted_pull.hpp"
 
+#include "openstitch/core/parallel.hpp"
+
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -202,12 +204,19 @@ void apply_predicted_pull(stitch::StitchSequence& sequence, const document::Proj
         }
         const PullField field(std::move(sources), response);
         // Jacobi : toutes les évaluations lisent la géométrie de la passe précédente.
+        // Chaque point n'écrit que sa case de `next` : évaluation parallèle par tranches,
+        // résultat indépendant du nombre de fils.
         std::vector<Vec2um> next(count);
-        for (std::size_t i = 0; i < count; ++i) {
-            next[i] = movable[i] ? nominal[i] + field.compensation_at(work.commands[i].pos,
-                                                                      static_cast<std::uint32_t>(i))
-                                 : nominal[i];
-        }
+        constexpr std::size_t kChunk = 1024;
+        parallel_for((count + kChunk - 1) / kChunk, [&](std::size_t chunk) {
+            const std::size_t end = std::min(count, (chunk + 1) * kChunk);
+            for (std::size_t i = chunk * kChunk; i < end; ++i) {
+                next[i] = movable[i]
+                              ? nominal[i] + field.compensation_at(work.commands[i].pos,
+                                                                   static_cast<std::uint32_t>(i))
+                              : nominal[i];
+            }
+        });
         for (std::size_t i = 0; i < count; ++i) {
             work.commands[i].pos = next[i];
         }
