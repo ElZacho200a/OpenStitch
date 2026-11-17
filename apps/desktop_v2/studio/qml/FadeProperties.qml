@@ -478,6 +478,72 @@ Item {
                 onClicked: root.controller.createMulticolor(root.draftColors, true, 0, 0)
             }
 
+            // --- Fondu depuis l'image : parts des fils lues dans l'image source -------------
+            ColumnLayout {
+                id: imageFade
+                objectName: root.prefix + "ImageFade"
+                Layout.fillWidth: true
+                spacing: 6
+                visible: root.editing
+                readonly property double cellValue: root.numberFromInput(imageCellField.text)
+                readonly property bool cellValid: !isNaN(cellValue) && cellValue >= 0.5 && cellValue <= 5.0
+
+                StudioLabel { text: qsTr("Fondu depuis l'image") }
+                RowLayout {
+                    Layout.fillWidth: true
+                    StudioLabel { text: qsTr("Nombre de fils") }
+                    StudioSpinBox {
+                        id: imageThreads
+                        objectName: root.prefix + "ImageThreads"
+                        from: 2; to: 8; value: 6
+                        editable: true
+                        Accessible.name: qsTr("Nombre de fils du fondu depuis l'image, de 2 à 8")
+                    }
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    StudioLabel { text: qsTr("Case de grille (mm)") }
+                    StudioTextField {
+                        id: imageCellField
+                        objectName: root.prefix + "ImageCell"
+                        Layout.fillWidth: true
+                        text: "3"
+                        invalid: !imageFade.cellValid
+                        Accessible.name: qsTr("Taille de la case de lecture de l'image, en millimètres, de 0,5 à 5")
+                        StudioToolTip { text: qsTr("Plus petite = suit mieux l'image, mais plus de coupes. 3 mm convient à la plupart des images.") }
+                    }
+                }
+                StudioCheckBox {
+                    id: imageContinuous
+                    objectName: root.prefix + "ImageContinuous"
+                    text: qsTr("Rangées continues (moins de coupes)")
+                    checked: true
+                }
+                StudioButton {
+                    objectName: root.prefix + "ImageFadeApply"
+                    Layout.fillWidth: true
+                    text: root.ready && root.controller.imageFadeBusy ? qsTr("Calcul en cours…")
+                                                                       : qsTr("Fondu depuis l'image")
+                    enabled: root.ready && root.controller.canImageFade
+                             && !root.controller.imageFadeBusy && imageFade.cellValid
+                    tooltip: root.ready && !root.controller.canImageFade
+                             ? root.controller.imageFadeReason
+                             : qsTr("Lit les parts de chaque fil dans l'image source ; annulable en une étape.")
+                    onClicked: root.controller.fadeFromImage(imageThreads.value, imageFade.cellValue,
+                                                             imageContinuous.checked)
+                }
+                Text {
+                    objectName: root.prefix + "ImageFadeReason"
+                    Layout.fillWidth: true
+                    visible: root.ready && !root.controller.canImageFade
+                    text: root.ready ? root.controller.imageFadeReason : ""
+                    color: Theme.warning
+                    wrapMode: Text.WordWrap
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.smallSize
+                }
+            }
+
             // --- Réglages d'un fondu existant -------------------------------------------
             ColumnLayout {
                 Layout.fillWidth: true

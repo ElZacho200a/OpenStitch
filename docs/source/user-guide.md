@@ -645,6 +645,14 @@ La variable d'environnement `OPENSTITCH_THREADS=1` force le calcul séquentiel (
   est facultative. Valider crée fond puis dessus, annulables en une fois.
   **Propriétés ▸ Couches de couture** permet ensuite de choisir et d'éditer
   chaque couche séparément. Voir [Remplissage directionnel](directional-fill.md).
+- **Fondu depuis l'image** (Studio, panneau *Fondu de fils* de l'inspecteur) : avec un
+  remplissage tatami ou directionnel (ou un fondu existant) sélectionné et une image
+  source dans le projet, choisissez le nombre de fils (2 à 8, 6 par défaut), la case de
+  la grille (0,5 à 5 mm, 3 par défaut) et « Rangées continues (moins de coupes) »
+  (cochée par défaut), puis « Fondu depuis l'image » : les parts de chaque fil sont lues
+  dans l'image. Le calcul tourne hors du fil d'interface ; le résultat s'annule en une
+  étape. Sans image ou sur une forme incompatible, le bouton est grisé et la raison est
+  affichée.
 - **Numérisation automatique** (**F8**, grisée tant qu'il n'y a ni segmentation ni objets
   vectoriels) — crée des objets pour toutes les régions. Les zones
   remplissables deviennent des **tatamis** ; le satin se crée ensuite, région par région,
