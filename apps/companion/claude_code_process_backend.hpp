@@ -30,6 +30,7 @@ public:
     }
     [[nodiscard]] bool available() const override;
     void resetConversation();
+    [[nodiscard]] bool running() const;
     // Arguments purs et inspectables : interdit les outils système et les autres MCP.
     [[nodiscard]] static QStringList restrictedArguments(const QString& workspace,
                                                          const QString& sessionId = {});
@@ -47,6 +48,8 @@ private:
     void handleOutput();
     void consumeBuffer();
     static QString describeError(const QJsonObject& event);
+    static QString friendlyToolName(const QString& raw);
+    static QString compactInput(const QJsonObject& input);
     void handleLine(const QByteArray& line);
 
     QString executable_;

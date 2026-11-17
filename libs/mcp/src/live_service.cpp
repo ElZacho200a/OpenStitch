@@ -3,7 +3,10 @@
 // Voir live.hpp et docs/adr/0001-compagnon-ia-session-live.md.
 #include <algorithm>
 #include <array>
+#include <cctype>
+#include <filesystem>
 #include <random>
+#include <system_error>
 #include <utility>
 
 #include <nlohmann/json.hpp>
@@ -17,14 +20,56 @@
 namespace openstitch::mcp {
 
 namespace po = openstitch::project_ops;
+namespace fs = std::filesystem;
 
 namespace {
 
-constexpr std::array<std::string_view, 16> kReadTools = {
+fs::path path_from_utf8(const std::string& text) {
+    return fs::path(std::u8string(reinterpret_cast<const char8_t*>(text.data()), text.size()));
+}
+
+std::string utf8_text(const fs::path& path) {
+    const auto u8 = path.generic_u8string();
+    return std::string(reinterpret_cast<const char*>(u8.data()), u8.size());
+}
+
+std::string lower(std::string text) {
+    for (char& ch : text) {
+        ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    }
+    return text;
+}
+
+// Note ajoutée à la description des outils de fichier en mode live (la description d'origine parle
+// du projet « de la session »).
+const char* live_file_note(std::string_view tool) {
+    if (tool == "project_digitize") {
+        return " [Mode live : calculé sur une copie puis REMPLACE le document ouvert en une étape "
+               "d'annulation, après l'accord de l'utilisateur (aperçu avant/après). « out » est "
+               "refusé : enregistrez ensuite avec project_save.]";
+    }
+    if (tool == "project_open") {
+        return " [Mode live : demande l'accord de l'utilisateur ; remplace le document ouvert "
+               "(nouvelle session, historique vierge) ; refusé si des modifications ne sont pas "
+               "enregistrées sauf discard_changes=true. Relire live_status ensuite.]";
+    }
+    if (tool == "project_save") {
+        return " [Mode live : écrit le document OUVERT en .osp après l'accord de l'utilisateur. "
+               "Sans « path » : le chemin courant du document ; extension .osp obligatoire.]";
+    }
+    if (tool == "project_export") {
+        return " [Mode live : exporte le document OUVERT après l'accord de l'utilisateur ; "
+               "l'extension du fichier doit correspondre au format.]";
+    }
+    return "";
+}
+
+constexpr std::array<std::string_view, 17> kReadTools = {
     "digitize_guide",   "project_operations",  "project_inspect",   "project_select",
     "project_palette",  "project_report",      "project_diagnose",  "project_density",
     "project_fidelity", "project_fabric_risk", "project_locate",    "project_satin_compare",
-    "project_check",    "project_render",      "semantic_validate", "ai_backends"};
+    "project_check",    "project_render",      "semantic_validate", "ai_backends",
+    "semantic_map"};
 
 const std::vector<LiveExtraTool> kExtraTools = {
     {"live_status",
@@ -58,10 +103,12 @@ const std::vector<LiveExtraTool> kExtraTools = {
      "medial_axis (copies isolées), choisit la meilleure variante non rejetée, JUSTIFIE chaque "
      "refus "
      "(le tatami est conservé), saute verrouillés/masqués/déjà satin, et prépare le lot "
-     "(auto_satin + pull_mode=predicted par défaut) validé en simulation. N'applique rien.",
+     "(auto_satin + pull_mode=predicted par défaut) validé en simulation. N'applique rien. "
+     "Donne la largeur de colonne (width_mm) de chaque cible et refuse les formes trop larges "
+     "(moyenne > 6 mm ou max > 9 mm) sauf allow_wide=true.",
      R"({"type":"object","properties":{"objects":{"type":"array","items":{"type":"integer",)"
      R"("minimum":1},"minItems":1,"maxItems":20},"pull_mode":{"enum":["predicted","adaptive",)"
-     R"("auto","manual","none"]}},"required":["objects"]})"},
+     R"("auto","manual","none"]},"allow_wide":{"type":"boolean"}},"required":["objects"]})"},
     {"live_preview",
      "Aperçu AVANT/APRÈS d'un lot d'opérations sur une copie : rapport du lot, points, sauts, "
      "coupes, constats qualité, risque textile (avant, après, écart) et rendu de l'état après. Le "
@@ -73,6 +120,12 @@ const std::vector<LiveExtraTool> kExtraTools = {
      R"("items":{"type":"integer","minimum":1},"minItems":1,"maxItems":20},)"
      R"("crop":{"type":"array","items":{"type":"number"},"minItems":4,"maxItems":4},)"
      R"("px_per_mm":{"type":"number"}},"required":["operations"]})"},
+    {"live_permission",
+     "Outil INTERNE du compagnon : décide si Claude Code peut lire un fichier hors du projet "
+     "(Read, Glob, Grep seulement). L'utilisateur est invité à autoriser chaque accès ; ne "
+     "l'appelez pas vous-même.",
+     R"({"type":"object","properties":{"tool_name":{"type":"string"},"input":{"type":"object"},)"
+     R"("tool_use_id":{"type":"string"}},"required":["tool_name","input"]})"},
     {"live_ask_user",
      "Pose une question à l'utilisateur DANS LE PANNEAU du compagnon quand la demande est ambiguë "
      "(plusieurs teintes, sélection vide…). 2 à 8 options, chacune avec ses identifiants d'objets. "
@@ -89,6 +142,69 @@ json error_content(const std::string& tool, const char* code, const std::string&
         {"content", json::array({json{{"type", "text"},
                                       {"text", po::error_json(tool, code, message, hint)}}})},
         {"isError", true}};
+}
+
+// Chemins qu'aucun accord ne peut ouvrir : secrets et identifiants.
+bool sensitive_path(std::string path) {
+    for (char& ch : path) {
+        ch = ch == '\\' ? '/' : static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    }
+    for (const char* marker :
+         {"/.ssh/", "/.gnupg/", "/.aws/", "/.azure/", "/.kube/", "id_rsa", "id_ed25519",
+          ".claude.json", "/.claude/.credentials", "credentials", "/.env", "known_hosts"}) {
+        if (path.find(marker) != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Résultat d'outil trop long que Claude Code a lui-même enregistré pour l'espace de travail
+// du compagnon : …/.claude/projects/<…studio-companion-workspace…>/<session>/tool-results/<f>.
+// Le relire est la suite normale d'un appel MCP, jamais une ouverture d'autre chose.
+bool own_tool_result(std::string path) {
+    for (char& ch : path) {
+        ch = ch == '\\' ? '/' : static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    }
+    if (path.find("/../") != std::string::npos || path.ends_with("/..")) {
+        return false;
+    }
+    const std::string root = "/.claude/projects/";
+    const auto at = path.find(root);
+    if (at == std::string::npos) {
+        return false;
+    }
+    // Segments après projects/ : <projet>/<session>/tool-results/<fichier>, exactement.
+    std::vector<std::string> parts;
+    std::size_t begin = at + root.size();
+    while (begin <= path.size()) {
+        const auto end = path.find('/', begin);
+        parts.push_back(
+            path.substr(begin, end == std::string::npos ? std::string::npos : end - begin));
+        if (end == std::string::npos) {
+            break;
+        }
+        begin = end + 1;
+    }
+    return parts.size() == 4 && parts[0].find("studio-companion-workspace") != std::string::npos &&
+           !parts[1].empty() && parts[2] == "tool-results" && !parts[3].empty();
+}
+
+std::string normalized_path(std::string path) {
+    for (char& ch : path) {
+        ch = ch == '\\' ? '/' : static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    }
+    while (path.size() > 1 && path.back() == '/') {
+        path.pop_back();
+    }
+    return path;
+}
+
+json permission_reply(bool allow, const json& input, const std::string& message = {}) {
+    json decision = allow ? json{{"behavior", "allow"}, {"updatedInput", input}}
+                          : json{{"behavior", "deny"}, {"message", message}};
+    return json{{"content", json::array({json{{"type", "text"}, {"text", decision.dump()}}})},
+                {"isError", false}};
 }
 
 json text_content(const std::string& text) {
@@ -110,8 +226,16 @@ LivePolicy live_policy(std::string_view tool) {
     if (std::find(kReadTools.begin(), kReadTools.end(), tool) != kReadTools.end()) {
         return LivePolicy::Read;
     }
-    if (tool == "project_apply") {
+    // Import sémantique : crée / remplace des objets depuis un manifeste ; calculé sur une copie
+    // puis installé en une étape d'annulation, comme project_apply.
+    if (tool == "project_apply" || tool == "semantic_import" || tool == "semantic_replace") {
         return LivePolicy::Apply;
+    }
+    if (tool == "project_digitize") {
+        return LivePolicy::Replace;
+    }
+    if (tool == "project_open" || tool == "project_save" || tool == "project_export") {
+        return LivePolicy::HostFile;
     }
     return LivePolicy::Denied;
 }
@@ -126,9 +250,10 @@ std::string live_tools_json() {
         if (live_policy(tool.name) == LivePolicy::Denied) {
             continue;
         }
-        list.push_back(json{{"name", tool.name},
-                            {"description", tool.description},
-                            {"input_schema", json::parse(tool.input_schema)}});
+        list.push_back(
+            json{{"name", tool.name},
+                 {"description", std::string(tool.description) + live_file_note(tool.name)},
+                 {"input_schema", json::parse(tool.input_schema)}});
     }
     for (const auto& extra : live_extra_tools()) {
         list.push_back(json{{"name", extra.name},
@@ -152,7 +277,29 @@ struct LivePendingCall::Impl {
     std::optional<ChoiceRequest> ask; // live_ask_user (réponse au retour sur le fil GUI)
     std::shared_ptr<const document::Project> final_project; // issu d'un project_apply réussi
     ApplyPreview apply_preview; // rendus et écarts montrés avant l'approbation
+    bool want_preview{true};    // faux en mode automatique : l'aperçu ne serait jamais montré
+    // Outils de fichier (HostFile) : cible validée, format, fichier d'export calculé hors du fil
+    // GUI dans un dossier temporaire (copié vers la cible seulement après approbation).
+    std::string target_text;
+    std::string format;
+    fs::path target;
+    fs::path temp_file;
+    bool dirty_host{false};
+    // live_permission : accès disque demandé par Claude Code (outil, chemin) ; décidé au retour
+    // GUI.
+    std::optional<std::pair<std::string, std::string>> permission;
+    json permission_input = json::object();
     bool ran{false};
+
+    Impl() = default;
+    Impl(const Impl&) = delete;
+    Impl& operator=(const Impl&) = delete;
+    ~Impl() {
+        if (!temp_file.empty()) {
+            std::error_code ec;
+            fs::remove_all(temp_file.parent_path(), ec);
+        }
+    }
 };
 
 LivePendingCall::LivePendingCall() : impl_(std::make_unique<Impl>()) {}
@@ -165,7 +312,7 @@ void LivePendingCall::run() {
     }
     c.ran = true;
     if (c.tool.starts_with("live_")) {
-        if (c.ask) {
+        if (c.ask || c.permission) {
             return; // question à l'utilisateur : rien à calculer, la réponse vient au retour GUI
         }
         try {
@@ -188,13 +335,59 @@ void LivePendingCall::run() {
         }
         return;
     }
+    if (c.policy == LivePolicy::HostFile) {
+        try {
+            if (c.tool == "project_open") { // contrôle le fichier avant de déranger l'utilisateur
+                Session probe;
+                c.result = call_tool(probe, c.tool, c.args);
+            } else if (c.tool == "project_export") { // calcul hors du fil GUI, dossier temporaire
+                std::error_code ec;
+                std::random_device rd;
+                const fs::path dir =
+                    fs::temp_directory_path(ec) /
+                    ("openstitch-live-" + std::to_string(rd()) + std::to_string(rd()));
+                fs::create_directories(dir, ec);
+                if (ec) {
+                    c.result.is_error = true;
+                    c.result.content.push_back(
+                        json{{"type", "text"},
+                             {"text", po::error_json(c.tool, po::code::kIo,
+                                                     "dossier temporaire inaccessible", {})}});
+                    return;
+                }
+                c.temp_file = dir / ("export." + c.format);
+                json args = c.args;
+                args["path"] = utf8_text(c.temp_file);
+                Session session;
+                session.project = *c.snapshot.project;
+                c.result = call_tool(session, c.tool, args);
+            }
+        } catch (const std::exception& e) {
+            c.result.is_error = true;
+            c.result.content.push_back(
+                json{{"type", "text"},
+                     {"text", po::error_json(c.tool, po::code::kInternal, e.what(), {})}});
+        }
+        return;
+    }
     Session session;
     session.project = *c.snapshot.project; // copie privée : le document hôte n'est jamais touché
     c.result = call_tool(session, c.tool, c.args);
-    if (c.policy == LivePolicy::Apply && !c.dry_run && !c.result.is_error && session.dirty) {
+    if (c.policy == LivePolicy::Replace && !c.result.is_error && session.project) {
         c.final_project = std::make_shared<const document::Project>(std::move(*session.project));
         try {
-            c.apply_preview = build_apply_preview(*c.snapshot.project, *c.final_project);
+            if (c.want_preview) {
+                c.apply_preview = build_apply_preview(*c.snapshot.project, *c.final_project);
+            }
+        } catch (const std::exception&) {
+            // Confort seulement : l'échec de l'aperçu n'empêche pas la demande d'approbation.
+        }
+    } else if (c.policy == LivePolicy::Apply && !c.dry_run && !c.result.is_error && session.dirty) {
+        c.final_project = std::make_shared<const document::Project>(std::move(*session.project));
+        try {
+            if (c.want_preview) {
+                c.apply_preview = build_apply_preview(*c.snapshot.project, *c.final_project);
+            }
         } catch (const std::exception&) {
             // L'aperçu est un confort : son échec n'empêche jamais la demande d'approbation.
         }
@@ -202,6 +395,19 @@ void LivePendingCall::run() {
 }
 
 // --- Service ---------------------------------------------------------------------------------
+
+bool LiveService::grant_read_dir(const std::string& directory) {
+    std::error_code ec;
+    const fs::path dir = path_from_utf8(directory);
+    if (directory.empty() || sensitive_path(directory + "/") || !fs::is_directory(dir, ec)) {
+        return false;
+    }
+    const std::string key = normalized_path(directory);
+    if (std::find(granted_dirs_.begin(), granted_dirs_.end(), key) == granted_dirs_.end()) {
+        granted_dirs_.push_back(key);
+    }
+    return true;
+}
 
 LiveService::LiveService(project_ops::LiveBridge& bridge, IApprovalGate& gate, InfoProvider info,
                          std::function<void()> on_applied)
@@ -212,6 +418,7 @@ std::shared_ptr<LivePendingCall> LiveService::begin(const std::string& tool,
     auto call = std::make_shared<LivePendingCall>();
     auto& c = *call->impl_;
     c.tool = tool;
+    c.want_preview = gate_.wants_preview(tool);
 
     if (tool == "live_status") {
         const LiveDocumentInfo info = info_ ? info_() : LiveDocumentInfo{};
@@ -226,11 +433,11 @@ std::shared_ptr<LivePendingCall> LiveService::begin(const std::string& tool,
     }
     c.policy = live_policy(tool);
     if (c.policy == LivePolicy::Denied) {
-        c.immediate = error_content(
-            tool, po::code::kRefused,
-            "l'outil « " + tool + " » n'est pas disponible sur le projet ouvert (mode live)",
-            "ouvrir, enregistrer, exporter ou créer un projet se fait depuis OpenStitch Desktop ; "
-            "outils disponibles : tools/list");
+        c.immediate = error_content(tool, po::code::kRefused,
+                                    "l'outil « " + tool +
+                                        " » n'est pas disponible sur le projet ouvert (mode live)",
+                                    "créer ou fermer un projet se fait depuis OpenStitch Desktop ; "
+                                    "outils disponibles : tools/list");
         return call;
     }
     const json parsed =
@@ -243,6 +450,42 @@ std::shared_ptr<LivePendingCall> LiveService::begin(const std::string& tool,
     c.args = parsed.is_null() ? json::object() : parsed;
     c.dry_run = c.args.contains("dry_run") && c.args.at("dry_run").is_boolean() &&
                 c.args.at("dry_run").get<bool>();
+    if (tool == "live_permission") {
+        const auto text_of = [](const json& j, const char* key) {
+            return j.contains(key) && j.at(key).is_string() ? j.at(key).get<std::string>()
+                                                            : std::string{};
+        };
+        const std::string name = text_of(c.args, "tool_name");
+        const json input = c.args.contains("input") && c.args.at("input").is_object()
+                               ? c.args.at("input")
+                               : json::object();
+        std::string path = text_of(input, "file_path");
+        if (path.empty()) {
+            path = text_of(input, "path");
+        }
+        if (name != "Read" && name != "Glob" && name != "Grep") {
+            c.immediate = permission_reply(
+                false, input, "seuls Read, Glob et Grep sont autorisés : utilisez les outils MCP");
+        } else if (!path.empty() && sensitive_path(path)) {
+            c.immediate = permission_reply(
+                false, input, "accès refusé : ce chemin contient des secrets ou identifiants");
+        } else if (path.empty() || own_tool_result(path) ||
+                   read_allowed_.contains(name + "|" + path) ||
+                   std::any_of(granted_dirs_.begin(), granted_dirs_.end(),
+                               [&path](const std::string& dir) {
+                                   const std::string p = normalized_path(path);
+                                   // « .. » sortirait du dossier accordé malgré le préfixe.
+                                   const bool climbs = p.find("/../") != std::string::npos ||
+                                                       p.ends_with("/..") || p.starts_with("../");
+                                   return !climbs && (p == dir || p.starts_with(dir + "/"));
+                               })) {
+            c.immediate = permission_reply(true, input); // espace de travail, ou déjà accordé
+        } else {
+            c.permission = std::make_pair(name, path);
+            c.permission_input = input;
+        }
+        return call;
+    }
     if (tool == "live_ask_user") {
         ChoiceRequest ask;
         ask.question = c.args.value("question", std::string{});
@@ -270,6 +513,83 @@ std::shared_ptr<LivePendingCall> LiveService::begin(const std::string& tool,
             c.ask = std::move(ask);
         }
         return call;
+    }
+    if (c.policy == LivePolicy::Replace || c.policy == LivePolicy::HostFile) {
+        const LiveDocumentInfo doc = info_ ? info_() : LiveDocumentInfo{};
+        const auto fail = [&](const char* code, const std::string& message,
+                              const std::string& hint) {
+            c.immediate = error_content(tool, code, message, hint);
+        };
+        const auto text_arg = [&c](const char* key) {
+            return c.args.contains(key) && c.args.at(key).is_string()
+                       ? c.args.at(key).get<std::string>()
+                       : std::string{};
+        };
+        const auto flag_arg = [&c](const char* key) {
+            return c.args.contains(key) && c.args.at(key).is_boolean() &&
+                   c.args.at(key).get<bool>();
+        };
+        const bool no_clobber = flag_arg("no_clobber");
+        c.dirty_host = doc.dirty;
+        if (tool == "project_digitize") {
+            if (!text_arg("out").empty()) {
+                fail(po::code::kUsage, "« out » n'est pas accepté en mode live",
+                     "la numérisation remplace le document ouvert ; enregistrez ensuite avec "
+                     "project_save");
+            }
+        } else if (tool == "project_open") {
+            if (!host_.open_project) {
+                fail(po::code::kRefused, "l'ouverture de projet n'est pas disponible dans cet hôte",
+                     "ouvrez le fichier depuis OpenStitch");
+            } else if (text_arg("path").empty()) {
+                fail(po::code::kUsage, "« path » obligatoire", "chemin d'un fichier .osp");
+            } else if (doc.dirty && !flag_arg("discard_changes")) {
+                fail(po::code::kRefused,
+                     "le document ouvert a des modifications non enregistrées : abandon refusé",
+                     "appelez project_save, ou passez discard_changes=true pour confirmer");
+            } else {
+                c.target_text = text_arg("path");
+                c.target = path_from_utf8(c.target_text);
+            }
+        } else if (tool == "project_save") {
+            std::string path = text_arg("path");
+            if (path.empty() && host_.current_path) {
+                path = host_.current_path();
+            }
+            if (!host_.save_project) {
+                fail(po::code::kRefused, "l'enregistrement n'est pas disponible dans cet hôte",
+                     "enregistrez depuis OpenStitch");
+            } else if (path.empty()) {
+                fail(po::code::kUsage, "aucun chemin connu pour ce projet", "passez « path »");
+            } else if (lower(path_from_utf8(path).extension().string()) != ".osp") {
+                fail(po::code::kUsage, "l'extension du fichier doit être .osp",
+                     "ex. C:/Users/…/motif.osp");
+            } else if (no_clobber && fs::exists(path_from_utf8(path))) {
+                fail(po::code::kIo, "« " + path + " » existe déjà (no_clobber)", "");
+            } else {
+                c.target_text = path;
+                c.target = path_from_utf8(path);
+            }
+        } else { // project_export
+            const std::string given = text_arg("format");
+            c.format = lower(given.empty() ? std::string("dst") : given);
+            const std::string path = text_arg("path");
+            if (path.empty()) {
+                fail(po::code::kUsage, "« path » obligatoire", "chemin du fichier à écrire");
+            } else if (lower(path_from_utf8(path).extension().string()) != "." + c.format) {
+                fail(po::code::kUsage,
+                     "l'extension du fichier doit correspondre au format ." + c.format,
+                     "ex. motif." + c.format);
+            } else if (no_clobber && fs::exists(path_from_utf8(path))) {
+                fail(po::code::kIo, "« " + path + " » existe déjà (no_clobber)", "");
+            } else {
+                c.target_text = path;
+                c.target = path_from_utf8(path);
+            }
+        }
+        if (c.immediate) {
+            return call;
+        }
     }
     c.snapshot = bridge_.snapshot();
     if (tool == "live_context" || tool == "live_target") {
@@ -309,14 +629,123 @@ std::string LiveService::finish(LivePendingCall& call) {
                              {"applied", false}};
         return reply.dump();
     }
+    if (c.permission) {
+        const auto& [name, path] = *c.permission;
+        ApprovalRequest request;
+        request.tool = "live_permission";
+        request.label = "IA : accès à un fichier";
+        request.items.push_back({0, std::string(name == "Read" ? "lire " : "parcourir ") + path});
+        request.warnings.push_back(
+            "hors du projet : le contenu lu est envoyé à Claude ; refusez si ce n'est pas voulu");
+        request.session_id = bridge_.session_id();
+        request.revision = bridge_.revision();
+        json reply;
+        if (gate_.approve(request)) {
+            read_allowed_.insert(name + "|" + path);
+            reply = permission_reply(true, c.permission_input);
+        } else {
+            reply = permission_reply(false, c.permission_input,
+                                     "l'utilisateur a refusé l'accès à ce fichier");
+        }
+        reply["live"] = json{{"session_id", bridge_.session_id()},
+                             {"revision", bridge_.revision()},
+                             {"applied", false}};
+        return reply.dump();
+    }
     json out{{"content", c.result.content}, {"isError", c.result.is_error}};
     bool applied = false;
+    const auto refuse = [&](const char* code, const std::string& message, const std::string& hint) {
+        out = error_content(c.tool, code, message, hint);
+    };
+
+    if (c.policy == LivePolicy::HostFile && !c.result.is_error) {
+        if (bridge_.closed() || c.snapshot.session_id != bridge_.session_id()) {
+            refuse(po::code::kSessionClosed,
+                   "le document ouvert a été fermé ou remplacé : l'action n'est pas exécutée",
+                   "relisez live_status sur le nouveau document (rien n'a été modifié)");
+        } else if (c.snapshot.revision != bridge_.revision()) {
+            refuse(po::code::kStaleRevision,
+                   "le projet a changé pendant le calcul : l'action n'est pas exécutée",
+                   "relisez live_status puis recommencez (rien n'a été modifié)");
+        } else {
+            std::error_code ec;
+            const bool exists = fs::exists(c.target, ec);
+            ApprovalRequest request;
+            request.tool = c.tool;
+            request.session_id = c.snapshot.session_id;
+            request.revision = c.snapshot.revision;
+            if (c.tool == "project_open") {
+                request.label = "IA : ouvrir un projet";
+                request.items.push_back({0, "ouvrir " + c.target_text});
+                request.warnings.push_back(
+                    "remplace le document ouvert ; l'historique d'annulation repart de zéro");
+                if (c.dirty_host) {
+                    request.warnings.push_back(
+                        "les modifications non enregistrées du document actuel seront PERDUES "
+                        "(non annulable)");
+                }
+            } else if (c.tool == "project_save") {
+                request.label = "IA : enregistrer le projet";
+                request.items.push_back({0, "enregistrer sous " + c.target_text});
+                if (exists) {
+                    request.warnings.push_back("le fichier existe déjà : il sera remplacé");
+                }
+            } else {
+                request.label = "IA : exporter en " + c.format;
+                request.items.push_back({0, "exporter vers " + c.target_text});
+                const auto size = fs::file_size(c.temp_file, ec);
+                if (!ec) {
+                    request.metrics.push_back("Taille : " + std::to_string(size) + " octets");
+                }
+                if (exists) {
+                    request.warnings.push_back("le fichier existe déjà : il sera remplacé");
+                }
+            }
+            if (!gate_.approve(request)) {
+                refuse(po::code::kApprovalDenied, "l'utilisateur a refusé l'action",
+                       "rien n'a été écrit ni ouvert ; demandez ce qui ne convient pas");
+            } else if (c.tool == "project_open") {
+                std::string error;
+                if (host_.open_project(c.target_text, error)) {
+                    out = text_content(
+                        json{{"ok", true},
+                             {"path", c.target_text},
+                             {"note", "ouverture lancée : le document est remplacé (nouvelle "
+                                      "session) ; relisez live_status avant de continuer"}}
+                            .dump());
+                } else {
+                    refuse(po::code::kIo, error.empty() ? "ouverture impossible" : error, "");
+                }
+            } else if (c.tool == "project_save") {
+                std::string error;
+                if (host_.save_project(c.target_text, error)) {
+                    out = text_content(json{{"ok", true}, {"path", c.target_text}}.dump());
+                } else {
+                    refuse(po::code::kIo, error.empty() ? "enregistrement impossible" : error, "");
+                }
+            } else { // export : le fichier est prêt, il est installé de façon atomique
+                fs::path part = c.target;
+                part += ".part";
+                fs::copy_file(c.temp_file, part, fs::copy_options::overwrite_existing, ec);
+                if (!ec) {
+                    fs::rename(part, c.target, ec);
+                }
+                if (ec) {
+                    std::error_code ignore;
+                    fs::remove(part, ignore);
+                    refuse(po::code::kIo, "écriture impossible : " + ec.message(), "");
+                } else {
+                    out = text_content(json{{"ok", true},
+                                            {"format", c.format},
+                                            {"path", c.target_text},
+                                            {"bytes", fs::file_size(c.target, ec)}}
+                                           .dump());
+                }
+            }
+        }
+    }
 
     if (c.final_project) {
-        const auto refuse = [&](const char* code, const std::string& message,
-                                const std::string& hint) {
-            out = error_content(c.tool, code, message, hint);
-        };
         if (bridge_.closed() || c.snapshot.session_id != bridge_.session_id()) {
             refuse(po::code::kSessionClosed,
                    "le document ouvert a été fermé ou remplacé : la modification n'est pas "
@@ -329,10 +758,26 @@ std::string LiveService::finish(LivePendingCall& call) {
         } else {
             ApprovalRequest request;
             request.tool = c.tool;
-            request.label = "IA : lot d'opérations";
+            request.label = c.policy == LivePolicy::Replace ? "IA : numérisation d'une image"
+                                                            : "IA : lot d'opérations";
             request.report_json = c.result.content.empty()
                                       ? std::string{}
                                       : c.result.content.front().value("text", std::string{});
+            if (c.policy == LivePolicy::Replace) {
+                const std::string image = c.args.contains("image") && c.args.at("image").is_string()
+                                              ? c.args.at("image").get<std::string>()
+                                              : std::string("?");
+                request.items.push_back({0, "numériser « " + image + " »"});
+                request.warnings.push_back(
+                    "remplace tout le contenu du document ouvert (annulable avec Ctrl+Z)");
+            }
+            if (c.tool == "semantic_import" || c.tool == "semantic_replace") {
+                const std::string manifest =
+                    c.args.contains("manifest") && c.args.at("manifest").is_string()
+                        ? c.args.at("manifest").get<std::string>()
+                        : std::string("?");
+                request.items.push_back({0, c.tool + " « " + manifest + " »"});
+            }
             // Lignes lisibles : chaque opération du lot avec son objet cible (lien de focus).
             if (c.args.contains("operations") && c.args.at("operations").is_array()) {
                 for (const auto& op : c.args.at("operations")) {
@@ -397,7 +842,10 @@ std::string LiveService::call(const std::string& tool, const std::string& args_j
 }
 
 std::string LiveService::attach_info_json() {
-    json perms{{"read", json::array()}, {"apply", json::array({"project_apply"})}};
+    json perms{{"read", json::array()},
+               {"apply", json::array({"project_apply", "project_digitize", "semantic_import",
+                                      "semantic_replace"})},
+               {"file", json::array({"project_open", "project_save", "project_export"})}};
     for (const auto& t : kReadTools) {
         perms["read"].push_back(std::string(t));
     }
@@ -504,7 +952,8 @@ LiveRelay::LiveRelay(ILiveTransport& transport, std::function<std::string()> tok
 namespace {
 
 const char* kNoDesktopHint =
-    "ouvrez OpenStitch Desktop, activez le compagnon (menu Aide ▸ Pont IA local) puis relancez le "
+    "ouvrez OpenStitch, panneau Compagnon IA ▸ Activer le pont (ou Aide ▸ Pont IA local dans le "
+    "bureau classique) puis relancez le "
     "client MCP ; sans desktop, utilisez openstitch-mcp sans --live (mode autonome)";
 
 } // namespace

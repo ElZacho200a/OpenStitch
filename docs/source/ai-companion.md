@@ -77,6 +77,22 @@ en écrivant directement un OSP. Le processus headless utilise `--tools ""`,
 
 **Ouvrir Claude Code dans un terminal** est l'option secondaire. Elle conserve les outils,
 les skills et les approbations, mais la conversation reste dans le terminal externe.
+Dans Studio (V2), **Activer le pont** branche Claude Code DANS le panneau, sans terminal : il
+active le pont, génère l'espace de travail de l'instance (`.mcp.json` avec
+`openstitch-mcp --live --pid`, consignes, skills) et lance la CLI `claude` de l'utilisateur en
+processus headless (pipes redirigés, outils MCP seulement) comme fournisseur du chat.
+**Dans un terminal** reste une option secondaire. Le lanceur et le backend sont partagés dans
+`apps/companion`. Si Claude Code est absent ou `openstitch-mcp` introuvable, le message l'indique.
+
+**Mode automatique** (activé par défaut, case du panneau) : les modifications du document
+(`project_apply`, `project_digitize`, `semantic_import`, `semantic_replace`) sont appliquées
+directement, en direct, chacune en UNE étape d'annulation (Ctrl+Z) ; les actions de fichier
+(`project_open`, `project_save`, `project_export`) ne passent seules que si rien n'est écrasé ni
+perdu. Désactivé, chaque lot demande l'accord de l'utilisateur. Dans le dock, la liste des
+opérations d'une proposition est bornée et défilante.
+
+En mode live, l'agent dispose aussi de `project_digitize` (remplace le contenu, sans `out`),
+`project_open`, `project_save`, `project_export` et de l'import sémantique.
 
 L’analyse sémantique automatique est désactivée par défaut. Elle peut être activée dans
 les préférences et envoie alors des rendus au fournisseur Claude Code lors du lancement.

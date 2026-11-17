@@ -24,7 +24,11 @@ OpSpec op_convert_vectors() {
     s.name = "convert_vectors";
     s.summary = "Numérise automatiquement les formes vectorielles sans broderie (SVG importé) : "
                 "tatami pour les zones, contour pour les petites formes.";
-    s.args = {};
+    s.summary += " Les tatamis issus de l'image débordent ensuite de overlap_mm sous leurs voisins "
+                 "(opération overlap_fills) : aucun tissu nu entre deux zones.";
+    s.args = {{"overlap_mm", "number", "mm",
+               "débord des tatamis sous leurs voisins brodés (défaut 0,5 ; 0 = aucun)", false,
+               "[0 ; 2]"}};
     s.example = R"({"op":"convert_vectors"})";
     s.apply = [](OpContext& ctx) -> OpStatus {
         autodigitize::AutoOptions options;
@@ -46,18 +50,35 @@ OpSpec op_convert_vectors() {
         for (const auto& w : built->warnings) {
             warnings.push_back(w);
         }
-        const json result = {{"id", first},
-                             {"created", created},
-                             {"tatami", built->tatami},
-                             {"contour", built->contour},
-                             {"other", built->other},
-                             {"skipped_existing", built->already_embroidered},
-                             {"warnings", warnings}};
+        json result = {{"id", first},
+                       {"created", created},
+                       {"tatami", built->tatami},
+                       {"contour", built->contour},
+                       {"other", built->other},
+                       {"skipped_existing", built->already_embroidered},
+                       {"warnings", warnings}};
         ctx.project.object_ids = next_ids;
         ctx.stack.execute(std::make_unique<commands::AddObjectBatchCommand>(
                               std::vector<document::VectorObject>{}, std::move(built->embroideries),
                               "Numériser les formes vectorielles"),
                           ctx.project);
+        // Sans débord, contours tracés par les centres des pixels + retrait du tatami laissent un
+        // liseré de tissu nu à chaque frontière : le débord fait partie de la conversion.
+        double overlap_mm = 0.5;
+        if (const auto it = ctx.args.find("overlap_mm"); it != ctx.args.end() && !it->is_null()) {
+            if (!it->is_number() || it->get<double>() < 0.0 || it->get<double>() > 2.0) {
+                return OpStatus::failure(code::kOutOfRange, "argument « overlap_mm » hors plage",
+                                         "[0 ; 2]");
+            }
+            overlap_mm = it->get<double>();
+        }
+        if (overlap_mm > 0.0) {
+            const auto widened = run_nested_op(ctx, "overlap_fills", {{"overlap_mm", overlap_mm}});
+            if (!widened.ok) {
+                return widened;
+            }
+            result["overlap"] = widened.result;
+        }
         return OpStatus::success(result);
     };
     return s;

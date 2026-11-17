@@ -6,6 +6,7 @@ add_executable(test_project_ops
     test_convert_ops.cpp
     test_geometry_ops.cpp
     test_cleanup_ops.cpp
+    test_step_ops.cpp
     test_workflow.cpp
     test_params_geometry.cpp
     test_import_text.cpp

@@ -13,6 +13,7 @@
 #include <set>
 
 #include "openstitch/project_ops/analysis.hpp"
+#include "openstitch/project_ops/auto_satin_service.hpp"
 #include "openstitch/project_ops/errors.hpp"
 #include "openstitch/project_ops/inspect.hpp"
 #include "openstitch/project_ops/operations.hpp"
@@ -471,6 +472,13 @@ ToolResult live_plan_satin_tool(const document::Project& project, const json& ar
                           "découpez en lots de 20 ; ciblage : live_target");
     }
     const std::string pull = args.value("pull_mode", std::string("predicted"));
+    // Une colonne satin au-delà de ~6 mm de largeur MOYENNE (ou 9 mm au plus large, seuil
+    // d'avertissement du moteur) est fractionnée et se lit comme un tatami raté : écartée sauf
+    // demande explicite (`allow_wide`).
+    constexpr double kWideMeanMm = 6.0;
+    constexpr double kWideMaxMm = 9.0;
+    const bool allow_wide = args.contains("allow_wide") && args.at("allow_wide").is_boolean() &&
+                            args.at("allow_wide").get<bool>();
     json targets = json::array();
     json operations = json::array();
     std::size_t convert = 0;
@@ -508,6 +516,23 @@ ToolResult live_plan_satin_tool(const document::Project& project, const json& ar
             targets.push_back(target);
             ++skipped;
             continue;
+        }
+        if (const auto width = po::satin_width(project, emb->source_vector)) {
+            target["width_mm"] = json{{"mean", std::round(width->mean_mm * 10.0) / 10.0},
+                                      {"min", std::round(width->min_mm * 10.0) / 10.0},
+                                      {"max", std::round(width->max_mm * 10.0) / 10.0}};
+            target["elongated"] = width->elongated;
+            if (!allow_wide && (width->mean_mm > kWideMeanMm || width->max_mm > kWideMaxMm)) {
+                target["verdict"] = "refused";
+                target["reasons"] = json::array(
+                    {std::format("trop large pour un satin propre (moyenne {:.1f} mm, max "
+                                 "{:.1f} mm ; limites {:.0f} / {:.0f} mm) : colonnes fractionnées",
+                                 width->mean_mm, width->max_mm, kWideMeanMm, kWideMaxMm)});
+                target["decision"] = "tatami conservé (allow_wide=true pour forcer)";
+                targets.push_back(target);
+                ++refused;
+                continue;
+            }
         }
         // Compare les trois stratégies avec l'outil existant (copies isolées).
         Session scratch;

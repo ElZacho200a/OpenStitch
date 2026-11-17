@@ -50,7 +50,7 @@ constexpr double kMaxCoordMm = 1000.0;
                                                      std::uint64_t objectId) {
     const auto* object = project.findEmbroidery(ObjectId{objectId});
     if (object == nullptr) {
-        return nullptr;
+        return project.findObject(ObjectId{objectId}); // forme vectorielle non convertie
     }
     return project.findObject(object->source_vector);
 }

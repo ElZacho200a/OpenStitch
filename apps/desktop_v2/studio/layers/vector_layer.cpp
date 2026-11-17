@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "vector_layer.hpp"
 
+#include <map>
+
 #include <QImage>
 #include <QPainter>
 #include <QPen>
@@ -155,11 +157,36 @@ std::shared_ptr<const VectorLayer> VectorLayer::build(const document::Project& p
 
 std::shared_ptr<const VectorLayer>
 VectorLayer::build(const std::vector<document::VectorObject>& shapes) {
+    return build(shapes, {}, nullptr);
+}
+
+std::shared_ptr<const VectorLayer>
+VectorLayer::build(const std::vector<document::VectorObject>& shapes,
+                   const std::vector<std::uint64_t>& keys, const VectorLayer* previous) {
     auto layer = std::make_shared<VectorLayer>();
+    const bool keyed = keys.size() == shapes.size();
+    // Formes déjà triangulées, par clé (std::map : ordre déterministe, aucune fuite d'ordre).
+    std::map<std::uint64_t, const VectorShape*> reusable;
+    if (keyed && previous != nullptr) {
+        for (const auto& shape : previous->shapes_) {
+            if (shape.key != 0) {
+                reusable.emplace(shape.key, &shape);
+            }
+        }
+    }
     QRectF all;
-    for (const auto& object : shapes) {
+    for (std::size_t index = 0; index < shapes.size(); ++index) {
+        const auto& object = shapes[index];
         if (!object.visible) {
             continue;
+        }
+        if (keyed) {
+            if (const auto it = reusable.find(keys[index]); it != reusable.end()) {
+                const VectorShape& kept = *it->second;
+                all = all.isNull() ? kept.bounds : all.united(kept.bounds);
+                layer->shapes_.push_back(kept);
+                continue;
+            }
         }
         VectorShape shape;
         shape.id = object.id.value;
@@ -178,6 +205,9 @@ VectorLayer::build(const std::vector<document::VectorObject>& shapes) {
         }
         shape.bounds = shape.path.boundingRect();
         all = all.isNull() ? shape.bounds : all.united(shape.bounds);
+        shape.key = keyed ? keys[index] : 0;
+        appendFill(shape.geometry, shape);
+        appendOutline(shape.geometry, shape);
         layer->shapes_.push_back(std::move(shape));
     }
     if (layer->shapes_.empty() || all.width() <= 0 || all.height() <= 0) {
@@ -185,9 +215,14 @@ VectorLayer::build(const std::vector<document::VectorObject>& shapes) {
     }
     const double margin = 2.0; // mm : le trait et les nœuds débordent un peu
     layer->area_ = all.adjusted(-margin, -margin, margin, margin);
+    std::size_t total = 0;
     for (const auto& shape : layer->shapes_) {
-        appendFill(layer->triangles_, shape);
-        appendOutline(layer->triangles_, shape);
+        total += shape.geometry.size();
+    }
+    layer->triangles_.reserve(total);
+    for (const auto& shape : layer->shapes_) {
+        layer->triangles_.insert(layer->triangles_.end(), shape.geometry.begin(),
+                                 shape.geometry.end());
     }
     return layer;
 }
