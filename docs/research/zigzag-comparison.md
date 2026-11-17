@@ -15,7 +15,7 @@ Une fonctionnalité n'est marquée « présente » que si un fichier a été vu 
 | Sujet | ZigZag | OpenStitch | Statut |
 | --- | --- | --- | --- |
 | Satin par découpe en colonnes | `src/stitch/columns.rs` (44 Ko) | stratégies `skeleton`, `parallel_sweep`, `medial_axis`, `guided` (`libs/auto_satin/src/satin_strategy.cpp`) ; comparaison `openstitch-cli satin-compare` | présent des deux côtés, équivalence non évaluée |
-| Routage caché | `src/route.rs` (A*) | `libs/stitch_generation/src/hidden_travel.cpp`, `routing.cpp` | présent, comparaison non faite |
+| Routage caché | `src/route.rs` (A*, `--over-sewn`) | `libs/stitch_generation/src/hidden_travel.cpp` (désactivé par défaut), `routing.cpp` | présent ; premier banc L3 non discriminant (voir benchmarks) |
 | Cache de planification | `PlanCache` dans `src/design.rs` | `chunk_cache.cpp/.hpp` | présent, granularité non comparée |
 | Worker de planification | `src/studio/planner.rs` | workers Studio (non relus) | non vérifié |
 | Rendu GPU | `src/studio/gpu.rs` | Qt Quick RHI (non relu) | non vérifié |

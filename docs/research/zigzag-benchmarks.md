@@ -145,3 +145,82 @@ C'est ici que le moteur de points est isolé de la segmentation et du traçage.
 
 Un seul chemin par fichier ; pas de recouvrements ni de calques ; 8 formes ; aucune validation textile ;
 fil de 0,5 mm supposé ; pas de comparaison du routage caché (L3) ni du cache (L4).
+
+## L3 — routage caché (premier passage)
+
+Statut : **banc posé, résultats non discriminants**. Aucune conclusion « meilleur routage ».
+
+### Ce que font les deux moteurs (lu dans le code)
+
+- ZigZag () : zone « cachée » = terrain cousu ou recouvert plus tard, grille avec
+  composantes connexes, A* pondéré (pénalité de bord).  autorise le trajet par-dessus un
+  remplissage déjà cousu au lieu de couper. Par défaut, le remplissage du dessous est découpé sous
+  l'objet du dessus ( le garde) : observé sur .
+- OpenStitch () : grille rastérisant les segments  ; un écart après la
+  commande  ne s'appuie que sur les cellules recouvertes plus tard (indice > g) ; refus motivés
+  (, , ) ; option  (surface déjà cousue de même fil).
+  Désactivé par défaut (). Les deux extrémités de l'écart
+  doivent reposer sur un recouvrement ultérieur.
+
+### Protocole
+
+ : 5 scénarios à calques, mêmes SVG (mm) pour les deux
+outils, remplissages normalisés comme en L1. OpenStitch :  par calque (couleur par appel),
+ ( ; variante , non reproduite ici).
+Fil errant : longueur des segments encore visibles, à plus de 1 mm de toute forme de leur propre
+couleur (hypothèses : fil 0,5 mm, bloc de couleur k = calque k, segment visible si son milieu n'est pas
+recouvert). Coupes : compteur natif de chaque outil (, DST d'OpenStitch) ; le décodeur
+d'OpenStitch ne reconnaît pas l'encodage des coupes de ZigZag (0 coupe lue dans son DST), donc les
+coupes de la table ne sont **pas strictement comparables** entre outils.
+
+### Résultats
+
+| scénario | config | points | coupes natives | sauts DST | long. sauts mm | fil errant mm |
+| --- | --- | --- | --- | --- | --- | --- |
+| bridge_under | zigzag | 2351 | 1 | 20 | 117 | 0.0 |
+| bridge_under | zigzag_oversewn | 2351 | 1 | 20 | 117 | 0.0 |
+| bridge_under | openstitch | 2253 | 3 | 9 | 124 | 0.0 |
+| bridge_under | openstitch_hidden | 2253 | 3 | 9 | 124 | 0.0 |
+| bridge_row | zigzag | 1170 | 3 | 26 | 101 | 0.0 |
+| bridge_row | zigzag_oversewn | 1165 | 3 | 22 | 95 | 0.0 |
+| bridge_row | openstitch | 972 | 6 | 15 | 125 | 0.0 |
+| bridge_row | openstitch_hidden | 972 | 6 | 15 | 125 | 0.0 |
+| disjoint_same | zigzag | 1529 | 5 | 37 | 235 | 0.0 |
+| disjoint_same | zigzag_oversewn | 1529 | 5 | 37 | 235 | 0.0 |
+| disjoint_same | openstitch | 1462 | 6 | 22 | 253 | 0.0 |
+| disjoint_same | openstitch_hidden | 1462 | 6 | 22 | 253 | 0.0 |
+| stack_row | zigzag | 3683 | 3 | 30 | 156 | 0.0 |
+| stack_row | zigzag_oversewn | 3685 | 3 | 24 | 131 | 0.0 |
+| stack_row | openstitch | 3702 | 4 | 10 | 106 | 0.0 |
+| stack_row | openstitch_hidden | 3702 | 4 | 10 | 106 | 0.0 |
+| frame_inner | zigzag | 4084 | 1 | 15 | 67 | 0.0 |
+| frame_inner | zigzag_oversewn | 4081 | 1 | 10 | 52 | 0.0 |
+| frame_inner | openstitch | 3913 | 3 | 10 | 122 | 0.0 |
+| frame_inner | openstitch_hidden | 3913 | 3 | 10 | 122 | 0.0 |
+
+### Lecture prudente
+
+- **Aucune liaison visible** : le fil errant vaut 0 mm partout. Les 5 scénarios ne départagent pas
+  les moteurs sur le critère de visibilité ; il faut des cas plus durs (liaisons longues entre îlots
+  sur une surface d'une autre couleur, formes à trous, nombreux objets).
+- **OpenStitch ** : l'activer ne change **rien** (DST identique octet pour octet,
+  vérifié ; réglage bien enregistré dans le .osp). Le planificateur ne fait donc aucun pont sur ces
+  scénarios. Cause non établie : conditions d'extrémités (), seuils, ou option
+   que l'opération  n'expose pas.  ne
+  signale rien. À instrumenter (refus par écart) avant de conclure à une limite du moteur.
+- **ZigZag ** : réduit la longueur des sauts sur 3 scénarios sur 5 ( 156 → 131 mm,
+   67 → 52 mm,  101 → 95 mm) sans fil errant mesuré, aucune différence sur
+   et . Gain réel mais modeste ; effet textile non évalué.
+- **Longueur de sauts** : plus faible chez ZigZag sur  (67 contre 122 mm) et plus forte sur
+   (156 contre 106 mm). Les ordres de couture et les politiques de coupe ne sont pas les mêmes ;
+  ne pas lire cela comme une qualité de routage.
+- **Découpe du dessous** (ZigZag) : visible sur  ; OpenStitch coud les deux calques entiers.
+  Cela change le nombre de points et l'épaisseur au croisement ; non évalué physiquement.
+
+### Limites et suite
+
+- Une seule config OpenStitch réellement testée de , sans .
+- Pas d'instrumentation des refus du planificateur OpenStitch ; pas de graine/ordre d'objets variés.
+- Prochain pas utile : exposer ou forcer  dans le banc, journaliser les refus
+  du planificateur, et ajouter des scénarios où un pont caché est géométriquement garanti (extrémités
+  sous un recouvrement ultérieur). Aucune PR de code moteur justifiée par ces mesures.
