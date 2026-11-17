@@ -69,6 +69,27 @@ QString writeTestImage(const QString& dir) {
     return path;
 }
 
+// 240 x 120 : moitie gauche en degrade lent (brique -> bleu gris), moitie droite en aplat vert.
+QString writeGradientImage(const QString& dir) {
+    QImage img(240, 120, QImage::Format_RGB32);
+    for (int y = 0; y < img.height(); ++y) {
+        for (int x = 0; x < img.width(); ++x) {
+            if (x < 120) {
+                const double t = x / 119.0;
+                img.setPixelColor(x, y,
+                                  QColor(static_cast<int>(200 - 80 * t),
+                                         static_cast<int>(120 + 10 * t),
+                                         static_cast<int>(90 + 100 * t)));
+            } else {
+                img.setPixelColor(x, y, QColor(60, 160, 60));
+            }
+        }
+    }
+    const QString path = dir + QStringLiteral("/gradient.png");
+    img.save(path);
+    return path;
+}
+
 document::Project digitizedProject(const QString& imagePath) {
     DigitizeRequest request;
     request.image = std::filesystem::path(imagePath.toStdWString());
@@ -1093,6 +1114,47 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(rig.images.segPreviewActive(), 20'000);
         rig.workspace->setCurrent(QStringLiteral("points"));
         QTRY_VERIFY(!rig.images.segPreviewActive());
+    }
+
+    // Zones de fondu (experimental) : la case du panneau porte le mode jusqu'au moteur ;
+    // « Mettre a jour les formes » coud la zone en degrade en fondu, en un pas d'annulation.
+    void blendZonesExperimentSewsGradientZoneAsFade() {
+        Rig rig;
+        open(rig);
+        rig.session.replaceProject(digitizedProject(writeGradientImage(rig.dir.path())), true);
+        QTRY_VERIFY_WITH_TIMEOUT(!rig.studio.busy() && rig.images.imageWidth() == 240, 20'000);
+        auto* settings = rig.named("segmentationSection");
+        QVERIFY(settings);
+        QVERIFY(settings->setProperty("liveEnabled", false));
+        QVERIFY(rig.named("segBlendZones") != nullptr);
+        QVERIFY(!settings->property("blendZones").toBool());
+        QVERIFY(settings->setProperty("blendZones", true));
+        QVERIFY(settings->setProperty("blendThreads", 4));
+        const auto options = settings->property("options").toMap();
+        QCOMPARE(options.value(QStringLiteral("blend_zones")).toBool(), true);
+        QCOMPARE(options.value(QStringLiteral("blend_threads")).toInt(), 4);
+
+        QSignalSpy applied(&rig.images, &ImageController::segmentationApplied);
+        QVERIFY(rig.press("segApplyButton"));
+        QTRY_COMPARE_WITH_TIMEOUT(applied.count(), 1, 60'000);
+        // Degrade a gauche, aplat a droite : deux zones, pas des bandes.
+        QCOMPARE(rig.session.project().imageSource().segmentation->region_count(), 2u);
+        QVERIFY(rig.images.lastSegmentationOptions().value(QStringLiteral("blend_zones")).toBool());
+
+        const auto depth = rig.session.undoNames().size();
+        QSignalSpy regenerated(&rig.regions, &RegionController::regenerated);
+        rig.space.updateShapes(true);
+        QTRY_COMPARE_WITH_TIMEOUT(regenerated.count(), 1, 60'000);
+        QCOMPARE(rig.session.undoNames().size(), depth + 1);
+        const auto fades = [&rig] {
+            return std::count_if(rig.session.project().embroidery_objects.begin(),
+                                 rig.session.project().embroidery_objects.end(),
+                                 [](const auto& e) { return e.is_multicolor_gradient(); });
+        };
+        QVERIFY(fades() >= 1);
+        rig.session.undo();
+        QCOMPARE(fades(), 0);
+        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
     }
 };
 
