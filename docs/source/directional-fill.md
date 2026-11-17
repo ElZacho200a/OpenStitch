@@ -282,6 +282,70 @@ rangée, évaluée en son milieu (`SpacingField::owns`, `append_owned_runs`).
 Compatibilité : `shared_rows` absent (anciens projets) = ancien comportement, octet pour octet.
 Toute modification d'un fondu le reconstruit sur la grille partagée.
 
+## Parts lues dans l'image (2026-11-17)
+
+Les profils d'un fondu multicolore venaient d'un seul paramètre géométrique `t` (axe,
+rayon, spirale, distance au bord) : deux fils voisins au plus en un point, dans un ordre
+fixé. Une zone de peinture (ciel de Turner, eau des *Nymphéas*) mélange librement 3 fils
+ou plus : sur *Le Téméraire*, 62 % des pixels en demandent au moins trois (étude
+`docs/fondus-picturaux-autodigitize.md`). Les parts de chaque fil peuvent désormais être
+**lues dans une grille** en chaque point.
+
+**Modèle.** `document::WeightGrid` : grille régulière (origine = centre de la case
+(0, 0), pas, colonnes, rangées, canaux, valeurs sur 255), interpolée bilinéairement,
+bornée au bord. L'ancre porte `MulticolorGradientParams::image_weights` : un canal par
+fil, somme 255 par case. Chaque couche reçoit une grille à 2 canaux
+(`DensityGradient::slice_grid`) : début et fin de **sa** tranche, sommes entières des
+parts des fils précédents. La fin d'une couche est donc, en chaque case, exactement le
+début de la suivante, et l'interpolation identique garde les tranches jointives au bit
+près. La génération reste locale à chaque couche (`SpacingField::sampleSlice`).
+
+**Deux façons de coudre** (`MulticolorGradientParams::complementary`) :
+
+- *Grille partagée* (complémentaire, défaut) : toutes les couches tracent les mêmes
+  rangées et chaque morceau de rangée est cousu par le seul fil dont la tranche contient
+  le seuil de Weyl de la rangée (« Grille partagée » ci-dessus). Couverture exacte, mais
+  un fil minoritaire ne possède qu'une rangée sur 1/part, en petits morceaux.
+- *Rangées continues* (`complementary = false`), à la manière du Multi Blend de Hatch :
+  chaque fil coud ses propres rangées, continues, d'écart `nominal / part` (plafonné à
+  4 mm, coupées sous 2,5 %) ; les densités se somment à 1 en moyenne, sans coordination
+  des rangées entre fils (quelques jours de tissu possibles).
+
+Méthodes de remplissage seulement (directionnel, points longs et courts, semis) ; satin
+entrelacé et hachures croisées refusent une grille. Une liaison cousue n'est permise que
+là où la part du fil atteint 20 % (règle existante « ne pas traverser le creux d'un
+fondu », appliquée à la part lue dans la grille).
+
+**Calcul depuis l'image** (`autodigitize::image_blend_weights`, `libs/autodigitize/src/
+image_blend.cpp`) : couleur de chaque case = moyenne en RVB **linéaire** des pixels de la
+forme ; parts = moindres carrés sous contrainte (somme 1, parts ≥ 0, au plus
+`max_threads_per_point` fils), résolus exactement sur tous les supports de 1 à 4 fils,
+plus une pénalité de localité `λ·Σ wᵢ‖cᵢ − v‖²` (λ = 0,05) ; `min_share` retire les parts
+trop faibles ; arrondi sur 255 par plus forts restes. `propose_blend_palette` choisit les
+couleurs : candidates k-means et extrêmes de quatre axes de couleur (un mélange ne sort
+pas de l'enveloppe de ses fils), meilleure paire puis ajout glouton selon l'erreur de
+**mélange**. Déterministe, parallèle par rangée de cases. Opération `image_blend`
+(`project_ops::make_image_blend_command`, un pas d'annulation : création ou recalcul).
+
+**Mesures** (*Le Téméraire*, 150 × 111 mm, une seule forme couvrant le tableau, 6 fils,
+rangées horizontales ; `project check`) :
+
+| Variante | Points | Coupes | Fil |
+|---|---|---|---|
+| Auto-numérisation actuelle, 8 couleurs | 33 815 | 292 | 66 m |
+| Auto-numérisation actuelle, 12 couleurs | 35 428 | 332 | 67 m |
+| Grille partagée, case 1 mm | 21 844 | 1 243 | 48 m |
+| Rangées continues, case 1 mm | 21 225 | 957 | 47 m |
+| Rangées continues, case 3 mm | 18 846 | 533 | 45 m |
+| Rangées continues, case 3 mm, part ≥ 15 %, 3 fils au plus | 17 911 | 433 | 44 m |
+
+Le fondu supprime les îlots et le tissu visible de la mosaïque d'aplats et coud moitié
+moins de points, mais **coupe encore plus** que l'auto-numérisation actuelle et montre
+des stries de couleurs alternées le long des rangées. Ne limiter qu'à 2 fils par point
+aggrave les coupes (652) : le fil change plus souvent le long d'une rangée. Pistes :
+découpage en zones (lot 2 de l'étude, moins de fils par zone), trajets cachés sous les
+couches suivantes, regroupement spatial des seuils. Aucun essai sur tissu.
+
 ## Fondu de couleurs à deux fils
 
 Idée de Liu et al. (*Directionality-Aware Design of Embroidery Patterns*,

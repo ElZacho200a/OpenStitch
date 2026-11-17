@@ -961,6 +961,12 @@ plus.
 - Modules : `libs/stitch_generation`.
 
 ### HP-STI-011 — Mélange de couleurs (color blending) [P2] — ◐ Partiel (action disponible)
+- 2026-11-17 : parts des fils lues dans une grille (image) au lieu de la seule rampe
+  géométrique : `WeightGrid`, `MulticolorGradientParams::image_weights`, tranche par couche
+  `DensityGradient::slice_grid` ; grille partagée ou rangées continues à écart selon la part
+  (Multi Blend de Hatch). Opération `image_blend` (CLI/MCP). Nouveaux manques : coupes trop
+  nombreuses sur un tableau entier (433 contre 332 à l'auto-numérisation actuelle), câblage
+  Studio, essais textiles. Statut ◐ conservé.
 - 2026-11-15 : recette black-box actualisée pour les rangées partagées (triples
   position/poids/début, profils échantillonnés, grille de surcouche à 60 %) et
   réactivée sur les PR suivantes et `main`, au lieu de la seule PR #336 fermée.
@@ -4621,6 +4627,7 @@ ouvrant le lot (§0.1).
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-11-17 | Claude (fondus à parts image, étape 1) | **HP-STI-011 ◐** et **HP-AUTO-017 ☐** (inchangés, précisés). Les profils d'un fondu multicolore peuvent venir d'une grille de parts calculée depuis l'image (mélange en RVB linéaire, moindres carrés sous contrainte, palette de mélange proposée) ; couches en grille partagée ou en rangées continues (Hatch). Opération `image_blend`. *Le Téméraire* entier, 6 fils : 17 911 points et 433 coupes contre 35 428 et 332 (auto-numérisation à 12 couleurs) ; îlots et tissu visible supprimés, stries visibles. Tests : `test_image_blend.cpp` (6 cas). Studio non câblé ; pas de validation textile. |
 | 2026-11-16 | Claude (barre d'outils commune des espaces Studio) | **HP-AUTO-006 ◐** (inchangé, précisé) et **HP-OBJ-024 ◐** (inchangé, précisé). Barre latérale commune `CanvasToolRail` dans les quatre espaces (outils modaux seulement : Sélection, Main, outils de l'espace par groupe, Ajuster) ; pinceau et gomme de Segmentation sortis du panneau ; espace Image : Recadrer, Règle d'échelle, Fond transparent (`ColorToAlphaOp`). Multi-calques : l'échelle change tous les calques du même facteur et le recadrage s'applique à tous les calques de même taille de travail, en une étape ; la pipette agit sur le calque actif. |
 | 2026-11-15 | Codex (F43-01, segmentation en lot) | HP-OBJ-024 reste partiel. Un bouton Studio segmente les sources du document avec les mêmes réglages et un seul pas d’annulation. |
 | 2026-11-16 | Claude (IA-DATA-01 L0+L1) | Roadmap : aucune entrée HP (chantier IA hors parité, Notion IA-DATA-01). Audit des sources (`docs/ai/ia-data-sources.csv` : seul le générateur synthétique est approuvé, aucune donnée tierce ingérée) ; `scripts/ia_data_corpus.py` génère des formes à graine fixe (7 familles, cas minuscules, fins, très concaves) et mesure 9 candidats par forme via `openstitch-cli project apply/check/density` (statuts measured/refused/empty/failed, aucun label) ; corpus et manifeste SHA-256 identiques octet pour octet ; 16 tests Python, dont une intégration moteur facultative. Doc `docs/ai/ia-data-01.md`. |
