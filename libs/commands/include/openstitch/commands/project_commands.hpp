@@ -183,6 +183,48 @@ private:
     segmentation::Region absorbedRegion_;
 };
 
+// Sépare une région en ses composantes connexes (`segmentation::split_region`). Comme
+// `CleanIslandsCommand`/`MergeColorsCommand`, l'annulation restaure les étiquettes modifiées et
+// les emplacements de régions (copie des seuls emplacements, peu volumineuse).
+class SplitRegionCommand final : public ICommand {
+public:
+    explicit SplitRegionCommand(RegionId id) : id_(id) {}
+
+    void apply(document::Project& project) override {
+        auto& seg = *project.imageSource().segmentation;
+        const std::vector<std::uint32_t> before = seg.labels;
+        slots_ = seg.region_slots;
+        auto result = segmentation::split_region(seg, id_);
+        createdIds_ = result ? *result : std::vector<RegionId>{};
+        changed_.clear();
+        oldLabels_.clear();
+        for (std::size_t i = 0; i < before.size(); ++i) {
+            if (before[i] != seg.labels[i]) {
+                changed_.push_back(static_cast<std::uint32_t>(i));
+                oldLabels_.push_back(before[i]);
+            }
+        }
+    }
+    void revert(document::Project& project) override {
+        auto& seg = *project.imageSource().segmentation;
+        for (std::size_t k = 0; k < changed_.size(); ++k) {
+            seg.labels[changed_[k]] = oldLabels_[k];
+        }
+        seg.region_slots = slots_;
+    }
+    [[nodiscard]] std::string name() const override { return "Séparer une région"; }
+    [[nodiscard]] bool affectsEmbroidery() const override { return false; }
+    // Identifiants après séparation (vide si le dernier `apply` a refusé).
+    [[nodiscard]] const std::vector<RegionId>& createdIds() const { return createdIds_; }
+
+private:
+    RegionId id_;
+    std::vector<RegionId> createdIds_;
+    std::vector<std::uint32_t> changed_;
+    std::vector<std::uint32_t> oldLabels_;
+    std::vector<std::optional<segmentation::Region>> slots_;
+};
+
 // Supprime une région (absorbée par sa voisine majoritaire ou par le fond).
 class RemoveRegionCommand final : public ICommand {
 public:

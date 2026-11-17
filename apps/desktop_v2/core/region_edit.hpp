@@ -92,6 +92,9 @@ ServiceResult deleteRegion(DocumentSession& session, std::uint64_t id);
 // Recolore une seule région sans changer ses pixels ; refuse une couleur inchangée.
 ServiceResult recolorRegion(DocumentSession& session, std::uint64_t id,
                             std::array<std::uint8_t, 3> rgb);
+// Sépare une région en ses composantes connexes (zones non adjacentes réunies par une fusion de
+// régions ou de couleurs) ; refuse si elle n'en a qu'une (rien à séparer).
+ServiceResult splitRegion(DocumentSession& session, std::uint64_t id);
 // Fusionne toutes les régions de la couleur source dans la couleur de la région cible.
 // Les régions adjacentes de couleur identique sont réunies en une commande annulable.
 ServiceResult mergeRegionColors(DocumentSession& session, std::uint64_t source,

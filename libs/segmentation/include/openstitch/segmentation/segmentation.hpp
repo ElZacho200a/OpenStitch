@@ -110,6 +110,19 @@ struct SegmentationOptions {
 [[nodiscard]] Result<std::vector<std::uint32_t>> merge_regions(Segmentation& seg, RegionId keep,
                                                                RegionId absorb);
 
+// Vrai si `id` couvre plusieurs composantes connexes (4-connexité) — contrôle en LECTURE SEULE à
+// faire avant de proposer/exécuter `split_region`, pour ne jamais empiler une commande sans effet.
+// Faux (pas une erreur) si la région n'existe pas.
+[[nodiscard]] bool region_has_multiple_components(const Segmentation& seg, RegionId id);
+
+// Sépare une région en ses composantes connexes (4-connexité, inverse de `merge_regions` quand la
+// fusion portait sur des régions non adjacentes) : si elle n'en a qu'une, refuse (rien à séparer :
+// vérifier `region_has_multiple_components` avant d'appeler). Les nouvelles régions gardent la
+// couleur d'origine ; la plus grande composante garde `id`, les autres reçoivent des identifiants
+// neufs (jamais réutilisés). Renvoie tous les identifiants après séparation (`id` toujours en
+// premier), plus grande composante d'abord.
+[[nodiscard]] Result<std::vector<RegionId>> split_region(Segmentation& seg, RegionId id);
+
 // Supprime une région en l'absorbant dans sa voisine majoritaire (choix
 // déterministe), ou dans le fond si elle n'a aucune voisine.
 // Renvoie {absorbeur (invalide = fond), indices réétiquetés}.

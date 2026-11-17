@@ -532,6 +532,21 @@ ServiceResult recolorRegion(DocumentSession& session, std::uint64_t id,
     return {true, {}};
 }
 
+ServiceResult splitRegion(DocumentSession& session, std::uint64_t id) {
+    const auto* seg = segmentationOf(session.project());
+    if (seg == nullptr) {
+        return noSegmentation();
+    }
+    if (seg->find(RegionId{id}) == nullptr) {
+        return {false, "Région introuvable (déjà fusionnée ou supprimée)."};
+    }
+    if (!segmentation::region_has_multiple_components(*seg, RegionId{id})) {
+        return {false, "Cette région est déjà d'un seul tenant : rien à séparer."};
+    }
+    session.execute(std::make_unique<commands::SplitRegionCommand>(RegionId{id}));
+    return {true, {}};
+}
+
 ServiceResult mergeRegionColors(DocumentSession& session, std::uint64_t source,
                                 std::uint64_t target) {
     const auto* seg = segmentationOf(session.project());
