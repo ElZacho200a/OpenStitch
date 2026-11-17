@@ -49,6 +49,7 @@ const Registry& registry() {
         detail::register_semantic_ops(r.ops);
         detail::register_group_ops(r.ops);
         detail::register_convert_ops(r.ops);
+        detail::register_blend_ops(r.ops);
         detail::register_cleanup_ops(r.ops);
         detail::register_step_ops(r.ops);
         std::stable_sort(r.ops.begin(), r.ops.end(),

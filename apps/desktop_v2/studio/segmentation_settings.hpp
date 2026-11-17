@@ -15,6 +15,10 @@ struct SegmentationSettings {
     int max_colors{8};
     int min_region_px{16};
     int smoothing_radius_px{3};
+    // Expérimental (2026-11-17) : zones de fondu au lieu de la quantification, chaque zone
+    // cousue en fondu de fils mélangés (`project_ops::DigitizeSettings::mode = "blend"`).
+    bool blend_zones{false};
+    int blend_threads{12};
 };
 
 [[nodiscard]] inline SegmentationSettings segmentationSettingsFrom(const QVariantMap& map,
@@ -34,6 +38,9 @@ struct SegmentationSettings {
         std::clamp(static_cast<int>(number("smoothing_radius_px",
                                            number("smoothing_px", defaults.smoothing_radius_px))),
                    0, 10);
+    out.blend_zones = map.value(QLatin1String("blend_zones"), defaults.blend_zones).toBool();
+    out.blend_threads =
+        std::clamp(static_cast<int>(number("blend_threads", defaults.blend_threads)), 2, 16);
     return out;
 }
 

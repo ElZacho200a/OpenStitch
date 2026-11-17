@@ -17,7 +17,9 @@
 
 #include "fade_axis.hpp"
 #include "fade_service.hpp"
+#include "image_fade.hpp"
 #include "studio_controller.hpp"
+#include "task_manager.hpp"
 
 namespace openstitch::desktop_v2::studio {
 
@@ -60,6 +62,10 @@ class FadeController : public QObject {
         int selectedThread READ selectedThread WRITE setSelectedThread NOTIFY selectedThreadChanged)
     // Transition simplifiée : 0 douce (linéaire), 1 moyenne (lissée), 2 nette ; -1 autre profil.
     Q_PROPERTY(int softness READ softness NOTIFY changed)
+    // « Fondu depuis l'image » : disponibilité, raison du refus, calcul en cours.
+    Q_PROPERTY(bool canImageFade READ canImageFade NOTIFY changed)
+    Q_PROPERTY(QString imageFadeReason READ imageFadeReason NOTIFY changed)
+    Q_PROPERTY(bool imageFadeBusy READ imageFadeBusy NOTIFY busyChanged)
     Q_PROPERTY(QString message READ message NOTIFY messageChanged)
     Q_PROPERTY(bool lastOk READ lastOk NOTIFY messageChanged)
 public:
@@ -122,6 +128,9 @@ public:
     [[nodiscard]] int selectedThread() const { return selectedThread_; }
     void setSelectedThread(int index);
     [[nodiscard]] int softness() const;
+    [[nodiscard]] bool canImageFade() const { return imageReason_.isEmpty(); }
+    [[nodiscard]] QString imageFadeReason() const { return imageReason_; }
+    [[nodiscard]] bool imageFadeBusy() const { return imageBusy_; }
     [[nodiscard]] QString message() const { return message_; }
     [[nodiscard]] bool lastOk() const { return ok_; }
 
@@ -173,10 +182,15 @@ public:
     Q_INVOKABLE bool moveThread(int index, int offset);
     Q_INVOKABLE bool setThreadColor(int index, const QString& hex);
     Q_INVOKABLE bool setSoftness(int softness);
+    // Fondu dont les parts des fils sont lues dans l'image (2 à 8 fils, case de grille en mm).
+    // Le calcul tourne hors du fil d'interface ; le résultat est UNE commande annulable.
+    // Retourne vrai si le calcul est lancé ; `messageChanged` annonce l'issue.
+    Q_INVOKABLE bool fadeFromImage(int threads, double cellMm, bool continuousRows);
 signals:
     void changed();
     void messageChanged();
     void selectedThreadChanged();
+    void busyChanged();
 
 private:
     void refresh();
@@ -196,6 +210,9 @@ private:
     int multiCurve_{0};
     std::optional<FadeAxisView> axis_;
     QString incompat_;
+    QString imageReason_;
+    bool imageBusy_{false};
+    TaskManager tasks_;
     QStringList threadLabels_;
     int selectedThread_{0};
     QString message_;

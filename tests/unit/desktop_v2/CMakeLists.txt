@@ -89,6 +89,14 @@ file(GLOB_RECURSE studio_all_qml CONFIGURE_DEPENDS "${studio_test_qml_root}/qml/
             BASE "${studio_test_qml_root}" FILES ${studio_all_qml}
                 "${studio_test_qml_root}/qml/qmldir")
         add_test(NAME test_desktop_v2_studio_history COMMAND test_desktop_v2_studio_history -o -,txt)
+        # Fondu depuis l'image : controleur seul (aucun QML), calcul sur fil de travail.
+        add_executable(test_desktop_v2_studio_fade_image test_studio_fade_image.cpp)
+        target_link_libraries(test_desktop_v2_studio_fade_image
+            PRIVATE openstitch::studio_ui openstitch::project_ops Qt6::Test openstitch::warnings)
+        add_test(NAME test_desktop_v2_studio_fade_image COMMAND test_desktop_v2_studio_fade_image -o -,txt)
+        set_tests_properties(test_desktop_v2_studio_fade_image PROPERTIES
+            ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+            ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
         qt_add_resources(test_desktop_v2_studio_shell studio_test_qml PREFIX "/studio"
             BASE "${studio_test_qml_root}" FILES ${studio_all_qml}
                 "${studio_test_qml_root}/qml/qmldir")
