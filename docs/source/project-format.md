@@ -77,7 +77,11 @@ Compression (2026-10) : l'image PNG, déjà compressée, est stockée telle quel
   `[position, poids]` d'un fondu, 2 à 64 ; avec `sharedRows: true`, arrêts
   `[position, poids, début]` d'une **grille de rangées partagée** : la couche coud
   la tranche `[début ; début + poids)` des rangées communes à tout le fondu,
-  `début + poids ≤ 1`) — tous
+  `début + poids ≤ 1` ; `sliceGrid` (2026-11-17, fondu à parts image) : grille
+  `{originX, originY, cell, columns, rows, channels: 2, data}` dont les octets (base64,
+  ligne par ligne, 2 par case) sont le début et la fin de la tranche de la couche sur 255,
+  avec `sharedRows: true` ; sans `sharedRows`, la couche coud des rangées continues dont
+  la densité est la part `fin − début`) — tous
   optionnels (défauts du modèle) ; son ajout n'a pas changé
   `schemaVersion`. Depuis le schéma v3, un objet
   peut aussi porter ses **retouches manuelles** (Lot 8.1, ADR-014) :
@@ -92,6 +96,13 @@ Compression (2026-10) : l'image PNG, déjà compressée, est stockée telle quel
   valeur zéro implicite). Absents, ou `overrides` vide (métadonnées
   éventuellement présentes mais alors ignorées) → objet `Clean` (comportement
   actuel inchangé).
+  L'ancre d'un **fondu multicolore** (`"type": "multicolorGradient"`) peut porter
+  `imageWeights` (2026-11-17) : grille `{originX, originY, cell, columns, rows,
+  channels, data}` (µm entiers ; `data` en base64, `channels` octets par case, ligne par
+  ligne depuis le bas) donnant la part de chaque fil de `palette` sur 255, de somme 255
+  par case. `channels` doit égaler le nombre de fils ; pas de 0,1 à 20 mm, au plus 1
+  million de cases. Absente : profils par la rampe géométrique, fichier identique à
+  l'octet près.
 - `finishing` : finitions de la séquence (coupes automatiques, points d'arrêt,
   points courts -- `document::SequenceFinishing`) : `enabled`,
   `trimThreshold` (µm), `trimBeforeColorChange`, `lockType` (0 aucun, 1

@@ -786,6 +786,40 @@ struct SpacingField {
     bool sharedRows{false};
     // DensityGeometry::Contour : distance au bord, partagée par les copies du champ.
     std::shared_ptr<const ContourDistance> contour;
+    // Grille partagée d'un fondu à parts image : tranche lue dans la grille (2 canaux),
+    // partagée par les copies du champ (cf. `DensityGradient::slice_grid`).
+    std::shared_ptr<const document::WeightGrid> sliceGrid;
+
+    // Canaux 0 et 1 de `sliceGrid` en `p`, interpolés bilinéairement, sur 255. Les couches
+    // voisines stockent la même frontière entière (fin de l'une = début de la suivante) et
+    // l'interpolation est identique : leurs tranches restent jointives au bit près.
+    [[nodiscard]] std::pair<double, double> sampleSlice(P2 p) const {
+        const auto& g = *sliceGrid;
+        const double cell = static_cast<double>(g.cell.value);
+        const double fx = std::clamp((p.x - static_cast<double>(g.origin.x.value)) / cell, 0.0,
+                                     static_cast<double>(g.columns - 1));
+        const double fy = std::clamp((p.y - static_cast<double>(g.origin.y.value)) / cell, 0.0,
+                                     static_cast<double>(g.rows - 1));
+        const auto c0 = std::min(static_cast<std::int32_t>(fx), g.columns - 1);
+        const auto r0 = std::min(static_cast<std::int32_t>(fy), g.rows - 1);
+        const auto c1 = std::min(c0 + 1, g.columns - 1);
+        const auto r1 = std::min(r0 + 1, g.rows - 1);
+        const double ax = fx - c0;
+        const double ay = fy - r0;
+        const auto at = [&](std::int32_t c, std::int32_t r, int k) {
+            return static_cast<double>(
+                g.values[(static_cast<std::size_t>(r) * static_cast<std::size_t>(g.columns) +
+                          static_cast<std::size_t>(c)) *
+                             g.channels +
+                         static_cast<std::size_t>(k)]);
+        };
+        const auto lerp2 = [&](int k) {
+            const double top = at(c0, r0, k) + (at(c1, r0, k) - at(c0, r0, k)) * ax;
+            const double bottom = at(c0, r1, k) + (at(c1, r1, k) - at(c0, r1, k)) * ax;
+            return top + (bottom - top) * ay;
+        };
+        return {lerp2(0) / 255.0, lerp2(1) / 255.0};
+    }
 
     // Hash de coordonnées de grille : aucune allocation, état ou RNG global.
     // Un même point donne le même déplacement dans toutes les couches.
@@ -827,7 +861,7 @@ struct SpacingField {
     }
 
     [[nodiscard]] bool uniform() const {
-        return (densityStops.empty() || sharedRows) && (invLen2 == 0.0 || from == to);
+        return (!weighted() || sharedRows) && (invLen2 == 0.0 || from == to);
     }
 
     // Remappe t ∈ [0 ; 1] ; monotone, 0 → 0 et 1 → 1 : les écarts restent entre
@@ -900,7 +934,15 @@ struct SpacingField {
     }
 
     // Recherche sur 2..8 arrêts : pas d'allocation par point évalué.
+    // Densité modulée (arrêts le long de l'axe, ou part lue dans la grille d'un fondu image).
+    [[nodiscard]] bool weighted() const { return !densityStops.empty() || sliceGrid != nullptr; }
+
     [[nodiscard]] double densityWeight(P2 p) const {
+        if (sliceGrid) {
+            // Rangées continues (hors grille partagée) : densité = part du fil en `p`.
+            const auto [start, end] = sampleSlice(p);
+            return std::max(0.0, end - start);
+        }
         if (densityStops.empty()) {
             return 1.0;
         }
@@ -919,12 +961,34 @@ struct SpacingField {
         return left.weight + (it->weight - left.weight) * ((t - left.position) / span);
     }
 
+    // Part de la densité nominale que les couches SUIVANTES du fondu à parts image couvriront
+    // en `p` (tranches cumulées de l'arrière vers l'avant : elles occupent [fin ; 1)). 0 hors
+    // grille de tranches : on ne sait pas ce qui sera cousu par-dessus.
+    [[nodiscard]] double coveredAfter(P2 p) const {
+        if (!sliceGrid) {
+            return 0.0;
+        }
+        return std::clamp(1.0 - sampleSlice(p).second, 0.0, 1.0);
+    }
+
+    // Même chose en comptant aussi la couche elle-même (tranches [début ; 1)).
+    [[nodiscard]] double coveredFromHere(P2 p) const {
+        if (!sliceGrid) {
+            return 0.0;
+        }
+        return std::clamp(1.0 - sampleSlice(p).first, 0.0, 1.0);
+    }
+
     [[nodiscard]] bool active(P2 p) const {
-        return densityStops.empty() || sharedRows || densityWeight(p) >= 0.025;
+        return !weighted() || sharedRows || densityWeight(p) >= 0.025;
     }
 
     // Tranche [lower ; lower + weight) de la couche à la position de `p`.
     [[nodiscard]] std::pair<double, double> band(P2 p) const {
+        if (sliceGrid) {
+            const auto [start, end] = sampleSlice(p);
+            return {start, std::max(0.0, end - start)};
+        }
         if (densityStops.empty()) {
             return {0.0, 1.0};
         }
@@ -954,6 +1018,15 @@ struct SpacingField {
 
     // Couche qui ne possède pas toutes les rangées partout (sinon : remplissage plein).
     [[nodiscard]] bool partial() const {
+        if (sliceGrid) {
+            const auto& v = sliceGrid->values;
+            for (std::size_t i = 0; i + 1 < v.size(); i += 2) {
+                if (v[i] != 0 || v[i + 1] != 255) {
+                    return true;
+                }
+            }
+            return false;
+        }
         return std::any_of(densityStops.begin(), densityStops.end(), [](const auto& stop) {
             return stop.lower > 1e-9 || stop.weight < 1.0 - 1e-9;
         });
@@ -963,7 +1036,7 @@ struct SpacingField {
         if (uniform()) {
             return lo;
         }
-        if (!densityStops.empty()) {
+        if (weighted()) {
             // Les supports presque nuls sont coupés par StreamlineTracer::active.
             // Le plafond garde la grille de séparation et ses rayons bornés.
             return std::clamp(from / std::max(0.1, densityWeight(p)), kGradientMin, kGradientMax);
@@ -1004,7 +1077,11 @@ SpacingField make_spacing_field(const document::DirectionalFillParams& p,
     f.geometry = g.geometry;
     f.curveBend = std::isfinite(g.curve_bend) ? std::clamp(g.curve_bend, -1.0, 1.0) : 0.0;
     f.densityStops = g.density_stops;
-    f.sharedRows = g.shared_rows && !g.density_stops.empty();
+    const bool sliceGrid = g.slice_grid && g.slice_grid->valid() && g.slice_grid->channels == 2;
+    f.sharedRows = g.shared_rows && (!g.density_stops.empty() || sliceGrid);
+    if (sliceGrid) {
+        f.sliceGrid = std::make_shared<const document::WeightGrid>(*g.slice_grid);
+    }
     f.densityFrom = 1.0 / f.from;
     f.densityTo = 1.0 / f.to;
     f.lo = std::min(f.from, f.to);
@@ -1019,7 +1096,7 @@ SpacingField make_spacing_field(const document::DirectionalFillParams& p,
     if (f.sharedRows) {
         f.to = f.from; // grille commune : écart uniforme pour toutes les couches
         f.lo = f.hi = f.from;
-    } else if (!f.densityStops.empty()) {
+    } else if (f.weighted()) {
         // Le poids peut s'approcher de zéro : garder un rayon de voisinage
         // borné, et désactiver les zones vides plutôt que semer des fils rares.
         f.lo = f.from;
@@ -2200,6 +2277,18 @@ double shape_density_curve(document::DensityCurve curve, double t) {
 }
 
 bool density_mask_is_sparse(const document::DensityGradient& gradient) {
+    if (gradient.slice_grid && gradient.slice_grid->valid() && gradient.slice_grid->channels == 2) {
+        if (!gradient.shared_rows) {
+            return true; // densité variable : la couche peut s'éteindre localement
+        }
+        const auto& v = gradient.slice_grid->values;
+        for (std::size_t i = 0; i + 1 < v.size(); i += 2) {
+            if (v[i] != 0 || v[i + 1] != 255) {
+                return true;
+            }
+        }
+        return false;
+    }
     if (gradient.density_stops.empty()) {
         return false;
     }
@@ -2307,6 +2396,44 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
             return true;
         }
         return dist(a, b) <= 3.0 * kMinStitch || whole.segment_inside(a, b);
+    };
+
+    // Trajet caché d'un fondu à parts image : un fil rare ne coud que des bouts de rangées
+    // épars ; plutôt que couper entre deux bouts, il voyage en point courant SOUS les zones
+    // que les couches suivantes couvriront densément (part restante ≥ kHiddenCover sur tout
+    // le trajet, échantillonné tous les ~0,8 mm), dans la forme, sur au plus kHiddenTravelUm.
+    // La dernière couche (rien par-dessus) n'en profite jamais.
+    // 0,75 : mesuré sur Le Téméraire (0,9 / 0,75 / 0,6 / 0,45 -> 402 / 319 / 302 / 284
+    // coupes contre 433) ; sous 0,75 le trajet affleure davantage entre les rangées du
+    // dessus, surtout si le fil caché contraste avec elles.
+    constexpr double kHiddenCover = 0.75;
+    constexpr double kHiddenTravelUm = 12'000.0;
+    const bool hiddenUnderLater = masked && field.sliceGrid != nullptr;
+    const auto hiddenTravel = [&](P2 a, P2 b) {
+        if (!hiddenUnderLater) {
+            return false;
+        }
+        const double d = dist(a, b);
+        if (d > kHiddenTravelUm || !whole.segment_inside(a, b)) {
+            return false;
+        }
+        // Une rangée s'arrête là où la part du fil croise son seuil : autour des deux bouts,
+        // la couverture des seules couches suivantes vaut 1 - seuil (souvent ~0,5). Sur le
+        // premier et le dernier millimètre, les rangées de la couche elle-même comptent donc
+        // aussi ; au-delà, seules les couches suivantes cachent le trajet.
+        constexpr double kEndZoneUm = 1'000.0;
+        const int samples = std::max(2, static_cast<int>(std::ceil(d / 400.0)));
+        const P2 step = b - a;
+        for (int s = 0; s <= samples; ++s) {
+            const double t = static_cast<double>(s) / samples;
+            const P2 p = a + step * t;
+            const bool nearEnd = std::min(t, 1.0 - t) * d < kEndZoneUm;
+            const double cover = nearEnd ? field.coveredFromHere(p) : field.coveredAfter(p);
+            if (cover < kHiddenCover) {
+                return false;
+            }
+        }
+        return true;
     };
 
     // Autoroute d'underpath : contour extérieur rentré (comme le tatami).
@@ -2497,6 +2624,7 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
             std::size_t best = n;
             bool bestReversed = false;
             bool bestSewable = false;
+            int bestReach = 0;
             std::ptrdiff_t bestDegree = 0;
             double bd = std::numeric_limits<double>::max();
             std::pair<double, double> bk{std::numeric_limits<double>::max(), 0.0};
@@ -2524,10 +2652,18 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
                     const double d = dist2(cur, e);
                     const double sew = sewLimit(e);
                     const bool sewable = d <= sew * sew && linkInside(cur, e);
+                    // Rang d'accès : liaison cousue (2), trajet caché sous les couches
+                    // suivantes (1), saut (0). Le test caché n'est fait qu'à portée.
+                    const int reach =
+                        sewable ? 2
+                        : (hiddenUnderLater && d <= kHiddenTravelUm * kHiddenTravelUm &&
+                           hiddenTravel(cur, e))
+                            ? 1
+                            : 0;
                     const std::ptrdiff_t degree = sewable ? freeDegree(li) : 0;
                     bool better = false;
-                    if (sewable != bestSewable) {
-                        better = sewable;
+                    if (reach != bestReach) {
+                        better = reach > bestReach;
                     } else if (sewable && degree != bestDegree) {
                         better = degree < bestDegree;
                     } else {
@@ -2537,6 +2673,7 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
                         best = li;
                         bestReversed = rev;
                         bestSewable = sewable;
+                        bestReach = reach;
                         bestDegree = degree;
                         bd = d;
                     }
@@ -2572,6 +2709,9 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
                                     emitTravel(route);
                                     jump = false;
                                 }
+                            } else if (hiddenTravel(cur, rp)) {
+                                emitTravel({cur, rp});
+                                jump = false;
                             }
                         }
                     }

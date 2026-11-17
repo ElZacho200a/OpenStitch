@@ -576,6 +576,11 @@ void RegionController::regenerate(bool resegment, bool confirmed, const QVariant
     digitize.max_colors = chosen.max_colors;
     digitize.min_region_px = chosen.min_region_px;
     digitize.smoothing_px = chosen.smoothing_radius_px;
+    if (chosen.blend_zones) {
+        // Expérimental : zones de fondu, chaque zone cousue en fondu de fils mélangés.
+        digitize.mode = "blend";
+        digitize.blend_threads = chosen.blend_threads;
+    }
     const auto snapshot = studio_.session().snapshot();
     const auto revision = studio_.session().revision();
     const image::Image image = std::move(*working);
