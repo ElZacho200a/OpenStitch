@@ -62,6 +62,86 @@ Le JSON brut n'est pas versionné (régénérable).
 
 - Pas de temps par phase, pas de défauts de couverture ni de rendu normalisé, pas de Linux,
   pas d'essai textile.
-- Manque de la voie « même géométrie » (SVG → points) : OpenStitch n'a pas d'import SVG vectoriel
-  identifié ; à trancher avant L2/L3.
+- La voie « même géométrie » (SVG → points) existe : voir la section suivante (`import_svg` côté OpenStitch).
 - Cas 100k/250k points, 1000 régions réelles, recouvrements, re-numérisation à chaud : non faits.
+
+## Voie « même géométrie » (SVG vectoriel → points)
+
+Statut : **premier passage, 14 cas (8 formes en remplissage, 6 en satin)**, 5 répétitions + 1 warmup.
+C'est ici que le moteur de points est isolé de la segmentation et du traçage.
+
+### Protocole
+
+- Entrée : mêmes SVG en mm (`scripts/bench/zigzag/make_svg_fixtures.py`), un seul chemin par fichier.
+- ZigZag : `zigzag convert x.svg -o x.dst`, mode et réglages portés par l'id du chemin
+  (`fill a=45 s=0.4 l=3 u=0 pc=0` ; `satin s=0.4 u=0 pc=0 ss=0`).
+- OpenStitch : `project new` + `import_svg` (+ `auto_satin spacing_mm=0.4`) + `set_params`
+  (angle 45°, espacement 0,4 mm, point 3 mm, sous-couche et compensation de tirage désactivées,
+  `short_stitch=disabled` en satin) + `project export`. Seul l'export est chronométré.
+- Non normalisés : coupes/verrous/finitions, ordre de couture, découpe des satins larges.
+- Qualité : `coverage.py` décode le DST (décodeur validé : mêmes nombres de stitches et mêmes
+  dimensions que `openstitch-cli stats` pour les deux outils), trace chaque point cousu avec un fil
+  de 0,5 mm (hypothèse) et compare au masque de la forme. Orientation Y calibrée sur un remplissage
+  (`p_with_hole`), pas sur les satins comparés. La valeur absolue n'a pas de sens physique ;
+  seule la comparaison entre outils est lue.
+- Relancer : `make_svg_fixtures.py <dossier>` puis `run_geometry_bench.py` (mêmes options que L1).
+
+### Résultats
+
+| forme__mode | outil | p50 ms | points | coupes | sauts | fil m | couverture | débordement |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| big_concave__fill | zigzag | 26 | 5652 | 0 | 7 | 14.8 | 87.8 % | 1.1 % |
+| big_concave__fill | openstitch | 32 | 5384 | 2 | 4 | 14.5 | 86.9 % | 0.0 % |
+| crescent__fill | zigzag | 22 | 1556 | 0 | 11 | 3.4 | 86.6 % | 4.5 % |
+| crescent__fill | openstitch | 32 | 1452 | 3 | 7 | 3.3 | 82.9 % | 3.5 % |
+| narrow_spike__fill | zigzag | 23 | 1169 | 0 | 15 | 2.1 | 77.6 % | 16.7 % |
+| narrow_spike__fill | openstitch | 33 | 978 | 2 | 12 | 2.0 | 67.9 % | 19.8 % |
+| p_with_hole__fill | zigzag | 23 | 3204 | 0 | 12 | 8.0 | 87.6 % | 1.7 % |
+| p_with_hole__fill | openstitch | 33 | 3056 | 4 | 9 | 7.9 | 86.9 % | 0.2 % |
+| ring__fill | zigzag | 22 | 2920 | 0 | 5 | 7.0 | 88.2 % | 2.2 % |
+| ring__fill | openstitch | 93 | 2748 | 2 | 6 | 6.8 | 86.7 % | 0.3 % |
+| star__fill | zigzag | 23 | 2485 | 0 | 7 | 6.1 | 88.4 % | 2.0 % |
+| star__fill | openstitch | 33 | 2196 | 3 | 5 | 5.8 | 85.5 % | 0.4 % |
+| t_shape__fill | zigzag | 17 | 2791 | 0 | 7 | 6.9 | 87.8 % | 1.6 % |
+| t_shape__fill | openstitch | 33 | 2646 | 2 | 3 | 6.7 | 86.6 % | 0.1 % |
+| u_shape__fill | zigzag | 17 | 3251 | 0 | 7 | 8.0 | 87.9 % | 1.7 % |
+| u_shape__fill | openstitch | 32 | 3063 | 2 | 5 | 7.7 | 86.6 % | 0.2 % |
+| crescent_thin__satin | zigzag | 33 | 1522 | 0 | 7 | 3.4 | 98.6 % | 3.8 % |
+| crescent_thin__satin | openstitch | 33 | 1796 | 1 | 1 | 6.6 | 96.7 % | 3.2 % |
+| narrow_spike__satin | zigzag | 45 | 1065 | 0 | 7 | 2.1 | 84.0 % | 18.8 % |
+| narrow_spike__satin | openstitch | 32 | 1105 | 1 | 1 | 4.0 | 84.0 % | 16.4 % |
+| p_thin__satin | zigzag | 23 | 1128 | 0 | 7 | 6.2 | 99.3 % | 2.2 % |
+| p_thin__satin | openstitch | 33 | 1493 | 4 | 8 | 5.9 | 99.0 % | 2.2 % |
+| ring_thin__satin | zigzag | 22 | 1174 | 0 | 7 | 7.0 | 99.4 % | 1.8 % |
+| ring_thin__satin | openstitch | 33 | 1700 | 4 | 8 | 6.9 | 99.3 % | 2.5 % |
+| t_thin__satin | zigzag | 28 | 799 | 0 | 7 | 4.6 | 100.0 % | 0.4 % |
+| t_thin__satin | openstitch | 33 | 943 | 1 | 1 | 4.4 | 99.8 % | 0.7 % |
+| u_thin__satin | zigzag | 33 | 1064 | 0 | 7 | 5.9 | 99.4 % | 1.0 % |
+| u_thin__satin | openstitch | 33 | 1145 | 3 | 8 | 5.6 | 99.7 % | 0.9 % |
+
+### Lecture prudente
+
+- **Temps** : tous les cas sont sous 100 ms et dominés par le démarrage (pas de 5 ms du sondage) ;
+  aucun classement de vitesse. Un banc de moteur demande des cas de 100k-250k points.
+- **Satin sur formes fines (colonnes de 5-6 mm)** : couverture quasi identique des deux côtés
+  (96,7 à 100 %). Aucune preuve ici que la découpe en colonnes de ZigZag couvre mieux les anneaux,
+  T ou P qu'OpenStitch ; ce n'est pas un argument pour L2 sur ce corpus.
+- **Écart de points non expliqué** : sur `ring_thin`, `p_thin`, `crescent_thin`, OpenStitch émet
+  plus de points (1700 contre 1174) à espacement nominal égal. Cause non établie (découpe des
+  traversées, fusion des colonnes, réglage résiduel ?) : à examiner objet par objet avant de conclure.
+- **Satin large** : ZigZag remplace un satin dont une partie dépasse environ 10 mm par un
+  remplissage (`zigzag info` : « Use Fill; it's filled instead ») ; les formes larges ne testent donc
+  pas son satin. D'où les variantes fines. Le comportement d'OpenStitch sur ces largeurs n'est pas
+  mesuré ici.
+- **Remplissage** : ZigZag couvre 1 à 4 points de plus, avec un débordement de 1 à 4 % contre
+  0 à 0,5 % pour OpenStitch (qui semble rentrer le contour). Pur effet de réglage de bord possible ;
+  non normalisé.
+- **Pointe étroite** (`narrow_spike`) : les deux outils débordent fortement (16 à 20 %) ; la métrique
+  est peu fiable à cette échelle (fil de 0,5 mm pour une pointe de 3 mm).
+- **Coupes** : ZigZag n'en émet pas, il utilise des sauts ; OpenStitch coupe au-delà du seuil de 3 mm.
+  Ne pas comparer les compteurs coupes/sauts sans fixer la même politique.
+
+### Limites
+
+Un seul chemin par fichier ; pas de recouvrements ni de calques ; 8 formes ; aucune validation textile ;
+fil de 0,5 mm supposé ; pas de comparaison du routage caché (L3) ni du cache (L4).

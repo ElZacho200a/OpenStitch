@@ -22,7 +22,7 @@ Une fonctionnalité n'est marquée « présente » que si un fichier a été vu 
 | Tracé de logos | `src/trace.rs` + `vendor/vectorcraft-*` | segmentation + vectorisation | présent, A/B non fait |
 | Formats | `src/formats/{dst,pes,jef_data,pen,read,more}.rs` | DST/PES/JEF/EXP/VP3 (`libs/formats`) | croisement des codecs non fait |
 | Protocole machine Skitch | `src/machine/*` | absent côté OpenStitch (vu par grep ciblé) | hors périmètre |
-| Import SVG → points | `convert` accepte SVG et PNG | pas d'import SVG vectoriel identifié | à confirmer |
+| Import SVG → points | `convert` accepte SVG et PNG | opération `import_svg` (tracé direct, `libs/project_ops`) vue dans `project operations` et utilisée par le banc L1 « même géométrie » | présent des deux côtés |
 
 ## Limites
 
