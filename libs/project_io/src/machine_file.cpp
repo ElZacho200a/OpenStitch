@@ -53,6 +53,15 @@ stitch::StitchSequence with_start_point(stitch::StitchSequence sequence,
     return sequence;
 }
 
+formats::ExportStart project_start(const document::Project& project) {
+    formats::ExportStart start;
+    if (const auto& origin = project.finishing.needle_origin) {
+        start.mode = formats::StartMode::Custom;
+        start.point = *origin;
+    }
+    return start;
+}
+
 Result<stitch_generation::FinishResult> export_sequence(const document::Project& project,
                                                         const ExportOptimizations& optimizations) {
     // Point d'entrée de production unique (jamais generate_sequence directement) :

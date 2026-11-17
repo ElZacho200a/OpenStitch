@@ -9,6 +9,7 @@
 #include "edit_batch.hpp"
 #include "export_settings.hpp"
 #include "openstitch/geometry/polyline.hpp"
+#include "openstitch/stitch/sequence.hpp"
 #include "pen_shape.hpp"
 #include "shape_batch.hpp"
 
@@ -61,10 +62,11 @@ ToolController::ToolController(StudioController& studio, QObject* parent)
     connect(&bucket_, &BucketTool::changed, this, &ToolController::rebuild);
     connect(&warp_, &WarpTool::message, this, &ToolController::inform);
     // Annuler / rétablir ou ouvrir un autre projet change le point zéro sans passer par l'outil.
-    connect(&studio_, &StudioController::sceneChanged, this, [this] {
-        emit needleOriginChanged();
-        emit overlayChanged();
-    });
+    // (Le signal changed couvre un SetFinishing qui ne reconstruit pas la scène ; needleSeen_
+    // filtre le bruit des survols et des messages.)
+    needleSeen_ = studio_.session().project().finishing.needle_origin;
+    connect(&studio_, &StudioController::sceneChanged, this, &ToolController::syncNeedleOrigin);
+    connect(&studio_, &StudioController::changed, this, &ToolController::syncNeedleOrigin);
     connect(&bucket_, &BucketTool::message, this, &ToolController::inform);
     connect(&studio_, &StudioController::selectionChanged, this, [this] {
         if (tool_ == QStringLiteral("node.edit") || tool_ == QStringLiteral("select")) {
@@ -102,20 +104,57 @@ bool ToolController::needleOriginCustom() const {
     return studio_.session().project().finishing.needle_origin.has_value();
 }
 
-bool ToolController::placeNeedleOrigin(PointMm p) {
-    // Au dixième de millimètre : c'est la précision utile pour caler sur le tissu.
-    p.x = std::round(p.x * 10.0) / 10.0;
-    p.y = std::round(p.y * 10.0) / 10.0;
+void ToolController::syncNeedleOrigin() {
+    const auto& now = studio_.session().project().finishing.needle_origin;
+    if (now == needleSeen_ && sceneSeen_ == studio_.scene()) {
+        return;
+    }
+    needleSeen_ = now;
+    sceneSeen_ = studio_.scene();
+    emit needleOriginChanged();
+    emit overlayChanged();
+}
+
+PointMm ToolController::needleOriginMm() const {
+    if (const auto& custom = studio_.session().project().finishing.needle_origin) {
+        return {custom->x.value / 1000.0, custom->y.value / 1000.0};
+    }
+    const auto scene = studio_.scene();
+    if (!scene || !scene->effectiveSequence || scene->effectiveSequence->commands.empty()) {
+        return {};
+    }
+    if (centreScene_ != scene) {
+        // Même définition que l'export (StartMode::Center) : boîte des points cousus.
+        const auto bounds = stitch::compute_stats(*scene->effectiveSequence).bounds;
+        centre_ = {(bounds.min.x.value + bounds.max.x.value) / 2000.0,
+                   (bounds.min.y.value + bounds.max.y.value) / 2000.0};
+        centreScene_ = scene;
+    }
+    return centre_;
+}
+
+bool ToolController::setNeedleOriginMm(double xMm, double yMm) {
+    if (!std::isfinite(xMm) || !std::isfinite(yMm)) {
+        inform(QStringLiteral("Point zéro : valeur numérique attendue."));
+        return false;
+    }
+    PointMm p{std::round(xMm * 10.0) / 10.0, std::round(yMm * 10.0) / 10.0};
     const auto result = setNeedleOrigin(studio_.session(), p);
     if (!result.ok) {
         inform(QString::fromStdString(result.message));
-        return true;
+        return false;
     }
     inform(QStringLiteral("Point zéro posé en (%1 ; %2) mm. L'aiguille partira de là à l'export.")
                .arg(p.x, 0, 'f', 1)
                .arg(p.y, 0, 'f', 1));
-    emit needleOriginChanged();
-    emit overlayChanged();
+    syncNeedleOrigin();
+    return true;
+}
+
+bool ToolController::placeNeedleOrigin(PointMm p) {
+    // Au dixième de millimètre : c'est la précision utile pour caler sur le tissu. Un clic est
+    // toujours « consommé », même refusé (le message dit pourquoi).
+    setNeedleOriginMm(p.x, p.y);
     return true;
 }
 
@@ -130,8 +169,7 @@ bool ToolController::resetNeedleOrigin() {
         return false;
     }
     inform(QStringLiteral("Point zéro revenu au centre de la broderie."));
-    emit needleOriginChanged();
-    emit overlayChanged();
+    syncNeedleOrigin();
     return true;
 }
 

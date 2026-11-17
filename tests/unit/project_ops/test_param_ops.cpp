@@ -749,6 +749,26 @@ TEST_CASE("param ops set_design_points and optimize_order improve", "[project_op
                    project_ops::code::kOutOfRange);
 }
 
+TEST_CASE("param ops set_needle_origin sets, refuses and clears the machine origin",
+          "[project_ops][params]") {
+    auto p = make_project();
+    REQUIRE_FALSE(p.finishing.needle_origin.has_value());
+    const auto r = run(p, R"({"op":"set_needle_origin","needle_x_mm":-25,"needle_y_mm":12.5})");
+    REQUIRE(r.ok);
+    REQUIRE(p.finishing.needle_origin.has_value());
+    CHECK(p.finishing.needle_origin->x == Micrometers{-25'000});
+    CHECK(p.finishing.needle_origin->y == Micrometers{12'500});
+    // Distinct des points de départ / d'arrivée du design.
+    CHECK_FALSE(p.finishing.design_start.has_value());
+    expect_refused(p, R"({"op":"set_needle_origin","needle_x_mm":1})", project_ops::code::kUsage);
+    expect_refused(p, R"({"op":"set_needle_origin","needle_x_mm":1,"needle_y_mm":5000})",
+                   project_ops::code::kOutOfRange);
+    CHECK(p.finishing.needle_origin.has_value());
+    // Aucun argument : efface le point (retour au centre).
+    REQUIRE(run(p, R"({"op":"set_needle_origin"})").ok);
+    CHECK_FALSE(p.finishing.needle_origin.has_value());
+}
+
 TEST_CASE("param ops applique : set_stitch_type, set_params et export de decoupe",
           "[project_ops][params][applique]") {
     auto p = make_project();
