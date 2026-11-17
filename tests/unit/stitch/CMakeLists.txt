@@ -8,6 +8,7 @@ add_executable(test_stitch
     test_join_closest.cpp
     test_knockout.cpp
     test_hidden_travel.cpp
+    test_hidden_travel_grid.cpp
     test_tatami.cpp
     test_directional_fill.cpp
     test_blanket_stitch.cpp
@@ -25,6 +26,7 @@ add_executable(test_stitch
     test_adaptive_pull.cpp
     test_pull_field.cpp
     test_pull_map.cpp
+    test_pull_field_equivalence.cpp
     test_pull_test_piece.cpp
     test_predicted_pull.cpp
     test_chunk_cache.cpp
@@ -38,6 +40,7 @@ add_executable(test_stitch
 target_link_libraries(test_stitch
     PRIVATE openstitch::stitch openstitch::stitch_generation Catch2::Catch2WithMain
             openstitch::warnings)
+target_include_directories(test_stitch PRIVATE ${PROJECT_SOURCE_DIR}/libs/stitch_generation/src)
 catch_discover_tests(test_stitch)
 
 # HP-QA-011 : tout tri instable des moteurs de points doit porter une annotation
