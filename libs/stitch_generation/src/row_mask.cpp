@@ -19,9 +19,13 @@ double row_threshold(std::int64_t k) {
 DensityRowMask::DensityRowMask(Field density, Slice slice)
     : density_(std::move(density)), slice_(slice) {}
 
-bool DensityRowMask::keeps(Vec2um p, double threshold) const {
+double DensityRowMask::coverage(Vec2um p) const {
     const double raw = density_ ? density_(p) : 0.0;
-    const double d = std::isfinite(raw) ? std::clamp(raw, 0.0, 1.0) : 0.0;
+    return std::isfinite(raw) ? std::clamp(raw, 0.0, 1.0) : 0.0;
+}
+
+bool DensityRowMask::keeps(Vec2um p, double threshold) const {
+    const double d = coverage(p);
     return slice_ == Slice::Lower ? threshold < d : threshold >= 1.0 - d;
 }
 

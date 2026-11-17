@@ -31,6 +31,9 @@ public:
 
     // La couche coud-elle, au point `p` (repère du modèle), la rangée de seuil `threshold` ?
     [[nodiscard]] virtual bool keeps(Vec2um p, double threshold) const = 0;
+    // Proportion des rangées cousues en `p`, dans [0 ; 1] (largeur de la tranche gardée). Sert
+    // aux liaisons : une liaison ne traverse pas une zone où le fil est presque absent.
+    [[nodiscard]] virtual double coverage(Vec2um p) const = 0;
 };
 
 // Seuil de la rangée d'indice ABSOLU `k` : suite de Weyl du nombre d'or, frac(k × 0,618…),
@@ -51,6 +54,7 @@ public:
     DensityRowMask(Field density, Slice slice);
 
     [[nodiscard]] bool keeps(Vec2um p, double threshold) const override;
+    [[nodiscard]] double coverage(Vec2um p) const override;
 
 private:
     Field density_;

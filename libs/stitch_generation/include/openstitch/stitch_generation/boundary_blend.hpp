@@ -2,6 +2,7 @@
 #pragma once
 
 #include <memory>
+#include <variant>
 #include <vector>
 
 #include "openstitch/core/error.hpp"
@@ -93,6 +94,18 @@ struct BoundaryBlendFills {
     std::vector<FillStitch> a;
     std::vector<FillStitch> b;
 };
+
+// Paramètres de remplissage d'une zone du fondu : tatami (grille fixe, partition exacte possible)
+// ou directionnel (lignes de courant propres à la région : toujours en superposition).
+using BoundaryBlendFillParams =
+    std::variant<document::TatamiParams, document::DirectionalFillParams>;
+
+// Fondu entre deux zones de types quelconques parmi tatami et directionnel. Même résultat que
+// `fill_boundary_blend_tatami` quand les deux zones sont des tatamis.
+[[nodiscard]] Result<BoundaryBlendFills>
+fill_boundary_blend(const geometry::PathSet& a, const BoundaryBlendFillParams& params_a,
+                    const geometry::PathSet& b, const BoundaryBlendFillParams& params_b,
+                    const BoundaryBlendSpec& spec);
 
 [[nodiscard]] Result<BoundaryBlendFills>
 fill_boundary_blend_tatami(const geometry::PathSet& a, const document::TatamiParams& params_a,

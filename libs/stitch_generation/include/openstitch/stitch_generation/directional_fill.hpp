@@ -73,6 +73,17 @@ directional_stitch_lines(const geometry::PathSet& region,
 [[nodiscard]] std::vector<FillStitch>
 fill_directional(const geometry::PathSet& region, const document::DirectionalFillParams& params);
 
+class RowMask;
+
+// Remplissage directionnel MASQUÉ (fondu à la frontière, docs/studio-fondu-frontiere-spec.md).
+// `mask == nullptr` : identique à `fill_directional(region, params)`. Sinon, chaque ligne de
+// courant reçoit un seuil (rang le long de la normale à la direction moyenne des lignes) et
+// n'est cousue que là où `mask->keeps(milieu, seuil)` ; le masque remplace une grille partagée
+// éventuelle. Liaisons courtes seulement, refusées là où `mask->coverage` < 0,2.
+[[nodiscard]] std::vector<FillStitch>
+fill_directional(const geometry::PathSet& region, const document::DirectionalFillParams& params,
+                 const RowMask* mask);
+
 // Sous-couches : réutilise `tatami_underlay` (contour rentré + rangées
 // droites), les rangées étant perpendiculaires à la direction MOYENNE du
 // champ. Vide si aucune sous-couche n'est activée.
