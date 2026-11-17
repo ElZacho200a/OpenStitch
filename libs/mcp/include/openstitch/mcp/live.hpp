@@ -29,8 +29,8 @@ inline constexpr std::size_t kLiveMaxRequestBytes =
     8 * 1024 * 1024; // une requête plus grosse est un abus
 
 enum class LivePolicy {
-    Read,   // lecture : exécutée sur une copie figée, aucune confirmation
-    Apply,  // mutation : approbation explicite (sauf `dry_run`)
+    Read,  // lecture : exécutée sur une copie figée, aucune confirmation
+    Apply, // mutation : approbation explicite (sauf `dry_run`)
     // Numérisation d'une image : calculée sur une copie, puis REMPLACE le contenu du document
     // ouvert en une étape d'annulation, après approbation explicite (avant/après montrés).
     Replace,
@@ -154,7 +154,8 @@ public:
     LiveService(project_ops::LiveBridge& bridge, IApprovalGate& gate, InfoProvider info,
                 std::function<void()> on_applied = {});
 
-    // Active project_open / project_save pour cet hôte (export et numérisation n'en ont pas besoin).
+    // Active project_open / project_save pour cet hôte (export et numérisation n'en ont pas
+    // besoin).
     void set_host_actions(LiveHostActions actions) { host_ = std::move(actions); }
 
     // Fil GUI.

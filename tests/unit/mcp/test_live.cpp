@@ -136,8 +136,8 @@ TEST_CASE("live policy classifies tools", "[live]") {
     for (const char* tool : {"project_open", "project_save", "project_export"}) {
         CHECK(mcp::live_policy(tool) == mcp::LivePolicy::HostFile);
     }
-    for (const char* tool : {"project_new", "project_close", "project_restore",
-                             "project_checkpoint", "bash"}) {
+    for (const char* tool :
+         {"project_new", "project_close", "project_restore", "project_checkpoint", "bash"}) {
         CHECK(mcp::live_policy(tool) == mcp::LivePolicy::Denied);
     }
 }
@@ -250,8 +250,9 @@ TEST_CASE("live save and open go through the host and need approval", "[live]") 
               .get<bool>());
     CHECK(saved.empty());
     d.gate.answer = true;
-    CHECK_FALSE(parse(d.service.call("project_save", "{\"path\":" + path_arg(target) + "}"))["isError"]
-                    .get<bool>());
+    CHECK_FALSE(
+        parse(d.service.call("project_save", "{\"path\":" + path_arg(target) + "}"))["isError"]
+            .get<bool>());
     CHECK(saved == target.generic_string());
 
     // Document modifié : l'ouverture exige discard_changes (Doc::info.dirty = true).
@@ -261,8 +262,9 @@ TEST_CASE("live save and open go through the host and need approval", "[live]") 
     CHECK(opened.empty());
     // Fichier introuvable : refusé avant toute demande à l'utilisateur.
     const int before = d.gate.asked;
-    const auto missing = parse(d.service.call(
-        "project_open", "{\"path\":" + path_arg(dir / "absent.osp") + ",\"discard_changes\":true}"));
+    const auto missing =
+        parse(d.service.call("project_open", "{\"path\":" + path_arg(dir / "absent.osp") +
+                                                 ",\"discard_changes\":true}"));
     CHECK(missing["isError"].get<bool>());
     CHECK(d.gate.asked == before);
     std::error_code ec;

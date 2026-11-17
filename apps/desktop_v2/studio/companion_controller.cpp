@@ -496,8 +496,8 @@ QString CompanionController::prepareClaudeCode() {
     if (!refusal.isEmpty()) {
         return refusal;
     }
-    const auto env = options_.launcher ? *options_.launcher
-                                       : desktop::ClaudeCodeLauncher::systemEnv();
+    const auto env =
+        options_.launcher ? *options_.launcher : desktop::ClaudeCodeLauncher::systemEnv();
     QString executable;
     QString workspace;
     const auto ready = desktop::ClaudeCodeLauncher::prepare(env, executable, workspace);
@@ -523,8 +523,8 @@ QString CompanionController::openClaudeCodeTerminal() {
     if (auto* clipboard = QGuiApplication::clipboard()) {
         clipboard->setText(connectionCommand());
     }
-    const auto env = options_.launcher ? *options_.launcher
-                                       : desktop::ClaudeCodeLauncher::systemEnv();
+    const auto env =
+        options_.launcher ? *options_.launcher : desktop::ClaudeCodeLauncher::systemEnv();
     const auto result = desktop::ClaudeCodeLauncher::launch(env);
     if (result != desktop::ClaudeCodeLauncher::Result::Started) {
         return desktop::ClaudeCodeLauncher::describe(result) + QLatin1Char(' ') +

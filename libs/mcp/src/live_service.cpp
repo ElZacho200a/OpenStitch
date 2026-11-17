@@ -250,10 +250,10 @@ std::string live_tools_json() {
         if (live_policy(tool.name) == LivePolicy::Denied) {
             continue;
         }
-        list.push_back(json{{"name", tool.name},
-                            {"description", std::string(tool.description) +
-                                                live_file_note(tool.name)},
-                            {"input_schema", json::parse(tool.input_schema)}});
+        list.push_back(
+            json{{"name", tool.name},
+                 {"description", std::string(tool.description) + live_file_note(tool.name)},
+                 {"input_schema", json::parse(tool.input_schema)}});
     }
     for (const auto& extra : live_extra_tools()) {
         list.push_back(json{{"name", extra.name},
@@ -338,9 +338,9 @@ void LivePendingCall::run() {
             } else if (c.tool == "project_export") { // calcul hors du fil GUI, dossier temporaire
                 std::error_code ec;
                 std::random_device rd;
-                const fs::path dir = fs::temp_directory_path(ec) /
-                                     ("openstitch-live-" + std::to_string(rd()) +
-                                      std::to_string(rd()));
+                const fs::path dir =
+                    fs::temp_directory_path(ec) /
+                    ("openstitch-live-" + std::to_string(rd()) + std::to_string(rd()));
                 fs::create_directories(dir, ec);
                 if (ec) {
                     c.result.is_error = true;
@@ -375,8 +375,7 @@ void LivePendingCall::run() {
         } catch (const std::exception&) {
             // Confort seulement : l'échec de l'aperçu n'empêche pas la demande d'approbation.
         }
-    } else if (c.policy == LivePolicy::Apply && !c.dry_run && !c.result.is_error &&
-               session.dirty) {
+    } else if (c.policy == LivePolicy::Apply && !c.dry_run && !c.result.is_error && session.dirty) {
         c.final_project = std::make_shared<const document::Project>(std::move(*session.project));
         try {
             if (c.want_preview) {
@@ -436,11 +435,11 @@ std::shared_ptr<LivePendingCall> LiveService::begin(const std::string& tool,
     }
     c.policy = live_policy(tool);
     if (c.policy == LivePolicy::Denied) {
-        c.immediate = error_content(
-            tool, po::code::kRefused,
-            "l'outil « " + tool + " » n'est pas disponible sur le projet ouvert (mode live)",
-            "créer ou fermer un projet se fait depuis OpenStitch Desktop ; "
-            "outils disponibles : tools/list");
+        c.immediate = error_content(tool, po::code::kRefused,
+                                    "l'outil « " + tool +
+                                        " » n'est pas disponible sur le projet ouvert (mode live)",
+                                    "créer ou fermer un projet se fait depuis OpenStitch Desktop ; "
+                                    "outils disponibles : tools/list");
         return call;
     }
     const json parsed =
@@ -529,7 +528,8 @@ std::shared_ptr<LivePendingCall> LiveService::begin(const std::string& tool,
                        : std::string{};
         };
         const auto flag_arg = [&c](const char* key) {
-            return c.args.contains(key) && c.args.at(key).is_boolean() && c.args.at(key).get<bool>();
+            return c.args.contains(key) && c.args.at(key).is_boolean() &&
+                   c.args.at(key).get<bool>();
         };
         const bool no_clobber = flag_arg("no_clobber");
         c.dirty_host = doc.dirty;
@@ -656,8 +656,7 @@ std::string LiveService::finish(LivePendingCall& call) {
     }
     json out{{"content", c.result.content}, {"isError", c.result.is_error}};
     bool applied = false;
-    const auto refuse = [&](const char* code, const std::string& message,
-                            const std::string& hint) {
+    const auto refuse = [&](const char* code, const std::string& message, const std::string& hint) {
         out = error_content(c.tool, code, message, hint);
     };
 
@@ -767,10 +766,9 @@ std::string LiveService::finish(LivePendingCall& call) {
                                       ? std::string{}
                                       : c.result.content.front().value("text", std::string{});
             if (c.policy == LivePolicy::Replace) {
-                const std::string image =
-                    c.args.contains("image") && c.args.at("image").is_string()
-                        ? c.args.at("image").get<std::string>()
-                        : std::string("?");
+                const std::string image = c.args.contains("image") && c.args.at("image").is_string()
+                                              ? c.args.at("image").get<std::string>()
+                                              : std::string("?");
                 request.items.push_back({0, "numériser « " + image + " »"});
                 request.warnings.push_back(
                     "remplace tout le contenu du document ouvert (annulable avec Ctrl+Z)");
