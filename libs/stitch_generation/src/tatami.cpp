@@ -671,6 +671,19 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
         for (const Segment& s : segs) {
             const double threshold = row_threshold(s.row);
             const std::size_t m = s.pens.size();
+            // Point de décision d'un intervalle : milieu de la CASE de la grille des pénétrations
+            // qui le contient (même phase que 1 ter), ramené dans le segment. Deux couches de
+            // même grille dont les régions diffèrent (une zone prolongée commence au bord de la
+            // bande, au milieu d'une case) décident donc au même point : partition exacte. Le
+            // ramenage n'agit qu'aux bords de région ; aux bords de bande la densité est saturée
+            // (0 ou 1), au contour extérieur les deux couches ont les mêmes bornes.
+            const int stage = ((s.row % stagger) + stagger) % stagger;
+            const double phase =
+                stitchLen * (static_cast<double>(stage) / static_cast<double>(stagger));
+            const auto decision = [&](double mid) {
+                const double cell = std::floor((mid - phase) / stitchLen);
+                return std::clamp(phase + (cell + 0.5) * stitchLen, s.lo, s.hi);
+            };
             const auto flush = [&](std::size_t a, std::size_t b) { // pénétrations [a ; b], b > a
                 Segment r;
                 r.row = s.row;
@@ -685,7 +698,8 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
             for (std::size_t k = 1; k < m; ++k) {
                 const double mid = 0.5 * (std::clamp(s.pens[k - 1], s.lo, s.hi) +
                                           std::clamp(s.pens[k], s.lo, s.hi));
-                const bool on = mask->keeps(to_um(rotate({mid, s.y}, cosB, sinB)), threshold);
+                const bool on =
+                    mask->keeps(to_um(rotate({decision(mid), s.y}, cosB, sinB)), threshold);
                 if (on && start == m) {
                     start = k - 1;
                 } else if (!on && start != m) {

@@ -11,6 +11,7 @@ add_executable(test_stitch
     test_hidden_travel_grid.cpp
     test_tatami.cpp
     test_row_mask.cpp
+    test_boundary_blend.cpp
     test_directional_fill.cpp
     test_blanket_stitch.cpp
     test_stitch_recipes.cpp

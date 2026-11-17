@@ -1029,6 +1029,10 @@ plus.
   détection automatique dans la numérisation ; **validation sur tissu** de la grille
   partagée (pièce-test 3 fils, complémentaire et superposition) ; **fondu à la frontière
   entre deux zones** (rampe selon la distance à la limite commune, zones conservées) :
+  spécification `docs/studio-fondu-frontiere-spec.md`. Lots L1a (masque de rangées du tatami)
+  et L1b (frontière commune, champ de densité, paire tatami–tatami) livrés le 2026-11-16, pas
+  encore branchés ; restent L1c (directionnel), L2 (lien, commandes, `.osp`, CLI), L3 (Studio),
+  L4, L5.
   spécification `docs/studio-fondu-frontiere-spec.md`. Lot L1a livré le 2026-11-16 (masque
   de rangées du tatami, pas encore branché) ; restent L1b (frontière, géométrie `Boundary`,
   directionnel), L2 (lien, commandes, `.osp`, CLI), L3 (Studio), L4, L5.
@@ -4642,6 +4646,8 @@ ouvrant le lot (§0.1).
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-11-16 | Claude (fondu à la frontière, L1b) | **HP-STI-011 ◐** (inchangé). `geometry::shared_frontier` (bord de A à moins de la tolérance de B, chemins ouverts Clipper2, bouts rognés) et `polyline_band` ; `stitch_generation::plan_boundary_blend` / `fill_boundary_blend_tatami` : zones prolongées dans la demi-bande de l'autre, densité selon la distance signée à la frontière, décision du masque par case de pénétrations. Partition exacte à grille commune, superposition à angles croisés ; directionnel reporté en L1c ; rien de branché. |
+| 2026-11-16 | Claude (fondu à la frontière, spec + L1a) | **HP-STI-011 ◐** (inchangé). Spécification `docs/studio-fondu-frontiere-spec.md` (fondu selon la distance à la limite de deux zones, zones conservées, tatami en dégradé natif). L1a : `RowMask` / `DensityRowMask` / `row_threshold` et `fill_tatami(…, const RowMask*)` (grille ancrée, découpe aux pénétrations, liaison à la prochaine rangée gardée) ; sans masque, sortie identique octet pour octet ; aucun appelant branché. |
 | 2026-11-17 | Claude (étude fondus picturaux) | **HP-AUTO-017 ☐** (inchangé, étudié). Prototype Python déterministe sur Turner et les *Nymphéas* : zones de fondu par force de bord, palette de mélange, poids par fil sur grille partagée simulée. ΔE à 1 mm : 4,1 contre 5,7 (quantification à 12) sur *Le Téméraire* ; perte sur le détail fin du Monet 1906 (6,4 contre 5,7). Aucun code moteur modifié ; plan en 4 lots dans `docs/fondus-picturaux-autodigitize.md`. Pas de validation textile. |
 | 2026-11-16 | Claude (fondu à la frontière, spec + L1a) | **HP-STI-011 ◐** (inchangé). Spécification `docs/studio-fondu-frontiere-spec.md` (fondu selon la distance à la limite de deux zones, zones conservées, tatami en dégradé natif). L1a : `RowMask` / `DensityRowMask` / `row_threshold` et `fill_tatami(…, const RowMask*)` (grille ancrée, découpe aux pénétrations, liaison à la prochaine rangée gardée) ; sans masque, sortie identique octet pour octet ; aucun appelant branché. |
 | 2026-11-17 | Claude (fondus à parts image, étape 1) | **HP-STI-011 ◐** et **HP-AUTO-017 ☐** (inchangés, précisés). Les profils d'un fondu multicolore peuvent venir d'une grille de parts calculée depuis l'image (mélange en RVB linéaire, moindres carrés sous contrainte, palette de mélange proposée) ; couches en grille partagée ou en rangées continues (Hatch). Opération `image_blend`. *Le Téméraire* entier, 6 fils : 17 911 points et 433 coupes contre 35 428 et 332 (auto-numérisation à 12 couleurs) ; îlots et tissu visible supprimés, stries visibles. Tests : `test_image_blend.cpp` (6 cas). Studio non câblé ; pas de validation textile. |
