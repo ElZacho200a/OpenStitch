@@ -29,8 +29,8 @@ inline constexpr std::size_t kLiveMaxRequestBytes =
     8 * 1024 * 1024; // une requête plus grosse est un abus
 
 enum class LivePolicy {
-    Read,  // lecture : exécutée sur une copie figée, aucune confirmation
-    Apply, // mutation : approbation explicite (sauf `dry_run`)
+    Read,   // lecture : exécutée sur une copie figée, aucune confirmation
+    Apply,  // mutation : approbation explicite (sauf `dry_run`)
     // Numérisation d'une image : calculée sur une copie, puis REMPLACE le contenu du document
     // ouvert en une étape d'annulation, après approbation explicite (avant/après montrés).
     Replace,
@@ -154,14 +154,8 @@ public:
     LiveService(project_ops::LiveBridge& bridge, IApprovalGate& gate, InfoProvider info,
                 std::function<void()> on_applied = {});
 
-    // Active project_open / project_save pour cet hôte (export et numérisation n'en ont pas
-    // besoin).
+    // Active project_open / project_save pour cet hôte (export et numérisation n'en ont pas besoin).
     void set_host_actions(LiveHostActions actions) { host_ = std::move(actions); }
-
-    // L'utilisateur confie un dossier à l'agent (il l'a nommé dans sa demande ou l'a choisi) :
-    // Read / Glob / Grep y passent sans question, sauf secrets. Renvoie false si le chemin est
-    // sensible ou n'est pas un dossier existant.
-    [[nodiscard]] bool grant_read_dir(const std::string& directory);
 
     // Fil GUI.
     [[nodiscard]] std::shared_ptr<LivePendingCall> begin(const std::string& tool,
@@ -181,8 +175,6 @@ private:
     InfoProvider info_;
     std::function<void()> on_applied_;
     LiveHostActions host_;
-    std::vector<std::string> granted_dirs_; // dossiers normalisés (minuscules, « / »)
-    std::set<std::string> read_allowed_;    // « outil|chemin » déjà autorisés (session)
 };
 
 // Protocole d'un client local : une ligne JSON par requête, une par réponse.

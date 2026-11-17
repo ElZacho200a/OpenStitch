@@ -45,8 +45,8 @@ QString findMcpExe(const QString& appDir) {
         QDir(appDir).filePath(QStringLiteral("openstitch-mcp.exe"))};
     for (const QString& depth : {QStringLiteral("../.."), QStringLiteral("../../..")}) {
         for (const QString& c : {first, second}) {
-            candidates << QDir(appDir).filePath(depth + QStringLiteral("/mcp/") + c +
-                                                QStringLiteral("/openstitch-mcp.exe"));
+            candidates << QDir(appDir).filePath(
+                depth + QStringLiteral("/mcp/") + c + QStringLiteral("/openstitch-mcp.exe"));
         }
     }
     candidates << QDir(appDir).filePath(QStringLiteral("openstitch-mcp"));

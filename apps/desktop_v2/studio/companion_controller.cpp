@@ -7,7 +7,6 @@
 #include <QEventLoop>
 #include <QFileInfo>
 #include <QGuiApplication>
-#include <QRegularExpression>
 #include <QUrl>
 
 #include "../live/live_server.hpp"
@@ -95,15 +94,6 @@ LiveCompanion& CompanionController::ensureCompanion() {
             return ok;
         };
         companion_->setHostActions(std::move(host));
-        // Même règle que askApproval : en mode automatique, lots et numérisation passent sans
-        // carte, donc sans aperçu avant/après (quatre passes complètes du moteur évitées).
-        companion_->setOnStage([this](StageId stage) {
-            emit stageRequested(QString::fromLatin1(stageIdName(stage).data()));
-        });
-        companion_->setPreviewWanted([this](const std::string& tool) {
-            const bool undoable = tool == "project_apply" || tool == "project_digitize";
-            return !(undoable && autoApply() && !fullyDisabled());
-        });
     }
     return *companion_;
 }
@@ -113,18 +103,8 @@ void CompanionController::wire(desktop::CompanionBackend* backend) {
     connect(backend, &B::assistantText, this,
             [this](const QString& text) { append(QStringLiteral("assistant"), text); });
     connect(backend, &B::toolCalled, this, [this](const desktop::CompanionToolCall& call) {
-        // Le NOM de l'outil est toujours montré (titre), le résumé dit sur quoi il porte.
         append(call.isError ? QStringLiteral("error") : QStringLiteral("tool"),
-               call.summary + (call.refusal.isEmpty() ? QString() : " — " + call.refusal),
-               call.tool.startsWith(QStringLiteral("mcp__openstitch__"))
-                   ? call.tool.mid(QStringLiteral("mcp__openstitch__").size())
-                   : call.tool);
-    });
-    connect(backend, &B::thinking, this,
-            [this](const QString& text) { append(QStringLiteral("thinking"), text); });
-    connect(backend, &B::activity, this, [this](const QString& label) {
-        activity_ = label;
-        emit changed();
+               call.summary + (call.refusal.isEmpty() ? QString() : " — " + call.refusal));
     });
     connect(backend, &B::failed, this, [this](const QString& message) {
         error_ = message;
@@ -134,10 +114,7 @@ void CompanionController::wire(desktop::CompanionBackend* backend) {
         usage_ = tr("%1 jetons envoyés, %2 reçus").arg(in).arg(out);
         emit changed();
     });
-    connect(backend, &B::finished, this, [this] {
-        activity_.clear();
-        emit changed();
-    });
+    connect(backend, &B::finished, this, [this] { emit changed(); });
 }
 
 desktop::ClaudeCompanionBackend& CompanionController::ensureBackend() {
@@ -519,8 +496,8 @@ QString CompanionController::prepareClaudeCode() {
     if (!refusal.isEmpty()) {
         return refusal;
     }
-    const auto env =
-        options_.launcher ? *options_.launcher : desktop::ClaudeCodeLauncher::systemEnv();
+    const auto env = options_.launcher ? *options_.launcher
+                                       : desktop::ClaudeCodeLauncher::systemEnv();
     QString executable;
     QString workspace;
     const auto ready = desktop::ClaudeCodeLauncher::prepare(env, executable, workspace);
@@ -546,8 +523,8 @@ QString CompanionController::openClaudeCodeTerminal() {
     if (auto* clipboard = QGuiApplication::clipboard()) {
         clipboard->setText(connectionCommand());
     }
-    const auto env =
-        options_.launcher ? *options_.launcher : desktop::ClaudeCodeLauncher::systemEnv();
+    const auto env = options_.launcher ? *options_.launcher
+                                       : desktop::ClaudeCodeLauncher::systemEnv();
     const auto result = desktop::ClaudeCodeLauncher::launch(env);
     if (result != desktop::ClaudeCodeLauncher::Result::Started) {
         return desktop::ClaudeCodeLauncher::describe(result) + QLatin1Char(' ') +

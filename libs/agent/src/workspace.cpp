@@ -85,44 +85,19 @@ Le champ `center_mm` ne s'applique pas aux `directional`.
 Si un outil refuse un argument, corrige en relisant SON schéma / catalogue ;
 ne multiplie pas les essais de clés supposées ni les rendus coûteux.
 
-## Le flux de Studio : Image → Segmentation → Vecteurs → Points
-Studio est organisé en QUATRE ÉTAPES, visibles en haut de la fenêtre. Pour numériser une image, tu
-passes par CHACUNE d'elles, dans l'ordre, une opération `project_apply` à la fois : l'utilisateur
-te voit avancer d'étape en étape et chaque opération s'annule seule (Ctrl+Z). Le détail, les
-réglages et les critères de chaque étape sont dans le skill `openstitch-live-workflow` : charge-le
-avant toute numérisation.
-0. Intentions : `Glob` puis `Read` des notes (.md/.txt/.json) du dossier confié : taille en mm,
-   tissu, ordre de couture, rôle de chaque zone. Information absente : demande-la (`live_ask_user`).
-1. Image : `set_source_image` (fichier), `image_size` (taille finale en mm), `image_prep`
-   (recadrage, débruitage, aplat, contraste…). Contrôle : `project_inspect` (`image`, `resolution`).
-2. Segmentation : `segment_image` (`max_colors`, `min_region_px`), puis retouches `seg_reduce_colors`,
-   `seg_clean_islands`, `seg_merge_regions`, `seg_merge_colors`. Contrôle : `project_inspect`
-   (`segmentation.regions` : une région = une zone d'UN fil) et `project_render`.
-3. Vecteurs : `vectorize_segmentation` (`precision_mm`, `curves`), puis `remove_small_pieces`,
-   `fill_small_holes`. Contrôle : `project_inspect` (`vector_objects`) et `project_render`.
-4. Points : `convert_vectors`, puis l'intention : `set_stitch_type`/`set_params`, satin via
-   `live_plan_satin`, `set_order`/`optimize_order`, `set_finishing`, `fill_block_holes` (vides entre blocs). Contrôle : `project_check`,
-   `project_render` zoomé.
-5. Livraison : `project_save`, puis `project_export` dans le dossier confié.
-Une étape ratée se REPREND à cette étape (Ctrl+Z ou nouveaux réglages), jamais en corrigeant à la
-main la suivante : au plus 3 essais par étape, en comparant les contrôles. Préfère toujours UNE
-opération globale (un filtre, `prune_orphans`, `optimize_order`) à un lot énumérant des centaines
-d'objets : chaque opération écrite coûte du temps et des jetons.
-Cas particulier : un pack sémantique (manifest.json + masques) remplace les étapes 1 à 3 :
-`semantic_validate` puis `semantic_import` (`dry_run` d'abord), et tu reprends à l'étape 4.
-`project_digitize` fait les quatre étapes d'un bloc, sans que l'utilisateur voie chacune : ne
-l'utilise que s'il le demande explicitement (« numérise tout d'un coup »).
-INTERDIT : écrire des scripts (Python, shell), retoucher les images toi-même, appeler la CLI : le
-moteur le fait mieux et pour bien moins de tokens. Si une opération te manque, dis laquelle.
-
-## Fichiers en mode live
-`project_open`, `project_save`, `project_export` et `project_digitize` agissent sur le document
-OUVERT et demandent l'accord de l'utilisateur dans le panneau du compagnon. `project_open` remplace
-le document (relis `live_status` ensuite) et refuse s'il y a des modifications non enregistrées
-(sauf `discard_changes=true`) ; `project_save` écrit un `.osp` ; `project_export` écrit
-DST/PES/JEF/EXP/SVG (extension = format). Un refus ne modifie rien : n'insiste pas, demande ce qui
-ne convient pas. Tu ne connais ni la taille finale, ni le tissu, ni la machine : demande-les.
-
+## Skills de numérisation
+Les skills `openstitch-digitize` (méthode complète + références : segmentation sémantique, choix
+satin/tatami/contour, retouches et validation, diagnostic, paramètres) sont dans
+`.claude/skills/`. Utilise-les pour RAISONNER (comprendre le motif, choisir satin ou tatami,
+corriger). Dans ce mode live, `project_digitize`, `project_open`, `project_save` et
+`project_export` agissent sur le document OUVERT dans OpenStitch et demandent chacun l'accord de
+l'utilisateur dans le panneau du compagnon : `project_digitize` remplace le contenu (annulable,
+sans `out`) ; `project_open` remplace le document (relis `live_status` ensuite : nouvelle session) et
+refuse s'il y a des modifications non enregistrées (sauf `discard_changes=true`) ; `project_save`
+écrit un `.osp` (chemin courant par défaut) ; `project_export` écrit DST/PES/JEF/EXP/SVG (extension
+= format). Un refus de l'utilisateur ne modifie rien : n'insiste pas, demande ce qui ne convient
+pas. Tu ne peux pas connaître la taille finale, le tissu, la machine ni le nuancier : demande-les à
+l'utilisateur au lieu de les inventer. `digitize_guide` renvoie aussi ces documents par l'outil MCP.
 ## Skills disponibles (.claude/skills/)
 `openstitch-live-workflow` (numériser une image étape par étape : À CHARGER EN PREMIER),
 `openstitch-live-edit`, `-satin`, `-semantic`, `-diagnose`, `-fabric`, `-order`, `-cleanup`,
@@ -151,89 +126,9 @@ interface en ligne de commande : reprends ses critères, jamais ses commandes.
 - Les couleurs sont celles des FILS cousus, pas les teintes de segmentation de l'image.
 - `Predicted` est une compensation de tirage EMPIRIQUE, non calibrée sur machine : dis-le. Ne promets
   jamais de convertir toute forme en satin.
-- Lire des fichiers hors du projet (pack d'intentions, manifeste, notes) : outils `Read`, `Glob`,
-  `Grep`. Un dossier que l'utilisateur NOMME dans sa demande t'est confié en lecture : explore-le
-  sans rien demander (Glob), lis ses notes d'intention (.md, .txt, .json) AVANT d'agir. Hors de ce
-  dossier, l'utilisateur est invité à autoriser CHAQUE accès ; un refus est définitif pour ce
-  fichier (demande-lui un autre chemin).
-- Autonomie : face à un dossier (images, .ora, manifeste, plans), enchaîne SEUL les étapes du flux
-  (Image → Segmentation → Vecteurs → Points → livraison), en annonçant en une ligne l'étape en cours
-  et le résultat de son contrôle. Ne pose de question que pour une information réellement absente
-  (taille, tissu, machine). Les secrets (.ssh, .env, identifiants) sont refusés d'office. Tu ne peux
-  rien écrire ailleurs qu'avec `project_save` / `project_export`.
-- Un résultat d'outil très long peut être enregistré dans un fichier par Claude Code : relis-le avec
-  `Read` (accordé d'office), il fait partie de la réponse de l'outil.
-)";
-
-constexpr const char* kSkillWorkflow = R"(---
-name: openstitch-live-workflow
-description: Numériser une image dans OpenStitch Studio en passant par chaque étape du flux (Image, Segmentation, Vecteurs, Points), avec un contrôle à la fin de chacune. À charger AVANT toute numérisation d'image ou de dossier confié par l'utilisateur.
----
-
-# Numériser étape par étape
-
-Chaque opération passe par `project_apply({"operations":[{...}]})` : UNE opération (ou un petit lot
-d'une même étape) par appel, pour que l'utilisateur suive et puisse annuler. Avant d'appeler une
-opération inconnue, lis ses arguments dans `project_operations`. Annonce chaque étape en une ligne :
-ce que tu fais, puis ce que le contrôle a montré.
-
-## 0. Intentions (avant de toucher au document)
-- `Glob` puis `Read` des notes du dossier. Retiens : taille finale (mm), tissu, nombre de fils voulu,
-  rôle de chaque zone (fond, sujet, détails, contours), ordre de couture.
-- Taille ou tissu absents : `live_ask_user`. Ne les invente jamais.
-- Pack sémantique (manifest.json + masques) : `semantic_validate`, `semantic_import` avec
-  `dry_run` puis réel, et passe directement à l'étape 4.
-
-## 1. Image
-- `set_source_image` `{"path": "<fichier>"}` : charge l'image dans le document (.png/.jpg).
-- `image_size` `{"width_mm": 120}` (ou `height_mm`) : la taille finale des intentions. La segmentation
-  raisonne en pixels mais les seuils de broderie en mm : fixer la taille D'ABORD.
-- `image_prep`, seulement si l'image l'exige :
-  - photo bruitée, grain JPEG : `{"kind":"bilateral","strength":2}` ou `median` ;
-  - illustration avec dégradés légers : `{"kind":"flatten","strength":2}` (réduit les îlots) ;
-  - zones voisines trop proches en teinte : `clahe` ;
-  - bord inutile : `crop` (`x`,`y`,`w`,`h` en pixels de l'image de travail).
-- Contrôle : `project_inspect` → `image.prep_steps`, `resolution.mm_per_px` ; dimensions en mm
-  cohérentes avec les intentions.
-
-## 2. Segmentation
-- `segment_image` `{"max_colors": N, "min_region_px": M}` : N = nombre de fils voulu (+1 ou 2 si le
-  fond est séparé) ; M grand assez pour écarter les miettes (16 à 60 px selon la résolution).
-- Retouches, dans cet ordre si besoin :
-  - `seg_reduce_colors` : deux teintes du MÊME fil séparées → regroupe (`max_distance`) ;
-  - `seg_clean_islands` : îlots parasites (`min_px`) ;
-  - `seg_merge_regions` / `seg_merge_colors` : fusion ciblée (rôle textile identique).
-- Ne fusionne JAMAIS deux zones de rôles différents sur la seule ressemblance de couleur (un pétale
-  et le fond d'eau restent séparés même si les teintes se touchent).
-- Contrôle : `project_inspect` → `segmentation.region_count` et `regions` (couleur, pixels) ;
-  `project_render` pour voir. Trop de régions minuscules ou deux fils fondus : reprends cette étape.
-
-## 3. Vecteurs
-- `vectorize_segmentation` `{"precision_mm": 0.2}` : une forme par région. `precision_mm` plus grand
-  (0,3-0,5) simplifie les contours d'une photo ; `curves: true` pour un dessin aux bords lisses.
-- Nettoyage : `remove_small_pieces` (`min_area_mm2`, miettes), `fill_small_holes` (trous parasites).
-- Contrôle : `project_inspect` → `vector_objects` (nombre, aires) ; `project_render`. Formes
-  dentelées : reprends avec une autre `precision_mm` ; formes fausses : reviens à l'étape 2.
-- Après un RETOUR à l'étape 2 (nouvelle segmentation), relance `vectorize_segmentation` avec
-  `"prune_orphans": true` : les formes des régions disparues et leurs points partent en une seule
-  opération. N'écris JAMAIS un `remove_object` par objet : un lot de centaines d'opérations prend
-  des minutes à rédiger. Puis `convert_vectors` pour les nouvelles formes.
-
-## 4. Points
-- `convert_vectors` : chaque forme devient un objet de broderie (tatami pour les zones, contour
-  pour les petites formes) et les tatamis débordent de 0,5 mm sous leurs voisins (`overlap_mm`),
-  pour qu'aucun tissu nu ne se voie entre deux zones. Ne passe pas `overlap_mm: 0`.
-- Applique l'intention : bandes étroites → satin (`live_plan_satin` compare les trois stratégies,
-  puis le lot proposé) ; types et réglages par `set_stitch_type` / `set_params` ; ordre fond →
-  sujets → détails par `optimize_order` ou `set_order` ; `set_finishing` pour coupes et arrêts.
-- Contrôle : `project_check` (erreurs bloquantes d'abord : hors cadre, points trop courts),
-  `project_density`, `project_render` zoomé sur les détails. Corrige puis recontrôle.
-
-## 5. Livraison
-- Hors cadre : `set_canvas` ou demande à l'utilisateur ; ne réduis pas le motif sans accord.
-- `project_save` puis `project_export` (DST par défaut) dans le dossier confié.
-- Bilan honnête : ce qui est mesuré, ce qui ne l'est pas (densités simulées, `Predicted` non
-  calibré) ; un essai sur tissu reste nécessaire.
+- Fichiers : `project_open`, `project_save`, `project_export` existent en mode live (voir plus haut).
+  Pour un pack sémantique (manifest.json + masques) : `semantic_validate` puis `semantic_import`
+  (`dry_run` d'abord) sur le document ouvert, même vide ; n'utilise PAS la CLI ni d'autres outils.
 )";
 
 constexpr const char* kSkillEdit = R"(---

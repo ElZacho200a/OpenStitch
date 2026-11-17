@@ -250,10 +250,10 @@ std::string live_tools_json() {
         if (live_policy(tool.name) == LivePolicy::Denied) {
             continue;
         }
-        list.push_back(
-            json{{"name", tool.name},
-                 {"description", std::string(tool.description) + live_file_note(tool.name)},
-                 {"input_schema", json::parse(tool.input_schema)}});
+        list.push_back(json{{"name", tool.name},
+                            {"description", std::string(tool.description) +
+                                                live_file_note(tool.name)},
+                            {"input_schema", json::parse(tool.input_schema)}});
     }
     for (const auto& extra : live_extra_tools()) {
         list.push_back(json{{"name", extra.name},
@@ -277,7 +277,6 @@ struct LivePendingCall::Impl {
     std::optional<ChoiceRequest> ask; // live_ask_user (réponse au retour sur le fil GUI)
     std::shared_ptr<const document::Project> final_project; // issu d'un project_apply réussi
     ApplyPreview apply_preview; // rendus et écarts montrés avant l'approbation
-    bool want_preview{true};    // faux en mode automatique : l'aperçu ne serait jamais montré
     // Outils de fichier (HostFile) : cible validée, format, fichier d'export calculé hors du fil
     // GUI dans un dossier temporaire (copié vers la cible seulement après approbation).
     std::string target_text;
@@ -285,10 +284,6 @@ struct LivePendingCall::Impl {
     fs::path target;
     fs::path temp_file;
     bool dirty_host{false};
-    // live_permission : accès disque demandé par Claude Code (outil, chemin) ; décidé au retour
-    // GUI.
-    std::optional<std::pair<std::string, std::string>> permission;
-    json permission_input = json::object();
     bool ran{false};
 
     Impl() = default;
@@ -343,9 +338,9 @@ void LivePendingCall::run() {
             } else if (c.tool == "project_export") { // calcul hors du fil GUI, dossier temporaire
                 std::error_code ec;
                 std::random_device rd;
-                const fs::path dir =
-                    fs::temp_directory_path(ec) /
-                    ("openstitch-live-" + std::to_string(rd()) + std::to_string(rd()));
+                const fs::path dir = fs::temp_directory_path(ec) /
+                                     ("openstitch-live-" + std::to_string(rd()) +
+                                      std::to_string(rd()));
                 fs::create_directories(dir, ec);
                 if (ec) {
                     c.result.is_error = true;
@@ -374,6 +369,14 @@ void LivePendingCall::run() {
     session.project = *c.snapshot.project; // copie privée : le document hôte n'est jamais touché
     c.result = call_tool(session, c.tool, c.args);
     if (c.policy == LivePolicy::Replace && !c.result.is_error && session.project) {
+        c.final_project = std::make_shared<const document::Project>(std::move(*session.project));
+        try {
+            c.apply_preview = build_apply_preview(*c.snapshot.project, *c.final_project);
+        } catch (const std::exception&) {
+            // Confort seulement : l'échec de l'aperçu n'empêche pas la demande d'approbation.
+        }
+    } else if (c.policy == LivePolicy::Apply && !c.dry_run && !c.result.is_error &&
+               session.dirty) {
         c.final_project = std::make_shared<const document::Project>(std::move(*session.project));
         try {
             if (c.want_preview) {
@@ -433,11 +436,11 @@ std::shared_ptr<LivePendingCall> LiveService::begin(const std::string& tool,
     }
     c.policy = live_policy(tool);
     if (c.policy == LivePolicy::Denied) {
-        c.immediate = error_content(tool, po::code::kRefused,
-                                    "l'outil « " + tool +
-                                        " » n'est pas disponible sur le projet ouvert (mode live)",
-                                    "créer ou fermer un projet se fait depuis OpenStitch Desktop ; "
-                                    "outils disponibles : tools/list");
+        c.immediate = error_content(
+            tool, po::code::kRefused,
+            "l'outil « " + tool + " » n'est pas disponible sur le projet ouvert (mode live)",
+            "créer ou fermer un projet se fait depuis OpenStitch Desktop ; "
+            "outils disponibles : tools/list");
         return call;
     }
     const json parsed =
@@ -526,8 +529,7 @@ std::shared_ptr<LivePendingCall> LiveService::begin(const std::string& tool,
                        : std::string{};
         };
         const auto flag_arg = [&c](const char* key) {
-            return c.args.contains(key) && c.args.at(key).is_boolean() &&
-                   c.args.at(key).get<bool>();
+            return c.args.contains(key) && c.args.at(key).is_boolean() && c.args.at(key).get<bool>();
         };
         const bool no_clobber = flag_arg("no_clobber");
         c.dirty_host = doc.dirty;
@@ -654,7 +656,8 @@ std::string LiveService::finish(LivePendingCall& call) {
     }
     json out{{"content", c.result.content}, {"isError", c.result.is_error}};
     bool applied = false;
-    const auto refuse = [&](const char* code, const std::string& message, const std::string& hint) {
+    const auto refuse = [&](const char* code, const std::string& message,
+                            const std::string& hint) {
         out = error_content(c.tool, code, message, hint);
     };
 
@@ -764,9 +767,10 @@ std::string LiveService::finish(LivePendingCall& call) {
                                       ? std::string{}
                                       : c.result.content.front().value("text", std::string{});
             if (c.policy == LivePolicy::Replace) {
-                const std::string image = c.args.contains("image") && c.args.at("image").is_string()
-                                              ? c.args.at("image").get<std::string>()
-                                              : std::string("?");
+                const std::string image =
+                    c.args.contains("image") && c.args.at("image").is_string()
+                        ? c.args.at("image").get<std::string>()
+                        : std::string("?");
                 request.items.push_back({0, "numériser « " + image + " »"});
                 request.warnings.push_back(
                     "remplace tout le contenu du document ouvert (annulable avec Ctrl+Z)");
