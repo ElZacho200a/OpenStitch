@@ -122,4 +122,40 @@ std::array<StageStatus, 4> computeStageStatus(const document::Project& project,
     return out;
 }
 
+std::optional<StageId> stageForOperation(std::string_view op) {
+    for (const std::string_view neutral : {"set_canvas", "set_machine", "rename", "set_semantic",
+                                           "group", "ungroup", "set_visible", "set_locked"}) {
+        if (op == neutral) {
+            return std::nullopt;
+        }
+    }
+    if (op == "set_source_image" || op.starts_with("image_")) {
+        return StageId::Image;
+    }
+    if (op == "segment_image" || op.starts_with("seg_")) {
+        return StageId::Segmentation;
+    }
+    if (op == "vectorize_segmentation" || op == "remove_small_pieces" || op == "fill_small_holes" ||
+        op == "import_svg" || op == "import_dxf") {
+        return StageId::Vector;
+    }
+    return StageId::Points;
+}
+
+std::optional<StageId> stageForLiveTool(std::string_view tool,
+                                        const std::vector<std::string>& operations) {
+    if (tool == "project_digitize" || tool == "semantic_import" || tool == "semantic_replace") {
+        return StageId::Points;
+    }
+    if (tool != "project_apply") {
+        return std::nullopt;
+    }
+    for (auto it = operations.rbegin(); it != operations.rend(); ++it) {
+        if (const auto stage = stageForOperation(*it)) {
+            return stage;
+        }
+    }
+    return std::nullopt;
+}
+
 } // namespace openstitch::desktop_v2

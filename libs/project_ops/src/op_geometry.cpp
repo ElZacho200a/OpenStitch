@@ -691,23 +691,21 @@ OpStatus op_merge(OpContext& ctx) {
             return usage("objects[" + std::to_string(i) + "] : identifiant entier attendu");
         }
         const std::uint64_t id = item.get<std::uint64_t>();
-        const auto* emb = ctx.project.findEmbroidery(ObjectId{id});
-        if (emb == nullptr) {
+        // Objet de broderie ou forme vectorielle pas encore convertie.
+        const ObjectId vector = shape_vector_of(ctx.project, id);
+        if (!vector.valid()) {
             return OpStatus::failure(code::kUnknownObject,
-                                     "objet de broderie " + std::to_string(id) + " introuvable",
+                                     "objet " + std::to_string(id) +
+                                         " introuvable (ni broderie ni forme vectorielle)",
                                      "voir `project inspect --json` pour les identifiants");
         }
-        if (std::find(seen.begin(), seen.end(), emb->source_vector.value) != seen.end()) {
+        if (std::find(seen.begin(), seen.end(), vector.value) != seen.end()) {
             return refused(
                 "l'objet " + std::to_string(id) +
                 " apparaît deux fois ou partage son contour avec un autre objet de la liste");
         }
-        seen.push_back(emb->source_vector.value);
-        if (ctx.project.findObject(emb->source_vector) == nullptr) {
-            return OpStatus::failure(code::kUnknownObject, "l'objet " + std::to_string(id) +
-                                                               " n'a pas de vecteur source");
-        }
-        vectors.push_back(emb->source_vector);
+        seen.push_back(vector.value);
+        vectors.push_back(vector);
     }
     commands::BooleanOp op = commands::BooleanOp::Union;
     if (mode_name == "subtract") {
@@ -765,9 +763,13 @@ OpStatus pieces_result(const OpContext& ctx, const Target& target,
     const auto created = new_ids(before_emb, embroidery_ids(ctx.project));
     const auto created_vec = new_ids(before_vec, vector_ids(ctx.project));
     json result{
-        {"original", target.embroidery.value}, {"created", created}, {"vector_ids", created_vec}};
+        {"original", target.embroidery.valid() ? target.embroidery.value : target.vector.value},
+        {"created", created},
+        {"vector_ids", created_vec}};
     if (!created.empty()) {
         result["id"] = created.front();
+    } else if (!created_vec.empty()) {
+        result["id"] = created_vec.front(); // forme non convertie : seuls des vecteurs naissent
     }
     return OpStatus::success(std::move(result));
 }
@@ -796,7 +798,13 @@ OpStatus op_split(OpContext& ctx) {
 
 OpStatus op_break_apart(OpContext& ctx) {
     Target target;
-    if (auto st = resolve_target(ctx, "object", target); !st.ok) {
+    // Forme vectorielle pas encore convertie : séparée directement, sans objet de broderie.
+    if (const auto it = ctx.args.find("object");
+        it != ctx.args.end() && it->is_number_unsigned() &&
+        ctx.project.findEmbroidery(ObjectId{it->get<std::uint64_t>()}) == nullptr &&
+        ctx.project.findObject(ObjectId{it->get<std::uint64_t>()}) != nullptr) {
+        target.vector = ObjectId{it->get<std::uint64_t>()};
+    } else if (auto st = resolve_target(ctx, "object", target); !st.ok) {
         return st;
     }
     const auto before_emb = embroidery_ids(ctx.project);

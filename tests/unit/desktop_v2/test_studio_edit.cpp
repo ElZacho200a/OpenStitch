@@ -676,6 +676,27 @@ void StudioEditTest::layersTreeAndObjectEditing() {
     QVERIFY(list);
     QTRY_COMPARE(list->property("count").toInt(), 7);
 
+    // Repli : la flèche du premier calque masque ses objets, un second clic les rend.
+    {
+        QQuickItem* layerRow = nullptr;
+        QTRY_VERIFY(QMetaObject::invokeMethod(list, "itemAtIndex",
+                                              Q_RETURN_ARG(QQuickItem*, layerRow), Q_ARG(int, 0)) &&
+                    layerRow);
+        QQuickItem* fold = nullptr;
+        for (auto* child : layerRow->findChildren<QQuickItem*>()) {
+            if (child->objectName() == QStringLiteral("treeFoldToggle")) {
+                fold = child;
+            }
+        }
+        QVERIFY(fold);
+        const auto at = fold->mapToScene(QPointF(fold->width() / 2, fold->height() / 2)).toPoint();
+        QTest::mouseClick(rig.window, Qt::LeftButton, Qt::NoModifier, at);
+        QTRY_VERIFY(list->property("count").toInt() < 7);
+        QTest::mouseClick(rig.window, Qt::LeftButton, Qt::NoModifier, at);
+        QTRY_COMPARE(list->property("count").toInt(), 7);
+        QCOMPARE(steps(rig), base); // replier n'est pas une modification du document
+    }
+
     // Glisser-déposer à la souris : la ligne d'un objet déposée sur une ligne de calque l'y
     // déplace.
     {

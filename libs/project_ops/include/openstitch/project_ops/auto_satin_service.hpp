@@ -62,4 +62,17 @@ struct AutoSatinPlan {
                                                     ObjectId vector_object,
                                                     const AutoSatinPlanRequest& request = {});
 
+// Largeur de colonne d'une forme vectorielle (son plus grand morceau, celui qui décide de
+// l'allure du satin), mesurée sur le squelette comme le moteur. Absent si la forme est inconnue
+// ou non analysable. Sert à écarter les formes trop larges AVANT de comparer les stratégies : un
+// satin au-delà de ~7 mm est fractionné et se lit comme un tatami raté.
+struct SatinWidth {
+    double mean_mm{0.0};
+    double min_mm{0.0};
+    double max_mm{0.0};
+    bool elongated{false};
+};
+[[nodiscard]] std::optional<SatinWidth> satin_width(const document::Project& project,
+                                                    ObjectId vector_object);
+
 } // namespace openstitch::project_ops

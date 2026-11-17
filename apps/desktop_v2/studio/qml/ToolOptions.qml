@@ -13,10 +13,25 @@ ColumnLayout {
     readonly property var vec: typeof vectors !== "undefined" ? vectors : null
     visible: toolCtl !== null
     spacing: 6
+    readonly property bool two: vec !== null && vec.selectedCount > 1
+    readonly property bool some: vec !== null && vec.selectedCount > 0
+    readonly property string needTwo: qsTr("Sélectionnez au moins deux formes (Maj+clic)")
+    readonly property string needOne: qsTr("Sélectionnez d'abord une forme")
 
+    // Même grammaire que l'EditBar : grilles à colonnes égales, libellés complets.
     component Mini: StudioButton {
-        implicitHeight: 26
+        Layout.fillWidth: true
+        Layout.preferredWidth: 1
+        implicitHeight: 30
         implicitWidth: Math.max(30, implicitContentWidth + 14)
+        showShortcutLabel: false
+    }
+    component Group: GridLayout {
+        Layout.fillWidth: true
+        Layout.preferredHeight: implicitHeight
+        columns: 2
+        columnSpacing: 4
+        rowSpacing: 4
     }
 
     SectionLabel { text: qsTr("OUTIL") }
@@ -105,48 +120,64 @@ ColumnLayout {
         }
     }
 
-    Flow {
-        Layout.fillWidth: true
-        spacing: 3
+    SectionLabel { text: qsTr("NŒUDS SÉLECTIONNÉS"); visible: nodeGroup.visible; Layout.topMargin: 4 }
+    Group {
+        id: nodeGroup
         visible: panel.toolCtl && panel.toolCtl.activeTool === "node.edit"
-        Mini { objectName: "nodeCornerButton"; text: qsTr("Anguleux"); shortcutLabel: "C"; enabled: panel.toolCtl && panel.toolCtl.selectedNodeCount > 0; onClicked: panel.toolCtl.setSelectedNodeKind(false) }
-        Mini { objectName: "nodeSmoothButton"; text: qsTr("Lisses"); shortcutLabel: "S"; enabled: panel.toolCtl && panel.toolCtl.selectedNodeCount > 0; onClicked: panel.toolCtl.setSelectedNodeKind(true) }
-        Mini { objectName: "nodeDeleteButton"; text: qsTr("Suppr. nœud"); enabled: panel.toolCtl && panel.toolCtl.selectedNodeCount > 0; onClicked: panel.toolCtl.deleteSelectedNodes() }
-        Mini { objectName: "nodeHoleButton"; text: qsTr("Suppr. trou"); enabled: panel.toolCtl && panel.toolCtl.selectedNodeCount > 0; onClicked: panel.toolCtl.removeHole() }
+        readonly property bool any: panel.toolCtl && panel.toolCtl.selectedNodeCount > 0
+        Mini { objectName: "nodeCornerButton"; text: qsTr("Anguleux"); tooltip: qsTr("Coins nets sur les nœuds sélectionnés"); shortcutLabel: "C"; enabled: nodeGroup.any; disabledReason: qsTr("Sélectionnez des nœuds"); onClicked: panel.toolCtl.setSelectedNodeKind(false) }
+        Mini { objectName: "nodeSmoothButton"; text: qsTr("Lisses"); tooltip: qsTr("Courbes douces sur les nœuds sélectionnés"); shortcutLabel: "S"; enabled: nodeGroup.any; disabledReason: qsTr("Sélectionnez des nœuds"); onClicked: panel.toolCtl.setSelectedNodeKind(true) }
+        Mini { objectName: "nodeDeleteButton"; text: qsTr("Supprimer nœud"); enabled: nodeGroup.any; disabledReason: qsTr("Sélectionnez des nœuds"); onClicked: panel.toolCtl.deleteSelectedNodes() }
+        Mini { objectName: "nodeHoleButton"; text: qsTr("Supprimer trou"); tooltip: qsTr("Supprime le trou qui contient le nœud"); enabled: nodeGroup.any; disabledReason: qsTr("Sélectionnez un nœud du trou"); onClicked: panel.toolCtl.removeHole() }
     }
 
-    SectionLabel { text: qsTr("OPÉRATIONS SUR LES FORMES") }
-    Flow {
-        Layout.fillWidth: true
-        spacing: 3
+    SectionLabel { text: qsTr("COMBINER LES FORMES"); Layout.topMargin: 4 }
+    Group {
         enabled: panel.vec !== null
-        readonly property bool two: panel.vec && panel.vec.selectedCount > 1
-        readonly property bool some: panel.vec && panel.vec.selectedCount > 0
-        Mini { objectName: "unionButton"; text: qsTr("Union"); enabled: parent.two; onClicked: panel.vec.booleanOp("union") }
-        Mini { objectName: "subtractButton"; text: qsTr("Soustraction"); enabled: parent.two; onClicked: panel.vec.booleanOp("subtract") }
-        Mini { objectName: "intersectButton"; text: qsTr("Intersection"); enabled: parent.two; onClicked: panel.vec.booleanOp("intersect") }
-        Mini { objectName: "excludeButton"; text: qsTr("Exclusion"); enabled: parent.two; onClicked: panel.vec.booleanOp("exclude") }
-        Mini { objectName: "mergeButton"; text: qsTr("Fusionner"); enabled: parent.two; onClicked: panel.vec.mergeObjects() }
-        Mini { objectName: "breakApartButton"; text: qsTr("Séparer"); enabled: parent.some; onClicked: panel.vec.breakApart() }
-        Mini { objectName: "simplifyButton"; text: qsTr("Simplifier"); enabled: parent.some; onClicked: panel.vec.simplify(0.1) }
-        Mini { objectName: "smoothButton"; text: qsTr("Lisser"); enabled: parent.some; onClicked: panel.vec.smooth(0.15) }
-        Mini { objectName: "fillHolesButton"; text: qsTr("Combler trous"); enabled: parent.some; onClicked: panel.vec.fillHoles(4) }
-        Mini { objectName: "toCurvesButton"; text: qsTr("En courbes"); enabled: parent.some; onClicked: panel.vec.convertToCurves() }
+        Mini { objectName: "unionButton"; disabledReason: panel.needTwo; tooltip: qsTr("Réunit les formes en une seule"); shortcutLabel: "Ctrl++"; text: qsTr("Union"); enabled: panel.two; onClicked: panel.vec.booleanOp("union") }
+        Mini { objectName: "subtractButton"; disabledReason: panel.needTwo; tooltip: qsTr("Découpe les formes du dessus dans la plus basse de la pile"); shortcutLabel: "Ctrl+-"; text: qsTr("Soustraire"); enabled: panel.two; onClicked: panel.vec.booleanOp("subtract") }
+        Mini { objectName: "intersectButton"; disabledReason: panel.needTwo; tooltip: qsTr("Garde seulement la partie commune"); shortcutLabel: "Ctrl+*"; text: qsTr("Intersection"); enabled: panel.two; onClicked: panel.vec.booleanOp("intersect") }
+        Mini { objectName: "excludeButton"; disabledReason: panel.needTwo; tooltip: qsTr("Garde tout sauf la partie commune"); shortcutLabel: "Ctrl+^"; text: qsTr("Exclusion"); enabled: panel.two; onClicked: panel.vec.booleanOp("exclude") }
+        Mini { objectName: "breakApartButton"; Layout.columnSpan: 2; disabledReason: panel.needOne; tooltip: qsTr("Fait de chaque morceau disjoint une forme indépendante"); shortcutLabel: "Ctrl+Maj+K"; text: qsTr("Séparer les morceaux"); enabled: panel.some; onClicked: panel.vec.breakApart() }
+    }
+
+    SectionLabel { text: qsTr("NETTOYER LE CONTOUR"); Layout.topMargin: 4 }
+    Group {
+        enabled: panel.vec !== null
+        Mini { objectName: "simplifyButton"; disabledReason: panel.needOne; tooltip: qsTr("Retire les nœuds superflus (tolérance 0,1 mm)"); text: qsTr("Simplifier"); enabled: panel.some; onClicked: panel.vec.simplify(0.1) }
+        Mini { objectName: "smoothButton"; disabledReason: panel.needOne; tooltip: qsTr("Adoucit les angles du contour"); text: qsTr("Lisser"); enabled: panel.some; onClicked: panel.vec.smooth(0.15) }
+        Mini { objectName: "fillHolesButton"; disabledReason: panel.needOne; tooltip: qsTr("Bouche les trous de moins de 4 mm²"); text: qsTr("Combler les trous"); enabled: panel.some; onClicked: panel.vec.fillHoles(4) }
+        Mini { objectName: "toCurvesButton"; disabledReason: panel.needOne; tooltip: qsTr("Rend les segments éditables en courbes"); text: qsTr("En courbes"); enabled: panel.some; onClicked: panel.vec.convertToCurves() }
+    }
+
+    SectionLabel { text: qsTr("DÉCALER"); Layout.topMargin: 4 }
+    RowLayout {
+        Layout.fillWidth: true
+        spacing: 6
+        enabled: panel.vec !== null && panel.some
+        Text { text: qsTr("Distance (mm)"); color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize; Layout.fillWidth: true }
         StudioTextField {
             id: offsetField
             objectName: "offsetMmField"
             wheelStep: 0.5
             wheelMin: 0.1
             wheelMax: 50
-            implicitWidth: 52
+            implicitWidth: 64
             text: "1.0"
-            enabled: parent.some
             invalid: isNaN(parseFloat(text.replace(",", ".")))
             Accessible.name: qsTr("Décalage en millimètres")
         }
-        Mini { objectName: "offsetOutButton"; text: qsTr("Décaler +"); enabled: parent.some && !offsetField.invalid; onClicked: panel.vec.offsetShapes(Math.abs(parseFloat(offsetField.text.replace(",", ".")))) }
-        Mini { objectName: "outlineButton"; text: qsTr("Contour"); enabled: parent.some && !offsetField.invalid; onClicked: panel.vec.outlineShapes(Math.abs(parseFloat(offsetField.text.replace(",", ".")))) }
-        Mini { objectName: "offsetInButton"; text: qsTr("Décaler −"); enabled: parent.some && !offsetField.invalid; onClicked: panel.vec.offsetShapes(-Math.abs(parseFloat(offsetField.text.replace(",", ".")))) }
+    }
+    GridLayout {
+        Layout.fillWidth: true
+        Layout.preferredHeight: implicitHeight
+        columns: 3
+        columnSpacing: 4
+        enabled: panel.vec !== null
+        readonly property real mm: Math.abs(parseFloat(offsetField.text.replace(",", ".")))
+        Mini { objectName: "offsetInButton"; disabledReason: panel.needOne; tooltip: qsTr("Copie rétrécie de cette distance"); text: qsTr("Rétrécir"); enabled: panel.some && !offsetField.invalid; onClicked: panel.vec.offsetShapes(-parent.mm) }
+        Mini { objectName: "offsetOutButton"; disabledReason: panel.needOne; tooltip: qsTr("Copie agrandie de cette distance"); text: qsTr("Agrandir"); enabled: panel.some && !offsetField.invalid; onClicked: panel.vec.offsetShapes(parent.mm) }
+        Mini { objectName: "outlineButton"; disabledReason: panel.needOne; tooltip: qsTr("Anneau autour de la forme, de cette épaisseur"); text: qsTr("Contour"); enabled: panel.some && !offsetField.invalid; onClicked: panel.vec.outlineShapes(parent.mm) }
     }
     Text {
         objectName: "vectorOpsMessage"

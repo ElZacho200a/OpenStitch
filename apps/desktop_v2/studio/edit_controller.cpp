@@ -40,6 +40,36 @@ bool touches(const RectMm& a, const RectMm& b, double tolerance) {
            b.y0 <= a.y1 + tolerance;
 }
 
+// Bornes (repère écran, Y vers le bas) d'une forme vectorielle pas encore convertie en broderie :
+// `scene->objectBounds` ne couvre que les objets de broderie (il vient des brins cousus), donc le
+// cadre de sélection d'une forme toujours vectorielle doit se calculer depuis son tracé.
+std::optional<RectMm> vectorShapeSceneBounds(const document::VectorObject& shape) {
+    bool any = false;
+    RectMm box{};
+    const auto consider = [&](const geometry::Path& path) {
+        for (const auto& node : path.nodes) {
+            const double x = node.pos.x.value / 1000.0;
+            const double y = -(node.pos.y.value / 1000.0);
+            if (!any) {
+                box = {x, y, x, y};
+                any = true;
+            } else {
+                box.x0 = std::min(box.x0, x);
+                box.y0 = std::min(box.y0, y);
+                box.x1 = std::max(box.x1, x);
+                box.y1 = std::max(box.y1, y);
+            }
+        }
+    };
+    for (const auto& set : shape.paths) {
+        consider(set.outer);
+        for (const auto& hole : set.holes) {
+            consider(hole);
+        }
+    }
+    return any ? std::optional(box) : std::nullopt;
+}
+
 } // namespace
 
 EditController::EditController(StudioController& studio, QObject* parent)
@@ -135,16 +165,9 @@ bool EditController::selectIds(const std::vector<std::uint64_t>& ids, bool addit
 
 std::optional<RectMm> EditController::selectionBounds() const {
     const auto& scene = studio_.scene();
-    if (!scene) {
-        return std::nullopt;
-    }
+    const auto& project = studio_.session().project();
     std::optional<RectMm> box;
-    for (const auto& target : studio_.session().selection().targets()) {
-        const auto found = scene->objectBounds.find(target.id);
-        if (target.kind != TargetKind::EmbroideryObject || found == scene->objectBounds.end()) {
-            continue;
-        }
-        const auto& r = found->second;
+    const auto include = [&box](const RectMm& r) {
         if (!box) {
             box = r;
         } else {
@@ -152,6 +175,23 @@ std::optional<RectMm> EditController::selectionBounds() const {
             box->y0 = std::min(box->y0, r.y0);
             box->x1 = std::max(box->x1, r.x1);
             box->y1 = std::max(box->y1, r.y1);
+        }
+    };
+    for (const auto& target : studio_.session().selection().targets()) {
+        if (target.kind == TargetKind::EmbroideryObject && scene) {
+            if (const auto found = scene->objectBounds.find(target.id);
+                found != scene->objectBounds.end()) {
+                include(found->second);
+            }
+        } else if (target.kind == TargetKind::VectorObject) {
+            // Forme toujours vectorielle (pas encore convertie) : aucune brin cousu, donc aucune
+            // entrée dans `scene->objectBounds` ; le cadre vient de son tracé.
+            const auto* shape = project.findObject(ObjectId{target.id});
+            if (shape != nullptr && !project.shapeEditLocked(shape->id)) {
+                if (const auto shapeBox = vectorShapeSceneBounds(*shape)) {
+                    include(*shapeBox);
+                }
+            }
         }
     }
     return box;

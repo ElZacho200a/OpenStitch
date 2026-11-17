@@ -453,6 +453,36 @@ TEST_CASE("break_apart et remove_holes", "[project_ops][geometry]") {
     CHECK(env.run("remove_holes", json{{"object", plain.value}}).error.code == "E_REFUSED");
 }
 
+TEST_CASE("shape ops accept raw vector shapes", "[project_ops][geometry]") {
+    Env env;
+    // Deux formes vectorielles pas encore converties : on retire leur objet de broderie.
+    const ObjectId a = env.project.findEmbroidery(add_rect(env, 0, 0, 20, 20))->source_vector;
+    const ObjectId b = env.project.findEmbroidery(add_rect(env, 10, 0, 20, 20))->source_vector;
+    env.project.embroidery_objects.clear();
+    const std::string original = signature(env.project);
+
+    const auto u = env.run("merge", json{{"objects", json::array({a.value, b.value})}});
+    REQUIRE(u.ok);
+    CHECK(env.project.vector_objects.size() == 1);
+    CHECK(env.project.embroidery_objects.empty());
+    REQUIRE(env.stack.undo(env.project));
+    CHECK(signature(env.project) == original);
+
+    // Deux morceaux disjoints sur une forme brute : séparation sans objet de broderie.
+    env.project.findObject(a)->paths.push_back(
+        geometry::PathSet{geometry::rectangle_path(Vec2um{Micrometers{60000}, Micrometers{0}},
+                                                   Vec2um{Micrometers{70000}, Micrometers{10000}}),
+                          {}});
+    const auto ba = env.run("break_apart", json{{"object", a.value}});
+    REQUIRE(ba.ok);
+    CHECK(env.project.vector_objects.size() == 3);
+    CHECK(ba.result["vector_ids"].size() == 1);
+    CHECK(ba.result["id"] == ba.result["vector_ids"][0]);
+
+    CHECK(env.run("merge", json{{"objects", json::array({a.value, std::uint64_t{999999}})}})
+              .error.code == "E_UNKNOWN_OBJECT");
+}
+
 TEST_CASE("set_geometry remplace le contour et refuse les polygones invalides",
           "[project_ops][geometry]") {
     Env env;
