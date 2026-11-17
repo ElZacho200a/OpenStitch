@@ -129,8 +129,7 @@ TEST_CASE("splitting a region separates non-adjacent zones merged earlier, one u
             if (j == i) {
                 continue;
             }
-            if (std::find(neighbours.begin(), neighbours.end(), before[j].id) ==
-                neighbours.end()) {
+            if (std::find(neighbours.begin(), neighbours.end(), before[j].id) == neighbours.end()) {
                 a = before[i].id;
                 b = before[j].id;
                 break;
@@ -163,7 +162,7 @@ TEST_CASE("region corrections refuse nonsense with a clear message", "[desktop_v
     CHECK_FALSE(cleanSmallIslands(d.session, 0).ok);
     CHECK_FALSE(cleanSmallIslands(d.session, 1).ok); // aucune région n'a moins d'un pixel
     CHECK_FALSE(splitRegion(d.session, 999999).ok);
-    CHECK(d.session.undoNames().size() == depth);    // aucun refus ne laisse de trace
+    CHECK(d.session.undoNames().size() == depth); // aucun refus ne laisse de trace
 
     DocumentSession empty; // projet sans segmentation
     CHECK_FALSE(deleteRegion(empty, 1).ok);

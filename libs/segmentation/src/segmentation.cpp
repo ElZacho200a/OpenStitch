@@ -55,9 +55,8 @@ int label_region_components(const Segmentation& seg, RegionId id, cv::Mat& compo
     cv::Mat mask(seg.height, seg.width, CV_8U, cv::Scalar(0));
     for (int y = 0; y < seg.height; ++y) {
         auto* row = mask.ptr<std::uint8_t>(y);
-        const std::uint32_t* labelsRow = seg.labels.data() +
-                                         static_cast<std::size_t>(y) *
-                                             static_cast<std::size_t>(seg.width);
+        const std::uint32_t* labelsRow =
+            seg.labels.data() + static_cast<std::size_t>(y) * static_cast<std::size_t>(seg.width);
         for (int x = 0; x < seg.width; ++x) {
             row[x] = labelsRow[x] == label ? 255 : 0;
         }
@@ -604,9 +603,8 @@ Result<std::vector<RegionId>> split_region(Segmentation& seg, RegionId id) {
     }
     for (int y = 0; y < seg.height; ++y) {
         const int* row = components.ptr<int>(y);
-        std::uint32_t* labelsRow = seg.labels.data() +
-                                   static_cast<std::size_t>(y) *
-                                       static_cast<std::size_t>(seg.width);
+        std::uint32_t* labelsRow =
+            seg.labels.data() + static_cast<std::size_t>(y) * static_cast<std::size_t>(seg.width);
         for (int x = 0; x < seg.width; ++x) {
             const int comp = row[x];
             if (comp <= 0) {
