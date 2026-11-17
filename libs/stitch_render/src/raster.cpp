@@ -5,8 +5,9 @@
 #include <array>
 #include <cmath>
 #include <numbers>
-#include <thread>
 #include <utility>
+
+#include "openstitch/core/parallel.hpp"
 
 namespace openstitch::stitch_render {
 
@@ -603,32 +604,24 @@ RasterImage render_threads(const std::vector<ThreadSegment>& segments, const Ren
         }
     }
 
-    // Bandes de lignes indépendantes : chaque pixel est écrit par une seule
-    // bande, dans l'ordre des brins -> résultat identique quel que soit le
-    // nombre de fils d'exécution.
+    // Bandes de lignes fines et indépendantes, distribuées dynamiquement par `parallel_for` :
+    // chaque pixel est écrit par une seule bande, dans l'ordre des brins -> résultat identique
+    // quel que soit le nombre de fils d'exécution et le découpage. Des bandes fines équilibrent
+    // la charge (les brins se concentrent sur quelques lignes) ; OPENSTITCH_THREADS est respecté.
     const std::size_t pixels =
         static_cast<std::size_t>(view.width) * static_cast<std::size_t>(view.height);
-    unsigned workers = std::max(1U, std::min(8U, std::thread::hardware_concurrency()));
-    if (pixels < 200'000 || (prepared.size() < 64 && pixels < 2'000'000)) {
-        workers = 1;
-    }
-    workers = std::min(workers, static_cast<unsigned>(view.height));
-    if (workers <= 1) {
-        render_band(prepared, params, view, high, 0, view.height, image.rgba);
-        return image;
-    }
-    std::vector<std::thread> pool;
-    pool.reserve(workers);
+    const bool small = pixels < 200'000 || (prepared.size() < 64 && pixels < 2'000'000);
     const int rows = view.height;
-    for (unsigned w = 0; w < workers; ++w) {
-        const int row0 = static_cast<int>(static_cast<long long>(rows) * w / workers);
-        const int row1 = static_cast<int>(static_cast<long long>(rows) * (w + 1) / workers);
-        pool.emplace_back(
-            [&, row0, row1] { render_band(prepared, params, view, high, row0, row1, image.rgba); });
-    }
-    for (auto& t : pool) {
-        t.join();
-    }
+    const int band = small ? rows : std::clamp(rows / 64, 8, 64);
+    const std::size_t bands = static_cast<std::size_t>((rows + band - 1) / band);
+    parallel_for(
+        bands,
+        [&](std::size_t i) {
+            const int row0 = static_cast<int>(i) * band;
+            const int row1 = std::min(rows, row0 + band);
+            render_band(prepared, params, view, high, row0, row1, image.rgba);
+        },
+        2);
     return image;
 }
 

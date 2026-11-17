@@ -375,6 +375,12 @@ l'original) :
   carte des régions sur l'image, avec le nombre de régions et de couleurs et celles trop petites
   pour un remplissage. Rien n'est modifié tant que vous ne cliquez pas **Segmenter** ; fermer le
   dialogue abandonne l'aperçu. La case *Aperçu sur l'image* le masque ;
+- **Zones de fondu (expérimental)** — case du panneau de segmentation de Studio, pour les
+  peintures (ciels, eau, brume) : l'image est découpée à ses seuls bords nets au lieu d'être
+  réduite à N couleurs ; *Fils de la palette* (2 à 16, 12 par défaut). Après **Appliquer**,
+  **Mettre à jour les formes** coud chaque zone en fondu de 1 à 3 fils lus dans l'image. Selon
+  l'image, plus de coupes ou des couleurs moins fidèles qu'une segmentation classique : à
+  essayer, puis comparer (voir *Auto-numérisation*, « Zones de fondu ») ;
 - **Fusionner les couleurs…** — panneau des couleurs de la segmentation (voir la page
   *Segmentation*) : fusionne des teintes ou réduit la palette à N couleurs, avec aperçu ;
 - Segmenter avec l'IA… (régions proposées par un modèle ; grisée tant qu'aucune image n'est

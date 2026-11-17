@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "hidden_travel.hpp"
 
+#include "openstitch/core/parallel.hpp"
+
 #include <algorithm>
 #include <array>
 #include <climits>
@@ -18,14 +20,33 @@ using stitch::StitchPass;
 constexpr std::int64_t kMaxCells = 4'000'000;     // grille globale
 constexpr std::int64_t kMaxCropCells = 2'500'000; // fenêtre de recherche d'un écart
 
-double dist_point_segment(double px, double py, double ax, double ay, double bx, double by) {
-    const double dx = bx - ax;
-    const double dy = by - ay;
-    const double len2 = dx * dx + dy * dy;
-    double t = len2 > 0.0 ? ((px - ax) * dx + (py - ay) * dy) / len2 : 0.0;
-    t = std::clamp(t, 0.0, 1.0);
-    return std::hypot(px - (ax + t * dx), py - (ay + t * dy));
-}
+// Test « distance du point au segment <= r », décidé exactement comme
+// `std::hypot(px - (ax + t·dx), py - (ay + t·dy)) <= r` (même t, mêmes écarts), mais sans hypot
+// hors d'une zone ambiguë autour du seuil : le carré calculé s = ex² + ey² diffère du carré exact
+// de quelques ulp et hypot est juste à 1 ulp près, donc s <= r²·(1 - 1e-9) garantit le oui et
+// s >= r²·(1 + 1e-9) le non. Entre les deux, hypot tranche comme avant.
+struct SegmentProbe {
+    double ax, ay, dx, dy, len2, r, inside2, outside2;
+
+    SegmentProbe(double ax_, double ay_, double bx, double by, double r_)
+        : ax(ax_), ay(ay_), dx(bx - ax_), dy(by - ay_), len2(dx * dx + dy * dy), r(r_),
+          inside2(r_ * r_ * (1.0 - 1e-9)), outside2(r_ * r_ * (1.0 + 1e-9)) {}
+
+    [[nodiscard]] bool within(double px, double py) const {
+        double t = len2 > 0.0 ? ((px - ax) * dx + (py - ay) * dy) / len2 : 0.0;
+        t = std::clamp(t, 0.0, 1.0);
+        const double ex = px - (ax + t * dx);
+        const double ey = py - (ay + t * dy);
+        const double s = ex * ex + ey * ey;
+        if (s <= inside2) {
+            return true;
+        }
+        if (s >= outside2) {
+            return false;
+        }
+        return std::hypot(ex, ey) <= r;
+    }
+};
 
 Vec2um to_vec(double x, double y) {
     return Vec2um{Micrometers{static_cast<std::int32_t>(std::lround(x))},
@@ -87,13 +108,66 @@ void HiddenTravelPlanner::build() {
     grid_.h = static_cast<std::int32_t>(h);
     grid_.last.assign(static_cast<std::size_t>(w * h), -1);
 
-    for (std::size_t i = 1; i < cmds_.size(); ++i) {
-        stamp(i, false);
+    // R02 : chaque cellule garde l'indice du DERNIER point qui la couvre. Des bandes de rangées
+    // disjointes, chacune parcourant les points dans l'ordre croissant, donnent donc exactement la
+    // grille séquentielle, quel que soit le nombre de fils ; chaque bande n'écrit que ses rangées.
+    // Un seul fil : une seule bande (aucun surcoût par rapport à la boucle séquentielle).
+    const std::int32_t rows = grid_.h;
+    const std::size_t workers = parallel_workers();
+    const std::int32_t bands =
+        workers <= 1
+            ? 1
+            : std::clamp<std::int32_t>(
+                  std::min<std::int32_t>(rows / 16, static_cast<std::int32_t>(4 * workers)), 1, 64);
+    if (bands == 1) {
+        for (std::size_t i = 1; i < cmds_.size(); ++i) {
+            stamp(i, false);
+        }
+        usable_ = true;
+        return;
     }
+    // Rangées couvertes par chaque point, calculées une fois : une bande ne visite que les points
+    // qui la touchent (l'ordre croissant des indices est conservé).
+    struct Span {
+        std::uint32_t i;
+        std::int32_t y0;
+        std::int32_t y1;
+    };
+    std::vector<Span> spans;
+    spans.reserve(cmds_.size());
+    for (std::size_t i = 1; i < cmds_.size(); ++i) {
+        const auto& c = cmds_[i];
+        const auto& p = cmds_[i - 1];
+        if (c.type != CommandType::Stitch || c.pass != StitchPass::TopStitch ||
+            p.type != CommandType::Stitch) {
+            continue;
+        }
+        const double ay = p.pos.y.value;
+        const double by = c.pos.y.value;
+        // Mêmes bornes que `stamp` (formule recopiée) ; `stamp` les recalcule et les borne à la
+        // bande.
+        const auto row = [&](double v) {
+            return std::clamp(static_cast<std::int32_t>(std::floor((v - grid_.oy) / cell)), 0,
+                              grid_.h - 1);
+        };
+        spans.push_back({static_cast<std::uint32_t>(i), row(std::min(ay, by) - halfW),
+                         row(std::max(ay, by) + halfW)});
+    }
+    parallel_for(static_cast<std::size_t>(bands), [&](std::size_t band) {
+        const auto b = static_cast<std::int64_t>(band);
+        const auto lo = static_cast<std::int32_t>(rows * b / bands);
+        const auto hi = static_cast<std::int32_t>(rows * (b + 1) / bands) - 1;
+        for (const Span& span : spans) {
+            if (span.y1 >= lo && span.y0 <= hi) {
+                stamp(span.i, false, lo, hi);
+            }
+        }
+    });
     usable_ = true;
 }
 
-void HiddenTravelPlanner::stamp(std::size_t i, bool intoSame) {
+void HiddenTravelPlanner::stamp(std::size_t i, bool intoSame, std::int32_t rowLo,
+                                std::int32_t rowHi) {
     const auto& c = cmds_[i];
     const auto& p = cmds_[i - 1];
     if (c.type != CommandType::Stitch || c.pass != StitchPass::TopStitch ||
@@ -110,14 +184,56 @@ void HiddenTravelPlanner::stamp(std::size_t i, bool intoSame) {
         return static_cast<std::int32_t>(std::floor((v - o) / cell));
     };
     const std::int32_t x0 = std::clamp(idxOf(std::min(ax, bx) - halfW, grid_.ox), 0, grid_.w - 1);
-    const std::int32_t y0 = std::clamp(idxOf(std::min(ay, by) - halfW, grid_.oy), 0, grid_.h - 1);
+    const std::int32_t y0 =
+        std::max(rowLo, std::clamp(idxOf(std::min(ay, by) - halfW, grid_.oy), 0, grid_.h - 1));
     const std::int32_t x1 = std::clamp(idxOf(std::max(ax, bx) + halfW, grid_.ox), 0, grid_.w - 1);
-    const std::int32_t y1 = std::clamp(idxOf(std::max(ay, by) + halfW, grid_.oy), 0, grid_.h - 1);
+    const std::int32_t y1 =
+        std::min(rowHi, std::clamp(idxOf(std::max(ay, by) + halfW, grid_.oy), 0, grid_.h - 1));
+    if (y0 > y1) {
+        return;
+    }
+    // R02 (docs/performance/gpu-compute/) : la boîte englobante d'un point long et oblique compte
+    // des milliers de cellules pour une bande couverte de quelques-unes ; la construction de la
+    // grille dominait les finitions. Sur chaque rangée, seules les cellules dont le centre peut
+    // être à moins de halfW du segment sont testées : tout point à distance <= R du segment est à
+    // moins de R, en x, d'un point du segment situé dans la bande |y - cy| <= R. Avec R = halfW + 1
+    // µm (marge très supérieure aux arrondis, de l'ordre de 1e-9 µm), l'intervalle obtenu contient
+    // toutes les cellules que le test exact retient ; ce test reste celui d'origine, donc les
+    // cellules marquées sont exactement les mêmes.
+    const double reach = halfW + 1.0;
+    const double dxs = bx - ax;
+    const double dys = by - ay;
+    const SegmentProbe probe(ax, ay, bx, by, halfW);
     for (std::int32_t iy = y0; iy <= y1; ++iy) {
-        for (std::int32_t ix = x0; ix <= x1; ++ix) {
+        const double cy = grid_.oy + (iy + 0.5) * cell;
+        double tlo = 0.0;
+        double thi = 1.0;
+        if (dys != 0.0) {
+            const double ta = (cy - reach - ay) / dys;
+            const double tb = (cy + reach - ay) / dys;
+            tlo = std::max(0.0, std::min(ta, tb));
+            thi = std::min(1.0, std::max(ta, tb));
+            if (tlo > thi) {
+                continue; // le segment ne passe pas dans la bande de cette rangée
+            }
+        } else if (std::abs(cy - ay) > reach) {
+            continue;
+        }
+        const double xa = ax + tlo * dxs;
+        const double xb = ax + thi * dxs;
+        // Centre de cellule ox + (ix + 0,5) · cell dans [min - R ; max + R], élargi d'une cellule
+        // de chaque côté contre l'arrondi de la division.
+        const std::int32_t lo =
+            std::max(x0, static_cast<std::int32_t>(
+                             std::floor((std::min(xa, xb) - reach - grid_.ox) / cell - 0.5)) -
+                             1);
+        const std::int32_t hi =
+            std::min(x1, static_cast<std::int32_t>(
+                             std::ceil((std::max(xa, xb) + reach - grid_.ox) / cell - 0.5)) +
+                             1);
+        for (std::int32_t ix = lo; ix <= hi; ++ix) {
             const double cx = grid_.ox + (ix + 0.5) * cell;
-            const double cy = grid_.oy + (iy + 0.5) * cell;
-            if (dist_point_segment(cx, cy, ax, ay, bx, by) <= halfW) {
+            if (probe.within(cx, cy)) {
                 const std::size_t k = static_cast<std::size_t>(iy) * grid_.w + ix;
                 if (intoSame) {
                     same_[k] = 1;

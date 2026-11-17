@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdlib>
+#include <optional>
 
 #include "openstitch/stitch_generation/finish.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
@@ -730,4 +732,79 @@ TEST_CASE("sous-couches : recherche locale bornee pour sept passes et plus") {
     CHECK(top_layer(optimized.sequence) == top_layer(baseline.sequence));
     CHECK(underlay_points_sorted(optimized.sequence) == underlay_points_sorted(baseline.sequence));
     CHECK(finish_sequence_report(s, on).sequence.commands == optimized.sequence.commands);
+}
+
+namespace {
+
+// R02 : les ponts caches sont planifies en parallele. Force le nombre de fils le temps d'un bloc.
+struct ThreadCountOverride {
+    explicit ThreadCountOverride(const char* value) {
+#ifdef _WIN32
+        _putenv_s("OPENSTITCH_THREADS", value);
+#else
+        setenv("OPENSTITCH_THREADS", value, 1);
+#endif
+    }
+    ~ThreadCountOverride() {
+#ifdef _WIN32
+        _putenv_s("OPENSTITCH_THREADS", "");
+#else
+        unsetenv("OPENSTITCH_THREADS");
+#endif
+    }
+    ThreadCountOverride(const ThreadCountOverride&) = delete;
+    ThreadCountOverride& operator=(const ThreadCountOverride&) = delete;
+};
+
+// La scene `overlap_scene` (ligne A dont l'extremite est recouverte par le remplissage B)
+// repetee huit fois, decalee de 6 mm : des ecarts pontables, d'autres non recouverts.
+stitch::StitchSequence repeated_overlap_scene() {
+    stitch::StitchSequence s;
+    for (std::int32_t k = 0; k < 8; ++k) {
+        const std::int32_t dy = k * 6'000;
+        const ObjectId line = obj(static_cast<std::uint64_t>(2 * k + 1));
+        const ObjectId fill = obj(static_cast<std::uint64_t>(2 * k + 2));
+        if (k > 0) {
+            jump_to(s, pt(0, dy), line);
+        }
+        stitch_to(s, pt(0, dy), line);
+        stitch_to(s, pt(3000, dy), line);
+        jump_to(s, pt(10000, dy - 2000), fill);
+        fill_rows(s, 2000, 10000, dy - 2000, dy + 2000, 400, fill, true);
+    }
+    s.commands.push_back({pt(2000, 2000), CmdType::End, obj(0), Pass::TopStitch});
+    return s;
+}
+
+} // namespace
+
+TEST_CASE("hidden travel : meme resultat avec un seul fil et avec plusieurs") {
+    const auto scene = repeated_overlap_scene();
+    const auto project = project_with(true);
+    std::optional<FinishResult> single;
+    std::optional<FinishResult> many;
+    {
+        const ThreadCountOverride one("1");
+        single.emplace(finish_sequence_report(scene, project));
+    }
+    {
+        const ThreadCountOverride eight("8");
+        many.emplace(finish_sequence_report(scene, project));
+    }
+    REQUIRE(single.has_value());
+    REQUIRE(many.has_value());
+    const FinishResult& a = *single;
+    const FinishResult& b = *many;
+    CHECK(a.report.candidate_gaps > 4);
+    INFO("ponts " << a.report.bridges << " sauts caches " << a.report.hidden_jumps << " refus "
+                  << a.report.refused_no_cover << "/" << a.report.refused_no_path);
+    CHECK(a.report.trims_removed > 0);
+    CHECK(a.sequence.commands == b.sequence.commands);
+    CHECK(a.report.candidate_gaps == b.report.candidate_gaps);
+    CHECK(a.report.bridges == b.report.bridges);
+    CHECK(a.report.hidden_jumps == b.report.hidden_jumps);
+    CHECK(a.report.trims_removed == b.report.trims_removed);
+    CHECK(a.report.refused_no_cover == b.report.refused_no_cover);
+    CHECK(a.report.refused_no_path == b.report.refused_no_path);
+    CHECK(a.report.refused_too_long == b.report.refused_too_long);
 }
