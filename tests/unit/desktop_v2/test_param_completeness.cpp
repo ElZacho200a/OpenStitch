@@ -52,7 +52,7 @@ MemberCounts memberCounts() {
     OS_COUNT_MEMBERS(CrosshatchFillParams, a, b, c, d, e, f, g, h, i)
     OS_COUNT_MEMBERS(CrossStitchParams, a, b, c, d, e)
     OS_COUNT_MEMBERS(AppliqueParams, a, b, c, d, e, f, g, h)
-    OS_COUNT_MEMBERS(MulticolorGradientParams, a, b, c, d, e, f, g, h, i)
+    OS_COUNT_MEMBERS(MulticolorGradientParams, a, b, c, d, e, f, g, h, i, j)
     return {{{"running", 5},
              {"tatami", 19},
              {"directional", 23},
@@ -67,7 +67,7 @@ MemberCounts memberCounts() {
              {"crosshatch", 9},
              {"cross_stitch", 5},
              {"applique", 8},
-             {"multicolor_gradient", 9}}};
+             {"multicolor_gradient", 10}}};
 }
 
 // Membres de structure SANS champ dans le registre de `set_params` (donc sans réglage) : chacun a
@@ -80,8 +80,10 @@ const std::map<std::string, std::set<std::string>>& unregisteredMembers() {
         // Palette, transition et direction des points (angle facultatif) du fondu multicolore :
         // édition par la commande dédiée
         // (`make_create/edit_multicolor_gradient_command`), pas par un champ numérique simple
-        // (comme `rail_a`/`rail_b` pour le satin).
-        {"multicolor_gradient", {"palette", "transition", "stitch_angle"}},
+        // (comme `rail_a`/`rail_b` pour le satin). `image_weights` : grille de parts calculée
+        // depuis l'image (opération `image_blend`, panneau « Fondu depuis l'image »), jamais
+        // saisie.
+        {"multicolor_gradient", {"palette", "transition", "stitch_angle", "image_weights"}},
     };
     return k;
 }
