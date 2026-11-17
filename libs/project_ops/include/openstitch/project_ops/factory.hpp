@@ -196,6 +196,17 @@ digitize_objects(const DigitizeSource& source, IdGenerator<ObjectId>& ids,
                  const DigitizeSettings& settings, bool skip_largest_region,
                  const StatusLog& log = {}, autodigitize::LineLayerMasks* debug_masks = nullptr);
 
+// Mode blend (expérimental) : à appeler après `digitize_objects` (mode « blend ») sur une
+// segmentation de `segmentation::segment_blend_zones`, quand `project` ne contient que les objets
+// issus de l'image active. Palette globale de mélange (`settings.blend_threads`) sur `working`,
+// puis chaque tatami (une zone) reçoit 1 à `blend_max_per_zone` fils : un seul -> aplat recoloré,
+// sinon fondu à parts lues dans l'image (`make_image_blend_command`, sans historique). Ordre de
+// couture : fil par fil sur toutes les zones. Partagé par la CLI et Studio.
+[[nodiscard]] Result<void> apply_blend_zones(document::Project& project,
+                                             const image::Image& working,
+                                             const DigitizeSettings& settings,
+                                             DigitizeReport& report, const StatusLog& log = {});
+
 // Charge l'image, la place dans `project` (original, résolution), segmente et numérise :
 // `project` reçoit image, segmentation, objets vectoriels et de broderie dans l'ordre de
 // couture. `project` doit être vide d'objets (sinon E_REFUSED). Les objets sont ajoutés

@@ -406,6 +406,15 @@ Result<DigitizedObjects> digitize_objects(const DigitizeSource& source, IdGenera
                                           const DigitizeSettings& s, bool skipLargest,
                                           const StatusLog& log,
                                           autodigitize::LineLayerMasks* debugMasks) {
+    if (s.mode == "blend") {
+        // Zones de fondu : chaîne des formes en bloc uni (chaque zone déborde sous ses voisines,
+        // pas de tissu entre deux zones) ; `apply_blend_zones` change ensuite les tatami en
+        // fondus.
+        DigitizeSettings shapes = s;
+        shapes.mode = "shapes";
+        shapes.solid_block = true;
+        return digitize_objects(source, ids, shapes, skipLargest, log, debugMasks);
+    }
     const bool stippling = s.mode == "stipple";
     const bool contours = s.mode == "contours";
     if (!stippling && !contours && s.mode != "shapes") {
@@ -505,11 +514,6 @@ Result<DigitizedObjects> digitize_objects(const DigitizeSource& source, IdGenera
     return out;
 }
 
-namespace {
-
-// Mode blend : palette globale de mélange sur toute l'image, puis chaque tatami (une zone)
-// reçoit ses fils (`choose_zone_threads`) : un seul -> aplat recoloré, sinon fondu à parts lues
-// dans l'image (`make_image_blend_command`, appliquée sans historique : création de projet).
 Result<void> apply_blend_zones(document::Project& project, const image::Image& working,
                                const DigitizeSettings& s, DigitizeReport& report,
                                const StatusLog& log) {
@@ -641,8 +645,6 @@ Result<void> apply_blend_zones(document::Project& project, const image::Image& w
                  std::to_string(report.blend_flats) + " aplat(s)");
     return {};
 }
-
-} // namespace
 
 Result<DigitizeReport> digitize_image_into(document::Project& project,
                                            const std::filesystem::path& imagePath,
@@ -793,17 +795,11 @@ Result<DigitizeReport> digitize_image_into(document::Project& project,
     const DigitizeSource src{
         project.imageSource().segmentation ? &*project.imageSource().segmentation : nullptr,
         &working, project.imageSource().mm_per_px};
-    // Mode blend : les zones passent d'abord par la chaîne des formes (vectorisation, tatami),
-    // puis chaque tatami devient un fondu (`apply_blend_zones`).
-    DigitizeSettings shapeSettings = s;
-    if (blending) {
-        shapeSettings.mode = "shapes";
-        // Bloc uni : chaque zone déborde sous ses voisines (pas de tissu entre deux zones).
-        shapeSettings.solid_block = true;
-    }
+    // Mode blend : les zones passent d'abord par la chaîne des formes (`digitize_objects`), puis
+    // chaque tatami devient un fondu (`apply_blend_zones`).
     auto outcome = [&] {
         const pipeline_profile::Scope profile(pipeline_profile::Stage::Digitize);
-        return digitize_objects(src, project.object_ids, shapeSettings, skipLargest, log,
+        return digitize_objects(src, project.object_ids, s, skipLargest, log,
                                 s.debug_dir.empty() ? nullptr : &debugMasks);
     }();
     if (!outcome) {
