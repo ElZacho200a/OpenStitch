@@ -35,6 +35,7 @@ add_library(openstitch_project_ops
     src/debug_dump.cpp
     src/gradient_fill.cpp
     src/boundary_blend.cpp
+    src/boundary_blend_proposals.cpp
     src/live_bridge.cpp
     src/settings_profile.cpp
     src/applique_cut.cpp

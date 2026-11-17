@@ -33,6 +33,7 @@
 #include "openstitch/geometry/polyline.hpp"
 #include "openstitch/optimization/order.hpp"
 #include "openstitch/project_ops/boundary_blend.hpp"
+#include "openstitch/project_ops/boundary_blend_proposals.hpp"
 #include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_generation/directional_fill.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
@@ -1402,6 +1403,55 @@ OpSpec op_blend_boundary() {
     return s;
 }
 
+OpSpec op_propose_boundary_blends() {
+    OpSpec s;
+    s.name = "propose_boundary_blends";
+    s.summary = "Cherche dans l'image source les limites douces entre zones voisines et propose "
+                "un fondu à la frontière pour chacune (apply : les pose toutes en une étape).";
+    s.args = {arg("apply", "boolean", "poser les fondus proposés (faux : simple liste)"),
+              arg("min_transition", "number",
+                  "transition minimale dans l'image pour proposer un fondu", false, "mm",
+                  "[0.3 ; 15]")};
+    s.example = R"({"op":"propose_boundary_blends","apply":false})";
+    s.apply = guarded([](OpContext& ctx) {
+        project_ops::BoundaryBlendProposalOptions options;
+        if (ctx.args.contains("min_transition")) {
+            const double d =
+                number_in_range("min_transition", ctx.args.at("min_transition"), 0.3, 15.0, "mm");
+            options.min_transition = Micrometers{static_cast<std::int32_t>(std::lround(d * 1000))};
+        }
+        const bool apply = ctx.args.contains("apply") && need_bool(ctx.args, "apply");
+        auto proposals = project_ops::propose_boundary_blends(ctx.project, options);
+        if (!proposals) {
+            return OpStatus::failure(proposals.error().code.empty() ? code::kRefused
+                                                                    : proposals.error().code,
+                                     proposals.error().message, proposals.error().hint);
+        }
+        json list = json::array();
+        for (const auto& p : *proposals) {
+            list.push_back({{"a", p.a.value},
+                            {"b", p.b.value},
+                            {"width_a", p.options.width_a.value / 1000.0},
+                            {"width_b", p.options.width_b.value / 1000.0},
+                            {"transition_mm", round6(p.transition_mm)},
+                            {"profiles", p.profiles},
+                            {"profiles_total", p.profiles_total}});
+        }
+        if (apply) {
+            auto cmd =
+                project_ops::make_apply_boundary_blend_proposals_command(ctx.project, *proposals);
+            if (!cmd) {
+                return OpStatus::failure(cmd.error().code.empty() ? code::kRefused
+                                                                  : cmd.error().code,
+                                         cmd.error().message, cmd.error().hint);
+            }
+            ctx.stack.execute(std::move(*cmd), ctx.project);
+        }
+        return OpStatus::success({{"proposals", std::move(list)}, {"applied", apply}});
+    });
+    return s;
+}
+
 OpSpec op_unblend_boundary() {
     OpSpec s;
     s.name = "unblend_boundary";
@@ -2379,6 +2429,7 @@ void register_param_ops(std::vector<OpSpec>& out) {
     out.push_back(op_set_color());
     out.push_back(op_blend_boundary());
     out.push_back(op_unblend_boundary());
+    out.push_back(op_propose_boundary_blends());
     out.push_back(op_rename());
     out.push_back(op_set_semantic());
     out.push_back(op_set_visible());

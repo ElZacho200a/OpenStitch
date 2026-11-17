@@ -611,6 +611,19 @@ std::vector<ActionDef> makeCatalog() {
     }
     {
         ActionDef a;
+        a.id = "fade.boundary_auto";
+        a.label = "Proposer les fondus à la frontière depuis l'image";
+        a.group = "Fondu";
+        a.fields = {numberField("min_transition", "Transition minimale dans l'image", 0.3, 15,
+                                "1.5", "mm")};
+        a.build = [](const Values& v, const ActionContext&, std::string&) {
+            return wrap(R"({"op":"propose_boundary_blends","apply":true,"min_transition":)" +
+                        num(number(v, "min_transition")) + "}");
+        };
+        out.push_back(std::move(a));
+    }
+    {
+        ActionDef a;
         a.id = "fade.boundary_remove";
         a.label = "Retirer le fondu à la frontière";
         a.group = "Fondu";

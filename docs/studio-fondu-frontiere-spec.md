@@ -1,6 +1,6 @@
 # Fondu à la frontière entre deux zones — spécification
 
-Statut : **en cours**. Rattachement roadmap : HP-STI-011 (mélange de couleurs), dépend de
+Statut : **lots L1a à L5 livrés** (2026-11-17), recette Studio réelle et essai sur tissu à faire. Rattachement roadmap : HP-STI-011 (mélange de couleurs), dépend de
 HP-STI-010 (dégradé de densité).
 
 - 2026-11-16, **L1a livré** (branche `feat/fondu-frontiere-l1a`) : `RowMask`,
@@ -73,6 +73,28 @@ HP-STI-010 (dégradé de densité).
   - **Évidement (knockout)** et cache de séquence ignorés pour les zones liées (v1).
   - Le SVG doré reste à faire ; il demande une forme d'essai réaliste, prévue avec la recette
     Studio (L3).
+- 2026-11-17, **L3 livré** (Studio) : `BoundaryBlendController` (propriétés `canCreate`,
+  `refusal`, `hasBlend`, `active`, largeurs, transition, frontière ; `create`, `edit`, `remove`),
+  panneau `BoundaryBlendPanel.qml` dans l'inspecteur (deux zones sélectionnées : réglages et
+  « Créer le fondu » ; zone liée : résumé, réglages immédiats, « Retirer le fondu »), actions du
+  catalogue `fade.boundary` et `fade.boundary_remove` (palette Ctrl+K, menus). Chaque action est
+  un pas d'annulation. Tests : `test_desktop_v2_studio_boundary_blend` (QTest headless) et
+  `boundary blend actions…` dans `test_desktop_v2_core`. **Pas encore** de tracé de la
+  frontière ni de poignées de largeur sur le canevas : la frontière se lit dans le panneau.
+- 2026-11-17, **L4 livré** (frontière tracée) : `BoundaryBlendLink::manual_frontier` (identique
+  sur les deux liens, vide = calculée), `BoundaryBlendSpec::manual_frontier`, refus
+  `E_BLEND_FRONTIER_SHORT` et `E_BLEND_FRONTIER_FAR`, clé `.osp` `boundaryBlend.frontier`
+  (µm), argument `frontier` de `blend_boundary` (mm, `[]` = calculée), `manual_frontier` dans
+  `inspect`, `setFrontier` / `clearFrontier` / `manualFrontier` dans le contrôleur Studio. Les
+  zones peuvent ne pas se toucher. Reste : le geste de tracé sur le canevas.
+- 2026-11-17, **L5 livré** (proposition depuis l'image) : `project_ops::propose_boundary_blends`
+  lit l'image source en travers de chaque frontière commune (un profil par mm, ±6 mm) ; une
+  transition de couleur d'au moins 1,5 mm (10 %-90 %) donne une proposition, demi-bandes
+  reprises de la mesure de chaque côté ; un bord net ne donne rien. Opération
+  `propose_boundary_blends` (`apply`, `min_transition`) et action Studio `fade.boundary_auto`
+  (pose tout en un pas d'annulation). Refus `E_BLEND_NO_IMAGE`, `E_BLEND_NO_PROPOSAL`. Tests sur
+  image synthétique : transition de 6 mm proposée avec ≈ 2,4 mm de chaque côté, bord net
+  ignoré. Pas encore d'appel depuis la numérisation automatique elle-même.
 - Écart au découpage initial : le **branchement du masque dans le directionnel** passe en
   L1b. La grille partagée actuelle classe ses rangées par rang dans la région ; l'ancrer
   changerait la sortie des fondus directionnels existants, ce qui doit se faire avec la
@@ -326,9 +348,9 @@ tissu dans la bande. Statut « Validé » seulement après cette recette.
 | L1b ☑ | `shared_frontier`, `polyline_band`, champ de densité, régions prolongées, paire tatami–tatami dans les deux régimes, tests cœur | `geometry`, `stitch_generation` |
 | L1c ☑ | Masque dans le directionnel (superposition), `fill_boundary_blend` pour les trois combinaisons | `stitch_generation` |
 | L2 ☑ | Lien, commandes, `.osp`, opérations CLI / MCP, génération, `inspect`, codes d'erreur | `document`, `commands`, `project_ops`, `project_io`, `stitch_generation` |
-| L3 | Studio : action, poignées de bande, panneau, QTest | `apps/desktop_v2` |
-| L4 | Frontière dessinée à la main | `geometry`, Studio |
-| L5 | Proposition automatique depuis l'image : transition douce à travers une frontière de segmentation | `autodigitize` |
+| L3 ☑ | Studio : contrôleur, panneau d'inspecteur, actions du catalogue, QTest (poignées de canevas : reste) | `apps/desktop_v2` |
+| L4 ☑ | Frontière tracée : lien, moteur, `.osp`, opération, contrôleur (geste de tracé sur le canevas : reste) | `document`, `stitch_generation`, `project_ops`, Studio |
+| L5 ☑ | Proposition depuis l'image : transition douce en travers des frontières, opération et action Studio | `project_ops`, Studio |
 
 L1a passe en premier : il touche le cœur du tatami et doit prouver seul qu'il ne change rien
 sans lien. L1c et L2 peuvent ensuite avancer en parallèle si le struct du §4.1 est figé
