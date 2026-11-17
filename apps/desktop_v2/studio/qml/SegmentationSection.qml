@@ -45,24 +45,10 @@ ColumnLayout {
     onMinRegionPxChanged: invalidatePreview()
     onSmoothingChanged: invalidatePreview()
 
-    SectionLabel { text: qsTr("APERÇU DE LA SEGMENTATION") }
-    Rectangle {
-        Layout.fillWidth: true
-        Layout.preferredHeight: 150
-        color: Theme.surface
-        border.color: Theme.border
-        Image {
-            objectName: "segmentationImage"
-            anchors.fill: parent
-            anchors.margins: 2
-            fillMode: Image.PreserveAspectFit
-            cache: false
-            source: imageTools.hasImage
-                    ? "image://prepare/" + (imageTools.segPreviewActive ? "segmentation" : "after")
-                      + "?rev=" + imageTools.imageRevision
-                    : ""
-        }
-    }
+    // Pas de vignette d'aperçu ici : le canevas principal (plein format) montre déjà l'image
+    // segmentée ou l'aperçu en direct, avec le badge « Aperçu de segmentation — document
+    // inchangé » (SegmentationSpace.qml) quand c'est un aperçu. Une seconde miniature ici n'aurait
+    // fait que dupliquer la même information en plus petit (audit UX panneaux Segmentation).
     Text {
         objectName: "segmentationInfo"
         Layout.fillWidth: true
