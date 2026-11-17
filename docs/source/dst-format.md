@@ -93,7 +93,7 @@ point) devant la séquence effective, dans `export_machine_file`, après le calc
 blocs. Les codecs ne changent pas, et les commandes d'origine ne sont ni réordonnées ni
 modifiées : seul le déplacement d'approche initial diffère. Valable pour tous les formats machine
 du registre. Désactivé (`FirstPoint`), la sortie est octet-identique à l'ancienne. CLI :
-`osp2dst --start first|center|X,Y`. Un point éloigné de plus de 12,1 mm est découpé en sauts
+`osp2dst --start first|center|X,Y` ; sans `--start`, le point zéro de l'aiguille du projet (`finishing.needleOrigin`, opération `set_needle_origin`) s'il existe, sinon `first`. Un point éloigné de plus de 12,1 mm est découpé en sauts
 comme tout autre déplacement.
 
 ## Décodage (tolérant)

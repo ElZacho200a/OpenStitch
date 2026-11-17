@@ -53,6 +53,11 @@ export_sequence(const document::Project& project, const ExportOptimizations& opt
 [[nodiscard]] stitch::StitchSequence with_start_point(stitch::StitchSequence sequence,
                                                       const formats::ExportStart& start);
 
+// Point de départ machine par défaut d'un projet (CLI, MCP) quand l'appelant n'en choisit pas :
+// le point zéro de l'aiguille du projet (`finishing.needle_origin`, mode `Custom`), sinon le
+// comportement historique (`FirstPoint`). Un `--start` explicite l'emporte toujours.
+[[nodiscard]] formats::ExportStart project_start(const document::Project& project);
+
 // HP-FMT-009 / HP-FMT-005 : fichier compagnon de couleurs écrit à côté d'un DST ou d'un EXP
 // (formats sans couleurs de fil réelles). `write` est l'entrée ; `written` et `error` sont les
 // sorties. Le compagnon est écrit APRÈS le fichier machine : un échec ici (`error` non vide)

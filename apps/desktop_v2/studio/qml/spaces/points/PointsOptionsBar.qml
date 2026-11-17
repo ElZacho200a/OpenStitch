@@ -13,6 +13,7 @@ Rectangle {
     readonly property var digitizeCtl: typeof digitizer !== "undefined" ? digitizer : null
     readonly property var spaceCtl: typeof pointsSpace !== "undefined" ? pointsSpace : null
     readonly property bool compact: width < 900
+    readonly property bool needleToolActive: toolCtl !== null && toolCtl.activeTool === "needle.origin"
     readonly property string stateName: spaceCtl ? spaceCtl.state : "empty"
     readonly property string hintText: {
         if (digitizeCtl && digitizeCtl.mode !== "")
@@ -52,10 +53,60 @@ Rectangle {
             elide: Text.ElideRight
         }
 
+        // Saisie numérique du point zéro (mm, repère document) : le contrôleur valide, arrondit et
+        // pousse UNE commande annulable ; les champs suivent annuler / rétablir (liaisons).
+        Repeater {
+            model: [
+                { name: "needleXField", axis: "X", tip: qsTr("Point zéro, abscisse en mm") },
+                { name: "needleYField", axis: "Y", tip: qsTr("Point zéro, ordonnée en mm (vers le haut)") }
+            ]
+            delegate: RowLayout {
+                id: axisRow
+                required property var modelData
+                visible: bar.needleToolActive
+                spacing: 4
+                Text {
+                    text: axisRow.modelData.axis
+                    color: Theme.muted
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.smallSize
+                }
+                StudioTextField {
+                    id: field
+                    objectName: axisRow.modelData.name
+                    implicitWidth: 72
+                    placeholderText: axisRow.modelData.tip
+                    Accessible.name: axisRow.modelData.tip
+                    wheelStep: 0.1
+                    wheelMin: -1000
+                    wheelMax: 1000
+                    validator: DoubleValidator { bottom: -1000; top: 1000; decimals: 1; notation: DoubleValidator.StandardNotation; locale: "C" }
+                    readonly property real current: bar.toolCtl
+                        ? (axisRow.modelData.axis === "X" ? bar.toolCtl.needleOriginXMm : bar.toolCtl.needleOriginYMm) : 0
+                    text: current.toFixed(1)
+                    onCurrentChanged: if (!activeFocus) text = current.toFixed(1)
+                    onEditingFinished: {
+                        if (!bar.toolCtl) return
+                        const typed = parseFloat(text.replace(",", "."))
+                        const x = axisRow.modelData.axis === "X" ? typed : bar.toolCtl.needleOriginXMm
+                        const y = axisRow.modelData.axis === "Y" ? typed : bar.toolCtl.needleOriginYMm
+                        if (isNaN(typed) || !bar.toolCtl.setNeedleOriginMm(x, y))
+                            text = current.toFixed(1)
+                    }
+                }
+                Text {
+                    text: qsTr("mm")
+                    color: Theme.muted
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.smallSize
+                }
+            }
+        }
+
         StudioButton {
             objectName: "needleResetButton"
-            visible: bar.toolCtl !== null && bar.toolCtl.activeTool === "needle.origin"
-            text: qsTr("Revenir au centre")
+            visible: bar.needleToolActive
+            text: qsTr("Centre")
             quiet: true
             enabled: bar.toolCtl !== null && bar.toolCtl.needleOriginCustom
             tooltip: qsTr("Remet le point zéro au centre de la broderie")
