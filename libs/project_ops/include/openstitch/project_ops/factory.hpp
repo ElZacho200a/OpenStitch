@@ -65,7 +65,16 @@ struct DigitizeSettings {
     bool hidden_same_color{false};
     std::string hidden_levels{"all"};
     double hidden_max_mm{15.0};
-    std::string mode{"shapes"};     // shapes | contours | stipple
+    std::string mode{"shapes"}; // shapes | contours | stipple | blend
+    // Mode « blend » (zones de fondu, 2026-11-17, docs/source/directional-fill.md) : l'image est
+    // découpée en zones à bord net (`segmentation::segment_blend_zones`) et chaque zone devient
+    // un fondu à parts lues dans l'image, ses fils pris dans une palette globale de mélange.
+    int blend_threads{12};     // fils de la palette globale (2 à 16)
+    int blend_max_per_zone{3}; // fils mélangés au plus par zone (1 à 4)
+    double blend_edge{2.5};    // force de bord qui sépare deux zones (ΔE par 0,5 mm)
+    double blend_cell_mm{3.0}; // pas de la grille de parts de chaque zone
+    double blend_min_zone_mm2{25.0};
+    bool blend_continuous{true};    // rangées continues par fil (faux : grille partagée)
     double detail{0.5};             // contours
     std::string technique{"auto"};  // contours : auto | running | legacy-satin
     double curve_tolerance_mm{0.0}; // shapes
@@ -144,6 +153,9 @@ struct DigitizeReport {
     std::size_t rings_satin{0}; // anneaux cousus en satin (--rings-satin)
     std::size_t flow_fill{0};   // tatami passés en directionnel (--flow-fill)
     std::size_t running{0};
+    std::size_t blend_fondus{0}; // mode blend : zones cousues en fondu
+    std::size_t blend_flats{0};  // mode blend : zones d'un seul fil (aplat)
+    std::vector<std::array<std::uint8_t, 3>> blend_palette;   // mode blend : palette globale
     std::optional<autodigitize::ContourMetrics> contour;      // mode contours
     std::optional<autodigitize::StippleMetrics> stipple;      // mode stipple
     std::optional<autodigitize::LineLayerMetrics> dark_lines; // couche de traits sombres
