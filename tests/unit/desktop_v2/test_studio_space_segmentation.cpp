@@ -282,117 +282,6 @@ private slots:
         QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
     }
 
-    // The region thumbnail is letterboxed inside its panel. A click on the empty margin must
-    // never turn into an out-of-bounds brush stroke, while a click on the painted image must
-    // still select the corresponding full-resolution region.
-    void regionMapRejectsLetterboxBrushClicks() {
-        Rig rig;
-        open(rig);
-        QVERIFY(rig.press("segmentationTab_1"));
-        auto* map = rig.named("regionMapArea");
-        auto* image = rig.named("regionMapImage");
-        QVERIFY(map);
-        QVERIFY(image);
-        QTRY_VERIFY_WITH_TIMEOUT(image->property("paintedWidth").toDouble() > 0.0, 5'000);
-        const double paintedW = image->property("paintedWidth").toDouble();
-        const double paintedH = image->property("paintedHeight").toDouble();
-        const double left = (image->width() - paintedW) / 2.0;
-        const double top = (image->height() - paintedH) / 2.0;
-        QVERIFY2(left > 8.0, "Expected horizontal letterboxing in the region thumbnail");
-
-        const auto onMap = [&](double imageX, double imageY) {
-            return image->mapToItem(map, QPointF(imageX, imageY));
-        };
-        const auto click = [&](const QPointF& local) {
-            QTest::mouseClick(rig.window, Qt::LeftButton, Qt::NoModifier,
-                              map->mapToScene(local).toPoint());
-        };
-
-        // The image-to-map coordinate transform must include the image's 2 px margins.
-        rig.regions.clearSelection();
-        click(onMap(left + paintedW * 0.25, top + paintedH * 0.25));
-        QTRY_COMPARE(rig.regions.selectedCount(), 1);
-        QCOMPARE(static_cast<std::uint64_t>(rig.regions.selected().at(0).toDouble()),
-                 regionAtPixel(rig.session.project(), 40, 30).value());
-
-        // Even with a large brush, clicking the empty letterbox must not mutate the document.
-        rig.regions.setTool(QStringLiteral("brush"));
-        rig.regions.setBrushRadius(200.0);
-        const auto revision = rig.session.revision();
-        const auto undoDepth = rig.session.undoNames().size();
-        click(onMap(1.0, top + paintedH * 0.5));
-        QTest::qWait(100);
-        QCOMPARE(rig.session.revision(), revision);
-        QCOMPARE(rig.session.undoNames().size(), undoDepth);
-
-        // Starting in the empty margin and dragging into the painted image must not
-        // initiate a stroke. Likewise, leaving the painted image cancels a stroke
-        // instead of connecting points across the letterbox on re-entry.
-        const QPoint blank = map->mapToScene(onMap(1.0, top + paintedH * 0.5)).toPoint();
-        const QPoint inside =
-            map->mapToScene(onMap(left + paintedW * 0.25, top + paintedH * 0.5)).toPoint();
-        QTest::mousePress(rig.window, Qt::LeftButton, Qt::NoModifier, blank);
-        QTest::mouseMove(rig.window, inside);
-        QTest::mouseRelease(rig.window, Qt::LeftButton, Qt::NoModifier, inside);
-        QCOMPARE(rig.session.revision(), revision);
-        QCOMPARE(rig.session.undoNames().size(), undoDepth);
-
-        QTest::mousePress(rig.window, Qt::LeftButton, Qt::NoModifier, inside);
-        QTest::mouseMove(rig.window, blank);
-        QTest::mouseMove(rig.window, inside);
-        QTest::mouseRelease(rig.window, Qt::LeftButton, Qt::NoModifier, inside);
-        QCOMPARE(rig.session.revision(), revision);
-        QCOMPARE(rig.session.undoNames().size(), undoDepth);
-
-        // Qt may deliver a release in the letterbox without a final move event.
-        // This must cancel rather than commit the in-bounds portion of the stroke.
-        QTest::mousePress(rig.window, Qt::LeftButton, Qt::NoModifier, inside);
-        QTest::mouseRelease(rig.window, Qt::LeftButton, Qt::NoModifier, blank);
-        QCOMPARE(rig.session.revision(), revision);
-        QCOMPARE(rig.session.undoNames().size(), undoDepth);
-        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
-    }
-
-    // A fast drag may report only press and release. The last in-image brush dab must
-    // still be applied, with exactly one undo step (and no downstream regeneration).
-    void regionMapBrushIncludesReleasePixelWithoutMove() {
-        Rig rig;
-        open(rig);
-        QVERIFY(rig.press("segmentationTab_1"));
-        auto* map = rig.named("regionMapArea");
-        auto* image = rig.named("regionMapImage");
-        QVERIFY(map && image);
-        QTRY_VERIFY_WITH_TIMEOUT(image->property("paintedWidth").toDouble() > 0.0, 5'000);
-        const auto& seg = *rig.session.project().segmentation;
-        // The layout can still shift after the tool changes (the brush radius box appears), so the
-        // painted rectangle is read again for every point instead of once up front.
-        const auto scenePixel = [&](int x, int y) {
-            const double w = image->property("paintedWidth").toDouble();
-            const double h = image->property("paintedHeight").toDouble();
-            const double left = (image->width() - w) / 2.0;
-            const double top = (image->height() - h) / 2.0;
-            const QPointF local(left + w * (x + 0.5) / seg.width, top + h * (y + 0.5) / seg.height);
-            return map->mapToScene(image->mapToItem(map, local)).toPoint();
-        };
-
-        const auto chosen = regionAtPixel(rig.session.project(), 20, 20).value();
-        const auto other = regionAtPixel(rig.session.project(), 130, 30).value();
-        QVERIFY(chosen != other);
-        rig.regions.selectAtPixel(20, 20);
-        rig.regions.setTool(QStringLiteral("brush"));
-        rig.regions.setBrushRadius(3.0);
-        const auto depth = rig.session.undoNames().size();
-        const auto scene = rig.studio.scene();
-        QTest::mousePress(rig.window, Qt::LeftButton, Qt::NoModifier, scenePixel(100, 30));
-        QTest::mouseRelease(rig.window, Qt::LeftButton, Qt::NoModifier, scenePixel(130, 30));
-        QCOMPARE(regionAtPixel(rig.session.project(), 130, 30).value(), chosen);
-        QCOMPARE(rig.session.undoNames().size(), depth + 1);
-        QVERIFY(rig.studio.scene() == scene); // Segmentation edits do not regenerate stitches.
-        QVERIFY(rig.session.undo());
-        QCOMPARE(regionAtPixel(rig.session.project(), 130, 30).value(), other);
-        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
-    }
-
     // --- sélection au clic ----------------------------------------------------------------
     void clickSelectsRegionsAndSyncsTheList() {
         Rig rig;
@@ -471,29 +360,37 @@ private slots:
         Rig rig;
         open(rig);
         QCOMPARE(rig.stage().value("state").toString(), QStringLiteral("upToDate"));
-        QCOMPARE(rig.stage().value("actionLabel").toString(), QStringLiteral("Segmenter l'image"));
+        // Le bandeau est un statut, jamais un déclencheur : aucune étiquette d'action (audit UX
+        // panneaux Segmentation — « Segmenter l'image »/« Régénérer les objets » vivent
+        // uniquement dans le panneau de droite).
+        QVERIFY(rig.stage().value("actionLabel").toString().isEmpty());
         // Une correction de région : étape obsolète (formes non à jour).
         rig.regions.selectAtPixel(20, 20);
         QCOMPARE(rig.regions.deleteSelected(), QString());
         QTRY_COMPARE(rig.stage().value("state").toString(), QStringLiteral("stale"));
         QVERIFY(rig.space.canUpdateShapes());
-        // « Mettre à jour les formes » : une seule étape d'annulation, étape de nouveau à jour.
+        // « Régénérer les objets » (onglet Régions) : une seule étape d'annulation, étape de
+        // nouveau à jour.
         const auto objects = rig.session.project().embroidery_objects.size();
         const auto depth = rig.session.undoNames().size();
         QSignalSpy done(&rig.regions, &RegionController::regenerated);
-        QVERIFY(rig.press("updateShapesButton"));
+        QVERIFY(rig.press("regionRegenerate"));
         QTRY_COMPARE_WITH_TIMEOUT(done.count(), 1, 60'000);
         QCOMPARE(rig.session.undoNames().size(), depth + 1);
         QVERIFY(rig.session.project().embroidery_objects.size() < objects);
         QTRY_COMPARE(rig.stage().value("state").toString(), QStringLiteral("upToDate"));
         rig.session.undo();
         QCOMPARE(rig.session.project().embroidery_objects.size(), objects);
-        // Une opération d'image invalide la segmentation : l'étape devient obsolète et l'action du
-        // bandeau (workspace.updateRequested) resegmente en une seule étape d'annulation.
+        // Une opération d'image invalide la segmentation : l'étape devient obsolète et une
+        // demande de mise à jour (workspace.updateRequested, ex. depuis un autre espace)
+        // resegmente en une seule étape d'annulation.
         QVERIFY(rig.images.applyPrep(QStringLiteral("grayscale"), {}).isEmpty());
         QTRY_COMPARE(rig.stage().value("state").toString(), QStringLiteral("stale"));
         QVERIFY(!rig.session.project().segmentation.has_value());
-        QVERIFY(rig.named("segmentationEmpty")->isVisible());
+        // L'état vide n'a plus de carte dédiée sur le canevas (audit UX panneaux Segmentation,
+        // retrait de la bulle d'info redondante avec l'onglet Segmentation) : seul l'état réel
+        // compte, pas un élément visuel.
+        QVERIFY(!rig.space.hasSegmentation());
         const auto stepsBefore = rig.session.undoNames().size();
         QSignalSpy applied(&rig.images, &ImageController::segmentationApplied);
         rig.workspace->requestUpdate(QStringLiteral("segmentation"));
@@ -504,7 +401,7 @@ private slots:
         // jour.
         QTRY_COMPARE(rig.stage().value("state").toString(), QStringLiteral("stale"));
         QSignalSpy regenerated(&rig.regions, &RegionController::regenerated);
-        QTRY_VERIFY(rig.press("updateShapesButton"));
+        QTRY_VERIFY(rig.press("regionRegenerate"));
         QTRY_COMPARE_WITH_TIMEOUT(regenerated.count(), 1, 60'000);
         QTRY_COMPARE(rig.stage().value("state").toString(), QStringLiteral("upToDate"));
         // Quitter l'espace : la publication est retirée (le calcul de base reprend).
@@ -986,9 +883,9 @@ private slots:
         QCOMPARE(rig.images.regionCount(), rough);
     }
 
-    // Une seule demande de confirmation, partagee par la carte du canevas et l'onglet Regions :
-    // confirmer depuis l'un execute la demande affichee (ici une re-segmentation) et referme
-    // l'autre.
+    // Une seule demande de confirmation, portee par RegionController et affichee par l'onglet
+    // Regions (la carte bas-gauche n'a plus que des reglages d'affichage, audit UX panneaux
+    // Segmentation) : confirmer execute la demande affichee (ici une re-segmentation).
     void overwriteConfirmationIsSharedAndRunsTheRequestedAction() {
         Rig rig;
         open(rig);
@@ -1019,33 +916,30 @@ private slots:
         panels->setProperty("tab", 1);
         const auto depth = rig.session.undoNames().size();
         QVERIFY(rig.press("regionResegment"));
-        // Rien n'est modifie ; la meme question apparait aux deux endroits.
+        // Rien n'est modifie tant que la question n'est pas tranchee.
         QTRY_VERIFY(!rig.regions.confirmText().isEmpty());
         QCOMPARE(rig.space.confirmText(), rig.regions.confirmText());
         QTRY_VERIFY(rig.named("regionConfirm")->isVisible());
-        QTRY_VERIFY(rig.named("shapesConfirm")->isVisible());
         QCOMPARE(rig.session.undoNames().size(), depth);
         QVERIFY(!rig.regions.busy());
-        // « Garder mes retouches » depuis la carte referme aussi la question du panneau.
-        QVERIFY(rig.press("shapesConfirmNo"));
+        // « Garder mes retouches » referme la question sans rien executer.
+        QVERIFY(rig.press("regionConfirmNo"));
         QTRY_VERIFY(rig.regions.confirmText().isEmpty());
         QTRY_VERIFY(!rig.named("regionConfirm")->isVisible());
         QCOMPARE(rig.session.undoNames().size(), depth);
-        // Nouvelle demande de re-segmentation, confirmee depuis la CARTE : c'est bien une
-        // re-segmentation qui s'execute (la segmentation est remplacee), pas une simple
-        // regeneration des objets.
+        // Nouvelle demande de re-segmentation, confirmee : c'est bien une re-segmentation qui
+        // s'execute (la segmentation est remplacee), pas une simple regeneration des objets.
         const auto regionsBefore = rig.regions.regions().size();
         rig.regions.selectAtPixel(20, 20);
         QCOMPARE(rig.regions.deleteSelected(), QString()); // la segmentation differe de l'image
         QTRY_COMPARE(rig.regions.regions().size(), regionsBefore - 1);
         QVERIFY(rig.press("regionResegment"));
-        QTRY_VERIFY(rig.named("shapesConfirm")->isVisible());
+        QTRY_VERIFY(rig.named("regionConfirm")->isVisible());
         QSignalSpy done(&rig.regions, &RegionController::regenerated);
-        QVERIFY(rig.press("shapesConfirmYes"));
+        QVERIFY(rig.press("regionConfirmYes"));
         QTRY_COMPARE_WITH_TIMEOUT(done.count(), 1, 60'000);
         QTRY_VERIFY(rig.regions.confirmText().isEmpty());
         QTRY_VERIFY(!rig.named("regionConfirm")->isVisible());
-        QTRY_VERIFY(!rig.named("shapesConfirm")->isVisible());
         // L'image a bien ete re-segmentee (avec les reglages du panneau, differents de ceux du
         // projet d'origine) : la region supprimee n'est plus manquante.
         QTRY_VERIFY(rig.regions.regions().size() >= regionsBefore);
@@ -1092,7 +986,8 @@ private slots:
         rig.workspace->setCurrent(QStringLiteral("points"));
         QTRY_VERIFY(rig.stage().value("actionLabel").toString().isEmpty());
         rig.workspace->setCurrent(QStringLiteral("segmentation"));
-        QTRY_VERIFY(!rig.stage().value("actionLabel").toString().isEmpty());
+        // Le bandeau reste un statut, jamais une action (audit UX panneaux Segmentation).
+        QTRY_VERIFY(rig.stage().value("actionLabel").toString().isEmpty());
         QCOMPARE(rig.regions.selectedCount(), 0);
     }
 

@@ -52,24 +52,10 @@ ColumnLayout {
     onBlendZonesChanged: invalidatePreview()
     onBlendThreadsChanged: invalidatePreview()
 
-    SectionLabel { text: qsTr("APERÇU DE LA SEGMENTATION") }
-    Rectangle {
-        Layout.fillWidth: true
-        Layout.preferredHeight: 150
-        color: Theme.surface
-        border.color: Theme.border
-        Image {
-            objectName: "segmentationImage"
-            anchors.fill: parent
-            anchors.margins: 2
-            fillMode: Image.PreserveAspectFit
-            cache: false
-            source: imageTools.hasImage
-                    ? "image://prepare/" + (imageTools.segPreviewActive ? "segmentation" : "after")
-                      + "?rev=" + imageTools.imageRevision
-                    : ""
-        }
-    }
+    // Pas de vignette d'aperçu ici : le canevas principal (plein format) montre déjà l'image
+    // segmentée ou l'aperçu en direct, avec le badge « Aperçu de segmentation — document
+    // inchangé » (SegmentationSpace.qml) quand c'est un aperçu. Une seconde miniature ici n'aurait
+    // fait que dupliquer la même information en plus petit (audit UX panneaux Segmentation).
     Text {
         objectName: "segmentationInfo"
         Layout.fillWidth: true
@@ -132,14 +118,16 @@ ColumnLayout {
         StudioButton {
             objectName: "segPreviewButton"
             text: qsTr("Aperçu")
-            enabled: imageTools.hasImage && !imageTools.busy
+            // Même garde que SegmentationSpaceController::canSegment() : un pinceau/une fusion de
+            // régions en cours ne doit pas être écrasé par un calcul de segmentation parallèle.
+            enabled: imageTools.hasImage && !imageTools.busy && !regionTools.busy
             onClicked: imageTools.previewSegmentation(section.options)
         }
         StudioButton {
             objectName: "segApplyButton"
             text: qsTr("Appliquer")
             emphasized: true
-            enabled: imageTools.hasImage && !imageTools.busy
+            enabled: imageTools.hasImage && !imageTools.busy && !regionTools.busy
             onClicked: imageTools.applySegmentation(section.options)
         }
         StudioButton {

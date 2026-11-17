@@ -7,6 +7,7 @@
 #include "openstitch/document/project.hpp"
 #include "openstitch/image/image.hpp"
 #include "openstitch/segmentation/blend_zones.hpp"
+#include "openstitch/segmentation/color_merge.hpp"
 
 namespace openstitch::desktop_v2 {
 
@@ -36,6 +37,18 @@ segmentImageSource(const document::ImageSource& source,
                 slot->rgb = *mean;
             }
         }
+    }
+    // La couleur moyenne par région (bruit, anti-aliasing) peut faire exploser le nombre de
+    // teintes EXACTES bien au-delà de `max_colors`, même si l'aperçu — qui garde les centres de
+    // cluster, pas la moyenne — en montre correctement `max_colors`. On recolore donc
+    // immédiatement au plus `max_colors` teintes réelles (même mécanisme que
+    // RegionController::reducePalette, 0 = pas de seuil de distance : seul le nombre compte ici),
+    // sans fusionner géométriquement les régions : `options.max_colors` reste une promesse tenue
+    // après application, pas seulement sur l'aperçu.
+    const auto plan = segmentation::plan_reduce_colors(
+        *segmented, static_cast<std::size_t>(options.max_colors), 0.0, false);
+    if (auto applied = segmentation::apply_color_merge(*segmented, plan); !applied) {
+        return std::unexpected(applied.error());
     }
     return segmented;
 }
