@@ -211,7 +211,8 @@ TEST_CASE("every engine parameter field is exposed by param_spec or excluded wit
     }
     // Le recensement chiffré (consigné dans le CSV de la famille J).
     CHECK(exposed + excluded == engineFields);
-    CHECK(excluded == 7);  // rail_a, rail_b, topology, border, palette, transition, stitch_angle
+    // rail_a, rail_b, topology, border, palette, transition, stitch_angle, image_weights
+    CHECK(excluded == 8);
     CHECK(exposed == 186); // + tie_down_mm, couching_*_mm, scatter (STCH-CROS-01)
 }
 
