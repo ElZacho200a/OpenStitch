@@ -38,7 +38,10 @@ Item {
         } else {
             root.workspace.clearStageStatus(root.spaceId)
         }
-        root.workspace.setStageAction(root.spaceId, qsTr("Segmenter l'image"), root.seg.canSegment)
+        // Le bandeau d'étape est un statut, pas un déclencheur : « Segmenter l'image » (état
+        // vide) et « Appliquer »/« Aperçu » (onglet Segmentation) restent les seules actions —
+        // un seul endroit par action, cf. audit UX panneaux Segmentation.
+        root.workspace.setStageAction(root.spaceId, "", false)
     }
     function segmentNow() {
         if (root.seg) {
@@ -256,6 +259,44 @@ Item {
             Accessible.name: qsTr("Segmentation en cours")
         }
 
+        // L'aperçu remplace silencieusement la couche régions par l'image prévisualisée
+        // (livePreview ci-dessus) : sans ce bandeau, rien ne distingue à l'écran un aperçu non
+        // appliqué de la segmentation réelle du document.
+        Rectangle {
+            objectName: "segmentationPreviewBadge"
+            anchors.top: parent.top
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.topMargin: 16
+            visible: root.previewing
+            enabled: false
+            width: previewRow.implicitWidth + 24
+            height: 32
+            color: Theme.accentSoft
+            border.color: Theme.accent
+            radius: Theme.radius
+            Row {
+                id: previewRow
+                anchors.centerIn: parent
+                spacing: 8
+                Rectangle {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 10
+                    height: 10
+                    radius: 5
+                    color: Theme.accent
+                }
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: qsTr("Aperçu de segmentation — document inchangé")
+                    color: Theme.foreground
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.smallSize
+                }
+            }
+            Accessible.role: Accessible.StaticText
+            Accessible.name: qsTr("Aperçu de segmentation en cours, document inchangé")
+        }
+
         // Clic : sélection de la région sous le curseur (Ctrl = multi-sélection) ; pinceau / gomme
         // des régions quand l'outil de RegionController l'est. Les autres boutons (déplacement,
         // molette) restent au canevas.
@@ -300,41 +341,6 @@ Item {
             }
         }
 
-        Rectangle {
-            objectName: "segmentationEmpty"
-            anchors.centerIn: parent
-            visible: root.seg !== null && !root.seg.hasSegmentation
-            width: Math.min(380, parent.width - 64)
-            height: emptyColumn.implicitHeight + 36
-            radius: Theme.cardRadius
-            color: Theme.panel
-            border.color: Theme.divider
-            ColumnLayout {
-                id: emptyColumn
-                anchors.centerIn: parent
-                width: parent.width - 36
-                spacing: 10
-                Text {
-                    Layout.fillWidth: true
-                    text: qsTr("Pas encore de segmentation.\nSegmentez l'image pour découper ses couleurs en régions.")
-                    color: Theme.muted
-                    horizontalAlignment: Text.AlignHCenter
-                    wrapMode: Text.WordWrap
-                    lineHeight: 1.35
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.bodySize
-                }
-                StudioButton {
-                    objectName: "segmentEmptyButton"
-                    Layout.alignment: Qt.AlignHCenter
-                    text: qsTr("Segmenter l'image")
-                    emphasized: true
-                    enabled: root.seg !== null && root.seg.canSegment
-                    onClicked: root.segmentNow()
-                }
-            }
-        }
-
         Loader {
             id: controlsLoader
             anchors.left: parent.left
@@ -344,7 +350,6 @@ Item {
                 seg: root.seg
                 showSource: root.showSource
                 onShowSourceChanged: root.showSource = showSource
-                onSegmentRequested: root.segmentNow()
             }
         }
 

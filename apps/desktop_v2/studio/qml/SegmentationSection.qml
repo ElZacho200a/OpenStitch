@@ -100,14 +100,16 @@ ColumnLayout {
         StudioButton {
             objectName: "segPreviewButton"
             text: qsTr("Aperçu")
-            enabled: imageTools.hasImage && !imageTools.busy
+            // Même garde que SegmentationSpaceController::canSegment() : un pinceau/une fusion de
+            // régions en cours ne doit pas être écrasé par un calcul de segmentation parallèle.
+            enabled: imageTools.hasImage && !imageTools.busy && !regionTools.busy
             onClicked: imageTools.previewSegmentation(section.options)
         }
         StudioButton {
             objectName: "segApplyButton"
             text: qsTr("Appliquer")
             emphasized: true
-            enabled: imageTools.hasImage && !imageTools.busy
+            enabled: imageTools.hasImage && !imageTools.busy && !regionTools.busy
             onClicked: imageTools.applySegmentation(section.options)
         }
         StudioButton {

@@ -41,10 +41,58 @@ ColumnLayout {
     property int paletteColors: 8
     property int paletteDistance: 60
     property bool paletteMergeAdjacent: true
-    property var strokePoints: []
-    // A brush gesture is valid only if it begins inside the painted image and never
-    // crosses the letterbox. Otherwise a later in-bounds move could paint unexpectedly.
-    property bool strokeStartedInside: false
+
+    // Palette du projet : regroupe les régions par couleur EXACTE réellement stockée. Depuis que
+    // segmentImageSource() (apps/desktop_v2/core/segmentation_preview.cpp) recolore automatiquement
+    // au plus « Couleurs maximum » teintes après application (plan_reduce_colors +
+    // apply_color_merge, le même mécanisme que « Réduire » ci-dessous), ce nombre de lignes est
+    // censé correspondre au réglage de segmentation — s'il grimpe bien au-delà, c'est un vrai
+    // bruit de retouches manuelles (pinceau, îlots…), pas un artefact d'affichage : inutile de le
+    // masquer par un regroupement perceptuel cosmétique, « Réduire » plus bas le corrige pour de
+    // vrai sur le document. Triée par surface décroissante : les teintes dominantes d'abord.
+    function buildColorClasses(regions) {
+        const byColor = {}
+        const order = []
+        for (let i = 0; i < regions.length; ++i) {
+            const r = regions[i]
+            if (!(r.color in byColor)) {
+                byColor[r.color] = { color: r.color, ids: [], pixels: 0 }
+                order.push(r.color)
+            }
+            byColor[r.color].ids.push(r.id)
+            byColor[r.color].pixels += r.pixels
+        }
+        const list = order.map(c => byColor[c])
+        list.sort((a, b) => b.pixels - a.pixels)
+        return list
+    }
+    readonly property var colorClasses: section.buildColorClasses(regionTools.regions)
+    // "" = pas de fusion de teinte en cours ; sinon la teinte source en attente d'une cible.
+    property string colorMergeSource: ""
+    function recolorClass(cls, hex) {
+        if (!cls || cls.ids.length === 0)
+            return
+        regionTools.selectRegion(cls.ids[0], "replace")
+        for (let i = 1; i < cls.ids.length; ++i)
+            regionTools.selectRegion(cls.ids[i], "add")
+        regionTools.recolorSelected(hex)
+    }
+    // « Fusionner » deux teintes du panneau = les ramener à une seule couleur (celle de la
+    // cible) : c'est la fusion de palette visible ici, par opposition à la fusion géométrique de
+    // régions voisines (boutons de la section RETOUCHES) ou à la réduction automatique en masse
+    // (« Réduire » plus bas, qui vise un NOMBRE de couleurs plutôt qu'une paire choisie à la main).
+    function mergeClassInto(sourceColor, targetColor) {
+        const classes = section.colorClasses
+        let source = null
+        let target = null
+        for (let i = 0; i < classes.length; ++i) {
+            if (classes[i].color === sourceColor) source = classes[i]
+            if (classes[i].color === targetColor) target = classes[i]
+        }
+        if (source && target)
+            section.recolorClass(source, target.color)
+        section.colorMergeSource = ""
+    }
 
     Connections {
         target: regionTools
@@ -73,100 +121,9 @@ ColumnLayout {
         color: Theme.accent; font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily
     }
 
-    SectionLabel { text: qsTr("CARTE DES RÉGIONS") }
-    Rectangle {
-        id: mapBox
-        Layout.fillWidth: true
-        Layout.preferredHeight: 170
-        color: Theme.surface
-        border.color: Theme.border
-        Image {
-            id: mapImage
-            objectName: "regionMapImage"
-            anchors.fill: parent
-            anchors.margins: 2
-            fillMode: Image.PreserveAspectFit
-            cache: false
-            source: regionTools.hasSegmentation ? "image://prepare/regions?rev=" + regionTools.mapRevision : ""
-            // The ScrollView's MouseArea and the image have different origins (2 px margins).
-            // Reject letterboxed clicks instead of feeding out-of-image coordinates to the
-            // region brush. Convert only the painted image rectangle to source pixels.
-            function pixelAt(px, py) {
-                const p = mapImage.mapFromItem(mapArea, px, py)
-                const w = paintedWidth
-                const h = paintedHeight
-                const sourceW = regionTools.mapWidth
-                const sourceH = regionTools.mapHeight
-                if (w <= 0 || h <= 0 || sourceW <= 0 || sourceH <= 0)
-                    return null
-                const ox = (width - w) / 2
-                const oy = (height - h) / 2
-                if (p.x < ox || p.y < oy || p.x >= ox + w || p.y >= oy + h)
-                    return null
-                return {
-                    x: Math.min(sourceW - 1, Math.floor((p.x - ox) / w * sourceW)),
-                    y: Math.min(sourceH - 1, Math.floor((p.y - oy) / h * sourceH))
-                }
-            }
-        }
-        MouseArea {
-            id: mapArea
-            objectName: "regionMapArea"
-            anchors.fill: parent
-            enabled: regionTools.hasSegmentation
-            onPressed: function(mouse) {
-                const p = mapImage.pixelAt(mouse.x, mouse.y)
-                if (regionTools.tool === "select") {
-                    section.strokeStartedInside = false
-                    if (p)
-                        regionTools.selectAtPixel(p.x, p.y, (mouse.modifiers & Qt.ControlModifier) !== 0)
-                    else if (!(mouse.modifiers & Qt.ControlModifier))
-                        regionTools.clearSelection()
-                } else {
-                    section.strokeStartedInside = p !== null
-                    section.strokePoints = p ? [p] : []
-                }
-            }
-            onPositionChanged: function(mouse) {
-                if (regionTools.tool !== "select" && pressed && section.strokeStartedInside) {
-                    const p = mapImage.pixelAt(mouse.x, mouse.y)
-                    if (!p) {
-                        // Cancel the entire gesture rather than bridging an empty margin.
-                        section.strokeStartedInside = false
-                        section.strokePoints = []
-                        return
-                    }
-                    if (p) {
-                        const pts = section.strokePoints
-                        if (pts.length === 0 || pts[pts.length - 1].x !== p.x ||
-                                pts[pts.length - 1].y !== p.y)
-                            section.strokePoints = pts.concat([p])
-                    }
-                }
-            }
-            onReleased: function(mouse) {
-                // A release can arrive outside the painted image without a preceding
-                // positionChanged event (e.g. a fast drag). Never commit that stroke.
-                const releasePixel = mapImage.pixelAt(mouse.x, mouse.y)
-                if (regionTools.tool !== "select" && section.strokeStartedInside &&
-                        section.strokePoints.length > 0 && releasePixel !== null) {
-                    // A quick release may arrive without a final positionChanged event.
-                    // Include the release pixel so the last brush dab is not lost.
-                    const pts = section.strokePoints
-                    const last = pts[pts.length - 1]
-                    if (last.x !== releasePixel.x || last.y !== releasePixel.y)
-                        section.strokePoints = pts.concat([releasePixel])
-                    regionTools.paintStroke(section.strokePoints, regionTools.tool === "erase")
-                }
-                section.strokeStartedInside = false
-                section.strokePoints = []
-            }
-            onCanceled: {
-                section.strokeStartedInside = false
-                section.strokePoints = []
-            }
-        }
-    }
+    // Sélection, pinceau et gomme se font sur le canevas principal (SegmentationSpace.qml) :
+    // une seule surface de dessin, pas de miniature redondante avec sa propre conversion de
+    // coordonnées (ancienne « CARTE DES RÉGIONS », supprimée — doublon source de confusion).
     // Pinceau et gomme : barre latérale de l'espace (CanvasToolRail) ; rayon au canevas.
     StudioLabel {
         objectName: "regionToolHint"
@@ -240,6 +197,104 @@ ColumnLayout {
         StudioButton { objectName: "regionClear"; text: qsTr("Aucune"); quiet: true; enabled: regionTools.selectedCount > 0; onClicked: regionTools.clearSelection() }
     }
 
+    SectionLabel { text: qsTr("PALETTE DU PROJET (%1 teinte(s))").arg(section.colorClasses.length) }
+    Text {
+        objectName: "paletteExactHint"
+        Layout.fillWidth: true
+        visible: regionTools.hasSegmentation
+        text: qsTr("Couleurs réellement stockées (une ligne par teinte exacte). Normalement proche du réglage « Couleurs maximum » de la segmentation ; si ce nombre dérive après des retouches, utilisez « Réduire » plus bas pour le ramener à un nombre choisi.")
+        wrapMode: Text.WordWrap
+        color: Theme.muted
+        font.pixelSize: Theme.smallSize
+        font.family: Theme.fontFamily
+    }
+    ColorDialog {
+        id: paletteColourPicker
+        objectName: "paletteColorDialog"
+        title: qsTr("Nouvelle couleur de cette teinte")
+        property string recolorTarget: ""
+        onAccepted: section.recolorClass(
+            section.colorClasses.find(c => c.color === recolorTarget), selectedColor.toString())
+    }
+    Text {
+        objectName: "paletteMergeHint"
+        Layout.fillWidth: true
+        visible: section.colorMergeSource.length > 0
+        text: qsTr("Cliquez « Fusionner ici » sur la teinte qui doit absorber %1 ; cliquez « Annuler » pour renoncer.").arg(section.colorMergeSource)
+        wrapMode: Text.WordWrap
+        color: Theme.accent
+        font.pixelSize: Theme.smallSize
+        font.family: Theme.fontFamily
+    }
+    Rectangle {
+        Layout.fillWidth: true
+        Layout.preferredHeight: 150
+        color: Theme.surface
+        border.color: Theme.border
+        ListView {
+            objectName: "paletteList"
+            anchors.fill: parent
+            anchors.margins: 2
+            clip: true
+            model: section.colorClasses
+            delegate: Rectangle {
+                required property var modelData
+                objectName: "paletteRow_" + modelData.color
+                width: ListView.view.width
+                height: 48
+                color: Theme.surface
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.margins: 4
+                    spacing: 6
+                    Rectangle { width: 16; height: 16; color: modelData.color; border.color: Theme.border }
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 0
+                        Text {
+                            Layout.fillWidth: true
+                            text: modelData.color
+                            color: Theme.foreground; font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily
+                            elide: Text.ElideRight
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: qsTr("%1 région(s) · %2 px").arg(modelData.ids.length).arg(modelData.pixels)
+                            color: Theme.muted; font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily
+                            elide: Text.ElideRight
+                        }
+                    }
+                    StudioButton {
+                        objectName: "paletteRecolor_" + modelData.color
+                        text: qsTr("Recolorer")
+                        onClicked: {
+                            paletteColourPicker.recolorTarget = modelData.color
+                            paletteColourPicker.selectedColor = modelData.color
+                            paletteColourPicker.open()
+                        }
+                    }
+                    StudioButton {
+                        objectName: "paletteMerge_" + modelData.color
+                        text: section.colorMergeSource === modelData.color ? qsTr("Annuler")
+                              : section.colorMergeSource.length > 0 ? qsTr("Fusionner ici")
+                              : qsTr("Fusionner dans…")
+                        checkable: section.colorMergeSource === modelData.color
+                        checked: section.colorMergeSource === modelData.color
+                        enabled: section.colorClasses.length > 1
+                        onClicked: {
+                            if (section.colorMergeSource === modelData.color)
+                                section.colorMergeSource = ""
+                            else if (section.colorMergeSource.length > 0)
+                                section.mergeClassInto(section.colorMergeSource, modelData.color)
+                            else
+                                section.colorMergeSource = modelData.color
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     SectionLabel { text: qsTr("RETOUCHES") }
     ColorDialog {
         id: regionColourPicker
@@ -287,7 +342,7 @@ ColumnLayout {
             checkable: true
             checked: section.choosingMergeTarget
             enabled: regionTools.selectedCount === 1 || section.choosingMergeTarget
-            tooltip: qsTr("Sélectionnez une région source puis cliquez la région à conserver (liste, carte ou canevas)")
+            tooltip: qsTr("Sélectionnez une région source puis cliquez la région à conserver (liste ou canevas)")
             onClicked: regionTools.mergeTargetMode = !regionTools.mergeTargetMode
         }
         StudioButton { objectName: "regionDelete"; text: qsTr("Supprimer"); enabled: regionTools.selectedCount > 0; onClicked: regionTools.deleteSelected() }
@@ -296,7 +351,7 @@ ColumnLayout {
         objectName: "regionMergeTargetHint"
         Layout.fillWidth: true
         visible: section.choosingMergeTarget
-        text: qsTr("Cliquez la région qui doit absorber la sélection (liste, carte ou canevas) ; annulez avec le même bouton.")
+        text: qsTr("Cliquez la région qui doit absorber la sélection (liste ou canevas) ; annulez avec le même bouton.")
         wrapMode: Text.WordWrap
         color: Theme.accent
         font.pixelSize: Theme.smallSize
@@ -314,6 +369,8 @@ ColumnLayout {
         StudioSpinBox { objectName: "regionHolePx"; from: 1; to: 100000; value: section.holePx; editable: true; onValueModified: section.holePx = value }
         StudioButton { objectName: "regionFillHoles"; text: qsTr("Reboucher"); enabled: regionTools.hasSegmentation; onClicked: regionTools.fillHoles(section.holePx) }
     }
+    // Réduction AUTOMATIQUE par distance de couleur : regroupe les teintes proches de la palette
+    // ci-dessus en une seule passe, au lieu d'éditer chaque teinte une à une.
     RowLayout {
         Layout.fillWidth: true
         Text { text: qsTr("Palette ≤"); color: Theme.foreground; font.pixelSize: Theme.bodySize; font.family: Theme.fontFamily }
