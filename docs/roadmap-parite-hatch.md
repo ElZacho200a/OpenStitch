@@ -1027,7 +1027,11 @@ plus.
 - Hatch : deux couches de dégradés inverses qui se mélangent.
 - À faire : placement libre d'un fil le long de l'axe ; assistant « camaïeu depuis mes fils » ;
   détection automatique dans la numérisation ; **validation sur tissu** de la grille
-  partagée (pièce-test 3 fils, complémentaire et superposition).
+  partagée (pièce-test 3 fils, complémentaire et superposition) ; **fondu à la frontière
+  entre deux zones** (rampe selon la distance à la limite commune, zones conservées) :
+  spécification `docs/studio-fondu-frontiere-spec.md`. Lot L1a livré le 2026-11-16 (masque
+  de rangées du tatami, pas encore branché) ; restent L1b (frontière, géométrie `Boundary`,
+  directionnel), L2 (lien, commandes, `.osp`, CLI), L3 (Studio), L4, L5.
 - Dépend de : HP-STI-010.
 
 ### HP-STI-012 — Point de croix [P2] — ◐ Partiel (2026-10-31)
@@ -4629,6 +4633,7 @@ ouvrant le lot (§0.1).
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-11-16 | Claude (fondu à la frontière, spec + L1a) | **HP-STI-011 ◐** (inchangé). Spécification `docs/studio-fondu-frontiere-spec.md` (fondu selon la distance à la limite de deux zones, zones conservées, tatami en dégradé natif). L1a : `RowMask` / `DensityRowMask` / `row_threshold` et `fill_tatami(…, const RowMask*)` (grille ancrée, découpe aux pénétrations, liaison à la prochaine rangée gardée) ; sans masque, sortie identique octet pour octet ; aucun appelant branché. |
 | 2026-11-17 | Claude (fondus à parts image, étape 1) | **HP-STI-011 ◐** et **HP-AUTO-017 ☐** (inchangés, précisés). Les profils d'un fondu multicolore peuvent venir d'une grille de parts calculée depuis l'image (mélange en RVB linéaire, moindres carrés sous contrainte, palette de mélange proposée) ; couches en grille partagée ou en rangées continues (Hatch). Opération `image_blend`. *Le Téméraire* entier, 6 fils : 17 911 points et 433 coupes contre 35 428 et 332 (auto-numérisation à 12 couleurs) ; îlots et tissu visible supprimés, stries visibles. Tests : `test_image_blend.cpp` (6 cas). Studio non câblé ; pas de validation textile. |
 | 2026-11-17 | Claude (fondus à parts image, coupes) | **HP-STI-011 ◐** (inchangé). Un fil rare d'un fondu à parts image voyage en point courant sous les zones que les couches suivantes couvriront (part ≥ 0,75 hors du premier et du dernier millimètre) au lieu de couper ; l'ordre des rangées préfère celles joignables ainsi. *Le Téméraire*, 6 fils, meilleur réglage : 433 → 318 coupes (auto-numérisation 12 couleurs : 332). Seuil balayé 0,45-0,9. Aucun essai sur tissu. |
 | 2026-11-17 | Claude (fondus picturaux, lot 2) | **HP-AUTO-017 ☐ → ◐**. Mode `--mode blend` expérimental : zones de fondu (partage des eaux, fusion selon la force du bord commun et des voisines de même couleur), une zone = un fondu à parts image de 1 à 4 fils d'une palette globale (2 à 16), couture fil par fil sur toutes les zones (11 changements de fil au lieu de 98). Le Téméraire : rangées continues 321 coupes / ΔE 13,4, grille partagée 546 / 11,5, contre 332 / 11,1 en mode formes. Non activé par défaut ; dans Studio, case « Zones de fondu (expérimental) » du panneau Segmentation ; aucun essai sur tissu. |

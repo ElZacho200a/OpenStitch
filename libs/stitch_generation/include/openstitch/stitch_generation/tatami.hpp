@@ -41,6 +41,18 @@ struct FillStitch {
 [[nodiscard]] std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
                                                   const document::TatamiParams& params);
 
+class RowMask;
+
+// Tatami MASQUÉ (fondu, docs/studio-fondu-frontiere-spec.md §6.1). `mask == nullptr` : identique
+// octet pour octet à `fill_tatami(region, params)`. Sinon, la grille des rangées est ancrée dans
+// le repère tourné (rangée `k` à (k + 1/2) × `row_spacing`, `k` absolu) et chaque intervalle entre
+// deux pénétrations n'est cousu que si `mask->keeps(milieu, row_threshold(k))`. Les rangées
+// gardées sont reliées à la prochaine rangée gardée (12 rangées au plus) ; les liaisons restent
+// validées contre la région. `mask` est lu en lecture seule pendant l'appel.
+[[nodiscard]] std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
+                                                  const document::TatamiParams& params,
+                                                  const RowMask* mask);
+
 // Sous-couches de remplissage (§15), à coudre AVANT la couche supérieure :
 // - contour rentré (`underlay_edge`) : running le long du bord EXTÉRIEUR
 //   uniquement (retrait `underlay_inset`) — stabilise les bords. Les bords de
