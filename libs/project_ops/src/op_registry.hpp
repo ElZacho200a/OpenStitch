@@ -78,6 +78,8 @@ void register_geometry_ops(
     std::vector<OpSpec>& out); // op_geometry.cpp : forme, transformation, fusion, auto-satin
 void register_semantic_ops(
     std::vector<OpSpec>& out); // op_semantic.cpp : import / remplacement sémantique
+void register_blend_ops(
+    std::vector<OpSpec>& out); // op_blend.cpp    : fondus à parts lues dans l'image
 void register_cleanup_ops(
     std::vector<OpSpec>& out); // op_cleanup.cpp  : nettoyage image / segmentation / formes
 void register_group_ops(
@@ -85,6 +87,8 @@ void register_group_ops(
 
 void register_convert_ops(
     std::vector<OpSpec>& out); // op_convert.cpp : vecteurs -> broderie (HP-AUTO-012)
+void register_step_ops(
+    std::vector<OpSpec>& out); // op_steps.cpp : étapes Image et Vecteurs du flux Studio
 
 // Aides communes (implémentées dans json_common.cpp).
 // Lit un identifiant d'objet de broderie existant dans `ctx.args[key]` ; refus nommé sinon.
@@ -108,5 +112,9 @@ struct SourceImagePlan {
 
 [[nodiscard]] OpStatus require_embroidery(const OpContext& ctx, const char* key,
                                           const document::EmbroideryObject*& out);
+
+// Forme visée par `id` : objet de broderie (son vecteur source) ou objet vectoriel brut, pas
+// encore converti. Identifiant invalide si `id` ne désigne ni l'un ni l'autre.
+[[nodiscard]] ObjectId shape_vector_of(const document::Project& project, std::uint64_t id);
 
 } // namespace openstitch::project_ops::detail

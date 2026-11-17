@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "openstitch/stitch_generation/pull_map.hpp"
 
+#include "openstitch/core/parallel.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <utility>
@@ -10,6 +12,7 @@ namespace openstitch::stitch_generation {
 namespace {
 
 constexpr std::size_t kMaxCells = 512;
+constexpr std::size_t kChunk = 1024; // points par tâche parallèle
 constexpr double kReachSigmas = 3.0;
 
 std::int32_t round_um(double v) {
@@ -87,14 +90,15 @@ PullMap compute_pull_map(const stitch::StitchSequence& sequence, const FabricRes
     map.samples.resize(map.columns * map.rows);
 
     const PullField field(std::move(sources), fabric);
-    for (std::size_t row = 0; row < map.rows; ++row) {
+    // Une tâche par ligne de la carte (au plus 512) : chaque échantillon n'écrit que sa case.
+    parallel_for(map.rows, [&](std::size_t row) {
         for (std::size_t col = 0; col < map.columns; ++col) {
             const Vec2um centre{
                 {round_um(map.origin.x.value + (static_cast<double>(col) + 0.5) * side)},
                 {round_um(map.origin.y.value + (static_cast<double>(row) + 0.5) * side)}};
             map.samples[row * map.columns + col] = field.sample(centre);
         }
-    }
+    });
     return map;
 }
 
@@ -171,12 +175,19 @@ stitch::StitchSequence simulate_fabric_pull(const stitch::StitchSequence& sequen
     // son décalage final est le tirage des segments de rang >= au sien (lui compris). Le premier
     // point subit donc tout le champ, le dernier presque rien : un contour cousu après son
     // remplissage retombe à sa place nominale alors que le bord du remplissage s'est rétracté.
-    for (std::size_t i = 0; i < cmds.size(); ++i) {
-        if (cmds[i].type == stitch::CommandType::Stitch) {
-            out.commands[i].pos =
-                cmds[i].pos + field.sample(cmds[i].pos, static_cast<std::uint32_t>(i)).displacement;
+    // Chaque point ne lit que le champ (constant) et n'écrit que sa propre commande : évaluation
+    // parallèle par tranches, résultat indépendant du nombre de fils.
+    const std::size_t count = cmds.size();
+    parallel_for((count + kChunk - 1) / kChunk, [&](std::size_t chunk) {
+        const std::size_t end = std::min(count, (chunk + 1) * kChunk);
+        for (std::size_t i = chunk * kChunk; i < end; ++i) {
+            if (cmds[i].type == stitch::CommandType::Stitch) {
+                out.commands[i].pos =
+                    cmds[i].pos +
+                    field.sample(cmds[i].pos, static_cast<std::uint32_t>(i)).displacement;
+            }
         }
-    }
+    });
     return out;
 }
 

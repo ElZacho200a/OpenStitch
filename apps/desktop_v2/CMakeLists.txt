@@ -45,6 +45,7 @@ add_library(openstitch_desktop_v2_core STATIC
     core/workflow_guide.cpp
     core/stage_status.cpp
     core/fade_service.cpp
+    core/image_fade.cpp
     core/workspace_state.cpp
     core/arrange_batch.cpp
     core/image_prep.cpp

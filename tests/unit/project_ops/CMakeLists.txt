@@ -7,6 +7,7 @@ add_executable(test_project_ops
     test_convert_ops.cpp
     test_geometry_ops.cpp
     test_cleanup_ops.cpp
+    test_step_ops.cpp
     test_workflow.cpp
     test_params_geometry.cpp
     test_import_text.cpp
@@ -15,6 +16,7 @@ add_executable(test_project_ops
     test_analysis.cpp
     test_auto_satin_service.cpp
     test_gradient_fill.cpp
+    test_image_blend.cpp
     test_live_bridge.cpp
     test_settings_profile.cpp
     test_fuzz_batches.cpp

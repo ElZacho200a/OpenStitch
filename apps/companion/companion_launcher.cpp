@@ -34,12 +34,22 @@ ClaudeCodeLauncher::Env ClaudeCodeLauncher::systemEnv() {
 namespace {
 
 QString findMcpExe(const QString& appDir) {
-    const QStringList candidates = {
+    // Build de développement : `apps/desktop/<cfg>` (V1) ou `apps/desktop_v2/studio/<cfg>` (V2) ;
+    // la configuration de l'application en cours passe avant l'autre.
+    const QString cfg = QFileInfo(appDir).fileName();
+    const bool releaseFirst = cfg == QStringLiteral("Release");
+    const QString first = releaseFirst ? QStringLiteral("Release") : QStringLiteral("Debug");
+    const QString second = releaseFirst ? QStringLiteral("Debug") : QStringLiteral("Release");
+    QStringList candidates = {
         QDir(appDir).filePath(QStringLiteral("mcp/openstitch-mcp.exe")), // installeur
-        QDir(appDir).filePath(QStringLiteral("openstitch-mcp.exe")),
-        QDir(appDir).filePath(QStringLiteral("../../mcp/Debug/openstitch-mcp.exe")), // build dev
-        QDir(appDir).filePath(QStringLiteral("../../mcp/Release/openstitch-mcp.exe")),
-        QDir(appDir).filePath(QStringLiteral("openstitch-mcp"))};
+        QDir(appDir).filePath(QStringLiteral("openstitch-mcp.exe"))};
+    for (const QString& depth : {QStringLiteral("../.."), QStringLiteral("../../..")}) {
+        for (const QString& c : {first, second}) {
+            candidates << QDir(appDir).filePath(depth + QStringLiteral("/mcp/") + c +
+                                                QStringLiteral("/openstitch-mcp.exe"));
+        }
+    }
+    candidates << QDir(appDir).filePath(QStringLiteral("openstitch-mcp"));
     for (const QString& c : candidates) {
         if (QFileInfo::exists(c)) {
             return QDir::cleanPath(QFileInfo(c).absoluteFilePath());

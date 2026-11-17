@@ -4,6 +4,7 @@
 #include "task_pump.hpp"
 
 #include <QElapsedTimer>
+#include <atomic>
 
 #include "perf_log.hpp"
 
@@ -217,15 +218,21 @@ void StudioController::rebuildScene() {
     auto snapshot = session_.snapshot();
     const auto wall = std::make_shared<QElapsedTimer>();
     wall->start();
+    const auto startMs = std::make_shared<std::atomic<qint64>>(-1);
+    const auto endMs = std::make_shared<std::atomic<qint64>>(-1);
     busy_ = true;
     status_ = QStringLiteral("Préparation des segments…");
     emit changed();
     tasks_.submit<std::shared_ptr<const StudioSceneSnapshot>>(
         "studio.geometry",
-        [snapshot, revision](const TaskContext& task) {
-            return build_studio_scene(snapshot, revision, task);
+        [snapshot, revision, wall, startMs, endMs](const TaskContext& task) {
+            startMs->store(wall->elapsed()); // attente dans la file avant le calcul
+            auto built = build_studio_scene(snapshot, revision, task);
+            endMs->store(wall->elapsed()); // le reste jusqu'au retour = fil d'interface occupé
+            return built;
         },
-        [this, request, wall](Result<std::shared_ptr<const StudioSceneSnapshot>>&& result) {
+        [this, request, wall, startMs,
+         endMs](Result<std::shared_ptr<const StudioSceneSnapshot>>&& result) {
             // Un changement de segmentation entre-temps ne rend PAS cette géométrie
             // périmée. Seule une mutation des points relance et remplace la requête.
             if (request != request_) {
@@ -247,6 +254,8 @@ void StudioController::rebuildScene() {
                 perfLog(
                     QStringLiteral("scene.rebuild"),
                     {{QStringLiteral("wallMs"), static_cast<double>(wall->elapsed())},
+                     {QStringLiteral("workerStartMs"), static_cast<double>(startMs->load())},
+                     {QStringLiteral("workerEndMs"), static_cast<double>(endMs->load())},
                      {QStringLiteral("objects"),
                       static_cast<qulonglong>(session_.project().embroidery_objects.size())},
                      {QStringLiteral("segments"), static_cast<qulonglong>(scene_->segments.size())},

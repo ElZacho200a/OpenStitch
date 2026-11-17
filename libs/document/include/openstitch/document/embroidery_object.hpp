@@ -163,6 +163,27 @@ struct DensityStop {
     bool operator==(const DensityStop&) const = default;
 };
 
+// Grille régulière de valeurs [0 ; 255] posée sur le repère du modèle (fondus dont les
+// parts de fils viennent de l'image, 2026-11-17). La case (colonne c, rangée r) est centrée
+// en `origin + (c, r) × cell` ; un point entre quatre centres est interpolé
+// bilinéairement, un point hors de la grille prend la valeur de la case du bord la plus
+// proche. `values[(r × columns + c) × channels + k]` : canal k de la case.
+struct WeightGrid {
+    Vec2um origin{};        // centre de la case (0, 0)
+    Micrometers cell{1000}; // pas de la grille (1 mm)
+    std::int32_t columns{0};
+    std::int32_t rows{0};
+    std::uint8_t channels{0};
+    std::vector<std::uint8_t> values;
+
+    [[nodiscard]] bool valid() const {
+        return cell.value > 0 && columns > 0 && rows > 0 && channels > 0 &&
+               values.size() ==
+                   static_cast<std::size_t>(columns) * static_cast<std::size_t>(rows) * channels;
+    }
+    bool operator==(const WeightGrid&) const = default;
+};
+
 // Dégradé de densité d'un remplissage directionnel : l'écart entre lignes de
 // couture varie le long de l'axe `from` → `to` (repère du modèle,
 // comme les guides), de `spacing_from` à `spacing_to`, et reste constant de
@@ -193,6 +214,10 @@ struct DensityGradient {
     // Faux (anciens projets) : densité indépendante par couche, génération inchangée.
     // La courbe des transitions est déjà intégrée aux arrêts : `curve` n'y est pas appliquée.
     bool shared_rows{false};
+    // Grille partagée seulement : tranche de la couche lue en chaque point dans une grille
+    // à 2 canaux, début et fin de la tranche sur 255 (fondu dont les parts viennent de
+    // l'image). Remplace alors `density_stops`. Absente : tranche issue des arrêts.
+    std::optional<WeightGrid> slice_grid;
 
     bool operator==(const DensityGradient&) const = default;
 };
@@ -724,6 +749,12 @@ struct MulticolorGradientParams {
     std::optional<Angle> stitch_angle;
     // Fondu d'un seul fil uniquement : densité relative à l'arrivée, [0 ; 1].
     double end_density{0.15};
+    // Source des profils des couches. Absente : rampe géométrique (`transition` et courbe de
+    // chaque fil), comportement historique. Présente : part de chaque fil lue en chaque point,
+    // un canal par fil de `palette` (parts sur 255, somme 255 par case), typiquement calculée
+    // depuis l'image (`autodigitize::image_blend_weights`). Remplissages complémentaires
+    // seulement (méthodes Directional, LongAndShort, ControlledScatter).
+    std::optional<WeightGrid> image_weights;
 
     bool operator==(const MulticolorGradientParams&) const = default;
 };

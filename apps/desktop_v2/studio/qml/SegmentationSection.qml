@@ -13,8 +13,13 @@ ColumnLayout {
     property int maxColors: imageTools.segmentationDefaults.max_colors
     property int minRegionPx: imageTools.segmentationDefaults.min_region_px
     property int smoothing: imageTools.segmentationDefaults.smoothing_radius_px
+    // Expérimental : zones de fondu (peintures, ciels, eau), chaque zone cousue en fondu de fils
+    // mélangés au lieu d'aplats quantifiés.
+    property bool blendZones: imageTools.segmentationDefaults.blend_zones
+    property int blendThreads: imageTools.segmentationDefaults.blend_threads
     readonly property var options: ({ max_colors: maxColors, min_region_px: minRegionPx,
-                                      smoothing_radius_px: smoothing })
+                                      smoothing_radius_px: smoothing, blend_zones: blendZones,
+                                      blend_threads: blendThreads })
     // The preview describes a specific parameter tuple. Invalidate/cancel it
     // immediately when colours, island size or smoothing changes.
     // Aperçu en direct (comme en V1) : un changement de réglage relance l'aperçu après 350 ms, sans
@@ -44,25 +49,13 @@ ColumnLayout {
     onMaxColorsChanged: invalidatePreview()
     onMinRegionPxChanged: invalidatePreview()
     onSmoothingChanged: invalidatePreview()
+    onBlendZonesChanged: invalidatePreview()
+    onBlendThreadsChanged: invalidatePreview()
 
-    SectionLabel { text: qsTr("APERÇU DE LA SEGMENTATION") }
-    Rectangle {
-        Layout.fillWidth: true
-        Layout.preferredHeight: 150
-        color: Theme.surface
-        border.color: Theme.border
-        Image {
-            objectName: "segmentationImage"
-            anchors.fill: parent
-            anchors.margins: 2
-            fillMode: Image.PreserveAspectFit
-            cache: false
-            source: imageTools.hasImage
-                    ? "image://prepare/" + (imageTools.segPreviewActive ? "segmentation" : "after")
-                      + "?rev=" + imageTools.imageRevision
-                    : ""
-        }
-    }
+    // Pas de vignette d'aperçu ici : le canevas principal (plein format) montre déjà l'image
+    // segmentée ou l'aperçu en direct, avec le badge « Aperçu de segmentation — document
+    // inchangé » (SegmentationSpace.qml) quand c'est un aperçu. Une seconde miniature ici n'aurait
+    // fait que dupliquer la même information en plus petit (audit UX panneaux Segmentation).
     Text {
         objectName: "segmentationInfo"
         Layout.fillWidth: true
@@ -80,6 +73,7 @@ ColumnLayout {
         columnSpacing: 8
         Text { text: qsTr("Couleurs maximum"); color: Theme.foreground; font.pixelSize: Theme.bodySize; font.family: Theme.fontFamily; Layout.fillWidth: true }
         StudioSpinBox { objectName: "segMaxColors"; from: 2; to: 64; value: section.maxColors; editable: true
+            enabled: !section.blendZones
             onValueModified: section.maxColors = value }
         Text { text: qsTr("Taille minimale (px)"); color: Theme.foreground; font.pixelSize: Theme.bodySize; font.family: Theme.fontFamily; Layout.fillWidth: true }
         StudioSpinBox { objectName: "segMinRegion"; from: 1; to: 100000; value: section.minRegionPx; editable: true
@@ -87,6 +81,30 @@ ColumnLayout {
         Text { text: qsTr("Lissage (px)"); color: Theme.foreground; font.pixelSize: Theme.bodySize; font.family: Theme.fontFamily; Layout.fillWidth: true }
         StudioSpinBox { objectName: "segSmoothing"; from: 0; to: 10; value: section.smoothing; editable: true
             onValueModified: section.smoothing = value }
+    }
+    StudioCheckBox {
+        objectName: "segBlendZones"
+        text: qsTr("Zones de fondu (expérimental)")
+        checked: section.blendZones
+        onToggled: section.blendZones = checked
+        palette.windowText: Theme.foreground
+    }
+    GridLayout {
+        columns: 2
+        Layout.fillWidth: true
+        columnSpacing: 8
+        visible: section.blendZones
+        Text { text: qsTr("Fils de la palette"); color: Theme.foreground; font.pixelSize: Theme.bodySize; font.family: Theme.fontFamily; Layout.fillWidth: true }
+        StudioSpinBox { objectName: "segBlendThreads"; from: 2; to: 16; value: section.blendThreads; editable: true
+            onValueModified: section.blendThreads = value }
+    }
+    Text {
+        objectName: "segBlendHint"
+        Layout.fillWidth: true
+        visible: section.blendZones
+        text: qsTr("Découpe l'image aux seuls bords nets ; « Mettre à jour les formes » coud ensuite chaque zone en fondu de 1 à 3 fils lus dans l'image. Expérimental : selon l'image, plus de coupes ou des couleurs moins fidèles qu'une segmentation classique.")
+        wrapMode: Text.WordWrap
+        color: Theme.muted; font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily
     }
     StudioCheckBox {
         objectName: "segLiveBox"
@@ -100,14 +118,16 @@ ColumnLayout {
         StudioButton {
             objectName: "segPreviewButton"
             text: qsTr("Aperçu")
-            enabled: imageTools.hasImage && !imageTools.busy
+            // Même garde que SegmentationSpaceController::canSegment() : un pinceau/une fusion de
+            // régions en cours ne doit pas être écrasé par un calcul de segmentation parallèle.
+            enabled: imageTools.hasImage && !imageTools.busy && !regionTools.busy
             onClicked: imageTools.previewSegmentation(section.options)
         }
         StudioButton {
             objectName: "segApplyButton"
             text: qsTr("Appliquer")
             emphasized: true
-            enabled: imageTools.hasImage && !imageTools.busy
+            enabled: imageTools.hasImage && !imageTools.busy && !regionTools.busy
             onClicked: imageTools.applySegmentation(section.options)
         }
         StudioButton {

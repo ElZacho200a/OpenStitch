@@ -13,6 +13,7 @@
 
 #include "openstitch/geometry/boolean.hpp"
 #include "openstitch/geometry/polyline.hpp"
+#include "openstitch/image/ops.hpp"
 #include "openstitch/project_io/project_io.hpp"
 #include "openstitch/project_ops/boundary_blend.hpp"
 #include "openstitch/stitch/sequence.hpp"
@@ -609,9 +610,14 @@ Result<json> build_project_doc(const document::Project& project, const InspectOp
     doc["canvas"] = canvas_json(project);
     const double mmPerPx = project.imageSource().mm_per_px.value;
     doc["resolution"] = json{{"mm_per_px", mmPerPx}, {"dpi", mmPerPx > 0.0 ? 25.4 / mmPerPx : 0.0}};
+    json prep = json::array();
+    for (const auto& op : project.imageSource().ops) {
+        prep.push_back(image::op_name(op));
+    }
     doc["image"] = json{{"present", project.hasActiveImage()},
                         {"width_px", project.imageSource().original.width},
-                        {"height_px", project.imageSource().original.height}};
+                        {"height_px", project.imageSource().original.height},
+                        {"prep_steps", std::move(prep)}};
     doc["finishing"] = finishing_json(project.finishing);
     doc["imported_design"] = project.imported_design.has_value();
 

@@ -6,6 +6,8 @@ import QtQuick.Layouts
 import "."
 
 // Actions d'édition de la sélection : sélection, transformations, ordre, alignement, placement en mm.
+// Sections titrées et grilles à colonnes égales : chaque action a la même largeur et un libellé
+// complet ; les raccourcis vont dans l'info-bulle (dans le bouton, ils rendaient tout illisible).
 ColumnLayout {
     id: bar
     objectName: "editBar"
@@ -14,14 +16,33 @@ ColumnLayout {
     readonly property bool many: editor.selectedCount > 1
     readonly property var box: editor.selectionBox
     readonly property bool hasBox: box.width !== undefined
+    readonly property string needOne: qsTr("Sélectionnez d'abord un objet")
+    readonly property string needTwo: qsTr("Sélectionnez au moins deux objets")
 
     component Mini: StudioButton {
-        implicitHeight: 26
+        Layout.fillWidth: true
+        Layout.preferredWidth: 1
+        implicitHeight: 30
         implicitWidth: Math.max(30, implicitContentWidth + 14)
+        showShortcutLabel: false
+        disabledReason: bar.needOne
+    }
+    component Group: GridLayout {
+        Layout.fillWidth: true
+        Layout.preferredHeight: implicitHeight
+        columns: 2
+        columnSpacing: 4
+        rowSpacing: 4
+    }
+    component Label: Text {
+        color: Theme.muted
+        font.family: Theme.fontFamily
+        font.pixelSize: Theme.smallSize
     }
     component Num: StudioTextField {
+        Layout.fillWidth: true
         implicitWidth: 52
-        implicitHeight: 26
+        implicitHeight: 28
         color: Theme.foreground
         font.pixelSize: Theme.smallSize
         selectByMouse: true
@@ -29,80 +50,78 @@ ColumnLayout {
         background: Rectangle { color: Theme.raised; border.color: Theme.border; radius: 3 }
     }
 
-    SectionLabel { text: qsTr("ÉDITION") }
-    Flow {
-        objectName: "editSelectionFlow"
+    // L'état d'abord : on sait sur quoi on agit avant de lire les boutons.
+    Text {
+        objectName: "editSelectionSummary"
         Layout.fillWidth: true
-        // Wraps must contribute their actual height to the enclosing ColumnLayout.
-        Layout.preferredHeight: childrenRect.height
-        spacing: 3
-        Mini { objectName: "selectAllButton"; text: qsTr("Tout"); tooltip: qsTr("Tout sélectionner"); shortcutLabel: "Ctrl+A"; onClicked: editor.selectAll() }
-        Mini { objectName: "invertButton"; text: qsTr("Inverser"); shortcutLabel: "Ctrl+I"; onClicked: editor.invertSelection() }
-        Mini { objectName: "sameColorButton"; text: qsTr("Même couleur"); enabled: bar.some; onClicked: editor.selectSameColor() }
-        Mini { objectName: "neighborsButton"; text: qsTr("Voisines"); enabled: bar.some; onClicked: editor.selectNeighbors() }
-        Mini { text: qsTr("Type ▾"); onClicked: typeMenu.popup() }
-        Mini { text: qsTr("Mémoriser"); enabled: bar.some; onClicked: editor.saveSelection(qsTr("Sélection %1").arg(editor.savedSelections.length + 1)) }
-        Mini { text: qsTr("Rappeler ▾"); enabled: editor.savedSelections.length > 0; onClicked: recallMenu.popup() }
+        text: editor.selectedCount === 0 ? qsTr("Aucun objet sélectionné")
+                                         : qsTr("%1 objet(s) sélectionné(s)").arg(editor.selectedCount)
+        color: bar.some ? Theme.foreground : Theme.faint
+        font.family: Theme.fontFamily
+        font.pixelSize: Theme.bodySize
+        font.weight: Font.DemiBold
     }
-    Flow {
+
+    SectionLabel { text: qsTr("SÉLECTIONNER"); Layout.topMargin: 4 }
+    Group {
+        objectName: "editSelectionFlow"
+        Mini { objectName: "selectAllButton"; text: qsTr("Tout"); tooltip: qsTr("Tout sélectionner"); shortcutLabel: "Ctrl+A"; onClicked: editor.selectAll() }
+        Mini { objectName: "invertButton"; text: qsTr("Inverser"); tooltip: qsTr("Inverser la sélection"); shortcutLabel: "Ctrl+I"; onClicked: editor.invertSelection() }
+        Mini { objectName: "sameColorButton"; text: qsTr("Même couleur"); tooltip: qsTr("Ajouter les objets de la même couleur"); enabled: bar.some; onClicked: editor.selectSameColor() }
+        Mini { objectName: "neighborsButton"; text: qsTr("Voisines"); tooltip: qsTr("Ajouter les objets qui touchent la sélection"); enabled: bar.some; onClicked: editor.selectNeighbors() }
+        Mini { text: qsTr("Par type ▾"); tooltip: qsTr("Sélectionner par type de points"); onClicked: typeMenu.popup() }
+        Mini { text: qsTr("Rappeler ▾"); tooltip: qsTr("Restaurer une sélection mémorisée"); enabled: editor.savedSelections.length > 0; disabledReason: qsTr("Aucune sélection mémorisée"); onClicked: recallMenu.popup() }
+        Mini { Layout.columnSpan: 2; text: qsTr("Mémoriser la sélection"); enabled: bar.some; onClicked: editor.saveSelection(qsTr("Sélection %1").arg(editor.savedSelections.length + 1)) }
+    }
+
+    SectionLabel { text: qsTr("TRANSFORMER"); Layout.topMargin: 4 }
+    Group {
         objectName: "editTransformFlow"
-        Layout.fillWidth: true
-        Layout.preferredHeight: childrenRect.height
-        spacing: 3
-        Mini { objectName: "rotateCwButton"; text: "⟳90"; enabled: bar.some; tooltip: qsTr("Pivoter de 90° (horaire)"); shortcutLabel: "Ctrl+R"; onClicked: editor.rotate90(true) }
-        Mini { objectName: "rotateCcwButton"; text: "⟲90"; enabled: bar.some; tooltip: qsTr("Pivoter de 90° (antihoraire)"); shortcutLabel: "Ctrl+Maj+R"; onClicked: editor.rotate90(false) }
-        Mini { objectName: "mirrorHButton"; text: "⇋"; enabled: bar.some; tooltip: qsTr("Miroir horizontal"); shortcutLabel: "Ctrl+Maj+H"; onClicked: editor.mirror(true) }
-        Mini { objectName: "mirrorVButton"; text: "⇅"; enabled: bar.some; tooltip: qsTr("Miroir vertical"); shortcutLabel: "Ctrl+Maj+V"; onClicked: editor.mirror(false) }
-        Mini { objectName: "duplicateButton"; text: qsTr("Dupliquer"); enabled: bar.some; shortcutLabel: "Ctrl+D"; onClicked: editor.duplicate(5) }
-        Mini { objectName: "deleteButton"; text: qsTr("Supprimer"); enabled: bar.some; shortcutLabel: "Suppr"; onClicked: editor.deleteSelection() }
-        Mini { objectName: "frontButton"; text: qsTr("Devant"); enabled: bar.some; shortcutLabel: "Fin"; onClicked: editor.stack("front") }
-        Mini { objectName: "backButton"; text: qsTr("Derrière"); enabled: bar.some; shortcutLabel: "Origine"; onClicked: editor.stack("back") }
-        Mini { objectName: "groupButton"; text: qsTr("Grouper"); enabled: bar.many; shortcutLabel: "Ctrl+G"; onClicked: editor.group("") }
-        Mini { objectName: "ungroupButton"; text: qsTr("Dégrouper"); enabled: bar.some; shortcutLabel: "Ctrl+Maj+G"; onClicked: editor.ungroup() }
-        Mini { text: qsTr("Aligner ▾"); enabled: bar.many; onClicked: alignMenu.popup() }
+        Mini { objectName: "rotateCwButton"; text: qsTr("↻ 90°"); enabled: bar.some; tooltip: qsTr("Pivoter de 90° (horaire)"); shortcutLabel: "Ctrl+R"; onClicked: editor.rotate90(true) }
+        Mini { objectName: "rotateCcwButton"; text: qsTr("↺ 90°"); enabled: bar.some; tooltip: qsTr("Pivoter de 90° (antihoraire)"); shortcutLabel: "Ctrl+Maj+R"; onClicked: editor.rotate90(false) }
+        Mini { objectName: "mirrorHButton"; text: qsTr("Miroir ↔"); enabled: bar.some; tooltip: qsTr("Miroir horizontal"); shortcutLabel: "Ctrl+Maj+H"; onClicked: editor.mirror(true) }
+        Mini { objectName: "mirrorVButton"; text: qsTr("Miroir ↕"); enabled: bar.some; tooltip: qsTr("Miroir vertical"); shortcutLabel: "Ctrl+Maj+V"; onClicked: editor.mirror(false) }
+        Mini { text: qsTr("Aligner ▾"); enabled: bar.many; tooltip: qsTr("Aligner ou répartir"); disabledReason: bar.needTwo; onClicked: alignMenu.popup() }
+        Mini { objectName: "duplicateButton"; text: qsTr("Dupliquer"); enabled: bar.some; tooltip: qsTr("Dupliquer la sélection"); shortcutLabel: "Ctrl+D"; onClicked: editor.duplicate(5) }
+    }
+
+    SectionLabel { text: qsTr("ORGANISER"); Layout.topMargin: 4 }
+    Group {
+        Mini { objectName: "frontButton"; text: qsTr("Premier plan"); enabled: bar.some; tooltip: qsTr("Coudre en dernier (dessus)"); shortcutLabel: "Fin"; onClicked: editor.stack("front") }
+        Mini { objectName: "backButton"; text: qsTr("Arrière-plan"); enabled: bar.some; tooltip: qsTr("Coudre en premier (dessous)"); shortcutLabel: "Origine"; onClicked: editor.stack("back") }
+        Mini { objectName: "groupButton"; text: qsTr("Grouper"); enabled: bar.many; disabledReason: bar.needTwo; tooltip: qsTr("Grouper la sélection"); shortcutLabel: "Ctrl+G"; onClicked: editor.group("") }
+        Mini { objectName: "ungroupButton"; text: qsTr("Dégrouper"); enabled: bar.some; tooltip: qsTr("Dissoudre le groupe"); shortcutLabel: "Ctrl+Maj+G"; onClicked: editor.ungroup() }
         Mini { objectName: "pipetteButton"; text: qsTr("Pipette"); checkable: true; checked: editor.eyedropper; enabled: bar.some; tooltip: qsTr("Copier la couleur d'un objet vers la sélection"); shortcutLabel: "I"; onClicked: editor.eyedropper = !editor.eyedropper }
         Mini { objectName: "snapButton"; text: qsTr("Accrochage"); checkable: true; checked: editor.snapEnabled; tooltip: qsTr("Accrochage et repères au glisser (Alt = temporaire)"); onClicked: editor.snapEnabled = !editor.snapEnabled }
+        Mini { objectName: "deleteButton"; Layout.columnSpan: 2; text: qsTr("Supprimer"); enabled: bar.some; tooltip: qsTr("Supprimer la sélection"); shortcutLabel: "Suppr"; onClicked: editor.deleteSelection() }
     }
 
     // Placement numérique (centre et taille de la boîte, en mm modèle : Y vers le haut).
-    Flow {
+    SectionLabel { text: qsTr("POSITION ET TAILLE (MM)"); Layout.topMargin: 4; visible: bar.hasBox }
+    GridLayout {
         objectName: "editPlacementFlow"
         Layout.fillWidth: true
-        Layout.preferredHeight: childrenRect.height
-        spacing: 4
+        Layout.preferredHeight: implicitHeight
         visible: bar.hasBox
-        // Each label stays with its field. A narrow dock wraps pairs instead of
-        // forcing a four-field RowLayout wider than the inspector.
-        RowLayout {
-            spacing: 3
-            Text { text: "X"; color: Theme.faint; font.pixelSize: Theme.smallSize }
-            Num { id: xField; objectName: "placeX"; text: bar.hasBox ? bar.box.cx.toFixed(2) : "" }
-        }
-        RowLayout {
-            spacing: 3
-            Text { text: "Y"; color: Theme.faint; font.pixelSize: Theme.smallSize }
-            Num { id: yField; objectName: "placeY"; text: bar.hasBox ? (-bar.box.cy).toFixed(2) : "" }
-        }
-        RowLayout {
-            spacing: 3
-            Text { text: "L"; color: Theme.faint; font.pixelSize: Theme.smallSize }
-            Num { id: wField; objectName: "placeW"; text: bar.hasBox ? bar.box.width.toFixed(2) : "" }
-        }
-        RowLayout {
-            spacing: 3
-            Text { text: "H"; color: Theme.faint; font.pixelSize: Theme.smallSize }
-            Num { id: hField; objectName: "placeH"; text: bar.hasBox ? bar.box.height.toFixed(2) : "" }
-        }
-    }
-    RowLayout {
-        Layout.fillWidth: true
-        visible: bar.hasBox
-        spacing: 4
-        Text { text: "∠°"; color: Theme.faint; font.pixelSize: Theme.smallSize }
-        Num { id: angleField; objectName: "placeAngle"; text: "0" }
-        Mini {
+        columns: 4
+        columnSpacing: 6
+        rowSpacing: 4
+        Label { text: qsTr("X") }
+        Num { id: xField; objectName: "placeX"; text: bar.hasBox ? bar.box.cx.toFixed(2) : ""; Accessible.name: qsTr("Centre X en millimètres") }
+        Label { text: qsTr("Y") }
+        Num { id: yField; objectName: "placeY"; text: bar.hasBox ? (-bar.box.cy).toFixed(2) : ""; Accessible.name: qsTr("Centre Y en millimètres") }
+        Label { text: qsTr("Larg.") }
+        Num { id: wField; objectName: "placeW"; text: bar.hasBox ? bar.box.width.toFixed(2) : ""; Accessible.name: qsTr("Largeur en millimètres") }
+        Label { text: qsTr("Haut.") }
+        Num { id: hField; objectName: "placeH"; text: bar.hasBox ? bar.box.height.toFixed(2) : ""; Accessible.name: qsTr("Hauteur en millimètres") }
+        Label { text: qsTr("Angle") }
+        Num { id: angleField; objectName: "placeAngle"; text: "0"; Accessible.name: qsTr("Angle de rotation en degrés") }
+        StudioButton {
             objectName: "placeApply"
-            text: qsTr("Placer")
+            Layout.columnSpan: 2
+            Layout.fillWidth: true
+            implicitHeight: 30
+            text: qsTr("Appliquer")
             tooltip: qsTr("Appliquer position, taille et rotation (mm)")
             onClicked: {
                 const same = function(field, value) { return Math.abs(parseFloat(field.text) - value) < 0.005 }
@@ -116,36 +135,40 @@ ColumnLayout {
             }
         }
     }
-    // Rotation autour d'un centre choisi (mm modèle, Y vers le haut) : l'angle est celui du champ ∠°.
-    Flow {
+    // Rotation autour d'un centre choisi (mm modèle, Y vers le haut) : angle du champ Angle.
+    SectionLabel { text: qsTr("PIVOTER AUTOUR D'UN POINT"); Layout.topMargin: 4; visible: bar.hasBox }
+    GridLayout {
         objectName: "editPivotFlow"
         Layout.fillWidth: true
-        Layout.preferredHeight: childrenRect.height
+        Layout.preferredHeight: implicitHeight
         visible: bar.hasBox
-        spacing: 4
-        RowLayout {
-            spacing: 3
-            Text { text: qsTr("Centre X"); color: Theme.faint; font.pixelSize: Theme.smallSize }
-            Num { id: pivotX; objectName: "pivotX"; text: bar.hasBox ? editor.selectionCentreMm().x.toFixed(2) : "" }
-        }
-        RowLayout {
-            spacing: 3
-            Text { text: "Y"; color: Theme.faint; font.pixelSize: Theme.smallSize }
-            Num { id: pivotY; objectName: "pivotY"; text: bar.hasBox ? editor.selectionCentreMm().y.toFixed(2) : "" }
-        }
-        Mini {
+        columns: 4
+        columnSpacing: 6
+        rowSpacing: 4
+        Label { text: qsTr("X") }
+        Num { id: pivotX; objectName: "pivotX"; text: bar.hasBox ? editor.selectionCentreMm().x.toFixed(2) : ""; Accessible.name: qsTr("Centre de rotation X") }
+        Label { text: qsTr("Y") }
+        Num { id: pivotY; objectName: "pivotY"; text: bar.hasBox ? editor.selectionCentreMm().y.toFixed(2) : ""; Accessible.name: qsTr("Centre de rotation Y") }
+        StudioButton {
             objectName: "pivotCentreButton"
-            text: qsTr("Centre de la sélection")
+            Layout.columnSpan: 2
+            Layout.fillWidth: true
+            implicitHeight: 30
+            text: qsTr("Au centre")
+            tooltip: qsTr("Utiliser le centre de la sélection")
             onClicked: {
                 const centre = editor.selectionCentreMm()
                 pivotX.text = centre.x.toFixed(2)
                 pivotY.text = centre.y.toFixed(2)
             }
         }
-        Mini {
+        StudioButton {
             objectName: "pivotApply"
-            text: qsTr("Pivoter autour")
-            tooltip: qsTr("Pivoter de l'angle ∠° autour de ce centre")
+            Layout.columnSpan: 2
+            Layout.fillWidth: true
+            implicitHeight: 30
+            text: qsTr("Pivoter")
+            tooltip: qsTr("Pivoter de l'angle indiqué autour de ce point")
             enabled: bar.some
             onClicked: editor.rotateAround(parseFloat(angleField.text) || 0, parseFloat(pivotX.text), parseFloat(pivotY.text))
         }
