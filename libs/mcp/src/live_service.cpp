@@ -277,6 +277,7 @@ struct LivePendingCall::Impl {
     std::optional<ChoiceRequest> ask; // live_ask_user (réponse au retour sur le fil GUI)
     std::shared_ptr<const document::Project> final_project; // issu d'un project_apply réussi
     ApplyPreview apply_preview; // rendus et écarts montrés avant l'approbation
+    bool want_preview{true};    // faux en mode automatique : l'aperçu ne serait jamais montré
     // Outils de fichier (HostFile) : cible validée, format, fichier d'export calculé hors du fil
     // GUI dans un dossier temporaire (copié vers la cible seulement après approbation).
     std::string target_text;
@@ -284,6 +285,10 @@ struct LivePendingCall::Impl {
     fs::path target;
     fs::path temp_file;
     bool dirty_host{false};
+    // live_permission : accès disque demandé par Claude Code (outil, chemin) ; décidé au retour
+    // GUI.
+    std::optional<std::pair<std::string, std::string>> permission;
+    json permission_input = json::object();
     bool ran{false};
 
     Impl() = default;
@@ -369,13 +374,6 @@ void LivePendingCall::run() {
     session.project = *c.snapshot.project; // copie privée : le document hôte n'est jamais touché
     c.result = call_tool(session, c.tool, c.args);
     if (c.policy == LivePolicy::Replace && !c.result.is_error && session.project) {
-        c.final_project = std::make_shared<const document::Project>(std::move(*session.project));
-        try {
-            c.apply_preview = build_apply_preview(*c.snapshot.project, *c.final_project);
-        } catch (const std::exception&) {
-            // Confort seulement : l'échec de l'aperçu n'empêche pas la demande d'approbation.
-        }
-    } else if (c.policy == LivePolicy::Apply && !c.dry_run && !c.result.is_error && session.dirty) {
         c.final_project = std::make_shared<const document::Project>(std::move(*session.project));
         try {
             if (c.want_preview) {
