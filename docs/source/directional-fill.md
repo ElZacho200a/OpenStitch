@@ -340,11 +340,41 @@ rangées horizontales ; `project check`) :
 | Rangées continues, case 3 mm, part ≥ 15 %, 3 fils au plus | 17 911 | 433 | 44 m |
 
 Le fondu supprime les îlots et le tissu visible de la mosaïque d'aplats et coud moitié
-moins de points, mais **coupe encore plus** que l'auto-numérisation actuelle et montre
-des stries de couleurs alternées le long des rangées. Ne limiter qu'à 2 fils par point
-aggrave les coupes (652) : le fil change plus souvent le long d'une rangée. Pistes :
-découpage en zones (lot 2 de l'étude, moins de fils par zone), trajets cachés sous les
-couches suivantes, regroupement spatial des seuils. Aucun essai sur tissu.
+moins de points, mais **coupait plus** que l'auto-numérisation actuelle et montre des
+stries de couleurs alternées le long des rangées. Ne limiter qu'à 2 fils par point
+aggrave les coupes (652) : le fil change plus souvent le long d'une rangée.
+
+**Trajets cachés sous les couches suivantes (2026-11-17).** Un fil rare ne coud que des
+bouts de rangées épars ; la liaison cousue est bornée à 2,4 mm et interdite au travers du
+creux d'un fondu, donc chaque bout coûtait une coupe. Les tranches étant cumulées de
+l'arrière vers l'avant, les couches suivantes couvrent en `p` la part `1 − fin(p)`
+(`SpacingField::coveredAfter`), connue localement sans regarder les autres couches. Entre
+deux bouts, la couche voyage désormais en point courant (12 mm au plus, dans la forme) si
+cette part atteint **0,75** sur tout le trajet, échantillonné tous les 0,4 mm ; sur le
+premier et le dernier millimètre, ses propres rangées comptent aussi (`1 − début(p)`), car
+une rangée s'arrête là où la part du fil croise son seuil et la couverture des seules
+couches suivantes y vaut souvent ~0,5. Le choix de la rangée suivante préfère une rangée
+joignable par trajet caché à la plus proche qui imposerait un saut. La dernière couche,
+que rien ne recouvre, n'en profite jamais. Seuls les fondus à grille de tranches sont
+concernés : les autres remplissages sont inchangés (auto-numérisation 12 couleurs :
+332 coupes avant comme après).
+
+| Variante (même projet) | Coupes avant | Coupes après |
+|---|---|---|
+| Grille partagée, case 1 mm | 1 243 | 947 |
+| Rangées continues, case 1 mm | 957 | 697 |
+| Rangées continues, case 3 mm | 533 | 388 |
+| Rangées continues, case 3 mm, part ≥ 15 %, 3 fils au plus | 433 | **318** |
+
+Seuil de couverture balayé sur la dernière ligne : 0,9 → 402 coupes, 0,75 → 319, 0,6 →
+302, 0,45 → 284. Sous 0,75 le trajet affleure davantage entre les rangées du dessus,
+surtout si le fil caché contraste avec elles ; au rendu 24 px/mm, à 0,75, un seul court
+trajet reste perceptible sur un carré de 18 mm. Le meilleur réglage coupe maintenant moins
+que l'auto-numérisation actuelle à 12 couleurs (318 contre 332) avec moitié moins de
+points (17 402 contre 35 428). Test : `image weights: a scattered back layer travels
+hidden under later layers` (12 îlots au fil du fond : aucun saut entre îlots ; au fil du dessus :
+≥ 6 coupes). Pistes restantes : découpage en zones (lot 2 de l'étude, moins de fils par zone),
+regroupement spatial des seuils (stries). Aucun essai sur tissu.
 
 ## Fondu de couleurs à deux fils
 

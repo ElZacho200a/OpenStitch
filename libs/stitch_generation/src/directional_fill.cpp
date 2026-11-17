@@ -961,6 +961,24 @@ struct SpacingField {
         return left.weight + (it->weight - left.weight) * ((t - left.position) / span);
     }
 
+    // Part de la densité nominale que les couches SUIVANTES du fondu à parts image couvriront
+    // en `p` (tranches cumulées de l'arrière vers l'avant : elles occupent [fin ; 1)). 0 hors
+    // grille de tranches : on ne sait pas ce qui sera cousu par-dessus.
+    [[nodiscard]] double coveredAfter(P2 p) const {
+        if (!sliceGrid) {
+            return 0.0;
+        }
+        return std::clamp(1.0 - sampleSlice(p).second, 0.0, 1.0);
+    }
+
+    // Même chose en comptant aussi la couche elle-même (tranches [début ; 1)).
+    [[nodiscard]] double coveredFromHere(P2 p) const {
+        if (!sliceGrid) {
+            return 0.0;
+        }
+        return std::clamp(1.0 - sampleSlice(p).first, 0.0, 1.0);
+    }
+
     [[nodiscard]] bool active(P2 p) const {
         return !weighted() || sharedRows || densityWeight(p) >= 0.025;
     }
@@ -2380,6 +2398,44 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
         return dist(a, b) <= 3.0 * kMinStitch || whole.segment_inside(a, b);
     };
 
+    // Trajet caché d'un fondu à parts image : un fil rare ne coud que des bouts de rangées
+    // épars ; plutôt que couper entre deux bouts, il voyage en point courant SOUS les zones
+    // que les couches suivantes couvriront densément (part restante ≥ kHiddenCover sur tout
+    // le trajet, échantillonné tous les ~0,8 mm), dans la forme, sur au plus kHiddenTravelUm.
+    // La dernière couche (rien par-dessus) n'en profite jamais.
+    // 0,75 : mesuré sur Le Téméraire (0,9 / 0,75 / 0,6 / 0,45 -> 402 / 319 / 302 / 284
+    // coupes contre 433) ; sous 0,75 le trajet affleure davantage entre les rangées du
+    // dessus, surtout si le fil caché contraste avec elles.
+    constexpr double kHiddenCover = 0.75;
+    constexpr double kHiddenTravelUm = 12'000.0;
+    const bool hiddenUnderLater = masked && field.sliceGrid != nullptr;
+    const auto hiddenTravel = [&](P2 a, P2 b) {
+        if (!hiddenUnderLater) {
+            return false;
+        }
+        const double d = dist(a, b);
+        if (d > kHiddenTravelUm || !whole.segment_inside(a, b)) {
+            return false;
+        }
+        // Une rangée s'arrête là où la part du fil croise son seuil : autour des deux bouts,
+        // la couverture des seules couches suivantes vaut 1 - seuil (souvent ~0,5). Sur le
+        // premier et le dernier millimètre, les rangées de la couche elle-même comptent donc
+        // aussi ; au-delà, seules les couches suivantes cachent le trajet.
+        constexpr double kEndZoneUm = 1'000.0;
+        const int samples = std::max(2, static_cast<int>(std::ceil(d / 400.0)));
+        const P2 step = b - a;
+        for (int s = 0; s <= samples; ++s) {
+            const double t = static_cast<double>(s) / samples;
+            const P2 p = a + step * t;
+            const bool nearEnd = std::min(t, 1.0 - t) * d < kEndZoneUm;
+            const double cover = nearEnd ? field.coveredFromHere(p) : field.coveredAfter(p);
+            if (cover < kHiddenCover) {
+                return false;
+            }
+        }
+        return true;
+    };
+
     // Autoroute d'underpath : contour extérieur rentré (comme le tatami).
     std::vector<P2> highway;
     if (params.hidden_underpath && !masked) {
@@ -2568,6 +2624,7 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
             std::size_t best = n;
             bool bestReversed = false;
             bool bestSewable = false;
+            int bestReach = 0;
             std::ptrdiff_t bestDegree = 0;
             double bd = std::numeric_limits<double>::max();
             std::pair<double, double> bk{std::numeric_limits<double>::max(), 0.0};
@@ -2595,10 +2652,18 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
                     const double d = dist2(cur, e);
                     const double sew = sewLimit(e);
                     const bool sewable = d <= sew * sew && linkInside(cur, e);
+                    // Rang d'accès : liaison cousue (2), trajet caché sous les couches
+                    // suivantes (1), saut (0). Le test caché n'est fait qu'à portée.
+                    const int reach =
+                        sewable ? 2
+                        : (hiddenUnderLater && d <= kHiddenTravelUm * kHiddenTravelUm &&
+                           hiddenTravel(cur, e))
+                            ? 1
+                            : 0;
                     const std::ptrdiff_t degree = sewable ? freeDegree(li) : 0;
                     bool better = false;
-                    if (sewable != bestSewable) {
-                        better = sewable;
+                    if (reach != bestReach) {
+                        better = reach > bestReach;
                     } else if (sewable && degree != bestDegree) {
                         better = degree < bestDegree;
                     } else {
@@ -2608,6 +2673,7 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
                         best = li;
                         bestReversed = rev;
                         bestSewable = sewable;
+                        bestReach = reach;
                         bestDegree = degree;
                         bd = d;
                     }
@@ -2643,6 +2709,9 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
                                     emitTravel(route);
                                     jump = false;
                                 }
+                            } else if (hiddenTravel(cur, rp)) {
+                                emitTravel({cur, rp});
+                                jump = false;
                             }
                         }
                     }

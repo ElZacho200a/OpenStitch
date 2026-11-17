@@ -172,10 +172,12 @@ TEST_CASE("image weights: layers partition the shape like one plain fill",
             const double ratio = sum / plainSum[qx][qy];
             CAPTURE(qx, qy, ratio);
             // Chaque rangée cousue par exactement un fil. Mesuré (2026-11-17) : +7 % de points
-            // d'arrêt aux bouts des morceaux et +5 % de liaisons entre morceaux, aucune rangée
-            // doublée ; un trou ou un doublon ferait sortir de [0,95 ; 1,15].
+            // d'arrêt aux bouts des morceaux, +5 % de liaisons, et jusqu'à +5 % de trajets
+            // cachés : un fil du fond rejoint son morceau suivant en point courant le long de
+            // la rangée, SOUS le morceau qu'un fil suivant y coud. Un trou ou une rangée
+            // doublée ferait sortir de [0,95 ; 1,20].
             CHECK(ratio > 0.95);
-            CHECK(ratio < 1.15);
+            CHECK(ratio < 1.20);
         }
     }
     // Chaque fil domine là où sa part est forte : fil 0 en bas à gauche, fil 2 en bas à
@@ -375,4 +377,80 @@ TEST_CASE("image blend: mixing weights reproduce a mixture of the threads",
     }
     CHECK(nonZero <= 2);
     CHECK(sum == Catch::Approx(1.0));
+}
+
+namespace {
+
+// Îlots de 4 mm au pas de 8 mm (12 îlots) : un fil n'occupe qu'eux, l'autre le reste. Rangées
+// horizontales, rangées continues par fil.
+project_ops::MulticolorGradientSpec checker_spec(const Fixture& f, bool thread0_in_even) {
+    auto spec = grid_spec(f);
+    spec.palette.resize(2);
+    spec.complementary = false;
+    spec.stitch_angle = Angle{0.0};
+    auto& g = *spec.image_weights;
+    g.channels = 2;
+    g.values.assign(static_cast<std::size_t>(g.columns * g.rows) * 2, 0);
+    for (int r = 0; r < g.rows; ++r) {
+        for (int c = 0; c < g.columns; ++c) {
+            const bool even = c % 8 < 4 && r % 8 < 4;
+            const bool zero = even == thread0_in_even;
+            auto* v = &g.values[static_cast<std::size_t>(r * g.columns + c) * 2];
+            v[0] = zero ? 255 : 0;
+            v[1] = zero ? 0 : 255;
+        }
+    }
+    return spec;
+}
+
+// Coupes par bloc de couleur.
+std::vector<int> trims_per_color(const document::Project& p) {
+    const auto sequence = stitch_generation::effective_sequence(p);
+    REQUIRE(sequence);
+    std::vector<int> out(1, 0);
+    for (const auto& command : sequence->commands) {
+        if (command.type == stitch::CommandType::ColorChange) {
+            out.push_back(0);
+        } else if (command.type == stitch::CommandType::Trim) {
+            ++out.back();
+        }
+    }
+    return out;
+}
+
+} // namespace
+
+TEST_CASE("image weights: a scattered back layer travels hidden under later layers",
+          "[project_ops][gradient][image_blend][trims]") {
+    // Mêmes îlots épars, une fois au fil du FOND (couvert ensuite par le fil 1 : trajets
+    // cachés permis), une fois au fil du DESSUS (rien par-dessus : il doit couper).
+    auto back = rectangle_fill();
+    auto front = rectangle_fill();
+    commands::UndoStack s1;
+    commands::UndoStack s2;
+    {
+        auto spec = checker_spec(back, true);
+        auto cmd =
+            project_ops::make_create_multicolor_gradient_command(back.project, back.fill, spec);
+        REQUIRE(cmd);
+        s1.execute(std::move(*cmd), back.project);
+    }
+    {
+        // Motif inverse : les îlots épars appartiennent au fil 1.
+        auto spec = checker_spec(front, false);
+        auto cmd =
+            project_ops::make_create_multicolor_gradient_command(front.project, front.fill, spec);
+        REQUIRE(cmd);
+        s2.execute(std::move(*cmd), front.project);
+    }
+    const auto backTrims = trims_per_color(back.project);
+    const auto frontTrims = trims_per_color(front.project);
+    REQUIRE(backTrims.size() >= 2);
+    REQUIRE(frontTrims.size() >= 2);
+    // 12 îlots épars : la couche du dessus coupe entre presque chacun ; celle du fond voyage
+    // sous le fil suivant.
+    CHECK(frontTrims[1] >= 6);
+    CHECK(backTrims[0] * 3 <= frontTrims[1]);
+    // Déterminisme.
+    CHECK(trims_per_color(back.project) == backTrims);
 }
