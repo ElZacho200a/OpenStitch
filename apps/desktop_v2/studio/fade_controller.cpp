@@ -6,6 +6,7 @@
 #include <iterator>
 
 #include "openstitch/project_ops/gradient_fill.hpp"
+#include "task_pump.hpp"
 
 namespace openstitch::desktop_v2::studio {
 namespace {
@@ -56,10 +57,13 @@ std::optional<MultiFadeSettings> multiSettingsOf(const QVariantList& inputs, boo
 FadeController::FadeController(StudioController& studio, QObject* parent)
     : QObject(parent), studio_(studio) {
     connect(&studio_, &StudioController::changed, this, &FadeController::refresh);
+    attachTaskPump(tasks_, this);
     refresh();
 }
 
-FadeController::~FadeController() = default;
+FadeController::~FadeController() {
+    tasks_.cancelAll();
+}
 
 void FadeController::refresh() {
     const auto& session = studio_.session();
@@ -85,6 +89,8 @@ void FadeController::refresh() {
     multiCurve_ = 0;
     axis_.reset();
     incompat_.clear();
+    imageReason_ = id_ != 0 ? q(imageFadeIncompatibility(studio_.session().project(), id_))
+                            : QStringLiteral("Sélectionnez un seul remplissage.");
     if (id_ != 0) {
         const auto& project = studio_.session().project();
         // Axe éditable au canevas pour TOUT fondu à axe (multicolore ou ancien couple).
@@ -525,6 +531,51 @@ QVariantList FadeController::curveProfile() const {
         list.push_back(v);
     }
     return list;
+}
+
+bool FadeController::fadeFromImage(int threads, double cellMm, bool continuousRows) {
+    if (imageBusy_) {
+        return refuse(QStringLiteral("Un calcul de fondu depuis l'image est déjà en cours."));
+    }
+    if (!imageReason_.isEmpty()) {
+        return refuse(imageReason_);
+    }
+    if (threads < 2 || threads > 8) {
+        return refuse(QStringLiteral("Choisissez entre 2 et 8 fils."));
+    }
+    if (!(cellMm >= 0.5 && cellMm <= 5.0)) {
+        return refuse(QStringLiteral("La case de la grille doit mesurer de 0,5 à 5 mm."));
+    }
+    const auto snapshot = studio_.session().snapshot();
+    const auto revision = studio_.session().revision();
+    const auto id = id_;
+    const ImageFadeSettings settings{threads, cellMm, continuousRows};
+    imageBusy_ = true;
+    emit busyChanged();
+    ok_ = true;
+    message_ = QStringLiteral("Calcul du fondu depuis l'image…");
+    emit messageChanged();
+    tasks_.submit<ImageFadePlan>(
+        "studio.fade_from_image",
+        [snapshot, id, settings](const TaskContext&) {
+            return computeImageFade(*snapshot, id, settings);
+        },
+        [this, revision](Result<ImageFadePlan>&& result) {
+            imageBusy_ = false;
+            emit busyChanged();
+            if (!result) {
+                refuse(q(result.error().message));
+                return;
+            }
+            if (studio_.session().revision() != revision) {
+                refuse(QStringLiteral("Le document a changé pendant le calcul : relancez-le."));
+                return;
+            }
+            report(commitImageFade(studio_.session(), *result),
+                   QStringLiteral("Fondu depuis l'image appliqué : %1 fils (annulable)")
+                       .arg(result->spec.palette.size()));
+        });
+    return true;
 }
 
 bool FadeController::refuse(const QString& why) {

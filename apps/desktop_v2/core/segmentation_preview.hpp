@@ -13,7 +13,10 @@
 #include <vector>
 
 #include "openstitch/core/error.hpp"
+#include <optional>
+
 #include "openstitch/core/task_control.hpp"
+#include "openstitch/core/units.hpp"
 #include "openstitch/segmentation/segmentation.hpp"
 
 namespace openstitch::document {
@@ -33,9 +36,12 @@ struct SegmentationPreview {
     segmentation::SegmentationOptions options; // réglages qui ont produit cet aperçu
 };
 
+// `blendZones` (expérimental) : zones de fondu (`segmentation::segment_blend_zones`, au pas de la
+// source) au lieu de la quantification ; `options` est alors ignoré.
 [[nodiscard]] Result<segmentation::Segmentation>
 segmentImageSource(const document::ImageSource& source,
-                   const segmentation::SegmentationOptions& options, const TaskContext& task);
+                   const segmentation::SegmentationOptions& options, const TaskContext& task,
+                   bool blendZones = false);
 
 // Charge `image` et la segmente avec `options`. Erreur du moteur sinon (fichier illisible…).
 [[nodiscard]] Result<SegmentationPreview>
@@ -43,8 +49,11 @@ previewSegmentation(const std::filesystem::path& image,
                     const segmentation::SegmentationOptions& options, const TaskContext& task);
 
 // Variante sur une image déjà chargée (tests, réglages successifs sans relire le disque).
+// `blendZonesAt` (expérimental) : zones de fondu au pas donné (mm par pixel) au lieu de la
+// quantification.
 [[nodiscard]] Result<SegmentationPreview>
 previewSegmentation(const image::Image& image, const segmentation::SegmentationOptions& options,
-                    const TaskContext& task);
+                    const TaskContext& task,
+                    std::optional<Millimeters> blendZonesAt = std::nullopt);
 
 } // namespace openstitch::desktop_v2

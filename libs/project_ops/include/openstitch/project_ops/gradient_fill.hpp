@@ -123,6 +123,9 @@ struct MulticolorGradientSpec {
     // à l'axe du fondu).
     std::optional<Angle> stitch_angle;
     double end_density{0.15}; // un seul fil : densité relative à l'arrivée
+    // Profils lus dans une grille de parts (un canal par fil, somme 255 par case) au lieu de
+    // la rampe géométrique : cf. `MulticolorGradientParams::image_weights`.
+    std::optional<document::WeightGrid> image_weights;
 
     bool operator==(const MulticolorGradientSpec&) const = default;
 };
@@ -161,5 +164,35 @@ make_edit_multicolor_gradient_command(document::Project& project, ObjectId ancho
 
 [[nodiscard]] Result<std::unique_ptr<commands::ICommand>>
 make_remove_multicolor_gradient_command(const document::Project& project, ObjectId anchorOrMember);
+
+// Fondu dont les parts des fils sont lues dans l'image (2026-11-17). `colors` vide : `threads`
+// couleurs proposées par `autodigitize::propose_blend_palette` ; sinon ces couleurs, dans
+// l'ordre de couture.
+struct ImageBlendRequest {
+    std::size_t threads{4};                          // 2 à 8, si `colors` est vide
+    std::vector<std::array<std::uint8_t, 3>> colors; // 2 à 8 couleurs imposées
+    Micrometers cell{1000};                          // pas de la grille de parts (1 mm)
+    double locality{0.05};                           // pénalité de localité du mélange
+    std::optional<Angle> stitch_angle; // absent : perpendiculaire à l'axe par défaut
+    // Faux : grille de rangées partagée, chaque morceau de rangée cousu par un seul fil
+    // (couverture exacte). Vrai : rangées continues par fil, écart selon sa part (Multi Blend
+    // de Hatch), beaucoup moins de coupes.
+    bool continuous_rows{false};
+    double min_share{0.0};                // part minimale d'un fil en un point (0 à 0,5)
+    std::size_t max_threads_per_point{4}; // 2 à 4
+};
+
+// Spec complète d'un fondu à parts image pour `fillOrGradient` : un remplissage (tatami ou
+// directionnel) qui deviendra un fondu, ou l'ancre / une couche d'un fondu existant (palette
+// et parts recalculées, méthode conservée si compatible). Lit l'image de travail du projet.
+[[nodiscard]] Result<MulticolorGradientSpec> image_blend_spec(const document::Project& project,
+                                                              ObjectId fillOrGradient,
+                                                              const ImageBlendRequest& request);
+
+// Crée le fondu (ou réédite le fondu existant) depuis `image_blend_spec`, en UN pas
+// d'annulation.
+[[nodiscard]] Result<std::unique_ptr<commands::ICommand>>
+make_image_blend_command(document::Project& project, ObjectId fillOrGradient,
+                         const ImageBlendRequest& request);
 
 } // namespace openstitch::project_ops

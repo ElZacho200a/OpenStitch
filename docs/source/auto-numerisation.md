@@ -655,6 +655,47 @@ tout le gain vient du débord.
 contour créé ensuite sur une région ainsi élargie déborde aussi. Rendu visuel non vérifié (pas de
 rendu raster en ligne de commande) : contrôle à faire dans le bureau.
 
+## Zones de fondu (`--mode blend`, expérimental, 2026-11-17)
+
+Pour les peintures (ciels de Turner, eau de Monet), la quantification en N couleurs découpe
+chaque dégradé en bandes puis en îlots. Le mode `blend` garde les dégradés entiers :
+
+1. **Zones** (`segmentation::segment_blend_zones`, `libs/segmentation/src/blend_zones.cpp`) :
+   image réduite à 0,5 mm/px et floutée (0,75 mm), gradient de Sobel en Lab, partage des eaux
+   depuis une grille de germes, puis fusion hiérarchique selon la **force du bord commun**
+   (gradient moyen le long du bord, seuil `--blend-edge`, 2,5) : un dégradé lent devient une
+   zone, un bord net l'arrête. Les voisines de même couleur moyenne (ΔE < 4) sont aussi
+   fusionnées (le partage des eaux laisse des bassins étroits le long d'un bord net), les
+   zones de moins de 25 mm² absorbées. Sans bibliothèque tierce, déterministe.
+2. **Objets** : chaque zone passe par la chaîne des formes en bloc uni (débord sous les
+   voisines, pas de tissu entre deux zones), puis son tatami devient un fondu à parts lues
+   dans l'image (`project_ops::make_image_blend_command`, voir
+   [Remplissage directionnel](directional-fill.md), « Parts lues dans l'image »).
+3. **Fils** : une palette globale de mélange (`--blend-threads`, 12) ; chaque zone en prend 1
+   à `--blend-per-zone` (`autodigitize::choose_zone_threads` : meilleur fil seul, puis ajout
+   glouton s'il réduit l'erreur de mélange d'au moins 20 %). Un seul fil : aplat.
+4. **Ordre** : rangées horizontales partout ; couture fil par fil sur toutes les zones (un
+   changement de fil par couleur de la palette) ; palette du fil le plus rare au plus
+   fréquent, pour que le fil dominant d'une zone, cousu en dernier, cache les trajets des
+   fils rares.
+
+**Mesures** (*Le Téméraire*, 150 × 111 mm ; ΔE moyen entre le rendu flouté à 1 mm et
+l'image, luminance recalée : comparaison relative seulement) :
+
+| Variante | Zones | Points | Coupes | Changements de fil | ΔE |
+|---|---|---|---|---|---|
+| `--mode shapes --max-colors 12` (référence) | — | 35 428 | 332 | — | 11,1 |
+| blend, rangées continues | 30 | 23 787 | 649 | 11 | 13,5 |
+| blend, rangées continues, `--blend-edge 4` | 10 | 19 063 | 321 | 9 | 13,4 |
+| blend, grille partagée, `--blend-edge 4` | 10 | 19 769 | 546 | 9 | 11,5 |
+
+(avec `--hidden-travel`). Aucun réglage ne domine encore la référence : en rangées continues,
+les fils ne sont pas coordonnés et laissent des stries de tissu (couleur moins fidèle) ; en
+grille partagée, les coupes remontent. Les blancs et l'orange saturé du soleil (moins de 1 %
+de la surface) n'entrent pas dans la palette ; imposer le fil le plus clair n'a pas aidé.
+Mode **non activé par défaut**. Studio : case « Zones de fondu (expérimental) » du panneau Segmentation (nombre de fils de la palette) ; aperçu et « Appliquer » découpent en zones, puis « Mettre à jour les formes » coud chaque zone en fondu (réglages de la dernière segmentation appliquée, `ImageController::lastSegmentationOptions`). Test : `blendZonesExperimentSewsGradientZoneAsFade`. Piste principale : rangées continues
+placées sur une grille commune à tous les fils. Aucun essai sur tissu ; *Nymphéas* non
+mesurés.
 ## Implémentation associée
 
 - `libs/segmentation/include/openstitch/segmentation/segmentation.hpp` —
