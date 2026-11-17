@@ -335,6 +335,18 @@ if(TARGET openstitch::studio_ui)
         set_tests_properties(test_desktop_v2_studio_fix PROPERTIES
             ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QUICK_CONTROLS_STYLE=Basic;QML_IMPORT_PATH=${studio_fix_qml_imports};QT_QPA_FONTDIR=${PROJECT_SOURCE_DIR}/resources/fonts"
             ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+        # Fondu à la frontière (docs/studio-fondu-frontiere-spec.md §8).
+        add_executable(test_desktop_v2_studio_boundary_blend test_studio_boundary_blend.cpp)
+        target_link_libraries(test_desktop_v2_studio_boundary_blend
+            PRIVATE openstitch::studio_ui Qt6::Test openstitch::warnings)
+        qt_add_resources(test_desktop_v2_studio_boundary_blend studio_boundary_blend_qml
+            PREFIX "/studio" BASE "${studio_test_qml_root}" FILES ${studio_all_qml}
+                "${studio_test_qml_root}/qml/qmldir")
+        add_test(NAME test_desktop_v2_studio_boundary_blend
+            COMMAND test_desktop_v2_studio_boundary_blend -o -,txt)
+        set_tests_properties(test_desktop_v2_studio_boundary_blend PROPERTIES
+            ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QUICK_CONTROLS_STYLE=Basic;QML_IMPORT_PATH=${studio_fix_qml_imports};QT_QPA_FONTDIR=${PROJECT_SOURCE_DIR}/resources/fonts"
+            ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
         add_executable(test_desktop_v2_studio_registration test_studio_registration.cpp)
         target_link_libraries(test_desktop_v2_studio_registration
             PRIVATE openstitch::studio_ui Qt6::Test openstitch::warnings)
