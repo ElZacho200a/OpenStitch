@@ -1333,7 +1333,11 @@ OpSpec op_blend_boundary() {
               arg("width_a", "number", "demi-bande dans la zone a", false, "mm", "[0.5 ; 15]"),
               arg("width_b", "number", "demi-bande dans la zone b", false, "mm", "[0.5 ; 15]"),
               arg("curve", "string", "profil de transition", false, {},
-                  join(enum_names(density_curve_table()), " | "))};
+                  join(enum_names(density_curve_table()), " | ")),
+              arg("frontier", "array",
+                  "frontière tracée à la main, liste de points [x, y] (au moins deux) ; [] : "
+                  "frontière calculée là où les zones se touchent",
+                  false, "mm")};
     s.example = R"({"op":"blend_boundary","a":2,"b":4,"width_a":2.5,"width_b":2.5})";
     s.apply = guarded([](OpContext& ctx) {
         const ObjectId a = need_emb(ctx, "a").id;
@@ -1357,6 +1361,23 @@ OpSpec op_blend_boundary() {
             options.curve =
                 parse_enum(density_curve_table(), need_string(ctx.args, "curve"), "curve");
         }
+        if (ctx.args.contains("frontier")) {
+            const json& pts = ctx.args.at("frontier");
+            if (!pts.is_array()) {
+                refuse(code::kUsage, "champ « frontier » : liste de points [x, y] attendue");
+            }
+            options.manual_frontier.clear();
+            for (const json& pt : pts) {
+                if (!pt.is_array() || pt.size() != 2) {
+                    refuse(code::kUsage, "champ « frontier » : chaque point est [x, y] en mm");
+                }
+                const double x = number_in_range("frontier.x", pt.at(0), -1000.0, 1000.0, "mm");
+                const double y = number_in_range("frontier.y", pt.at(1), -1000.0, 1000.0, "mm");
+                options.manual_frontier.push_back(
+                    Vec2um{Micrometers{static_cast<std::int32_t>(std::lround(x * 1000.0))},
+                           Micrometers{static_cast<std::int32_t>(std::lround(y * 1000.0))}});
+            }
+        }
         auto cmd = project_ops::make_boundary_blend_command(ctx.project, a, b, options);
         if (!cmd) {
             return OpStatus::failure(cmd.error().code.empty() ? code::kRefused : cmd.error().code,
@@ -1375,6 +1396,7 @@ OpSpec op_blend_boundary() {
                                   {"width_a", options.width_a.value / 1000.0},
                                   {"width_b", options.width_b.value / 1000.0},
                                   {"curve", enum_name(density_curve_table(), options.curve)},
+                                  {"manual_frontier", !options.manual_frontier.empty()},
                                   {"frontier_mm", round6(frontier_mm)}});
     });
     return s;

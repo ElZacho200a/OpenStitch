@@ -236,3 +236,81 @@ TEST_CASE("inspect reports the boundary blend of each zone", "[project_ops][blen
     }
     CHECK(found);
 }
+
+// --- L4 : frontière tracée à la main ----------------------------------------------------------
+
+TEST_CASE("a hand-drawn frontier blends zones that do not touch",
+          "[project_ops][blend][frontier]") {
+    auto project = make_project();
+    // Écarte la zone rouge : jour de 3 mm entre x = 20 et x = 23 mm.
+    project.vector_objects[1] = rect_shape(ObjectId{3}, 23, 0, 20, 20);
+    CHECK(project_ops::boundary_blend_refusal(project, ObjectId{2}, ObjectId{4})->code ==
+          "E_BLEND_NO_FRONTIER");
+
+    project_ops::BoundaryBlendOptions options;
+    options.width_a = Micrometers{4'000};
+    options.width_b = Micrometers{4'000};
+    options.manual_frontier = {Vec2um{Micrometers{21'500}, Micrometers{-1'000}},
+                               Vec2um{Micrometers{21'500}, Micrometers{21'000}}};
+    CHECK_FALSE(project_ops::boundary_blend_refusal(project, ObjectId{2}, ObjectId{4}, options));
+    commands::UndoStack stack;
+    auto cmd = project_ops::make_boundary_blend_command(project, ObjectId{2}, ObjectId{4}, options);
+    REQUIRE(cmd.has_value());
+    stack.execute(std::move(*cmd), project);
+    REQUIRE(document::find_boundary_blend(project, ObjectId{2}).has_value());
+    CHECK(project.findEmbroidery(ObjectId{4})->boundary_blend->manual_frontier ==
+          options.manual_frontier);
+    const auto info = project_ops::boundary_blend_info(project, ObjectId{2});
+    REQUIRE(info.has_value());
+    CHECK(info->active);
+    REQUIRE(info->frontier.size() == 1);
+    CHECK(info->frontier.front().points == options.manual_frontier);
+
+    // La zone bleue coud maintenant au-delà du jour, dans la demi-bande de la rouge.
+    const auto blended = stitch_generation::generate_sequence(project); // raw-sequence-ok: test
+    REQUIRE(blended.has_value());
+    CHECK(stitches_of(*blended, ObjectId{2}, 23'300.0, 25'500.0) > 0);
+    CHECK(stitches_of(*blended, ObjectId{4}, 17'500.0, 19'700.0) > 0);
+
+    // Aller-retour .osp : la frontière tracée est conservée.
+    static const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
+    const auto path = std::filesystem::temp_directory_path() /
+                      ("openstitch_blend_frontier_" + std::to_string(nonce) + ".osp");
+    REQUIRE(project_io::save_project(path, project).has_value());
+    const auto loaded = project_io::load_project(path);
+    std::filesystem::remove(path);
+    REQUIRE(loaded.has_value());
+    CHECK(loaded->findEmbroidery(ObjectId{2})->boundary_blend->manual_frontier ==
+          options.manual_frontier);
+}
+
+TEST_CASE("hand-drawn frontier refusals", "[project_ops][blend][frontier]") {
+    auto project = make_project();
+    project_ops::BoundaryBlendOptions far;
+    far.manual_frontier = {Vec2um{Micrometers{48'000}, Micrometers{0}},
+                           Vec2um{Micrometers{48'000}, Micrometers{20'000}}};
+    // Zones 2 (x ∈ [0 ; 20]) et 6 (x ∈ [60 ; 80]) : à 28 et 12 mm de la ligne, demi-bandes 2,5 mm.
+    CHECK(project_ops::boundary_blend_refusal(project, ObjectId{2}, ObjectId{6}, far)->code ==
+          "E_BLEND_FRONTIER_FAR");
+    project_ops::BoundaryBlendOptions single;
+    single.manual_frontier = {Vec2um{Micrometers{20'000}, Micrometers{5'000}}};
+    CHECK(project_ops::boundary_blend_refusal(project, ObjectId{2}, ObjectId{4}, single)->code ==
+          "E_BLEND_FRONTIER_SHORT");
+}
+
+TEST_CASE("blend_boundary operation accepts and clears a drawn frontier",
+          "[project_ops][blend][frontier][ops]") {
+    auto project = make_project();
+    const auto drawn = project_ops::apply_operation(
+        project, R"({"op":"blend_boundary","a":2,"b":4,"frontier":[[20,-1],[20,10],[21,21]]})");
+    INFO(drawn.to_json());
+    REQUIRE(drawn.ok);
+    CHECK(project.findEmbroidery(ObjectId{2})->boundary_blend->manual_frontier.size() == 3);
+    CHECK(drawn.to_json().find("manual_frontier") != std::string::npos);
+
+    const auto cleared = project_ops::apply_operation(
+        project, R"({"op":"blend_boundary","a":2,"b":4,"frontier":[]})");
+    REQUIRE(cleared.ok);
+    CHECK(project.findEmbroidery(ObjectId{2})->boundary_blend->manual_frontier.empty());
+    CHECK(document::find_boundary_blend(project, ObjectId{2}).has_value());
+}

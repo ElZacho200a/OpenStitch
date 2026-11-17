@@ -19,6 +19,10 @@ struct BoundaryBlendOptions {
     Micrometers width_a{2'500}; // demi-bande dans la zone A, [0,5 ; 15] mm
     Micrometers width_b{2'500}; // demi-bande dans la zone B, [0,5 ; 15] mm
     document::DensityCurve curve{document::DensityCurve::Linear};
+    // Frontière tracée à la main (lot L4), coordonnées modèle ; vide = calculée. Refus codés
+    // E_BLEND_FRONTIER_SHORT (moins de deux points ou de 1 mm) et E_BLEND_FRONTIER_FAR (une zone
+    // hors de sa demi-bande). Avec une frontière tracée, les zones n'ont pas à se toucher.
+    std::vector<Vec2um> manual_frontier;
 
     bool operator==(const BoundaryBlendOptions&) const = default;
 };

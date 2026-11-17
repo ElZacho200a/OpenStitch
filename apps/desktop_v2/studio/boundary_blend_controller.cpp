@@ -70,6 +70,7 @@ void BoundaryBlendController::refresh() {
     curve_ = 0;
     frontierMm_ = 0.0;
     frontier_.clear();
+    manual_.clear();
 
     if (snapshot && primary_ != 0) {
         if (const auto info = project_ops::boundary_blend_info(*snapshot, ObjectId{primary_})) {
@@ -78,6 +79,7 @@ void BoundaryBlendController::refresh() {
             widthMm_ = mm(info->options.width_a);
             partnerWidthMm_ = mm(info->options.width_b);
             curve_ = static_cast<int>(info->options.curve);
+            manual_ = info->options.manual_frontier;
             if (const auto* partner = snapshot->findEmbroidery(info->b)) {
                 partnerName_ = QString::fromStdString(partner->name);
             }
@@ -122,7 +124,7 @@ QString BoundaryBlendController::summary() const {
 }
 
 bool BoundaryBlendController::apply(std::uint64_t a, std::uint64_t b, double widthA, double widthB,
-                                    int curve) {
+                                    int curve, const std::vector<Vec2um>& frontier) {
     if (a == 0 || b == 0) {
         say(false, QStringLiteral("Sélectionnez deux zones remplies voisines"));
         return false;
@@ -139,6 +141,7 @@ bool BoundaryBlendController::apply(std::uint64_t a, std::uint64_t b, double wid
     options.width_a = um(widthA);
     options.width_b = um(widthB);
     options.curve = static_cast<document::DensityCurve>(curve);
+    options.manual_frontier = frontier;
     auto cmd =
         project_ops::make_boundary_blend_command(*snapshot, ObjectId{a}, ObjectId{b}, options);
     if (!cmd) {
@@ -150,15 +153,19 @@ bool BoundaryBlendController::apply(std::uint64_t a, std::uint64_t b, double wid
     return true;
 }
 
-bool BoundaryBlendController::create(double widthMm, double partnerWidthMm, int curve) {
-    refresh();
+std::uint64_t BoundaryBlendController::secondSelected() const {
     std::uint64_t second = 0;
     for (const auto& t : studio_.session().selection().targets()) {
         if (t.kind == TargetKind::EmbroideryObject && t.id != primary_) {
             second = t.id;
         }
     }
-    return apply(primary_, second, widthMm, partnerWidthMm, curve);
+    return second;
+}
+
+bool BoundaryBlendController::create(double widthMm, double partnerWidthMm, int curve) {
+    refresh();
+    return apply(primary_, secondSelected(), widthMm, partnerWidthMm, curve, {});
 }
 
 bool BoundaryBlendController::edit(double widthMm, double partnerWidthMm, int curve) {
@@ -167,7 +174,41 @@ bool BoundaryBlendController::edit(double widthMm, double partnerWidthMm, int cu
         say(false, QStringLiteral("Cette zone n'a pas de fondu à la frontière"));
         return false;
     }
-    return apply(primary_, other_, widthMm, partnerWidthMm, curve);
+    return apply(primary_, other_, widthMm, partnerWidthMm, curve, manual_);
+}
+
+bool BoundaryBlendController::setFrontier(const QVariantList& pointsMm) {
+    refresh();
+    std::vector<Vec2um> frontier;
+    for (const auto& value : pointsMm) {
+        const auto map = value.toMap();
+        bool okX = false;
+        bool okY = false;
+        const double x = map.value(QStringLiteral("x")).toDouble(&okX);
+        const double y = map.value(QStringLiteral("y")).toDouble(&okY);
+        if (!okX || !okY || !std::isfinite(x) || !std::isfinite(y)) {
+            say(false, QStringLiteral("Point de frontière invalide"));
+            return false;
+        }
+        frontier.push_back(Vec2um{um(x), um(y)});
+    }
+    if (frontier.size() < 2) {
+        say(false, QStringLiteral("Tracez la frontière avec au moins deux points"));
+        return false;
+    }
+    if (hasBlend_) {
+        return apply(primary_, other_, widthMm_, partnerWidthMm_, curve_, frontier);
+    }
+    return apply(primary_, secondSelected(), widthMm_, partnerWidthMm_, curve_, frontier);
+}
+
+bool BoundaryBlendController::clearFrontier() {
+    refresh();
+    if (!hasBlend_ || manual_.empty()) {
+        say(false, QStringLiteral("Ce fondu n'a pas de frontière tracée"));
+        return false;
+    }
+    return apply(primary_, other_, widthMm_, partnerWidthMm_, curve_, {});
 }
 
 bool BoundaryBlendController::remove() {

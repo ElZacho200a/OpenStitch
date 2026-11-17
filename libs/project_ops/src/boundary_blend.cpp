@@ -72,6 +72,7 @@ std::optional<Error> boundary_blend_refusal(const document::Project& project, Ob
     spec.width_a = options.width_a;
     spec.width_b = options.width_b;
     spec.curve = options.curve;
+    spec.manual_frontier = options.manual_frontier;
     const auto plan = stitch_generation::plan_boundary_blend(
         stitch_generation::boundary_blend_zone(project, *za),
         stitch_generation::boundary_blend_zone(project, *zb), spec);
@@ -92,8 +93,8 @@ make_boundary_blend_command(const document::Project& project, ObjectId a, Object
         return za->boundary_blend && za->boundary_blend->partner == b;
     }();
     return std::make_unique<commands::SetBoundaryBlendLinkCommand>(
-        a, document::BoundaryBlendLink{b, options.width_a, options.curve}, b,
-        document::BoundaryBlendLink{a, options.width_b, options.curve},
+        a, document::BoundaryBlendLink{b, options.width_a, options.curve, options.manual_frontier},
+        b, document::BoundaryBlendLink{a, options.width_b, options.curve, options.manual_frontier},
         edit ? "Modifier le fondu à la frontière" : "Fondu à la frontière");
 }
 
@@ -126,6 +127,7 @@ std::optional<BoundaryBlendInfo> boundary_blend_info(const document::Project& pr
     info.b = zone->boundary_blend->partner;
     info.options.width_a = zone->boundary_blend->width_self;
     info.options.curve = zone->boundary_blend->curve;
+    info.options.manual_frontier = zone->boundary_blend->manual_frontier;
     const auto* other = project.findEmbroidery(info.b);
     if (other != nullptr && other->boundary_blend) {
         info.options.width_b = other->boundary_blend->width_self;
@@ -137,6 +139,7 @@ std::optional<BoundaryBlendInfo> boundary_blend_info(const document::Project& pr
     spec.width_a = info.options.width_a;
     spec.width_b = info.options.width_b;
     spec.curve = info.options.curve;
+    spec.manual_frontier = info.options.manual_frontier;
     const auto plan = stitch_generation::plan_boundary_blend(
         stitch_generation::boundary_blend_zone(project, *zone),
         stitch_generation::boundary_blend_zone(project, *other), spec);

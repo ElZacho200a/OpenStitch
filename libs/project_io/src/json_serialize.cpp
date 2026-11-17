@@ -2147,6 +2147,13 @@ json project_to_json(const document::Project& project) {
             eo["boundaryBlend"] = {{"partner", e.boundary_blend->partner.value},
                                    {"width", e.boundary_blend->width_self.value},
                                    {"curve", static_cast<int>(e.boundary_blend->curve)}};
+            if (!e.boundary_blend->manual_frontier.empty()) {
+                json pts = json::array();
+                for (const Vec2um p : e.boundary_blend->manual_frontier) {
+                    pts.push_back(json::array({p.x.value, p.y.value}));
+                }
+                eo["boundaryBlend"]["frontier"] = std::move(pts);
+            }
         }
         if (e.multi_blend) {
             eo["multiBlend"] = {{"group", e.multi_blend->group.value},
@@ -2505,6 +2512,25 @@ Result<document::Project> project_from_json(const json& j) {
                 if (curve >= 0 &&
                     curve <= static_cast<int>(document::DensityCurve::ConcaveConvex)) {
                     b.curve = static_cast<document::DensityCurve>(curve);
+                }
+                // Frontière tracée (lot L4) : [[x, y], …] en µm ; absente = calculée.
+                if (link.contains("frontier")) {
+                    const auto& pts = link.at("frontier");
+                    if (!pts.is_array()) {
+                        return fail(ErrorCategory::InvalidFile,
+                                    "Fondu à la frontière invalide : frontier doit être une liste");
+                    }
+                    for (const auto& pt : pts) {
+                        if (!pt.is_array() || pt.size() != 2 || !pt.at(0).is_number_integer() ||
+                            !pt.at(1).is_number_integer()) {
+                            return fail(ErrorCategory::InvalidFile,
+                                        "Fondu à la frontière invalide : point de frontier attendu "
+                                        "[x, y] en µm entiers");
+                        }
+                        b.manual_frontier.push_back(
+                            Vec2um{Micrometers{pt.at(0).get<std::int32_t>()},
+                                   Micrometers{pt.at(1).get<std::int32_t>()}});
+                    }
                 }
                 e.boundary_blend = b;
             }

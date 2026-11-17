@@ -30,6 +30,8 @@ class BoundaryBlendController : public QObject {
     Q_PROPERTY(double frontierMm READ frontierMm NOTIFY changed)
     // Frontière courante pour le canevas : liste de polylignes, chacune une liste de {x, y} en mm.
     Q_PROPERTY(QVariantList frontier READ frontier NOTIFY changed)
+    // La frontière du fondu de la zone principale est tracée à la main (lot L4).
+    Q_PROPERTY(bool manualFrontier READ manualFrontier NOTIFY changed)
     Q_PROPERTY(QString summary READ summary NOTIFY changed)
     Q_PROPERTY(QString message READ message NOTIFY messageChanged)
     Q_PROPERTY(bool lastOk READ lastOk NOTIFY messageChanged)
@@ -47,6 +49,7 @@ public:
     [[nodiscard]] int curve() const { return curve_; }
     [[nodiscard]] double frontierMm() const { return frontierMm_; }
     [[nodiscard]] QVariantList frontier() const { return frontier_; }
+    [[nodiscard]] bool manualFrontier() const { return !manual_.empty(); }
     [[nodiscard]] QString summary() const;
     [[nodiscard]] QString message() const { return message_; }
     [[nodiscard]] bool lastOk() const { return ok_; }
@@ -58,6 +61,13 @@ public:
     Q_INVOKABLE bool edit(double widthMm, double partnerWidthMm, int curve);
     // Retire le fondu de la zone principale (et le lien de sa voisine). Un pas d'annulation.
     Q_INVOKABLE bool remove();
+    // Frontière tracée à la main (lot L4) : liste de {x, y} en mm modèle, au moins deux points.
+    // Sur deux zones sélectionnées sans fondu, crée le fondu avec cette frontière (les zones
+    // peuvent ne pas se toucher) ; sur une zone qui porte un fondu, remplace sa frontière en
+    // gardant largeurs et transition. Un pas d'annulation.
+    Q_INVOKABLE bool setFrontier(const QVariantList& pointsMm);
+    // Revient à la frontière calculée là où les zones se touchent. Un pas d'annulation.
+    Q_INVOKABLE bool clearFrontier();
 
 signals:
     void changed();
@@ -66,7 +76,9 @@ signals:
 private:
     void refresh();
     void say(bool ok, const QString& text);
-    bool apply(std::uint64_t a, std::uint64_t b, double widthA, double widthB, int curve);
+    bool apply(std::uint64_t a, std::uint64_t b, double widthA, double widthB, int curve,
+               const std::vector<Vec2um>& frontier);
+    [[nodiscard]] std::uint64_t secondSelected() const;
 
     StudioController& studio_;
     std::uint64_t seenDoc_{0};
@@ -84,6 +96,7 @@ private:
     int curve_{0};
     double frontierMm_{0.0};
     QVariantList frontier_;
+    std::vector<Vec2um> manual_;
     QString message_;
     bool ok_{true};
 };

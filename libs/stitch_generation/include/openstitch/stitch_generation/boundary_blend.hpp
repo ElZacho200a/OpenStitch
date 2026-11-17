@@ -30,6 +30,8 @@ struct BoundaryBlendSpec {
     document::DensityCurve curve{document::DensityCurve::Linear};
     Micrometers tolerance{600};      // contact entre A et B (jours de vectorisation, inset)
     Micrometers min_frontier{1'000}; // morceau de frontière plus court : ignoré
+    // Frontière TRACÉE à la main (lot L4) : remplace la frontière calculée. Vide : calculée.
+    std::vector<Vec2um> manual_frontier;
 
     bool operator==(const BoundaryBlendSpec&) const = default;
 };

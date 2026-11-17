@@ -540,6 +540,7 @@ json embroidery_json(const document::Project& project, const document::Embroider
                                    {"partner_width_mm", mm(blend->options.width_b)},
                                    {"curve", density_curve_name(blend->options.curve)},
                                    {"active", blend->active},
+                                   {"manual_frontier", !blend->options.manual_frontier.empty()},
                                    {"frontier_mm", std::round(frontier_mm * 1000.0) / 1000.0}};
     }
     if (const auto* v = project.findObject(e.source_vector)) {

@@ -207,21 +207,58 @@ Result<BoundaryBlendPlan> plan_boundary_blend(const std::vector<geometry::PathSe
                               "Choisir une demi-bande entre 0,5 et 15 mm de chaque côté.");
         }
     }
-    // Zones en plusieurs composantes : réunion des frontières de chaque couple, dans l'ordre.
     std::vector<geometry::Polyline> frontier;
-    for (const auto& ai : a) {
-        for (const auto& bj : b) {
-            auto part = geometry::shared_frontier(ai, bj, spec.tolerance, spec.min_frontier);
-            if (!part) {
-                return std::unexpected(part.error());
+    const bool manual = !spec.manual_frontier.empty();
+    if (manual) {
+        // Frontière tracée : prise telle quelle (les zones peuvent ne pas se toucher, ou se
+        // chevaucher). Au moins deux points et `min_frontier` de long.
+        if (spec.manual_frontier.size() < 2 || geometry::polyline_length(spec.manual_frontier) <
+                                                   static_cast<double>(spec.min_frontier.value)) {
+            return fail_coded(ErrorCategory::UserInput, "E_BLEND_FRONTIER_SHORT",
+                              "Frontière tracée trop courte",
+                              "Tracer une ligne d'au moins 1 mm entre les deux zones.");
+        }
+        frontier.push_back(geometry::Polyline{spec.manual_frontier, false});
+    } else {
+        // Zones en plusieurs composantes : réunion des frontières de chaque couple, dans l'ordre.
+        for (const auto& ai : a) {
+            for (const auto& bj : b) {
+                auto part = geometry::shared_frontier(ai, bj, spec.tolerance, spec.min_frontier);
+                if (!part) {
+                    return std::unexpected(part.error());
+                }
+                frontier.insert(frontier.end(), part->begin(), part->end());
             }
-            frontier.insert(frontier.end(), part->begin(), part->end());
         }
     }
     if (frontier.empty()) {
         return fail_coded(ErrorCategory::OperationImpossible, "E_BLEND_NO_FRONTIER",
                           "Les deux zones ne se touchent pas",
                           "Rapprocher les zones ou dessiner la frontière à la main.");
+    }
+    if (manual) {
+        // Chaque zone doit être atteinte par sa demi-bande : sinon le fondu n'aurait aucun effet
+        // de ce côté (frontière tracée loin d'une des zones).
+        const auto reaches = [&](const std::vector<geometry::PathSet>& zones, Micrometers width) {
+            const auto band = geometry::polyline_band(frontier, width);
+            if (!band) {
+                return false;
+            }
+            const auto common = geometry::intersect_polygons(zones, *band);
+            if (!common) {
+                return false;
+            }
+            double area = 0.0;
+            for (const auto& set : *common) {
+                area += geometry::path_set_area_um2(set);
+            }
+            return area > 0.0;
+        };
+        if (!reaches(a, spec.width_a) || !reaches(b, spec.width_b)) {
+            return fail_coded(ErrorCategory::UserInput, "E_BLEND_FRONTIER_FAR",
+                              "La frontière tracée est trop loin d'une des deux zones",
+                              "Tracer la frontière entre les deux zones, ou élargir la bande.");
+        }
     }
     BoundaryBlendPlan plan;
     plan.frontier = frontier;
@@ -358,6 +395,7 @@ boundary_blend_layer(const document::Project& project, const document::Embroider
     spec.width_a = first.boundary_blend->width_self;
     spec.width_b = second.boundary_blend->width_self;
     spec.curve = first.boundary_blend->curve;
+    spec.manual_frontier = first.boundary_blend->manual_frontier;
     auto fills = fill_boundary_blend(zonesFirst, fillParams(first, zonesFirst.front()), zonesSecond,
                                      fillParams(second, zonesSecond.front()), spec);
     if (!fills) {

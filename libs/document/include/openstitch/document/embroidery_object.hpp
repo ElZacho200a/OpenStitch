@@ -839,6 +839,9 @@ struct BoundaryBlendLink {
     ObjectId partner;
     Micrometers width_self{2'500}; // demi-bande dans CETTE zone, [0,5 ; 15] mm
     DensityCurve curve{DensityCurve::Linear};
+    // Frontière TRACÉE à la main (lot L4), polyligne ouverte en coordonnées modèle, identique sur
+    // les deux liens. Vide : frontière calculée là où les deux zones se touchent.
+    std::vector<Vec2um> manual_frontier;
 
     bool operator==(const BoundaryBlendLink&) const = default;
 };

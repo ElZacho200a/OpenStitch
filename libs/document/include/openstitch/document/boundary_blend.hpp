@@ -32,7 +32,8 @@ struct BoundaryBlendPair {
 
 // Résout le fondu à la frontière porté par `id`. Les liens doivent être réciproques, les deux
 // objets des remplissages pris en charge, sur deux formes sources DISTINCTES et existantes, avec
-// la même courbe et des largeurs dans les bornes. Sinon nullopt : le lien reste une métadonnée
+// la même courbe, la même frontière tracée (vide ou au moins deux points) et des largeurs dans
+// les bornes. Sinon nullopt : le lien reste une métadonnée
 // sans effet sur la génération (lien orphelin après suppression, conversion, édition à la main).
 [[nodiscard]] inline std::optional<BoundaryBlendPair> find_boundary_blend(const Project& project,
                                                                           ObjectId id) {
@@ -47,7 +48,9 @@ struct BoundaryBlendPair {
     };
     if (!link.partner.valid() || link.partner == id || partner == nullptr ||
         !partner->boundary_blend || partner->boundary_blend->partner != id ||
-        partner->boundary_blend->curve != link.curve || !widthOk(link.width_self) ||
+        partner->boundary_blend->curve != link.curve ||
+        partner->boundary_blend->manual_frontier != link.manual_frontier ||
+        link.manual_frontier.size() == 1 || !widthOk(link.width_self) ||
         !widthOk(partner->boundary_blend->width_self) || !boundary_blend_fill_supported(*self) ||
         !boundary_blend_fill_supported(*partner) || !self->source_vector.valid() ||
         !partner->source_vector.valid() || self->source_vector == partner->source_vector ||

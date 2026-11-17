@@ -81,6 +81,7 @@ private slots:
     void initTestCase();
     void createEditRemoveJourney();
     void refusalsDoNotMutate();
+    void drawnFrontierJourney();
     void panelIsHostedAndDrivesTheController();
 };
 
@@ -141,6 +142,33 @@ void StudioBoundaryBlendTest::refusalsDoNotMutate() {
     QVERIFY(!rig.blend.canCreate());
     QVERIFY(!rig.blend.remove());
     QCOMPARE(rig.steps(), before);
+}
+
+void StudioBoundaryBlendTest::drawnFrontierJourney() {
+    Rig rig;
+    rig.build();
+    rig.select({rig.left, rig.right});
+    const auto before = rig.steps();
+    // Une frontière tracée de biais crée le fondu (un pas d'annulation).
+    const QVariantList line{QVariantMap{{QStringLiteral("x"), -1.0}, {QStringLiteral("y"), -11.0}},
+                            QVariantMap{{QStringLiteral("x"), 1.0}, {QStringLiteral("y"), 11.0}}};
+    QVERIFY(rig.blend.setFrontier(line));
+    QCOMPARE(rig.steps(), before + 1);
+    QVERIFY(rig.blend.hasBlend());
+    QVERIFY(rig.blend.manualFrontier());
+    QCOMPARE(rig.blend.frontier().size(), 1);
+
+    // Un seul point : refus lisible, aucune mutation.
+    QVERIFY(!rig.blend.setFrontier(QVariantList{line.front()}));
+    QCOMPARE(rig.steps(), before + 1);
+
+    // Retour à la frontière calculée, largeurs conservées.
+    const double width = rig.blend.widthMm();
+    QVERIFY(rig.blend.clearFrontier());
+    QCOMPARE(rig.steps(), before + 2);
+    QVERIFY(!rig.blend.manualFrontier());
+    QCOMPARE(rig.blend.widthMm(), width);
+    QVERIFY(!rig.blend.clearFrontier());
 }
 
 void StudioBoundaryBlendTest::panelIsHostedAndDrivesTheController() {
