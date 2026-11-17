@@ -14,6 +14,7 @@
 #include "chunk_cache.hpp"
 #include "openstitch/geometry/offset.hpp"
 #include "openstitch/stitch_generation/adaptive_pull.hpp"
+#include "openstitch/stitch_generation/row_mask.hpp"
 #include "openstitch/stitch_generation/running_stitch.hpp"
 
 #ifdef OPENSTITCH_EXPERIMENTAL_TATAMI_SCAN
@@ -374,6 +375,11 @@ const experimental::TatamiScan* experimental::set_tatami_scan(const TatamiScan* 
 
 std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
                                     const document::TatamiParams& params) {
+    return fill_tatami(region, params, nullptr);
+}
+
+std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
+                                    const document::TatamiParams& params, const RowMask* mask) {
     std::vector<FillStitch> out;
     const double spacing = static_cast<double>(std::max<std::int32_t>(1, params.row_spacing.value));
     const double stitchLen =
@@ -436,10 +442,26 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
     std::vector<Segment> segs;
     std::map<int, std::vector<int>> byRow;
 #ifdef OPENSTITCH_EXPERIMENTAL_TATAMI_SCAN
-    auto batch = scan_batch(polys, minY, maxY, spacing);
+    auto batch = mask == nullptr ? scan_batch(polys, minY, maxY, spacing)
+                                 : std::optional<experimental::TatamiRows>{};
 #endif
+    // Grille des rangées. Sans masque : relative à la région (historique, inchangée). Avec
+    // masque (fondu) : ANCRÉE dans le repère tourné, rangée `k` à y = (k + 1/2) × écart, `k`
+    // entier absolu. Deux régions de même angle et même écart tracent alors exactement les
+    // mêmes rangées, avec le même seuil `row_threshold(k)` (spec fondu-frontière §6.1).
     int rowIndex = 0;
-    for (double y = minY + spacing / 2.0; y < maxY; y += spacing, ++rowIndex) {
+    double firstY = minY + spacing / 2.0;
+    if (mask != nullptr) {
+        const double k0 = std::ceil((minY - spacing / 2.0) / spacing);
+        rowIndex = static_cast<int>(k0);
+        firstY = (k0 + 0.5) * spacing;
+    }
+    for (double yAcc = firstY;; yAcc += spacing, ++rowIndex) {
+        // Masque : position recalculée depuis `k` (pas d'accumulation d'arrondis entre régions).
+        const double y = mask != nullptr ? (static_cast<double>(rowIndex) + 0.5) * spacing : yAcc;
+        if (!(y < maxY)) {
+            break;
+        }
         std::vector<double> xs;
 #ifdef OPENSTITCH_EXPERIMENTAL_TATAMI_SCAN
         if (batch) {
@@ -468,7 +490,7 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
             segs.push_back(std::move(s));
         }
     }
-    const int n = static_cast<int>(segs.size());
+    int n = static_cast<int>(segs.size());
     if (n == 0) {
         return out;
     }
@@ -530,8 +552,10 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
 
     // 1 ter) Penetrations d'aiguille de chaque segment (bornes definitives).
     for (Segment& s : segs) {
+        // Modulo positif : les rangées ancrées d'un masque peuvent avoir un indice négatif.
+        const int stage = ((s.row % stagger) + stagger) % stagger;
         const double phase =
-            stitchLen * (static_cast<double>(s.row % stagger) / static_cast<double>(stagger));
+            stitchLen * (static_cast<double>(stage) / static_cast<double>(stagger));
         s.pens.push_back(s.lo);
         const double firstK = std::ceil((s.lo - phase) / stitchLen);
         for (double x = phase + firstK * stitchLen; x < s.hi; x += stitchLen) {
@@ -635,13 +659,74 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
         }
     }
 
+    // 1 quinquies) MASQUE DE RANGÉES (fondu, spec fondu-frontière §6.1). Chaque intervalle
+    //    entre deux pénétrations est gardé si le masque coud, en son milieu, la rangée de seuil
+    //    `row_threshold(k)`. Un segment devient une suite de MORCEAUX (≥ 2 pénétrations), coupés
+    //    aux pénétrations : les briques (`stagger`) restent en place. Les bouts coupés ne
+    //    reçoivent pas de compensation (ils sont intérieurs) ; un bout resté sur le bord de la
+    //    région garde la sienne. Après l'écrêtage et la compensation, calculés sur les rangées
+    //    entières : le masque ne change pas la géométrie des rangées, seulement leur couture.
+    if (mask != nullptr) {
+        std::vector<Segment> kept;
+        for (const Segment& s : segs) {
+            const double threshold = row_threshold(s.row);
+            const std::size_t m = s.pens.size();
+            const auto flush = [&](std::size_t a, std::size_t b) { // pénétrations [a ; b], b > a
+                Segment r;
+                r.row = s.row;
+                r.y = s.y;
+                r.lo = a == 0 ? s.lo : s.pens[a];
+                r.hi = b + 1 == m ? s.hi : s.pens[b];
+                r.pens.assign(s.pens.begin() + static_cast<std::ptrdiff_t>(a),
+                              s.pens.begin() + static_cast<std::ptrdiff_t>(b) + 1);
+                kept.push_back(std::move(r));
+            };
+            std::size_t start = m; // m : aucun morceau ouvert
+            for (std::size_t k = 1; k < m; ++k) {
+                const double mid = 0.5 * (std::clamp(s.pens[k - 1], s.lo, s.hi) +
+                                          std::clamp(s.pens[k], s.lo, s.hi));
+                const bool on = mask->keeps(to_um(rotate({mid, s.y}, cosB, sinB)), threshold);
+                if (on && start == m) {
+                    start = k - 1;
+                } else if (!on && start != m) {
+                    flush(start, k - 1);
+                    start = m;
+                }
+            }
+            if (start != m) {
+                flush(start, m - 1);
+            }
+        }
+        segs = std::move(kept);
+        byRow.clear();
+        for (std::size_t i = 0; i < segs.size(); ++i) {
+            byRow[segs[i].row].push_back(static_cast<int>(i));
+        }
+        n = static_cast<int>(segs.size());
+        if (n == 0) {
+            return out;
+        }
+    }
+
     // 2) ADJACENCE : deux segments de rangÃ©es consÃ©cutives qui se chevauchent en
     //    x sont voisins â€” la bande entre eux est intÃ©rieure Ã  la rÃ©gion, donc
     //    une liaison entre eux ne traverse jamais un trou (le trou aurait coupÃ©
     //    la rangÃ©e). C'est ce qui permet de contourner les trous (Â§15.5).
+    //    Masque : les rangées gardées ne sont plus consécutives (densité d → une rangée sur
+    //    ≈ 1/d). On relie à la PROCHAINE rangée gardée, à au plus `kMaskedRowGap` rangées ; le
+    //    trajet reste validé géométriquement au parcours (saut s'il sort de la région).
+    constexpr int kMaskedRowGap = 12;
     std::vector<std::vector<int>> adj(static_cast<std::size_t>(n));
-    for (const auto& [row, ids] : byRow) {
-        const auto it = byRow.find(row + 1);
+    for (auto rowIt = byRow.begin(); rowIt != byRow.end(); ++rowIt) {
+        const int row = rowIt->first;
+        const auto& ids = rowIt->second;
+        auto it = byRow.find(row + 1);
+        if (mask != nullptr) {
+            it = std::next(rowIt);
+            if (it != byRow.end() && it->first - row > kMaskedRowGap) {
+                it = byRow.end();
+            }
+        }
         if (it == byRow.end()) {
             continue;
         }

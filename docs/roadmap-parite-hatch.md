@@ -961,6 +961,13 @@ plus.
 - Modules : `libs/stitch_generation`.
 
 ### HP-STI-011 — Mélange de couleurs (color blending) [P2] — ◐ Partiel (action disponible)
+- 2026-11-17 : parts des fils lues dans une grille (image) au lieu de la seule rampe
+  géométrique : `WeightGrid`, `MulticolorGradientParams::image_weights`, tranche par couche
+  `DensityGradient::slice_grid` ; grille partagée ou rangées continues à écart selon la part
+  (Multi Blend de Hatch). Opération `image_blend` (CLI/MCP). Nouveaux manques : coupes trop
+  nombreuses sur un tableau entier (433 contre 332 à l'auto-numérisation actuelle), câblage
+  Studio, essais textiles. Statut ◐ conservé.
+- 2026-11-17 : trajets cachés sous les couches suivantes d'un fondu à parts image (part couverte ≥ 0,75, 12 mm au plus) et choix de la rangée suivante joignable par trajet caché : 433 → 318 coupes sur le tableau entier, sous les 332 de l'auto-numérisation actuelle (`docs/source/directional-fill.md`). Restent : stries, câblage Studio, essais textiles. Statut ◐ conservé.
 - 2026-11-15 : recette black-box actualisée pour les rangées partagées (triples
   position/poids/début, profils échantillonnés, grille de surcouche à 60 %) et
   réactivée sur les PR suivantes et `main`, au lieu de la seule PR #336 fermée.
@@ -1020,7 +1027,11 @@ plus.
 - Hatch : deux couches de dégradés inverses qui se mélangent.
 - À faire : placement libre d'un fil le long de l'axe ; assistant « camaïeu depuis mes fils » ;
   détection automatique dans la numérisation ; **validation sur tissu** de la grille
-  partagée (pièce-test 3 fils, complémentaire et superposition).
+  partagée (pièce-test 3 fils, complémentaire et superposition) ; **fondu à la frontière
+  entre deux zones** (rampe selon la distance à la limite commune, zones conservées) :
+  spécification `docs/studio-fondu-frontiere-spec.md`. Lot L1a livré le 2026-11-16 (masque
+  de rangées du tatami, pas encore branché) ; restent L1b (frontière, géométrie `Boundary`,
+  directionnel), L2 (lien, commandes, `.osp`, CLI), L3 (Studio), L4, L5.
 - Dépend de : HP-STI-010.
 
 ### HP-STI-012 — Point de croix [P2] — ◐ Partiel (2026-10-31)
@@ -4139,10 +4150,12 @@ une entrée P0 ouverte (§0.4).
 - À faire : seuil réglable et traitement de la frange semi-transparente (érosion/rattachement) pour éviter trous et bandes vides.
 - Acceptation : un PNG à bord semi-transparent ne produit ni trou ni bande vide.
 
-### HP-AUTO-017 — Détection des zones de dégradé avant quantification [P2] — ☐ À faire
+### HP-AUTO-017 — Détection des zones de dégradé avant quantification [P2] — ◐ Partiel (mode expérimental)
+- 2026-11-17 : `--mode blend` (expérimental) : zones de fondu par partage des eaux et fusion selon la force du bord (`segmentation::segment_blend_zones`), chaque zone cousue en fondu à parts image, fils pris dans une palette globale de mélange. Test : un dégradé lent reste une zone, un aplat à bord net reste intact. Ne domine pas encore `--mode shapes` (Le Téméraire : 321 coupes / ΔE 13,4 ou 546 / 11,5 contre 332 / 11,1) , disponible dans Studio comme expérimentation (case du panneau Segmentation). Voir `docs/source/auto-numerisation.md`.
 - État OpenStitch : le bruit des dégradés n'est traité que par lissage (`segmentation.hpp` ≈ l.79-86).
 - À faire : repérer les zones à faible variance Lab continue et les quantifier en peu de teintes (ou les orienter vers HP-STI-010).
 - Acceptation : un dégradé ne produit pas plus de N régions voisines (N fixé au test) ; les aplats nets sont intacts.
+- Étude du 2026-11-17 (`docs/fondus-picturaux-autodigitize.md`, prototype `scripts/fondus_picturaux_proto.py`) : zones par fusion hiérarchique selon la force du bord, palette globale de mélange, poids par fil (NNLS) cousus sur la grille partagée. Sur 5 tableaux (Turner, Monet) : 27 à 69 zones au lieu de 449 à 2 369 régions ; couture simulée meilleure que la quantification à 12 sur 4 images sur 5, pas sur le détail fin (Monet 1906). Nouveaux manques : champ de poids image dans `MulticolorGradientParams` (lot 1), détection C++ (lot 2), hybride fond + détails (lot 3), direction par tenseur de structure (lot 4).
 
 ### HP-AUTO-018 — Débruitage automatique des photos [P2] — ☐ À faire
 - État OpenStitch : filtre bilatéral présent (`ops.hpp`) mais jamais déclenché par l'auto-numérisation.
@@ -4629,6 +4642,11 @@ ouvrant le lot (§0.1).
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-11-17 | Claude (étude fondus picturaux) | **HP-AUTO-017 ☐** (inchangé, étudié). Prototype Python déterministe sur Turner et les *Nymphéas* : zones de fondu par force de bord, palette de mélange, poids par fil sur grille partagée simulée. ΔE à 1 mm : 4,1 contre 5,7 (quantification à 12) sur *Le Téméraire* ; perte sur le détail fin du Monet 1906 (6,4 contre 5,7). Aucun code moteur modifié ; plan en 4 lots dans `docs/fondus-picturaux-autodigitize.md`. Pas de validation textile. |
+| 2026-11-16 | Claude (fondu à la frontière, spec + L1a) | **HP-STI-011 ◐** (inchangé). Spécification `docs/studio-fondu-frontiere-spec.md` (fondu selon la distance à la limite de deux zones, zones conservées, tatami en dégradé natif). L1a : `RowMask` / `DensityRowMask` / `row_threshold` et `fill_tatami(…, const RowMask*)` (grille ancrée, découpe aux pénétrations, liaison à la prochaine rangée gardée) ; sans masque, sortie identique octet pour octet ; aucun appelant branché. |
+| 2026-11-17 | Claude (fondus à parts image, étape 1) | **HP-STI-011 ◐** et **HP-AUTO-017 ☐** (inchangés, précisés). Les profils d'un fondu multicolore peuvent venir d'une grille de parts calculée depuis l'image (mélange en RVB linéaire, moindres carrés sous contrainte, palette de mélange proposée) ; couches en grille partagée ou en rangées continues (Hatch). Opération `image_blend`. *Le Téméraire* entier, 6 fils : 17 911 points et 433 coupes contre 35 428 et 332 (auto-numérisation à 12 couleurs) ; îlots et tissu visible supprimés, stries visibles. Tests : `test_image_blend.cpp` (6 cas). Studio non câblé ; pas de validation textile. |
+| 2026-11-17 | Claude (fondus à parts image, coupes) | **HP-STI-011 ◐** (inchangé). Un fil rare d'un fondu à parts image voyage en point courant sous les zones que les couches suivantes couvriront (part ≥ 0,75 hors du premier et du dernier millimètre) au lieu de couper ; l'ordre des rangées préfère celles joignables ainsi. *Le Téméraire*, 6 fils, meilleur réglage : 433 → 318 coupes (auto-numérisation 12 couleurs : 332). Seuil balayé 0,45-0,9. Aucun essai sur tissu. |
+| 2026-11-17 | Claude (fondus picturaux, lot 2) | **HP-AUTO-017 ☐ → ◐**. Mode `--mode blend` expérimental : zones de fondu (partage des eaux, fusion selon la force du bord commun et des voisines de même couleur), une zone = un fondu à parts image de 1 à 4 fils d'une palette globale (2 à 16), couture fil par fil sur toutes les zones (11 changements de fil au lieu de 98). Le Téméraire : rangées continues 321 coupes / ΔE 13,4, grille partagée 546 / 11,5, contre 332 / 11,1 en mode formes. Non activé par défaut ; dans Studio, case « Zones de fondu (expérimental) » du panneau Segmentation ; aucun essai sur tissu. |
 | 2026-11-16 | Claude (barre d'outils commune des espaces Studio) | **HP-AUTO-006 ◐** (inchangé, précisé) et **HP-OBJ-024 ◐** (inchangé, précisé). Barre latérale commune `CanvasToolRail` dans les quatre espaces (outils modaux seulement : Sélection, Main, outils de l'espace par groupe, Ajuster) ; pinceau et gomme de Segmentation sortis du panneau ; espace Image : Recadrer, Règle d'échelle, Fond transparent (`ColorToAlphaOp`). Multi-calques : l'échelle change tous les calques du même facteur et le recadrage s'applique à tous les calques de même taille de travail, en une étape ; la pipette agit sur le calque actif. |
 | 2026-11-15 | Codex (F43-01, segmentation en lot) | HP-OBJ-024 reste partiel. Un bouton Studio segmente les sources du document avec les mêmes réglages et un seul pas d’annulation. |
 | 2026-11-16 | Claude (IA-DATA-01 L0+L1) | Roadmap : aucune entrée HP (chantier IA hors parité, Notion IA-DATA-01). Audit des sources (`docs/ai/ia-data-sources.csv` : seul le générateur synthétique est approuvé, aucune donnée tierce ingérée) ; `scripts/ia_data_corpus.py` génère des formes à graine fixe (7 familles, cas minuscules, fins, très concaves) et mesure 9 candidats par forme via `openstitch-cli project apply/check/density` (statuts measured/refused/empty/failed, aucun label) ; corpus et manifeste SHA-256 identiques octet pour octet ; 16 tests Python, dont une intégration moteur facultative. Doc `docs/ai/ia-data-01.md`. |
@@ -4818,3 +4836,4 @@ ouvrant le lot (§0.1).
 | 2026-11-16 | Claude (réglage rapide du cadre, Studio) | **HP-HOOP-001 ◐** (précisé) et **HP-HOOP-005 ◐** (inchangé). Bouton « Cadre L × H mm » dans l'en-tête et entrée « Cadre… » au clic droit de tous les canevas : `HoopPopover.qml` (forme, largeur, hauteur, rayon, marge, pivoter, modèles, Mes cadres), appliqué en direct en une commande annulable (`FileController::applyHoopSpec`). Tambour à la forme réelle (rond, ovale, coins arrondis) et zone brodable en retrait, GPU et logiciel (`HoopDisplay`). Sans couche des points, le clic droit ne choisit plus d'objet. Tests `test_studio_files.cpp::hoopQuickSettingsAreOneUndoStepEach` (vraie scène QML) et `test_studio_space_image.cpp::hoopRingIsHollowWithoutStitches` (formes, marge). Reste : réglages d'atelier (espacement par défaut, machine). |
 | 2026-11-17 | Claude (R02, calcul GPU et performances) | **HP-PERF-037 ☑** (nouvelle entrée). Tirage du tissu et grille des ponts cachés réécrits à sortie identique : marine 179 → 74 ms, tentabrode 270 → 216 ms, texte 40 → 32 ms (p50 chauds, natif, A/B entrelacé). GPU D3D11 remesuré sur RTX 5060 Ti de bureau : toujours 3 à 5× plus lent que le CPU, transferts compris (no-go confirmé). **HP-PERF-015** : constat ajouté (livraison annulée dans `main` par `af61f094`). Dossier `docs/performance/gpu-compute/`. |
 | 2026-11-17 | Claude (R02 lot 1) | **HP-PERF-037 ☑** (précisé) : `render_threads` utilise `parallel_for` sur des bandes de 8 à 64 lignes au lieu de 8 bandes égales ; aperçu tentabrode −29 %, octets identiques. |
+| 2026-11-17 | Claude (câblage Studio du fondu depuis l'image) | **HP-STI-011 ◐** (inchangé). Panneau *Fondu de fils* de Studio : section « Fondu depuis l'image » (fils 2 à 8, case de grille 0,5 à 5 mm, rangées continues), désactivée avec sa raison sans image ou sur une forme incompatible ; `core/image_fade` (calcul sur instantané via `TaskManager`, application en UNE commande annulable), `FadeController::fadeFromImage`. Test QTest `test_desktop_v2_studio_fade_image`. Limite : pas d'entrée de palette d'actions (le catalogue exécute de façon synchrone). |
