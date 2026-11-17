@@ -17,10 +17,19 @@ CanvasToolRail {
         { id: "satin", icon: "satin", label: qsTr("Geste satin : tracer une colonne satin"), shortcut: "S", group: "gestes" },
         { id: "rungs", icon: "rungs", label: qsTr("Barreaux d'un satin"), shortcut: "", group: "gestes" },
         { id: "guide", icon: "guide", label: qsTr("Guide de direction du remplissage"), shortcut: "D", group: "remplissage" },
-        { id: "break", icon: "break", label: qsTr("Ligne de rupture du remplissage"), shortcut: "Shift+D", group: "remplissage" }
+        { id: "break", icon: "break", label: qsTr("Ligne de rupture du remplissage"), shortcut: "Shift+D", group: "remplissage" },
+        { id: "needle", icon: "needle", label: qsTr("Point zéro de l'aiguille : où elle est posée avant de lancer la broderie (par défaut au centre)"), shortcut: "O", group: "machine" }
     ] : []
-    activeTool: rail.digitizeCtl ? rail.digitizeCtl.mode : ""
+    activeTool: rail.toolCtl && rail.toolCtl.activeTool === "needle.origin" ? "needle"
+              : rail.digitizeCtl ? rail.digitizeCtl.mode : ""
     onToolTriggered: id => {
+        if (id === "needle") {
+            // L'outil « point zéro » appartient au contrôleur d'outils ; les gestes de
+            // numérisation se désactivent pour lui laisser la souris.
+            if (rail.digitizeCtl) rail.digitizeCtl.mode = ""
+            if (rail.toolCtl) rail.toolCtl.activeTool = "needle.origin"
+            return
+        }
         if (rail.digitizeCtl) rail.digitizeCtl.mode = id
         if (rail.toolCtl) rail.toolCtl.activeTool = "select"
     }

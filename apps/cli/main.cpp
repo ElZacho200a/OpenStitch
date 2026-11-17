@@ -1136,9 +1136,9 @@ int run_digitize(const DigitizeArgs& a) {
 // Exporte un projet .osp en DST par le MÊME chemin que le bureau (export_machine_file) :
 // permet d'inspecter les coupes et la fin du fichier sans passer par l'interface.
 int run_osp2dst(const std::string& ospPath, const std::string& outDst, bool noClobber,
-                const openstitch::formats::MachineExportOptions& machineOptions,
+                const openstitch::formats::MachineExportOptions& machineOptionsIn,
                 const openstitch::project_io::ExportOptimizations& optimizations,
-                const std::string& colorFile) {
+                const std::string& colorFile, bool startFromProject) {
     using namespace openstitch;
     if (const auto refused = check_output_path("osp2dst", outDst, noClobber)) {
         return *refused;
@@ -1146,6 +1146,11 @@ int run_osp2dst(const std::string& ospPath, const std::string& outDst, bool noCl
     const auto project = project_io::load_project(std::filesystem::path(ospPath));
     if (!project) {
         return cli_error("osp2dst", project.error().message, kOspHint);
+    }
+    // Aucun --start : le point zéro de l'aiguille du projet, sinon le premier point.
+    auto machineOptions = machineOptionsIn;
+    if (startFromProject) {
+        machineOptions.start = project_io::project_start(*project);
     }
     // Format machine déduit de l'extension de sortie (dst par défaut, pes, jef, exp).
     std::string formatId = "dst";
@@ -2006,7 +2011,7 @@ int main(int argc, char** argv) {
         ->check(CLI::Range(0.0, 100.0));
     od_cmd->add_flag("--no-color-changes", od_no_color_changes,
                      "Supprime les changements de couleur (motif monochrome)");
-    std::string od_start = "first";
+    std::string od_start;
     std::string od_color_file;
     od_cmd
         ->add_option("--color-file", od_color_file,
@@ -2014,9 +2019,10 @@ int main(int argc, char** argv) {
                      "(tableur) ou inf (binaire) ; même nom, extension remplacée")
         ->check(CLI::IsMember({"csv", "inf"}));
     od_cmd->add_option("--start", od_start,
-                       "Point de départ machine : first (premier point, défaut), center (centre "
-                       "de la broderie) ou X,Y en mm dans le repère du document ; l'ordre des "
-                       "points n'est pas modifié");
+                       "Point de départ machine : first (premier point), center (centre de la "
+                       "broderie) ou X,Y en mm dans le repère du document ; l'ordre des points "
+                       "n'est pas modifié. Absent : point zéro de l'aiguille du projet, sinon "
+                       "first");
     od_cmd->add_option("--stops", od_stops, "Arrêts machine : native, as-color-change ou drop")
         ->check(CLI::IsMember({"native", "as-color-change", "drop"}));
     auto* od_nc =
@@ -2143,7 +2149,7 @@ int main(int argc, char** argv) {
                                    : openstitch::formats::StopMode::Native;
         if (od_start == "center") {
             machineOptions.start.mode = openstitch::formats::StartMode::Center;
-        } else if (od_start != "first") {
+        } else if (od_start != "first" && !od_start.empty()) {
             double xMm = 0.0;
             double yMm = 0.0;
             char tail = 0;
@@ -2165,7 +2171,7 @@ int main(int argc, char** argv) {
         optimizations.hidden_travel.max_bridge_length = openstitch::Micrometers{
             static_cast<std::int32_t>(std::lround(od_reduce_max_mm * 1000.0))};
         return run_osp2dst(od_in, od_out, od_noclobber, machineOptions, optimizations,
-                           od_color_file);
+                           od_color_file, od_start.empty());
     }
     if (os_cmd->parsed()) {
         return run_osp2svg(os_in, os_out, os_outlines, os_only, os_noclobber);

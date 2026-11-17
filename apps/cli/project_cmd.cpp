@@ -845,7 +845,7 @@ CLI::App* register_project_commands(CLI::App& app, bool& jsonOut) {
 
     // export ----------------------------------------------------------------------------
     struct ExportArgs {
-        std::string osp, out, format, stops{"native"}, levels{"all"}, start{"first"};
+        std::string osp, out, format, stops{"native"}, levels{"all"}, start;
         bool noTrims{false}, noColorChanges{false}, reduceTrims{false}, sameColour{false};
         bool outlines{false}, noClobber{false};
         double reduceMax{15.0};
@@ -867,8 +867,8 @@ CLI::App* register_project_commands(CLI::App& app, bool& jsonOut) {
     c->add_option("--stops", exArgs->stops, "Arrêts machine : native, as-color-change ou drop")
         ->check(CLI::IsMember({"native", "as-color-change", "drop"}));
     c->add_option("--start", exArgs->start,
-                  "Point de départ machine : first (défaut), center ou X,Y en mm ; l'ordre des "
-                  "points n'est pas modifié");
+                  "Point de départ machine : first, center ou X,Y en mm ; l'ordre des points "
+                  "n'est pas modifié. Absent : point zéro de l'aiguille du projet, sinon first");
     c->add_flag("--reduce-trims", exArgs->reduceTrims,
                 "Remplace des coupes par des ponts cousus cachés (export seulement)");
     c->add_option("--reduce-trims-levels", exArgs->levels,
@@ -940,6 +940,8 @@ CLI::App* register_project_commands(CLI::App& app, bool& jsonOut) {
                                 : openstitch::formats::StopMode::Native;
             if (a.start == "center") {
                 options.start.mode = openstitch::formats::StartMode::Center;
+            } else if (a.start.empty()) {
+                options.start = openstitch::project_io::project_start(opened->project);
             } else if (a.start != "first") {
                 double xMm = 0.0;
                 double yMm = 0.0;

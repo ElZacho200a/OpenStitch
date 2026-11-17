@@ -13,6 +13,7 @@
 #include <QQuickStyle>
 #include <QQuickWindow>
 #include <QShortcutEvent>
+#include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
@@ -198,6 +199,8 @@ private slots:
     void polygonAndRegularShapes();
     void penBezierAndFreehand();
     void escapeCancelsGestures();
+    void needleOriginIsPlacedByClickAndResetToCentre();
+    void needleOriginIsTypedInMmAndFollowsUndoRedo();
     void nodeEditByMouse();
     void nodeDragFromSelectTool();
     void offscreenNodeHandlesDoNotFillQmlCanvas();
@@ -526,6 +529,93 @@ void StudioToolsTest::escapeCancelsGestures() {
     QCOMPARE(steps(rig), baseSteps + 1);
     QCOMPARE(nodeCount(rig.session.project(), rig.session.selection().targets().front().id),
              std::size_t{3});
+    QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+}
+
+// Point zéro de l'aiguille : par défaut au centre de la broderie ; l'outil dédié le pose d'un clic
+// (UNE étape d'annulation), Suppr le ramène au centre, l'annulation le restaure.
+void StudioToolsTest::needleOriginIsPlacedByClickAndResetToCentre() {
+    Rig rig;
+    open(rig);
+    const auto baseSteps = steps(rig);
+    QVERIFY(!rig.tools.needleOriginCustom());
+    // Par défaut le repère est affiché au centre, en discret.
+    const auto before = rig.canvas->needleOrigin();
+    QVERIFY(before.value(QStringLiteral("visible")).toBool());
+    QVERIFY(!before.value(QStringLiteral("custom")).toBool());
+
+    rig.tools.setActiveTool(QStringLiteral("needle.origin"));
+    QVERIFY(rig.tools.capturesMouse());
+    QVERIFY(!rig.tools.hint().isEmpty());
+    QTest::mouseClick(rig.window, Qt::LeftButton, {}, at(rig, 12, -8));
+    QVERIFY(rig.tools.needleOriginCustom());
+    QCOMPARE(steps(rig), baseSteps + 1);
+    const auto origin = rig.session.project().finishing.needle_origin;
+    QVERIFY(origin.has_value());
+    QVERIFY(std::abs(origin->x.value - 12'000) < 600);
+    QVERIFY(std::abs(origin->y.value + 8'000) < 600); // `at` prend un Y modèle (vers le haut)
+    QVERIFY(rig.canvas->needleOrigin().value(QStringLiteral("custom")).toBool());
+    // Le point zéro n'est pas le premier point cousu.
+    QVERIFY(!rig.session.project().finishing.design_start.has_value());
+
+    QTest::keyClick(rig.window, Qt::Key_Delete);
+    QVERIFY(!rig.tools.needleOriginCustom());
+    QCOMPARE(steps(rig), baseSteps + 2);
+    QVERIFY(rig.session.undo());
+    QVERIFY(rig.tools.needleOriginCustom());
+    QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+}
+
+// Saisie numérique X / Y (mm) : UNE commande annulable, valeurs lues par les champs QML ; annuler
+// et rétablir mettent à jour les champs (signal) et le repère du canevas.
+void StudioToolsTest::needleOriginIsTypedInMmAndFollowsUndoRedo() {
+    Rig rig;
+    open(rig);
+    const auto baseSteps = steps(rig);
+    // Sans point choisi, les champs montrent le centre de la broderie (celui de l'export).
+    QVERIFY(!rig.tools.needleOriginCustom());
+    const double centreX = rig.tools.needleOriginXMm();
+    const double centreY = rig.tools.needleOriginYMm();
+    QVERIFY(std::isfinite(centreX) && std::isfinite(centreY));
+
+    QSignalSpy changed(&rig.tools, &ToolController::needleOriginChanged);
+    QVERIFY(rig.tools.setNeedleOriginMm(-12.34, 7.5));
+    QCOMPARE(steps(rig), baseSteps + 1);
+    QVERIFY(rig.tools.needleOriginCustom());
+    QCOMPARE(rig.tools.needleOriginXMm(), -12.3); // arrondi au dixième de mm
+    QCOMPARE(rig.tools.needleOriginYMm(), 7.5);
+    const auto origin = rig.session.project().finishing.needle_origin;
+    QVERIFY(origin.has_value());
+    QCOMPARE(origin->x.value, -12'300);
+    QCOMPARE(origin->y.value, 7'500);
+    QVERIFY(changed.count() >= 1);
+    QVERIFY(rig.canvas->needleOrigin().value(QStringLiteral("custom")).toBool());
+
+    // Valeur inchangée, hors limites ou non numérique : refus, aucune étape ajoutée.
+    QVERIFY(!rig.tools.setNeedleOriginMm(-12.3, 7.5));
+    QVERIFY(!rig.tools.setNeedleOriginMm(5000.0, 0.0));
+    QVERIFY(!rig.tools.setNeedleOriginMm(std::nan(""), 0.0));
+    QCOMPARE(steps(rig), baseSteps + 1);
+
+    // Annuler : retour au centre, champs et repère suivent ; rétablir : le point revient.
+    changed.clear();
+    QVERIFY(rig.session.undo());
+    QVERIFY(!rig.tools.needleOriginCustom());
+    QCOMPARE(rig.tools.needleOriginXMm(), centreX);
+    QCOMPARE(rig.tools.needleOriginYMm(), centreY);
+    QVERIFY(changed.count() >= 1);
+    QVERIFY(!rig.canvas->needleOrigin().value(QStringLiteral("custom")).toBool());
+    changed.clear();
+    QVERIFY(rig.session.redo());
+    QVERIFY(rig.tools.needleOriginCustom());
+    QCOMPARE(rig.tools.needleOriginXMm(), -12.3);
+    QVERIFY(changed.count() >= 1);
+    QVERIFY(rig.canvas->needleOrigin().value(QStringLiteral("custom")).toBool());
+
+    // Bouton « Centre » : retour au centre en une étape.
+    QVERIFY(rig.tools.resetNeedleOrigin());
+    QVERIFY(!rig.tools.needleOriginCustom());
+    QCOMPARE(rig.tools.needleOriginXMm(), centreX);
     QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
 }
 

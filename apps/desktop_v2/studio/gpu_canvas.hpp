@@ -40,6 +40,8 @@ class GpuCanvas : public QQuickItem {
     // points en px canevas, élagués à la fenêtre ; jamais un objet QML par point.
     Q_PROPERTY(DigitizeGestures* digitize READ digitize WRITE setDigitize NOTIFY digitizeChanged)
     Q_PROPERTY(QVariantList handlesOverlay READ handlesOverlay NOTIFY overlayChanged)
+    // Point zéro de l'aiguille en pixels écran : { visible, custom, x, y }.
+    Q_PROPERTY(QVariantMap needleOrigin READ needleOrigin NOTIFY overlayChanged)
     Q_PROPERTY(double zoom READ zoom NOTIFY viewChanged)
     Q_PROPERTY(bool zoomRectMode READ zoomRectMode WRITE setZoomRectMode NOTIFY zoomRectModeChanged)
     Q_PROPERTY(QRectF rubberBand READ rubberBand NOTIFY rubberBandChanged)
@@ -77,6 +79,7 @@ public:
     [[nodiscard]] DigitizeGestures* digitize() const { return digitize_; }
     void setDigitize(DigitizeGestures* digitize);
     [[nodiscard]] QVariantList handlesOverlay() const;
+    [[nodiscard]] QVariantMap needleOrigin() const;
     [[nodiscard]] double zoom() const { return camera_.scale(); }
     [[nodiscard]] bool zoomRectMode() const { return zoomRectMode_; }
     void setZoomRectMode(bool value);
@@ -179,6 +182,9 @@ private:
     void viewUpdated();
     void rememberView();
     void restoreView(double scale, ScenePoint offset);
+    // Centre de la broderie (mm scène), recalculé seulement quand la scène change.
+    mutable std::shared_ptr<const StudioSceneSnapshot> centreScene_;
+    mutable ScenePoint centre_{};
     StudioController* controller_{nullptr};
     std::shared_ptr<const StudioSceneSnapshot> scene_;
     std::vector<Target> selection_;
