@@ -158,6 +158,11 @@ public:
     // besoin).
     void set_host_actions(LiveHostActions actions) { host_ = std::move(actions); }
 
+    // L'utilisateur confie un dossier à l'agent (il l'a nommé dans sa demande ou l'a choisi) :
+    // Read / Glob / Grep y passent sans question, sauf secrets. Renvoie false si le chemin est
+    // sensible ou n'est pas un dossier existant.
+    [[nodiscard]] bool grant_read_dir(const std::string& directory);
+
     // Fil GUI.
     [[nodiscard]] std::shared_ptr<LivePendingCall> begin(const std::string& tool,
                                                          const std::string& args_json);
@@ -176,6 +181,8 @@ private:
     InfoProvider info_;
     std::function<void()> on_applied_;
     LiveHostActions host_;
+    std::vector<std::string> granted_dirs_; // dossiers normalisés (minuscules, « / »)
+    std::set<std::string> read_allowed_;    // « outil|chemin » déjà autorisés (session)
 };
 
 // Protocole d'un client local : une ligne JSON par requête, une par réponse.
