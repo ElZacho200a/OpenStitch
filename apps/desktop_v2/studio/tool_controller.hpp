@@ -50,6 +50,7 @@ class ToolController : public QObject {
     Q_PROPERTY(int snapRadiusPx READ snapRadiusPx WRITE setSnapRadiusPx NOTIFY optionsChanged)
     Q_PROPERTY(int selectedNodeCount READ selectedNodeCount NOTIFY overlayChanged)
     Q_PROPERTY(QObject* warp READ warp CONSTANT)
+    Q_PROPERTY(bool needleOriginCustom READ needleOriginCustom NOTIFY needleOriginChanged)
 
 public:
     explicit ToolController(StudioController& studio, QObject* parent = nullptr);
@@ -78,6 +79,10 @@ public:
     void setSnapRadiusPx(int value);
     [[nodiscard]] int selectedNodeCount() const { return static_cast<int>(nodeSel_.size()); }
     QObject* warp() { return &warp_; }
+    // Point zéro de l'aiguille choisi par l'utilisateur (faux : par défaut, centre de la broderie).
+    [[nodiscard]] bool needleOriginCustom() const;
+    // Revient au centre de la broderie ; faux s'il y était déjà.
+    Q_INVOKABLE bool resetNeedleOrigin();
 
     // --- Événements du canevas (mm scène, échelle en px/mm)
     // ---------------------------------------
@@ -110,6 +115,7 @@ signals:
     void messageChanged();
     void optionsChanged();
     void overlayChanged();
+    void needleOriginChanged();
     // Le dernier objet créé est sélectionné.
     void objectCreated(const QString& id);
 
@@ -124,6 +130,7 @@ private:
     void rebuild();
     void refreshNodeView();
     void createdFrom(std::uint64_t id, const QString& label);
+    bool placeNeedleOrigin(PointMm p);
     bool commitBox(PointMm a, PointMm b, Qt::KeyboardModifiers mods);
     [[nodiscard]] std::vector<PointMm> boxPolygon(PointMm a, PointMm b,
                                                   Qt::KeyboardModifiers mods) const;

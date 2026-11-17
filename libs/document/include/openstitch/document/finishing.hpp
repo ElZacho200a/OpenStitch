@@ -104,6 +104,13 @@ struct SequenceFinishing {
     std::optional<Vec2um> design_start{};
     std::optional<Vec2um> design_end{};
 
+    // Point zéro machine : où l'aiguille est posée AVANT de lancer la broderie (origine du
+    // fichier DST/PES/JEF), pour caler le motif sur le tissu par rapport à d'autres coutures.
+    // Différent de `design_start`, qui fixe le premier point COUSU. Absent : centre de la
+    // broderie. µm, repère document. N'influence pas les points : appliqué seulement à l'export
+    // (`project_io::with_start_point`).
+    std::optional<Vec2um> needle_origin{};
+
     bool operator==(const SequenceFinishing&) const = default;
 
     // Réglage d'un projet antérieur à ces finitions : rien n'est ajouté.

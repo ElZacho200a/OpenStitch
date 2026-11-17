@@ -9,6 +9,7 @@
 #include "openstitch/formats/dst.hpp"
 #include "openstitch/formats/format_registry.hpp"
 #include "openstitch/image/image.hpp"
+#include "openstitch/project_io/machine_file.hpp"
 #include "openstitch/stitch_analysis/color_blocks.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
 
@@ -67,6 +68,17 @@ Result<DigitizeOutput> run_digitize(const DigitizeRequest& request, const TaskCo
     return out;
 }
 
+formats::ExportStart machineStartOf(const document::Project& project) {
+    formats::ExportStart start;
+    if (const auto& origin = project.finishing.needle_origin) {
+        start.mode = formats::StartMode::Custom;
+        start.point = *origin;
+    } else {
+        start.mode = formats::StartMode::Center;
+    }
+    return start;
+}
+
 Result<void> export_dst(const stitch::StitchSequence& sequence, const std::filesystem::path& path) {
     return formats::write_dst_file(path, sequence);
 }
@@ -89,6 +101,7 @@ Result<stitch::StitchStats> export_project_dst(std::shared_ptr<const document::P
     if (task.cancelled()) {
         return cancelled_error();
     }
+    *sequence = project_io::with_start_point(std::move(*sequence), machineStartOf(*project));
     if (auto written = export_dst(*sequence, path); !written) {
         return std::unexpected(written.error());
     }
@@ -138,6 +151,7 @@ Result<stitch::StitchStats> export_project_file(std::shared_ptr<const document::
     if (task.cancelled()) {
         return cancelled_error();
     }
+    *sequence = project_io::with_start_point(std::move(*sequence), machineStartOf(*project));
     Result<std::vector<std::uint8_t>> bytes = fail(ErrorCategory::Internal, "non encodé");
     if (format->encode_ex != nullptr) {
         formats::MachineExportOptions options;

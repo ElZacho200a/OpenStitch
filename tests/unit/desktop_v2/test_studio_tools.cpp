@@ -198,6 +198,7 @@ private slots:
     void polygonAndRegularShapes();
     void penBezierAndFreehand();
     void escapeCancelsGestures();
+    void needleOriginIsPlacedByClickAndResetToCentre();
     void nodeEditByMouse();
     void nodeDragFromSelectTool();
     void offscreenNodeHandlesDoNotFillQmlCanvas();
@@ -526,6 +527,40 @@ void StudioToolsTest::escapeCancelsGestures() {
     QCOMPARE(steps(rig), baseSteps + 1);
     QCOMPARE(nodeCount(rig.session.project(), rig.session.selection().targets().front().id),
              std::size_t{3});
+    QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+}
+
+// Point zéro de l'aiguille : par défaut au centre de la broderie ; l'outil dédié le pose d'un clic
+// (UNE étape d'annulation), Suppr le ramène au centre, l'annulation le restaure.
+void StudioToolsTest::needleOriginIsPlacedByClickAndResetToCentre() {
+    Rig rig;
+    open(rig);
+    const auto baseSteps = steps(rig);
+    QVERIFY(!rig.tools.needleOriginCustom());
+    // Par défaut le repère est affiché au centre, en discret.
+    const auto before = rig.canvas->needleOrigin();
+    QVERIFY(before.value(QStringLiteral("visible")).toBool());
+    QVERIFY(!before.value(QStringLiteral("custom")).toBool());
+
+    rig.tools.setActiveTool(QStringLiteral("needle.origin"));
+    QVERIFY(rig.tools.capturesMouse());
+    QVERIFY(!rig.tools.hint().isEmpty());
+    QTest::mouseClick(rig.window, Qt::LeftButton, {}, at(rig, 12, -8));
+    QVERIFY(rig.tools.needleOriginCustom());
+    QCOMPARE(steps(rig), baseSteps + 1);
+    const auto origin = rig.session.project().finishing.needle_origin;
+    QVERIFY(origin.has_value());
+    QVERIFY(std::abs(origin->x.value - 12'000) < 600);
+    QVERIFY(std::abs(origin->y.value + 8'000) < 600); // `at` prend un Y modèle (vers le haut)
+    QVERIFY(rig.canvas->needleOrigin().value(QStringLiteral("custom")).toBool());
+    // Le point zéro n'est pas le premier point cousu.
+    QVERIFY(!rig.session.project().finishing.design_start.has_value());
+
+    QTest::keyClick(rig.window, Qt::Key_Delete);
+    QVERIFY(!rig.tools.needleOriginCustom());
+    QCOMPARE(steps(rig), baseSteps + 2);
+    QVERIFY(rig.session.undo());
+    QVERIFY(rig.tools.needleOriginCustom());
     QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
 }
 
