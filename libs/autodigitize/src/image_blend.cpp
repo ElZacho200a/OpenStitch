@@ -411,8 +411,8 @@ Result<std::vector<Rgb8>> propose_blend_palette(const image::Image& image, Milli
     if (image.empty() || mm_per_px.value <= 0.0) {
         return fail(ErrorCategory::UserInput, "Aucune image à analyser");
     }
-    if (count < 2 || count > 16) {
-        return fail(ErrorCategory::UserInput, "Une palette de mélange compte de 2 à 16 fils");
+    if (count < 2 || count > 8) {
+        return fail(ErrorCategory::UserInput, "Un fondu depuis l'image demande de 2 à 8 fils");
     }
     const auto samples = sample_region_colors(image, mm_per_px, shape, 20'000);
     if (samples.size() < count) {
@@ -522,42 +522,17 @@ Result<std::vector<Rgb8>> propose_blend_palette(const image::Image& image, Milli
     }
     const double lambda = std::isfinite(options.locality) ? std::max(0.0, options.locality) : 0.0;
     const int kmax = static_cast<int>(std::clamp<std::size_t>(options.max_threads_per_point, 2, 4));
-    // Grande palette (zones de fondu d'un tableau entier, jusqu'à 16 fils) : chaque couleur
-    // n'est mélangée qu'entre ses `kNear` fils les plus proches, sinon le nombre de supports
-    // explose (C(12, ≤ 4) = 793 par couleur). Même règle que le prototype de l'étude.
-    constexpr std::size_t kNear = 5;
-    const auto nearSubsets = supports(static_cast<int>(kNear), kmax);
     const auto mixError = [&](const std::vector<std::size_t>& picks) {
         std::vector<V3> trial;
         trial.reserve(picks.size());
         for (const auto i : picks) {
             trial.push_back(candidates[i]);
         }
+        const auto subsets = supports(static_cast<int>(trial.size()), kmax);
         double error = 0.0;
-        if (trial.size() <= 8) { // fondu d'une forme (2 à 8 fils) : supports complets
-            const auto subsets = supports(static_cast<int>(trial.size()), kmax);
-            for (const auto& v : eval) {
-                double residual = 0.0;
-                (void)mix_with(v, trial, lambda, subsets, &residual);
-                error += residual;
-            }
-            return error;
-        }
-        std::vector<std::size_t> idx(trial.size());
-        std::vector<V3> near(kNear);
         for (const auto& v : eval) {
-            std::iota(idx.begin(), idx.end(), std::size_t{0});
-            std::partial_sort(idx.begin(), idx.begin() + static_cast<std::ptrdiff_t>(kNear),
-                              idx.end(), [&](std::size_t a, std::size_t b) {
-                                  const double da = dist2(trial[a], v);
-                                  const double db = dist2(trial[b], v);
-                                  return da < db || (da == db && a < b);
-                              });
-            for (std::size_t k = 0; k < kNear; ++k) {
-                near[k] = trial[idx[k]];
-            }
             double residual = 0.0;
-            (void)mix_with(v, near, lambda, nearSubsets, &residual);
+            (void)mix_with(v, trial, lambda, subsets, &residual);
             error += residual;
         }
         return error;
@@ -612,82 +587,6 @@ Result<std::vector<Rgb8>> propose_blend_palette(const image::Image& image, Milli
                     "Les couleurs de cette forme sont trop uniformes pour un fondu");
     }
     return out;
-}
-
-std::vector<std::size_t> choose_zone_threads(const image::Image& image, Millimeters mm_per_px,
-                                             const std::vector<geometry::PathSet>& shape,
-                                             const std::vector<Rgb8>& palette,
-                                             std::size_t max_threads, double min_gain,
-                                             const ImageBlendOptions& options) {
-    if (palette.empty() || image.empty() || mm_per_px.value <= 0.0) {
-        return {};
-    }
-    const auto samples = sample_region_colors(image, mm_per_px, shape, 4'000);
-    if (samples.empty()) {
-        return {};
-    }
-    // Couleurs d'évaluation : au plus 400, réparties dans l'ordre d'échantillonnage.
-    std::vector<V3> eval;
-    const std::size_t step = std::max<std::size_t>(1, samples.size() / 400);
-    for (std::size_t i = 0; i < samples.size(); i += step) {
-        eval.push_back(to_linear(samples[i].rgb));
-    }
-    std::vector<V3> lin;
-    lin.reserve(palette.size());
-    for (const auto& c : palette) {
-        lin.push_back(to_linear(c));
-    }
-    const double lambda = std::isfinite(options.locality) ? std::max(0.0, options.locality) : 0.0;
-    const int kmax = static_cast<int>(std::clamp<std::size_t>(options.max_threads_per_point, 1, 4));
-    const auto error = [&](const std::vector<std::size_t>& picks) {
-        std::vector<V3> trial;
-        for (const auto i : picks) {
-            trial.push_back(lin[i]);
-        }
-        const auto subsets = supports(static_cast<int>(trial.size()), kmax);
-        double total = 0.0;
-        for (const auto& v : eval) {
-            double residual = 0.0;
-            (void)mix_with(v, trial, lambda, subsets, &residual);
-            total += residual;
-        }
-        return total;
-    };
-    // Départ : le meilleur fil seul (aplat) ; puis ajout glouton du fil qui réduit le plus
-    // l'erreur de mélange, gardé seulement s'il la réduit d'au moins `min_gain`.
-    std::vector<std::size_t> chosen;
-    double current = std::numeric_limits<double>::infinity();
-    for (std::size_t i = 0; i < lin.size(); ++i) {
-        const double e = error({i});
-        if (e < current - 1e-15) {
-            current = e;
-            chosen = {i};
-        }
-    }
-    const std::size_t limit = std::clamp<std::size_t>(max_threads, 1, 4);
-    while (chosen.size() < limit && current > 0.0) {
-        double best = std::numeric_limits<double>::infinity();
-        std::size_t bestIndex = lin.size();
-        for (std::size_t i = 0; i < lin.size(); ++i) {
-            if (std::find(chosen.begin(), chosen.end(), i) != chosen.end()) {
-                continue;
-            }
-            auto trial = chosen;
-            trial.push_back(i);
-            const double e = error(trial);
-            if (e < best - 1e-15) {
-                best = e;
-                bestIndex = i;
-            }
-        }
-        if (bestIndex == lin.size() || best > (1.0 - min_gain) * current) {
-            break;
-        }
-        chosen.push_back(bestIndex);
-        current = best;
-    }
-    std::sort(chosen.begin(), chosen.end());
-    return chosen;
 }
 
 } // namespace openstitch::autodigitize
