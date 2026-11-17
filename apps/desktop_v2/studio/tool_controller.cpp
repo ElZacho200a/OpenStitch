@@ -7,6 +7,7 @@
 #include <numbers>
 
 #include "edit_batch.hpp"
+#include "export_settings.hpp"
 #include "openstitch/geometry/polyline.hpp"
 #include "pen_shape.hpp"
 #include "shape_batch.hpp"
@@ -29,6 +30,8 @@ constexpr ToolSpec kSpecs[] = {
     {"node.edit", "◇", "Édition"},     {"knife", "✂", "Édition"},
     {"warp-brush", "≈", "Édition"},    {"bucket", "▣", "Édition"},
 };
+
+constexpr const char* kNeedleTool = "needle.origin";
 
 constexpr double kTwoPi = 2.0 * std::numbers::pi;
 
@@ -57,6 +60,11 @@ ToolController::ToolController(StudioController& studio, QObject* parent)
     connect(&warp_, &WarpTool::changed, this, &ToolController::rebuild);
     connect(&bucket_, &BucketTool::changed, this, &ToolController::rebuild);
     connect(&warp_, &WarpTool::message, this, &ToolController::inform);
+    // Annuler / rétablir ou ouvrir un autre projet change le point zéro sans passer par l'outil.
+    connect(&studio_, &StudioController::sceneChanged, this, [this] {
+        emit needleOriginChanged();
+        emit overlayChanged();
+    });
     connect(&bucket_, &BucketTool::message, this, &ToolController::inform);
     connect(&studio_, &StudioController::selectionChanged, this, [this] {
         if (tool_ == QStringLiteral("node.edit") || tool_ == QStringLiteral("select")) {
@@ -90,6 +98,43 @@ QVariantList ToolController::tools() const {
     return out;
 }
 
+bool ToolController::needleOriginCustom() const {
+    return studio_.session().project().finishing.needle_origin.has_value();
+}
+
+bool ToolController::placeNeedleOrigin(PointMm p) {
+    // Au dixième de millimètre : c'est la précision utile pour caler sur le tissu.
+    p.x = std::round(p.x * 10.0) / 10.0;
+    p.y = std::round(p.y * 10.0) / 10.0;
+    const auto result = setNeedleOrigin(studio_.session(), p);
+    if (!result.ok) {
+        inform(QString::fromStdString(result.message));
+        return true;
+    }
+    inform(QStringLiteral("Point zéro posé en (%1 ; %2) mm. L'aiguille partira de là à l'export.")
+               .arg(p.x, 0, 'f', 1)
+               .arg(p.y, 0, 'f', 1));
+    emit needleOriginChanged();
+    emit overlayChanged();
+    return true;
+}
+
+bool ToolController::resetNeedleOrigin() {
+    if (!needleOriginCustom()) {
+        inform(QStringLiteral("Le point zéro est déjà au centre de la broderie."));
+        return false;
+    }
+    const auto result = setNeedleOrigin(studio_.session(), std::nullopt);
+    if (!result.ok) {
+        inform(QString::fromStdString(result.message));
+        return false;
+    }
+    inform(QStringLiteral("Point zéro revenu au centre de la broderie."));
+    emit needleOriginChanged();
+    emit overlayChanged();
+    return true;
+}
+
 bool ToolController::capturesMouse() const {
     return tool_ != QStringLiteral("select") && tool_ != QStringLiteral("pan");
 }
@@ -105,6 +150,7 @@ void ToolController::setActiveTool(const QString& id) {
     }
     const bool known =
         id == QStringLiteral("select") || id == QStringLiteral("pan") ||
+        id == QLatin1String(kNeedleTool) ||
         std::ranges::any_of(kSpecs, [&](const ToolSpec& s) { return id == QLatin1String(s.id); });
     if (!known) {
         refuse(QStringLiteral("Outil inconnu ou pas encore disponible dans Studio : %1").arg(id));
@@ -121,7 +167,10 @@ void ToolController::setActiveTool(const QString& id) {
 
 void ToolController::setHint() {
     QString text;
-    if (tool_ == QStringLiteral("warp-brush")) {
+    if (tool_ == QLatin1String(kNeedleTool)) {
+        text = QStringLiteral("Cliquer où l'aiguille doit être posée AVANT de lancer la broderie "
+                              "(ce n'est pas le premier point cousu). Suppr : revenir au centre.");
+    } else if (tool_ == QStringLiteral("warp-brush")) {
         text = QStringLiteral("Sélectionnez UNE forme ; glisser : pousser, Maj : lisser, [ ] : "
                               "rayon. Échap : annuler.");
     } else if (tool_ == QStringLiteral("bucket")) {
@@ -414,6 +463,8 @@ bool ToolController::press(double x, double y, double pxPerMm, Qt::KeyboardModif
     }
     mods_ = mods;
     const PointMm raw = toModel(x, y);
+    if (tool_ == QLatin1String(kNeedleTool))
+        return placeNeedleOrigin(snapped(raw));
     if (tool_ == QStringLiteral("warp-brush"))
         return warp_.begin(raw);
     if (tool_ == QStringLiteral("bucket"))
@@ -742,6 +793,10 @@ bool ToolController::finish() {
 bool ToolController::keyPress(int key) {
     if (!capturesMouse()) {
         return false;
+    }
+    if (tool_ == QLatin1String(kNeedleTool) &&
+        (key == Qt::Key_Delete || key == Qt::Key_Backspace)) {
+        return resetNeedleOrigin();
     }
     if (key == Qt::Key_Escape) {
         return cancel();

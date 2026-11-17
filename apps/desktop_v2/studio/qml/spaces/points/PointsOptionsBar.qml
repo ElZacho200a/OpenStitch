@@ -32,7 +32,9 @@ Rectangle {
 
         Text {
             objectName: "pointsMode"
-            text: bar.digitizeCtl && bar.digitizeCtl.mode !== "" ? qsTr("Geste : ") + bar.digitizeCtl.mode : qsTr("Sélection")
+            text: bar.digitizeCtl && bar.digitizeCtl.mode !== "" ? qsTr("Geste : ") + bar.digitizeCtl.mode
+                  : bar.toolCtl && bar.toolCtl.activeTool === "needle.origin" ? qsTr("Point zéro")
+                  : qsTr("Sélection")
             color: Theme.foreground
             font.family: Theme.fontFamily
             font.pixelSize: Theme.smallSize
@@ -48,6 +50,17 @@ Rectangle {
             font.family: Theme.fontFamily
             font.pixelSize: Theme.smallSize
             elide: Text.ElideRight
+        }
+
+        StudioButton {
+            objectName: "needleResetButton"
+            visible: bar.toolCtl !== null && bar.toolCtl.activeTool === "needle.origin"
+            text: qsTr("Revenir au centre")
+            quiet: true
+            enabled: bar.toolCtl !== null && bar.toolCtl.needleOriginCustom
+            tooltip: qsTr("Remet le point zéro au centre de la broderie")
+            shortcutLabel: qsTr("Suppr")
+            onClicked: bar.toolCtl.resetNeedleOrigin()
         }
 
         Rectangle {

@@ -15,6 +15,7 @@
 #include "openstitch/core/error.hpp"
 #include "openstitch/core/task_control.hpp"
 #include "openstitch/document/project.hpp"
+#include "openstitch/formats/machine_design.hpp"
 #include "openstitch/project_ops/factory.hpp"
 #include "openstitch/stitch/sequence.hpp"
 
@@ -43,6 +44,11 @@ inline constexpr std::size_t kDigitizeSteps = 3;
 
 [[nodiscard]] Result<DigitizeOutput> run_digitize(const DigitizeRequest& request,
                                                   const TaskContext& task);
+
+// Origine machine de l'export (« point zéro » de l'aiguille) : le point choisi par l'utilisateur
+// (`finishing.needle_origin`), sinon le centre de la broderie. Seul le saut d'approche initial
+// en dépend ; les points cousus ne changent pas.
+[[nodiscard]] formats::ExportStart machineStartOf(const document::Project& project);
 
 // Écrit la séquence (DST). Séparé de `run_digitize` : l'export est une action utilisateur.
 [[nodiscard]] Result<void> export_dst(const stitch::StitchSequence& sequence,

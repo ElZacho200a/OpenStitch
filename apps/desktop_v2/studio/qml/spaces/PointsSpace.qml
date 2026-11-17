@@ -187,6 +187,12 @@ Item {
                     gpu: spaceCanvas
                 }
 
+                NeedleOriginMarker {
+                    objectName: "needleOriginMarker"
+                    anchors.fill: parent
+                    gpu: spaceCanvas
+                }
+
                 TransformHandles {
                     objectName: "transformHandles"
                     anchors.fill: parent

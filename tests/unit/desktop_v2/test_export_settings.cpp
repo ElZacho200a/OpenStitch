@@ -145,3 +145,27 @@ TEST_CASE("the pre-export check reports points outside the hoop and machine mism
     CHECK_FALSE(field.fitsMachineField);
     CHECK_FALSE(field.formatAccepted);
 }
+
+TEST_CASE("needle origin is optional, undoable and independent of the first stitch",
+          "[desktop_v2][export]") {
+    auto s = newSession();
+    CHECK_FALSE(needleOriginOf(s.project()).has_value());
+    const auto depth = s.undoNames().size();
+    REQUIRE(setNeedleOrigin(s, PointMm{12.5, -3.0}).ok);
+    CHECK(s.undoNames().size() == depth + 1);
+    const auto back = needleOriginOf(s.project());
+    REQUIRE(back.has_value());
+    CHECK(back->x == Catch::Approx(12.5));
+    CHECK(back->y == Catch::Approx(-3.0));
+    CHECK_FALSE(exportOptionsOf(s.project()).designStart.has_value()); // premier point intact
+    // Les réglages d'export enregistrés ensuite conservent le point zéro.
+    auto o = exportOptionsOf(s.project());
+    o.trimThresholdMm = 4.0;
+    REQUIRE(setExportOptions(s, o).ok);
+    CHECK(needleOriginOf(s.project()).has_value());
+
+    CHECK_FALSE(setNeedleOrigin(s, PointMm{12.5, -3.0}).ok);  // inchangé
+    CHECK_FALSE(setNeedleOrigin(s, PointMm{5000.0, 0.0}).ok); // hors limites
+    REQUIRE(setNeedleOrigin(s, std::nullopt).ok);             // retour au centre
+    CHECK_FALSE(needleOriginOf(s.project()).has_value());
+}

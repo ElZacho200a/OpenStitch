@@ -13,6 +13,7 @@
 #include <optional>
 
 #include "canvas_renderer.hpp"
+#include "openstitch/stitch/sequence.hpp"
 
 namespace openstitch::desktop_v2::studio {
 namespace {
@@ -236,6 +237,34 @@ void GpuCanvas::setDigitize(DigitizeGestures* digitize) {
     }
     emit digitizeChanged();
     emit overlayChanged();
+}
+
+QVariantMap GpuCanvas::needleOrigin() const {
+    QVariantMap out{{QStringLiteral("visible"), false}};
+    if (!scene_ || !scene_->effectiveSequence || scene_->effectiveSequence->commands.empty() ||
+        !controller_) {
+        return out;
+    }
+    ScenePoint world;
+    const auto& custom = controller_->session().project().finishing.needle_origin;
+    if (custom) {
+        world = {custom->x.value / 1000.0, -custom->y.value / 1000.0};
+    } else {
+        // Même définition que l'export (`StartMode::Center`) : boîte des points cousus.
+        if (centreScene_ != scene_) {
+            const auto bounds = stitch::compute_stats(*scene_->effectiveSequence).bounds;
+            centre_ = {(bounds.min.x.value + bounds.max.x.value) / 2000.0,
+                       -(bounds.min.y.value + bounds.max.y.value) / 2000.0};
+            centreScene_ = scene_;
+        }
+        world = centre_;
+    }
+    const auto s = camera_.worldToScreen(world);
+    out.insert(QStringLiteral("visible"), true);
+    out.insert(QStringLiteral("custom"), custom.has_value());
+    out.insert(QStringLiteral("x"), s.x);
+    out.insert(QStringLiteral("y"), s.y);
+    return out;
 }
 
 QVariantList GpuCanvas::handlesOverlay() const {

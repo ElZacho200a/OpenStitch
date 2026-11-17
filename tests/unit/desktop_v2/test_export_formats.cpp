@@ -101,3 +101,24 @@ TEST_CASE("an export refuses a document with no stitches and honours cancellatio
     REQUIRE_FALSE(r.has_value());
     CHECK(r.error().category == ErrorCategory::Cancelled);
 }
+
+TEST_CASE("the machine origin defaults to the centre and follows the chosen needle point",
+          "[desktop_v2][export]") {
+    auto project = *tentabrode60();
+    CHECK(machineStartOf(project).mode == formats::StartMode::Center);
+    project.finishing.needle_origin = Vec2um{Micrometers{4'000}, Micrometers{-6'000}};
+    const auto start = machineStartOf(project);
+    CHECK(start.mode == formats::StartMode::Custom);
+    CHECK(start.point == *project.finishing.needle_origin);
+
+    // L'export écrit bien le décalage : le DST relu garde les mêmes points cousus, seul le
+    // saut d'approche change.
+    const fs::path a = fs::temp_directory_path() / "openstitch_origin_default.dst";
+    const fs::path b = fs::temp_directory_path() / "openstitch_origin_custom.dst";
+    REQUIRE(export_project_file(tentabrode60(), a, TaskContext{}).has_value());
+    REQUIRE(
+        export_project_file(std::make_shared<const document::Project>(project), b, TaskContext{})
+            .has_value());
+    CHECK(fs::file_size(a) > 100);
+    CHECK(fs::file_size(b) > 100);
+}

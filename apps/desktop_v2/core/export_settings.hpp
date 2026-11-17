@@ -42,6 +42,16 @@ ServiceResult setExportOptions(DocumentSession& session, const ExportOptions& op
 
 [[nodiscard]] std::string lockKindLabel(LockKind kind);
 
+// --- Point zéro de l'aiguille -------------------------------------------------------------------
+// Où l'aiguille est posée AVANT de lancer la broderie (origine du fichier machine), pour caler le
+// motif sur le tissu par rapport à d'autres coutures. Absent = centre de la broderie. Ce n'est PAS
+// le premier point cousu (`designStart`, qui pilote l'ordre de couture) : seul le saut d'approche
+// initial de l'export en dépend. mm, repère document (Y vers le haut).
+[[nodiscard]] std::optional<PointMm> needleOriginOf(const document::Project& project);
+// UNE commande annulable ; `std::nullopt` revient au centre. Refus : hors limites (±1000 mm) ou
+// valeur inchangée.
+ServiceResult setNeedleOrigin(DocumentSession& session, const std::optional<PointMm>& origin);
+
 // --- Cadres et machines -------------------------------------------------------------------------
 struct HoopChoice {
     std::string id;
