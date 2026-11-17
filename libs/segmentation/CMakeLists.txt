@@ -4,6 +4,7 @@ add_library(openstitch_segmentation
     src/segmentation.cpp
     src/color_merge.cpp
     src/region_growing.cpp
+    src/blend_zones.cpp
 )
 add_library(openstitch::segmentation ALIAS openstitch_segmentation)
 

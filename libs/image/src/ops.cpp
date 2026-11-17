@@ -274,6 +274,66 @@ Result<Image> apply_quantize(const Image& in, const QuantizeOp& op) {
     return out;
 }
 
+Result<Image> apply_color_to_alpha(const Image& in, const ColorToAlphaOp& op) {
+    if (op.tolerance < 0 || op.tolerance > 255) {
+        return fail(ErrorCategory::UserInput, "Tolérance invalide (0 à 255)");
+    }
+    const auto matches = [&](const std::uint8_t* px) {
+        return px[3] < 128 ||
+               (std::abs(px[0] - op.r) <= op.tolerance && std::abs(px[1] - op.g) <= op.tolerance &&
+                std::abs(px[2] - op.b) <= op.tolerance);
+    };
+    Image out = in;
+    out.source_had_alpha = true;
+    const auto width = static_cast<std::size_t>(in.width);
+    if (!op.contiguous) {
+        parallel_for(static_cast<std::size_t>(in.height), [&](std::size_t row) {
+            for (std::size_t i = row * width; i < (row + 1) * width; ++i) {
+                std::uint8_t* px = out.rgba.data() + i * 4;
+                if (matches(px)) {
+                    px[3] = 0;
+                }
+            }
+        });
+        return out;
+    }
+    if (op.seed_x < 0 || op.seed_y < 0 || op.seed_x >= in.width || op.seed_y >= in.height) {
+        return fail(ErrorCategory::UserInput, "Point de départ hors de l'image");
+    }
+    // Remplissage par pile explicite (4-connexité), ordre de parcours fixe : déterministe.
+    std::vector<std::uint8_t> seen(width * static_cast<std::size_t>(in.height), 0);
+    std::vector<std::size_t> stack;
+    const std::size_t seed =
+        static_cast<std::size_t>(op.seed_y) * width + static_cast<std::size_t>(op.seed_x);
+    if (!matches(in.rgba.data() + seed * 4)) {
+        return out;
+    }
+    stack.push_back(seed);
+    seen[seed] = 1;
+    while (!stack.empty()) {
+        const std::size_t i = stack.back();
+        stack.pop_back();
+        out.rgba[i * 4 + 3] = 0;
+        const std::size_t x = i % width;
+        const std::size_t y = i / width;
+        const auto visit = [&](std::size_t j) {
+            if (seen[j] == 0 && matches(in.rgba.data() + j * 4)) {
+                seen[j] = 1;
+                stack.push_back(j);
+            }
+        };
+        if (x > 0)
+            visit(i - 1);
+        if (x + 1 < width)
+            visit(i + 1);
+        if (y > 0)
+            visit(i - width);
+        if (y + 1 < static_cast<std::size_t>(in.height))
+            visit(i + width);
+    }
+    return out;
+}
+
 } // namespace
 
 std::string op_name(const ImageOp& op) {
@@ -304,6 +364,8 @@ std::string op_name(const ImageOp& op) {
                 return "Contraste local";
             if constexpr (std::is_same_v<T, SharpenOp>)
                 return "Netteté";
+            if constexpr (std::is_same_v<T, ColorToAlphaOp>)
+                return o.contiguous ? "Fond transparent (zone)" : "Fond transparent (couleur)";
         },
         op);
 }
@@ -339,6 +401,8 @@ Result<Image> apply_op(const Image& input, const ImageOp& op) {
                 return apply_clahe(input, o);
             if constexpr (std::is_same_v<T, SharpenOp>)
                 return apply_sharpen(input, o);
+            if constexpr (std::is_same_v<T, ColorToAlphaOp>)
+                return apply_color_to_alpha(input, o);
         },
         op);
 }

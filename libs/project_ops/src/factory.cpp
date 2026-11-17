@@ -4,15 +4,26 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
+#include <limits>
+#include <map>
+#include <numeric>
+#include <string>
 #include <utility>
 
 #include "debug_dump.hpp"
 #include "openstitch/autodigitize/autodigitize.hpp"
+#include "openstitch/autodigitize/image_blend.hpp"
+#include "openstitch/autodigitize/two_color_blend.hpp"
+#include "openstitch/commands/undo_stack.hpp"
 #include "openstitch/core/pipeline_profile.hpp"
 #include "openstitch/geometry/polyline.hpp"
+#include "openstitch/geometry/primitives.hpp"
 #include "openstitch/image/image.hpp"
 #include "openstitch/image/ops.hpp"
+#include "openstitch/project_ops/gradient_fill.hpp"
+#include "openstitch/segmentation/blend_zones.hpp"
 #include "openstitch/segmentation/segmentation.hpp"
 #include "openstitch/stitch_generation/directional_fill.hpp"
 
@@ -82,11 +93,11 @@ Result<std::vector<image::ImageOp>> parse_pre_spec(const std::string& spec) {
         return ops;
     }
     const auto bad = [&](const std::string& item, const std::string& why) {
-        return fail(ErrorCategory::UserInput,
-                    "traitement d'image invalide « " + item + " » : " + why,
-                    "grammaire : median[:1|2] bilateral[:1..3] flatten[:1..3] clahe[:C] "
-                    "sharpen[:A] quantize[:N] contrast:B:C "
-                    "gray crop:x:y:w:h flip:h|v rotate:1..3, séparés par « + »");
+        return fail(
+            ErrorCategory::UserInput, "traitement d'image invalide « " + item + " » : " + why,
+            "grammaire : median[:1|2] bilateral[:1..3] flatten[:1..3] clahe[:C] "
+            "sharpen[:A] quantize[:N] contrast:B:C "
+            "gray crop:x:y:w:h flip:h|v rotate:1..3 transparent:RRGGBB[:T], séparés par « + »");
     };
     for (const auto& item : split_on(spec, '+')) {
         const auto f = split_on(item, ':');
@@ -138,6 +149,20 @@ Result<std::vector<image::ImageOp>> parse_pre_spec(const std::string& spec) {
                 return bad(item, "netteté 0 à 3");
             }
             ops.emplace_back(image::SharpenOp{*v});
+        } else if (name == "transparent" && (argc == 1 || argc == 2)) {
+            // Couleur hexadécimale rendue transparente dans toute l'image, tolérance 0..255.
+            const auto tol = intArg(2, 24);
+            const std::string& hex = f[1];
+            const bool hexOk = hex.size() == 6 &&
+                               hex.find_first_not_of("0123456789abcdefABCDEF") == std::string::npos;
+            if (!hexOk || !tol || *tol < 0 || *tol > 255) {
+                return bad(item, "couleur RRGGBB et tolérance 0 à 255");
+            }
+            const auto rgb = std::stoul(hex, nullptr, 16);
+            ops.emplace_back(image::ColorToAlphaOp{static_cast<std::uint8_t>((rgb >> 16) & 0xFF),
+                                                   static_cast<std::uint8_t>((rgb >> 8) & 0xFF),
+                                                   static_cast<std::uint8_t>(rgb & 0xFF), *tol,
+                                                   false, 0, 0});
         } else if (name == "gray" && argc == 0) {
             ops.emplace_back(image::GrayscaleOp{});
         } else if (name == "crop" && argc == 4) {
@@ -381,6 +406,15 @@ Result<DigitizedObjects> digitize_objects(const DigitizeSource& source, IdGenera
                                           const DigitizeSettings& s, bool skipLargest,
                                           const StatusLog& log,
                                           autodigitize::LineLayerMasks* debugMasks) {
+    if (s.mode == "blend") {
+        // Zones de fondu : chaîne des formes en bloc uni (chaque zone déborde sous ses voisines,
+        // pas de tissu entre deux zones) ; `apply_blend_zones` change ensuite les tatami en
+        // fondus.
+        DigitizeSettings shapes = s;
+        shapes.mode = "shapes";
+        shapes.solid_block = true;
+        return digitize_objects(source, ids, shapes, skipLargest, log, debugMasks);
+    }
     const bool stippling = s.mode == "stipple";
     const bool contours = s.mode == "contours";
     if (!stippling && !contours && s.mode != "shapes") {
@@ -480,6 +514,138 @@ Result<DigitizedObjects> digitize_objects(const DigitizeSource& source, IdGenera
     return out;
 }
 
+Result<void> apply_blend_zones(document::Project& project, const image::Image& working,
+                               const DigitizeSettings& s, DigitizeReport& report,
+                               const StatusLog& log) {
+    const Millimeters mm = project.imageSource().mm_per_px;
+    const auto halfW = static_cast<std::int32_t>(std::lround(working.width * mm.value * 500.0));
+    const auto halfH = static_cast<std::int32_t>(std::lround(working.height * mm.value * 500.0));
+    const std::vector<geometry::PathSet> whole{
+        geometry::PathSet{geometry::rectangle_path(Vec2um{Micrometers{-halfW}, Micrometers{-halfH}},
+                                                   Vec2um{Micrometers{halfW}, Micrometers{halfH}}),
+                          {}}};
+    autodigitize::ImageBlendOptions options;
+    options.max_threads_per_point = static_cast<std::size_t>(s.blend_max_per_zone);
+    auto palette = autodigitize::propose_blend_palette(
+        working, mm, whole, static_cast<std::size_t>(s.blend_threads), options);
+    if (!palette) {
+        return fail(ErrorCategory::OperationImpossible,
+                    "palette de mélange impossible : " + palette.error().message,
+                    "image trop uniforme pour le mode blend : essayez --mode shapes");
+    }
+    // Ordre de couture de la palette : du fil le plus RARE au plus fréquent (pixels dont il est
+    // le plus proche). Le fil dominant d'une zone y est ainsi cousu en dernier : il couvre le
+    // plus et cache les trajets des fils rares cousus avant lui ; la dernière couche, que rien
+    // ne recouvre, est la plus compacte.
+    {
+        const auto samples = autodigitize::sample_region_colors(working, mm, whole, 20'000);
+        std::vector<std::size_t> nearest(palette->size(), 0);
+        for (const auto& sample : samples) {
+            std::size_t best = 0;
+            long bestD = std::numeric_limits<long>::max();
+            for (std::size_t i = 0; i < palette->size(); ++i) {
+                long d = 0;
+                for (std::size_t c = 0; c < 3; ++c) {
+                    const long delta = long{sample.rgb[c]} - long{(*palette)[i][c]};
+                    d += delta * delta;
+                }
+                if (d < bestD) {
+                    bestD = d;
+                    best = i;
+                }
+            }
+            ++nearest[best];
+        }
+        std::vector<std::size_t> order(palette->size());
+        std::iota(order.begin(), order.end(), std::size_t{0});
+        std::stable_sort(order.begin(), order.end(),
+                         [&](std::size_t a, std::size_t b) { return nearest[a] < nearest[b]; });
+        std::vector<std::array<std::uint8_t, 3>> sorted;
+        for (const auto i : order) {
+            sorted.push_back((*palette)[i]);
+        }
+        *palette = std::move(sorted);
+    }
+    report.blend_palette = *palette;
+    {
+        std::string line = "Palette de mélange : " + std::to_string(palette->size()) + " fil(s)";
+        for (const auto& c : *palette) {
+            char hex[12];
+            std::snprintf(hex, sizeof hex, " #%02X%02X%02X", c[0], c[1], c[2]);
+            line += hex;
+        }
+        say(log, line);
+    }
+    std::vector<ObjectId> fills;
+    for (const auto& e : project.embroidery_objects) {
+        if (e.is_tatami()) {
+            fills.push_back(e.id);
+        }
+    }
+    for (const ObjectId id : fills) {
+        const auto* object = project.findEmbroidery(id);
+        const auto* vec = object ? project.findObject(object->source_vector) : nullptr;
+        if (!vec) {
+            continue;
+        }
+        const auto picks = autodigitize::choose_zone_threads(
+            working, mm, vec->paths, *palette, static_cast<std::size_t>(s.blend_max_per_zone), 0.2,
+            options);
+        if (picks.empty()) {
+            continue;
+        }
+        if (picks.size() == 1) {
+            if (auto* e = project.findEmbroidery(id)) {
+                e->rgb = (*palette)[picks.front()];
+                e->thread.reset();
+            }
+            ++report.blend_flats;
+            continue;
+        }
+        ImageBlendRequest request;
+        for (const auto i : picks) {
+            request.colors.push_back((*palette)[i]);
+        }
+        request.cell = mm_to_um(s.blend_cell_mm);
+        request.continuous_rows = s.blend_continuous;
+        request.min_share = 0.15;
+        request.max_threads_per_point = picks.size();
+        // Rangées horizontales dans toutes les zones : l'angle propre à chaque tatami ferait
+        // apparaître chaque frontière de zone comme un changement de direction.
+        request.stitch_angle = Angle{0.0};
+        auto command = make_image_blend_command(project, id, request);
+        if (!command) {
+            report.warnings.push_back("zone " + std::to_string(id.value) +
+                                      " laissée en aplat : " + command.error().message);
+            ++report.blend_flats;
+            continue;
+        }
+        commands::UndoStack stack;
+        stack.execute(std::move(*command), project);
+        ++report.blend_fondus;
+    }
+    // Ordre de couture : fil par fil sur TOUTES les zones (un changement de fil par couleur de
+    // la palette au lieu d'un par couche). Dans une zone, les couches suivent déjà l'ordre de
+    // la palette (de l'arrière vers l'avant) : le tri stable le conserve. Les ancres ne cousent
+    // rien et passent en tête.
+    std::map<std::array<std::uint8_t, 3>, int> indexOf;
+    for (std::size_t i = 0; i < palette->size(); ++i) {
+        indexOf.emplace((*palette)[i], static_cast<int>(i));
+    }
+    const auto key = [&](const document::EmbroideryObject& e) {
+        if (e.is_multicolor_gradient()) {
+            return -1;
+        }
+        const auto it = indexOf.find(e.rgb);
+        return it == indexOf.end() ? static_cast<int>(palette->size()) : it->second;
+    };
+    std::stable_sort(project.embroidery_objects.begin(), project.embroidery_objects.end(),
+                     [&](const auto& a, const auto& b) { return key(a) < key(b); });
+    say(log, "Zones de fondu : " + std::to_string(report.blend_fondus) + " fondu(s), " +
+                 std::to_string(report.blend_flats) + " aplat(s)");
+    return {};
+}
+
 Result<DigitizeReport> digitize_image_into(document::Project& project,
                                            const std::filesystem::path& imagePath,
                                            const DigitizeSettings& s, const StatusLog& log) {
@@ -494,9 +660,16 @@ Result<DigitizeReport> digitize_image_into(document::Project& project,
     }
     const bool stippling = s.mode == "stipple";
     const bool contours = s.mode == "contours";
-    if (!stippling && !contours && s.mode != "shapes") {
+    const bool blending = s.mode == "blend";
+    if (!stippling && !contours && !blending && s.mode != "shapes") {
         return fail(ErrorCategory::UserInput, "mode inconnu : « " + s.mode + " »",
-                    "valeurs : shapes, contours, stipple");
+                    "valeurs : shapes, contours, stipple, blend");
+    }
+    if (blending && (s.blend_threads < 2 || s.blend_threads > 16 || s.blend_max_per_zone < 1 ||
+                     s.blend_max_per_zone > 4 || !(s.blend_cell_mm >= 0.5) ||
+                     !(s.blend_cell_mm <= 5.0) || !(s.blend_edge > 0.0))) {
+        return fail(ErrorCategory::UserInput, "réglages du mode blend hors bornes",
+                    "fils 2 à 16, fils par zone 1 à 4, case 0,5 à 5 mm, seuil de bord > 0");
     }
 
     const auto loaded = [&] {
@@ -573,8 +746,13 @@ Result<DigitizeReport> digitize_image_into(document::Project& project,
     // Stippling : pas de segmentation, l'image est lue comme une carte de tons.
     std::optional<segmentation::BackgroundCandidate> candidate;
     if (!stippling) {
-        auto seg = [&] {
+        auto seg = [&]() -> Result<segmentation::Segmentation> {
             const pipeline_profile::Scope profile(pipeline_profile::Stage::Segment);
+            if (blending) {
+                return segmentation::segment_blend_zones(
+                    working, project.imageSource().mm_per_px,
+                    {.edge_threshold = s.blend_edge, .min_zone_mm2 = s.blend_min_zone_mm2});
+            }
             return segmentation::segment(working, {.max_colors = s.max_colors,
                                                    .min_region_px = s.min_region_px,
                                                    .smoothing_radius_px = s.smoothing_px});
@@ -617,6 +795,8 @@ Result<DigitizeReport> digitize_image_into(document::Project& project,
     const DigitizeSource src{
         project.imageSource().segmentation ? &*project.imageSource().segmentation : nullptr,
         &working, project.imageSource().mm_per_px};
+    // Mode blend : les zones passent d'abord par la chaîne des formes (`digitize_objects`), puis
+    // chaque tatami devient un fondu (`apply_blend_zones`).
     auto outcome = [&] {
         const pipeline_profile::Scope profile(pipeline_profile::Stage::Digitize);
         return digitize_objects(src, project.object_ids, s, skipLargest, log,
@@ -641,6 +821,11 @@ Result<DigitizeReport> digitize_image_into(document::Project& project,
     }
     for (auto& e : outcome->objects.embroideries) {
         project.embroidery_objects.push_back(std::move(e));
+    }
+    if (blending) {
+        if (auto blended = apply_blend_zones(project, working, s, report, log); !blended) {
+            return std::unexpected(blended.error());
+        }
     }
     report.vector_objects = project.vector_objects.size();
     report.embroidery_objects = project.embroidery_objects.size();

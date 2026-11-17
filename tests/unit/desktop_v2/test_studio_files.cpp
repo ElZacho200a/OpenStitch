@@ -188,6 +188,7 @@ private slots:
     void imagesStayIndependentThroughStitchesAndSave();
     void openRasterThroughStudioPoints();
     void batchSegmentationSkipsTransparentImage();
+    void vectorizeAllLayersIsIdempotent();
     void autosaveRecoveryAndDiscard();
     void hoopMachineAndUserHoops();
     void hoopQuickSettingsAreOneUndoStepEach();
@@ -281,6 +282,7 @@ void StudioFilesTest::imagesStayIndependentThroughStitchesAndSave() {
         QVERIFY(vectors.updateFromSegmentation());
     }
     QVERIFY(vectors.convertToEmbroidery());
+    QTRY_VERIFY_WITH_TIMEOUT(!vectors.converting(), 15'000); // calcul hors du fil d'interface
     for (const ObjectId layer : {lower, upper}) {
         QVERIFY(std::ranges::any_of(project.embroidery_objects, [&](const auto& object) {
             const auto* shape = project.findObject(object.source_vector);
@@ -395,7 +397,11 @@ void StudioFilesTest::openRasterThroughStudioPoints() {
     QVERIFY(QMetaObject::invokeMethod(vectorPicker, "activated", Q_ARG(int, 0)));
     QCOMPARE(project.imageSourceId(), leaves);
     QTRY_VERIFY_WITH_TIMEOUT(click(QStringLiteral("vectorUpdateButton")), 5'000);
-    QTRY_VERIFY_WITH_TIMEOUT(click(QStringLiteral("vectorConvertButton")), 5'000);
+    // Un seul clic (QTRY réévalue l'expression) ; la conversion tourne hors du fil d'interface.
+    auto* convert = findVisualItem(window->contentItem(), QStringLiteral("vectorConvertButton"));
+    QTRY_VERIFY_WITH_TIMEOUT(convert && convert->isVisible() && convert->isEnabled(), 5'000);
+    QVERIFY(QMetaObject::invokeMethod(convert, "click"));
+    QTRY_VERIFY_WITH_TIMEOUT(!project.embroidery_objects.empty(), 15'000);
 
     workspace->setCurrent(QStringLiteral("points"));
     QTRY_VERIFY_WITH_TIMEOUT(rig.studio.scene() && !rig.studio.busy(), 15'000);
@@ -445,6 +451,59 @@ void StudioFilesTest::batchSegmentationSkipsTransparentImage() {
     QVERIFY(!project.image_sources.back().source.segmentation);
     QVERIFY(!images.messageIsError());
     QVERIFY(images.message().contains(QStringLiteral("transparent")));
+}
+
+void StudioFilesTest::vectorizeAllLayersIsIdempotent() {
+    // « Vectoriser les N calques » : chaque calque reçoit les formes de SES régions, une seule
+    // fois ; une seconde passe sur la même segmentation n'ajoute rien (pas de doublon).
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    QImage source(48, 48, QImage::Format_ARGB32);
+    const auto first = url(dir, "rouge.png");
+    const auto second = url(dir, "bleu.png");
+    source.fill(Qt::white);
+    {
+        QPainter painter(&source);
+        painter.fillRect(8, 8, 24, 24, Qt::red);
+    }
+    QVERIFY(source.save(first.toLocalFile()));
+    source.fill(Qt::white);
+    {
+        QPainter painter(&source);
+        painter.fillRect(16, 16, 24, 24, Qt::blue);
+    }
+    QVERIFY(source.save(second.toLocalFile()));
+
+    Rig rig;
+    ImageController images(rig.studio);
+    QSignalSpy imported(rig.files.get(), &FileController::imageImported);
+    rig.files->importImageLayers({first, second});
+    QTRY_COMPARE_WITH_TIMEOUT(imported.count(), 1, 10'000);
+    const auto& project = rig.session.project();
+    QCOMPARE(project.image_sources.size(), std::size_t{2});
+    images.applySegmentationToAllLayers({});
+    QTRY_VERIFY_WITH_TIMEOUT(!images.busy() && project.image_sources[0].source.segmentation &&
+                                 project.image_sources[1].source.segmentation,
+                             10'000);
+
+    VectorSpaceController vectors(rig.studio);
+    QCOMPARE(vectors.segmentedLayerCount(), 2);
+    QVERIFY(vectors.updateAllLayersFromSegmentation());
+    const auto shapes = project.vector_objects.size();
+    QVERIFY(shapes > 0);
+    for (const auto& layer : project.image_sources) {
+        std::size_t regions = 0;
+        for (const auto& slot : layer.source.segmentation->region_slots) {
+            regions += slot ? 1 : 0;
+        }
+        const auto owned = std::ranges::count_if(project.vector_objects, [&](const auto& shape) {
+            return shape.source_region && shape.source_image == layer.calque;
+        });
+        QVERIFY(owned > 0);
+        QVERIFY(static_cast<std::size_t>(owned) <= regions);
+    }
+    QVERIFY(!vectors.updateAllLayersFromSegmentation());
+    QCOMPARE(project.vector_objects.size(), shapes);
 }
 
 void StudioFilesTest::initTestCase() {

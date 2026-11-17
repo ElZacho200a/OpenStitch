@@ -17,8 +17,10 @@ add_library(openstitch_project_ops
     src/op_import.cpp
     src/op_semantic.cpp
     src/op_group.cpp
+    src/op_blend.cpp
     src/op_convert.cpp
     src/op_cleanup.cpp
+    src/op_steps.cpp
     src/semantic.cpp
     src/auto_satin_service.cpp
     src/quality.cpp

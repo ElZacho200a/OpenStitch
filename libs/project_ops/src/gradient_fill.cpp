@@ -5,6 +5,7 @@
 #include <cmath>
 #include <numbers>
 
+#include "openstitch/autodigitize/image_blend.hpp"
 #include "openstitch/commands/color_blend_commands.hpp"
 #include "openstitch/commands/composite_command.hpp"
 #include "openstitch/commands/project_commands.hpp"
@@ -14,6 +15,7 @@
 #include "openstitch/stitch_generation/color_blend.hpp"
 #include "openstitch/stitch_generation/directional_fill.hpp"
 #include "openstitch/stitch_generation/satin.hpp"
+#include "thread_model.hpp"
 
 namespace openstitch::project_ops {
 
@@ -405,6 +407,33 @@ document::DensityTexture texture_for_method(document::GradientMethod method) {
 constexpr double kOverlayDensity = 0.6;
 // Échantillons d'une transition courbe : arrêts linéaires par morceaux entre eux.
 constexpr int kCurveSamples = 8;
+// Plafond d'une grille de parts (1 000 × 1 000 cases : 1 m² au pas de 1 mm).
+constexpr std::int64_t kMaxWeightCells = 1'000'000;
+
+// Tranche de la couche `layer` lue dans la grille de parts : canal 0 = somme des parts des
+// fils précédents, canal 1 = cette somme plus la part du fil. Valeurs entières : la fin d'une
+// couche est exactement le début de la suivante, en chaque case.
+document::WeightGrid slice_grid_for(const document::WeightGrid& weights, std::size_t layer) {
+    document::WeightGrid slice;
+    slice.origin = weights.origin;
+    slice.cell = weights.cell;
+    slice.columns = weights.columns;
+    slice.rows = weights.rows;
+    slice.channels = 2;
+    const std::size_t cells =
+        static_cast<std::size_t>(weights.columns) * static_cast<std::size_t>(weights.rows);
+    slice.values.resize(cells * 2);
+    for (std::size_t c = 0; c < cells; ++c) {
+        int lower = 0;
+        for (std::size_t k = 0; k < layer; ++k) {
+            lower += weights.values[c * weights.channels + k];
+        }
+        const int upper = lower + weights.values[c * weights.channels + layer];
+        slice.values[c * 2] = static_cast<std::uint8_t>(std::min(lower, 255));
+        slice.values[c * 2 + 1] = static_cast<std::uint8_t>(std::min(upper, 255));
+    }
+    return slice;
+}
 
 // Poids w_i(t) des N fils à la position t ∈ [0 ; 1] : entre les fils s et s+1, la
 // transition suit le profil `curves[s + 1]` ; la somme vaut toujours 1.
@@ -549,6 +578,36 @@ multicolor_layers(const document::EmbroideryObject& base,
         gradient.shared_rows = true;
         const bool overlayLayer = !spec.complementary && i != 0;
         gradient.spacing_from = gradient.spacing_to = overlayLayer ? overlay : nominal;
+        if (spec.image_weights) {
+            // Profil lu dans la grille de parts : tranche de la couche en chaque point, à la
+            // place des arrêts le long de l'axe (grille partagée, couverture exacte).
+            gradient.slice_grid = slice_grid_for(*spec.image_weights, i);
+            gradient.curve = document::DensityCurve::Linear;
+            // Complémentaire : grille partagée, chaque morceau de rangée à un seul fil
+            // (couverture exacte, morceaux nombreux). Sinon, à la manière du Multi Blend de
+            // Hatch : chaque fil garde des rangées CONTINUES dont l'écart suit sa part
+            // (écart nominal / part) ; densités de somme 1, peu de coupes.
+            gradient.shared_rows = spec.complementary;
+            gradient.spacing_from = gradient.spacing_to = nominal;
+            if (spec.stitch_angle) {
+                // L'axe ne sert plus qu'à classer les rangées (seuils de Weyl) : il doit les
+                // traverser, donc être perpendiculaire à la direction imposée des points.
+                const auto across =
+                    straight_guide(shape, Angle{spec.stitch_angle->radians + std::numbers::pi / 2});
+                gradient.from = across.nodes.front().pos;
+                gradient.to = across.nodes.back().pos;
+            }
+            params.row_spacing = gradient.spacing_from;
+            params.density_gradient = std::move(gradient);
+            params.underlay_mode = document::UnderlayMode::Manual;
+            params.underlay_edge = false;
+            params.underlay_parallel = false;
+            params.underlay_zigzag = false;
+            layer.params = std::move(params);
+            finish(layer, i);
+            output.push_back(std::move(layer));
+            continue;
+        }
         gradient.density_stops.reserve(positions.size());
         for (const double position : positions) {
             const auto w = blend_weights(position, n, curves, spec.end_density);
@@ -629,12 +688,45 @@ bool validate_palette(const std::vector<document::GradientThread>& palette) {
     return true;
 }
 
+// Profils lus dans une grille de parts : remplissage complémentaire sur grille partagée
+// seulement (les tranches d'une case doivent partitionner [0 ; 1]).
+std::string invalid_image_weights(const MulticolorGradientSpec& spec) {
+    const auto& grid = *spec.image_weights;
+    if (spec.method != document::GradientMethod::Directional &&
+        spec.method != document::GradientMethod::LongAndShort &&
+        spec.method != document::GradientMethod::ControlledScatter) {
+        return "Les parts lues dans l'image exigent une méthode de remplissage (directionnel, "
+               "points longs et courts ou semis).";
+    }
+    if (spec.palette.size() < 2 || !grid.valid() || grid.channels != spec.palette.size()) {
+        return "La grille de parts doit porter un canal par fil (au moins deux fils) : "
+               "recalculez-la depuis l'image.";
+    }
+    if (grid.cell.value < 100 || grid.cell.value > 20'000 ||
+        static_cast<std::int64_t>(grid.columns) * grid.rows > kMaxWeightCells) {
+        return "Grille de parts hors limites (pas de 0,1 à 20 mm, au plus 1 million de cases).";
+    }
+    for (std::size_t i = 0; i < grid.values.size(); i += grid.channels) {
+        int sum = 0;
+        for (std::size_t k = 0; k < grid.channels; ++k) {
+            sum += grid.values[i + k];
+        }
+        if (sum != 255) {
+            return "Chaque case de la grille de parts doit totaliser 255.";
+        }
+    }
+    return {};
+}
+
 std::string invalid_fill_options(const MulticolorGradientSpec& spec) {
     if (!std::isfinite(spec.end_density) || spec.end_density < 0.0 || spec.end_density > 1.0) {
         return "La densité d'arrivée doit être comprise entre 0 et 100 %.";
     }
     if (spec.stitch_angle && !std::isfinite(spec.stitch_angle->radians)) {
         return "La direction des points doit être un angle fini.";
+    }
+    if (spec.image_weights) {
+        return invalid_image_weights(spec);
     }
     return {};
 }
@@ -778,6 +870,7 @@ document::MulticolorGradientParams anchor_params_from_spec(const MulticolorGradi
     params.crosshatch_angle = spec.crosshatch_angle;
     params.stitch_angle = spec.stitch_angle;
     params.end_density = spec.end_density;
+    params.image_weights = spec.image_weights;
     return params;
 }
 
@@ -871,6 +964,7 @@ std::optional<MulticolorGradientSpec> describe_multicolor_gradient(const documen
     spec.crosshatch_angle = params.crosshatch_angle;
     spec.stitch_angle = params.stitch_angle;
     spec.end_density = params.end_density;
+    spec.image_weights = params.image_weights;
     return spec;
 }
 
@@ -1075,6 +1169,103 @@ make_remove_multicolor_gradient_command(const document::Project& project, Object
         batch->add(std::make_unique<commands::RemoveEmbroideryObjectCommand>(layerId));
     }
     return std::unique_ptr<commands::ICommand>(std::move(batch));
+}
+
+Result<MulticolorGradientSpec> image_blend_spec(const document::Project& project,
+                                                ObjectId fillOrGradient,
+                                                const ImageBlendRequest& request) {
+    const auto* object = project.findEmbroidery(fillOrGradient);
+    if (object == nullptr) {
+        return fail(ErrorCategory::UserInput, "Objet introuvable.");
+    }
+    MulticolorGradientSpec spec;
+    const document::EmbroideryObject* owner = object;
+    if (const auto existing = describe_multicolor_gradient(project, fillOrGradient)) {
+        spec = *existing;
+        owner =
+            project.findEmbroidery(document::find_gradient_group(project, fillOrGradient)->anchor);
+        if (spec.method != document::GradientMethod::Directional &&
+            spec.method != document::GradientMethod::LongAndShort &&
+            spec.method != document::GradientMethod::ControlledScatter) {
+            spec.method = document::GradientMethod::Directional;
+        }
+    } else {
+        if (!object->is_tatami() && !object->is_directional()) {
+            return fail(ErrorCategory::UserInput,
+                        "Choisissez un remplissage (tatami ou directionnel) ou un fondu.");
+        }
+        const auto fresh = default_multicolor_gradient(project, fillOrGradient);
+        if (!fresh) {
+            return fail(ErrorCategory::OperationImpossible,
+                        "Cette forme ne peut pas devenir un fondu (forme vide ou dégénérée).");
+        }
+        spec = *fresh;
+        spec.method = document::GradientMethod::Directional;
+    }
+    spec.complementary = !request.continuous_rows;
+    const auto* shape = owner != nullptr ? shape_of(project, *owner) : nullptr;
+    if (shape == nullptr || shape->empty()) {
+        return fail(ErrorCategory::OperationImpossible, "Forme source introuvable.");
+    }
+    const image::Image work = detail::working_image(project);
+    if (work.empty()) {
+        return fail(ErrorCategory::UserInput,
+                    "Ce projet n'a pas d'image source : importez l'image à reproduire.");
+    }
+    const Millimeters scale = project.imageSource().mm_per_px;
+    autodigitize::ImageBlendOptions options;
+    options.cell = request.cell;
+    options.locality = request.locality;
+    options.min_share = request.min_share;
+    options.max_threads_per_point = request.max_threads_per_point;
+    std::vector<autodigitize::Rgb8> colors = request.colors;
+    if (colors.empty()) {
+        auto proposed =
+            autodigitize::propose_blend_palette(work, scale, *shape, request.threads, options);
+        if (!proposed) {
+            return std::unexpected(proposed.error());
+        }
+        colors = std::move(*proposed);
+    }
+    if (colors.size() < 2 || colors.size() > 8) {
+        return fail(ErrorCategory::UserInput, "Un fondu depuis l'image demande de 2 à 8 fils.");
+    }
+    auto weights = autodigitize::image_blend_weights(work, scale, *shape, colors, options);
+    if (!weights) {
+        return std::unexpected(weights.error());
+    }
+    std::vector<document::GradientThread> palette;
+    palette.reserve(colors.size());
+    for (const auto& rgb : colors) {
+        document::GradientThread thread{rgb};
+        // Un fil de nuancier déjà affecté à cette couleur est conservé.
+        for (const auto& old : spec.palette) {
+            if (old.rgb == rgb) {
+                thread.thread = old.thread;
+                break;
+            }
+        }
+        palette.push_back(std::move(thread));
+    }
+    spec.palette = std::move(palette);
+    spec.image_weights = std::move(*weights);
+    if (request.stitch_angle) {
+        spec.stitch_angle = request.stitch_angle;
+    }
+    return spec;
+}
+
+Result<std::unique_ptr<commands::ICommand>>
+make_image_blend_command(document::Project& project, ObjectId fillOrGradient,
+                         const ImageBlendRequest& request) {
+    auto spec = image_blend_spec(project, fillOrGradient, request);
+    if (!spec) {
+        return std::unexpected(spec.error());
+    }
+    if (document::find_gradient_group(project, fillOrGradient)) {
+        return make_edit_multicolor_gradient_command(project, fillOrGradient, *spec);
+    }
+    return make_create_multicolor_gradient_command(project, fillOrGradient, *spec);
 }
 
 } // namespace openstitch::project_ops

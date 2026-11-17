@@ -8,6 +8,7 @@ add_library(openstitch_autodigitize
     src/quality_metrics.cpp
     src/ring_detect.cpp
     src/stipple_objects.cpp
+    src/image_blend.cpp
     src/two_color_blend.cpp
     src/vector_convert.cpp
 )

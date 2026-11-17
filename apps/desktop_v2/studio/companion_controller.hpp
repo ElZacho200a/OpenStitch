@@ -56,6 +56,7 @@ class CompanionController : public QObject {
     Q_PROPERTY(bool busy READ busy NOTIFY changed)
     Q_PROPERTY(QString error READ error NOTIFY changed)
     Q_PROPERTY(QString usage READ usage NOTIFY changed)
+    Q_PROPERTY(QString activity READ activity NOTIFY changed)
     Q_PROPERTY(bool proposalPending READ proposalPending NOTIFY proposalChanged)
     Q_PROPERTY(QVariantMap proposal READ proposal NOTIFY proposalChanged)
 public:
@@ -91,6 +92,7 @@ public:
     [[nodiscard]] bool busy() const;
     [[nodiscard]] QString error() const { return error_; }
     [[nodiscard]] QString usage() const { return usage_; }
+    [[nodiscard]] QString activity() const { return busy() ? activity_ : QString(); }
     [[nodiscard]] bool proposalPending() const { return loop_ != nullptr; }
     [[nodiscard]] QVariantMap proposal() const { return proposal_; }
 
@@ -103,6 +105,9 @@ public:
     Q_INVOKABLE QString setBridgeEnabled(bool on);
     // Discussion.
     Q_INVOKABLE bool send(const QString& text);
+    // Confie un dossier à l'agent en lecture (images, .ora, notes d'intention…) : plus aucune
+    // question pour ses fichiers. Les secrets restent refusés. "" ou message d'erreur.
+    Q_INVOKABLE QString grantFolder(const QString& path);
     Q_INVOKABLE void cancel();
     Q_INVOKABLE void resetConversation();
     // Décision sur la proposition affichée (sans effet s'il n'y en a pas).
@@ -126,6 +131,9 @@ public:
 
 signals:
     void changed();
+    // L'agent va appliquer un lot dont l'effet se voit dans l'espace `space`
+    // ("image"|"segmentation"|"vector"|"points") : la fenêtre y bascule (suivi en direct).
+    void stageRequested(const QString& space);
     void proposalChanged();
 
 private:
@@ -135,7 +143,7 @@ private:
     void dropClaudeCode();
     bool askApproval(const mcp::ApprovalRequest& request);
     void decide(bool approved);
-    void append(const QString& role, const QString& text);
+    void append(const QString& role, const QString& text, const QString& title = {});
     void onDocumentReplaced();
     agent::ISecretStore& secrets();
 
@@ -145,6 +153,7 @@ private:
     DocumentSession::Token token_{};
     std::unique_ptr<LiveCompanion> companion_;
     std::unique_ptr<LiveServer> server_;
+    QString activity_;
     desktop::ClaudeCompanionBackend* backend_{nullptr};
     desktop::ClaudeCodeProcessBackend* codeBackend_{nullptr};
     QVariantList messages_;

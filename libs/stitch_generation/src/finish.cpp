@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "openstitch/stitch_generation/finish.hpp"
 
+#include "openstitch/core/parallel.hpp"
 #include "openstitch/core/pipeline_profile.hpp"
 
 #include <algorithm>
@@ -148,6 +149,46 @@ FinishResult finish_sequence_report(const stitch::StitchSequence& sequence,
     if (f.hidden_travel.enabled && runs.size() > 1) {
         planner.emplace(cmds, f);
     }
+    // R02 (docs/performance/gpu-compute/) : les ponts cachés coûtaient l'essentiel de cette passe,
+    // un appel après l'autre. `plan` est une fonction pure de ses arguments, qui ne dépendent que
+    // de `cmds` et des tracés : les écarts susceptibles d'être planifiés sont donc calculés à
+    // l'avance, en parallèle. La boucle ci-dessous reste la seule à décider ; pour l'écart k, elle
+    // reprend le plan pré-calculé (mêmes arguments, même résultat) ou, s'il manque, appelle `plan`
+    // elle-même. Le filtre n'a pas besoin d'être exact : un écart oublié est planifié en séquence,
+    // un écart en trop est un calcul perdu.
+    std::vector<std::optional<TravelPlan>> precomputed(runs.size());
+    if (planner && planner->concurrent_plans()) {
+        std::vector<std::size_t> todo;
+        for (std::size_t k = 1; k < runs.size(); ++k) {
+            const Run& before = runs[k - 1];
+            const Run& after = runs[k];
+            if (after.begin <= before.end ||
+                !std::all_of(cmds.begin() + static_cast<std::ptrdiff_t>(before.end),
+                             cmds.begin() + static_cast<std::ptrdiff_t>(after.begin),
+                             [](const StitchCommand& c) { return c.type == CommandType::Jump; })) {
+                continue; // pas un écart fait uniquement de sauts : jamais planifié
+            }
+            const StitchCommand& last = cmds[before.end - 1];
+            const StitchCommand& next = cmds[after.begin];
+            const bool intraObject = last.source == next.source;
+            const bool inScope =
+                intraObject ? f.hidden_travel.within_object : f.hidden_travel.between_objects;
+            if (inScope && (!intraObject || length_um(next.pos - last.pos) >
+                                                static_cast<double>(f.trim_threshold.value))) {
+                todo.push_back(k);
+            }
+        }
+        if (todo.size() >= 2) {
+            planner->prepare();
+            HiddenTravelPlanner& shared = *planner;
+            parallel_for(todo.size(), [&](std::size_t t) {
+                const std::size_t k = todo[t];
+                const std::size_t g = runs[k - 1].end - 1;
+                const pipeline_profile::Scope routing(pipeline_profile::Stage::HiddenTravel);
+                precomputed[k] = shared.plan(g, cmds[g].pos, cmds[runs[k].begin].pos);
+            });
+        }
+    }
 
     // HP-SEQ-005 : connecteur choisi par l'objet qui précède l'écart.
     std::map<std::uint64_t, document::ConnectorMode> connectors;
@@ -229,8 +270,15 @@ FinishResult finish_sequence_report(const stitch::StitchSequence& sequence,
                     ++report.skipped_by_scope;
                 } else if (needTrim && !alwaysTrim && !colorChange && onlyJumps) {
                     ++report.candidate_gaps;
-                    const pipeline_profile::Scope routing(pipeline_profile::Stage::HiddenTravel);
-                    travelPlan = planner->plan(prev->end - 1, last.pos, cmds[run.begin].pos);
+                    std::optional<TravelPlan>& ready =
+                        precomputed[static_cast<std::size_t>(&run - runs.data())];
+                    if (ready) {
+                        travelPlan = std::move(*ready);
+                    } else {
+                        const pipeline_profile::Scope routing(
+                            pipeline_profile::Stage::HiddenTravel);
+                        travelPlan = planner->plan(prev->end - 1, last.pos, cmds[run.begin].pos);
+                    }
                     switch (travelPlan.refusal) {
                     case TravelRefusal::TooLong:
                         ++report.refused_too_long;

@@ -59,6 +59,15 @@ Item {
         ignoreUnknownSignals: true
         function onLayerChanged() { root.publish() }
     }
+    // L'outil nœuds a ses réglages dans « Édition » : y basculer au lieu de les laisser cachés.
+    Connections {
+        target: root.toolController
+        ignoreUnknownSignals: true
+        function onActiveToolChanged() {
+            if (root.active && root.toolController.activeTool === "node.edit")
+                vectorInspectorTabs.currentIndex = 1
+        }
+    }
     Connections {
         target: root.workspace
         ignoreUnknownSignals: true
@@ -82,56 +91,13 @@ Item {
             Layout.alignment: Qt.AlignTop
             Layout.preferredWidth: Theme.controlHeight + 16
             Layout.preferredHeight: Math.min(vectorRail.implicitHeight + 16, root.height - 2 * Theme.gap)
-            ColumnLayout {
+            ToolRail {
                 id: vectorRail
                 anchors.top: parent.top
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.topMargin: 8
-                spacing: 6
-                StudioButton {
-                    objectName: "vectorSelectToolButton"
-                    iconName: "select"
-                    tooltip: studio.selectionTool.label
-                    shortcutLabel: studio.selectionTool.shortcut
-                    quiet: true
-                    active: !spaceCanvas.panMode && (!root.toolController || root.toolController.activeTool === "select")
-                    onClicked: { spaceCanvas.panMode = false; if (root.toolController) root.toolController.activeTool = "select" }
-                }
-                StudioButton {
-                    objectName: "vectorPanToolButton"
-                    iconName: "pan"
-                    tooltip: studio.panTool.label
-                    shortcutLabel: studio.panTool.shortcut
-                    quiet: true
-                    active: spaceCanvas.panMode
-                    onClicked: { spaceCanvas.panMode = true; if (root.toolController) root.toolController.activeTool = "select" }
-                }
-                Rectangle {
-                    Layout.alignment: Qt.AlignHCenter
-                    Layout.topMargin: 4
-                    Layout.bottomMargin: 4
-                    implicitWidth: 24
-                    implicitHeight: 1
-                    color: Theme.divider
-                }
-                ToolRail { Layout.alignment: Qt.AlignHCenter; workspaceActive: root.active }
-                Rectangle {
-                    visible: root.toolController !== null
-                    Layout.alignment: Qt.AlignHCenter
-                    Layout.topMargin: 4
-                    Layout.bottomMargin: 4
-                    implicitWidth: 24
-                    implicitHeight: 1
-                    color: Theme.divider
-                }
-                StudioButton {
-                    objectName: "vectorFitToolButton"
-                    iconName: "fit"
-                    tooltip: qsTr("Ajuster le motif à la fenêtre")
-                    shortcutLabel: "F"
-                    quiet: true
-                    onClicked: spaceCanvas.fitDesign()
-                }
+                canvas: spaceCanvas
+                workspaceActive: root.active
             }
         }
 
@@ -190,6 +156,14 @@ Item {
                     objectName: "transformHandles"
                     anchors.fill: parent
                     canvas: spaceCanvas
+                }
+
+                VectorQuickBar {
+                    anchors.top: parent.top
+                    anchors.topMargin: 8
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    spaceActive: root.active
+                    z: 5
                 }
 
                 ColumnLayout {
@@ -317,17 +291,19 @@ Item {
                         contentWidth: availableWidth
                         Controls.ScrollBar.horizontal.policy: Controls.ScrollBar.AlwaysOff
 
+                        // Options de l'outil et opérations sur les formes d'abord : ce sont
+                        // les actions propres à cet espace ; l'EditBar générique suit.
                         ColumnLayout {
                             width: vectorActionsScroll.availableWidth
                             spacing: 8
-                            EditBar {
+                            ToolOptions {
+                                visible: root.toolController !== null
                                 Layout.fillWidth: true
                                 Layout.leftMargin: 12
                                 Layout.rightMargin: 12
                                 Layout.topMargin: 12
                             }
-                            ToolOptions {
-                                visible: root.toolController !== null
+                            EditBar {
                                 Layout.fillWidth: true
                                 Layout.leftMargin: 12
                                 Layout.rightMargin: 12

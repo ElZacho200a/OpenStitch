@@ -520,3 +520,69 @@ TEST_CASE("digitize skill files are embedded with their front matter", "[live][s
     }
     CHECK(references >= 4);
 }
+
+TEST_CASE("live permission asks the user for disk reads and remembers the answer", "[live]") {
+    Doc d;
+    const auto ask = [&d](const std::string& tool, const std::string& path) {
+        const json args{{"tool_name", tool}, {"input", {{"file_path", path}}}};
+        const auto out = parse(d.service.call("live_permission", args.dump()));
+        return json::parse(out["content"][0]["text"].get<std::string>());
+    };
+    // Outil non lecture : refus d'office, sans déranger l'utilisateur.
+    CHECK(ask("Bash", "x")["behavior"] == "deny");
+    CHECK(d.gate.asked == 0);
+    // Secrets : refus d'office.
+    CHECK(ask("Read", "C:/Users/me/.ssh/id_rsa")["behavior"] == "deny");
+    CHECK(d.gate.asked == 0);
+    // Fichier ordinaire : l'utilisateur décide.
+    d.gate.answer = false;
+    CHECK(ask("Read", "D:/pack/manifest.json")["behavior"] == "deny");
+    CHECK(d.gate.asked == 1);
+    CHECK(d.gate.last.tool == "live_permission");
+    CHECK(!d.gate.last.warnings.empty());
+    d.gate.answer = true;
+    const auto allowed = ask("Read", "D:/pack/manifest.json");
+    CHECK(allowed["behavior"] == "allow");
+    CHECK(allowed["updatedInput"]["file_path"] == "D:/pack/manifest.json");
+    CHECK(d.gate.asked == 2);
+    // Déjà accordé : plus de question.
+    CHECK(ask("Read", "D:/pack/manifest.json")["behavior"] == "allow");
+    CHECK(d.gate.asked == 2);
+    CHECK_FALSE(d.stack.canUndo()); // aucune modification du document
+}
+
+TEST_CASE("live granted folders open reads without asking, except secrets", "[live]") {
+    Doc d;
+    const auto dir = std::filesystem::temp_directory_path() / "os-live-grant";
+    std::filesystem::create_directories(dir / ".ssh");
+    CHECK(d.service.grant_read_dir(dir.generic_string()));
+    CHECK_FALSE(d.service.grant_read_dir((dir / "absent").generic_string()));
+    CHECK_FALSE(d.service.grant_read_dir((dir / ".ssh").generic_string())); // sensible
+    const auto ask = [&d](const std::string& path) {
+        const json args{{"tool_name", "Read"}, {"input", {{"file_path", path}}}};
+        const auto out = parse(d.service.call("live_permission", args.dump()));
+        return json::parse(out["content"][0]["text"].get<std::string>())["behavior"];
+    };
+    CHECK(ask((dir / "notes.md").generic_string()) == "allow");
+    CHECK(ask((dir / "sub" / "plan.png").generic_string()) == "allow");
+    CHECK(ask((dir / ".ssh" / "id_rsa").generic_string()) == "deny");
+    CHECK(d.gate.asked == 0);
+    d.gate.answer = false; // hors dossier accordé : l'utilisateur est sollicité
+    CHECK(ask("D:/ailleurs/autre.txt") == "deny");
+    CHECK(d.gate.asked == 1);
+    // « .. » ne sort pas du dossier accordé : l'utilisateur est sollicité.
+    CHECK(ask(dir.generic_string() + "/../../secret.txt") == "deny");
+    CHECK(d.gate.asked == 2);
+    // Résultat MCP trop long enregistré par Claude Code : relu sans question ; le reste de
+    // ~/.claude (transcriptions, autres projets) reste soumis à l'utilisateur.
+    const std::string proj = "C:/Users/u/.claude/projects/"
+                             "C--Users-u-AppData-Local-OpenStitch-Studio-companion-workspace-1";
+    CHECK(ask(proj + "/abc/tool-results/mcp-openstitch-project_check-1.txt") == "allow");
+    CHECK(d.gate.asked == 2);
+    CHECK(ask(proj + "/abc.jsonl") == "deny");
+    CHECK(ask("C:/Users/u/.claude/projects/autre/abc/tool-results/x.txt") == "deny");
+    CHECK(ask(proj + "/abc/tool-results/../../x.jsonl") == "deny");
+    CHECK(d.gate.asked == 5);
+    std::error_code ec;
+    std::filesystem::remove_all(dir, ec);
+}

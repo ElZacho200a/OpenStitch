@@ -1,5 +1,6 @@
 add_executable(test_segmentation
     test_segmentation.cpp
+    test_blend_zones.cpp
     test_color_merge.cpp
     test_region_growing.cpp
 )

@@ -99,8 +99,11 @@ refuse s'il y a des modifications non enregistrées (sauf `discard_changes=true`
 pas. Tu ne peux pas connaître la taille finale, le tissu, la machine ni le nuancier : demande-les à
 l'utilisateur au lieu de les inventer. `digitize_guide` renvoie aussi ces documents par l'outil MCP.
 ## Skills disponibles (.claude/skills/)
-`openstitch-live-edit`, `-satin`, `-semantic`, `-diagnose`, `-fabric`, `-order`, `-cleanup`, `-naming`,
-`-review`, `-lettering`, `-layout`, `-variants`, et `openstitch-digitize` (méthode de numérisation). Charge celui qui correspond à la demande.
+`openstitch-live-workflow` (numériser une image étape par étape : À CHARGER EN PREMIER),
+`openstitch-live-edit`, `-satin`, `-semantic`, `-diagnose`, `-fabric`, `-order`, `-cleanup`,
+`-naming`, `-review`, `-lettering`, `-layout`, `-variants`. `openstitch-digitize` est une
+méthode de raisonnement (choix satin/tatami/contour, pièges connus) écrite pour l'ancienne
+interface en ligne de commande : reprends ses critères, jamais ses commandes.
 
 ## Cycle de travail
 1. `live_context` (ou `live_status`) : révision, sélection, palette des FILS, objets, risques.
@@ -176,7 +179,10 @@ description: Convertir des formes en satin avec compensation de tirage Predicted
 
 1. `live_target({"query":"orange"})` ; si `ambiguous`, `live_ask_user`.
 2. `live_plan_satin({"objects":[12,15]})` (20 IDs max) : lis `targets[].verdict` ;
-   `refused` reste en tatami, `skipped` = verrouillé, masqué ou déjà satin.
+   `refused` reste en tatami, `skipped` = verrouillé, masqué ou déjà satin. Lis `width_mm` : un
+   satin se pose sur une BANDE (pétale fin, nervure, tige, bordure) de 1 à 6 mm ; une tache large
+   (reflet, fond de feuille) reste en tatami. Le refus « trop large » est voulu : ne force
+   `allow_wide` que sur demande explicite de l'utilisateur.
 3. Passe le lot retourné dans `live_preview({"operations":[...]})`
    (la valeur de `batch.operations` est placée sous la clé `operations`)
    et compare points, sauts, constats et risque textile.
@@ -353,11 +359,11 @@ struct WorkspaceSkill {
 };
 
 const WorkspaceSkill kExtraSkills[] = {
-    {"openstitch-live-diagnose", kSkillDiagnose},   {"openstitch-live-fabric", kSkillFabric},
-    {"openstitch-live-order", kSkillOrder},         {"openstitch-live-cleanup", kSkillCleanup},
-    {"openstitch-live-naming", kSkillNaming},       {"openstitch-live-review", kSkillReview},
-    {"openstitch-live-lettering", kSkillLettering}, {"openstitch-live-layout", kSkillLayout},
-    {"openstitch-live-variants", kSkillVariants},
+    {"openstitch-live-workflow", kSkillWorkflow}, {"openstitch-live-diagnose", kSkillDiagnose},
+    {"openstitch-live-fabric", kSkillFabric},     {"openstitch-live-order", kSkillOrder},
+    {"openstitch-live-cleanup", kSkillCleanup},   {"openstitch-live-naming", kSkillNaming},
+    {"openstitch-live-review", kSkillReview},     {"openstitch-live-lettering", kSkillLettering},
+    {"openstitch-live-layout", kSkillLayout},     {"openstitch-live-variants", kSkillVariants},
 };
 
 void write_file(const fs::path& path, const std::string& content) {

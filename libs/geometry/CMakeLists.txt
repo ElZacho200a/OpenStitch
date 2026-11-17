@@ -10,6 +10,7 @@ add_library(openstitch_geometry
     src/moments.cpp
     src/cut.cpp
     src/fill_gap.cpp
+    src/frontier.cpp
     src/offset.cpp
     src/node_transform.cpp
     src/path.cpp

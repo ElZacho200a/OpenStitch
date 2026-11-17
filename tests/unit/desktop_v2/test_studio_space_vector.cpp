@@ -361,6 +361,44 @@ private slots:
         QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
     }
 
+    void incrementalLayerBuildMatchesFullBuild() {
+        Rig rig;
+        open(rig);
+        auto shapes = rig.session.project().vector_objects;
+        QVERIFY(shapes.size() >= 2);
+        std::vector<std::uint64_t> keys;
+        for (std::size_t i = 0; i < shapes.size(); ++i) {
+            keys.push_back(i + 1);
+        }
+        const auto first = VectorLayer::build(shapes, keys, nullptr);
+        QVERIFY(first->triangles() == VectorLayer::build(shapes)->triangles());
+        // One shape changes (colour, new key): the others reuse their triangles, and the
+        // result is byte-identical to a full rebuild.
+        shapes.front().rgb = {1, 2, 3};
+        keys.front() = 1000;
+        const auto next = VectorLayer::build(shapes, keys, first.get());
+        QVERIFY(next->triangles() == VectorLayer::build(shapes)->triangles());
+        QVERIFY(next->triangles() != first->triangles());
+    }
+
+    void quickBarShowsShapeOpsOnSelection() {
+        Rig rig;
+        open(rig);
+        enterSpace(rig);
+        auto* bar = deepItem(rig.window->contentItem(), QStringLiteral("vectorQuickBar"));
+        auto* unite = deepItem(rig.window->contentItem(), QStringLiteral("quickUnion"));
+        auto* split = deepItem(rig.window->contentItem(), QStringLiteral("quickBreak"));
+        QVERIFY(bar && unite && split);
+        QVERIFY(!bar->isVisible());
+        QTest::mouseClick(rig.window, Qt::LeftButton, {}, at(rig, 2.5, 0.0));
+        QTRY_VERIFY_WITH_TIMEOUT(bar->isVisible(), 3'000);
+        // One shape, converted or not: boolean ops wait for a second one, splitting is ready.
+        QCOMPARE(rig.vectors.selectedCount(), 1);
+        QVERIFY(!unite->isEnabled());
+        QVERIFY(split->isEnabled());
+        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+    }
+
     void clickSelectsAShapeAndShowsItsOrigin() {
         Rig rig;
         open(rig);
@@ -634,6 +672,8 @@ private slots:
         QCOMPARE(rig.session.project().embroidery_objects.size(), std::size_t{0});
         const auto undoBefore = steps(rig);
         QVERIFY(rig.stage.convertToEmbroidery());
+        QVERIFY(rig.stage.converting()); // l'interface reste libre pendant le calcul
+        QTRY_VERIFY_WITH_TIMEOUT(!rig.stage.converting(), 15'000);
         QVERIFY(rig.session.project().embroidery_objects.size() >= 1);
         QCOMPARE(steps(rig), undoBefore + 1);
         QVERIFY(rig.session.undo());

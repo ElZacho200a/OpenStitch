@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
+#include <climits>
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -40,7 +41,17 @@ public:
     // demande), déterministe : voisins visités dans un ordre fixe, départage par indice.
     [[nodiscard]] TravelPlan plan(std::size_t g, Vec2um from, Vec2um to);
 
-private:
+    // Vrai quand `plan` ne modifie aucun état une fois la grille construite (sans l'option
+    // `allow_same_color_surface`, dont la surface se reconstruit par avancement séquentiel) :
+    // après `prepare()`, plusieurs fils peuvent alors appeler `plan` en même temps.
+    [[nodiscard]] bool concurrent_plans() const { return !cfg_.allow_same_color_surface; }
+    // Construit la grille si ce n'est pas déjà fait (préalable aux appels concurrents).
+    void prepare() {
+        if (!built_) {
+            build();
+        }
+    }
+
     struct Grid {
         std::int32_t ox{0};
         std::int32_t oy{0};
@@ -49,10 +60,20 @@ private:
         std::int32_t h{0};
         std::vector<std::int32_t> last; // indice de la dernière commande qui couvre, -1 sinon
     };
+    // Grille de recouvrement construite (tests d'équivalence uniquement).
+    [[nodiscard]] const Grid& grid_for_test() {
+        prepare();
+        return grid_;
+    }
+
+private:
     void build();
     // Rastérise le segment qui aboutit à la commande `i` (couche supérieure) : dans `last`
     // (indice du dernier recouvrement) ou, si `intoSame`, dans `same_` (surface déjà cousue).
-    void stamp(std::size_t i, bool intoSame);
+    // `rowLo`..`rowHi` : rangées de la grille à traiter (bornes incluses), pour la construction
+    // par bandes de rangées en parallèle.
+    void stamp(std::size_t i, bool intoSame, std::int32_t rowLo = 0,
+               std::int32_t rowHi = INT32_MAX);
     // Surface déjà cousue AVEC LE MÊME FIL (option `allow_same_color_surface`) jusqu'à la commande
     // `g` : se reconstruit par avancement séquentiel, remise à zéro à chaque changement de fil.
     void advance_same_color(std::size_t g);

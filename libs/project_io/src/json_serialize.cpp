@@ -6,7 +6,9 @@
 #include <cmath>
 #include <limits>
 #include <optional>
+#include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "openstitch/document/multi_blend.hpp"
 
@@ -27,6 +29,130 @@ json vec_to_json(Vec2um v) {
 Vec2um vec_from_json(const json& j) {
     return Vec2um{Micrometers{j.at(0).get<std::int32_t>()},
                   Micrometers{j.at(1).get<std::int32_t>()}};
+}
+
+// Grille de parts d'un fondu (2026-11-17) : octets en base64 standard (RFC 4648, avec
+// remplissage), dimensions en clair. Écrite seulement si présente.
+constexpr char kBase64[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+std::string base64_encode(const std::vector<std::uint8_t>& bytes) {
+    std::string out;
+    out.reserve((bytes.size() + 2) / 3 * 4);
+    for (std::size_t i = 0; i < bytes.size(); i += 3) {
+        const std::uint32_t b0 = bytes[i];
+        const std::uint32_t b1 = i + 1 < bytes.size() ? bytes[i + 1] : 0u;
+        const std::uint32_t b2 = i + 2 < bytes.size() ? bytes[i + 2] : 0u;
+        const std::uint32_t v = (b0 << 16) | (b1 << 8) | b2;
+        out.push_back(kBase64[(v >> 18) & 63]);
+        out.push_back(kBase64[(v >> 12) & 63]);
+        out.push_back(i + 1 < bytes.size() ? kBase64[(v >> 6) & 63] : '=');
+        out.push_back(i + 2 < bytes.size() ? kBase64[v & 63] : '=');
+    }
+    return out;
+}
+
+int base64_digit(char c) {
+    if (c >= 'A' && c <= 'Z') {
+        return c - 'A';
+    }
+    if (c >= 'a' && c <= 'z') {
+        return c - 'a' + 26;
+    }
+    if (c >= '0' && c <= '9') {
+        return c - '0' + 52;
+    }
+    if (c == '+') {
+        return 62;
+    }
+    if (c == '/') {
+        return 63;
+    }
+    return -1;
+}
+
+std::optional<std::vector<std::uint8_t>> base64_decode(const std::string& text) {
+    if (text.size() % 4 != 0) {
+        return std::nullopt;
+    }
+    std::vector<std::uint8_t> out;
+    out.reserve(text.size() / 4 * 3);
+    for (std::size_t i = 0; i < text.size(); i += 4) {
+        const bool last = i + 4 == text.size();
+        int pad = 0;
+        if (last && text[i + 3] == '=') {
+            pad = text[i + 2] == '=' ? 2 : 1;
+        }
+        std::uint32_t v = 0;
+        for (int k = 0; k < 4; ++k) {
+            const int d = k >= 4 - pad ? 0 : base64_digit(text[i + static_cast<std::size_t>(k)]);
+            if (d < 0) {
+                return std::nullopt;
+            }
+            v = (v << 6) | static_cast<std::uint32_t>(d);
+        }
+        out.push_back(static_cast<std::uint8_t>(v >> 16));
+        if (pad < 2) {
+            out.push_back(static_cast<std::uint8_t>((v >> 8) & 0xFFu));
+        }
+        if (pad < 1) {
+            out.push_back(static_cast<std::uint8_t>(v & 0xFFu));
+        }
+    }
+    return out;
+}
+
+json weight_grid_to_json(const document::WeightGrid& g) {
+    return {{"originX", g.origin.x.value},
+            {"originY", g.origin.y.value},
+            {"cell", g.cell.value},
+            {"columns", g.columns},
+            {"rows", g.rows},
+            {"channels", g.channels},
+            {"data", base64_encode(g.values)}};
+}
+
+// nullopt si la grille est mal formée ou hors bornes (pas de 0,1 à 20 mm, au plus
+// 1 million de cases, 1 à 8 canaux, taille des données exacte).
+std::optional<document::WeightGrid> weight_grid_from_json(const json& j) {
+    if (!j.is_object()) {
+        return std::nullopt;
+    }
+    for (const char* key : {"originX", "originY", "cell", "columns", "rows", "channels"}) {
+        if (!j.contains(key) || !j.at(key).is_number_integer()) {
+            return std::nullopt;
+        }
+    }
+    if (!j.contains("data") || !j.at("data").is_string()) {
+        return std::nullopt;
+    }
+    const auto cell = j.at("cell").get<std::int64_t>();
+    const auto columns = j.at("columns").get<std::int64_t>();
+    const auto rows = j.at("rows").get<std::int64_t>();
+    const auto channels = j.at("channels").get<std::int64_t>();
+    const auto ox = j.at("originX").get<std::int64_t>();
+    const auto oy = j.at("originY").get<std::int64_t>();
+    constexpr std::int64_t kCoord = 10'000'000; // 10 m
+    if (cell < 100 || cell > 20'000 || columns < 1 || rows < 1 || columns > 1'000'000 ||
+        rows > 1'000'000 || columns * rows > 1'000'000 || channels < 1 || channels > 8 ||
+        ox < -kCoord || ox > kCoord || oy < -kCoord || oy > kCoord) {
+        return std::nullopt;
+    }
+    document::WeightGrid g;
+    g.origin = Vec2um{Micrometers{static_cast<std::int32_t>(ox)},
+                      Micrometers{static_cast<std::int32_t>(oy)}};
+    g.cell = Micrometers{static_cast<std::int32_t>(cell)};
+    g.columns = static_cast<std::int32_t>(columns);
+    g.rows = static_cast<std::int32_t>(rows);
+    g.channels = static_cast<std::uint8_t>(channels);
+    auto data = base64_decode(j.at("data").get<std::string>());
+    if (!data) {
+        return std::nullopt;
+    }
+    g.values = std::move(*data);
+    if (!g.valid()) {
+        return std::nullopt;
+    }
+    return g;
 }
 
 json rgb_to_json(const std::array<std::uint8_t, 3>& rgb) {
@@ -140,6 +266,15 @@ json op_to_json(const image::ImageOp& op) {
                 j = {{"type", "clahe"}, {"clipLimit", o.clip_limit}};
             } else if constexpr (std::is_same_v<T, image::SharpenOp>) {
                 j = {{"type", "sharpen"}, {"amount", o.amount}};
+            } else if constexpr (std::is_same_v<T, image::ColorToAlphaOp>) {
+                j = {{"type", "colorToAlpha"},
+                     {"r", o.r},
+                     {"g", o.g},
+                     {"b", o.b},
+                     {"tolerance", o.tolerance},
+                     {"contiguous", o.contiguous},
+                     {"seedX", o.seed_x},
+                     {"seedY", o.seed_y}};
             }
             return j;
         },
@@ -189,6 +324,16 @@ Result<image::ImageOp> op_from_json(const json& j) {
     }
     if (type == "sharpen") {
         return image::SharpenOp{j.value("amount", 1.0)};
+    }
+    if (type == "colorToAlpha") {
+        const image::ColorToAlphaOp d;
+        return image::ColorToAlphaOp{j.value("r", d.r),
+                                     j.value("g", d.g),
+                                     j.value("b", d.b),
+                                     j.value("tolerance", d.tolerance),
+                                     j.value("contiguous", d.contiguous),
+                                     j.value("seedX", d.seed_x),
+                                     j.value("seedY", d.seed_y)};
     }
     return fail(ErrorCategory::InvalidFile, "Opération d'image inconnue : " + type);
 }
@@ -420,6 +565,14 @@ json params_to_json(const document::StitchParams& params) {
                             j["densityGradient"]["sharedRows"] = true;
                         }
                     }
+                    if (g.slice_grid) {
+                        // Tranche lue dans une grille (fondu à parts image) : grille partagée
+                        // (`sharedRows`) ou rangées continues à écart selon la part.
+                        if (g.shared_rows) {
+                            j["densityGradient"]["sharedRows"] = true;
+                        }
+                        j["densityGradient"]["sliceGrid"] = weight_grid_to_json(*g.slice_grid);
+                    }
                 }
             } else if constexpr (std::is_same_v<T, document::AutoSatinParams>) {
                 json guides = json::array();
@@ -644,6 +797,9 @@ json params_to_json(const document::StitchParams& params) {
                 }
                 if (p.end_density != 0.15) {
                     j["endDensity"] = p.end_density;
+                }
+                if (p.image_weights) {
+                    j["imageWeights"] = weight_grid_to_json(*p.image_weights);
                 }
             }
             // HP-STI-033 : compensation du tirage (clés écrites seulement hors défaut).
@@ -928,6 +1084,21 @@ Result<document::StitchParams> params_from_json(const json& j) {
                     grad.density_stops.push_back({position, weight, lower});
                     previous = position;
                 }
+            }
+            if (g.contains("sliceGrid")) {
+                auto slice = weight_grid_from_json(g.at("sliceGrid"));
+                if (!slice || slice->channels != 2) {
+                    return fail(ErrorCategory::InvalidFile,
+                                "Fondu : grille de tranche invalide (sliceGrid).");
+                }
+                for (std::size_t i = 0; i < slice->values.size(); i += 2) {
+                    if (slice->values[i] > slice->values[i + 1]) {
+                        return fail(ErrorCategory::InvalidFile,
+                                    "Fondu : tranche inversée dans sliceGrid.");
+                    }
+                }
+                grad.shared_rows = g.value("sharedRows", false);
+                grad.slice_grid = std::move(*slice);
             }
             p.density_gradient = grad;
         }
@@ -1331,6 +1502,14 @@ Result<document::StitchParams> params_from_json(const json& j) {
         }
         const double endDensity = j.value("endDensity", 0.15);
         p.end_density = std::isfinite(endDensity) ? std::clamp(endDensity, 0.0, 1.0) : 0.15;
+        if (j.contains("imageWeights")) {
+            auto weights = weight_grid_from_json(j.at("imageWeights"));
+            if (!weights || weights->channels != p.palette.size()) {
+                return fail(ErrorCategory::InvalidFile,
+                            "multicolorGradient : grille de parts invalide (imageWeights).");
+            }
+            p.image_weights = std::move(*weights);
+        }
         return document::StitchParams{p};
     }
     return fail(ErrorCategory::InvalidFile, "Type de point inconnu : " + type);

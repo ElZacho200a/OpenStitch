@@ -38,7 +38,10 @@ Item {
         } else {
             root.workspace.clearStageStatus(root.spaceId)
         }
-        root.workspace.setStageAction(root.spaceId, qsTr("Segmenter l'image"), root.seg.canSegment)
+        // Le bandeau d'étape est un statut, pas un déclencheur : « Segmenter l'image » (état
+        // vide) et « Appliquer »/« Aperçu » (onglet Segmentation) restent les seules actions —
+        // un seul endroit par action, cf. audit UX panneaux Segmentation.
+        root.workspace.setStageAction(root.spaceId, "", false)
     }
     function segmentNow() {
         if (root.seg) {
@@ -60,6 +63,12 @@ Item {
             root.workspace.setStageAction(root.spaceId, "", false)
         }
     }
+    // Appelé par le Shortcut « Escape » de Main.qml : pinceau ou gomme -> sélection.
+    function cancelTool() {
+        if (!root.active || !root.hasTools || regionTools.tool === "select") return false
+        regionTools.tool = "select"
+        return true
+    }
     onActiveChanged: { if (active) activate(); else deactivate() }
     Component.onCompleted: { if (active) activate() }
     Component.onDestruction: deactivate()
@@ -77,9 +86,38 @@ Item {
         }
     }
 
+    // Barre latérale commune : outils modaux du canevas (pinceau et gomme de frontière). Les actions
+    // ponctuelles (fusionner, nettoyer, recolorer…) restent dans le panneau.
+    StudioCard {
+        id: segRailCard
+        objectName: "segmentationRailCard"
+        visible: root.hasTools
+        anchors.left: parent.left
+        anchors.top: parent.top
+        anchors.margins: Theme.gap
+        width: Theme.controlHeight + 16
+        height: Math.min(segRail.implicitHeight + 16, root.height - 2 * Theme.gap)
+        CanvasToolRail {
+            id: segRail
+            anchors.top: parent.top
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.topMargin: 8
+            canvas: spaceCanvas
+            workspaceActive: root.active
+            toolPrefix: "regionTool_"
+            entries: [
+                { id: "brush", icon: "brush", label: qsTr("Pinceau de frontière : peindre la région choisie"), shortcut: "U", group: "regions" },
+                { id: "erase", icon: "eraser", label: qsTr("Gomme : retirer de la région choisie"), shortcut: "Maj+U", group: "regions" }
+            ]
+            activeTool: root.hasTools && regionTools.tool !== "select" ? regionTools.tool : ""
+            onToolTriggered: id => { if (root.hasTools) regionTools.tool = id === "" ? "select" : id }
+            onFitRequested: spaceCanvas.fitDesign()
+        }
+    }
+
     Item {
         id: viewport
-        anchors.left: parent.left
+        anchors.left: segRailCard.visible ? segRailCard.right : parent.left
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         anchors.right: panelLoader.active ? panelLoader.left : parent.right
@@ -119,6 +157,61 @@ Item {
             Connections {
                 target: spaceCanvas
                 function onViewChanged() { livePreview.cameraTick++ }
+            }
+        }
+
+        // Options de l'outil actif (pinceau, gomme) posées sur le canevas, à côté de la barre :
+        // rayon et dernier message de l'outil (un refus reste visible quel que soit l'onglet).
+        Rectangle {
+            objectName: "regionToolOptions"
+            visible: root.hasTools && regionTools.tool !== "select"
+            x: 8
+            y: 8
+            width: Math.min(parent.width - 16, optionsRow.implicitWidth + 20)
+            height: Theme.controlHeight + 12
+            radius: Theme.cardRadius
+            color: Theme.panel
+            border.color: Theme.divider
+            RowLayout {
+                id: optionsRow
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.left: parent.left
+                anchors.leftMargin: 10
+                spacing: 6
+                StudioLabel {
+                    text: qsTr("Rayon")
+                    tone: "foreground"
+                    wrapMode: Text.NoWrap
+                }
+                StudioButton {
+                    objectName: "brushSmaller"
+                    text: "−"
+                    quiet: true
+                    tooltip: qsTr("Pinceau : rayon plus petit")
+                    onClicked: regionTools.stepBrushRadius(-1)
+                }
+                StudioSpinBox {
+                    objectName: "regionBrushRadius"
+                    from: 1; to: 200; editable: true
+                    value: root.hasTools ? regionTools.brushRadius : 1
+                    Accessible.name: qsTr("Rayon du pinceau (px)")
+                    onValueModified: regionTools.brushRadius = value
+                }
+                StudioButton {
+                    objectName: "brushLarger"
+                    text: "+"
+                    quiet: true
+                    tooltip: qsTr("Pinceau : rayon plus grand")
+                    onClicked: regionTools.stepBrushRadius(1)
+                }
+                StudioLabel {
+                    objectName: "regionToolMessage"
+                    visible: text.length > 0
+                    text: root.hasTools ? regionTools.message : ""
+                    wrapMode: Text.NoWrap
+                    elide: Text.ElideRight
+                    Layout.maximumWidth: 320
+                }
             }
         }
 
@@ -166,6 +259,44 @@ Item {
             Accessible.name: qsTr("Segmentation en cours")
         }
 
+        // L'aperçu remplace silencieusement la couche régions par l'image prévisualisée
+        // (livePreview ci-dessus) : sans ce bandeau, rien ne distingue à l'écran un aperçu non
+        // appliqué de la segmentation réelle du document.
+        Rectangle {
+            objectName: "segmentationPreviewBadge"
+            anchors.top: parent.top
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.topMargin: 16
+            visible: root.previewing
+            enabled: false
+            width: previewRow.implicitWidth + 24
+            height: 32
+            color: Theme.accentSoft
+            border.color: Theme.accent
+            radius: Theme.radius
+            Row {
+                id: previewRow
+                anchors.centerIn: parent
+                spacing: 8
+                Rectangle {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 10
+                    height: 10
+                    radius: 5
+                    color: Theme.accent
+                }
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: qsTr("Aperçu de segmentation — document inchangé")
+                    color: Theme.foreground
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.smallSize
+                }
+            }
+            Accessible.role: Accessible.StaticText
+            Accessible.name: qsTr("Aperçu de segmentation en cours, document inchangé")
+        }
+
         // Clic : sélection de la région sous le curseur (Ctrl = multi-sélection) ; pinceau / gomme
         // des régions quand l'outil de RegionController l'est. Les autres boutons (déplacement,
         // molette) restent au canevas.
@@ -210,41 +341,6 @@ Item {
             }
         }
 
-        Rectangle {
-            objectName: "segmentationEmpty"
-            anchors.centerIn: parent
-            visible: root.seg !== null && !root.seg.hasSegmentation
-            width: Math.min(380, parent.width - 64)
-            height: emptyColumn.implicitHeight + 36
-            radius: Theme.cardRadius
-            color: Theme.panel
-            border.color: Theme.divider
-            ColumnLayout {
-                id: emptyColumn
-                anchors.centerIn: parent
-                width: parent.width - 36
-                spacing: 10
-                Text {
-                    Layout.fillWidth: true
-                    text: qsTr("Pas encore de segmentation.\nSegmentez l'image pour découper ses couleurs en régions.")
-                    color: Theme.muted
-                    horizontalAlignment: Text.AlignHCenter
-                    wrapMode: Text.WordWrap
-                    lineHeight: 1.35
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.bodySize
-                }
-                StudioButton {
-                    objectName: "segmentEmptyButton"
-                    Layout.alignment: Qt.AlignHCenter
-                    text: qsTr("Segmenter l'image")
-                    emphasized: true
-                    enabled: root.seg !== null && root.seg.canSegment
-                    onClicked: root.segmentNow()
-                }
-            }
-        }
-
         Loader {
             id: controlsLoader
             anchors.left: parent.left
@@ -254,7 +350,6 @@ Item {
                 seg: root.seg
                 showSource: root.showSource
                 onShowSourceChanged: root.showSource = showSource
-                onSegmentRequested: root.segmentNow()
             }
         }
 

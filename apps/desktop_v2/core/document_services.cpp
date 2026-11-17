@@ -265,7 +265,9 @@ ServiceResult makeOffsetCopies(DocumentSession& session,
     std::vector<document::EmbroideryObject> embroideries;
     for (const auto id : objectIds) {
         const auto* source = findObject(session.project(), id);
-        const auto* shape = source ? session.project().findObject(source->source_vector) : nullptr;
+        // Forme vectorielle non convertie : on décale la forme seule, sans objet de broderie.
+        const auto* shape = source ? session.project().findObject(source->source_vector)
+                                   : session.project().findObject(ObjectId{id});
         if (shape == nullptr) {
             continue;
         }
@@ -295,12 +297,14 @@ ServiceResult makeOffsetCopies(DocumentSession& session,
             continue; // la forme disparaît : rien à créer pour celle-ci
         }
         result.id = session.allocateObjectId();
-        document::EmbroideryObject copy = *source;
-        copy.id = session.allocateObjectId();
-        copy.name = result.name;
-        copy.source_vector = result.id;
+        if (source != nullptr) {
+            document::EmbroideryObject copy = *source;
+            copy.id = session.allocateObjectId();
+            copy.name = result.name;
+            copy.source_vector = result.id;
+            embroideries.push_back(std::move(copy));
+        }
         vectors.push_back(std::move(result));
-        embroideries.push_back(std::move(copy));
     }
     if (vectors.empty()) {
         return refuse(

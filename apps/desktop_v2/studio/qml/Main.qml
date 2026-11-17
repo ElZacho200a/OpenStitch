@@ -47,6 +47,24 @@ Window {
     readonly property var workspaceController: workspaceCtl
     readonly property var canvas: spaceHost.canvas
     WorkspaceController { id: workspaceCtl; controller: studio }
+    // Suivi en direct : quand l'agent du compagnon applique un lot, la fenêtre passe dans
+    // l'espace où son effet se voit (Image, Segmentation, Vecteurs ou Points).
+    Connections {
+        target: typeof companion !== "undefined" ? companion : null
+        function onStageRequested(space) {
+            if (workspaceCtl.current === space)
+                return
+            workspaceCtl.setCurrent(space)
+            agentFitTimer.restart()
+        }
+    }
+    // Le canevas du nouvel espace se monte après le changement : le motif est cadré ensuite,
+    // sinon l'utilisateur le voit en vignette au milieu d'un espace vide.
+    Timer {
+        id: agentFitTimer
+        interval: 150
+        onTriggered: if (window.canvas) window.canvas.fitDesign()
+    }
     Connections {
         target: workspaceCtl
         function onCurrentChanged() {
@@ -353,6 +371,10 @@ Window {
         sequence: "Escape"
         onActivated: {
             if (window.keyboardOwnedByControl) { window.activeFocusItem.focus = false; return }
+            // L'espace courant quitte d'abord son outil modal (recadrage, pipette, règle…) : un
+            // second Shortcut « Escape » rendrait la touche ambiguë et aucun ne s'exécuterait.
+            const space = spaceHost.space
+            if (space && typeof space.cancelTool === "function" && space.cancelTool()) return
             editor.eyedropper = false
             if (!canvas || !canvas.cancelGesture()) studio.clearSelection()
         }

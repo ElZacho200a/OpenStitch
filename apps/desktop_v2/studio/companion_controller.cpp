@@ -278,10 +278,21 @@ QString CompanionController::setBridgeEnabled(bool on) {
     return {};
 }
 
-void CompanionController::append(const QString& role, const QString& text) {
-    messages_.push_back(
-        QVariantMap{{QStringLiteral("role"), role}, {QStringLiteral("text"), text}});
+void CompanionController::append(const QString& role, const QString& text, const QString& title) {
+    messages_.push_back(QVariantMap{{QStringLiteral("role"), role},
+                                    {QStringLiteral("text"), text},
+                                    {QStringLiteral("title"), title}});
     emit changed();
+}
+
+QString CompanionController::grantFolder(const QString& path) {
+    const QFileInfo info(path);
+    const QString dir = info.isDir() ? info.absoluteFilePath() : info.absolutePath();
+    if (!ensureCompanion().service().grant_read_dir(
+            QDir::fromNativeSeparators(dir).toStdString())) {
+        return tr("Ce dossier ne peut pas être confié à l'agent (introuvable ou sensible).");
+    }
+    return {};
 }
 
 bool CompanionController::send(const QString& text) {
@@ -307,7 +318,28 @@ bool CompanionController::send(const QString& text) {
         return false;
     }
     error_.clear();
+    activity_ = tr("Envoi à Claude…");
     append(QStringLiteral("user"), trimmed);
+    // Un dossier nommé dans SA demande vaut accord de lecture (le texte vient de l'utilisateur,
+    // jamais d'un fichier ni d'un outil) : l'agent peut alors lire le pack sans rien demander.
+    static const QRegularExpression pathPattern(
+        QStringLiteral(R"((?:[A-Za-z]:[\\/]|/)[^\s"'<>|*?]+)"));
+    auto matches = pathPattern.globalMatch(trimmed);
+    while (matches.hasNext()) {
+        QString candidate = matches.next().captured(0);
+        while (candidate.endsWith(QLatin1Char('.')) || candidate.endsWith(QLatin1Char(',')) ||
+               candidate.endsWith(QLatin1Char(';')) || candidate.endsWith(QLatin1Char(')'))) {
+            candidate.chop(1);
+        }
+        if (QFileInfo::exists(candidate) && grantFolder(candidate).isEmpty()) {
+            const QFileInfo info(candidate);
+            append(QStringLiteral("tool"),
+                   tr("Accès en lecture accordé au dossier : %1")
+                       .arg(QDir::toNativeSeparators(info.isDir() ? info.absoluteFilePath()
+                                                                  : info.absolutePath())),
+                   tr("Accès en lecture"));
+        }
+    }
     backend.send(trimmed);
     emit changed();
     return true;
