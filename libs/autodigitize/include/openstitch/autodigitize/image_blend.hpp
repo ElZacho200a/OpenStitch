@@ -48,7 +48,18 @@ image_blend_weights(const image::Image& image, Millimeters mm_per_px,
                     const std::vector<geometry::PathSet>& shape, const std::vector<Rgb8>& palette,
                     const ImageBlendOptions& options = {});
 
-// Proposition de `count` couleurs (2 à 8) pour un fondu à parts image : des candidates
+// Fils d'une zone de fondu parmi `palette` (palette globale d'un tableau, ordre de couture) :
+// le meilleur fil seul, puis ajout glouton du fil qui réduit le plus l'erreur de mélange sur
+// les couleurs de la zone, gardé seulement s'il la réduit d'au moins `min_gain` (0,2 : règle
+// de l'étude), `max_threads` (1 à 4) au plus. Indices dans `palette`, croissants. Un seul
+// indice : la zone est un aplat. Vide si la forme ne couvre aucun pixel. Déterministe.
+[[nodiscard]] std::vector<std::size_t>
+choose_zone_threads(const image::Image& image, Millimeters mm_per_px,
+                    const std::vector<geometry::PathSet>& shape, const std::vector<Rgb8>& palette,
+                    std::size_t max_threads, double min_gain = 0.2,
+                    const ImageBlendOptions& options = {});
+
+// Proposition de `count` couleurs (2 à 16) pour un fondu à parts image : des candidates
 // (k-means déterministe sur les pixels de la forme, plus les couleurs extrêmes de ses axes
 // principaux, car un mélange ne sort jamais de l'enveloppe de ses fils) puis choix glouton
 // de celles qui minimisent l'erreur de MÉLANGE. Triées du plus sombre au plus clair.
