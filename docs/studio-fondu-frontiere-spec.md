@@ -50,6 +50,29 @@ HP-STI-010 (dégradé de densité).
   densité sera refusée en L2 (combinaison non définie). Tests `[directional]` : masque nul
   identique, demi-densité ≈ moitié des lignes, tatami contre directionnel ≈ une couche,
   déterminisme.
+- 2026-11-16, **L2 livré** (branche `feat/fondu-frontiere-l2`, empilée sur L1c) :
+  `document::BoundaryBlendLink` (partenaire, demi-bande de cette zone, courbe) sur
+  `EmbroideryObject::boundary_blend` ; `document::find_boundary_blend` (liens réciproques, deux
+  formes distinctes, tatami ou directionnel sans dégradé de densité, même courbe, largeurs dans
+  les bornes) ; `commands::SetBoundaryBlendLinkCommand` (les deux liens en un pas
+  d'annulation) ; `project_ops::make_boundary_blend_command`, `make_remove_boundary_blend_command`,
+  `boundary_blend_refusal`, `boundary_blend_info` ; opérations `blend_boundary` et
+  `unblend_boundary` ; champ `boundary_blend` de `project inspect` ; champ `.osp`
+  `boundaryBlend` (facultatif). Génération : `stitch_generation::boundary_blend_layer`, calculé
+  toujours dans le même sens (zone d'identifiant le plus petit en A) pour que les deux couches
+  viennent du même plan ; sous-couches sur la zone seule ; pas de cache de séquence pour ces
+  zones (elles dépendent de la voisine). Copier-coller, insertion de design : le lien suit
+  seulement si les deux zones sont copiées ensemble. Tests `[blend]` (7 cas) : un pas
+  d'annulation, refus codés, génération modifiée près de la frontière seulement et
+  déterministe, retrait et lien orphelin, aller-retour `.osp`, opérations, `inspect`.
+- Écarts à la spec dans L2 :
+  - **Pas de texture** dans le lien pour l'instant (le champ de densité ne l'applique pas
+    encore) ; à ajouter avec le panneau Studio si le besoin se confirme.
+  - **Suppression d'une zone** : le lien de la voisine devient orphelin et sans effet, au lieu
+    d'être effacé ; un « annuler » de la suppression rend le fondu actif sans autre commande.
+  - **Évidement (knockout)** et cache de séquence ignorés pour les zones liées (v1).
+  - Le SVG doré reste à faire ; il demande une forme d'essai réaliste, prévue avec la recette
+    Studio (L3).
 - Écart au découpage initial : le **branchement du masque dans le directionnel** passe en
   L1b. La grille partagée actuelle classe ses rangées par rang dans la région ; l'ancrer
   changerait la sortie des fondus directionnels existants, ce qui doit se faire avec la
@@ -302,7 +325,7 @@ tissu dans la bande. Statut « Validé » seulement après cette recette.
 | L1a ☑ | Masque de rangées : grille ancrée, seuils par `k`, surcharge `fill_tatami(…, RowMask*)` ; non-régression octet pour octet sans masque | `stitch_generation` |
 | L1b ☑ | `shared_frontier`, `polyline_band`, champ de densité, régions prolongées, paire tatami–tatami dans les deux régimes, tests cœur | `geometry`, `stitch_generation` |
 | L1c ☑ | Masque dans le directionnel (superposition), `fill_boundary_blend` pour les trois combinaisons | `stitch_generation` |
-| L2 | Lien, commandes, `.osp`, opération CLI / MCP, codes d'erreur | `document`, `commands`, `project_ops`, `project_io` |
+| L2 ☑ | Lien, commandes, `.osp`, opérations CLI / MCP, génération, `inspect`, codes d'erreur | `document`, `commands`, `project_ops`, `project_io`, `stitch_generation` |
 | L3 | Studio : action, poignées de bande, panneau, QTest | `apps/desktop_v2` |
 | L4 | Frontière dessinée à la main | `geometry`, Studio |
 | L5 | Proposition automatique depuis l'image : transition douce à travers une frontière de segmentation | `autodigitize` |

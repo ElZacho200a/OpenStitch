@@ -408,6 +408,7 @@ Un objet est désigné par `object` = **identifiant d'objet de broderie**.
 | Création / suppression | `add_shape` (rect, ellipse, polygone), `duplicate_object`, `remove_object` |
 | Géométrie | `translate`, `rotate`, `scale`, `mirror`, `set_geometry`, `merge` (union, subtract, intersect, exclude), `split`, `break_apart`, `remove_holes`, `fill_block_holes` (comble les vides sans fil d'un bloc, détectés depuis les points cousus) |
 | Import et texte | `import_svg` (path, rect, circle, ellipse, line, polyline, polygon), `add_text`, `set_text`, `remove_text` |
+| Fondus | `blend_boundary` (fondu à la frontière entre deux zones tatami ou directionnelles voisines : `width_a`, `width_b` en mm, `curve` ; réédition si les deux zones sont déjà liées ; refus `E_BLEND_*` nommés), `unblend_boundary` |
 | Auto-satin | `auto_satin` (espacement, `compact_axis`, `strategy` = `skeleton` \| `parallel_sweep` \| `medial_axis`, `sweep_angle_deg`, guides) : vrai pipeline, refus nommé si aucune colonne ; `strategy` et `sweep_angle_deg` se règlent ensuite par `set_params` |
 | Projet | `set_canvas`, `set_finishing` |
 

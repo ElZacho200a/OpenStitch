@@ -22,6 +22,7 @@
 #include "openstitch/stitch_generation/auto_satin_engine.hpp"
 #include "openstitch/stitch_generation/blanket_stitch.hpp"
 #include "openstitch/stitch_generation/border_satin.hpp"
+#include "openstitch/stitch_generation/boundary_blend.hpp"
 #include "openstitch/stitch_generation/contour_fill.hpp"
 #include "openstitch/stitch_generation/couching.hpp"
 #include "openstitch/stitch_generation/cross_stitch.hpp"
@@ -972,6 +973,43 @@ void generate_tatami(stitch::StitchSequence& sequence, const document::VectorObj
     }
 }
 
+// Couche d'une zone en FONDU À LA FRONTIÈRE : sous-couches sur la zone elle-même seulement
+// (jamais sous le fil voisin), puis la couche masquée, prolongée dans la demi-bande de l'autre
+// zone (`boundary_blend_layer`). Aucune liaison cachée : la couche est clairsemée près de la
+// frontière. Contour de bord et couchage éventuels sur la zone elle-même.
+void generate_boundary_blend_layer(stitch::StitchSequence& sequence,
+                                   const document::VectorObject& source,
+                                   const document::EmbroideryObject& object,
+                                   std::vector<FillStitch> layer) {
+    std::visit(
+        [&](const auto& params) {
+            using T = std::decay_t<decltype(params)>;
+            if constexpr (std::is_same_v<T, document::TatamiParams> ||
+                          std::is_same_v<T, document::DirectionalFillParams>) {
+                const auto regions = fill_regions_in_sewing_order(sequence, source, params.inset);
+                for (const geometry::PathSet& region : regions) {
+                    const auto underlay = [&] {
+                        if constexpr (std::is_same_v<T, document::TatamiParams>) {
+                            return tatami_underlay(region, resolve_underlay(params, region));
+                        } else {
+                            return directional_underlay(region, resolve_underlay(params, region));
+                        }
+                    }();
+                    for (const auto& up : underlay) {
+                        emit_underlay_pass(sequence, up, object.id, nullptr);
+                    }
+                }
+                emit_fill(sequence, std::move(layer), object.id, nullptr);
+                for (const geometry::PathSet& region : regions) {
+                    if (params.edge_outline) {
+                        emit_edge_outline(sequence, region, object.id, params.underlay_inset);
+                    }
+                }
+            }
+        },
+        object.params);
+}
+
 // Remplissage directionnel : même enveloppe que le tatami (retrait de bord,
 // repli sur la forme brute si le retrait la fait disparaître, sous-couches
 // puis couche supérieure), seul le générateur de lignes change.
@@ -1274,6 +1312,15 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
             return;
         }
         stitch::StitchSequence& chunk = chunks[u];
+        // Fondu à la frontière (docs/studio-fondu-frontiere-spec.md) : la couche dépend aussi de
+        // la zone voisine, hors de la clé du cache de séquences -> jamais servie ni rangée dans
+        // ce cache. Lien invalide ou frontière disparue : génération habituelle ci-dessous.
+        if (object.boundary_blend) {
+            if (auto layer = boundary_blend_layer(project, object)) {
+                generate_boundary_blend_layer(chunk, *unit.source, object, std::move(*layer));
+                return;
+            }
+        }
         // HP-PERF-002 : séquence inchangée depuis le dernier calcul -> servie du cache (clé
         // exacte : identifiant, paramètres, géométrie source).
         if (const auto hit = chunk_cache_find(object.id, object.params, unit.source->paths)) {

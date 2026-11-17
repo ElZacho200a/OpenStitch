@@ -113,6 +113,14 @@ void InsertDesignCommand::apply(document::Project& project) {
             embroidery_ids_.push_back(fresh);
         }
         for (auto& object : incoming_.embroidery_objects) {
+            if (object.boundary_blend) {
+                const auto it = embroidery_map.find(object.boundary_blend->partner);
+                if (it != embroidery_map.end()) {
+                    object.boundary_blend->partner = it->second;
+                } else {
+                    object.boundary_blend.reset();
+                }
+            }
             if (object.color_blend) {
                 const auto it = embroidery_map.find(object.color_blend->partner);
                 if (it != embroidery_map.end()) {

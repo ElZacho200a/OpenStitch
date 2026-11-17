@@ -1,6 +1,7 @@
 add_executable(test_project_ops
     test_factory_inspect.cpp
     test_operations.cpp
+    test_boundary_blend_ops.cpp
     test_param_ops.cpp
     test_group_ops.cpp
     test_convert_ops.cpp

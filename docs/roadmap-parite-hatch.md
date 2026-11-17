@@ -1024,8 +1024,9 @@ plus.
   entre deux zones** (rampe selon la distance à la limite commune, zones conservées) :
   spécification `docs/studio-fondu-frontiere-spec.md`. Lots L1a (masque de rangées du
   tatami), L1b (frontière commune, champ de densité, paire tatami–tatami) et L1c (directionnel, en
-  superposition) livrés le 2026-11-16, pas encore branchés ; restent L2 (lien, commandes,
-  `.osp`, CLI), L3 (Studio), L4, L5.
+  superposition) puis L2 (lien du document, commandes, `.osp`, opérations `blend_boundary` /
+  `unblend_boundary`, génération) livrés le 2026-11-16 ; restent L3 (Studio), L4 (frontière
+  dessinée), L5 (proposition depuis l'image) et la recette sur tissu.
 - Dépend de : HP-STI-010.
 
 ### HP-STI-012 — Point de croix [P2] — ◐ Partiel (2026-10-31)
@@ -4626,6 +4627,7 @@ ouvrant le lot (§0.1).
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-11-16 | Claude (fondu à la frontière, L2) | **HP-STI-011 ◐** (inchangé). Lien `BoundaryBlendLink` et `find_boundary_blend`, commande à un pas d'annulation, service `project_ops` (création, réédition, retrait, refus `E_BLEND_*`, infos), opérations `blend_boundary` / `unblend_boundary`, champ `boundary_blend` de `inspect`, champ `.osp` `boundaryBlend`, génération branchée (`boundary_blend_layer`, sens canonique, pas de cache de séquence). Interface Studio en L3 ; non validé sur tissu. |
 | 2026-11-16 | Claude (fondu à la frontière, L1c) | **HP-STI-011 ◐** (inchangé). `fill_directional(…, const RowMask*)` (seuil par rang de ligne de courant, superposition) et `fill_boundary_blend` (tatami ou directionnel de chaque côté) ; `RowMask::coverage` pour refuser les liaisons dans les zones où le fil est absent. Rien de branché. |
 | 2026-11-16 | Claude (fondu à la frontière, L1b) | **HP-STI-011 ◐** (inchangé). `geometry::shared_frontier` (bord de A à moins de la tolérance de B, chemins ouverts Clipper2, bouts rognés) et `polyline_band` ; `stitch_generation::plan_boundary_blend` / `fill_boundary_blend_tatami` : zones prolongées dans la demi-bande de l'autre, densité selon la distance signée à la frontière, décision du masque par case de pénétrations. Partition exacte à grille commune, superposition à angles croisés ; directionnel reporté en L1c ; rien de branché. |
 | 2026-11-16 | Claude (fondu à la frontière, spec + L1a) | **HP-STI-011 ◐** (inchangé). Spécification `docs/studio-fondu-frontiere-spec.md` (fondu selon la distance à la limite de deux zones, zones conservées, tatami en dégradé natif). L1a : `RowMask` / `DensityRowMask` / `row_threshold` et `fill_tatami(…, const RowMask*)` (grille ancrée, découpe aux pénétrations, liaison à la prochaine rangée gardée) ; sans masque, sortie identique octet pour octet ; aucun appelant branché. |
