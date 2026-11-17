@@ -158,6 +158,9 @@ DocumentSession::BatchResult DocumentSession::applyBatch(std::string_view batchJ
         if (op == "set_locked") {
             return false;
         }
+        if (op == "set_needle_origin") {
+            return false; // appliqué à l'export seulement : les points sont inchangés
+        }
         if (op == "set_semantic") {
             return false;
         }
@@ -215,7 +218,7 @@ DocumentSession::BatchResult DocumentSession::applyBatch(std::string_view batchJ
         if (op == "set_machine" || op == "set_finishing" || op == "set_canvas") {
             return false;
         }
-        if (op == "discard_overrides" || op == "set_design_points") {
+        if (op == "discard_overrides" || op == "set_design_points" || op == "set_needle_origin") {
             return false;
         }
         if (op == "translate" || op == "rotate" || op == "scale") {

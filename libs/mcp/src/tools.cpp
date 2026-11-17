@@ -834,7 +834,10 @@ ToolResult tool_export(Session& s, const json& a) {
         if (const auto w = write_file_atomic(target, std::string_view(*svg)); !w) {
             return engine_error("project_export", po::code::kIo, w.error());
         }
-    } else if (auto w = project_io::export_machine_file(project, format, target); !w) {
+    } else if (auto w = project_io::export_machine_file(
+                   project, format, target,
+                   formats::MachineExportOptions{.start = project_io::project_start(project)});
+               !w) {
         return engine_error("project_export", po::code::kIo, w.error());
     }
     return text_result(json{{"ok", true}, {"format", format}, {"path", path_text(target)}}.dump());
