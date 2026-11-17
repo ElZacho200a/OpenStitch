@@ -111,6 +111,48 @@ TEST_CASE("deleting or merging a region is one undo step and restores exactly",
     CHECK(listRegions(d.session.project()).size() == before.size());
 }
 
+TEST_CASE("splitting a region separates non-adjacent zones merged earlier, one undo step each",
+          "[desktop_v2][regions]") {
+    Digitized d;
+    const auto before = listRegions(d.session.project());
+    REQUIRE(before.size() >= 3);
+
+    // Une région fraîchement segmentée n'a qu'une composante connexe : rien à séparer.
+    CHECK_FALSE(splitRegion(d.session, before.front().id).ok);
+
+    // Fusionne deux régions SANS frontière commune : le résultat couvre deux zones distinctes.
+    std::uint64_t a = 0;
+    std::uint64_t b = 0;
+    for (std::size_t i = 0; i < before.size() && b == 0; ++i) {
+        const auto neighbours = neighbourRegions(d.session.project(), before[i].id);
+        for (std::size_t j = 0; j < before.size(); ++j) {
+            if (j == i) {
+                continue;
+            }
+            if (std::find(neighbours.begin(), neighbours.end(), before[j].id) ==
+                neighbours.end()) {
+                a = before[i].id;
+                b = before[j].id;
+                break;
+            }
+        }
+    }
+    REQUIRE(a != 0);
+    const auto depth = d.session.undoNames().size();
+    REQUIRE(mergeRegionInto(d.session, a, b).ok);
+    const auto merged = listRegions(d.session.project());
+    REQUIRE(merged.size() == before.size() - 1);
+
+    REQUIRE(splitRegion(d.session, a).ok);
+    CHECK(d.session.undoNames().size() == depth + 2); // fusion + séparation, un pas chacune
+    CHECK(listRegions(d.session.project()).size() == before.size());
+
+    REQUIRE(d.session.undo()); // annule la séparation
+    CHECK(listRegions(d.session.project()).size() == merged.size());
+    REQUIRE(d.session.undo()); // annule la fusion
+    CHECK(listRegions(d.session.project()).size() == before.size());
+}
+
 TEST_CASE("region corrections refuse nonsense with a clear message", "[desktop_v2][regions]") {
     Digitized d;
     const auto regions = listRegions(d.session.project());
@@ -120,11 +162,13 @@ TEST_CASE("region corrections refuse nonsense with a clear message", "[desktop_v
     CHECK_FALSE(deleteRegion(d.session, 999999).ok);
     CHECK_FALSE(cleanSmallIslands(d.session, 0).ok);
     CHECK_FALSE(cleanSmallIslands(d.session, 1).ok); // aucune région n'a moins d'un pixel
+    CHECK_FALSE(splitRegion(d.session, 999999).ok);
     CHECK(d.session.undoNames().size() == depth);    // aucun refus ne laisse de trace
 
     DocumentSession empty; // projet sans segmentation
     CHECK_FALSE(deleteRegion(empty, 1).ok);
     CHECK_FALSE(mergeRegionInto(empty, 1, 2).ok);
+    CHECK_FALSE(splitRegion(empty, 1).ok);
     CHECK(listRegions(empty.project()).empty());
 }
 
