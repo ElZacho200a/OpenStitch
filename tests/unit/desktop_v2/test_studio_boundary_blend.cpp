@@ -123,7 +123,7 @@ void StudioBoundaryBlendTest::createEditRemoveJourney() {
     QVERIFY(rig.blend.remove());
     QCOMPARE(rig.steps(), before + 3);
     QVERIFY(!rig.blend.hasBlend());
-    QVERIFY(!rig.session.project().findEmbroidery(ObjectId{rig.right})->boundary_blend);
+    QVERIFY(rig.session.project().findEmbroidery(ObjectId{rig.right})->boundary_blends.empty());
 
     rig.session.undo();
     QVERIFY(rig.blend.hasBlend());
@@ -235,20 +235,20 @@ void StudioBoundaryBlendTest::rowsSettingJourney() {
     QCOMPARE(rig.steps(), before + 1);
     QCOMPARE(rig.blend.rows(), QStringLiteral("rotating"));
     for (const auto id : {rig.left, rig.right}) {
-        QCOMPARE(rig.session.project().findEmbroidery(ObjectId{id})->boundary_blend->rows,
+        QCOMPARE(rig.session.project().findEmbroidery(ObjectId{id})->boundary_blends.front().rows,
                  document::BoundaryBlendRows::Rotating);
     }
     rig.session.undo();
     QCOMPARE(rig.blend.rows(), QStringLiteral("per_zone"));
     for (const auto id : {rig.left, rig.right}) {
-        QCOMPARE(rig.session.project().findEmbroidery(ObjectId{id})->boundary_blend->rows,
+        QCOMPARE(rig.session.project().findEmbroidery(ObjectId{id})->boundary_blends.front().rows,
                  document::BoundaryBlendRows::PerZone);
     }
     // Quatrième entrée : entrelacé.
     combo->setProperty("currentIndex", 3);
     QVERIFY(QMetaObject::invokeMethod(combo, "activated", Q_ARG(int, 3)));
     QCOMPARE(rig.blend.rows(), QStringLiteral("interlaced"));
-    QCOMPARE(rig.session.project().findEmbroidery(ObjectId{rig.left})->boundary_blend->rows,
+    QCOMPARE(rig.session.project().findEmbroidery(ObjectId{rig.left})->boundary_blends.front().rows,
              document::BoundaryBlendRows::Interlaced);
     QVERIFY(rig.blend.summary().contains(QStringLiteral("entrelacé")));
 }

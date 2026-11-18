@@ -1548,7 +1548,7 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
         // Fondu à la frontière (docs/studio-fondu-frontiere-spec.md) : la couche dépend aussi de
         // la zone voisine, hors de la clé du cache de séquences -> jamais servie ni rangée dans
         // ce cache. Lien invalide ou frontière disparue : génération habituelle ci-dessous.
-        if (object.boundary_blend) {
+        if (!object.boundary_blends.empty()) {
             if (auto layer = boundary_blend_layer(project, object)) {
                 generate_boundary_blend_layer(chunk, *unit.source, object, std::move(*layer));
                 return;

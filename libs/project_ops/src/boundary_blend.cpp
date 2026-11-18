@@ -50,15 +50,6 @@ std::optional<Error> boundary_blend_refusal(const document::Project& project, Ob
                      "Les deux zones doivent suivre deux formes distinctes",
                      "Pour fondre deux fils dans une même forme, utiliser un fondu de fils.");
     }
-    const auto linkedElsewhere = [&](const document::EmbroideryObject& z, ObjectId other) {
-        return z.boundary_blend && z.boundary_blend->partner != other &&
-               document::find_boundary_blend(project, z.id).has_value();
-    };
-    if (linkedElsewhere(*za, b) || linkedElsewhere(*zb, a)) {
-        return coded(ErrorCategory::OperationImpossible, "E_BLEND_ALREADY_LINKED",
-                     "Une des zones a déjà un fondu à la frontière avec une autre zone",
-                     "Retirer d'abord ce fondu (une zone ne fond qu'avec une seule voisine).");
-    }
     if (za->rgb == zb->rgb) {
         return coded(ErrorCategory::OperationImpossible, "E_BLEND_SAME_COLOR",
                      "Les deux zones ont la même couleur", "Choisir deux fils différents.");
@@ -89,10 +80,7 @@ make_boundary_blend_command(const document::Project& project, ObjectId a, Object
     if (auto refusal = boundary_blend_refusal(project, a, b, options)) {
         return std::unexpected(std::move(*refusal));
     }
-    const bool edit = [&] {
-        const auto* za = project.findEmbroidery(a);
-        return za->boundary_blend && za->boundary_blend->partner == b;
-    }();
+    const bool edit = document::boundary_blend_link(*project.findEmbroidery(a), b) != nullptr;
     return std::make_unique<commands::SetBoundaryBlendLinkCommand>(
         a,
         document::BoundaryBlendLink{b, options.width_a, options.curve, options.manual_frontier,
@@ -104,41 +92,60 @@ make_boundary_blend_command(const document::Project& project, ObjectId a, Object
 }
 
 Result<std::unique_ptr<commands::ICommand>>
+make_remove_boundary_blend_command(const document::Project& project, ObjectId id,
+                                   ObjectId partner) {
+    const auto* zone = project.findEmbroidery(id);
+    if (zone == nullptr || document::boundary_blend_link(*zone, partner) == nullptr) {
+        return std::unexpected(
+            coded(ErrorCategory::UserInput, "E_BLEND_NONE",
+                  "Ces deux zones n'ont pas de fondu à la frontière entre elles",
+                  "Sélectionner une zone et la voisine avec laquelle elle fond."));
+    }
+    // Retire le lien de `id` vers `partner` et, s'il existe, celui de `partner` vers `id` ; les
+    // autres fondus des deux zones restent intacts.
+    return std::make_unique<commands::SetBoundaryBlendLinkCommand>(
+        id, std::nullopt, partner, std::optional<document::BoundaryBlendLink>{},
+        "Retirer le fondu à la frontière");
+}
+
+Result<std::unique_ptr<commands::ICommand>>
 make_remove_boundary_blend_command(const document::Project& project, ObjectId id) {
     const auto* zone = project.findEmbroidery(id);
-    if (zone == nullptr || !zone->boundary_blend) {
+    if (zone == nullptr || zone->boundary_blends.empty()) {
         return std::unexpected(coded(ErrorCategory::UserInput, "E_BLEND_NONE",
                                      "Cette zone n'a pas de fondu à la frontière",
                                      "Sélectionner une zone qui porte un fondu."));
     }
-    const ObjectId partner = zone->boundary_blend->partner;
-    const auto* other = project.findEmbroidery(partner);
-    // Le lien du partenaire n'est retiré que s'il pointe bien vers `id`.
-    const bool reciprocal =
-        other != nullptr && other->boundary_blend && other->boundary_blend->partner == id;
-    return std::make_unique<commands::SetBoundaryBlendLinkCommand>(
-        id, std::nullopt, reciprocal ? partner : ObjectId{},
-        std::optional<document::BoundaryBlendLink>{}, "Retirer le fondu à la frontière");
+    if (zone->boundary_blends.size() > 1) {
+        return std::unexpected(
+            coded(ErrorCategory::UserInput, "E_BLEND_AMBIGUOUS",
+                  "Cette zone a plusieurs fondus à la frontière : préciser la voisine",
+                  "Indiquer la zone partenaire du fondu à retirer (argument partner)."));
+    }
+    return make_remove_boundary_blend_command(project, id, zone->boundary_blends.front().partner);
 }
 
-std::optional<BoundaryBlendInfo> boundary_blend_info(const document::Project& project,
-                                                     ObjectId id) {
+std::optional<BoundaryBlendInfo> boundary_blend_info(const document::Project& project, ObjectId id,
+                                                     ObjectId partner) {
     const auto* zone = project.findEmbroidery(id);
-    if (zone == nullptr || !zone->boundary_blend) {
+    const auto* link = zone != nullptr ? document::boundary_blend_link(*zone, partner) : nullptr;
+    if (link == nullptr) {
         return std::nullopt;
     }
     BoundaryBlendInfo info;
     info.a = id;
-    info.b = zone->boundary_blend->partner;
-    info.options.width_a = zone->boundary_blend->width_self;
-    info.options.curve = zone->boundary_blend->curve;
-    info.options.manual_frontier = zone->boundary_blend->manual_frontier;
-    info.options.rows = zone->boundary_blend->rows;
-    const auto* other = project.findEmbroidery(info.b);
-    if (other != nullptr && other->boundary_blend) {
-        info.options.width_b = other->boundary_blend->width_self;
+    info.b = partner;
+    info.options.width_a = link->width_self;
+    info.options.curve = link->curve;
+    info.options.manual_frontier = link->manual_frontier;
+    info.options.rows = link->rows;
+    const auto* other = project.findEmbroidery(partner);
+    if (other != nullptr) {
+        if (const auto* back = document::boundary_blend_link(*other, id)) {
+            info.options.width_b = back->width_self;
+        }
     }
-    if (!document::find_boundary_blend(project, id) || other == nullptr) {
+    if (!document::find_boundary_blend(project, id, partner) || other == nullptr) {
         return info;
     }
     stitch_generation::BoundaryBlendSpec spec;
@@ -155,6 +162,29 @@ std::optional<BoundaryBlendInfo> boundary_blend_info(const document::Project& pr
         info.frontier = plan->frontier;
     }
     return info;
+}
+
+std::vector<BoundaryBlendInfo> boundary_blend_infos(const document::Project& project, ObjectId id) {
+    std::vector<BoundaryBlendInfo> infos;
+    const auto* zone = project.findEmbroidery(id);
+    if (zone == nullptr) {
+        return infos;
+    }
+    for (const auto& link : zone->boundary_blends) { // déjà triés par partenaire
+        if (auto info = boundary_blend_info(project, id, link.partner)) {
+            infos.push_back(std::move(*info));
+        }
+    }
+    return infos;
+}
+
+std::optional<BoundaryBlendInfo> boundary_blend_info(const document::Project& project,
+                                                     ObjectId id) {
+    auto infos = boundary_blend_infos(project, id);
+    if (infos.empty()) {
+        return std::nullopt;
+    }
+    return std::move(infos.front());
 }
 
 } // namespace openstitch::project_ops

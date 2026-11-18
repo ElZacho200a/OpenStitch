@@ -10,6 +10,7 @@
 
 #include "openstitch/commands/composite_command.hpp"
 #include "openstitch/commands/project_commands.hpp"
+#include "openstitch/document/boundary_blend.hpp"
 #include "openstitch/geometry/boolean.hpp"
 #include "openstitch/geometry/cut.hpp"
 #include "openstitch/geometry/fill_gap.hpp"
@@ -37,14 +38,7 @@ void remap_color_blend_links(std::vector<document::EmbroideryObject>& copies,
             }
         }
         // Fondu à la frontière : suit la copie seulement si les deux zones sont copiées ensemble.
-        if (copy.boundary_blend) {
-            const auto partner = remap.find(copy.boundary_blend->partner);
-            if (partner == remap.end()) {
-                copy.boundary_blend.reset();
-            } else {
-                copy.boundary_blend->partner = partner->second;
-            }
-        }
+        document::remap_boundary_blend_links(copy.boundary_blends, remap);
         if (copy.multi_blend) {
             const auto group = remap.find(copy.multi_blend->group);
             if (group == remap.end()) {

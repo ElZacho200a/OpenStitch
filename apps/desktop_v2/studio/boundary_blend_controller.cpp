@@ -6,6 +6,7 @@
 #include <cmath>
 #include <utility>
 
+#include "openstitch/document/boundary_blend.hpp"
 #include "openstitch/geometry/polyline.hpp"
 #include "openstitch/project_ops/boundary_blend.hpp"
 
@@ -88,7 +89,13 @@ void BoundaryBlendController::refresh() {
     rows_ = document::BoundaryBlendRows::PerZone;
 
     if (snapshot && primary_ != 0) {
-        if (const auto info = project_ops::boundary_blend_info(*snapshot, ObjectId{primary_})) {
+        // Deux zones sélectionnées : le fondu du couple (principale, seconde) ; sinon le premier
+        // fondu de la zone principale (une zone peut en porter plusieurs, lot 3 pour l'IHM).
+        const auto info = zones.size() == 2
+                              ? project_ops::boundary_blend_info(*snapshot, ObjectId{primary_},
+                                                                 ObjectId{zones.front()})
+                              : project_ops::boundary_blend_info(*snapshot, ObjectId{primary_});
+        if (info) {
             hasBlend_ = true;
             active_ = info->active;
             widthMm_ = mm(info->options.width_a);
@@ -277,7 +284,15 @@ bool BoundaryBlendController::remove() {
         say(false, QStringLiteral("Sélectionnez une zone qui porte un fondu"));
         return false;
     }
-    auto cmd = project_ops::make_remove_boundary_blend_command(*snapshot, ObjectId{primary_});
+    // Couple courant (seconde zone sélectionnée ou partenaire affiché) s'il porte un fondu ; sinon
+    // le fondu unique de la zone (refus codé s'il y en a plusieurs).
+    const auto* zone = snapshot->findEmbroidery(ObjectId{primary_});
+    const bool couple = zone != nullptr && other_ != 0 &&
+                        document::boundary_blend_link(*zone, ObjectId{other_}) != nullptr;
+    auto cmd = couple
+                   ? project_ops::make_remove_boundary_blend_command(*snapshot, ObjectId{primary_},
+                                                                     ObjectId{other_})
+                   : project_ops::make_remove_boundary_blend_command(*snapshot, ObjectId{primary_});
     if (!cmd) {
         say(false, QString::fromStdString(cmd.error().message));
         return false;

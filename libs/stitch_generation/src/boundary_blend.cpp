@@ -690,10 +690,13 @@ std::vector<geometry::PathSet> boundary_blend_zone(const document::Project& proj
 
 std::optional<BoundaryBlendLayer> boundary_blend_layer(const document::Project& project,
                                                        const document::EmbroideryObject& object) {
-    const auto pair = document::find_boundary_blend(project, object.id);
-    if (!pair) {
+    // Lot 1 (plusieurs fondus par zone) : seul le PREMIER couple valide (plus petit partenaire)
+    // est cousu ; une zone à un seul fondu garde exactement le comportement antérieur.
+    const auto pairs = document::find_boundary_blends(project, object.id);
+    if (pairs.empty()) {
         return std::nullopt;
     }
+    const auto* pair = &pairs.front();
     const auto* self = project.findEmbroidery(pair->self);
     const auto* partner = project.findEmbroidery(pair->partner);
     if (self == nullptr || partner == nullptr) {
@@ -717,12 +720,16 @@ std::optional<BoundaryBlendLayer> boundary_blend_layer(const document::Project& 
         return resolve_pull_compensation(std::get<document::DirectionalFillParams>(o.params),
                                          region);
     };
+    // Liens réciproques garantis par `find_boundary_blends`.
+    const auto* linkFirst = document::boundary_blend_link(first, second.id);
+    const auto* linkSecond = document::boundary_blend_link(second, first.id);
+    const auto* linkSelf = selfFirst ? linkFirst : linkSecond;
     BoundaryBlendSpec spec;
-    spec.width_a = first.boundary_blend->width_self;
-    spec.width_b = second.boundary_blend->width_self;
-    spec.curve = first.boundary_blend->curve;
-    spec.manual_frontier = first.boundary_blend->manual_frontier;
-    spec.rows = first.boundary_blend->rows;
+    spec.width_a = linkFirst->width_self;
+    spec.width_b = linkSecond->width_self;
+    spec.curve = linkFirst->curve;
+    spec.manual_frontier = linkFirst->manual_frontier;
+    spec.rows = linkFirst->rows;
     auto fills = fill_boundary_blend(zonesFirst, fillParams(first, zonesFirst.front()), zonesSecond,
                                      fillParams(second, zonesSecond.front()), spec);
     if (!fills) {
@@ -731,7 +738,7 @@ std::optional<BoundaryBlendLayer> boundary_blend_layer(const document::Project& 
     BoundaryBlendLayer layer;
     layer.stitches = selfFirst ? std::move(fills->a) : std::move(fills->b);
     const auto& ownZones = selfFirst ? zonesFirst : zonesSecond;
-    const auto band = geometry::polyline_band(fills->frontier, self->boundary_blend->width_self);
+    const auto band = geometry::polyline_band(fills->frontier, linkSelf->width_self);
     if (band) {
         if (auto core = geometry::difference_polygons(ownZones, *band)) {
             layer.underlay_zones = std::move(*core);
