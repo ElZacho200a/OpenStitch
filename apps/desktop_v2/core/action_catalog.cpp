@@ -584,6 +584,60 @@ std::vector<ActionDef> makeCatalog() {
         };
         out.push_back(std::move(a));
     }
+    // Fondu à la frontière entre deux zones voisines (docs/studio-fondu-frontiere-spec.md) :
+    // opérations `blend_boundary` / `unblend_boundary` du moteur, mêmes refus que la CLI.
+    {
+        ActionDef a;
+        a.id = "fade.boundary";
+        a.label = "Fondu à la frontière…";
+        a.group = "Fondu";
+        a.needsSelection = true;
+        a.fields = {numberField("width_a", "Bande dans la zone principale", 0.5, 15, "2.5", "mm"),
+                    numberField("width_b", "Bande dans l'autre zone", 0.5, 15, "2.5", "mm"),
+                    choiceField("curve", "Transition",
+                                {{"linear", "Douce"}, {"smooth", "Moyenne"}, {"steep", "Nette"}})};
+        a.build = [](const Values& v, const ActionContext& c, std::string& error) {
+            if (c.ids.size() != 2) {
+                error = "Sélectionnez exactement deux zones remplies voisines.";
+                return std::string();
+            }
+            // La zone principale (dernière sélectionnée) est `a`.
+            return wrap(R"({"op":"blend_boundary","a":)" + std::to_string(c.ids.back()) +
+                        R"(,"b":)" + std::to_string(c.ids.front()) + R"(,"width_a":)" +
+                        num(number(v, "width_a")) + R"(,"width_b":)" + num(number(v, "width_b")) +
+                        R"(,"curve":")" + v.at("curve") + "\"}");
+        };
+        out.push_back(std::move(a));
+    }
+    {
+        ActionDef a;
+        a.id = "fade.boundary_auto";
+        a.label = "Proposer les fondus à la frontière depuis l'image";
+        a.group = "Fondu";
+        a.fields = {numberField("min_transition", "Transition minimale dans l'image", 0.3, 15,
+                                "1.5", "mm")};
+        a.build = [](const Values& v, const ActionContext&, std::string&) {
+            return wrap(R"({"op":"propose_boundary_blends","apply":true,"min_transition":)" +
+                        num(number(v, "min_transition")) + "}");
+        };
+        out.push_back(std::move(a));
+    }
+    {
+        ActionDef a;
+        a.id = "fade.boundary_remove";
+        a.label = "Retirer le fondu à la frontière";
+        a.group = "Fondu";
+        a.needsSelection = true;
+        a.build = [](const Values&, const ActionContext& c, std::string& error) {
+            if (c.ids.empty()) {
+                error = "Sélectionnez une zone qui porte un fondu à la frontière.";
+                return std::string();
+            }
+            return wrap(R"({"op":"unblend_boundary","object":)" + std::to_string(c.ids.back()) +
+                        "}");
+        };
+        out.push_back(std::move(a));
+    }
     {
         ActionDef a;
         a.id = "fade.remove";

@@ -604,6 +604,12 @@ bool ToolController::press(double x, double y, double pxPerMm, Qt::KeyboardModif
     return true;
 }
 
+void ToolController::hover(double x, double y) {
+    if (tool_ == QStringLiteral("warp-brush")) {
+        warp_.hoverAt(toModel(x, y));
+    }
+}
+
 void ToolController::move(double x, double y, Qt::KeyboardModifiers mods) {
     // En Sélection, seul un glisser de nœud commencé par press() arrive ici.
     if (!capturesMouse() && drag_ == Drag::None) {
@@ -944,6 +950,9 @@ void ToolController::rebuild() {
             overlay_.push_back(std::move(item));
         }
     };
+    if (tool_ == QStringLiteral("warp-brush")) {
+        line(ToolOverlayItem::Kind::Closed, warp_.ring());
+    }
     if (drag_ == Drag::Box) {
         line(ToolOverlayItem::Kind::Closed, boxPolygon(anchor_, current_, mods_));
     } else if (drag_ == Drag::Line) {

@@ -17,6 +17,7 @@
 #include "action_controller.hpp"
 #include "analysis_controller.hpp"
 #include "applique_controller.hpp"
+#include "boundary_blend_controller.hpp"
 #include "companion_controller.hpp"
 #include "digitize_gestures.hpp"
 #include "edit_controller.hpp"
@@ -144,6 +145,7 @@ int main(int argc, char** argv) {
     SegmentationSpaceController segmentationSpace(controller, imageTools, regionTools);
     SatinController satin(controller);
     FadeController fade(controller);
+    BoundaryBlendController boundaryBlend(controller);
     PointEditController pointEdit(controller);
     PreferencesController prefs(configDir);
     HelpController help;
@@ -163,6 +165,7 @@ int main(int argc, char** argv) {
     engine.addImageProvider(QStringLiteral("prepare"), imageTools.createProvider());
     engine.rootContext()->setContextProperty(QStringLiteral("satin"), &satin);
     engine.rootContext()->setContextProperty(QStringLiteral("fade"), &fade);
+    engine.rootContext()->setContextProperty(QStringLiteral("boundaryBlend"), &boundaryBlend);
     engine.rootContext()->setContextProperty(QStringLiteral("prefs"), &prefs);
     engine.rootContext()->setContextProperty(QStringLiteral("usage"), &usage);
     engine.rootContext()->setContextProperty(QStringLiteral("help"), &help);

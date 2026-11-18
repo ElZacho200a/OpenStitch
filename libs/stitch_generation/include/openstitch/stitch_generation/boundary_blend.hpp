@@ -2,12 +2,14 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 #include <variant>
 #include <vector>
 
 #include "openstitch/core/error.hpp"
 #include "openstitch/core/units.hpp"
 #include "openstitch/document/embroidery_object.hpp"
+#include "openstitch/document/project.hpp"
 #include "openstitch/geometry/path.hpp"
 #include "openstitch/geometry/polyline.hpp"
 #include "openstitch/stitch_generation/tatami.hpp"
@@ -28,6 +30,8 @@ struct BoundaryBlendSpec {
     document::DensityCurve curve{document::DensityCurve::Linear};
     Micrometers tolerance{600};      // contact entre A et B (jours de vectorisation, inset)
     Micrometers min_frontier{1'000}; // morceau de frontière plus court : ignoré
+    // Frontière TRACÉE à la main (lot L4) : remplace la frontière calculée. Vide : calculée.
+    std::vector<Vec2um> manual_frontier;
 
     bool operator==(const BoundaryBlendSpec&) const = default;
 };
@@ -38,8 +42,10 @@ class BoundaryBlendField {
 public:
     // `reach_margin` : prolongation des régions au-delà des demi-bandes (cf.
     // `plan_boundary_blend`) ; la boîte de `near_frontier` l'englobe.
-    BoundaryBlendField(const geometry::PathSet& a, std::vector<geometry::Polyline> frontier,
-                       const BoundaryBlendSpec& spec, Micrometers reach_margin = {});
+    // `a` : la zone A (une ou plusieurs composantes).
+    BoundaryBlendField(const std::vector<geometry::PathSet>& a,
+                       std::vector<geometry::Polyline> frontier, const BoundaryBlendSpec& spec,
+                       Micrometers reach_margin = {});
 
     // Distance signée (µm) à la frontière : < 0 dans A, > 0 hors de A.
     [[nodiscard]] double signed_distance(Vec2um p) const;
@@ -87,6 +93,12 @@ struct BoundaryBlendPlan {
                                                             const geometry::PathSet& b,
                                                             const BoundaryBlendSpec& spec,
                                                             Micrometers reach_margin = {});
+// Zones en plusieurs composantes : frontière = réunion des frontières de chaque couple de
+// composantes (dans l'ordre des listes), régions prolongées réunies.
+[[nodiscard]] Result<BoundaryBlendPlan> plan_boundary_blend(const std::vector<geometry::PathSet>& a,
+                                                            const std::vector<geometry::PathSet>& b,
+                                                            const BoundaryBlendSpec& spec,
+                                                            Micrometers reach_margin = {});
 
 // Points des deux couches d'un fondu tatami–tatami (chacune dans sa région prolongée, avec son
 // angle et son écart). Plusieurs composantes : concaténées, chacune commençant par un saut.
@@ -108,8 +120,30 @@ fill_boundary_blend(const geometry::PathSet& a, const BoundaryBlendFillParams& p
                     const BoundaryBlendSpec& spec);
 
 [[nodiscard]] Result<BoundaryBlendFills>
+fill_boundary_blend(const std::vector<geometry::PathSet>& a,
+                    const BoundaryBlendFillParams& params_a,
+                    const std::vector<geometry::PathSet>& b,
+                    const BoundaryBlendFillParams& params_b, const BoundaryBlendSpec& spec);
+
+[[nodiscard]] Result<BoundaryBlendFills>
 fill_boundary_blend_tatami(const geometry::PathSet& a, const document::TatamiParams& params_a,
                            const geometry::PathSet& b, const document::TatamiParams& params_b,
                            const BoundaryBlendSpec& spec);
+
+// --- Branchement sur le document (lot L2) -----------------------------------------------------
+
+// Zones d'un remplissage telles que la génération les coud : formes de `source_vector` aplaties
+// (50 µm), retrait de bord (`inset`) appliqué, forme brute si le retrait la fait disparaître.
+// Vide pour un objet sans forme source ou qui n'est ni tatami ni directionnel.
+[[nodiscard]] std::vector<geometry::PathSet>
+boundary_blend_zone(const document::Project& project, const document::EmbroideryObject& object);
+
+// Points de la couche supérieure de `object` dans son fondu à la frontière. Le plan est toujours
+// calculé dans le même sens (zone d'identifiant le plus petit en A), pour que les deux zones
+// cousent des couches complémentaires exactement. nullopt si `object` ne porte pas de fondu
+// valide (`document::find_boundary_blend`) ou si la frontière a disparu : la génération coud
+// alors l'aplat habituel.
+[[nodiscard]] std::optional<std::vector<FillStitch>>
+boundary_blend_layer(const document::Project& project, const document::EmbroideryObject& object);
 
 } // namespace openstitch::stitch_generation

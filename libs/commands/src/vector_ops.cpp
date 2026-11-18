@@ -36,6 +36,15 @@ void remap_color_blend_links(std::vector<document::EmbroideryObject>& copies,
                 copy.color_blend->partner = partner->second;
             }
         }
+        // Fondu à la frontière : suit la copie seulement si les deux zones sont copiées ensemble.
+        if (copy.boundary_blend) {
+            const auto partner = remap.find(copy.boundary_blend->partner);
+            if (partner == remap.end()) {
+                copy.boundary_blend.reset();
+            } else {
+                copy.boundary_blend->partner = partner->second;
+            }
+        }
         if (copy.multi_blend) {
             const auto group = remap.find(copy.multi_blend->group);
             if (group == remap.end()) {
