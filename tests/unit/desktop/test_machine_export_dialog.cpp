@@ -80,7 +80,7 @@ private slots:
         // Les réglages n'ont de sens que si l'option est cochée.
         QVERIFY(!same->isEnabled());
         QVERIFY(!maxBridge->isEnabled());
-        QCOMPARE(maxBridge->value(), 15.0);
+        QCOMPARE(maxBridge->value(), 50.0);
     }
 
     void optionReachesTheSummaryAndTheCaller() {

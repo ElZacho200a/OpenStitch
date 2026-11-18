@@ -1992,7 +1992,7 @@ int main(int argc, char** argv) {
     bool od_reduce_trims = false;
     bool od_reduce_same_colour = false;
     std::string od_reduce_levels = "all";
-    double od_reduce_max_mm = 15.0;
+    double od_reduce_max_mm = 50.0;
     od_cmd->add_flag(
         "--reduce-trims", od_reduce_trims,
         "Remplace des coupes par des sauts ou des ponts cousus cachés sous des points "
@@ -2007,7 +2007,7 @@ int main(int argc, char** argv) {
                      "comme cachée");
     od_cmd
         ->add_option("--reduce-trims-max", od_reduce_max_mm,
-                     "Avec --reduce-trims : longueur maximale d'un pont, en mm (défaut : 15)")
+                     "Avec --reduce-trims : longueur maximale d'un pont, en mm (défaut : 50)")
         ->check(CLI::Range(0.0, 100.0));
     od_cmd->add_flag("--no-color-changes", od_no_color_changes,
                      "Supprime les changements de couleur (motif monochrome)");
