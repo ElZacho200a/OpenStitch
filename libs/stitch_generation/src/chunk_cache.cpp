@@ -121,6 +121,7 @@ void clear_chunk_cache() {
     c.hits = 0;
     c.misses = 0;
     clear_router_cache();
+    clear_length_bounds_cache();
 }
 
 bool chunk_cache_enabled() {
