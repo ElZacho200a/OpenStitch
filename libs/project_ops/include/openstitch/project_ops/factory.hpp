@@ -64,7 +64,7 @@ struct DigitizeSettings {
     bool hidden_travel{false};
     bool hidden_same_color{false};
     std::string hidden_levels{"all"};
-    double hidden_max_mm{15.0};
+    double hidden_max_mm{50.0};
     std::string mode{"shapes"}; // shapes | contours | stipple | blend
     // Mode « blend » (zones de fondu, 2026-11-17, docs/source/directional-fill.md) : l'image est
     // découpée en zones à bord net (`segmentation::segment_blend_zones`) et chaque zone devient

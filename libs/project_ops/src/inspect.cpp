@@ -585,7 +585,8 @@ json finishing_json(const document::SequenceFinishing& f) {
                       {"within_object", f.hidden_travel.within_object},
                       {"reorder_underlay", f.hidden_travel.reorder_underlay},
                       {"reorder_regions", f.hidden_travel.reorder_regions},
-                      {"allow_same_color_surface", f.hidden_travel.allow_same_color_surface}}}};
+                      {"allow_same_color_surface", f.hidden_travel.allow_same_color_surface},
+                      {"underlap_mm", mm(f.hidden_travel.underlap)}}}};
 }
 
 Result<json> build_project_doc(const document::Project& project, const InspectOptions& options) {

@@ -109,6 +109,7 @@ private:
     QCheckBox* regions_{nullptr};
     QCheckBox* sameColour_{nullptr};
     QDoubleSpinBox* maxBridge_{nullptr};
+    QDoubleSpinBox* underlap_{nullptr};
     QLabel* summary_{nullptr};
     QLabel* blocksTitle_{nullptr};
     QListWidget* blocks_{nullptr};

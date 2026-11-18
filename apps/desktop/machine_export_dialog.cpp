@@ -37,6 +37,7 @@ constexpr const char* kSettingsCompanionKind = "export/colorCompanionKind";
 constexpr const char* kSettingsReduceTrims = "export/reduceTrims";
 constexpr const char* kSettingsSameColour = "export/reduceTrimsSameColour";
 constexpr const char* kSettingsMaxBridge = "export/reduceTrimsMaxMm";
+constexpr const char* kSettingsUnderlap = "export/reduceTrimsUnderlapMm";
 constexpr const char* kSettingsBetween = "export/routesBetween";
 constexpr const char* kSettingsWithin = "export/routesWithin";
 constexpr const char* kSettingsUnderlay = "export/routesUnderlay";
@@ -177,6 +178,16 @@ MachineExportDialog::MachineExportDialog(SummaryFn summarize, const QString& ini
     maxBridge_->setDecimals(1);
     maxBridge_->setSingleStep(1.0);
     maxBridge_->setSuffix(tr(" mm"));
+    underlap_ = new QDoubleSpinBox(this);
+    underlap_->setObjectName(QStringLiteral("spin_exportReduceTrimsUnderlap"));
+    underlap_->setRange(0.0, 3.0);
+    underlap_->setDecimals(1);
+    underlap_->setSingleStep(0.1);
+    underlap_->setSuffix(tr(" mm"));
+    underlap_->setToolTip(
+        tr("Chaque remplissage déborde de cette distance sous les remplissages cousus après lui "
+           "(jamais sur une zone déjà cousue) : plus de surface cachée pour les ponts, au prix de "
+           "quelques points en plus. 0 : désactivé."));
     // Section repliable (HP-UX-025) : les optimisations restent à une ligne tant qu'on n'y touche
     // pas ; elle s'ouvre d'office si l'optimisation est active (réglage mémorisé).
     optimizationsToggle_ = new QToolButton(this);
@@ -195,6 +206,7 @@ MachineExportDialog::MachineExportDialog(SummaryFn summarize, const QString& ini
     form->addRow(QString(), regions_);
     form->addRow(QString(), sameColour_);
     form->addRow(tr("Longueur maximale d'un pont :"), maxBridge_);
+    form->addRow(tr("Débord sous les zones suivantes :"), underlap_);
 
     summary_ = new QLabel(this);
     summary_->setObjectName(QStringLiteral("label_exportSummary"));
@@ -287,7 +299,8 @@ MachineExportDialog::MachineExportDialog(SummaryFn summarize, const QString& ini
 
     reduceTrims_->setChecked(settings.value(kSettingsReduceTrims, false).toBool());
     sameColour_->setChecked(settings.value(kSettingsSameColour, false).toBool());
-    maxBridge_->setValue(settings.value(kSettingsMaxBridge, 15.0).toDouble());
+    maxBridge_->setValue(settings.value(kSettingsMaxBridge, 50.0).toDouble());
+    underlap_->setValue(settings.value(kSettingsUnderlap, 0.0).toDouble());
     between_->setChecked(settings.value(kSettingsBetween, true).toBool());
     within_->setChecked(settings.value(kSettingsWithin, true).toBool());
     underlay_->setChecked(settings.value(kSettingsUnderlay, true).toBool());
@@ -295,8 +308,9 @@ MachineExportDialog::MachineExportDialog(SummaryFn summarize, const QString& ini
 
     const auto showOptimizations = [this, form](bool shown) {
         optimizationsToggle_->setArrowType(shown ? Qt::DownArrow : Qt::RightArrow);
-        for (QWidget* row : std::initializer_list<QWidget*>{
-                 reduceTrims_, between_, within_, underlay_, regions_, sameColour_, maxBridge_}) {
+        for (QWidget* row :
+             std::initializer_list<QWidget*>{reduceTrims_, between_, within_, underlay_, regions_,
+                                             sameColour_, maxBridge_, underlap_}) {
             form->setRowVisible(row, shown);
         }
     };
@@ -320,6 +334,7 @@ MachineExportDialog::MachineExportDialog(SummaryFn summarize, const QString& ini
     connect(underlay_, &QCheckBox::toggled, this, onChange);
     connect(regions_, &QCheckBox::toggled, this, onChange);
     connect(maxBridge_, &QDoubleSpinBox::editingFinished, this, onChange);
+    connect(underlap_, &QDoubleSpinBox::editingFinished, this, onChange);
     connect(this, &QDialog::accepted, this, [this] {
         QSettings s;
         s.setValue(kSettingsFormat, formatBox_->currentData().toString());
@@ -331,6 +346,7 @@ MachineExportDialog::MachineExportDialog(SummaryFn summarize, const QString& ini
         s.setValue(kSettingsReduceTrims, reduceTrims_->isChecked());
         s.setValue(kSettingsSameColour, sameColour_->isChecked());
         s.setValue(kSettingsMaxBridge, maxBridge_->value());
+        s.setValue(kSettingsUnderlap, underlap_->value());
         s.setValue(kSettingsBetween, between_->isChecked());
         s.setValue(kSettingsWithin, within_->isChecked());
         s.setValue(kSettingsUnderlay, underlay_->isChecked());
@@ -355,7 +371,9 @@ MachineExportDialog::SavedExport MachineExportDialog::loadSavedExport() {
     saved.optimizations.hidden_travel.allow_same_color_surface =
         reduce && settings.value(kSettingsSameColour, false).toBool();
     saved.optimizations.hidden_travel.max_bridge_length = Micrometers{static_cast<std::int32_t>(
-        std::lround(settings.value(kSettingsMaxBridge, 15.0).toDouble() * 1000.0))};
+        std::lround(settings.value(kSettingsMaxBridge, 50.0).toDouble() * 1000.0))};
+    saved.optimizations.hidden_travel.underlap = Micrometers{static_cast<std::int32_t>(
+        std::lround(settings.value(kSettingsUnderlap, 0.0).toDouble() * 1000.0))};
     saved.optimizations.hidden_travel.between_objects =
         settings.value(kSettingsBetween, true).toBool();
     saved.optimizations.hidden_travel.within_object =
@@ -420,6 +438,8 @@ project_io::ExportOptimizations MachineExportDialog::optimizations() const {
         reduceTrims_->isChecked() && sameColour_->isChecked();
     o.hidden_travel.max_bridge_length =
         Micrometers{static_cast<std::int32_t>(std::lround(maxBridge_->value() * 1000.0))};
+    o.hidden_travel.underlap =
+        Micrometers{static_cast<std::int32_t>(std::lround(underlap_->value() * 1000.0))};
     o.hidden_travel.between_objects = between_->isChecked();
     o.hidden_travel.within_object = within_->isChecked();
     o.hidden_travel.reorder_underlay = underlay_->isChecked();
@@ -453,6 +473,7 @@ void MachineExportDialog::updateEnabledStates() {
     // Les réglages de ponts n'ont de sens que si l'option est cochée.
     sameColour_->setEnabled(reduceTrims_->isChecked());
     maxBridge_->setEnabled(reduceTrims_->isChecked());
+    underlap_->setEnabled(reduceTrims_->isChecked());
     between_->setEnabled(reduceTrims_->isChecked());
     within_->setEnabled(reduceTrims_->isChecked());
     underlay_->setEnabled(reduceTrims_->isChecked());
