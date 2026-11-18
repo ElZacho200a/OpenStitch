@@ -13,6 +13,8 @@ ColumnLayout {
     objectName: "editBar"
     spacing: 6
     readonly property bool some: editor.selectedCount > 0
+    // Espace Vecteur : « Supprimer » retire la FORME (et ses broderies), pas la seule broderie.
+    property bool shapeScope: false
     readonly property bool many: editor.selectedCount > 1
     readonly property var box: editor.selectionBox
     readonly property bool hasBox: box.width !== undefined
@@ -93,7 +95,7 @@ ColumnLayout {
         Mini { objectName: "ungroupButton"; text: qsTr("Dégrouper"); enabled: bar.some; tooltip: qsTr("Dissoudre le groupe"); shortcutLabel: "Ctrl+Maj+G"; onClicked: editor.ungroup() }
         Mini { objectName: "pipetteButton"; text: qsTr("Pipette"); checkable: true; checked: editor.eyedropper; enabled: bar.some; tooltip: qsTr("Copier la couleur d'un objet vers la sélection"); shortcutLabel: "I"; onClicked: editor.eyedropper = !editor.eyedropper }
         Mini { objectName: "snapButton"; text: qsTr("Accrochage"); checkable: true; checked: editor.snapEnabled; tooltip: qsTr("Accrochage et repères au glisser (Alt = temporaire)"); onClicked: editor.snapEnabled = !editor.snapEnabled }
-        Mini { objectName: "deleteButton"; Layout.columnSpan: 2; text: qsTr("Supprimer"); enabled: bar.some; tooltip: qsTr("Supprimer la sélection"); shortcutLabel: "Suppr"; onClicked: editor.deleteSelection() }
+        Mini { objectName: "deleteButton"; Layout.columnSpan: 2; text: qsTr("Supprimer"); enabled: bar.shapeScope ? editor.selectedShapeCount > 0 : bar.some; tooltip: bar.shapeScope ? qsTr("Supprimer la forme et ses broderies") : qsTr("Retirer la broderie (la forme est conservée)"); shortcutLabel: "Suppr"; onClicked: bar.shapeScope ? editor.deleteShapes() : editor.deleteSelection() }
     }
 
     // Placement numérique (centre et taille de la boîte, en mm modèle : Y vers le haut).

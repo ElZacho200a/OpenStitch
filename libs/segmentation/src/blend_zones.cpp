@@ -10,10 +10,28 @@
 #include <tuple>
 #include <vector>
 
+#include "openstitch/core/parallel.hpp"
+
 namespace openstitch::segmentation {
 namespace {
 
 using V3 = std::array<double, 3>;
+
+// Répartit les lignes [0 ; rows) en bandes contiguës, traitées par `parallel_for`. Chaque bande
+// n'écrit que ses lignes et ne lit que des données constantes : le résultat ne dépend ni du
+// nombre de bandes ni du nombre de fils.
+template <typename Fn> void parallel_bands(int rows, int minRows, Fn&& fn) {
+    if (rows <= 0) {
+        return;
+    }
+    const int bands = std::max(
+        1, std::min(static_cast<int>(parallel_workers()) * 4, rows / std::max(1, minRows)));
+    parallel_for(static_cast<std::size_t>(bands), [&](std::size_t b) {
+        const auto lo = static_cast<long long>(rows) * static_cast<long long>(b) / bands;
+        const auto hi = static_cast<long long>(rows) * static_cast<long long>(b + 1) / bands;
+        fn(static_cast<int>(lo), static_cast<int>(hi));
+    });
+}
 
 double srgb_to_linear(double c) {
     c /= 255.0;
@@ -62,32 +80,38 @@ void gaussian_blur(std::vector<V3>& img, int w, int h, double sigma) {
         v /= sum;
     }
     std::vector<V3> tmp(img.size());
-    for (int y = 0; y < h; ++y) {
-        for (int x = 0; x < w; ++x) {
-            V3 acc{};
-            for (int k = -radius; k <= radius; ++k) {
-                const auto& p = img[static_cast<std::size_t>(y * w + reflect(x + k, w))];
-                const double kv = kernel[static_cast<std::size_t>(k + radius)];
-                for (int c = 0; c < 3; ++c) {
-                    acc[c] += kv * p[c];
+    const std::vector<V3>& src = img;
+    parallel_bands(h, 16, [&](int y0, int y1) {
+        for (int y = y0; y < y1; ++y) {
+            for (int x = 0; x < w; ++x) {
+                V3 acc{};
+                for (int k = -radius; k <= radius; ++k) {
+                    const auto& p = src[static_cast<std::size_t>(y * w + reflect(x + k, w))];
+                    const double kv = kernel[static_cast<std::size_t>(k + radius)];
+                    for (int c = 0; c < 3; ++c) {
+                        acc[c] += kv * p[c];
+                    }
                 }
+                tmp[static_cast<std::size_t>(y * w + x)] = acc;
             }
-            tmp[static_cast<std::size_t>(y * w + x)] = acc;
         }
-    }
-    for (int y = 0; y < h; ++y) {
-        for (int x = 0; x < w; ++x) {
-            V3 acc{};
-            for (int k = -radius; k <= radius; ++k) {
-                const auto& p = tmp[static_cast<std::size_t>(reflect(y + k, h) * w + x)];
-                const double kv = kernel[static_cast<std::size_t>(k + radius)];
-                for (int c = 0; c < 3; ++c) {
-                    acc[c] += kv * p[c];
+    });
+    const std::vector<V3>& horizontal = tmp;
+    parallel_bands(h, 16, [&](int y0, int y1) {
+        for (int y = y0; y < y1; ++y) {
+            for (int x = 0; x < w; ++x) {
+                V3 acc{};
+                for (int k = -radius; k <= radius; ++k) {
+                    const auto& p = horizontal[static_cast<std::size_t>(reflect(y + k, h) * w + x)];
+                    const double kv = kernel[static_cast<std::size_t>(k + radius)];
+                    for (int c = 0; c < 3; ++c) {
+                        acc[c] += kv * p[c];
+                    }
                 }
+                img[static_cast<std::size_t>(y * w + x)] = acc;
             }
-            img[static_cast<std::size_t>(y * w + x)] = acc;
         }
-    }
+    });
 }
 
 struct Edge {
@@ -130,22 +154,47 @@ Result<Segmentation> segment_blend_zones(const image::Image& img, Millimeters mm
     {
         std::vector<double> n(static_cast<std::size_t>(w * h), 0.0);
         std::vector<double> nAll(static_cast<std::size_t>(w * h), 0.0);
-        for (int y = 0; y < H0; ++y) {
+        // Colonne et ligne de travail de chaque colonne / ligne source (mêmes formules que le
+        // balayage d'origine). `wy` est croissant : la ligne de travail `r` reçoit exactement les
+        // lignes sources [firstY[r] ; firstY[r + 1]), dans l'ordre -> mêmes sommes, bande par
+        // bande.
+        std::vector<int> wxOf(static_cast<std::size_t>(W0));
+        for (int x = 0; x < W0; ++x) {
+            wxOf[static_cast<std::size_t>(x)] =
+                std::min(w - 1, static_cast<int>(x * static_cast<double>(w) / W0));
+        }
+        std::vector<int> wyOf(static_cast<std::size_t>(H0));
+        std::vector<int> firstY(static_cast<std::size_t>(h) + 1, H0);
+        for (int y = H0 - 1; y >= 0; --y) {
             const int wy = std::min(h - 1, static_cast<int>(y * static_cast<double>(h) / H0));
-            for (int x = 0; x < W0; ++x) {
-                const int wx = std::min(w - 1, static_cast<int>(x * static_cast<double>(w) / W0));
-                const auto i = static_cast<std::size_t>(wy * w + wx);
-                const auto* p = &img.rgba[static_cast<std::size_t>(y * W0 + x) * 4];
-                nAll[i] += 1.0;
-                if (p[3] < 128) {
-                    continue;
-                }
-                n[i] += 1.0;
-                for (int c = 0; c < 3; ++c) {
-                    work[i][c] += p[c];
+            wyOf[static_cast<std::size_t>(y)] = wy;
+            firstY[static_cast<std::size_t>(wy)] = y;
+        }
+        for (int r = h - 1; r >= 0; --r) { // lignes de travail sans ligne source : bornes vides
+            firstY[static_cast<std::size_t>(r)] = std::min(firstY[static_cast<std::size_t>(r)],
+                                                           firstY[static_cast<std::size_t>(r) + 1]);
+        }
+        parallel_bands(h, 4, [&](int r0, int r1) {
+            for (int y = firstY[static_cast<std::size_t>(r0)];
+                 y < firstY[static_cast<std::size_t>(r1)]; ++y) {
+                const int wy = wyOf[static_cast<std::size_t>(y)];
+                const auto* row =
+                    &img.rgba[static_cast<std::size_t>(y) * static_cast<std::size_t>(W0) * 4];
+                for (int x = 0; x < W0; ++x) {
+                    const auto i =
+                        static_cast<std::size_t>(wy * w + wxOf[static_cast<std::size_t>(x)]);
+                    const auto* p = row + static_cast<std::size_t>(x) * 4;
+                    nAll[i] += 1.0;
+                    if (p[3] < 128) {
+                        continue;
+                    }
+                    n[i] += 1.0;
+                    for (int c = 0; c < 3; ++c) {
+                        work[i][c] += p[c];
+                    }
                 }
             }
-        }
+        });
         for (std::size_t i = 0; i < work.size(); ++i) {
             if (n[i] > 0.0 && 2.0 * n[i] >= nAll[i]) {
                 opaque[i] = 1;
@@ -162,30 +211,35 @@ Result<Segmentation> segment_blend_zones(const image::Image& img, Millimeters mm
     }
     gaussian_blur(work, w, h, options.smoothing_mm / workMm);
     std::vector<V3> lab(work.size());
-    for (std::size_t i = 0; i < work.size(); ++i) {
-        lab[i] = to_lab(work[i]);
-    }
+    parallel_bands(h, 16, [&](int y0, int y1) {
+        for (std::size_t i = static_cast<std::size_t>(y0) * static_cast<std::size_t>(w);
+             i < static_cast<std::size_t>(y1) * static_cast<std::size_t>(w); ++i) {
+            lab[i] = to_lab(work[i]);
+        }
+    });
     // --- Gradient : Sobel par canal Lab, normalisé comme skimage.filters.sobel
     // (noyau / 4, module / √2), ramené à un pas de 0,5 mm.
     const double gradScale = options.work_mm_per_px / workMm;
     std::vector<double> grad(work.size(), 0.0);
-    for (int y = 0; y < h; ++y) {
-        for (int x = 0; x < w; ++x) {
-            double total = 0.0;
-            for (int c = 0; c < 3; ++c) {
-                const auto at = [&](int dx, int dy) {
-                    return lab[static_cast<std::size_t>(reflect(y + dy, h) * w +
-                                                        reflect(x + dx, w))][c];
-                };
-                const double gx = (at(1, -1) + 2.0 * at(1, 0) + at(1, 1)) -
-                                  (at(-1, -1) + 2.0 * at(-1, 0) + at(-1, 1));
-                const double gy = (at(-1, 1) + 2.0 * at(0, 1) + at(1, 1)) -
-                                  (at(-1, -1) + 2.0 * at(0, -1) + at(1, -1));
-                total += (gx * gx + gy * gy) / 32.0;
+    parallel_bands(h, 16, [&](int y0, int y1) {
+        for (int y = y0; y < y1; ++y) {
+            for (int x = 0; x < w; ++x) {
+                double total = 0.0;
+                for (int c = 0; c < 3; ++c) {
+                    const auto at = [&](int dx, int dy) {
+                        return lab[static_cast<std::size_t>(reflect(y + dy, h) * w +
+                                                            reflect(x + dx, w))][c];
+                    };
+                    const double gx = (at(1, -1) + 2.0 * at(1, 0) + at(1, 1)) -
+                                      (at(-1, -1) + 2.0 * at(-1, 0) + at(-1, 1));
+                    const double gy = (at(-1, 1) + 2.0 * at(0, 1) + at(1, 1)) -
+                                      (at(-1, -1) + 2.0 * at(0, -1) + at(1, -1));
+                    total += (gx * gx + gy * gy) / 32.0;
+                }
+                grad[static_cast<std::size_t>(y * w + x)] = std::sqrt(total) * gradScale;
             }
-            grad[static_cast<std::size_t>(y * w + x)] = std::sqrt(total) * gradScale;
         }
-    }
+    });
     // --- Partage des eaux par inondation (Meyer) depuis une grille de germes.
     const int spacing =
         std::max(4, std::min(options.seed_spacing_px, static_cast<int>(std::sqrt(w * h / 200.0))));
@@ -407,31 +461,88 @@ Result<Segmentation> segment_blend_zones(const image::Image& img, Millimeters mm
     std::vector<std::uint32_t> slotOf(nodes, 0);
     std::vector<std::array<double, 3>> sums;
     std::vector<std::size_t> counts;
-    for (int y = 0; y < H0; ++y) {
-        const int wy = std::min(h - 1, static_cast<int>(y * static_cast<double>(h) / H0));
-        for (int x = 0; x < W0; ++x) {
-            const auto* p = &img.rgba[static_cast<std::size_t>(y * W0 + x) * 4];
-            if (p[3] < 128) {
-                continue;
-            }
-            const int wx = std::min(w - 1, static_cast<int>(x * static_cast<double>(w) / W0));
-            std::uint32_t l = label[static_cast<std::size_t>(wy * w + wx)];
-            if (l == 0) {
-                continue;
-            }
-            l = uf.find(l);
-            if (slotOf[l] == 0) {
-                sums.push_back({});
-                counts.push_back(0);
-                slotOf[l] = static_cast<std::uint32_t>(sums.size());
-            }
-            const std::uint32_t s = slotOf[l];
-            seg.labels[static_cast<std::size_t>(y * W0 + x)] = s;
-            for (int c = 0; c < 3; ++c) {
-                sums[s - 1][static_cast<std::size_t>(c)] += p[c];
-            }
-            ++counts[s - 1];
+    {
+        // Racine de chaque étiquette de travail (`uf.find` modifie l'union-find : en séquence).
+        std::vector<std::uint32_t> rootOf(nodes, 0);
+        for (std::uint32_t a = 1; a < nodes; ++a) {
+            rootOf[a] = uf.find(a);
         }
+        std::vector<int> wxOf(static_cast<std::size_t>(W0));
+        for (int x = 0; x < W0; ++x) {
+            wxOf[static_cast<std::size_t>(x)] =
+                std::min(w - 1, static_cast<int>(x * static_cast<double>(w) / W0));
+        }
+        // Passe 1 (parallèle, par bandes de lignes sources) : racine de chaque pixel, sommes et
+        // effectifs par racine, ordre de première apparition dans la bande. Les sommes sont des
+        // entiers exacts en double : leur ordre d'addition ne change rien.
+        struct BandStats {
+            std::vector<std::array<double, 3>> sums;
+            std::vector<std::size_t> counts;
+            std::vector<std::uint32_t> order;
+        };
+        const int bands = std::max(1, std::min(static_cast<int>(parallel_workers()) * 2, H0 / 16));
+        std::vector<BandStats> stats(static_cast<std::size_t>(bands));
+        parallel_for(static_cast<std::size_t>(bands), [&](std::size_t b) {
+            const int y0 =
+                static_cast<int>(static_cast<long long>(H0) * static_cast<long long>(b) / bands);
+            const int y1 = static_cast<int>(static_cast<long long>(H0) *
+                                            static_cast<long long>(b + 1) / bands);
+            BandStats& st = stats[b];
+            st.sums.assign(nodes, std::array<double, 3>{});
+            st.counts.assign(nodes, 0);
+            for (int y = y0; y < y1; ++y) {
+                const int wy = std::min(h - 1, static_cast<int>(y * static_cast<double>(h) / H0));
+                const auto* row =
+                    &img.rgba[static_cast<std::size_t>(y) * static_cast<std::size_t>(W0) * 4];
+                for (int x = 0; x < W0; ++x) {
+                    const auto* p = row + static_cast<std::size_t>(x) * 4;
+                    if (p[3] < 128) {
+                        continue;
+                    }
+                    const std::uint32_t l =
+                        label[static_cast<std::size_t>(wy * w + wxOf[static_cast<std::size_t>(x)])];
+                    if (l == 0) {
+                        continue;
+                    }
+                    const std::uint32_t root = rootOf[l];
+                    if (st.counts[root] == 0) {
+                        st.order.push_back(root);
+                    }
+                    seg.labels[static_cast<std::size_t>(y) * static_cast<std::size_t>(W0) +
+                               static_cast<std::size_t>(x)] = root;
+                    for (int c = 0; c < 3; ++c) {
+                        st.sums[root][static_cast<std::size_t>(c)] += p[c];
+                    }
+                    ++st.counts[root];
+                }
+            }
+        });
+        // Fusion (séquentielle) : les emplacements suivent l'ordre de première apparition dans
+        // le balayage de l'image, soit les bandes dans l'ordre puis l'ordre de chaque bande.
+        for (const BandStats& st : stats) {
+            for (const std::uint32_t root : st.order) {
+                if (slotOf[root] == 0) {
+                    sums.push_back({});
+                    counts.push_back(0);
+                    slotOf[root] = static_cast<std::uint32_t>(sums.size());
+                }
+                const std::uint32_t s = slotOf[root];
+                for (int c = 0; c < 3; ++c) {
+                    sums[s - 1][static_cast<std::size_t>(c)] +=
+                        st.sums[root][static_cast<std::size_t>(c)];
+                }
+                counts[s - 1] += st.counts[root];
+            }
+        }
+        // Passe 2 (parallèle) : racines -> emplacements.
+        parallel_bands(H0, 16, [&](int y0, int y1) {
+            for (std::size_t i = static_cast<std::size_t>(y0) * static_cast<std::size_t>(W0);
+                 i < static_cast<std::size_t>(y1) * static_cast<std::size_t>(W0); ++i) {
+                if (seg.labels[i] != 0) {
+                    seg.labels[i] = slotOf[seg.labels[i]];
+                }
+            }
+        });
     }
     for (std::size_t s = 0; s < sums.size(); ++s) {
         Region r;

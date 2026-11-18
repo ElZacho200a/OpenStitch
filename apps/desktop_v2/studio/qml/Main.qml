@@ -250,6 +250,8 @@ Window {
             regionTools.deleteSelected()
         else if (toolController !== null && toolController.selectedNodeCount > 0)
             toolController.deleteSelectedNodes()
+        else if (workspaceCtl.current === "vector")
+            editor.deleteShapes() // espace Vecteur : la forme et ses broderies, une étape d'annulation
         else
             editor.deleteSelection()
     }

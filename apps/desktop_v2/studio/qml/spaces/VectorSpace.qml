@@ -144,7 +144,7 @@ Item {
                 }
 
                 // Clic droit : mêmes actions de sélection que dans l'espace Points.
-                CanvasContextMenu { id: contextMenu }
+                CanvasContextMenu { id: contextMenu; shapeScope: true }
 
                 ToolOverlay {
                     objectName: "toolOverlay"
@@ -310,6 +310,7 @@ Item {
                                 Layout.topMargin: 12
                             }
                             EditBar {
+                                shapeScope: true
                                 Layout.fillWidth: true
                                 Layout.leftMargin: 12
                                 Layout.rightMargin: 12

@@ -80,7 +80,18 @@ private slots:
         // Les réglages n'ont de sens que si l'option est cochée.
         QVERIFY(!same->isEnabled());
         QVERIFY(!maxBridge->isEnabled());
-        QCOMPARE(maxBridge->value(), 15.0);
+        QCOMPARE(maxBridge->value(), 50.0);
+        // Débord orienté : désactivé par défaut, grisé tant que l'option n'est pas cochée.
+        auto* underlap =
+            dialog.findChild<QDoubleSpinBox*>(QStringLiteral("spin_exportReduceTrimsUnderlap"));
+        QVERIFY(underlap != nullptr);
+        QVERIFY(!underlap->isEnabled());
+        QCOMPARE(underlap->value(), 0.0);
+        QCOMPARE(dialog.optimizations().hidden_travel.underlap.value, 0);
+        reduce->setChecked(true);
+        underlap->setValue(0.5);
+        QVERIFY(underlap->isEnabled());
+        QCOMPARE(dialog.optimizations().hidden_travel.underlap.value, 500);
     }
 
     void optionReachesTheSummaryAndTheCaller() {

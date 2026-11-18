@@ -6,9 +6,13 @@
 #include <limits>
 #include <utility>
 
+#include "openstitch/document/boundary_blend.hpp"
 #include "openstitch/geometry/boolean.hpp"
 #include "openstitch/geometry/frontier.hpp"
+#include "openstitch/geometry/offset.hpp"
+#include "openstitch/geometry/polyline.hpp"
 #include "openstitch/stitch_generation/directional_fill.hpp"
+#include "openstitch/stitch_generation/pull_auto.hpp"
 #include "openstitch/stitch_generation/row_mask.hpp"
 
 namespace openstitch::stitch_generation {
@@ -61,19 +65,19 @@ private:
     bool sideA_;
 };
 
-Result<std::vector<geometry::PathSet>> extended(const geometry::PathSet& own,
-                                                const geometry::PathSet& other,
+Result<std::vector<geometry::PathSet>> extended(const std::vector<geometry::PathSet>& own,
+                                                const std::vector<geometry::PathSet>& other,
                                                 const std::vector<geometry::Polyline>& frontier,
                                                 Micrometers otherWidth) {
     auto band = geometry::polyline_band(frontier, otherWidth);
     if (!band) {
         return std::unexpected(band.error());
     }
-    auto reach = geometry::intersect_polygons({other}, *band);
+    auto reach = geometry::intersect_polygons(other, *band);
     if (!reach) {
         return std::unexpected(reach.error());
     }
-    std::vector<geometry::PathSet> parts{own};
+    std::vector<geometry::PathSet> parts = own;
     parts.insert(parts.end(), reach->begin(), reach->end());
     return geometry::union_polygons(parts);
 }
@@ -91,14 +95,13 @@ void append_fill(std::vector<FillStitch>& out, std::vector<FillStitch> part) {
 
 } // namespace
 
-BoundaryBlendField::BoundaryBlendField(const geometry::PathSet& a,
+BoundaryBlendField::BoundaryBlendField(const std::vector<geometry::PathSet>& a,
                                        std::vector<geometry::Polyline> frontier,
                                        const BoundaryBlendSpec& spec, Micrometers reach_margin)
     : frontier_(std::move(frontier)),
       widthA_(static_cast<double>(std::clamp(spec.width_a.value, kMinWidth, kMaxWidth))),
       widthB_(static_cast<double>(std::clamp(spec.width_b.value, kMinWidth, kMaxWidth))),
       curve_(spec.curve) {
-    const geometry::PathSet flat = geometry::flatten_to_polygon(a, Micrometers{20});
     const auto addPoly = [&](const geometry::Path& path) {
         std::vector<Vec2um> pts;
         pts.reserve(path.nodes.size());
@@ -109,9 +112,13 @@ BoundaryBlendField::BoundaryBlendField(const geometry::PathSet& a,
             polysA_.push_back(std::move(pts));
         }
     };
-    addPoly(flat.outer);
-    for (const auto& hole : flat.holes) {
-        addPoly(hole);
+    // Composantes disjointes : le test pair-impair sur la réunion de leurs contours reste juste.
+    for (const auto& component : a) {
+        const geometry::PathSet flat = geometry::flatten_to_polygon(component, Micrometers{20});
+        addPoly(flat.outer);
+        for (const auto& hole : flat.holes) {
+            addPoly(hole);
+        }
     }
     double x0 = std::numeric_limits<double>::max();
     double y0 = x0;
@@ -185,6 +192,14 @@ Result<BoundaryBlendPlan> plan_boundary_blend(const geometry::PathSet& a,
                                               const geometry::PathSet& b,
                                               const BoundaryBlendSpec& spec,
                                               Micrometers reach_margin) {
+    return plan_boundary_blend(std::vector<geometry::PathSet>{a}, std::vector<geometry::PathSet>{b},
+                               spec, reach_margin);
+}
+
+Result<BoundaryBlendPlan> plan_boundary_blend(const std::vector<geometry::PathSet>& a,
+                                              const std::vector<geometry::PathSet>& b,
+                                              const BoundaryBlendSpec& spec,
+                                              Micrometers reach_margin) {
     for (const Micrometers w : {spec.width_a, spec.width_b}) {
         if (w.value < kMinWidth || w.value > kMaxWidth) {
             return fail_coded(ErrorCategory::UserInput, "E_BLEND_WIDTH_RANGE",
@@ -192,17 +207,61 @@ Result<BoundaryBlendPlan> plan_boundary_blend(const geometry::PathSet& a,
                               "Choisir une demi-bande entre 0,5 et 15 mm de chaque côté.");
         }
     }
-    auto frontier = geometry::shared_frontier(a, b, spec.tolerance, spec.min_frontier);
-    if (!frontier) {
-        return std::unexpected(frontier.error());
+    std::vector<geometry::Polyline> frontier;
+    const bool manual = !spec.manual_frontier.empty();
+    if (manual) {
+        // Frontière tracée : prise telle quelle (les zones peuvent ne pas se toucher, ou se
+        // chevaucher). Au moins deux points et `min_frontier` de long.
+        if (spec.manual_frontier.size() < 2 || geometry::polyline_length(spec.manual_frontier) <
+                                                   static_cast<double>(spec.min_frontier.value)) {
+            return fail_coded(ErrorCategory::UserInput, "E_BLEND_FRONTIER_SHORT",
+                              "Frontière tracée trop courte",
+                              "Tracer une ligne d'au moins 1 mm entre les deux zones.");
+        }
+        frontier.push_back(geometry::Polyline{spec.manual_frontier, false});
+    } else {
+        // Zones en plusieurs composantes : réunion des frontières de chaque couple, dans l'ordre.
+        for (const auto& ai : a) {
+            for (const auto& bj : b) {
+                auto part = geometry::shared_frontier(ai, bj, spec.tolerance, spec.min_frontier);
+                if (!part) {
+                    return std::unexpected(part.error());
+                }
+                frontier.insert(frontier.end(), part->begin(), part->end());
+            }
+        }
     }
-    if (frontier->empty()) {
+    if (frontier.empty()) {
         return fail_coded(ErrorCategory::OperationImpossible, "E_BLEND_NO_FRONTIER",
                           "Les deux zones ne se touchent pas",
                           "Rapprocher les zones ou dessiner la frontière à la main.");
     }
+    if (manual) {
+        // Chaque zone doit être atteinte par sa demi-bande : sinon le fondu n'aurait aucun effet
+        // de ce côté (frontière tracée loin d'une des zones).
+        const auto reaches = [&](const std::vector<geometry::PathSet>& zones, Micrometers width) {
+            const auto band = geometry::polyline_band(frontier, width);
+            if (!band) {
+                return false;
+            }
+            const auto common = geometry::intersect_polygons(zones, *band);
+            if (!common) {
+                return false;
+            }
+            double area = 0.0;
+            for (const auto& set : *common) {
+                area += geometry::path_set_area_um2(set);
+            }
+            return area > 0.0;
+        };
+        if (!reaches(a, spec.width_a) || !reaches(b, spec.width_b)) {
+            return fail_coded(ErrorCategory::UserInput, "E_BLEND_FRONTIER_FAR",
+                              "La frontière tracée est trop loin d'une des deux zones",
+                              "Tracer la frontière entre les deux zones, ou élargir la bande.");
+        }
+    }
     BoundaryBlendPlan plan;
-    plan.frontier = *frontier;
+    plan.frontier = frontier;
     const std::int32_t margin = std::clamp<std::int32_t>(reach_margin.value, 0, 10'000);
     auto regionA = extended(a, b, plan.frontier, Micrometers{spec.width_b.value + margin});
     if (!regionA) {
@@ -214,7 +273,7 @@ Result<BoundaryBlendPlan> plan_boundary_blend(const geometry::PathSet& a,
     }
     plan.region_a = std::move(*regionA);
     plan.region_b = std::move(*regionB);
-    plan.field = std::make_shared<const BoundaryBlendField>(a, std::move(*frontier), spec,
+    plan.field = std::make_shared<const BoundaryBlendField>(a, std::move(frontier), spec,
                                                             Micrometers{margin});
     return plan;
 }
@@ -231,6 +290,15 @@ Result<BoundaryBlendFills> fill_boundary_blend_tatami(const geometry::PathSet& a
 Result<BoundaryBlendFills> fill_boundary_blend(const geometry::PathSet& a,
                                                const BoundaryBlendFillParams& params_a,
                                                const geometry::PathSet& b,
+                                               const BoundaryBlendFillParams& params_b,
+                                               const BoundaryBlendSpec& spec) {
+    return fill_boundary_blend(std::vector<geometry::PathSet>{a}, params_a,
+                               std::vector<geometry::PathSet>{b}, params_b, spec);
+}
+
+Result<BoundaryBlendFills> fill_boundary_blend(const std::vector<geometry::PathSet>& a,
+                                               const BoundaryBlendFillParams& params_a,
+                                               const std::vector<geometry::PathSet>& b,
                                                const BoundaryBlendFillParams& params_b,
                                                const BoundaryBlendSpec& spec) {
     const auto stitchLength = [](const BoundaryBlendFillParams& p) {
@@ -259,6 +327,81 @@ Result<BoundaryBlendFills> fill_boundary_blend(const geometry::PathSet& a,
         append_fill(fills.b, fillLayer(region, params_b, maskB));
     }
     return fills;
+}
+
+std::vector<geometry::PathSet> boundary_blend_zone(const document::Project& project,
+                                                   const document::EmbroideryObject& object) {
+    std::vector<geometry::PathSet> zones;
+    Micrometers inset{0};
+    if (const auto* t = std::get_if<document::TatamiParams>(&object.params)) {
+        inset = t->inset;
+    } else if (const auto* d = std::get_if<document::DirectionalFillParams>(&object.params)) {
+        inset = d->inset;
+    } else {
+        return zones;
+    }
+    const auto* source = project.findObject(object.source_vector);
+    if (source == nullptr) {
+        return zones;
+    }
+    // Même préparation que `fill_regions_in_sewing_order` (generate.cpp) : aplatissement à
+    // 50 µm, retrait de bord, forme brute si le retrait la fait disparaître.
+    for (const geometry::PathSet& rawSet : source->paths) {
+        const geometry::PathSet set = geometry::flatten_to_polygon(rawSet, Micrometers{50});
+        std::vector<geometry::PathSet> filled;
+        if (inset.value > 0) {
+            if (auto shrunk = geometry::inset_path_set(set, inset); shrunk && !shrunk->empty()) {
+                filled = std::move(*shrunk);
+            }
+        }
+        if (filled.empty()) {
+            filled.push_back(set);
+        }
+        zones.insert(zones.end(), filled.begin(), filled.end());
+    }
+    return zones;
+}
+
+std::optional<std::vector<FillStitch>>
+boundary_blend_layer(const document::Project& project, const document::EmbroideryObject& object) {
+    const auto pair = document::find_boundary_blend(project, object.id);
+    if (!pair) {
+        return std::nullopt;
+    }
+    const auto* self = project.findEmbroidery(pair->self);
+    const auto* partner = project.findEmbroidery(pair->partner);
+    if (self == nullptr || partner == nullptr) {
+        return std::nullopt;
+    }
+    // Sens canonique : la zone d'identifiant le plus petit est A, quelle que soit la zone
+    // générée. Les deux couches sortent ainsi du MÊME plan (frontière, champ, régions).
+    const bool selfFirst = self->id.value < partner->id.value;
+    const document::EmbroideryObject& first = selfFirst ? *self : *partner;
+    const document::EmbroideryObject& second = selfFirst ? *partner : *self;
+    const auto zonesFirst = boundary_blend_zone(project, first);
+    const auto zonesSecond = boundary_blend_zone(project, second);
+    if (zonesFirst.empty() || zonesSecond.empty()) {
+        return std::nullopt;
+    }
+    const auto fillParams = [](const document::EmbroideryObject& o,
+                               const geometry::PathSet& region) -> BoundaryBlendFillParams {
+        if (const auto* t = std::get_if<document::TatamiParams>(&o.params)) {
+            return resolve_pull_compensation(*t, region);
+        }
+        return resolve_pull_compensation(std::get<document::DirectionalFillParams>(o.params),
+                                         region);
+    };
+    BoundaryBlendSpec spec;
+    spec.width_a = first.boundary_blend->width_self;
+    spec.width_b = second.boundary_blend->width_self;
+    spec.curve = first.boundary_blend->curve;
+    spec.manual_frontier = first.boundary_blend->manual_frontier;
+    auto fills = fill_boundary_blend(zonesFirst, fillParams(first, zonesFirst.front()), zonesSecond,
+                                     fillParams(second, zonesSecond.front()), spec);
+    if (!fills) {
+        return std::nullopt;
+    }
+    return selfFirst ? std::move(fills->a) : std::move(fills->b);
 }
 
 } // namespace openstitch::stitch_generation

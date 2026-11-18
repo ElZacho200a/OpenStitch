@@ -750,3 +750,64 @@ construction et faisait croire que le coût venait de la recherche de chemin.
 
 **GPU.** Le prototype D3D11 de R01, rejoué sur GPU de bureau, reste 3 à 5 fois plus lent que le
 CPU, transferts compris : pas de backend GPU dans le moteur.
+
+## 20. Audit du 2026-11-18 : recalculs inutiles de la génération de points
+
+Question : après une modification locale, que recalcule-t-on sans nécessité ? Chronomètres
+temporaires (retirés) sur `effective_sequence` à cache chaud, tentabrode, 1 fil :
+`generate_sequence` 0,9 ms (le cache par objet de HP-PERF-002 fait son travail), puis la
+finition : `enforce_length_bounds` **9 ms sur ~12**, dont 4 à 6 ms pour reconstruire, à chaque
+appel et pour chaque objet portant un point court, ses testeurs de région (rétrécissement
+Clipper du tirage effectif + index des arêtes), 1,3 ms de tests de corde (5369) et ~1 ms de
+copies du vecteur de commandes. Les testeurs ne dépendent que des paramètres de l'objet et de
+ses tracés : ils étaient reconstruits à l'identique à chaque régénération.
+
+**Correction** (`libs/stitch_generation/src/length_bounds.cpp`, sortie identique) :
+- cache des testeurs par identifiant d'objet, **clé exacte** (copie des paramètres et des
+  tracés, comparés entièrement, comme `chunk_cache`), même interrupteur
+  (`set_chunk_cache_enabled`), vidé par `clear_chunk_cache`, borné à 4096 entrées ;
+- l'index d'arêtes écrit dans des marqueurs `mutable` à chaque requête : chaque jeu de testeurs
+  partagé porte son propre verrou (deux régénérations simultanées restent correctes) ;
+- plus de recopie de l'entrée quand la fusion ou le découpage produit déjà sa propre liste.
+
+**Résultats** (banc `openstitch-bench`, tentabrode, Release, médianes de 5) :
+
+| Étape | Avant | Après (1 fil) | Après (8 fils) |
+|---|---|---|---|
+| `effective_sequence` cache chaud | 9,7 ms | 4,0 ms | 4,6 ms |
+| 1 objet médian modifié | 8,8 ms | 3,9 ms | 4,9 ms |
+| plus gros objet modifié | 56 ms | 34–48 ms (bruit) | 37 ms |
+| `effective_sequence` à froid | 166 ms | 172 ms (inchangé) | 78 ms |
+
+Empreinte de la séquence effective `ea127e23e0aa42b8` identique avant et après, à 1 et 8 fils.
+Test : « chunk cache : testeurs de la fusion des points courts suivent paramètres et géométrie »
+(avec/sans cache, invalidation par paramètre et par géométrie, 1 fil = 8 fils).
+
+**Pistes restantes** (non faites) : plancher à chaud ~4 ms = copies de 60 000 commandes (assemblage,
+trois passes de finition) ; `knocked_out_source` recalcule la forme privée des remplissages posés
+au-dessus à chaque appel (phase 1, séquentielle, hors cache ; nul sur tentabrode car sans
+recouvrement, à mesurer sur un projet avec `knockout`) ; objets satin non routés et auto-satin
+hors squelette régénérés à chaque appel (pas de cache de séquence).
+
+## 18. Audit du 2026-11-18 : zones de fondu (`segment_blend_zones`)
+
+Nouveau chemin (PR #385), sans banc ni parallélisme. Banc `[.perf_blend_zones]` de
+`test_segmentation` (Release, 2400 x 1800 à 0,1 mm/px, 4 zones, meilleur de 5) : 79 ms.
+
+**Répartition** (rep chaude) : étiquetage final 22 ms, conversion Lab 17, réduction à la
+résolution de travail 16, partage des eaux 16, Sobel 7, flou 4, fusions et adjacence < 3.
+
+**Corrections** (`libs/segmentation/src/blend_zones.cpp`, sortie identique octet pour octet) :
+- réduction : tables colonne et ligne de travail précalculées (plus de division par pixel),
+  lignes de travail réparties en bandes (`parallel_for`) ;
+- conversion Lab, Sobel et flou gaussien : bandes de lignes en parallèle ;
+- étiquetage final : racines de l'union-find précalculées, bandes de lignes sources en parallèle
+  (sommes entières exactes, donc indépendantes de l'ordre), emplacements numérotés dans l'ordre de
+  première apparition du balayage, puis conversion racine -> emplacement en parallèle.
+
+**Résultats** : 79 -> 36,5 ms (-54 %) en parallèle ; 82 ms à un fil (`OPENSTITCH_THREADS=1`,
+pas de régression). Empreinte du banc identique (6c0bfe59623ab669) ; test à empreintes figées
+sur l'implémentation d'origine (3 tailles impaires avec trous transparents), à 1 et 8 fils.
+
+**Reste.** Le partage des eaux (file de priorité, 16 ms) et les fusions sont séquentiels par
+nature ; une version par tuiles changerait les zones.

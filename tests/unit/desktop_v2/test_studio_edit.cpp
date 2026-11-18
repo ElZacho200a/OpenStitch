@@ -19,6 +19,7 @@
 #include "action_controller.hpp"
 #include "edit_controller.hpp"
 #include "gpu_canvas.hpp"
+#include "openstitch/commands/project_commands.hpp"
 #include "openstitch/formats/dst.hpp"
 #include "openstitch/project_io/project_io.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
@@ -162,6 +163,7 @@ private slots:
     void savedSelectionsAreRecalled();
     void transformsAreOneUndoStepAndPersist();
     void invalidTransformsAreRefused();
+    void deleteShapesRemovesTheShapeAndItsEmbroideries();
     void placementInMillimetres();
     void alignDistributeStackGroup();
     void mouseMoveWithSnapGuidesAndUndo();
@@ -450,6 +452,42 @@ void StudioEditTest::transformsAreOneUndoStepAndPersist() {
     QVERIFY(dstAfter.has_value());
     QCOMPARE(dstAfter->size(), dstBefore->size());
     QVERIFY(std::equal(dstAfter->begin(), dstAfter->end(), dstBefore->begin()));
+}
+
+void StudioEditTest::deleteShapesRemovesTheShapeAndItsEmbroideries() {
+    Rig rig;
+    open(rig);
+    const auto stitches = rig.session.project().embroidery_objects.size();
+    const auto shapes = rig.session.project().vector_objects.size();
+    const auto base = steps(rig);
+
+    // Espace Points : la broderie seule disparait, la forme reste (reconvertible).
+    select(rig, {kGreen});
+    QVERIFY(rig.editor.deleteSelection());
+    QCOMPARE(rig.session.project().embroidery_objects.size(), stitches - 1);
+    QCOMPARE(rig.session.project().vector_objects.size(), shapes);
+    QVERIFY(rig.session.undo());
+
+    // Espace Vecteur : la forme et sa broderie, en une seule etape d'annulation.
+    select(rig, {kGreen});
+    QCOMPARE(rig.editor.selectedShapeCount(), 1);
+    QVERIFY(rig.editor.deleteShapes());
+    QCOMPARE(rig.session.project().embroidery_objects.size(), stitches - 1);
+    QCOMPARE(rig.session.project().vector_objects.size(), shapes - 1);
+    QCOMPARE(steps(rig), base + 1);
+    QVERIFY(rig.session.undo());
+    QCOMPARE(rig.session.project().vector_objects.size(), shapes);
+    QCOMPARE(rig.session.project().embroidery_objects.size(), stitches);
+
+    // Une forme non convertie se supprime aussi (la sélection ne vise que sa forme).
+    const auto source = rig.session.project().findEmbroidery(ObjectId{kGreen})->source_vector;
+    rig.session.execute(
+        std::make_unique<commands::RemoveEmbroideryObjectCommand>(ObjectId{kGreen}));
+    rig.session.selection().replace({Target{TargetKind::VectorObject, source.value}});
+    QVERIFY(rig.editor.deleteShapes());
+    QCOMPARE(rig.session.project().findObject(source),
+             static_cast<const document::VectorObject*>(nullptr));
+    QVERIFY(!rig.editor.deleteShapes()); // plus rien a supprimer : refuse, sans etape
 }
 
 void StudioEditTest::invalidTransformsAreRefused() {

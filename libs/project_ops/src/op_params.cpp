@@ -30,7 +30,10 @@
 #include "openstitch/document/machine_profile.hpp"
 #include "openstitch/document/stitch_recipes.hpp"
 #include "openstitch/geometry/boolean.hpp"
+#include "openstitch/geometry/polyline.hpp"
 #include "openstitch/optimization/order.hpp"
+#include "openstitch/project_ops/boundary_blend.hpp"
+#include "openstitch/project_ops/boundary_blend_proposals.hpp"
 #include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_generation/directional_fill.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
@@ -1319,6 +1322,155 @@ OpSpec op_set_color() {
     return s;
 }
 
+// --- Opérations : fondu à la frontière (docs/studio-fondu-frontiere-spec.md §7) -------------
+
+OpSpec op_blend_boundary() {
+    OpSpec s;
+    s.name = "blend_boundary";
+    s.summary = "Pose ou modifie un fondu à la frontière entre deux zones remplies voisines : "
+                "les deux fils s'entremêlent sur une bande de part et d'autre de leur limite.";
+    s.args = {arg("a", "object_id", "première zone (tatami ou directionnel)", true),
+              arg("b", "object_id", "zone voisine (tatami ou directionnel)", true),
+              arg("width_a", "number", "demi-bande dans la zone a", false, "mm", "[0.5 ; 15]"),
+              arg("width_b", "number", "demi-bande dans la zone b", false, "mm", "[0.5 ; 15]"),
+              arg("curve", "string", "profil de transition", false, {},
+                  join(enum_names(density_curve_table()), " | ")),
+              arg("frontier", "array",
+                  "frontière tracée à la main, liste de points [x, y] (au moins deux) ; [] : "
+                  "frontière calculée là où les zones se touchent",
+                  false, "mm")};
+    s.example = R"({"op":"blend_boundary","a":2,"b":4,"width_a":2.5,"width_b":2.5})";
+    s.apply = guarded([](OpContext& ctx) {
+        const ObjectId a = need_emb(ctx, "a").id;
+        const ObjectId b = need_emb(ctx, "b").id;
+        project_ops::BoundaryBlendOptions options;
+        // Valeurs actuelles en cas de réédition partielle.
+        if (const auto info = project_ops::boundary_blend_info(ctx.project, a);
+            info && info->b == b) {
+            options = info->options;
+        }
+        const auto mm = [&](const char* key, Micrometers fallback) {
+            if (!ctx.args.contains(key)) {
+                return fallback;
+            }
+            const double d = number_in_range(key, ctx.args.at(key), 0.5, 15.0, "mm");
+            return Micrometers{static_cast<std::int32_t>(std::lround(d * 1000.0))};
+        };
+        options.width_a = mm("width_a", options.width_a);
+        options.width_b = mm("width_b", options.width_b);
+        if (ctx.args.contains("curve")) {
+            options.curve =
+                parse_enum(density_curve_table(), need_string(ctx.args, "curve"), "curve");
+        }
+        if (ctx.args.contains("frontier")) {
+            const json& pts = ctx.args.at("frontier");
+            if (!pts.is_array()) {
+                refuse(code::kUsage, "champ « frontier » : liste de points [x, y] attendue");
+            }
+            options.manual_frontier.clear();
+            for (const json& pt : pts) {
+                if (!pt.is_array() || pt.size() != 2) {
+                    refuse(code::kUsage, "champ « frontier » : chaque point est [x, y] en mm");
+                }
+                const double x = number_in_range("frontier.x", pt.at(0), -1000.0, 1000.0, "mm");
+                const double y = number_in_range("frontier.y", pt.at(1), -1000.0, 1000.0, "mm");
+                options.manual_frontier.push_back(
+                    Vec2um{Micrometers{static_cast<std::int32_t>(std::lround(x * 1000.0))},
+                           Micrometers{static_cast<std::int32_t>(std::lround(y * 1000.0))}});
+            }
+        }
+        auto cmd = project_ops::make_boundary_blend_command(ctx.project, a, b, options);
+        if (!cmd) {
+            return OpStatus::failure(cmd.error().code.empty() ? code::kRefused : cmd.error().code,
+                                     cmd.error().message, cmd.error().hint);
+        }
+        ctx.stack.execute(std::move(*cmd), ctx.project);
+        const auto info = project_ops::boundary_blend_info(ctx.project, a);
+        double frontier_mm = 0.0;
+        if (info) {
+            for (const auto& line : info->frontier) {
+                frontier_mm += geometry::polyline_length(line.points) / 1000.0;
+            }
+        }
+        return OpStatus::success({{"a", a.value},
+                                  {"b", b.value},
+                                  {"width_a", options.width_a.value / 1000.0},
+                                  {"width_b", options.width_b.value / 1000.0},
+                                  {"curve", enum_name(density_curve_table(), options.curve)},
+                                  {"manual_frontier", !options.manual_frontier.empty()},
+                                  {"frontier_mm", round6(frontier_mm)}});
+    });
+    return s;
+}
+
+OpSpec op_propose_boundary_blends() {
+    OpSpec s;
+    s.name = "propose_boundary_blends";
+    s.summary = "Cherche dans l'image source les limites douces entre zones voisines et propose "
+                "un fondu à la frontière pour chacune (apply : les pose toutes en une étape).";
+    s.args = {arg("apply", "boolean", "poser les fondus proposés (faux : simple liste)"),
+              arg("min_transition", "number",
+                  "transition minimale dans l'image pour proposer un fondu", false, "mm",
+                  "[0.3 ; 15]")};
+    s.example = R"({"op":"propose_boundary_blends","apply":false})";
+    s.apply = guarded([](OpContext& ctx) {
+        project_ops::BoundaryBlendProposalOptions options;
+        if (ctx.args.contains("min_transition")) {
+            const double d =
+                number_in_range("min_transition", ctx.args.at("min_transition"), 0.3, 15.0, "mm");
+            options.min_transition = Micrometers{static_cast<std::int32_t>(std::lround(d * 1000))};
+        }
+        const bool apply = ctx.args.contains("apply") && need_bool(ctx.args, "apply");
+        auto proposals = project_ops::propose_boundary_blends(ctx.project, options);
+        if (!proposals) {
+            return OpStatus::failure(proposals.error().code.empty() ? code::kRefused
+                                                                    : proposals.error().code,
+                                     proposals.error().message, proposals.error().hint);
+        }
+        json list = json::array();
+        for (const auto& p : *proposals) {
+            list.push_back({{"a", p.a.value},
+                            {"b", p.b.value},
+                            {"width_a", p.options.width_a.value / 1000.0},
+                            {"width_b", p.options.width_b.value / 1000.0},
+                            {"transition_mm", round6(p.transition_mm)},
+                            {"profiles", p.profiles},
+                            {"profiles_total", p.profiles_total}});
+        }
+        if (apply) {
+            auto cmd =
+                project_ops::make_apply_boundary_blend_proposals_command(ctx.project, *proposals);
+            if (!cmd) {
+                return OpStatus::failure(cmd.error().code.empty() ? code::kRefused
+                                                                  : cmd.error().code,
+                                         cmd.error().message, cmd.error().hint);
+            }
+            ctx.stack.execute(std::move(*cmd), ctx.project);
+        }
+        return OpStatus::success({{"proposals", std::move(list)}, {"applied", apply}});
+    });
+    return s;
+}
+
+OpSpec op_unblend_boundary() {
+    OpSpec s;
+    s.name = "unblend_boundary";
+    s.summary = "Retire le fondu à la frontière d'une zone (et le lien de sa voisine).";
+    s.args = {arg("object", "object_id", "zone qui porte le fondu", true)};
+    s.example = R"({"op":"unblend_boundary","object":2})";
+    s.apply = guarded([](OpContext& ctx) {
+        const ObjectId id = need_emb(ctx, "object").id;
+        auto cmd = project_ops::make_remove_boundary_blend_command(ctx.project, id);
+        if (!cmd) {
+            return OpStatus::failure(cmd.error().code.empty() ? code::kRefused : cmd.error().code,
+                                     cmd.error().message, cmd.error().hint);
+        }
+        ctx.stack.execute(std::move(*cmd), ctx.project);
+        return OpStatus::success({{"id", id.value}});
+    });
+    return s;
+}
+
 OpSpec op_rename() {
     OpSpec s;
     s.name = "rename";
@@ -2172,6 +2324,7 @@ const std::vector<Field<document::SequenceFinishing>>& finishing_fields() {
         v.push_back(bool_field<P>("hidden_travel_reorder_regions", ht(&H::reorder_regions)));
         v.push_back(
             bool_field<P>("hidden_travel_same_color_surface", ht(&H::allow_same_color_surface)));
+        v.push_back(mm_field<P>("hidden_travel_underlap_mm", ht(&H::underlap), 0.0, 3.0));
         return v;
     }();
     return fields;
@@ -2313,6 +2466,9 @@ OpSpec op_set_needle_origin() {
 
 void register_param_ops(std::vector<OpSpec>& out) {
     out.push_back(op_set_color());
+    out.push_back(op_blend_boundary());
+    out.push_back(op_unblend_boundary());
+    out.push_back(op_propose_boundary_blends());
     out.push_back(op_rename());
     out.push_back(op_set_semantic());
     out.push_back(op_set_visible());

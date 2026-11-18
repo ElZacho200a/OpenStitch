@@ -504,6 +504,28 @@ forme non remplie ou un couple de couches déjà créé désactive l'action.
 Une seule annulation défait l'ensemble. La zone de transition (début / fin en %
 de l'axe) et la courbe de transition se règlent dans le même dialogue.
 
+### Fondu à la frontière entre deux zones (Studio, 2026-11-17)
+
+Contrairement à « Fondre deux zones », qui unit les formes et pose un dégradé droit, le
+**fondu à la frontière** garde les deux zones et fait entremêler leurs fils sur une bande de part
+et d'autre de leur limite commune, quelle que soit sa forme (courbe, en S, en plusieurs
+morceaux). Spécification complète : `docs/studio-fondu-frontiere-spec.md`.
+
+- **Créer** : sélectionner deux zones remplies voisines (tatami ou directionnel sans dégradé),
+  puis dans l'inspecteur régler la bande dans chaque zone (0,5 à 15 mm) et la transition (douce,
+  moyenne, nette) et cliquer « Créer le fondu ». Même chose depuis la palette (Ctrl+K) :
+  « Fondu à la frontière… ».
+- **Régler / retirer** : sélectionner une des deux zones ; le panneau résume le fondu et
+  applique chaque réglage immédiatement (un pas d'annulation) ; « Retirer le fondu » revient à
+  deux aplats nets.
+- **Depuis l'image** : « Proposer les fondus à la frontière depuis l'image » cherche les limites
+  douces entre zones voisines et pose les fondus correspondants en une étape.
+- Même angle et même écart des deux côtés (deux tatamis) : chaque rangée de la bande est cousue
+  par un seul fil. Sinon les deux fils se superposent dans la bande.
+- CLI / MCP : opérations `blend_boundary` (dont `frontier` pour une frontière tracée),
+  `unblend_boundary`, `propose_boundary_blends`.
+- Non validé sur tissu ; pas encore de tracé ni de poignées sur le canevas.
+
 ### Éditer les couches et preuve des correctifs UI (2026-10-13)
 
 Dans **Propriétés**, **Couches de couture · ordre de couture** sélectionne

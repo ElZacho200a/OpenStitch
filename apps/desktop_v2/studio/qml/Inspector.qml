@@ -13,6 +13,7 @@ Item {
     // Absent in hosts that do not provide it (the shell tests of the other families).
     readonly property var ctl: typeof inspector !== "undefined" ? inspector : null
     readonly property var fadeCtl: typeof fade !== "undefined" ? fade : null
+    readonly property var blendCtl: typeof boundaryBlend !== "undefined" ? boundaryBlend : null
     property var layoutModel: []
     // Folded sections by title; kept here so the state survives selection changes.
     property var collapsedSections: ({})
@@ -191,6 +192,14 @@ Item {
             // Le fondu multicolore (mission 2026-11-14) est un véritable type de points
             // autonome (MulticolorGradientParams) ; ce panneau règle sa palette, sa méthode et
             // sa transition une fois l'objet créé, sans jamais le recréer.
+            // Fondu à la frontière entre deux zones voisines (docs/studio-fondu-frontiere-spec.md) :
+            // proposé quand deux zones sont sélectionnées, résumé et réglé sur une zone qui en porte un.
+            BoundaryBlendPanel {
+                objectName: "inspectorBoundaryBlend"
+                controller: root.blendCtl
+                Layout.fillWidth: true
+            }
+
             FadeProperties {
                 id: fadeInspector
                 objectName: "inspectorFadeSection"

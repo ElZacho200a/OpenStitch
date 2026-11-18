@@ -5,9 +5,13 @@
 #include <cmath>
 #include <cstdint>
 #include <map>
+#include <memory>
+#include <mutex>
 #include <type_traits>
+#include <unordered_map>
 #include <variant>
 
+#include "chunk_cache.hpp"
 #include "openstitch/stitch_generation/pull_auto.hpp"
 #include "openstitch/stitch_generation/tatami.hpp"
 #include "pull_grow.hpp"
@@ -62,6 +66,76 @@ Micrometers effective_fill_pull(const document::EmbroideryObject& obj,
         obj.params);
 }
 
+// Un testeur écrit dans des marqueurs internes à chaque requête (EdgeIndex::for_edges) : un jeu
+// partagé entre deux régénérations simultanées est donc interrogé sous son verrou.
+struct TesterSet {
+    std::vector<RegionSegmentTester> testers;
+    mutable std::mutex mutex;
+
+    [[nodiscard]] bool any_inside(Vec2um a, Vec2um b) const {
+        const std::lock_guard<std::mutex> lock(mutex);
+        return std::any_of(testers.begin(), testers.end(),
+                           [&](const RegionSegmentTester& t) { return t.stays_inside(a, b); });
+    }
+};
+
+std::shared_ptr<const TesterSet> build_testers(const document::EmbroideryObject& object,
+                                               const std::vector<geometry::PathSet>& paths) {
+    auto out = std::make_shared<TesterSet>();
+    out->testers.reserve(paths.size());
+    for (const auto& set : paths) {
+        out->testers.emplace_back(detail::grown_for_pull(set, effective_fill_pull(object, set)));
+    }
+    return out;
+}
+
+// Testeurs de région d'un objet : fonction pure de (paramètres de l'objet, tracés de sa forme).
+// La construction (rétrécissement Clipper + index des arêtes) coûtait l'essentiel de cette passe
+// à chaque régénération alors que presque aucun objet n'avait changé : l'entrée garde une copie
+// exacte des paramètres et des tracés et les compare entièrement (même clé que le cache des
+// séquences, mêmes règles d'activation et de vidage).
+struct TesterEntry {
+    document::StitchParams params;
+    std::vector<geometry::PathSet> paths;
+    std::shared_ptr<const TesterSet> testers;
+};
+
+struct TesterCache {
+    std::mutex mutex;
+    std::unordered_map<std::uint64_t, TesterEntry> entries;
+};
+
+TesterCache& tester_cache() {
+    static TesterCache instance;
+    return instance;
+}
+
+std::shared_ptr<const TesterSet> region_testers(ObjectId id,
+                                                const document::EmbroideryObject& object,
+                                                const std::vector<geometry::PathSet>& paths) {
+    if (!chunk_cache_enabled()) {
+        return build_testers(object, paths);
+    }
+    TesterCache& cache = tester_cache();
+    {
+        const std::lock_guard<std::mutex> lock(cache.mutex);
+        const auto it = cache.entries.find(id.value);
+        if (it != cache.entries.end() && it->second.params == object.params &&
+            it->second.paths == paths) {
+            return it->second.testers;
+        }
+    }
+    auto built = build_testers(object, paths);
+    const std::lock_guard<std::mutex> lock(cache.mutex);
+    // Borne : le cache ne dépasse jamais le nombre d'objets rencontrés depuis le dernier vidage ;
+    // au-delà de 4096 entrées (projets énormes ou identifiants jetables) on repart de zéro.
+    if (cache.entries.size() >= 4096) {
+        cache.entries.clear();
+    }
+    cache.entries.insert_or_assign(id.value, TesterEntry{object.params, paths, built});
+    return built;
+}
+
 bool is_protected(const StitchCommand& c) {
     return c.pass == StitchPass::Lock || c.pass == StitchPass::Manual;
 }
@@ -74,7 +148,8 @@ std::vector<StitchCommand> merge_short(const std::vector<StitchCommand>& cmds,
                                        const document::Project& project, double minLen,
                                        std::size_t& merged) {
     const auto regions = object_regions(project);
-    std::map<std::uint64_t, std::vector<RegionSegmentTester>> testers;
+    // Testeurs de l'appel en cours (pointeurs vers le cache inter-appels ou vers ses copies).
+    std::map<std::uint64_t, std::shared_ptr<const TesterSet>> testers;
     const auto chordInside = [&](ObjectId source, Vec2um a, Vec2um b) {
         const auto it = regions.find(source.value);
         if (it == regions.end()) {
@@ -82,13 +157,9 @@ std::vector<StitchCommand> merge_short(const std::vector<StitchCommand>& cmds,
         }
         auto [tit, inserted] = testers.try_emplace(source.value);
         if (inserted) {
-            for (const auto& set : *it->second.paths) {
-                tit->second.emplace_back(
-                    detail::grown_for_pull(set, effective_fill_pull(*it->second.object, set)));
-            }
+            tit->second = region_testers(source, *it->second.object, *it->second.paths);
         }
-        return std::any_of(tit->second.begin(), tit->second.end(),
-                           [&](const RegionSegmentTester& t) { return t.stays_inside(a, b); });
+        return tit->second->any_inside(a, b);
     };
 
     std::vector<StitchCommand> out;
@@ -146,6 +217,12 @@ std::vector<StitchCommand> split_long(const std::vector<StitchCommand>& cmds, do
 
 } // namespace
 
+void clear_length_bounds_cache() {
+    TesterCache& cache = tester_cache();
+    const std::lock_guard<std::mutex> lock(cache.mutex);
+    cache.entries.clear();
+}
+
 LengthBoundsReport measure_length_bounds(const std::vector<StitchCommand>& cmds,
                                          std::int32_t min_um, std::int32_t max_um) {
     LengthBoundsReport report;
@@ -169,17 +246,20 @@ LengthBoundsResult enforce_length_bounds(const std::vector<StitchCommand>& cmds,
                                          const document::Project& project,
                                          const document::SequenceFinishing& finishing) {
     LengthBoundsResult result;
-    result.commands = cmds;
     const bool doMerge = finishing.filter_short_stitches && finishing.min_stitch_length.value > 0;
     const bool doSplit = finishing.split_long_stitches && finishing.max_stitch_length.value > 0;
+    // Chaque étape produit déjà sa propre liste : on ne recopie l'entrée que si aucune ne tourne.
     if (doMerge) {
-        result.commands = merge_short(result.commands, project,
-                                      static_cast<double>(finishing.min_stitch_length.value),
-                                      result.report.merged);
+        result.commands =
+            merge_short(cmds, project, static_cast<double>(finishing.min_stitch_length.value),
+                        result.report.merged);
+    } else if (!doSplit) {
+        result.commands = cmds;
     }
     if (doSplit) {
-        result.commands = split_long(
-            result.commands, static_cast<double>(finishing.max_stitch_length.value), result.report);
+        result.commands =
+            split_long(doMerge ? result.commands : cmds,
+                       static_cast<double>(finishing.max_stitch_length.value), result.report);
     }
     const LengthBoundsReport left =
         measure_length_bounds(result.commands, doMerge ? finishing.min_stitch_length.value : 0,
