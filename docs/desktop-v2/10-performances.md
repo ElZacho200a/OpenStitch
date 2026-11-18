@@ -98,3 +98,38 @@ Lecture :
   la sensation de lenteur du pinceau vient du calcul (non, d'après ce qui précède) ou de l'affichage et de la
   boucle d'événements ; à mesurer avec `openstitch-studio-bench` (fenêtre native) avant d'écrire l'aperçu léger
   (lot 4).
+
+
+### Latence de bout en bout du pinceau et instantané avec image (lot 4, 2026-11-18)
+
+Deux mesures ajoutées pour trancher l'aperçu léger du lot 4 : l'instantané du document à l'appui, et la latence
+réelle à travers la vraie fenêtre Studio (fil de travail, signal, superposition), moteur de rendu logiciel
+hors écran, Release.
+
+Instantané du document (`test_desktop_v2_core "[editcost]"`, copie profonde refaite à la première lecture après
+chaque édition) :
+
+| Image importée | RGBA | 1re copie | ensuite |
+|---|---|---|---|
+| aucune | 0 Mo | 0,00 ms | 0,00 ms |
+| 1 000 × 1 000 | 4 Mo | 0,6 ms | 0,00 ms |
+| 2 000 × 2 000 | 16 Mo | 2,6 ms | 0,00 ms |
+| 4 000 × 3 000 | 48 Mo | 5,6 ms | 0,00 ms |
+
+Latence à travers la fenêtre (`test_desktop_v2_studio_warp_bucket`, `OPENSTITCH_PERF=1`, trois exécutions,
+document d'un rectangle ; attente pilotée par les événements, sinon le sondage de `qWaitFor` impose 10-16 ms
+sous Windows et masque tout) :
+
+| Étape | Mesure |
+|---|---|
+| mouvement de souris → aperçu mis à jour | médiane 0,8-5 ms, p95 5-6 ms, max 8 ms |
+| relâchement → document modifié | 2,6-3,2 ms |
+| relâchement → scène (points) à jour | 22-26 ms (borne haute : le sondage de `settle()` ajoute jusqu'à ~16 ms) |
+
+Lecture : le calcul et la chaîne fil de travail → superposition tiennent largement dans une image (16,7 ms) ;
+l'instantané ne coûte que 6 ms même pour une image de 12 Mpx et seulement à la première lecture après une
+édition. **L'aperçu léger du lot 4 n'est donc pas implémenté** : son principe (ne pas régénérer les points
+pendant le geste) est déjà celui du code (le geste ne calcule que le contour) et rien de mesurable ne reste à
+gagner dans cette chaîne. Non mesuré : le rendu réel sur GPU du canevas et une grosse scène (> 500 objets) ;
+si le pinceau paraît encore lent, il faut un scénario reproductible (taille du document, outil, machine) et
+`openstitch-studio-bench`.

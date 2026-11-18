@@ -411,3 +411,31 @@ TEST_CASE("perf: cout du pinceau sur une grande forme par nombre de sommets", "[
             flattenMs);
     }
 }
+
+// Appui du pinceau sur un document qui porte une image importee : l'instantane du document est une
+// copie PROFONDE, image comprise, refaite a la premiere lecture apres chaque edition. Mesure le
+// cout de cette copie (sur le fil d'interface a l'appui) selon la taille de l'image.
+TEST_CASE("perf: instantane du document avec une image importee", "[.perf][editcost]") {
+    std::printf("\n%12s | %10s | %12s | %12s\n", "image", "Mo RGBA", "1re copie",
+                "ensuite (cache)");
+    for (const auto& [width, height] :
+         {std::pair{0, 0}, std::pair{1000, 1000}, std::pair{2000, 2000}, std::pair{4000, 3000}}) {
+        DocumentSession session;
+        auto created = project_ops::create_empty_project({});
+        REQUIRE(created.has_value());
+        created->original.width = width;
+        created->original.height = height;
+        created->original.rgba.assign(static_cast<std::size_t>(width) * height * 4, 128);
+        session.replaceProject(std::move(*created), true);
+        REQUIRE(session.applyBatch(batchAddRect({0, 0}, 20, 10), "Forme").committed);
+        const auto firstStart = Clock::now();
+        const auto first = session.snapshot();
+        const double firstMs = msSince(firstStart);
+        const auto againStart = Clock::now();
+        const auto again = session.snapshot();
+        const double againMs = msSince(againStart);
+        REQUIRE(first == again);
+        std::printf("%5dx%-6d | %10.1f | %10.2f ms | %10.3f ms\n", width, height,
+                    static_cast<double>(width) * height * 4 / 1.0e6, firstMs, againMs);
+    }
+}
