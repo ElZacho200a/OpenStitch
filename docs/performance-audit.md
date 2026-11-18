@@ -750,3 +750,20 @@ construction et faisait croire que le coût venait de la recherche de chemin.
 
 **GPU.** Le prototype D3D11 de R01, rejoué sur GPU de bureau, reste 3 à 5 fois plus lent que le
 CPU, transferts compris : pas de backend GPU dans le moteur.
+
+## 19. Audit du 2026-11-18 : lissage de segmentation rétabli (HP-PERF-015)
+
+Le commit `57c754af` (vote de lissage par bandes) avait été annulé dans `main` par `af61f094`,
+revert d'un merge d'intégration entier et non de ce lot : `segment` allouait de nouveau k cartes de
+densité `CV_32F` pleines (64 classes × 1600×1200 × 4 o ≈ 490 Mio, plus la version « détail »).
+
+**Correction** (`libs/segmentation/src/segmentation.cpp`, étiquettes identiques) : bandes de 32
+lignes en parallèle, classe après classe, filtre moyenneur sur la bande élargie du rayon (valeurs
+identiques à un filtrage de l'image entière : sommes de 0/1 exactes), seule la meilleure densité et
+sa classe sont gardées, classes absentes de la bande élargie ignorées. Même ordre de classes et `>`
+strict qu'avant : mêmes égalités départagées. Sonde de profilage `MaskSmoothing` conservée.
+
+**Résultats** (banc `[.perf015]`, Release, 1600×1200, rayon 3, médianes de 3, bruit ±15 %) :
+k=8 175 → 160 ms, k=32 265 → 220 ms, k=64 440 → 370 ms. Mémoire des cartes de densité : quelques
+cartes de la taille d'une bande par fil au lieu de k cartes pleines. Empreintes figées (11 cas,
+rayons 1 à 40, masque de détail), valables aussi sur l'ancien algorithme, identiques à 1 fil.
