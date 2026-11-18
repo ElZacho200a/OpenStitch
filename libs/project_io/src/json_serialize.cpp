@@ -2183,7 +2183,8 @@ json project_to_json(const document::Project& project) {
                         {"betweenObjects", f.hidden_travel.between_objects},
                         {"withinObject", f.hidden_travel.within_object},
                         {"reorderUnderlay", f.hidden_travel.reorder_underlay},
-                        {"reorderRegions", f.hidden_travel.reorder_regions}}}};
+                        {"reorderRegions", f.hidden_travel.reorder_regions},
+                        {"underlap", f.hidden_travel.underlap.value}}}};
     // HP-SEQ-008 : écrits seulement s'ils existent (fichier identique sinon).
     if (f.design_start) {
         j["finishing"]["designStart"] = vec_to_json(*f.design_start);
@@ -2606,6 +2607,8 @@ Result<document::Project> project_from_json(const json& j) {
                 h.within_object = hj.value("withinObject", hd.within_object);
                 h.reorder_underlay = hj.value("reorderUnderlay", hd.reorder_underlay);
                 h.reorder_regions = hj.value("reorderRegions", hd.reorder_regions);
+                h.underlap =
+                    Micrometers{std::clamp(hj.value("underlap", hd.underlap.value), 0, 3'000)};
             }
             if (fj.contains("designStart")) {
                 f.design_start = vec_from_json(fj.at("designStart"));

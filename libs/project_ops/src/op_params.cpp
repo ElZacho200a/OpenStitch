@@ -2172,6 +2172,7 @@ const std::vector<Field<document::SequenceFinishing>>& finishing_fields() {
         v.push_back(bool_field<P>("hidden_travel_reorder_regions", ht(&H::reorder_regions)));
         v.push_back(
             bool_field<P>("hidden_travel_same_color_surface", ht(&H::allow_same_color_surface)));
+        v.push_back(mm_field<P>("hidden_travel_underlap_mm", ht(&H::underlap), 0.0, 3.0));
         return v;
     }();
     return fields;

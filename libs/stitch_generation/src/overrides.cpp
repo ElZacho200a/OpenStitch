@@ -270,8 +270,14 @@ Result<stitch::StitchSequence> effective_sequence(const document::Project& proje
 Result<FinishResult> effective_sequence_report(const document::Project& project,
                                                const document::HiddenTravel* hiddenTravel,
                                                const TaskContext* task) {
-    auto sequence =
-        task != nullptr ? generate_sequence(project, *task) : generate_sequence(project);
+    // Débord orienté : l'export impose ses propres réglages de trajets (comme pour les finitions).
+    const TaskContext noTask;
+    auto sequence = hiddenTravel != nullptr
+                        ? generate_sequence(project, task != nullptr ? *task : noTask,
+                                            hiddenTravel->between_objects ? hiddenTravel->underlap
+                                                                          : Micrometers{0})
+                    : task != nullptr ? generate_sequence(project, *task)
+                                      : generate_sequence(project);
     if (!sequence) {
         return std::unexpected(sequence.error());
     }

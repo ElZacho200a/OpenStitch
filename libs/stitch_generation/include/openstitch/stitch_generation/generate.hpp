@@ -20,6 +20,10 @@ namespace openstitch::stitch_generation {
 // La progression compte les unités de génération terminées (appelée depuis les fils de travail).
 [[nodiscard]] Result<stitch::StitchSequence> generate_sequence(const document::Project& project,
                                                                const TaskContext& task);
+// Variante avec débord orienté imposé (export « Optimiser les trajets », HiddenTravel::underlap) :
+// remplace celui des finitions du projet. 0 : aucun débord.
+[[nodiscard]] Result<stitch::StitchSequence>
+generate_sequence(const document::Project& project, const TaskContext& task, Micrometers underlap);
 
 // Cache de régénération par objet (HP-PERF-002) : les objets droits, tatami et directionnels
 // sont mémorisés avec une clé exacte (identifiant, paramètres, géométrie source). Modifier un
