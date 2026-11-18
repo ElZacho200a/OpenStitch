@@ -9,6 +9,7 @@
 
 #include "openstitch/core/error.hpp"
 #include "openstitch/core/units.hpp"
+#include "openstitch/document/boundary_blend.hpp"
 #include "openstitch/document/embroidery_object.hpp"
 #include "openstitch/document/project.hpp"
 #include "openstitch/geometry/path.hpp"
@@ -195,11 +196,20 @@ struct BoundaryBlendLayer {
     std::vector<geometry::PathSet> underlay_zones;
 };
 
-// Couche de `object` dans son fondu à la frontière. Le plan est toujours calculé dans le même
-// sens (zone d'identifiant le plus petit en A), pour que les deux zones cousent des couches
-// complémentaires exactement. nullopt si `object` ne porte pas de fondu valide
-// (`document::find_boundary_blend`) ou si la frontière a disparu : la génération coud alors
-// l'aplat habituel.
+// Groupe de fondus de `id` : composante connexe des couples valides
+// (`document::find_boundary_blends`) qui contient `id`, parcourue en largeur. Chaque couple est
+// rendu dans son sens canonique (`self` = identifiant le plus petit, `partner` = le plus grand),
+// la liste triée par (self, partner). Vide si `id` ne porte aucun fondu valide.
+[[nodiscard]] std::vector<document::BoundaryBlendPair>
+boundary_blend_group(const document::Project& project, ObjectId id);
+
+// Couche de `object` dans ses fondus à la frontière. Chaque plan est toujours calculé dans le
+// même sens (zone d'identifiant le plus petit en A), pour que les zones cousent des couches
+// complémentaires exactement. Un seul couple utile dans le groupe : couche du couple (lots
+// L1-L4). Plusieurs couples (§6.4) : en chaque point, le couple dont la frontière est la plus
+// proche gouverne (parmi ceux dont la bande et les zones contiennent le point) ; toutes les
+// couches du groupe évaluent la même règle. nullopt si `object` ne porte pas de fondu valide
+// ou si les frontières ont disparu : la génération coud alors l'aplat habituel.
 [[nodiscard]] std::optional<BoundaryBlendLayer>
 boundary_blend_layer(const document::Project& project, const document::EmbroideryObject& object);
 

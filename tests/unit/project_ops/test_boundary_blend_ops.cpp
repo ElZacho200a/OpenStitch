@@ -677,3 +677,61 @@ TEST_CASE("copy and design insertion remap every boundary blend link",
         CHECK(links_of(target, 2).empty()); // zones déjà présentes : intactes
     }
 }
+
+namespace {
+
+std::vector<stitch::StitchCommand> commands_of(const stitch::StitchSequence& s, ObjectId id) {
+    std::vector<stitch::StitchCommand> out;
+    for (const auto& c : s.commands) {
+        if (c.source == id) {
+            out.push_back(c);
+        }
+    }
+    return out;
+}
+
+} // namespace
+
+TEST_CASE("a zone with two blends sews both and follows every neighbour shape",
+          "[project_ops][blend][multi]") {
+    auto project = make_three_zones();
+    commands::UndoStack stack;
+    blend(project, stack, 2, 4);
+    const auto onlyAB = stitch_generation::generate_sequence(project); // raw-sequence-ok: test
+    REQUIRE(onlyAB.has_value());
+    blend(project, stack, 2, 6);
+    const auto both = stitch_generation::generate_sequence(project); // raw-sequence-ok: test
+    REQUIRE(both.has_value());
+    // Le second fondu de A a un effet : A coud maintenant dans la demi-bande de C (au-dessus de
+    // y = 20 mm), et sa couche change.
+    const auto aboveA = [](const stitch::StitchSequence& s) {
+        std::size_t n = 0;
+        for (const auto& c : s.commands) {
+            if (c.source == ObjectId{2} && c.type == stitch::CommandType::Stitch &&
+                c.pos.y.value > 20'300 && c.pos.y.value <= 22'500 && c.pos.x.value < 17'000) {
+                ++n;
+            }
+        }
+        return n;
+    };
+    CHECK(aboveA(*onlyAB) == 0);
+    CHECK(aboveA(*both) > 0);
+    CHECK(commands_of(*both, ObjectId{2}) != commands_of(*onlyAB, ObjectId{2}));
+    // Déterminisme.
+    const auto again = stitch_generation::generate_sequence(project); // raw-sequence-ok: test
+    REQUIRE(again.has_value());
+    CHECK(again->commands == both->commands);
+
+    // La forme de C change (moins haute, toujours collée à A) : la couche de A suit, bien que ni
+    // A ni ses paramètres n'aient changé (aucune couche de fondu servie d'un cache périmé).
+    project.vector_objects[2] = rect_shape(project.vector_objects[2].id, 0, 20, 12, 20);
+    REQUIRE(document::find_boundary_blends(project, ObjectId{2}).size() == 2);
+    const auto reshaped = stitch_generation::generate_sequence(project); // raw-sequence-ok: test
+    REQUIRE(reshaped.has_value());
+    CHECK(commands_of(*reshaped, ObjectId{2}) != commands_of(*both, ObjectId{2}));
+    // Retour à la forme initiale : couche identique à celle d'avant.
+    project.vector_objects[2] = rect_shape(project.vector_objects[2].id, 0, 20, 20, 20);
+    const auto restored = stitch_generation::generate_sequence(project); // raw-sequence-ok: test
+    REQUIRE(restored.has_value());
+    CHECK(restored->commands == both->commands);
+}

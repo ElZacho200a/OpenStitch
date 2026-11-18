@@ -352,6 +352,58 @@ dernière corde d'une rangée courbe qui aborde le contour en biais est replacé
 bouts des morceaux de rangée de A dans la bande couvrent au moins 2,5 mm des 5 mm de bande
 (déciles 10 et 90) ; perpendiculaire exacte à une frontière droite. Reste à vérifier sur tissu.
 
+### 6.4 Plusieurs fondus par zone
+
+Depuis le lot « fondu multiple », une zone porte un lien par voisine (`boundary_blends`, §4.1).
+La génération (`boundary_blend_layer`) coud TOUS les fondus valides d'une zone.
+
+- **Groupe** : composante connexe des couples valides qui contient la zone, parcourue en largeur
+  par `document::find_boundary_blends` (`boundary_blend_group`, ordre (plus petit id, plus grand
+  id)). Chaque couple garde son plan canonique (zone d'identifiant le plus petit = A), son champ,
+  ses largeurs, sa courbe et son sens des rangées.
+- **Un seul couple utile** : chemin des lots L1-L4, sortie identique octet pour octet. Couples
+  utiles d'une couche : les siens, et ceux dont la boîte des deux zones, élargie de
+  2 demi-bandes + tolérance + marge, touche la boîte de ses couples (un couple ne gouverne que
+  dans la boîte de son champ) : toute couche voit tous les couples qui peuvent gouverner un
+  point de sa région, sans planifier tout un grand groupe. Un couple dont le plan échoue
+  (frontière disparue) est retiré pour toutes les couches.
+- **Règle de la frontière la plus proche** : en p, le couple qui gouverne est, parmi ceux dont p
+  est dans la bande (|s| ≤ demi-bande du côté de p + marge de prolongation) et dans une des deux
+  régions prolongées, celui dont |s| est minimal ; égalité : premier dans l'ordre (lo, hi). Test
+  de boîte du champ avant tout calcul de distance. Toutes les couches évaluent la même fonction.
+- **Couche principale de la zone X** (un remplissage de X, son type et ses paramètres) : région
+  = cœur de X (zone privée des demi-bandes de ses couples « bande », découpe géométrique) ∪ pour
+  chaque couple PerZone, sa région prolongée près de sa frontière. Masque composé : aucun couple
+  ne gouverne → aplat ; un couple sans X gouverne → rien ; un couple PerZone de X gouverne → le
+  masque de ce couple (partition, superposition ×1,5, plancher de densité : §6.1-6.2) ; un couple
+  « bande » de X gouverne → aplat du côté de X au-delà de sa demi-bande moins le recouvrement
+  cœur-bande (le masque décide au milieu de la case des pénétrations ramené dans le morceau,
+  souvent exactement sur le bord de bande : sans cette tolérance, un jour périodique).
+- **Couples Shared / Rotating / Interlaced de X** : la bande commune du couple (`split_band`) est
+  remplie avec ses rangées et son masque, limitée aux points qu'il gouverne, plus un recouvrement
+  de 0,3 mm sur le couple qui gouverne (`kGroupBandOverlap` : deux bandes de grilles différentes
+  coupent sinon leurs morceaux de rangée au milieu et laissent une rangée nue le long de la
+  limite ; mesuré 1,6 % de tissu nu). Deux bandes Shared de même grille : aucun recouvrement
+  (partition exacte). Les modes peuvent se mêler dans un groupe ; une zone directionnelle replie
+  le couple sur PerZone.
+- **Sous-couche** : zone privée de toutes ses demi-bandes.
+- **Cache** : une couche de fondu n'est jamais servie ni rangée dans le cache des morceaux
+  (`generate.cpp`) : elle suit les formes, paramètres et liens de tout son groupe.
+
+Mesures (`test_boundary_blend.cpp`, tag `[multi]`) : jonction en T, A = moitié gauche, B = quart
+haut-droit, C = quart bas-droit, fondus A-B, A-C (+ B-C ou non), fenêtre 10 × 10 mm centrée sur
+la jonction. Pour les 4 modes, angles égaux (0/0/0) et différents (0/0,785/-0,52) : liaison
+visible ≤ 2,04 mm (seuil 2,3), tissu nu ≤ 0,19 % (seuil 1 %). Même angle et même écart, PerZone :
+longueur de rangée cousue = aplat exactement (260 000 µm, seuil 3 %). Modes « bande » sans
+fondu B-C, comparés à un couple seul (A contre la moitié droite) : Shared identique (275 600),
+Rotating +3,9 %, Interlaced +2,0 % (recouvrement aux limites de gouvernance ; seuil 5 %). Le
+second fondu de A change sa couche ; générations identiques ; via le projet, changer la forme de
+C change la couche de A (pas de cache périmé), revenir à la forme initiale rend la séquence
+initiale. Limites : demi-bandes très inégales d'une même zone dans deux couples « bande »
+voisins : près de la jonction, un point de la demi-bande large mais gouverné par le couple à la
+bande étroite, hors de celle-ci, n'est cousu par aucune couche (cas non testé) ; rien n'est
+vérifié sur tissu.
+
 ## 7. Commandes et API
 
 - `project_ops::make_create_boundary_blend_command(project, a, b, params)` : valide

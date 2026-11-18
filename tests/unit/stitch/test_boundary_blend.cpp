@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstdint>
 #include <initializer_list>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -815,4 +816,292 @@ TEST_CASE("boundary blend rows: shared and rotating are deterministic, direction
     CHECK(boundary_blend_shared_angle(0.785, -0.52) == Catch::Approx(0.1325));
     CHECK(boundary_blend_shared_angle(0.1, 3.0) ==
           Catch::Approx(0.1 + 0.5 * (2.9 - 3.14159265358979323846)));
+}
+
+// --- Plusieurs fondus par zone (§6.4) : jonction en T --------------------------------------------
+
+namespace {
+
+// A = moitié gauche (0..10 x 0..20 mm), B = quart haut-droit, C = quart bas-droit. Jonction en
+// (10 ; 10) mm. Liens posés directement dans le document (réciproques, même réglage).
+struct TJunction {
+    document::Project project;
+    ObjectId a, b, c;
+    double angle_a, angle_b, angle_c;
+};
+
+ObjectId add_zone(document::Project& p, const geometry::PathSet& shape, double angle,
+                  std::uint8_t red) {
+    document::VectorObject v;
+    v.id = p.object_ids.next();
+    v.paths.push_back(shape);
+    p.vector_objects.push_back(v);
+    document::EmbroideryObject e;
+    e.id = p.object_ids.next();
+    e.name = "Zone";
+    e.source_vector = v.id;
+    e.rgb = {red, 0, 0};
+    e.params = params(angle);
+    p.embroidery_objects.push_back(e);
+    return e.id;
+}
+
+void link_zones(document::Project& p, ObjectId x, ObjectId y, Rows rows) {
+    document::BoundaryBlendLink l;
+    l.rows = rows;
+    document::set_boundary_blend_link(p.findEmbroidery(x)->boundary_blends, y, l);
+    document::set_boundary_blend_link(p.findEmbroidery(y)->boundary_blends, x, l);
+}
+
+TJunction make_t(double angleA, double angleB, double angleC, Rows rows, bool linkBC) {
+    TJunction t;
+    t.angle_a = angleA;
+    t.angle_b = angleB;
+    t.angle_c = angleC;
+    t.a = add_zone(t.project, rect(0, 0, 10'000, 20'000), angleA, 10);
+    t.b = add_zone(t.project, rect(10'000, 10'000, 10'000, 10'000), angleB, 20);
+    t.c = add_zone(t.project, rect(10'000, 0, 10'000, 10'000), angleC, 30);
+    link_zones(t.project, t.a, t.b, rows);
+    link_zones(t.project, t.a, t.c, rows);
+    if (linkBC) {
+        link_zones(t.project, t.b, t.c, rows);
+    }
+    return t;
+}
+
+std::vector<FillStitch> layer_of(const document::Project& p, ObjectId id) {
+    const auto layer = boundary_blend_layer(p, *p.findEmbroidery(id));
+    REQUIRE(layer.has_value());
+    return layer->stitches;
+}
+
+// Longueur cousue (ni saut ni trajet caché) découpée par la fenêtre. `rowAngle` : seuls les
+// points qui suivent cette orientation (0,05 rad : rangées, liaisons exclues) ; sinon tous.
+double sewn_in_window(const std::vector<FillStitch>& f, double x0, double x1, double y0, double y1,
+                      std::optional<double> rowAngle = std::nullopt) {
+    double sum = 0.0;
+    for (std::size_t i = 1; i < f.size(); ++i) {
+        const FillStitch& p = f[i - 1];
+        const FillStitch& q = f[i];
+        if (q.jump || q.travel || p.travel || p.pos == q.pos) {
+            continue;
+        }
+        if (rowAngle && !follows(p, q, *rowAngle, 0.05)) {
+            continue;
+        }
+        const double ax = p.pos.x.value;
+        const double ay = p.pos.y.value;
+        const double dx = q.pos.x.value - ax;
+        const double dy = q.pos.y.value - ay;
+        double t0 = 0.0;
+        double t1 = 1.0;
+        bool keep = true;
+        for (const auto& [pp, qq] : {std::pair{-dx, ax - x0}, std::pair{dx, x1 - ax},
+                                     std::pair{-dy, ay - y0}, std::pair{dy, y1 - ay}}) {
+            if (pp == 0.0) {
+                keep = keep && qq >= 0.0;
+                continue;
+            }
+            const double r = qq / pp;
+            if (pp < 0.0) {
+                t0 = std::max(t0, r);
+            } else {
+                t1 = std::min(t1, r);
+            }
+        }
+        if (keep && t1 > t0) {
+            sum += (t1 - t0) * std::hypot(dx, dy);
+        }
+    }
+    return sum;
+}
+
+// Qualité de couture de plusieurs couches : un point est une rangée s'il suit l'angle d'une des
+// zones (0,05 rad) ou l'orientation attendue de la bande d'un des couples (0,3 rad, cf.
+// `seam_quality_rows`) ; liaisons et couverture comme `seam_quality`.
+SeamQuality seam_quality_multi(const std::vector<std::vector<FillStitch>>& layers,
+                               const std::vector<double>& angles,
+                               const std::vector<BandAngle>& bands, double x0, double x1, double y0,
+                               double y1) {
+    SeamQuality q;
+    std::vector<std::pair<FillStitch, FillStitch>> rows;
+    const auto isRow = [&](const FillStitch& p, const FillStitch& s) {
+        for (const double angle : angles) {
+            if (follows(p, s, angle, 0.05)) {
+                return true;
+            }
+        }
+        for (const BandAngle& band : bands) {
+            if (band.rows != Rows::PerZone && follows(p, s, band.at(p, s), 0.3)) {
+                return true;
+            }
+        }
+        return false;
+    };
+    for (const auto& f : layers) {
+        double path = 0.0;
+        for (std::size_t i = 1; i < f.size(); ++i) {
+            const FillStitch& p = f[i - 1];
+            const FillStitch& s = f[i];
+            if (s.jump || s.travel || p.travel) {
+                path = 0.0;
+                continue;
+            }
+            const double dx = static_cast<double>(s.pos.x.value - p.pos.x.value);
+            const double dy = static_cast<double>(s.pos.y.value - p.pos.y.value);
+            const double len = std::hypot(dx, dy);
+            if (len < 1.0) {
+                continue;
+            }
+            if (isRow(p, s)) {
+                rows.emplace_back(p, s);
+                path = 0.0;
+                continue;
+            }
+            path += len;
+            const double mx = 0.5 * (p.pos.x.value + s.pos.x.value);
+            const double my = 0.5 * (p.pos.y.value + s.pos.y.value);
+            if (mx >= x0 && mx <= x1 && my >= y0 && my <= y1) {
+                q.longest_link = std::max(q.longest_link, path);
+            }
+        }
+    }
+    int total = 0;
+    int empty = 0;
+    for (double y = y0; y <= y1; y += 200.0) {
+        for (double x = x0; x <= x1; x += 200.0) {
+            ++total;
+            bool hit = false;
+            for (const auto& [p, s] : rows) {
+                const double ax = p.pos.x.value;
+                const double ay = p.pos.y.value;
+                const double dx = s.pos.x.value - ax;
+                const double dy = s.pos.y.value - ay;
+                const double l2 = dx * dx + dy * dy;
+                double t = l2 > 0.0 ? ((x - ax) * dx + (y - ay) * dy) / l2 : 0.0;
+                t = std::clamp(t, 0.0, 1.0);
+                if (std::hypot(ax + t * dx - x, ay + t * dy - y) <= 300.0) {
+                    hit = true;
+                    break;
+                }
+            }
+            empty += hit ? 0 : 1;
+        }
+    }
+    q.uncovered = total > 0 ? static_cast<double>(empty) / total : 0.0;
+    return q;
+}
+
+struct TMeasure {
+    SeamQuality seam;
+    double sewn{0.0};   // longueur cousue des trois couches dans la fenêtre
+    double plain{0.0};  // aplat du carré entier à l'angle de A, même fenêtre
+    double single{0.0}; // un seul couple (A contre la moitié droite), même fenêtre
+};
+
+constexpr double kTx0 = 5'000.0;
+constexpr double kTx1 = 15'000.0;
+constexpr double kTy0 = 5'000.0;
+constexpr double kTy1 = 15'000.0;
+
+TMeasure measure_t(const TJunction& t, Rows rows) {
+    const auto la = layer_of(t.project, t.a);
+    const auto lb = layer_of(t.project, t.b);
+    const auto lc = layer_of(t.project, t.c);
+    // Champs des trois couples (orientation attendue des rangées de bande), sens canonique.
+    BoundaryBlendSpec spec;
+    spec.rows = rows;
+    const auto ra = rect(0, 0, 10'000, 20'000);
+    const auto rb = rect(10'000, 10'000, 10'000, 10'000);
+    const auto rc = rect(10'000, 0, 10'000, 10'000);
+    const auto pab = plan_boundary_blend(ra, rb, spec);
+    const auto pac = plan_boundary_blend(ra, rc, spec);
+    const auto pbc = plan_boundary_blend(rb, rc, spec);
+    REQUIRE(pab.has_value());
+    REQUIRE(pac.has_value());
+    REQUIRE(pbc.has_value());
+    const std::vector<BandAngle> bands{{pab->field.get(), rows, t.angle_a, t.angle_b},
+                                       {pac->field.get(), rows, t.angle_a, t.angle_c},
+                                       {pbc->field.get(), rows, t.angle_b, t.angle_c}};
+    TMeasure m;
+    m.seam = seam_quality_multi({la, lb, lc}, {t.angle_a, t.angle_b, t.angle_c}, bands, kTx0, kTx1,
+                                kTy0, kTy1);
+    // Points de rangée à l'angle de A seulement (mesure utile quand les trois angles sont égaux).
+    const double ra0 = t.angle_a;
+    m.sewn = sewn_in_window(la, kTx0, kTx1, kTy0, kTy1, ra0) +
+             sewn_in_window(lb, kTx0, kTx1, kTy0, kTy1, ra0) +
+             sewn_in_window(lc, kTx0, kTx1, kTy0, kTy1, ra0);
+    m.plain = sewn_in_window(fill_tatami(rect(0, 0, 20'000, 20'000), params(t.angle_a)), kTx0, kTx1,
+                             kTy0, kTy1, ra0);
+    // Référence « un seul couple » : A contre la moitié droite entière, même réglage (son
+    // recouvrement cœur-bande voulu est compté de la même façon).
+    const auto single = fill_boundary_blend_tatami(
+        ra, params(t.angle_a), rect(10'000, 0, 10'000, 20'000), params(t.angle_a), spec);
+    REQUIRE(single.has_value());
+    m.single = sewn_in_window(single->a, kTx0, kTx1, kTy0, kTy1, ra0) +
+               sewn_in_window(single->b, kTx0, kTx1, kTy0, kTy1, ra0);
+    return m;
+}
+
+} // namespace
+
+TEST_CASE("multi blend: T junction seams have no long links nor bare fabric",
+          "[boundary_blend][multi]") {
+    struct Angles {
+        double a, b, c;
+    };
+    for (const Rows rows : {Rows::PerZone, Rows::Shared, Rows::Rotating, Rows::Interlaced}) {
+        for (const Angles ang : {Angles{0.0, 0.0, 0.0}, Angles{0.0, 0.785, -0.52}}) {
+            for (const bool linkBC : {true, false}) {
+                const auto t = make_t(ang.a, ang.b, ang.c, rows, linkBC);
+                const TMeasure m = measure_t(t, rows);
+                INFO("rows " << static_cast<int>(rows) << " angles " << ang.a << "/" << ang.b << "/"
+                             << ang.c << " BC " << linkBC << " : link " << m.seam.longest_link
+                             << " uncovered " << m.seam.uncovered << " sewn " << m.sewn << " plain "
+                             << m.plain << " single " << m.single);
+                CHECK(m.seam.longest_link <= 2'300.0);
+                CHECK(m.seam.uncovered <= 0.01);
+                const bool sameGrid = ang.b == ang.a && ang.c == ang.a;
+                if (sameGrid && rows == Rows::PerZone) {
+                    // Même angle et même écart : chaque morceau de rangée cousu une seule fois.
+                    CHECK(std::abs(m.sewn - m.plain) <= 0.03 * m.plain);
+                }
+                if (sameGrid && rows != Rows::PerZone && !linkBC) {
+                    // Modes « bande » : pas plus que le recouvrement cœur-bande voulu d'un couple
+                    // seul (B et C sans fondu entre elles : même frontière qu'A | moitié droite).
+                    CHECK(std::abs(m.sewn - m.single) <= 0.05 * m.single);
+                }
+            }
+        }
+    }
+}
+
+TEST_CASE("multi blend: the second blend of a zone changes its layer", "[boundary_blend][multi]") {
+    for (const Rows rows : {Rows::PerZone, Rows::Shared}) {
+        auto t = make_t(0.0, 0.785, -0.52, rows, false);
+        const auto both = layer_of(t.project, t.a);
+        // Retrait du lien A-C (des deux côtés) : A ne garde que le fondu A-B.
+        document::set_boundary_blend_link(t.project.findEmbroidery(t.a)->boundary_blends, t.c,
+                                          std::nullopt);
+        document::set_boundary_blend_link(t.project.findEmbroidery(t.c)->boundary_blends, t.a,
+                                          std::nullopt);
+        const auto onlyAB = layer_of(t.project, t.a);
+        CHECK(both != onlyAB);
+        // A coud dans la demi-bande de C seulement quand A-C est en fondu.
+        CHECK(sewn_in_window(both, 10'300.0, 12'500.0, 1'000.0, 8'000.0) > 0.0);
+        CHECK(sewn_in_window(onlyAB, 10'300.0, 12'500.0, 1'000.0, 8'000.0) == 0.0);
+    }
+}
+
+TEST_CASE("multi blend: group layers are deterministic and the group is listed",
+          "[boundary_blend][multi]") {
+    const auto t = make_t(0.0, 0.785, -0.52, Rows::Rotating, true);
+    for (const ObjectId id : {t.a, t.b, t.c}) {
+        CHECK(layer_of(t.project, id) == layer_of(t.project, id));
+        const auto group = boundary_blend_group(t.project, id);
+        REQUIRE(group.size() == 3);
+        CHECK(group[0] == document::BoundaryBlendPair{t.a, t.b});
+        CHECK(group[1] == document::BoundaryBlendPair{t.a, t.c});
+        CHECK(group[2] == document::BoundaryBlendPair{t.b, t.c});
+    }
 }
