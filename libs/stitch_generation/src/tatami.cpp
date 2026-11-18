@@ -728,8 +728,10 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
     //    la rangÃ©e). C'est ce qui permet de contourner les trous (Â§15.5).
     //    Masque : les rangées gardées ne sont plus consécutives (densité d → une rangée sur
     //    ≈ 1/d). On relie à la PROCHAINE rangée gardée, à au plus `kMaskedRowGap` rangées ; le
-    //    trajet reste validé géométriquement au parcours (saut s'il sort de la région).
-    constexpr int kMaskedRowGap = 12;
+    //    trajet reste validé géométriquement au parcours (saut s'il sort de la région). 6 : le
+    //    fondu à la frontière ne descend pas sous une densité de 0,2 (au plus 5 rangées sautées) ;
+    //    une liaison plus longue serait un long point visible sur l'autre couche.
+    constexpr int kMaskedRowGap = 6;
     std::vector<std::vector<int>> adj(static_cast<std::size_t>(n));
     for (auto rowIt = byRow.begin(); rowIt != byRow.end(); ++rowIt) {
         const int row = rowIt->first;

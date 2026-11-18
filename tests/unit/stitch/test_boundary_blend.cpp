@@ -3,8 +3,11 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <initializer_list>
+#include <utility>
 #include <vector>
 
 #include "openstitch/geometry/boolean.hpp"
@@ -168,8 +171,10 @@ TEST_CASE("boundary blend: different angles overlap to about one plain layer", "
         sewn_in_band(fills->a, 7'500.0, 12'500.0) + vertical(fills->b, 7'500.0, 12'500.0);
     const double ref = sewn_in_band(plain, 7'500.0, 12'500.0);
     INFO("A+B " << sum << " plain " << ref);
+    // Superposition volontairement renforcée (×1,5 par couche dans la bande) : deux couches
+    // indépendantes à leur part exacte laissaient le tissu nu par endroits (recette Studio).
     CHECK(sum >= 0.85 * ref);
-    CHECK(sum <= 1.15 * ref);
+    CHECK(sum <= 1.3 * ref);
 }
 
 TEST_CASE("boundary blend: refusals carry stable codes", "[boundary_blend]") {
@@ -305,4 +310,432 @@ TEST_CASE("boundary blend: directional pair is deterministic", "[boundary_blend]
     CHECK_FALSE(f1->b.empty());
     CHECK(f1->a == f2->a);
     CHECK(f1->b == f2->b);
+}
+
+// --- Qualité de couture le long de la frontière ---------------------------------------------
+
+namespace {
+
+struct SeamQuality {
+    double longest_link{0.0}; // plus long trajet cousu hors rangée dans la bande (µm)
+    double uncovered{0.0};    // part des cases de la bande loin de tout point cousu
+};
+
+// Trajet de liaison : suite de points cousus consécutifs (sauts exclus, trajets cachés compris :
+// un trajet caché que rien ne recouvre reste visible) non parallèles aux rangées de leur couche.
+// Couverture : case de 0,2 mm couverte si un point de RANGÉE passe à moins de 0,3 mm (fil
+// ≈ 0,4 mm, rangées à 0,4 mm : un aplat couvre tout).
+SeamQuality seam_quality(const std::vector<FillStitch>& a, double angle_a,
+                         const std::vector<FillStitch>& b, double angle_b, double x0, double x1,
+                         double y0, double y1) {
+    SeamQuality q;
+    struct Seg {
+        double ax, ay, bx, by;
+    };
+    std::vector<Seg> rows;
+    const auto inside = [&](double x, double y) {
+        return x >= x0 && x <= x1 && y >= y0 && y <= y1;
+    };
+    const auto scan = [&](const std::vector<FillStitch>& f, double angle) {
+        const double ux = std::cos(angle);
+        const double uy = std::sin(angle);
+        double path = 0.0;
+        for (std::size_t i = 1; i < f.size(); ++i) {
+            const FillStitch& p = f[i - 1];
+            const FillStitch& s = f[i];
+            // Sauts et trajets cachés (recousus par la rangée suivante) : hors liaison.
+            if (s.jump || s.travel || p.travel) {
+                path = 0.0;
+                continue;
+            }
+            const Seg g{static_cast<double>(p.pos.x.value), static_cast<double>(p.pos.y.value),
+                        static_cast<double>(s.pos.x.value), static_cast<double>(s.pos.y.value)};
+            const double dx = g.bx - g.ax;
+            const double dy = g.by - g.ay;
+            const double len = std::hypot(dx, dy);
+            if (len < 1.0) {
+                continue;
+            }
+            const bool rowStitch = !s.travel && std::abs(dx * uy - dy * ux) / len <= 0.05;
+            if (rowStitch) {
+                rows.push_back(g);
+                path = 0.0;
+                continue;
+            }
+            path += len;
+            if (inside(0.5 * (g.ax + g.bx), 0.5 * (g.ay + g.by))) {
+                q.longest_link = std::max(q.longest_link, path);
+            }
+        }
+    };
+    scan(a, angle_a);
+    scan(b, angle_b);
+    int total = 0;
+    int empty = 0;
+    for (double y = y0; y <= y1; y += 200.0) {
+        for (double x = x0; x <= x1; x += 200.0) {
+            ++total;
+            bool hit = false;
+            for (const Seg& g : rows) {
+                const double dx = g.bx - g.ax;
+                const double dy = g.by - g.ay;
+                const double l2 = dx * dx + dy * dy;
+                double t = l2 > 0.0 ? ((x - g.ax) * dx + (y - g.ay) * dy) / l2 : 0.0;
+                t = std::clamp(t, 0.0, 1.0);
+                if (std::hypot(g.ax + t * dx - x, g.ay + t * dy - y) <= 300.0) {
+                    hit = true;
+                    break;
+                }
+            }
+            empty += hit ? 0 : 1;
+        }
+    }
+    q.uncovered = total > 0 ? static_cast<double>(empty) / total : 0.0;
+    return q;
+}
+
+geometry::PathSet polygon(std::initializer_list<std::pair<std::int32_t, std::int32_t>> pts) {
+    geometry::PathSet set;
+    set.outer.closed = true;
+    for (const auto& [x, y] : pts) {
+        set.outer.nodes.push_back(geometry::PathNode{at(x, y), geometry::NodeType::Corner, {}, {}});
+    }
+    return set;
+}
+
+} // namespace
+
+TEST_CASE("boundary blend: seam has no long links nor bare fabric", "[boundary_blend][seam]") {
+    // Frontière droite puis brisée (zigzag oblique), angles égaux ou différents.
+    const auto a1 = rect(0, 0, 10'000, 10'000);
+    const auto b1 = rect(10'000, 0, 10'000, 10'000);
+    const auto a2 = polygon({{0, 0}, {9'000, 0}, {12'000, 5'000}, {9'000, 10'000}, {0, 10'000}});
+    const auto b2 =
+        polygon({{9'000, 0}, {20'000, 0}, {20'000, 10'000}, {9'000, 10'000}, {12'000, 5'000}});
+    // Zones rentrées de leur retrait de bord : couloir de 0,4 mm entre elles.
+    const auto a3 = rect(0, 0, 9'800, 10'000);
+    const auto b3 = rect(10'200, 0, 9'800, 10'000);
+    const std::vector<std::pair<const geometry::PathSet*, const geometry::PathSet*>> pairs{
+        {&a1, &b1}, {&a2, &b2}, {&a3, &b3}};
+    for (std::size_t shape = 0; shape < pairs.size(); ++shape) {
+        const auto& a = *pairs[shape].first;
+        const auto& b = *pairs[shape].second;
+        for (const auto& [angleA, angleB] :
+             {std::pair{0.0, 0.0}, std::pair{0.785, -0.52}, std::pair{0.0, 1.5707963267948966}}) {
+            const auto fills = fill_boundary_blend_tatami(a, params(angleA), b, params(angleB), {});
+            REQUIRE(fills.has_value());
+            const auto q = seam_quality(fills->a, angleA, fills->b, angleB, 6'500.0, 14'500.0,
+                                        1'000.0, 9'000.0);
+            INFO("shape " << shape << " angles " << angleA << " / " << angleB << " : link "
+                          << q.longest_link << " um, uncovered " << q.uncovered);
+            // Pas de liaison visible plus longue qu'un pas de rangée en biais (≈ 2 mm), pas de
+            // tissu nu (avant correction : liaisons de 5 mm, 3,7 % nu, couloir nu entre zones).
+            CHECK(q.longest_link <= 2'300.0);
+            CHECK(q.uncovered <= 0.01);
+        }
+    }
+}
+
+// --- Sens des rangées dans la bande (§6.3) : Shared et Rotating ----------------------------
+
+namespace {
+
+using Rows = document::BoundaryBlendRows;
+
+double wrap_row_angle(double d) {
+    constexpr double kPi = 3.14159265358979323846;
+    double r = std::fmod(d, kPi);
+    if (r > 0.5 * kPi) {
+        r -= kPi;
+    } else if (r <= -0.5 * kPi) {
+        r += kPi;
+    }
+    return r;
+}
+
+// Le segment [p ; q] suit-il l'orientation `angle` (écart de direction, modulo π, <= tol rad) ?
+bool follows(const FillStitch& p, const FillStitch& q, double angle, double tol) {
+    const double dx = static_cast<double>(q.pos.x.value - p.pos.x.value);
+    const double dy = static_cast<double>(q.pos.y.value - p.pos.y.value);
+    return std::abs(wrap_row_angle(std::atan2(dy, dx) - angle)) <= tol;
+}
+
+// Orientation attendue d'une rangée de la bande au milieu de [p ; q].
+struct BandAngle {
+    const BoundaryBlendField* field;
+    Rows rows;
+    double angle_a;
+    double angle_b;
+    [[nodiscard]] double at(const FillStitch& p, const FillStitch& q) const {
+        if (rows == Rows::Shared) {
+            return boundary_blend_shared_angle(angle_a, angle_b);
+        }
+        const Vec2um mid{Micrometers{(p.pos.x.value + q.pos.x.value) / 2},
+                         Micrometers{(p.pos.y.value + q.pos.y.value) / 2}};
+        return boundary_blend_row_angle(*field, angle_a, angle_b, mid);
+    }
+};
+
+// Longueur des points de RANGÉE de la bande (orientation attendue à 0,12 rad près : grille du
+// champ et cordes des rangées courbes) découpée par la fenêtre [x0 ; x1] × [y0 ; y1].
+double band_row_length(const std::vector<FillStitch>& f, const BandAngle& band, double x0,
+                       double x1, double y0, double y1) {
+    double sum = 0.0;
+    for (std::size_t i = 1; i < f.size(); ++i) {
+        const FillStitch& p = f[i - 1];
+        const FillStitch& q = f[i];
+        if (q.jump || q.travel || p.travel || p.pos == q.pos) {
+            continue;
+        }
+        if (!follows(p, q, band.at(p, q), 0.12)) {
+            continue;
+        }
+        // Découpage de Liang-Barsky.
+        const double ax = p.pos.x.value;
+        const double ay = p.pos.y.value;
+        const double dx = q.pos.x.value - ax;
+        const double dy = q.pos.y.value - ay;
+        double t0 = 0.0;
+        double t1 = 1.0;
+        bool keep = true;
+        for (const auto& [pp, qq] : {std::pair{-dx, ax - x0}, std::pair{dx, x1 - ax},
+                                     std::pair{-dy, ay - y0}, std::pair{dy, y1 - ay}}) {
+            if (pp == 0.0) {
+                keep = keep && qq >= 0.0;
+                continue;
+            }
+            const double r = qq / pp;
+            if (pp < 0.0) {
+                t0 = std::max(t0, r);
+            } else {
+                t1 = std::min(t1, r);
+            }
+        }
+        if (keep && t1 > t0) {
+            sum += (t1 - t0) * std::hypot(dx, dy);
+        }
+    }
+    return sum;
+}
+
+// Qualité de couture générale : un point est une rangée s'il suit l'angle de sa zone (cœur) ou
+// l'orientation attendue de la bande (même logique de liaisons et de couverture que
+// `seam_quality`).
+SeamQuality seam_quality_rows(const std::vector<FillStitch>& a, double angle_a,
+                              const std::vector<FillStitch>& b, double angle_b,
+                              const BandAngle& band, double x0, double x1, double y0, double y1) {
+    SeamQuality q;
+    std::vector<std::pair<FillStitch, FillStitch>> rows;
+    const auto inside = [&](double x, double y) {
+        return x >= x0 && x <= x1 && y >= y0 && y <= y1;
+    };
+    const auto scan = [&](const std::vector<FillStitch>& f, double angle) {
+        double path = 0.0;
+        for (std::size_t i = 1; i < f.size(); ++i) {
+            const FillStitch& p = f[i - 1];
+            const FillStitch& s = f[i];
+            if (s.jump || s.travel || p.travel) {
+                path = 0.0;
+                continue;
+            }
+            const double dx = static_cast<double>(s.pos.x.value - p.pos.x.value);
+            const double dy = static_cast<double>(s.pos.y.value - p.pos.y.value);
+            const double len = std::hypot(dx, dy);
+            if (len < 1.0) {
+                continue;
+            }
+            // Bande : 0,3 rad, car la dernière corde d'une rangée courbe qui aborde le contour en
+            // biais est replacée à l'intérieur du contour (écart mesuré jusqu'à 0,27 rad) ; une
+            // liaison entre rangées voisines reste presque perpendiculaire aux rangées.
+            if (follows(p, s, angle, 0.05) || follows(p, s, band.at(p, s), 0.3)) {
+                rows.emplace_back(p, s);
+                path = 0.0;
+                continue;
+            }
+            path += len;
+            if (inside(0.5 * (p.pos.x.value + s.pos.x.value),
+                       0.5 * (p.pos.y.value + s.pos.y.value))) {
+                q.longest_link = std::max(q.longest_link, path);
+            }
+        }
+    };
+    scan(a, angle_a);
+    scan(b, angle_b);
+    int total = 0;
+    int empty = 0;
+    for (double y = y0; y <= y1; y += 200.0) {
+        for (double x = x0; x <= x1; x += 200.0) {
+            ++total;
+            bool hit = false;
+            for (const auto& [p, s] : rows) {
+                const double ax = p.pos.x.value;
+                const double ay = p.pos.y.value;
+                const double dx = s.pos.x.value - ax;
+                const double dy = s.pos.y.value - ay;
+                const double l2 = dx * dx + dy * dy;
+                double t = l2 > 0.0 ? ((x - ax) * dx + (y - ay) * dy) / l2 : 0.0;
+                t = std::clamp(t, 0.0, 1.0);
+                if (std::hypot(ax + t * dx - x, ay + t * dy - y) <= 300.0) {
+                    hit = true;
+                    break;
+                }
+            }
+            empty += hit ? 0 : 1;
+        }
+    }
+    q.uncovered = total > 0 ? static_cast<double>(empty) / total : 0.0;
+    return q;
+}
+
+struct RowsCase {
+    geometry::PathSet a;
+    geometry::PathSet b;
+    // Fenêtre entièrement dans la bande commune (partition).
+    double x0, x1, y0, y1;
+};
+
+std::vector<RowsCase> rows_cases() {
+    return {
+        {rect(0, 0, 10'000, 10'000), rect(10'000, 0, 10'000, 10'000), 8'000.0, 12'000.0, 1'000.0,
+         9'000.0},
+        {polygon({{0, 0}, {9'000, 0}, {12'000, 5'000}, {9'000, 10'000}, {0, 10'000}}),
+         polygon({{9'000, 0}, {20'000, 0}, {20'000, 10'000}, {9'000, 10'000}, {12'000, 5'000}}),
+         10'000.0, 11'000.0, 2'000.0, 8'000.0},
+    };
+}
+
+constexpr std::pair<double, double> kRowsAngles[] = {{0.785, -0.52}, {0.0, 1.5707963267948966}};
+
+} // namespace
+
+TEST_CASE("boundary blend rows: shared and rotating partition the band exactly",
+          "[boundary_blend][rows]") {
+    const auto cases = rows_cases();
+    for (const Rows rows : {Rows::Shared, Rows::Rotating}) {
+        for (std::size_t shape = 0; shape < cases.size(); ++shape) {
+            const RowsCase& c = cases[shape];
+            for (const auto& [angleA, angleB] : kRowsAngles) {
+                BoundaryBlendSpec spec;
+                spec.rows = rows;
+                const auto plan = plan_boundary_blend(c.a, c.b, spec);
+                REQUIRE(plan.has_value());
+                const BandAngle band{plan->field.get(), rows, angleA, angleB};
+                const auto fills =
+                    fill_boundary_blend_tatami(c.a, params(angleA), c.b, params(angleB), spec);
+                const auto ref =
+                    boundary_blend_band_rows(c.a, params(angleA), c.b, params(angleB), spec);
+                REQUIRE(fills.has_value());
+                REQUIRE(ref.has_value());
+                const double la = band_row_length(fills->a, band, c.x0, c.x1, c.y0, c.y1);
+                const double lb = band_row_length(fills->b, band, c.x0, c.x1, c.y0, c.y1);
+                const double lr = band_row_length(*ref, band, c.x0, c.x1, c.y0, c.y1);
+                const auto q = seam_quality_rows(fills->a, angleA, fills->b, angleB, band, 6'500.0,
+                                                 14'500.0, 1'000.0, 9'000.0);
+                INFO("rows " << static_cast<int>(rows) << " shape " << shape << " angles " << angleA
+                             << " / " << angleB << " : A " << la << " B " << lb << " plain " << lr
+                             << " link " << q.longest_link << " uncovered " << q.uncovered);
+                REQUIRE(lr > 0.0);
+                CHECK(la > 0.0);
+                CHECK(lb > 0.0);
+                CHECK(std::abs(la + lb - lr) <= 0.03 * lr);
+                CHECK(q.longest_link <= 2'300.0);
+                CHECK(q.uncovered <= 0.01);
+            }
+        }
+    }
+}
+
+TEST_CASE("boundary blend rows: rotating rows turn from angle A to angle B",
+          "[boundary_blend][rows]") {
+    const auto cases = rows_cases();
+    for (std::size_t shape = 0; shape < cases.size(); ++shape) {
+        const RowsCase& c = cases[shape];
+        for (const auto& [angleA, angleB] : kRowsAngles) {
+            BoundaryBlendSpec spec;
+            spec.rows = Rows::Rotating;
+            const auto plan = plan_boundary_blend(c.a, c.b, spec);
+            const auto fills =
+                fill_boundary_blend_tatami(c.a, params(angleA), c.b, params(angleB), spec);
+            REQUIRE(plan.has_value());
+            REQUIRE(fills.has_value());
+            const BoundaryBlendField& field = *plan->field;
+            const double mid = boundary_blend_shared_angle(angleA, angleB);
+            // Écart médian à l'angle visé des points cousus d'au moins 0,8 mm (rangées : liaisons
+            // minoritaires) dont le milieu tombe dans la tranche [s0 ; s1] de distance signée.
+            const auto median_dev = [&](double s0, double s1, double target) {
+                std::vector<double> dev;
+                for (const auto* f : {&fills->a, &fills->b}) {
+                    for (std::size_t i = 1; i < f->size(); ++i) {
+                        const FillStitch& p = (*f)[i - 1];
+                        const FillStitch& q = (*f)[i];
+                        const double dx = static_cast<double>(q.pos.x.value - p.pos.x.value);
+                        const double dy = static_cast<double>(q.pos.y.value - p.pos.y.value);
+                        if (q.jump || q.travel || std::hypot(dx, dy) < 800.0) {
+                            continue;
+                        }
+                        const Vec2um m{Micrometers{(p.pos.x.value + q.pos.x.value) / 2},
+                                       Micrometers{(p.pos.y.value + q.pos.y.value) / 2}};
+                        const double s = field.signed_distance(m);
+                        if (s >= s0 && s <= s1 && m.y.value >= 1'000 && m.y.value <= 9'000) {
+                            dev.push_back(wrap_row_angle(std::atan2(dy, dx) - target));
+                        }
+                    }
+                }
+                CHECK(dev.size() >= 5);
+                if (dev.empty()) {
+                    return 10.0;
+                }
+                std::sort(dev.begin(), dev.end());
+                return dev[dev.size() / 2];
+            };
+            // Milieu de bande : u(1/2) = 1/2, angle médian ; à plus de 0,25 rad des deux angles.
+            const double dMid = median_dev(-400.0, 400.0, mid);
+            // Bords de bande (0,05 à 0,55 mm à l'intérieur) : u <= 0,033, soit <= 0,05 rad de
+            // l'angle de la zone ; tolérance 0,15 rad (grille du champ à 0,4 mm, cordes).
+            const double dA = median_dev(-2'450.0, -1'950.0, angleA);
+            const double dB = median_dev(1'950.0, 2'450.0, angleB);
+            INFO("shape " << shape << " angles " << angleA << " / " << angleB << " : mid " << dMid
+                          << " edgeA " << dA << " edgeB " << dB);
+            CHECK(std::abs(dMid) <= 0.2);
+            CHECK(std::abs(wrap_row_angle(mid + dMid - angleA)) >= 0.25);
+            CHECK(std::abs(wrap_row_angle(mid + dMid - angleB)) >= 0.25);
+            CHECK(std::abs(dA) <= 0.15);
+            CHECK(std::abs(dB) <= 0.15);
+        }
+    }
+}
+
+TEST_CASE("boundary blend rows: shared and rotating are deterministic, directional falls back",
+          "[boundary_blend][rows]") {
+    const auto a = rect(0, 0, 10'000, 10'000);
+    const auto b = rect(10'000, 0, 10'000, 10'000);
+    const BoundaryBlendSpec perZone;
+    const auto base = fill_boundary_blend_tatami(a, params(0.785), b, params(-0.52), perZone);
+    REQUIRE(base.has_value());
+    for (const Rows rows : {Rows::Shared, Rows::Rotating}) {
+        BoundaryBlendSpec spec;
+        spec.rows = rows;
+        const auto f1 = fill_boundary_blend_tatami(a, params(0.785), b, params(-0.52), spec);
+        const auto f2 = fill_boundary_blend_tatami(a, params(0.785), b, params(-0.52), spec);
+        REQUIRE(f1.has_value());
+        REQUIRE(f2.has_value());
+        CHECK(f1->a == f2->a);
+        CHECK(f1->b == f2->b);
+        CHECK(f1->a != base->a); // le réglage change bien la génération
+
+        // Zone directionnelle : repli documenté sur PerZone.
+        const BoundaryBlendFillParams pa{params(0.0)};
+        const BoundaryBlendFillParams pb{directional_params(10'000, 0, 20'000, 10'000)};
+        const auto fallback = fill_boundary_blend(a, pa, b, pb, spec);
+        const auto reference = fill_boundary_blend(a, pa, b, pb, perZone);
+        REQUIRE(fallback.has_value());
+        REQUIRE(reference.has_value());
+        CHECK(fallback->a == reference->a);
+        CHECK(fallback->b == reference->b);
+    }
+    CHECK(boundary_blend_shared_angle(0.0, 1.5707963267948966) ==
+          Catch::Approx(0.7853981633974483));
+    CHECK(boundary_blend_shared_angle(0.785, -0.52) == Catch::Approx(0.1325));
+    CHECK(boundary_blend_shared_angle(0.1, 3.0) ==
+          Catch::Approx(0.1 + 0.5 * (2.9 - 3.14159265358979323846)));
 }

@@ -535,13 +535,17 @@ json embroidery_json(const document::Project& project, const document::Embroider
         for (const auto& line : blend->frontier) {
             frontier_mm += geometry::polyline_length(line.points) / 1000.0;
         }
-        j["boundary_blend"] = json{{"partner", blend->b.value},
-                                   {"width_mm", mm(blend->options.width_a)},
-                                   {"partner_width_mm", mm(blend->options.width_b)},
-                                   {"curve", density_curve_name(blend->options.curve)},
-                                   {"active", blend->active},
-                                   {"manual_frontier", !blend->options.manual_frontier.empty()},
-                                   {"frontier_mm", std::round(frontier_mm * 1000.0) / 1000.0}};
+        j["boundary_blend"] = json{
+            {"partner", blend->b.value},
+            {"width_mm", mm(blend->options.width_a)},
+            {"partner_width_mm", mm(blend->options.width_b)},
+            {"curve", density_curve_name(blend->options.curve)},
+            {"active", blend->active},
+            {"manual_frontier", !blend->options.manual_frontier.empty()},
+            {"rows", blend->options.rows == document::BoundaryBlendRows::Shared     ? "shared"
+                     : blend->options.rows == document::BoundaryBlendRows::Rotating ? "rotating"
+                                                                                    : "per_zone"},
+            {"frontier_mm", std::round(frontier_mm * 1000.0) / 1000.0}};
     }
     if (const auto* v = project.findObject(e.source_vector)) {
         j["region_area_mm2"] = vector_area_mm2(*v);

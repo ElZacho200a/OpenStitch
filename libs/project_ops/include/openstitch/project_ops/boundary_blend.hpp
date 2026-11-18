@@ -23,6 +23,8 @@ struct BoundaryBlendOptions {
     // E_BLEND_FRONTIER_SHORT (moins de deux points ou de 1 mm) et E_BLEND_FRONTIER_FAR (une zone
     // hors de sa demi-bande). Avec une frontière tracée, les zones n'ont pas à se toucher.
     std::vector<Vec2um> manual_frontier;
+    // Sens des rangées dans la bande : par zone (défaut), angle commun, ou rangées qui tournent.
+    document::BoundaryBlendRows rows{document::BoundaryBlendRows::PerZone};
 
     bool operator==(const BoundaryBlendOptions&) const = default;
 };

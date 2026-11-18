@@ -16,6 +16,7 @@ ColumnLayout {
     readonly property bool refused: ready && !hasBlend && controller.refusal !== ""
     // Transition simplifiée : mêmes profils que le fondu de fils (linéaire, lissée, nette).
     readonly property var softnessCurves: [0, 1, 2]
+    readonly property var rowsKeys: ["per_zone", "shared", "rotating"]
 
     spacing: 6
     visible: hasBlend || canCreate || refused
@@ -107,6 +108,21 @@ ColumnLayout {
             currentIndex: root.ready ? root.curveIndex(root.controller.curve) : 0
             Accessible.name: qsTr("Profil de transition du fondu")
             onActivated: if (root.hasBlend) root.commit()
+        }
+        Text {
+            text: qsTr("Sens des rangées")
+            color: Theme.muted
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.captionSize
+        }
+        StudioComboBox {
+            id: rowsCombo
+            objectName: "blendRowsCombo"
+            model: [qsTr("Chaque zone son angle"), qsTr("Angle commun"), qsTr("Rangées qui tournent")]
+            currentIndex: root.ready ? Math.max(0, root.rowsKeys.indexOf(root.controller.rows)) : 0
+            Accessible.name: qsTr("Sens des rangées dans la bande du fondu")
+            onActivated: root.controller.setRows(root.rowsKeys[currentIndex])
+            StudioToolTip { text: qsTr("L'angle commun montre une cassure au bord de la bande ; les rangées qui tournent suivent les deux angles en continu.") }
         }
     }
     RowLayout {

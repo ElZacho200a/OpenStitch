@@ -269,6 +269,70 @@ autre limite : outil « Tracer la frontière » (polyligne ou Bézier) stocké d
 6. **Cache** : la clé de génération de A inclut désormais la géométrie et les paramètres de B
    (et inversement). Garde à ajouter : modifier B invalide A.
 
+### 6.2 Corrections après la première recette Studio (2026-11-18)
+
+Captures Studio d'un motif à limite douce et courbe (deux tatamis d'angles différents) : longs
+traits le long de la frontière, filet de tissu nu, liaisons visibles. Causes et corrections :
+
+- **Sous-couche le long de la frontière** : calculée sur la zone entière, son tour de bord
+  suivait la frontière, là où la couche supérieure clairsemée ne la couvre plus. Elle est
+  désormais calculée sur la zone privée de sa demi-bande (`BoundaryBlendLayer::underlay_zones`).
+- **Couloir entre zones** : les zones arrivent rentrées de leur retrait de bord ; le couloir
+  qui les sépare n'appartenait à aucune région prolongée. Les régions prolongées sont prises
+  dans la fermeture de A ∪ B (écart ≤ tolérance de contact).
+- **Couche presque vide** : à densité `d`, une rangée gardée sur ≈ `1/d`, d'où des liaisons de
+  plusieurs millimètres. Densité plancher `0,2` (en dessous rien, au-dessus de `0,8` tout ; le
+  partage reste exact), liaison à au plus 6 rangées.
+- **Superposition** (grilles différentes) : deux couches indépendantes à leur part exacte
+  laissent des creux communs. Chaque couche garde `min(1 ; 1,5 × part)` : tissu nu < 0,5 % sur
+  le banc, ≈ 1,15 couche en moyenne dans la bande.
+
+Mesure : `test_boundary_blend.cpp`, cas `seam has no long links nor bare fabric` (frontière
+droite, brisée, zones séparées d'un couloir ; angles égaux, croisés, quelconques). Reste à
+vérifier sur tissu.
+
+### 6.3 Sens des rangées dans la bande (`BoundaryBlendRows`)
+
+Deux tatamis d'angles différents, en `PerZone` (comportement des lots L1b-L1c, inchangé octet pour
+octet) : chaque couleur garde son angle dans la bande, deux trames croisées en superposition
+renforcée (×1,5). Deux autres modes, pour deux zones **tatami** :
+
+- **Structure commune** (`fill_boundary_blend`, `boundary_blend.cpp`). Chaque couche est cousue en
+  deux parties : son **cœur** (zone privée de sa demi-bande, son angle, sans masque, tatami
+  habituel), puis la **bande commune** : `A ∩ demi-bande(w_A)` réunie à la fermeture de `A ∪ B`
+  privée de `A` dans `demi-bande(w_B)` (le couloir de retrait est donc cousu), élargie de
+  `kBoundaryBlendSeamOverlap` = 0,3 mm sur chaque cœur. Les deux couches cousent la bande sur les
+  **mêmes rangées** (même région, mêmes paramètres, rangées indépendantes du masque) : A garde la
+  tranche basse du masque `[0 ; d_A)`, B la tranche haute. **Partition exacte**, pas de
+  superposition ni de renfort. Dans le recouvrement, `d_A` vaut 1 côté A (0 côté B) : seule la
+  couleur du cœur y coud. Paramètres de la bande : ceux de A (zone d'identifiant le plus petit :
+  longueur de point, décalage, compensation), écart = le plus petit des deux.
+- **Shared** : rangées droites à l'angle commun, moyenne circulaire des deux angles modulo π
+  (`boundary_blend_shared_angle` : milieu de l'arc le plus court ; à π/2 d'écart exact, celui
+  qui part de A dans le sens direct). Grille tatami ancrée. **Cassure d'angle acceptée** au bord
+  de bande, entre le cœur et la bande (au plus la moitié de l'écart des angles).
+- **Rotating** : rangées courbes, orientation `θ(p) = θ_A + Δ × u(t)` (`boundary_blend_row_angle`)
+  avec `Δ` = écart de B à A ramené dans ]-π/2 ; π/2], `t` la variable de la densité (distance
+  signée) et `u(t) = 3t² - 2t³` (tangente nulle aux bords : pas de cassure avec le cœur). Les
+  lignes sont tracées une seule fois par géométrie par le remplissage directionnel à champ imposé
+  (`fill_directional_field` : un secteur, champ échantillonné puis interpolé comme celui des
+  guides, lignes de courant de Jobard-Lefer) ; liaisons sous masque plafonnées à 2 mm (au lieu de
+  2,4 mm) : les extrémités des lignes courbes s'espacent le long des bords, une liaison plus
+  longue devient un saut. Le directionnel ordinaire est inchangé.
+- **Zone directionnelle** : ses lignes de courant lui sont propres, repli sur `PerZone`.
+- **Sous-couche** : inchangée (zone privée de sa demi-bande, §6.2).
+- **Coût** : cœur et bande sont deux remplissages successifs, reliés par un saut dans chaque couche.
+
+Mesures (`test_boundary_blend.cpp`, tag `[rows]` ; frontière droite et brisée, angles
+0,785 / -0,52 et 0 / π/2) : longueur de rangée A + B dans une fenêtre de la bande = rangées
+pleines de la bande à 3 % près (`boundary_blend_band_rows`), liaisons visibles ≤ 2,3 mm, tissu
+nu ≤ 1 % ; Rotating : au milieu de la bande l'angle médian des points est à 0,2 rad de l'angle
+moyen (et à plus de 0,25 rad des deux angles), à 0,05-0,55 mm des bords de bande à 0,15 rad de
+l'angle de la zone (écart théorique ≤ 0,05 rad ; marge pour la grille du champ à 0,4 mm et les
+cordes). Dans le critère de liaison, une rangée de la bande est reconnue à 0,3 rad près : la
+dernière corde d'une rangée courbe qui aborde le contour en biais est replacée dans le contour
+(écart mesuré jusqu'à 0,27 rad). Reste à vérifier sur tissu.
+
 ## 7. Commandes et API
 
 - `project_ops::make_create_boundary_blend_command(project, a, b, params)` : valide

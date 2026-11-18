@@ -251,6 +251,13 @@ const EnumTable<document::PullMode>& pull_mode_table() {
                                                  {"predicted", document::PullMode::Predicted}};
     return t;
 }
+const EnumTable<document::BoundaryBlendRows>& boundary_blend_rows_table() {
+    using Rows = document::BoundaryBlendRows;
+    static const EnumTable<Rows> t{
+        {"per_zone", Rows::PerZone}, {"shared", Rows::Shared}, {"rotating", Rows::Rotating}};
+    return t;
+}
+
 const EnumTable<document::DensityCurve>& density_curve_table() {
     using Curve = document::DensityCurve;
     static const EnumTable<Curve> t{{"linear", Curve::Linear},
@@ -1338,7 +1345,11 @@ OpSpec op_blend_boundary() {
               arg("frontier", "array",
                   "frontière tracée à la main, liste de points [x, y] (au moins deux) ; [] : "
                   "frontière calculée là où les zones se touchent",
-                  false, "mm")};
+                  false, "mm"),
+              arg("rows", "string",
+                  "sens des rangées dans la bande : chaque zone son angle, angle commun, ou "
+                  "rangées qui tournent d'un angle à l'autre",
+                  false, {}, join(enum_names(boundary_blend_rows_table()), " | "))};
     s.example = R"({"op":"blend_boundary","a":2,"b":4,"width_a":2.5,"width_b":2.5})";
     s.apply = guarded([](OpContext& ctx) {
         const ObjectId a = need_emb(ctx, "a").id;
@@ -1361,6 +1372,10 @@ OpSpec op_blend_boundary() {
         if (ctx.args.contains("curve")) {
             options.curve =
                 parse_enum(density_curve_table(), need_string(ctx.args, "curve"), "curve");
+        }
+        if (ctx.args.contains("rows")) {
+            options.rows =
+                parse_enum(boundary_blend_rows_table(), need_string(ctx.args, "rows"), "rows");
         }
         if (ctx.args.contains("frontier")) {
             const json& pts = ctx.args.at("frontier");
@@ -1398,6 +1413,7 @@ OpSpec op_blend_boundary() {
                                   {"width_b", options.width_b.value / 1000.0},
                                   {"curve", enum_name(density_curve_table(), options.curve)},
                                   {"manual_frontier", !options.manual_frontier.empty()},
+                                  {"rows", enum_name(boundary_blend_rows_table(), options.rows)},
                                   {"frontier_mm", round6(frontier_mm)}});
     });
     return s;
