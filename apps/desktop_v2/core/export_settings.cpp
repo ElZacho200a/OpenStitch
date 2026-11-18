@@ -168,6 +168,26 @@ ServiceResult setExportOptions(DocumentSession& session, const ExportOptions& op
     return {true, {}};
 }
 
+std::optional<PointMm> needleOriginOf(const document::Project& project) {
+    if (!project.finishing.needle_origin) {
+        return std::nullopt;
+    }
+    return toPointMm(*project.finishing.needle_origin);
+}
+
+ServiceResult setNeedleOrigin(DocumentSession& session, const std::optional<PointMm>& origin) {
+    if (!inRange(origin)) {
+        return refuse("Point zéro hors limites (±1000 mm).");
+    }
+    auto f = session.project().finishing;
+    f.needle_origin = origin ? std::optional<Vec2um>{toVec(*origin)} : std::nullopt;
+    if (f == session.project().finishing) {
+        return refuse("Le point zéro est déjà celui du projet.");
+    }
+    session.execute(std::make_unique<commands::SetFinishingCommand>(f));
+    return {true, {}};
+}
+
 std::vector<HoopChoice> hoopChoices() {
     std::vector<HoopChoice> out;
     for (const auto& h : document::hoop_library()) {

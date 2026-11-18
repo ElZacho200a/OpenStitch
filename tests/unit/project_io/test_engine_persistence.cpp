@@ -56,6 +56,7 @@ TEST_CASE("moteur : round-trip des nouveaux reglages (tatami, directionnel, sati
     project.finishing.auto_join = true;
     project.finishing.design_start = Vec2um{Micrometers{1'500}, Micrometers{-2'000}};
     project.finishing.design_end = Vec2um{Micrometers{10'000}, Micrometers{0}};
+    project.finishing.needle_origin = Vec2um{Micrometers{-4'000}, Micrometers{7'500}};
 
     document::TatamiParams tatami;
     tatami.pull_compensation = Micrometers{350};

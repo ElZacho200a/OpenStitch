@@ -100,6 +100,9 @@ public:
     Q_INVOKABLE QString mergeSelectedInto(double target);
     Q_INVOKABLE QString mergeWithNeighbour(double id);
     Q_INVOKABLE QString mergeColorInto(double source, double target);
+    // Sépare la région sélectionnée en ses composantes connexes (zones non adjacentes réunies par
+    // une fusion antérieure) ; refuse si elle n'en a qu'une.
+    Q_INVOKABLE QString splitSelected();
     Q_INVOKABLE QString deleteSelected();
     Q_INVOKABLE QString cleanIslands(int minPixels);
     Q_INVOKABLE QString fillHoles(int maxPixels);

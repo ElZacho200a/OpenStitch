@@ -46,6 +46,24 @@ RegionId id_of_slot(std::size_t slot) {
     return RegionId{slot + 1};
 }
 
+// Composantes connexes (4-connexité) des pixels de `id` : `components` prend la valeur du numéro
+// de composante (0 = hors région), renvoie le nombre de labels cv::connectedComponents (fond
+// inclus : nombre de composantes = résultat - 1). Lecture seule, réutilisée par `split_region`
+// (mutation) et par le contrôle non mutant appelé avant de proposer l'action à l'utilisateur.
+int label_region_components(const Segmentation& seg, RegionId id, cv::Mat& components) {
+    const auto label = static_cast<std::uint32_t>(id.value);
+    cv::Mat mask(seg.height, seg.width, CV_8U, cv::Scalar(0));
+    for (int y = 0; y < seg.height; ++y) {
+        auto* row = mask.ptr<std::uint8_t>(y);
+        const std::uint32_t* labelsRow =
+            seg.labels.data() + static_cast<std::size_t>(y) * static_cast<std::size_t>(seg.width);
+        for (int x = 0; x < seg.width; ++x) {
+            row[x] = labelsRow[x] == label ? 255 : 0;
+        }
+    }
+    return cv::connectedComponents(mask, components, 4, CV_32S);
+}
+
 std::vector<std::uint32_t> relabel(Segmentation& seg, std::uint32_t from, std::uint32_t to) {
     std::vector<std::uint32_t> changed;
     for (std::uint32_t i = 0; i < seg.labels.size(); ++i) {
@@ -527,6 +545,83 @@ Result<std::vector<std::uint32_t>> merge_regions(Segmentation& seg, RegionId kee
     keepRegion->pixel_count += changed.size();
     seg.region_slots[slot_of(absorb)].reset();
     return changed;
+}
+
+bool region_has_multiple_components(const Segmentation& seg, RegionId id) {
+    if (seg.find(id) == nullptr) {
+        return false;
+    }
+    cv::Mat components;
+    return label_region_components(seg, id, components) > 2;
+}
+
+Result<std::vector<RegionId>> split_region(Segmentation& seg, RegionId id) {
+    const Region* probe = seg.find(id);
+    if (probe == nullptr) {
+        return fail(ErrorCategory::Internal, "Région introuvable",
+                    "split id=" + std::to_string(id.value));
+    }
+    const auto rgb = probe->rgb; // capturé avant tout push_back (qui peut invalider le pointeur)
+    cv::Mat components;
+    const int n = label_region_components(seg, id, components);
+    if (n <= 2) {
+        return fail(ErrorCategory::OperationImpossible, "Région déjà d'un seul tenant",
+                    "split id=" + std::to_string(id.value));
+    }
+    // n - 1 composantes (indices 1..n-1) ; la plus grande garde `id`.
+    std::vector<std::size_t> sizes(static_cast<std::size_t>(n), 0);
+    for (int y = 0; y < seg.height; ++y) {
+        const int* row = components.ptr<int>(y);
+        for (int x = 0; x < seg.width; ++x) {
+            if (row[x] > 0) {
+                ++sizes[static_cast<std::size_t>(row[x])];
+            }
+        }
+    }
+    int largest = 1;
+    for (int c = 2; c < n; ++c) {
+        if (sizes[static_cast<std::size_t>(c)] > sizes[static_cast<std::size_t>(largest)]) {
+            largest = c;
+        }
+    }
+    std::vector<RegionId> byComponent(static_cast<std::size_t>(n), id);
+    for (int c = 1; c < n; ++c) {
+        if (c == largest) {
+            continue;
+        }
+        Region extra;
+        extra.id = id_of_slot(seg.region_slots.size());
+        extra.rgb = rgb;
+        byComponent[static_cast<std::size_t>(c)] = extra.id;
+        seg.region_slots.push_back(extra); // peut réallouer : aucun Region* gardé après ceci
+    }
+    seg.region_slots[slot_of(id)]->pixel_count = 0;
+    for (int c = 1; c < n; ++c) {
+        if (c != largest) {
+            seg.region_slots[slot_of(byComponent[static_cast<std::size_t>(c)])]->pixel_count = 0;
+        }
+    }
+    for (int y = 0; y < seg.height; ++y) {
+        const int* row = components.ptr<int>(y);
+        std::uint32_t* labelsRow =
+            seg.labels.data() + static_cast<std::size_t>(y) * static_cast<std::size_t>(seg.width);
+        for (int x = 0; x < seg.width; ++x) {
+            const int comp = row[x];
+            if (comp <= 0) {
+                continue;
+            }
+            const RegionId newId = byComponent[static_cast<std::size_t>(comp)];
+            labelsRow[x] = static_cast<std::uint32_t>(newId.value);
+            ++seg.region_slots[slot_of(newId)]->pixel_count;
+        }
+    }
+    std::vector<RegionId> result{id};
+    for (int c = 1; c < n; ++c) {
+        if (c != largest) {
+            result.push_back(byComponent[static_cast<std::size_t>(c)]);
+        }
+    }
+    return result;
 }
 
 Result<std::pair<RegionId, std::vector<std::uint32_t>>> remove_region(Segmentation& seg,

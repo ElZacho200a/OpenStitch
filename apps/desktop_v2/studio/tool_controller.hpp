@@ -50,6 +50,11 @@ class ToolController : public QObject {
     Q_PROPERTY(int snapRadiusPx READ snapRadiusPx WRITE setSnapRadiusPx NOTIFY optionsChanged)
     Q_PROPERTY(int selectedNodeCount READ selectedNodeCount NOTIFY overlayChanged)
     Q_PROPERTY(QObject* warp READ warp CONSTANT)
+    Q_PROPERTY(bool needleOriginCustom READ needleOriginCustom NOTIFY needleOriginChanged)
+    // Position effective du point zéro (mm, repère document, Y vers le haut) : le point choisi,
+    // sinon le centre de la broderie ; 0 tant qu'il n'y a pas de points.
+    Q_PROPERTY(double needleOriginXMm READ needleOriginXMm NOTIFY needleOriginChanged)
+    Q_PROPERTY(double needleOriginYMm READ needleOriginYMm NOTIFY needleOriginChanged)
 
 public:
     explicit ToolController(StudioController& studio, QObject* parent = nullptr);
@@ -78,6 +83,15 @@ public:
     void setSnapRadiusPx(int value);
     [[nodiscard]] int selectedNodeCount() const { return static_cast<int>(nodeSel_.size()); }
     QObject* warp() { return &warp_; }
+    // Point zéro de l'aiguille choisi par l'utilisateur (faux : par défaut, centre de la broderie).
+    [[nodiscard]] bool needleOriginCustom() const;
+    // Revient au centre de la broderie ; faux s'il y était déjà.
+    Q_INVOKABLE bool resetNeedleOrigin();
+    [[nodiscard]] double needleOriginXMm() const { return needleOriginMm().x; }
+    [[nodiscard]] double needleOriginYMm() const { return needleOriginMm().y; }
+    // Saisie numérique du point zéro (mm) : UNE commande annulable, arrondi au dixième de mm.
+    // Faux (et message de statut) si hors limites (±1000 mm) ou inchangé.
+    Q_INVOKABLE bool setNeedleOriginMm(double xMm, double yMm);
 
     // --- Événements du canevas (mm scène, échelle en px/mm)
     // ---------------------------------------
@@ -110,6 +124,7 @@ signals:
     void messageChanged();
     void optionsChanged();
     void overlayChanged();
+    void needleOriginChanged();
     // Le dernier objet créé est sélectionné.
     void objectCreated(const QString& id);
 
@@ -120,10 +135,18 @@ private:
     void refuse(const QString& text);
     void inform(const QString& text);
     void setHint();
+    // Dernier point zéro annoncé à QML : annuler / rétablir le modifie sans passer par l'outil.
+    std::optional<Vec2um> needleSeen_{};
+    std::shared_ptr<const StudioSceneSnapshot> sceneSeen_;
+    mutable std::shared_ptr<const StudioSceneSnapshot> centreScene_;
+    mutable PointMm centre_{};
     void reset();
     void rebuild();
     void refreshNodeView();
     void createdFrom(std::uint64_t id, const QString& label);
+    bool placeNeedleOrigin(PointMm p);
+    [[nodiscard]] PointMm needleOriginMm() const;
+    void syncNeedleOrigin();
     bool commitBox(PointMm a, PointMm b, Qt::KeyboardModifiers mods);
     [[nodiscard]] std::vector<PointMm> boxPolygon(PointMm a, PointMm b,
                                                   Qt::KeyboardModifiers mods) const;

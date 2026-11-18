@@ -2351,6 +2351,44 @@ OpSpec op_set_design_points() {
     return s;
 }
 
+// HP-SEQ-008 : point zéro de l'aiguille (origine du fichier machine, mm, repère document). Absent
+// des deux arguments = retour au centre de la broderie.
+OpSpec op_set_needle_origin() {
+    OpSpec s;
+    s.name = "set_needle_origin";
+    s.summary = "Définit le point zéro de l'aiguille : où elle est posée AVANT de lancer la "
+                "broderie (origine du fichier machine), distinct du premier point cousu. Sans "
+                "argument : efface le point (retour au centre de la broderie). Les deux "
+                "coordonnées vont ensemble.";
+    s.args = {arg("needle_x_mm", "number", "point zéro X", false, "mm", "-1000..1000"),
+              arg("needle_y_mm", "number", "point zéro Y", false, "mm", "-1000..1000")};
+    s.example = R"({"op":"set_needle_origin","needle_x_mm":-25,"needle_y_mm":12.5})";
+    s.apply = guarded([](OpContext& ctx) {
+        const bool hasX = ctx.args.contains("needle_x_mm");
+        const bool hasY = ctx.args.contains("needle_y_mm");
+        if (hasX != hasY) {
+            refuse(code::kUsage, "indiquez needle_x_mm ET needle_y_mm",
+                   "un point se donne par ses deux coordonnées ; aucun des deux efface le point");
+        }
+        document::SequenceFinishing next = ctx.project.finishing;
+        if (hasX) {
+            const double x = ctx.args.at("needle_x_mm").get<double>();
+            const double y = ctx.args.at("needle_y_mm").get<double>();
+            if (!(x >= -1000.0 && x <= 1000.0 && y >= -1000.0 && y <= 1000.0)) {
+                refuse(code::kOutOfRange, "coordonnée hors de -1000..1000 mm", "valeurs en mm");
+            }
+            next.needle_origin =
+                Vec2um{Micrometers{static_cast<std::int32_t>(std::lround(x * 1000.0))},
+                       Micrometers{static_cast<std::int32_t>(std::lround(y * 1000.0))}};
+        } else {
+            next.needle_origin.reset();
+        }
+        ctx.stack.execute(std::make_unique<commands::SetFinishingCommand>(next), ctx.project);
+        return OpStatus::success({{"has_needle_origin", next.needle_origin.has_value()}});
+    });
+    return s;
+}
+
 } // namespace
 
 void register_param_ops(std::vector<OpSpec>& out) {
@@ -2375,6 +2413,7 @@ void register_param_ops(std::vector<OpSpec>& out) {
     out.push_back(op_set_machine());
     out.push_back(op_set_finishing());
     out.push_back(op_set_design_points());
+    out.push_back(op_set_needle_origin());
 }
 
 } // namespace openstitch::project_ops::detail

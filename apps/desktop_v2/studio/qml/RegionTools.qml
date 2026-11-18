@@ -346,6 +346,13 @@ ColumnLayout {
             onClicked: regionTools.mergeTargetMode = !regionTools.mergeTargetMode
         }
         StudioButton { objectName: "regionDelete"; text: qsTr("Supprimer"); enabled: regionTools.selectedCount > 0; onClicked: regionTools.deleteSelected() }
+        StudioButton {
+            objectName: "regionSplit"
+            text: qsTr("Séparer en morceaux")
+            enabled: regionTools.selectedCount === 1
+            tooltip: qsTr("Si cette région couvre des zones non adjacentes (fusion antérieure), les sépare en régions distinctes")
+            onClicked: regionTools.splitSelected()
+        }
     }
     Text {
         objectName: "regionMergeTargetHint"

@@ -2198,6 +2198,9 @@ json project_to_json(const document::Project& project) {
     if (f.design_end) {
         j["finishing"]["designEnd"] = vec_to_json(*f.design_end);
     }
+    if (f.needle_origin) {
+        j["finishing"]["needleOrigin"] = vec_to_json(*f.needle_origin);
+    }
 
     // AD-04 : design importé (DST aujourd'hui) -- donnée source immuable,
     // absente d'un projet qui n'en a pas (comportement historique inchangé).
@@ -2641,6 +2644,9 @@ Result<document::Project> project_from_json(const json& j) {
             }
             if (fj.contains("designEnd")) {
                 f.design_end = vec_from_json(fj.at("designEnd"));
+            }
+            if (fj.contains("needleOrigin")) {
+                f.needle_origin = vec_from_json(fj.at("needleOrigin"));
             }
         } else {
             project.finishing = document::SequenceFinishing::legacy();
