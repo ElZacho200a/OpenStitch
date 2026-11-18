@@ -16,7 +16,7 @@ ColumnLayout {
     readonly property bool refused: ready && !hasBlend && controller.refusal !== ""
     // Transition simplifiée : mêmes profils que le fondu de fils (linéaire, lissée, nette).
     readonly property var softnessCurves: [0, 1, 2]
-    readonly property var rowsKeys: ["per_zone", "shared", "rotating"]
+    readonly property var rowsKeys: ["per_zone", "shared", "rotating", "interlaced"]
 
     spacing: 6
     visible: hasBlend || canCreate || refused
@@ -118,11 +118,11 @@ ColumnLayout {
         StudioComboBox {
             id: rowsCombo
             objectName: "blendRowsCombo"
-            model: [qsTr("Chaque zone son angle"), qsTr("Angle commun"), qsTr("Rangées qui tournent")]
+            model: [qsTr("Chaque zone son angle"), qsTr("Angle commun"), qsTr("Rangées qui tournent"), qsTr("Entrelacé")]
             currentIndex: root.ready ? Math.max(0, root.rowsKeys.indexOf(root.controller.rows)) : 0
             Accessible.name: qsTr("Sens des rangées dans la bande du fondu")
             onActivated: root.controller.setRows(root.rowsKeys[currentIndex])
-            StudioToolTip { text: qsTr("L'angle commun montre une cassure au bord de la bande ; les rangées qui tournent suivent les deux angles en continu.") }
+            StudioToolTip { text: qsTr("L'angle commun montre une cassure au bord de la bande ; les rangées qui tournent suivent les deux angles en continu ; l'entrelacé traverse la frontière et mêle les deux couleurs dans chaque rangée.") }
         }
     }
     RowLayout {

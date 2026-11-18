@@ -210,6 +210,18 @@ TEST_CASE("row direction setting is stored, saved and exposed", "[project_ops][b
     CHECK(loaded->findEmbroidery(ObjectId{2})->boundary_blend->rows ==
           document::BoundaryBlendRows::Rotating);
     std::filesystem::remove(path);
+    // Entrelacé : aller-retour .osp aussi (clé `rows` = « interlaced »).
+    auto interlaced = project;
+    for (const auto id : {ObjectId{2}, ObjectId{4}}) {
+        interlaced.findEmbroidery(id)->boundary_blend->rows =
+            document::BoundaryBlendRows::Interlaced;
+    }
+    REQUIRE(project_io::save_project(path, interlaced).has_value());
+    const auto reloaded = project_io::load_project(path);
+    REQUIRE(reloaded.has_value());
+    CHECK(reloaded->findEmbroidery(ObjectId{4})->boundary_blend->rows ==
+          document::BoundaryBlendRows::Interlaced);
+    std::filesystem::remove(path);
     // Opération : argument `rows`, inspect renvoie la valeur.
     auto viaOp = make_project();
     const auto r = project_ops::apply_operation(
@@ -422,9 +434,14 @@ TEST_CASE("row direction setting changes generation deterministically",
     const auto perZone = generate(document::BoundaryBlendRows::PerZone);
     const auto shared = generate(document::BoundaryBlendRows::Shared);
     const auto rotating = generate(document::BoundaryBlendRows::Rotating);
+    const auto interlaced = generate(document::BoundaryBlendRows::Interlaced);
     CHECK(shared != perZone);
     CHECK(rotating != perZone);
     CHECK(rotating != shared);
+    CHECK(interlaced != perZone);
+    CHECK(interlaced != shared);
+    CHECK(interlaced != rotating);
     CHECK(generate(document::BoundaryBlendRows::Shared) == shared);
     CHECK(generate(document::BoundaryBlendRows::Rotating) == rotating);
+    CHECK(generate(document::BoundaryBlendRows::Interlaced) == interlaced);
 }

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+﻿// SPDX-License-Identifier: Apache-2.0
 #include "openstitch/stitch_generation/boundary_blend.hpp"
 
 #include <algorithm>
@@ -46,6 +46,13 @@ constexpr double kMinLayerDensity = 0.2;
 // Superposition (grilles différentes) : chaque couche est cousue un peu plus dense que sa part,
 // sinon les creux des deux couches indépendantes laissent le tissu nu par endroits.
 constexpr double kOverlapBoost = 1.5;
+// Mode Interlaced : les rangées en travers d'une frontière courbe s'écartent en éventail du côté
+// convexe. Le traceur sème une nouvelle rangée dès que l'écart dépasse 2 × kInterlacedFillSeed ×
+// l'écart voulu (au lieu de 1,8 ×) : densité qui s'adapte localement, sans jour entre rangées.
+// Écart nominal : fraction du plus petit écart des deux zones ; régularité d'écart du traceur.
+constexpr double kInterlacedFillSeed = 0.5;
+constexpr double kInterlacedSpacing = 1.0;
+constexpr double kInterlacedRegularity = 1.0;
 
 double floored_density(double dA) {
     if (dA < kMinLayerDensity) {
@@ -61,14 +68,17 @@ double floored_density(double dA) {
 // de la zone de la couche (la prolongation ne sort pas de la bande) : aplat.
 class BoundaryRowMask final : public RowMask {
 public:
-    BoundaryRowMask(const BoundaryBlendField& field, bool sideA, bool overlap)
-        : field_(field), sideA_(sideA), overlap_(overlap) {}
+    // `floored` : plancher de densité (cf. `kMinLayerDensity`). Sans objet en mode Interlaced :
+    // les rangées traversent la bande, une couche clairsemée n'y relie aucune rangée lointaine, et
+    // le plancher alignerait les bouts de 20 % des rangées sur une même ligne.
+    BoundaryRowMask(const BoundaryBlendField& field, bool sideA, bool overlap, bool floored = true)
+        : field_(field), sideA_(sideA), overlap_(overlap), floored_(floored) {}
 
     [[nodiscard]] bool keeps(Vec2um p, double threshold) const override {
         if (!field_.near_frontier(p)) {
             return true;
         }
-        const double dA = floored_density(field_.density_a(p));
+        const double dA = density(p);
         if (overlap_) {
             // Superposition : chaque couche garde la tranche basse de sa part renforcée.
             const double own = sideA_ ? dA : 1.0 - dA;
@@ -82,15 +92,21 @@ public:
         if (!field_.near_frontier(p)) {
             return 1.0;
         }
-        const double dA = floored_density(field_.density_a(p));
+        const double dA = density(p);
         const double own = sideA_ ? dA : 1.0 - dA;
         return overlap_ && own > 0.0 ? std::min(1.0, own * kOverlapBoost) : own;
     }
 
 private:
+    [[nodiscard]] double density(Vec2um p) const {
+        const double dA = field_.density_a(p);
+        return floored_ ? floored_density(dA) : dA;
+    }
+
     const BoundaryBlendField& field_;
     bool sideA_;
     bool overlap_;
+    bool floored_;
 };
 
 // Les deux couches partagent la même grille de rangées (ancrage absolu) : tatamis de même angle
@@ -223,14 +239,15 @@ Result<BandSplit> split_band(const std::vector<geometry::PathSet>& a,
     return split;
 }
 
-// Remplissage de la bande commune : tatami à l'angle commun (Shared) ou directionnel à champ
-// pivotant (Rotating), mêmes rangées pour les deux couches quel que soit le masque.
+// Remplissage de la bande commune : tatami à l'angle commun (Shared), directionnel à champ
+// pivotant (Rotating) ou en travers de la frontière (Interlaced), mêmes rangées pour les deux
+// couches quel que soit le masque.
 class BandFiller {
 public:
     BandFiller(std::shared_ptr<const BoundaryBlendField> field, const document::TatamiParams& pa,
                const document::TatamiParams& pb, document::BoundaryBlendRows rows)
-        : field_(std::move(field)), rotating_(rows == document::BoundaryBlendRows::Rotating),
-          angleA_(pa.angle.radians), angleB_(pb.angle.radians), tatami_(pa) {
+        : field_(std::move(field)), rows_(rows), angleA_(pa.angle.radians),
+          angleB_(pb.angle.radians), tatami_(pa) {
         tatami_.angle = Angle{boundary_blend_shared_angle(angleA_, angleB_)};
         tatami_.row_spacing = Micrometers{std::min(pa.row_spacing.value, pb.row_spacing.value)};
         tatami_.entry_point.reset();
@@ -240,14 +257,26 @@ public:
         directional_.inset = Micrometers{0};
         directional_.pull_compensation = pa.pull_compensation;
         directional_.hidden_underpath = false;
+        if (rows == document::BoundaryBlendRows::Interlaced) {
+            // Rangées en travers d'une frontière courbe : cf. `kInterlacedSpacing`.
+            directional_.row_spacing = Micrometers{static_cast<std::int32_t>(
+                std::lround(kInterlacedSpacing * directional_.row_spacing.value))};
+            directional_.spacing_regularity = kInterlacedRegularity;
+        }
     }
 
     [[nodiscard]] std::vector<FillStitch> fill(const geometry::PathSet& band,
                                                const RowMask& mask) const {
-        if (!rotating_) {
+        const BoundaryBlendField& field = *field_;
+        if (rows_ == document::BoundaryBlendRows::Interlaced) {
+            return fill_directional_field(
+                band, directional_,
+                [&field](Vec2um p) { return boundary_blend_cross_angle(field, p); }, &mask,
+                kInterlacedFillSeed);
+        }
+        if (rows_ != document::BoundaryBlendRows::Rotating) {
             return fill_tatami(band, tatami_, &mask);
         }
-        const BoundaryBlendField& field = *field_;
         const double a = angleA_;
         const double b = angleB_;
         return fill_directional_field(
@@ -257,7 +286,7 @@ public:
 
 private:
     std::shared_ptr<const BoundaryBlendField> field_;
-    bool rotating_;
+    document::BoundaryBlendRows rows_;
     double angleA_;
     double angleB_;
     document::TatamiParams tatami_;
@@ -290,6 +319,48 @@ double boundary_blend_row_angle(const BoundaryBlendField& field, double angle_a,
     }
     const double u = t * t * (3.0 - 2.0 * t);
     return angle_a + wrap_half_turn(angle_b - angle_a) * u;
+}
+
+double boundary_blend_cross_angle(const BoundaryBlendField& field, Vec2um p) {
+    // Perpendiculaire à la tangente LISSÉE de la frontière autour de p : moyenne des directions
+    // des segments (angles doublés : un segment et son opposé comptent pareil), pondérée par la
+    // longueur et par exp(-((d - d_min) / σ)²), σ = demi-largeur moyenne de la bande. La simple
+    // perpendiculaire au point le plus proche convergeait du côté concave d'une frontière courbe
+    // (rangées croisées en éventail, recette Studio) et suivait chaque cran d'une frontière
+    // vectorisée ; ce champ est continu partout et exact le long d'une frontière droite.
+    const double sigma = std::max(1.0, 0.5 * (field.width_a() + field.width_b()));
+    double dmin = std::numeric_limits<double>::max();
+    for (const auto& line : field.frontier()) {
+        for (std::size_t i = 1; i < line.points.size(); ++i) {
+            dmin = std::min(dmin, seg_distance(p, line.points[i - 1], line.points[i]));
+        }
+    }
+    if (dmin == std::numeric_limits<double>::max()) {
+        return 0.0;
+    }
+    double c2 = 0.0;
+    double s2 = 0.0;
+    for (const auto& line : field.frontier()) {
+        for (std::size_t i = 1; i < line.points.size(); ++i) {
+            const Vec2um a = line.points[i - 1];
+            const Vec2um b = line.points[i];
+            const double dx = static_cast<double>(b.x.value) - a.x.value;
+            const double dy = static_cast<double>(b.y.value) - a.y.value;
+            const double len = std::hypot(dx, dy);
+            if (len <= 0.0) {
+                continue;
+            }
+            const double u = (seg_distance(p, a, b) - dmin) / sigma;
+            if (u > 4.0) {
+                continue; // poids < 1e-7
+            }
+            const double w = len * std::exp(-u * u);
+            const double theta = std::atan2(dy, dx);
+            c2 += w * std::cos(2.0 * theta);
+            s2 += w * std::sin(2.0 * theta);
+        }
+    }
+    return 0.5 * std::atan2(s2, c2) + 0.5 * std::numbers::pi;
 }
 
 BoundaryBlendField::BoundaryBlendField(const std::vector<geometry::PathSet>& a,
@@ -515,8 +586,9 @@ Result<BoundaryBlendFills> fill_boundary_blend(const std::vector<geometry::PathS
             return std::unexpected(split.error());
         }
         const BandFiller band(plan->field, *tatamiA, *tatamiB, spec.rows);
-        const BoundaryRowMask lower(*plan->field, true, false);
-        const BoundaryRowMask upper(*plan->field, false, false);
+        const bool floored = spec.rows != document::BoundaryBlendRows::Interlaced;
+        const BoundaryRowMask lower(*plan->field, true, false, floored);
+        const BoundaryRowMask upper(*plan->field, false, false, floored);
         BoundaryBlendFills fills;
         fills.frontier = plan->frontier;
         for (const auto& core : split->core_a) {

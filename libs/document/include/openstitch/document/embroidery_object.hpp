@@ -840,8 +840,10 @@ struct ColorBlendLink {
 // - PerZone : chaque zone garde son angle (deux trames croisées si les angles diffèrent) ;
 // - Shared : les deux zones cousent à un angle commun (moyenne) dans toute la bande ;
 // - Rotating : les rangées pivotent progressivement de l'angle de A à celui de B en travers de
-//   la bande (rangées courbes communes aux deux couleurs).
-enum class BoundaryBlendRows : std::uint8_t { PerZone, Shared, Rotating };
+//   la bande (rangées courbes communes aux deux couleurs) ;
+// - Interlaced : les rangées de la bande TRAVERSENT la frontière (perpendiculaires) et chacune
+//   passe d'une couleur à l'autre en un point qui varie d'une rangée à l'autre (passé empiétant).
+enum class BoundaryBlendRows : std::uint8_t { PerZone, Shared, Rotating, Interlaced };
 
 struct BoundaryBlendLink {
     ObjectId partner;

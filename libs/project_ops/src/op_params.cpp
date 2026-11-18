@@ -253,8 +253,10 @@ const EnumTable<document::PullMode>& pull_mode_table() {
 }
 const EnumTable<document::BoundaryBlendRows>& boundary_blend_rows_table() {
     using Rows = document::BoundaryBlendRows;
-    static const EnumTable<Rows> t{
-        {"per_zone", Rows::PerZone}, {"shared", Rows::Shared}, {"rotating", Rows::Rotating}};
+    static const EnumTable<Rows> t{{"per_zone", Rows::PerZone},
+                                   {"shared", Rows::Shared},
+                                   {"rotating", Rows::Rotating},
+                                   {"interlaced", Rows::Interlaced}};
     return t;
 }
 

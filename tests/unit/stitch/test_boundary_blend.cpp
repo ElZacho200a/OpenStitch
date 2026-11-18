@@ -436,7 +436,8 @@ TEST_CASE("boundary blend: seam has no long links nor bare fabric", "[boundary_b
     }
 }
 
-// --- Sens des rangées dans la bande (§6.3) : Shared et Rotating ----------------------------
+// --- Sens des rangées dans la bande (§6.3) : Shared, Rotating et Interlaced
+// ------------------------
 
 namespace {
 
@@ -472,6 +473,9 @@ struct BandAngle {
         }
         const Vec2um mid{Micrometers{(p.pos.x.value + q.pos.x.value) / 2},
                          Micrometers{(p.pos.y.value + q.pos.y.value) / 2}};
+        if (rows == Rows::Interlaced) {
+            return boundary_blend_cross_angle(*field, mid);
+        }
         return boundary_blend_row_angle(*field, angle_a, angle_b, mid);
     }
 };
@@ -608,10 +612,10 @@ constexpr std::pair<double, double> kRowsAngles[] = {{0.785, -0.52}, {0.0, 1.570
 
 } // namespace
 
-TEST_CASE("boundary blend rows: shared and rotating partition the band exactly",
+TEST_CASE("boundary blend rows: shared, rotating and interlaced partition the band exactly",
           "[boundary_blend][rows]") {
     const auto cases = rows_cases();
-    for (const Rows rows : {Rows::Shared, Rows::Rotating}) {
+    for (const Rows rows : {Rows::Shared, Rows::Rotating, Rows::Interlaced}) {
         for (std::size_t shape = 0; shape < cases.size(); ++shape) {
             const RowsCase& c = cases[shape];
             for (const auto& [angleA, angleB] : kRowsAngles) {
@@ -705,6 +709,79 @@ TEST_CASE("boundary blend rows: rotating rows turn from angle A to angle B",
     }
 }
 
+TEST_CASE("boundary blend rows: interlaced rows cross the frontier and switch colour inside",
+          "[boundary_blend][rows]") {
+    // Entrelacé : les rangées traversent la bande, chaque rangée passe de A à B là où d_A franchit
+    // son seuil. Les bouts des morceaux de rangée de A s'étalent donc sur toute la largeur de la
+    // bande (passé empiétant), au lieu de rangées entières d'une seule couleur.
+    const auto cases = rows_cases();
+    for (std::size_t shape = 0; shape < cases.size(); ++shape) {
+        const RowsCase& c = cases[shape];
+        for (const auto& [angleA, angleB] : kRowsAngles) {
+            BoundaryBlendSpec spec;
+            spec.rows = Rows::Interlaced;
+            const auto plan = plan_boundary_blend(c.a, c.b, spec);
+            const auto fills =
+                fill_boundary_blend_tatami(c.a, params(angleA), c.b, params(angleB), spec);
+            REQUIRE(plan.has_value());
+            REQUIRE(fills.has_value());
+            const BoundaryBlendField& field = *plan->field;
+            const BandAngle band{plan->field.get(), Rows::Interlaced, angleA, angleB};
+            // Bouts de chaque morceau de rangée de A (début et fin) tombant dans la bande, en
+            // distance signée : les bouts au bord de bande (cœur de A) sont écartés par la tranche.
+            std::vector<double> ends;
+            const auto& f = fills->a;
+            const auto isRow = [&](std::size_t i) { // segment [i-1 ; i]
+                if (i == 0 || i >= f.size()) {
+                    return false;
+                }
+                const FillStitch& p = f[i - 1];
+                const FillStitch& q = f[i];
+                return !q.jump && !q.travel && !p.travel && p.pos != q.pos &&
+                       follows(p, q, band.at(p, q), 0.2);
+            };
+            const auto keep = [&](Vec2um pos) {
+                if (pos.y.value < 1'000 || pos.y.value > 9'000) {
+                    return;
+                }
+                const double sd = field.signed_distance(pos);
+                if (sd > -2'200.0 && sd < 2'200.0) {
+                    ends.push_back(sd);
+                }
+            };
+            for (std::size_t i = 1; i < f.size(); ++i) {
+                if (!isRow(i)) {
+                    continue;
+                }
+                if (!isRow(i - 1)) {
+                    keep(f[i - 1].pos);
+                }
+                if (!isRow(i + 1)) {
+                    keep(f[i].pos);
+                }
+            }
+            std::sort(ends.begin(), ends.end());
+            INFO("shape " << shape << " angles " << angleA << " / " << angleB << " : "
+                          << ends.size() << " ends");
+            REQUIRE(ends.size() >= 10);
+            const double lo = ends[ends.size() / 10];
+            const double hi = ends[ends.size() * 9 / 10];
+            INFO("10-90 % spread " << lo << " .. " << hi);
+            // Bande de 5 mm : les bouts couvrent au moins 2,5 mm (déciles 10 et 90).
+            CHECK(hi - lo >= 2'500.0);
+        }
+    }
+    // Orientation : perpendiculaire à une frontière droite, des deux côtés.
+    const auto plan = plan_boundary_blend(rect(0, 0, 10'000, 10'000),
+                                          rect(10'000, 0, 10'000, 10'000), BoundaryBlendSpec{});
+    REQUIRE(plan.has_value());
+    for (const std::int32_t x : {8'000, 10'000, 12'000}) {
+        const double angle =
+            boundary_blend_cross_angle(*plan->field, Vec2um{Micrometers{x}, Micrometers{5'000}});
+        CHECK(std::abs(wrap_row_angle(angle)) <= 1e-6);
+    }
+}
+
 TEST_CASE("boundary blend rows: shared and rotating are deterministic, directional falls back",
           "[boundary_blend][rows]") {
     const auto a = rect(0, 0, 10'000, 10'000);
@@ -712,7 +789,7 @@ TEST_CASE("boundary blend rows: shared and rotating are deterministic, direction
     const BoundaryBlendSpec perZone;
     const auto base = fill_boundary_blend_tatami(a, params(0.785), b, params(-0.52), perZone);
     REQUIRE(base.has_value());
-    for (const Rows rows : {Rows::Shared, Rows::Rotating}) {
+    for (const Rows rows : {Rows::Shared, Rows::Rotating, Rows::Interlaced}) {
         BoundaryBlendSpec spec;
         spec.rows = rows;
         const auto f1 = fill_boundary_blend_tatami(a, params(0.785), b, params(-0.52), spec);

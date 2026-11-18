@@ -244,6 +244,13 @@ void StudioBoundaryBlendTest::rowsSettingJourney() {
         QCOMPARE(rig.session.project().findEmbroidery(ObjectId{id})->boundary_blend->rows,
                  document::BoundaryBlendRows::PerZone);
     }
+    // Quatrième entrée : entrelacé.
+    combo->setProperty("currentIndex", 3);
+    QVERIFY(QMetaObject::invokeMethod(combo, "activated", Q_ARG(int, 3)));
+    QCOMPARE(rig.blend.rows(), QStringLiteral("interlaced"));
+    QCOMPARE(rig.session.project().findEmbroidery(ObjectId{rig.left})->boundary_blend->rows,
+             document::BoundaryBlendRows::Interlaced);
+    QVERIFY(rig.blend.summary().contains(QStringLiteral("entrelacé")));
 }
 
 void StudioBoundaryBlendTest::rowsPropertyReflectsDocument() {

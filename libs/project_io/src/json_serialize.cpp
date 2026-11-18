@@ -2149,9 +2149,11 @@ json project_to_json(const document::Project& project) {
                                    {"curve", static_cast<int>(e.boundary_blend->curve)}};
             // Sens des rangées (§6.3) : absent = par zone (fichiers antérieurs inchangés).
             if (e.boundary_blend->rows != document::BoundaryBlendRows::PerZone) {
-                eo["boundaryBlend"]["rows"] =
-                    e.boundary_blend->rows == document::BoundaryBlendRows::Shared ? "shared"
-                                                                                  : "rotating";
+                const auto rows = e.boundary_blend->rows;
+                eo["boundaryBlend"]["rows"] = rows == document::BoundaryBlendRows::Shared ? "shared"
+                                              : rows == document::BoundaryBlendRows::Rotating
+                                                  ? "rotating"
+                                                  : "interlaced";
             }
             if (!e.boundary_blend->manual_frontier.empty()) {
                 json pts = json::array();
@@ -2530,6 +2532,8 @@ Result<document::Project> project_from_json(const json& j) {
                         b.rows = document::BoundaryBlendRows::Shared;
                     } else if (rows == "rotating") {
                         b.rows = document::BoundaryBlendRows::Rotating;
+                    } else if (rows == "interlaced") {
+                        b.rows = document::BoundaryBlendRows::Interlaced;
                     }
                 }
                 // Frontière tracée (lot L4) : [[x, y], …] en µm ; absente = calculée.

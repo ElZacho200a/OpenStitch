@@ -319,6 +319,23 @@ renforcée (×1,5). Deux autres modes, pour deux zones **tatami** :
   guides, lignes de courant de Jobard-Lefer) ; liaisons sous masque plafonnées à 2 mm (au lieu de
   2,4 mm) : les extrémités des lignes courbes s'espacent le long des bords, une liaison plus
   longue devient un saut. Le directionnel ordinaire est inchangé.
+- **Interlaced** (entrelacé, passé empiétant) : en Shared et Rotating, sur une frontière presque
+  parallèle aux rangées, chaque rangée de la bande reste d'une seule couleur et le dégradé
+  apparaît en bandes alternées (recette Studio). Ici les rangées **traversent** la frontière :
+  orientation perpendiculaire à la tangente de la frontière lissée autour du point
+  (`boundary_blend_cross_angle` : moyenne des directions des segments en angles doublés, pondérée
+  par la longueur et `exp(-((d - d_min)/σ)²)`, `σ` = demi-bande moyenne ; la simple perpendiculaire
+  au point le plus proche croisait les rangées du côté concave d'une frontière courbe). Chaque
+  rangée passe de A à B là où `d_A` franchit son seuil (Weyl) : les points de passage s'étalent
+  sur toute la largeur de la bande. Pas de plancher de densité (`kMinLayerDensity`) : il alignerait
+  les bouts de 20 % des rangées sur une même ligne, et une couche clairsemée ne relie ici aucune
+  rangée lointaine. **Densité adaptative** : en éventail du côté convexe, les rangées s'écartent ;
+  le traceur sème une nouvelle rangée dès que l'écart dépasse 2 × `kInterlacedFillSeed` (0,5) ×
+  l'écart voulu au lieu de 1,8 × (`fill_directional_field(..., fill_seed)`), écart régularisé.
+  Mesure sur le motif de recette (DST, fil de 0,4 mm, tissu nu du motif entier) : PerZone 7,24 %,
+  Shared 7,03 %, Rotating 7,46 % ; Interlaced 8,98 % au seuil 0,9, 7,81 % à 0,6, **7,31 % à 0,5**,
+  pour 5 453 points contre 4 430 en PerZone et 4 684 en Rotating (+23 % de points : bande plus
+  dense et morceaux de rangée plus courts). Cassure d'angle au bord de bande, comme Shared.
 - **Zone directionnelle** : ses lignes de courant lui sont propres, repli sur `PerZone`.
 - **Sous-couche** : inchangée (zone privée de sa demi-bande, §6.2).
 - **Coût** : cœur et bande sont deux remplissages successifs, reliés par un saut dans chaque couche.
@@ -331,7 +348,9 @@ moyen (et à plus de 0,25 rad des deux angles), à 0,05-0,55 mm des bords de ban
 l'angle de la zone (écart théorique ≤ 0,05 rad ; marge pour la grille du champ à 0,4 mm et les
 cordes). Dans le critère de liaison, une rangée de la bande est reconnue à 0,3 rad près : la
 dernière corde d'une rangée courbe qui aborde le contour en biais est replacée dans le contour
-(écart mesuré jusqu'à 0,27 rad). Reste à vérifier sur tissu.
+(écart mesuré jusqu'à 0,27 rad). Interlaced : mêmes critères de partage et de couture, et les
+bouts des morceaux de rangée de A dans la bande couvrent au moins 2,5 mm des 5 mm de bande
+(déciles 10 et 90) ; perpendiculaire exacte à une frontière droite. Reste à vérifier sur tissu.
 
 ## 7. Commandes et API
 

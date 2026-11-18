@@ -32,8 +32,8 @@ class BoundaryBlendController : public QObject {
     Q_PROPERTY(QVariantList frontier READ frontier NOTIFY changed)
     // La frontière du fondu de la zone principale est tracée à la main (lot L4).
     Q_PROPERTY(bool manualFrontier READ manualFrontier NOTIFY changed)
-    // Sens des rangées dans la bande : "per_zone" | "shared" | "rotating". Sans fondu, c'est le
-    // choix en attente, appliqué à la prochaine création.
+    // Sens des rangées dans la bande : "per_zone" | "shared" | "rotating" | "interlaced". Sans
+    // fondu, c'est le choix en attente, appliqué à la prochaine création.
     Q_PROPERTY(QString rows READ rows NOTIFY changed)
     Q_PROPERTY(QString summary READ summary NOTIFY changed)
     Q_PROPERTY(QString message READ message NOTIFY messageChanged)
@@ -65,8 +65,9 @@ public:
     Q_INVOKABLE bool edit(double widthMm, double partnerWidthMm, int curve);
     // Retire le fondu de la zone principale (et le lien de sa voisine). Un pas d'annulation.
     Q_INVOKABLE bool remove();
-    // Sens des rangées ("per_zone" | "shared" | "rotating"). Avec un fondu : le réédite en UN pas
-    // d'annulation ; sans fondu : mémorise le choix pour la création. Valeur inconnue : refus.
+    // Sens des rangées ("per_zone" | "shared" | "rotating" | "interlaced"). Avec un fondu : le
+    // réédite en UN pas d'annulation ; sans fondu : mémorise le choix pour la création. Valeur
+    // inconnue : refus.
     Q_INVOKABLE bool setRows(const QString& rows);
     // Frontière tracée à la main (lot L4) : liste de {x, y} en mm modèle, au moins deux points.
     // Sur deux zones sélectionnées sans fondu, crée le fondu avec cette frontière (les zones

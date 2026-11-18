@@ -31,6 +31,8 @@ QString BoundaryBlendController::rows() const {
         return QStringLiteral("shared");
     case document::BoundaryBlendRows::Rotating:
         return QStringLiteral("rotating");
+    case document::BoundaryBlendRows::Interlaced:
+        return QStringLiteral("interlaced");
     case document::BoundaryBlendRows::PerZone:
         break;
     }
@@ -140,6 +142,8 @@ QString BoundaryBlendController::summary() const {
         text += QStringLiteral(" · angle commun");
     } else if (rows_ == document::BoundaryBlendRows::Rotating) {
         text += QStringLiteral(" · rangées qui tournent");
+    } else if (rows_ == document::BoundaryBlendRows::Interlaced) {
+        text += QStringLiteral(" · entrelacé");
     }
     return text;
 }
@@ -208,6 +212,8 @@ bool BoundaryBlendController::setRows(const QString& rows) {
         value = document::BoundaryBlendRows::Shared;
     } else if (rows == QLatin1String("rotating")) {
         value = document::BoundaryBlendRows::Rotating;
+    } else if (rows == QLatin1String("interlaced")) {
+        value = document::BoundaryBlendRows::Interlaced;
     } else {
         say(false, QStringLiteral("Sens des rangées inconnu"));
         return false;

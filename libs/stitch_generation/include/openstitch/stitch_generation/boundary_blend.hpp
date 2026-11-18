@@ -141,10 +141,10 @@ fill_boundary_blend_tatami(const geometry::PathSet& a, const document::TatamiPar
 // (2) la BANDE commune (A ∩ demi-bande w_A, plus le reste de la fermeture de A ∪ B dans la
 // demi-bande w_B, élargie de `kBoundaryBlendSeamOverlap` sur les cœurs), cousue par les deux
 // couches sur les MÊMES rangées, A gardant la tranche basse du masque, B la tranche haute :
-// partition exacte. Les rangées de la bande sont droites à l'angle commun (Shared) ou courbes,
-// pivotant de l'angle de A à celui de B (Rotating). Paramètres de la bande : ceux de A (longueur
-// de point, décalage, compensation), écart = le plus petit des deux. Une zone directionnelle :
-// repli sur PerZone.
+// partition exacte. Les rangées de la bande sont droites à l'angle commun (Shared), courbes,
+// pivotant de l'angle de A à celui de B (Rotating), ou en travers de la frontière (Interlaced).
+// Paramètres de la bande : ceux de A (longueur de point, décalage, compensation), écart = le plus
+// petit des deux. Une zone directionnelle : repli sur PerZone.
 
 // Recouvrement de la bande sur chaque cœur (µm) : la couture cœur–bande ne laisse aucun filet nu.
 inline constexpr std::int32_t kBoundaryBlendSeamOverlap = 300;
@@ -160,6 +160,14 @@ inline constexpr std::int32_t kBoundaryBlendSeamOverlap = 300;
 // cœur de chaque zone). Radians.
 [[nodiscard]] double boundary_blend_row_angle(const BoundaryBlendField& field, double angle_a,
                                               double angle_b, Vec2um p);
+
+// Orientation des rangées en mode Interlaced au point `p` : perpendiculaire à la tangente de la
+// frontière LISSÉE autour de p (moyenne des directions des segments voisins, pondérée par leur
+// longueur et une gaussienne de largeur la demi-bande moyenne) ; exacte le long d'une frontière
+// droite, continue partout, sans croisement du côté concave d'une frontière courbe. Les rangées
+// traversent la bande : chacune passe de A à B là où d_A franchit son seuil, en un point qui varie
+// d'une rangée à l'autre. Radians.
+[[nodiscard]] double boundary_blend_cross_angle(const BoundaryBlendField& field, Vec2um p);
 
 // Diagnostic : rangées de la bande commune cousues PLEINES (masque plein, une seule couche), telles
 // que les deux couches se les partagent en mode Shared ou Rotating. Vide en PerZone ou si une zone
