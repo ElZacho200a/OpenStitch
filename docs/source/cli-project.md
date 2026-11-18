@@ -330,7 +330,7 @@ Mesure associée : `scripts/green_holes.py` du skill `openstitch-digitize` (part
 
 Exporte en `dst`, `pes`, `jef`, `exp` ou `svg` (format déduit de l'extension, ou
 `--format`). Options machine identiques à `osp2dst` : `--no-trims`,
-`--no-color-changes`, `--stops native|as-color-change|drop`, `--start first|center|X,Y`, `--reduce-trims`
+`--no-color-changes`, `--stops native|as-color-change|drop`, `--start first|center|X,Y` (absent : point zéro de l'aiguille du projet, sinon `first`), `--reduce-trims`
 (`--reduce-trims-levels`, `--reduce-trims-same-colour`, `--reduce-trims-max`).
 SVG : `--outlines` (contours des régions) et `--only ID`. Rapport
 `openstitch.export/1` avec `--json`. L'export machine passe par le **même appel**

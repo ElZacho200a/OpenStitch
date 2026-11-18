@@ -352,3 +352,26 @@ TEST_CASE("import_machine_file : compagnon invalide ignore, import reussi en noi
     fs::remove(path);
     fs::remove(csv);
 }
+
+TEST_CASE("project_start : point zero du projet, sinon premier point") {
+    document::Project project = square_project();
+    CHECK(project_io::project_start(project).mode == formats::StartMode::FirstPoint);
+    project.finishing.needle_origin = um(-20'000, 15'000);
+    const auto start = project_io::project_start(project);
+    CHECK(start.mode == formats::StartMode::Custom);
+    CHECK(start.point == um(-20'000, 15'000));
+
+    // L'export part du point du projet quand l'appelant passe project_start ; sinon inchange.
+    const auto viaProject = fs::temp_directory_path() / "openstitch_needle_project.dst";
+    const auto plain = fs::temp_directory_path() / "openstitch_needle_plain.dst";
+    formats::MachineExportOptions options;
+    options.start = start;
+    REQUIRE(project_io::export_machine_file(project, "dst", viaProject, options).has_value());
+    REQUIRE(project_io::export_machine_file(project, "dst", plain).has_value());
+    const auto a = formats::read_dst_file(viaProject);
+    const auto c = formats::read_dst_file(plain);
+    REQUIRE((a.has_value() && c.has_value()));
+    CHECK(a->commands != c->commands); // le saut d'approche change
+    fs::remove(viaProject);
+    fs::remove(plain);
+}

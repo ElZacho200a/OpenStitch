@@ -476,6 +476,16 @@ QString RegionController::mergeColorInto(double source, double target) {
                   QStringLiteral("Teinte fusionnée."));
 }
 
+QString RegionController::splitSelected() {
+    if (selected_.size() != 1) {
+        const auto text = QStringLiteral("Sélectionnez une seule région.");
+        setMessage(text, true);
+        return text;
+    }
+    return report(splitRegion(studio_.session(), selected_.front()),
+                  QStringLiteral("Région séparée en plusieurs morceaux."));
+}
+
 QString RegionController::deleteSelected() {
     if (selected_.empty()) {
         const auto text = QStringLiteral("Sélectionnez au moins une région.");

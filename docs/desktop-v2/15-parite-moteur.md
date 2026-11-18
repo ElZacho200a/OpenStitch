@@ -17,12 +17,13 @@ pour les commandes, afin de savoir ce que la V1 savait déjà faire).
   voir `09`), les outils du CLI (`stitchdebug`, `dst2svg`, `stats`…), les analyses de `project_ops`
   (qualité, rapport, balayage, sémantique, repérage des couleurs, découpe d'appliqué, dégradé).
 
-## Opérations du moteur : 12 sur 51 non référencées par la V2
+## Opérations du moteur : 12 sur 52 non référencées par la V2
 
 | Opération | Verdict | Détail |
 |---|---|---|
 | `seg_clean_islands`, `seg_merge_colors`, `seg_merge_regions`, `seg_recolor_region`, `seg_remove_region` | ✅ exposées | par des commandes directes (panneau Régions), pas par ces noms |
 | `set_design_points` | ✅ exposée | départ / arrivée dans « Options machine » |
+| `set_needle_origin` | ✅ exposée | point zéro de l'aiguille : outil du rail Points + champs X / Y (commande directe, pas par ce nom) |
 | `set_order` | ✅ exposée | panneau d'ordre de couture (commande directe) |
 | `remove_holes` | ◐ | suppression d'UN trou précis (commande « Supprimer le trou du nœud choisi », ce lot) ; « Combler les trous » par seuil d'aire existait déjà |
 | `fill_block_holes` | ⬜ | combler les vides sans fil d'un bloc uni : non exposée |

@@ -110,6 +110,10 @@ ToolRegistry ToolRegistry::builtin() {
     r.add({"region.edit", "Régions", "X", Z, Gesture::Pick, ""});
     // Retouche d'une frontière de segmentation : peindre la région choisie (Ctrl = effacer).
     r.add({"region.brush", "Pinceau de frontière", "U", Z, Gesture::Stroke, ""});
+    // Point zéro de l'aiguille : où elle est posée avant de lancer la broderie (origine du fichier
+    // machine). Pas le premier point cousu. Défaut : centre de la broderie.
+    r.add({"needle.origin", "Point zéro de l'aiguille", "O", static_cast<std::uint8_t>(N | O | P),
+           Gesture::Pick, ""});
     r.add({"stitch.points", "Retouche de points", "J", static_cast<std::uint8_t>(N | O),
            Gesture::Pick, ""});
     (void)P;
