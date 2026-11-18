@@ -304,7 +304,7 @@ Item {
             id: pick
             objectName: "segmentationPickArea"
             anchors.fill: parent
-            acceptedButtons: Qt.LeftButton
+            acceptedButtons: Qt.LeftButton | Qt.RightButton
             enabled: root.seg !== null
             property var stroke: []
             readonly property bool painting: root.hasTools && regionTools.tool !== "select"
@@ -314,6 +314,16 @@ Item {
                                 v.centerY + (my - height / 2) / v.zoom)
             }
             onPressed: function(mouse) {
+                // Clic droit : sélectionne la région sous le curseur (sauf pinceau/gomme actifs,
+                // où il resterait sans effet visible) puis ouvre le menu contextuel pour elle.
+                if (mouse.button === Qt.RightButton) {
+                    if (pick.painting || !root.hasTools) return
+                    const rp = pick.scenePoint(mouse.x, mouse.y)
+                    root.seg.pickAt(rp.x, rp.y, false)
+                    if (regionTools.selectedCount === 1)
+                        regionContextMenu.openFor(regionTools.selected[0], mouse.x, mouse.y)
+                    return
+                }
                 const p = pick.scenePoint(mouse.x, mouse.y)
                 if (pick.painting) {
                     const px = root.seg.pixelAt(p.x, p.y)
@@ -339,6 +349,11 @@ Item {
                 }
                 pick.stroke = []
             }
+        }
+
+        RegionContextMenu {
+            id: regionContextMenu
+            region: root.hasTools ? regionTools : null
         }
 
         Loader {
