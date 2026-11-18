@@ -105,6 +105,7 @@ struct BoundaryBlendPlan {
 struct BoundaryBlendFills {
     std::vector<FillStitch> a;
     std::vector<FillStitch> b;
+    std::vector<geometry::Polyline> frontier; // frontière du plan (calculée ou tracée)
 };
 
 // Paramètres de remplissage d'une zone du fondu : tatami (grille fixe, partition exacte possible)
@@ -138,12 +139,22 @@ fill_boundary_blend_tatami(const geometry::PathSet& a, const document::TatamiPar
 [[nodiscard]] std::vector<geometry::PathSet>
 boundary_blend_zone(const document::Project& project, const document::EmbroideryObject& object);
 
-// Points de la couche supérieure de `object` dans son fondu à la frontière. Le plan est toujours
-// calculé dans le même sens (zone d'identifiant le plus petit en A), pour que les deux zones
-// cousent des couches complémentaires exactement. nullopt si `object` ne porte pas de fondu
-// valide (`document::find_boundary_blend`) ou si la frontière a disparu : la génération coud
-// alors l'aplat habituel.
-[[nodiscard]] std::optional<std::vector<FillStitch>>
+// Couche d'une zone en fondu à la frontière.
+struct BoundaryBlendLayer {
+    std::vector<FillStitch> stitches; // couche supérieure, masquée et prolongée
+    // Zone de l'objet privée de SA demi-bande : la sous-couche s'y limite. Sur la zone entière,
+    // son tour de bord suivrait la frontière, là où la couche supérieure clairsemée ne la couvre
+    // plus : un trait visible au milieu du fondu (recette Studio). Vide : bande plus large que la
+    // zone, pas de sous-couche.
+    std::vector<geometry::PathSet> underlay_zones;
+};
+
+// Couche de `object` dans son fondu à la frontière. Le plan est toujours calculé dans le même
+// sens (zone d'identifiant le plus petit en A), pour que les deux zones cousent des couches
+// complémentaires exactement. nullopt si `object` ne porte pas de fondu valide
+// (`document::find_boundary_blend`) ou si la frontière a disparu : la génération coud alors
+// l'aplat habituel.
+[[nodiscard]] std::optional<BoundaryBlendLayer>
 boundary_blend_layer(const document::Project& project, const document::EmbroideryObject& object);
 
 } // namespace openstitch::stitch_generation

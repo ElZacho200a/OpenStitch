@@ -973,21 +973,21 @@ void generate_tatami(stitch::StitchSequence& sequence, const document::VectorObj
     }
 }
 
-// Couche d'une zone en FONDU À LA FRONTIÈRE : sous-couches sur la zone elle-même seulement
-// (jamais sous le fil voisin), puis la couche masquée, prolongée dans la demi-bande de l'autre
-// zone (`boundary_blend_layer`). Aucune liaison cachée : la couche est clairsemée près de la
-// frontière. Contour de bord et couchage éventuels sur la zone elle-même.
+// Couche d'une zone en FONDU À LA FRONTIÈRE : sous-couches sur la zone privée de sa demi-bande
+// (jamais sous le fil voisin, et pas le long de la frontière où la couche supérieure clairsemée
+// ne les couvrirait plus), puis la couche masquée, prolongée dans la demi-bande de l'autre zone
+// (`boundary_blend_layer`). Contour de bord éventuel sur la zone elle-même.
 void generate_boundary_blend_layer(stitch::StitchSequence& sequence,
                                    const document::VectorObject& source,
                                    const document::EmbroideryObject& object,
-                                   std::vector<FillStitch> layer) {
+                                   BoundaryBlendLayer layer) {
     std::visit(
         [&](const auto& params) {
             using T = std::decay_t<decltype(params)>;
             if constexpr (std::is_same_v<T, document::TatamiParams> ||
                           std::is_same_v<T, document::DirectionalFillParams>) {
                 const auto regions = fill_regions_in_sewing_order(sequence, source, params.inset);
-                for (const geometry::PathSet& region : regions) {
+                for (const geometry::PathSet& region : layer.underlay_zones) {
                     const auto underlay = [&] {
                         if constexpr (std::is_same_v<T, document::TatamiParams>) {
                             return tatami_underlay(region, resolve_underlay(params, region));
@@ -999,7 +999,7 @@ void generate_boundary_blend_layer(stitch::StitchSequence& sequence,
                         emit_underlay_pass(sequence, up, object.id, nullptr);
                     }
                 }
-                emit_fill(sequence, std::move(layer), object.id, nullptr);
+                emit_fill(sequence, std::move(layer.stitches), object.id, nullptr);
                 for (const geometry::PathSet& region : regions) {
                     if (params.edge_outline) {
                         emit_edge_outline(sequence, region, object.id, params.underlay_inset);
