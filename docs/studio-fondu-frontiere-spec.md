@@ -269,6 +269,28 @@ autre limite : outil « Tracer la frontière » (polyligne ou Bézier) stocké d
 6. **Cache** : la clé de génération de A inclut désormais la géométrie et les paramètres de B
    (et inversement). Garde à ajouter : modifier B invalide A.
 
+### 6.2 Corrections après la première recette Studio (2026-11-18)
+
+Captures Studio d'un motif à limite douce et courbe (deux tatamis d'angles différents) : longs
+traits le long de la frontière, filet de tissu nu, liaisons visibles. Causes et corrections :
+
+- **Sous-couche le long de la frontière** : calculée sur la zone entière, son tour de bord
+  suivait la frontière, là où la couche supérieure clairsemée ne la couvre plus. Elle est
+  désormais calculée sur la zone privée de sa demi-bande (`BoundaryBlendLayer::underlay_zones`).
+- **Couloir entre zones** : les zones arrivent rentrées de leur retrait de bord ; le couloir
+  qui les sépare n'appartenait à aucune région prolongée. Les régions prolongées sont prises
+  dans la fermeture de A ∪ B (écart ≤ tolérance de contact).
+- **Couche presque vide** : à densité `d`, une rangée gardée sur ≈ `1/d`, d'où des liaisons de
+  plusieurs millimètres. Densité plancher `0,2` (en dessous rien, au-dessus de `0,8` tout ; le
+  partage reste exact), liaison à au plus 6 rangées.
+- **Superposition** (grilles différentes) : deux couches indépendantes à leur part exacte
+  laissent des creux communs. Chaque couche garde `min(1 ; 1,5 × part)` : tissu nu < 0,5 % sur
+  le banc, ≈ 1,15 couche en moyenne dans la bande.
+
+Mesure : `test_boundary_blend.cpp`, cas `seam has no long links nor bare fabric` (frontière
+droite, brisée, zones séparées d'un couloir ; angles égaux, croisés, quelconques). Reste à
+vérifier sur tissu.
+
 ## 7. Commandes et API
 
 - `project_ops::make_create_boundary_blend_command(project, a, b, params)` : valide

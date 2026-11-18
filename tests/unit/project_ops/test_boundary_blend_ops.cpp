@@ -147,6 +147,42 @@ TEST_CASE("boundary blend changes generation near the frontier only", "[project_
     CHECK(again->commands == blended->commands);
 }
 
+TEST_CASE("blended zone keeps its underlay out of its half band", "[project_ops][blend]") {
+    auto project = make_project();
+    for (const ObjectId id : {ObjectId{2}, ObjectId{4}}) {
+        std::get<document::TatamiParams>(project.findEmbroidery(id)->params).underlay_edge = true;
+    }
+    // Sous-couche cousue par l'objet `id` avec x dans [xMin ; xMax].
+    const auto underlay = [](const stitch::StitchSequence& s, ObjectId id, double xMin,
+                             double xMax) {
+        std::size_t n = 0;
+        for (const auto& c : s.commands) {
+            if (c.source == id && c.type == stitch::CommandType::Stitch &&
+                c.pass == stitch::StitchPass::Underlay && c.pos.x.value >= xMin &&
+                c.pos.x.value <= xMax) {
+                ++n;
+            }
+        }
+        return n;
+    };
+    const auto plain = stitch_generation::generate_sequence(project); // raw-sequence-ok: test
+    REQUIRE(plain.has_value());
+    // Sans fondu, le tour de bord de A longe la frontière (x = 20 mm).
+    REQUIRE(underlay(*plain, ObjectId{2}, 18'000.0, 20'000.0) > 0);
+    commands::UndoStack stack;
+    auto cmd = project_ops::make_boundary_blend_command(project, ObjectId{2}, ObjectId{4}, {});
+    REQUIRE(cmd.has_value());
+    stack.execute(std::move(*cmd), project);
+    const auto blended = stitch_generation::generate_sequence(project); // raw-sequence-ok: test
+    REQUIRE(blended.has_value());
+    // Fondu : plus aucune sous-couche dans les demi-bandes (2,5 mm de chaque côté), où la couche
+    // supérieure clairsemée ne la couvrirait plus. Ailleurs, la sous-couche reste.
+    CHECK(underlay(*blended, ObjectId{2}, 17'600.0, 1e9) == 0);
+    CHECK(underlay(*blended, ObjectId{4}, -1e9, 22'400.0) == 0);
+    CHECK(underlay(*blended, ObjectId{2}, 0.0, 17'500.0) > 0);
+    CHECK(underlay(*blended, ObjectId{4}, 22'500.0, 40'000.0) > 0);
+}
+
 TEST_CASE("removing one link or zone deactivates the blend", "[project_ops][blend]") {
     auto project = make_project();
     commands::UndoStack stack;
