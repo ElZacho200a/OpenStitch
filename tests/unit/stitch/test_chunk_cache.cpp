@@ -282,3 +282,48 @@ TEST_CASE("chunk cache : etat du routeur reutilise entre deux reglages, sequence
         CHECK(warm->commands == uncached(project).commands);
     }
 }
+
+// Les testeurs de region de la fusion des points courts sont mis en cache par objet (cle exacte :
+// parametres + trace). Le resultat doit suivre chaque modification, avec ou sans cache, et ne pas
+// changer avec le nombre de fils.
+TEST_CASE("chunk cache : testeurs de la fusion des points courts suivent parametres et geometrie") {
+    document::Project project = make_project();
+    project.finishing.enabled = true;
+    project.finishing.filter_short_stitches = true;
+    project.finishing.min_stitch_length = Micrometers{2'000};
+
+    const auto check = [&](const char* label) {
+        CAPTURE(label);
+        set_chunk_cache_enabled(false);
+        const auto reference = effective_sequence(project);
+        set_chunk_cache_enabled(true);
+        REQUIRE(reference.has_value());
+        const auto first = effective_sequence(project);
+        const auto again = effective_sequence(project);
+        REQUIRE(first.has_value());
+        REQUIRE(again.has_value());
+        CHECK(first->commands == reference->commands);
+        CHECK(again->commands == reference->commands);
+    };
+
+    clear_chunk_cache();
+    check("depart");
+    // Un parametre qui change le tirage effectif (donc la region elargie des testeurs).
+    std::get<document::TatamiParams>(project.embroidery_objects[1].params).pull_compensation =
+        Micrometers{400};
+    check("tirage modifie");
+    // Une geometrie modifiee sous le meme identifiant.
+    project.vector_objects[3].paths[0].outer.nodes[2].pos.x = Micrometers{52'000};
+    check("geometrie modifiee");
+    // Meme resultat avec un fil et avec plusieurs.
+    set_threads("1");
+    clear_chunk_cache();
+    const auto one = effective_sequence(project);
+    set_threads("8");
+    clear_chunk_cache();
+    const auto many = effective_sequence(project);
+    set_threads("");
+    REQUIRE(one.has_value());
+    REQUIRE(many.has_value());
+    CHECK(one->commands == many->commands);
+}

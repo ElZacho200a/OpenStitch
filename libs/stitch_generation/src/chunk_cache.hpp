@@ -38,4 +38,8 @@ void chunk_cache_store(ObjectId id, const document::StitchParams& params,
 // Vide le cache des états de routeur (défini dans tatami.cpp) ; appelé par clear_chunk_cache.
 void clear_router_cache();
 
+// Vide le cache des testeurs de région de la fusion des points courts (length_bounds.cpp) ;
+// appelé par clear_chunk_cache.
+void clear_length_bounds_cache();
+
 } // namespace openstitch::stitch_generation
