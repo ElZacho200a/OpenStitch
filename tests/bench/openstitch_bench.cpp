@@ -207,9 +207,8 @@ void report_travel(const document::Project& project, const stitch::StitchSequenc
 
 int main(int argc, char** argv) {
     if (argc < 2) {
-        std::fprintf(
-            stderr,
-            "usage: openstitch-bench <image> [--reps N] [--dpi D] [--order] [--satin-bands]\n");
+        std::fprintf(stderr, "usage: openstitch-bench <image> [--reps N] [--dpi D] [--order] "
+                             "[--satin-bands] [--knockout]\n");
         return 2;
     }
     std::string imagePath = argv[1];
@@ -217,6 +216,7 @@ int main(int argc, char** argv) {
     double dpi = 96.0;
     bool orderOnly = false;
     bool satinBands = false;
+    bool knockout = false;
     std::string saveOsp;
     std::string fromOsp;
     for (int i = 2; i < argc; ++i) {
@@ -229,6 +229,8 @@ int main(int argc, char** argv) {
         } else if (std::strcmp(argv[i], "--satin-bands") == 0) {
             satinBands =
                 true; // option « Satin automatique » du dialogue (essai de satin par région)
+        } else if (std::strcmp(argv[i], "--knockout") == 0) {
+            knockout = true; // option « Retirer les recouvrements » (HP-ENG-011)
         } else if (std::strcmp(argv[i], "--save-osp") == 0 && i + 1 < argc) {
             saveOsp = argv[++i];
         } else if (std::strcmp(argv[i], "--from-osp") == 0 && i + 1 < argc) {
@@ -346,6 +348,7 @@ int main(int argc, char** argv) {
         const auto cand = segmentation::background_candidate(seg);
         opts.skip_largest_region = cand && cand->recommended;
         opts.satin_bands = satinBands;
+        opts.remove_overlaps = knockout;
 
         autodigitize::AutoResult auto_result;
         measure("auto_digitize", std::max(1, reps / 2), [&] {
