@@ -42,4 +42,7 @@ void clear_router_cache();
 // appelé par clear_chunk_cache.
 void clear_length_bounds_cache();
 
+// Vide les caches du « knockout » (generate.cpp) ; appelé par clear_chunk_cache.
+void clear_knockout_cache();
+
 } // namespace openstitch::stitch_generation

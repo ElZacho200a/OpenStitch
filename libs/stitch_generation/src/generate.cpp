@@ -7,8 +7,11 @@
 #include <atomic>
 #include <cmath>
 #include <deque>
+#include <map>
 #include <memory>
+#include <mutex>
 #include <numbers>
+#include <unordered_map>
 #include <variant>
 
 #include "chunk_cache.hpp"
@@ -1121,45 +1124,41 @@ bool covers_opaquely(const document::EmbroideryObject& o) {
 // Forme de `objects[index]` privée de la partie cachée par les remplissages opaques posés après
 // elle, chacun rétréci de `knockout_margin` (le recouvrement garde le fond couvert). `nullopt` :
 // rien à retirer ou calcul impossible -> la forme d'origine est cousue (jamais moins que avant).
-std::optional<document::VectorObject>
-knocked_out_source(const document::Project& project,
-                   const std::vector<document::EmbroideryObject>& objects, std::size_t index,
-                   const document::VectorObject& source) {
-    const document::EmbroideryObject& self = objects[index];
-    std::vector<geometry::PathSet> covers;
-    for (std::size_t j = index + 1; j < objects.size(); ++j) {
-        const document::EmbroideryObject& above = objects[j];
-        if (!covers_opaquely(above) || above.source_vector == self.source_vector) {
-            continue;
-        }
-        const document::VectorObject* vec = nullptr;
-        for (const auto& candidate : project.vector_objects) {
-            if (candidate.id == above.source_vector) {
-                vec = &candidate;
-                break;
-            }
-        }
-        if (vec == nullptr) {
-            continue;
-        }
-        for (const geometry::PathSet& set : vec->paths) {
-            if (self.knockout_margin.value <= 0) {
-                covers.push_back(set);
-            } else if (auto shrunk = geometry::inset_path_set(set, self.knockout_margin)) {
-                covers.insert(covers.end(), shrunk->begin(), shrunk->end());
-            }
-        }
-    }
-    if (covers.empty()) {
-        return std::nullopt;
-    }
-    auto remaining = geometry::difference_polygons(source.paths, covers);
-    if (!remaining) {
-        return std::nullopt;
-    }
-    document::VectorObject copy = source;
-    copy.paths = std::move(*remaining);
-    return copy;
+//
+// Recalcul évité (chasse aux recalculs, 2026-11-18) : ce calcul est une fonction pure de la forme,
+// de la marge et des tracés des formes au-dessus, et coûtait ~225 ms par régénération sur
+// tentabrode (158 objets) alors que presque rien n'avait changé. Deux caches à clé EXACTE
+// (copie des entrées, comparée entièrement) : les couvertures rétrécies par (forme, marge), et le
+// résultat par objet, validé par la liste ordonnée (forme, version) des couvertures. Une version
+// est un numéro neuf attribué chaque fois que le contenu d'une couverture change : comparer les
+// versions revient à comparer les tracés sans les relire.
+struct ResolvedCover {
+    std::uint64_t version{0};
+    std::shared_ptr<const std::vector<geometry::PathSet>> shrunk;
+};
+
+struct CoverEntry {
+    std::vector<geometry::PathSet> paths;
+    ResolvedCover resolved;
+};
+
+struct KnockoutEntry {
+    std::vector<geometry::PathSet> source;
+    std::int32_t margin{0};
+    std::vector<std::pair<std::uint64_t, std::uint64_t>> covers; // (forme, version), dans l'ordre
+    std::shared_ptr<const std::vector<geometry::PathSet>> remaining; // nul : forme d'origine
+};
+
+struct KnockoutCache {
+    std::mutex mutex;
+    std::map<std::pair<std::uint64_t, std::int32_t>, CoverEntry> covers;
+    std::unordered_map<std::uint64_t, KnockoutEntry> objects;
+    std::atomic<std::uint64_t> nextVersion{1};
+};
+
+KnockoutCache& knockout_cache() {
+    static KnockoutCache instance;
+    return instance;
 }
 
 // Forme de `objects[index]` élargie, le long des frontières communes, de `underlap` UNIQUEMENT sous
@@ -1253,6 +1252,132 @@ underlapped_source(const document::Project& project,
     return copy;
 }
 
+constexpr std::size_t kKnockoutCacheEntries = 4096;
+
+std::shared_ptr<const std::vector<geometry::PathSet>>
+shrink_cover(const document::VectorObject& vec, Micrometers margin) {
+    auto out = std::make_shared<std::vector<geometry::PathSet>>();
+    for (const geometry::PathSet& set : vec.paths) {
+        if (margin.value <= 0) {
+            out->push_back(set);
+        } else if (auto shrunk = geometry::inset_path_set(set, margin)) {
+            out->insert(out->end(), shrunk->begin(), shrunk->end());
+        }
+    }
+    return out;
+}
+
+ResolvedCover resolve_cover(const document::VectorObject& vec, Micrometers margin) {
+    KnockoutCache& cache = knockout_cache();
+    const bool enabled = chunk_cache_enabled();
+    const auto key = std::make_pair(vec.id.value, margin.value);
+    if (enabled) {
+        const std::lock_guard<std::mutex> lock(cache.mutex);
+        const auto it = cache.covers.find(key);
+        if (it != cache.covers.end() && it->second.paths == vec.paths) {
+            return it->second.resolved;
+        }
+    }
+    ResolvedCover resolved{cache.nextVersion.fetch_add(1), shrink_cover(vec, margin)};
+    if (enabled) {
+        const std::lock_guard<std::mutex> lock(cache.mutex);
+        if (cache.covers.size() >= kKnockoutCacheEntries) {
+            cache.covers.clear();
+        }
+        cache.covers.insert_or_assign(key, CoverEntry{vec.paths, resolved});
+    }
+    return resolved;
+}
+
+// Index des formes et couvertures déjà résolues, pour UN appel de `generate_sequence`.
+class KnockoutPlanner {
+public:
+    explicit KnockoutPlanner(const document::Project& project) {
+        byId_.reserve(project.vector_objects.size());
+        for (const auto& vec : project.vector_objects) {
+            byId_.emplace(vec.id.value, &vec); // première occurrence, comme la recherche linéaire
+        }
+    }
+
+    [[nodiscard]] const document::VectorObject* find(ObjectId id) const {
+        const auto it = byId_.find(id.value);
+        return it == byId_.end() ? nullptr : it->second;
+    }
+
+    std::optional<document::VectorObject>
+    knocked_out(const std::vector<document::EmbroideryObject>& objects, std::size_t index,
+                const document::VectorObject& source) {
+        const document::EmbroideryObject& self = objects[index];
+        std::vector<ResolvedCover> list;
+        std::vector<std::pair<std::uint64_t, std::uint64_t>> tokens;
+        bool any = false;
+        for (std::size_t j = index + 1; j < objects.size(); ++j) {
+            const document::EmbroideryObject& above = objects[j];
+            if (!covers_opaquely(above) || above.source_vector == self.source_vector) {
+                continue;
+            }
+            const document::VectorObject* vec = find(above.source_vector);
+            if (vec == nullptr) {
+                continue;
+            }
+            const auto key = std::make_pair(vec->id.value, self.knockout_margin.value);
+            auto it = resolved_.find(key);
+            if (it == resolved_.end()) {
+                it = resolved_.emplace(key, resolve_cover(*vec, self.knockout_margin)).first;
+            }
+            list.push_back(it->second);
+            tokens.emplace_back(key.first, it->second.version);
+            any = any || !it->second.shrunk->empty();
+        }
+        if (!any) {
+            return std::nullopt;
+        }
+        KnockoutCache& cache = knockout_cache();
+        const bool enabled = chunk_cache_enabled();
+        if (enabled) {
+            const std::lock_guard<std::mutex> lock(cache.mutex);
+            const auto it = cache.objects.find(self.id.value);
+            if (it != cache.objects.end() && it->second.margin == self.knockout_margin.value &&
+                it->second.covers == tokens && it->second.source == source.paths) {
+                return rebuilt(source, it->second.remaining);
+            }
+        }
+        std::vector<geometry::PathSet> covers;
+        for (const ResolvedCover& cover : list) {
+            covers.insert(covers.end(), cover.shrunk->begin(), cover.shrunk->end());
+        }
+        std::shared_ptr<const std::vector<geometry::PathSet>> remaining;
+        if (auto diff = geometry::difference_polygons(source.paths, covers)) {
+            remaining = std::make_shared<const std::vector<geometry::PathSet>>(std::move(*diff));
+        }
+        if (enabled) {
+            const std::lock_guard<std::mutex> lock(cache.mutex);
+            if (cache.objects.size() >= kKnockoutCacheEntries) {
+                cache.objects.clear();
+            }
+            cache.objects.insert_or_assign(self.id.value,
+                                           KnockoutEntry{source.paths, self.knockout_margin.value,
+                                                         std::move(tokens), remaining});
+        }
+        return rebuilt(source, remaining);
+    }
+
+private:
+    static std::optional<document::VectorObject>
+    rebuilt(const document::VectorObject& source,
+            const std::shared_ptr<const std::vector<geometry::PathSet>>& remaining) {
+        if (!remaining) {
+            return std::nullopt;
+        }
+        document::VectorObject copy = source;
+        copy.paths = *remaining;
+        return copy;
+    }
+
+    std::unordered_map<std::uint64_t, const document::VectorObject*> byId_;
+    std::map<std::pair<std::uint64_t, std::int32_t>, ResolvedCover> resolved_;
+};
+
 } // namespace
 
 Result<stitch::StitchSequence> generate_sequence(const document::Project& project) {
@@ -1319,6 +1444,7 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
     };
     std::vector<Unit> units;
     std::deque<document::VectorObject> knockedSources; // adresses stables (HP-ENG-011)
+    KnockoutPlanner knockout(project);
     for (std::size_t idx = 0; idx < objects.size();) {
         const document::EmbroideryObject& object = objects[idx];
         // L'ancre d'un fondu multicolore ne porte aucun point propre (ses couches
@@ -1332,12 +1458,7 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
         Unit unit;
         unit.first = idx;
         if (!object.is_satin()) {
-            for (const auto& vec : project.vector_objects) {
-                if (vec.id == object.source_vector) {
-                    unit.source = &vec;
-                    break;
-                }
-            }
+            unit.source = knockout.find(object.source_vector);
             if (unit.source == nullptr) {
                 return fail(ErrorCategory::Internal,
                             "Objet vectoriel source introuvable pour « " + object.name + " »",
@@ -1345,7 +1466,7 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
             }
         }
         if (object.knockout && covers_opaquely(object) && unit.source != nullptr) {
-            if (auto knocked = knocked_out_source(project, objects, idx, *unit.source)) {
+            if (auto knocked = knockout.knocked_out(objects, idx, *unit.source)) {
                 knockedSources.push_back(std::move(*knocked));
                 unit.source = &knockedSources.back();
             }
@@ -1594,6 +1715,13 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
     sequence.commands.push_back(
         {sequence.commands.back().pos, stitch::CommandType::End, ObjectId{}});
     return sequence;
+}
+
+void clear_knockout_cache() {
+    KnockoutCache& cache = knockout_cache();
+    const std::lock_guard<std::mutex> lock(cache.mutex);
+    cache.covers.clear();
+    cache.objects.clear();
 }
 
 auto_satin::SkeletonSatinParameters auto_satin_engine(const document::AutoSatinParams& params) {
