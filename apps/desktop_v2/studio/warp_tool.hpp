@@ -36,7 +36,7 @@ private:
     WarpOptions options_;
     WarpOptions strokeOptions_;
     std::shared_ptr<const document::Project> snapshot_;
-    ObjectId object_{};
+    Target object_{}; // forme ou broderie sélectionnée (la forme suffit)
     std::uint64_t revision_{};
     std::uint64_t request_{};
     bool active_{false};

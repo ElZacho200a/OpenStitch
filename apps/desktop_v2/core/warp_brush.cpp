@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "warp_brush.hpp"
 #include "openstitch/commands/vector_path_commands.hpp"
+#include "shape_resolver.hpp"
 #include <cmath>
 
 namespace openstitch::desktop_v2 {
@@ -10,16 +11,21 @@ Result<void> validateWarpOptions(WarpOptions options) {
         return fail(ErrorCategory::UserInput, "Rayon : 0,5 à 60 mm ; intensité : 5 à 100 %");
     return {};
 }
-Result<WarpPreview> previewWarp(const document::Project& project, ObjectId object,
+Result<WarpPreview> previewWarp(const document::Project& project, Target target,
                                 WarpOptions options, const std::vector<WarpTouch>& touches,
                                 bool prepareCommand, const TaskContext& task) {
     if (const auto valid = validateWarpOptions(options); !valid)
         return std::unexpected(valid.error());
     if (touches.empty() || touches.size() > 4096)
         return fail(ErrorCategory::UserInput, "Geste vide ou trop long (4096 positions maximum)");
-    const auto* embroidery = project.findEmbroidery(object);
-    const auto* vector = embroidery ? project.findObject(embroidery->source_vector) : nullptr;
-    if (!vector || vector->locked || !vector->visible || embroidery->locked || !embroidery->visible)
+    // La forme est l'unité d'édition : la broderie éventuelle n'est pas requise.
+    const auto shape = shapeOfTarget(project, target);
+    const auto* vector = shape ? project.findObject(*shape) : nullptr;
+    const auto* embroidery = target.kind == TargetKind::EmbroideryObject
+                                 ? project.findEmbroidery(ObjectId{target.id})
+                                 : nullptr;
+    if (!vector || project.shapeEditLocked(vector->id) || !vector->visible ||
+        (embroidery && (embroidery->locked || !embroidery->visible)))
         return fail(ErrorCategory::UserInput,
                     "Sélectionnez une forme vectorielle visible et déverrouillée");
     WarpPreview result{vector->paths, {}};

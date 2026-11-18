@@ -31,6 +31,8 @@ class EditController : public QObject {
     Q_PROPERTY(bool snapEnabled READ snapEnabled WRITE setSnapEnabled NOTIFY snapChanged)
     Q_PROPERTY(bool eyedropper READ eyedropper WRITE setEyedropper NOTIFY eyedropperChanged)
     Q_PROPERTY(int selectedCount READ selectedCount NOTIFY treeChanged)
+    // Formes éditables désignées par la sélection (broderie ou non) : cible de `deleteShapes`.
+    Q_PROPERTY(int selectedShapeCount READ selectedShapeCount NOTIFY treeChanged)
     // Boîte de la sélection (mm scène) : x, y, width, height, cx, cy ; vide sans sélection.
     Q_PROPERTY(QVariantMap selectionBox READ selectionBox NOTIFY treeChanged)
 public:
@@ -47,6 +49,7 @@ public:
     [[nodiscard]] bool eyedropper() const { return eyedropper_; }
     void setEyedropper(bool value);
     [[nodiscard]] int selectedCount() const;
+    [[nodiscard]] int selectedShapeCount() const;
     [[nodiscard]] QVariantMap selectionBox() const;
     // Union des boîtes de la sélection, en mm scène ; vide sans sélection ni scène.
     [[nodiscard]] std::optional<stitch_render::RectMm> selectionBounds() const;
@@ -79,7 +82,11 @@ public:
     Q_INVOKABLE bool mirror(bool horizontal);
     Q_INVOKABLE bool scale(double factor, double anchorXmm, double anchorYmm); // ancre en mm scène
     Q_INVOKABLE bool duplicate(double offsetMm = 5.0);
+    // Retire la BRODERIE des objets sélectionnés (la forme vectorielle reste, reconvertible).
     Q_INVOKABLE bool deleteSelection();
+    // Supprime la FORME sélectionnée (convertie ou non) et les broderies qui en dépendent, en une
+    // seule étape d'annulation. Suppr de l'espace Vecteur.
+    Q_INVOKABLE bool deleteShapes();
     Q_INVOKABLE bool align(const QString& mode); // left centerH right top centerV bottom
     Q_INVOKABLE bool distribute(bool horizontal);
     // Placement numérique de la boîte (centre en mm modèle ; NaN = inchangé). Un seul objet :
