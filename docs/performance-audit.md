@@ -788,3 +788,26 @@ trois passes de finition) ; `knocked_out_source` recalcule la forme privée des 
 au-dessus à chaque appel (phase 1, séquentielle, hors cache ; nul sur tentabrode car sans
 recouvrement, à mesurer sur un projet avec `knockout`) ; objets satin non routés et auto-satin
 hors squelette régénérés à chaque appel (pas de cache de séquence).
+
+## 18. Audit du 2026-11-18 : zones de fondu (`segment_blend_zones`)
+
+Nouveau chemin (PR #385), sans banc ni parallélisme. Banc `[.perf_blend_zones]` de
+`test_segmentation` (Release, 2400 x 1800 à 0,1 mm/px, 4 zones, meilleur de 5) : 79 ms.
+
+**Répartition** (rep chaude) : étiquetage final 22 ms, conversion Lab 17, réduction à la
+résolution de travail 16, partage des eaux 16, Sobel 7, flou 4, fusions et adjacence < 3.
+
+**Corrections** (`libs/segmentation/src/blend_zones.cpp`, sortie identique octet pour octet) :
+- réduction : tables colonne et ligne de travail précalculées (plus de division par pixel),
+  lignes de travail réparties en bandes (`parallel_for`) ;
+- conversion Lab, Sobel et flou gaussien : bandes de lignes en parallèle ;
+- étiquetage final : racines de l'union-find précalculées, bandes de lignes sources en parallèle
+  (sommes entières exactes, donc indépendantes de l'ordre), emplacements numérotés dans l'ordre de
+  première apparition du balayage, puis conversion racine -> emplacement en parallèle.
+
+**Résultats** : 79 -> 36,5 ms (-54 %) en parallèle ; 82 ms à un fil (`OPENSTITCH_THREADS=1`,
+pas de régression). Empreinte du banc identique (6c0bfe59623ab669) ; test à empreintes figées
+sur l'implémentation d'origine (3 tailles impaires avec trous transparents), à 1 et 8 fils.
+
+**Reste.** Le partage des eaux (file de priorité, 16 ms) et les fusions sont séquentiels par
+nature ; une version par tuiles changerait les zones.
