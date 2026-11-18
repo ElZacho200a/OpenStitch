@@ -86,6 +86,59 @@ TEST_CASE("cut_path_set : points confondus -> aucune coupe") {
     CHECK(std::abs(signed_area_um2((*result)[0].outer)) / 1e6 == 100.0);
 }
 
+TEST_CASE("cut_path_set_polyline : un trace coude traverse un carre et le separe", "[cut]") {
+    // Trace en V : entre par la gauche, descend au centre, ressort par la droite.
+    const auto result = cut_path_set_polyline(
+        square(10'000), {p(-2'000, 8'000), p(5'000, 2'000), p(12'000, 8'000)});
+    REQUIRE(result.has_value());
+    REQUIRE(result->size() == 2);
+    double total = 0.0;
+    for (const auto& piece : *result) {
+        total += std::abs(signed_area_um2(piece.outer)) / 1e6;
+    }
+    CHECK(total > 95.0); // bande fine : aire quasi conservee
+    CHECK(total < 100.0);
+}
+
+TEST_CASE("cut_path_set_polyline : un trace qui s'arrete dans la forme ne separe rien", "[cut]") {
+    const auto result =
+        cut_path_set_polyline(square(10'000), {p(-2'000, 5'000), p(4'000, 5'000), p(5'000, 7'000)});
+    REQUIRE(result.has_value());
+    CHECK(result->size() == 1); // simple entaille : une seule composante
+}
+
+TEST_CASE("cut_path_set_polyline : trace degenere ou hors region -> region inchangee", "[cut]") {
+    const auto same = cut_path_set_polyline(square(10'000), {p(5'000, 5'000), p(5'000, 5'000)});
+    REQUIRE(same.has_value());
+    REQUIRE(same->size() == 1);
+    CHECK(same->front().outer.nodes.size() == 4);
+    const auto far = cut_path_set_polyline(square(10'000), {p(50'000, 0), p(50'000, 9'000)});
+    REQUIRE(far.has_value());
+    REQUIRE(far->size() == 1);
+    CHECK(far->front().outer.nodes.size() == 4);
+    CHECK(cut_path_set_polyline(square(10'000), {}).has_value());
+}
+
+TEST_CASE("cut_path_set_polyline : ne coupe que ce qui est trace, sans prolongement", "[cut]") {
+    // Haltere : un trace court sur le pont seul le tranche, les deux carres restent entiers.
+    const auto result =
+        cut_path_set_polyline(dumbbell(), {p(15'000, 3'000), p(15'500, 5'000), p(15'000, 7'000)});
+    REQUIRE(result.has_value());
+    CHECK(result->size() == 2);
+}
+
+TEST_CASE("cut_path_set_polyline : deterministe", "[cut]") {
+    const std::vector<Vec2um> path{p(-2'000, 8'000), p(5'000, 2'000), p(12'000, 8'000)};
+    const auto a = cut_path_set_polyline(square(10'000), path);
+    const auto b = cut_path_set_polyline(square(10'000), path);
+    REQUIRE(a.has_value());
+    REQUIRE(b.has_value());
+    REQUIRE(a->size() == b->size());
+    for (std::size_t i = 0; i < a->size(); ++i) {
+        CHECK((*a)[i].outer.nodes.size() == (*b)[i].outer.nodes.size());
+    }
+}
+
 TEST_CASE("cut_path_set : deterministe") {
     const auto a = cut_path_set(dumbbell(), p(15'000, -5'000), p(15'000, 15'000));
     const auto b = cut_path_set(dumbbell(), p(15'000, -5'000), p(15'000, 15'000));

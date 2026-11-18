@@ -205,6 +205,8 @@ private slots:
     void perfDenseNodeSelectionOverlay();
     void perfDenseNodeSelectionNative();
     void knifeAndBooleans();
+    void lassoSelectsByFreehandContour();
+    void freehandKnifeCutsAlongTheDrawnPath();
     void offsetShapesCreatesAGrownOrShrunkCopyInOneStep();
     void outlineAroundTheSelectionIsARingInOneStep();
     void snappingIsConfigurable();
@@ -915,6 +917,112 @@ void StudioToolsTest::nodeEditByMouse() {
 
 // « Décaler la forme » : une copie agrandie ou rétrécie, une seule étape d'annulation ; refus
 // d'un décalage nul, hors bornes, d'une sélection vide ou qui ferait disparaître la forme.
+void StudioToolsTest::lassoSelectsByFreehandContour() {
+    Rig rig;
+    open(rig);
+    const auto a = draw(rig, "draw.rectangle", {-30, -10}, {-10, 10});
+    const auto b = draw(rig, "draw.rectangle", {10, -10}, {30, 10});
+    QVERIFY(a != 0 && b != 0);
+    const auto baseSteps = steps(rig);
+    QVERIFY(rig.tools.tools().toList().size() > 0);
+    rig.tools.setActiveTool(QStringLiteral("select.lasso"));
+    QVERIFY(rig.tools.capturesMouse());
+
+    // Contour a main levee, en plusieurs points, autour de A seulement.
+    auto lasso = [&](const std::vector<QPointF>& model, Qt::KeyboardModifiers mods = {}) {
+        QTest::mousePress(rig.window, Qt::LeftButton, mods, at(rig, model[0].x(), model[0].y()));
+        for (std::size_t i = 1; i < model.size(); ++i) {
+            const auto from = at(rig, model[i - 1].x(), model[i - 1].y());
+            const auto to = at(rig, model[i].x(), model[i].y());
+            for (int step = 1; step <= 4; ++step) {
+                QTest::mouseMove(rig.window, from + (to - from) * step / 4);
+            }
+        }
+        const auto& last = model.back();
+        QTest::mouseRelease(rig.window, Qt::LeftButton, mods, at(rig, last.x(), last.y()));
+    };
+    const std::vector<QPointF> aroundA{{-36, 16}, {0, 16}, {0, -16}, {-36, -16}, {-36, 14}};
+    lasso(aroundA);
+    QCOMPARE(rig.session.selection().targets().size(), std::size_t{1});
+    QCOMPARE(rig.session.selection().targets().front().id, a);
+    QCOMPARE(steps(rig), baseSteps); // une selection n'est pas une etape d'annulation
+
+    // Ctrl ajoute : un second lasso autour de B complete la selection.
+    const std::vector<QPointF> aroundB{{4, 16}, {36, 16}, {36, -16}, {4, -16}, {4, 14}};
+    lasso(aroundB, Qt::ControlModifier);
+    QCOMPARE(rig.session.selection().targets().size(), std::size_t{2});
+
+    // Sans Ctrl, un lasso qui ne contient QUE la moitie de B ne prend rien ; avec Alt il touche B.
+    const std::vector<QPointF> halfB{{18, 16}, {36, 16}, {36, -16}, {18, -16}, {18, 14}};
+    lasso(halfB);
+    QVERIFY(rig.session.selection().targets().empty());
+    lasso(halfB, Qt::AltModifier);
+    QCOMPARE(rig.session.selection().targets().size(), std::size_t{1});
+    QCOMPARE(rig.session.selection().targets().front().id, b);
+
+    // Un simple clic dans le vide vide la selection.
+    rig.session.selection().replace({Target{TargetKind::EmbroideryObject, a}});
+    QTest::mouseClick(rig.window, Qt::LeftButton, {}, at(rig, 0, 14));
+    QVERIFY(rig.session.selection().targets().empty());
+    QCOMPARE(steps(rig), baseSteps);
+    QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+}
+
+void StudioToolsTest::freehandKnifeCutsAlongTheDrawnPath() {
+    Rig rig;
+    open(rig);
+    const auto a = draw(rig, "draw.rectangle", {-15, -10}, {5, 10});
+    QVERIFY(a != 0);
+    const auto baseSteps = steps(rig);
+    const auto baseObjects = objects(rig);
+    rig.tools.setActiveTool(QStringLiteral("knife"));
+    QVERIFY(!rig.tools.knifeFree()); // ligne droite par defaut
+    rig.tools.setKnifeFree(true);
+    QVERIFY(rig.tools.hint().contains(QStringLiteral("main levée")));
+
+    auto stroke = [&](const std::vector<QPointF>& model) {
+        QTest::mousePress(rig.window, Qt::LeftButton, {}, at(rig, model[0].x(), model[0].y()));
+        for (std::size_t i = 1; i < model.size(); ++i) {
+            const auto from = at(rig, model[i - 1].x(), model[i - 1].y());
+            const auto to = at(rig, model[i].x(), model[i].y());
+            for (int step = 1; step <= 4; ++step) {
+                QTest::mouseMove(rig.window, from + (to - from) * step / 4);
+            }
+        }
+        const auto& last = model.back();
+        QTest::mouseRelease(rig.window, Qt::LeftButton, {}, at(rig, last.x(), last.y()));
+    };
+    const std::vector<QPointF> bent{{-8, -18}, {-4, 0}, {-8, 18}}; // trace coude, de part en part
+
+    // Sans selection : refus, rien de mute.
+    rig.session.selection().clear();
+    stroke(bent);
+    QCOMPARE(steps(rig), baseSteps);
+    QVERIFY(rig.tools.message().contains(QStringLiteral("sélectionnez")));
+
+    // Un trace qui s'arrete dans la forme n'est qu'une entaille : refuse.
+    rig.session.selection().replace({Target{TargetKind::EmbroideryObject, a}});
+    stroke({{-8, -18}, {-4, -2}});
+    QCOMPARE(steps(rig), baseSteps);
+    QCOMPARE(objects(rig), baseObjects);
+
+    // Un trace qui traverse : une seule etape, plusieurs morceaux, annulable.
+    rig.session.selection().replace({Target{TargetKind::EmbroideryObject, a}});
+    stroke(bent);
+    QCOMPARE(steps(rig), baseSteps + 1);
+    QVERIFY(objects(rig) > baseObjects);
+    QTest::keyClick(rig.window, Qt::Key_Z, Qt::ControlModifier);
+    QCOMPARE(steps(rig), baseSteps);
+    QCOMPARE(objects(rig), baseObjects);
+
+    // Mode droit : le comportement historique est intact.
+    rig.tools.setKnifeFree(false);
+    rig.session.selection().replace({Target{TargetKind::EmbroideryObject, a}});
+    drag(rig, at(rig, -5, -18), at(rig, -5, 18));
+    QCOMPARE(steps(rig), baseSteps + 1);
+    QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+}
+
 void StudioToolsTest::offsetShapesCreatesAGrownOrShrunkCopyInOneStep() {
     Rig rig;
     open(rig);

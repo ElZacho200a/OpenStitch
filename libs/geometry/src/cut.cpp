@@ -53,6 +53,39 @@ void collect(const Clipper2Lib::PolyPath64& outer, std::vector<PathSet>& out) {
     }
 }
 
+// Retire `clip` de `region` et renvoie un morceau par composante connexe. Partagé par la coupe
+// droite (bande rectangulaire) et la coupe en tracé libre (bande autour d'une polyligne).
+Result<std::vector<PathSet>> subtract_clip(const PathSet& region,
+                                           const Clipper2Lib::Paths64& clip) {
+    Clipper2Lib::Paths64 subject;
+    subject.push_back(to_clipper(region.outer));
+    for (const auto& hole : region.holes) {
+        subject.push_back(to_clipper(hole));
+    }
+
+    // Sans intersection de surface, conserver la géométrie d'origine telle quelle
+    // (notamment les tangentes Bézier) plutôt que le contour normalisé par Clipper.
+    // Une coupe qui retire de la matière peut laisser UNE seule composante connexe :
+    // c'est le cas d'un pont coupé dans une forme reliée par un autre pont.
+    if (Clipper2Lib::Intersect(subject, clip, Clipper2Lib::FillRule::EvenOdd).empty()) {
+        return std::vector<PathSet>{region};
+    }
+
+    Clipper2Lib::Clipper64 clipper;
+    clipper.AddSubject(subject);
+    clipper.AddClip(clip);
+    Clipper2Lib::PolyTree64 tree;
+    if (!clipper.Execute(Clipper2Lib::ClipType::Difference, Clipper2Lib::FillRule::EvenOdd, tree)) {
+        return fail(ErrorCategory::Internal, "Échec de la découpe géométrique",
+                    "Clipper64::Execute a renvoyé false");
+    }
+    std::vector<PathSet> out;
+    for (const auto& top : tree) {
+        collect(*top, out);
+    }
+    return out;
+}
+
 // Implementation commune a `cut_path_set`/`cut_path_set_bounded` : retire
 // une bande de largeur `cut_width`, perpendiculaire a [a,b], centree sur son
 // milieu, etendue de `reach` de part et d'autre -- seule differe la maniere
@@ -94,34 +127,7 @@ Result<std::vector<PathSet>> cut_band(const PathSet& region, Vec2um a, Vec2um b,
         pt(e0x - nx * hw, e0y - ny * hw),
     };
 
-    Clipper2Lib::Paths64 subject;
-    subject.push_back(to_clipper(region.outer));
-    for (const auto& hole : region.holes) {
-        subject.push_back(to_clipper(hole));
-    }
-    const Clipper2Lib::Paths64 clip{cutBand};
-
-    // Sans intersection de surface, conserver la géométrie d'origine telle quelle
-    // (notamment les tangentes Bézier) plutôt que le contour normalisé par Clipper.
-    // Une coupe qui retire de la matière peut laisser UNE seule composante connexe :
-    // c'est le cas d'un pont coupé dans une forme reliée par un autre pont.
-    if (Clipper2Lib::Intersect(subject, clip, Clipper2Lib::FillRule::EvenOdd).empty()) {
-        return std::vector<PathSet>{region};
-    }
-
-    Clipper2Lib::Clipper64 clipper;
-    clipper.AddSubject(subject);
-    clipper.AddClip(clip);
-    Clipper2Lib::PolyTree64 tree;
-    if (!clipper.Execute(Clipper2Lib::ClipType::Difference, Clipper2Lib::FillRule::EvenOdd, tree)) {
-        return fail(ErrorCategory::Internal, "Échec de la découpe géométrique",
-                    "Clipper64::Execute a renvoyé false");
-    }
-    std::vector<PathSet> out;
-    for (const auto& top : tree) {
-        collect(*top, out);
-    }
-    return out;
+    return subtract_clip(region, Clipper2Lib::Paths64{cutBand});
 }
 
 } // namespace
@@ -158,6 +164,31 @@ Result<std::vector<PathSet>> cut_path_set(const PathSet& region, Vec2um a, Vec2u
 Result<std::vector<PathSet>> cut_path_set_bounded(const PathSet& region, Vec2um a, Vec2um b,
                                                   double reach_um, Micrometers cut_width) {
     return cut_band(region, a, b, reach_um, cut_width);
+}
+
+Result<std::vector<PathSet>> cut_path_set_polyline(const PathSet& region,
+                                                   const std::vector<Vec2um>& polyline,
+                                                   Micrometers cut_width) {
+    // Points consécutifs confondus retirés : une polyligne sans longueur ne coupe rien.
+    Clipper2Lib::Path64 stroke;
+    for (const Vec2um& p : polyline) {
+        const Clipper2Lib::Point64 q{p.x.value, p.y.value};
+        if (stroke.empty() || stroke.back() != q) {
+            stroke.push_back(q);
+        }
+    }
+    if (stroke.size() < 2) {
+        return std::vector<PathSet>{region};
+    }
+    // Bande d'épaisseur `cut_width` autour du tracé, extrémités franches : comme la coupe droite,
+    // la coupe s'arrête exactement où le tracé s'arrête.
+    const double hw = std::max(1.0, static_cast<double>(cut_width.value) / 2.0);
+    const Clipper2Lib::Paths64 band = Clipper2Lib::InflatePaths(
+        Clipper2Lib::Paths64{stroke}, hw, Clipper2Lib::JoinType::Round, Clipper2Lib::EndType::Butt);
+    if (band.empty()) {
+        return std::vector<PathSet>{region};
+    }
+    return subtract_clip(region, band);
 }
 
 } // namespace openstitch::geometry

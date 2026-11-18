@@ -57,11 +57,14 @@ case "plus": return "M4 10 L16 10 M10 4 L10 16";
         case "bezier": return "M3 16 C3 8 17 12 17 4 M3 16 L7 10 M17 4 L13 10";
         case "freeform": return "M3 14 C5 8 7 16 10 10 C12 6 14 14 17 6";
         case "node": return "M3 15 L10 4 L17 15 Z M1.5 13.5 L4.5 13.5 L4.5 16.5 L1.5 16.5 Z M8.5 2.5 L11.5 2.5 L11.5 5.5 L8.5 5.5 Z M15.5 13.5 L18.5 13.5 L18.5 16.5 L15.5 16.5 Z";
+        case "lasso": return "M10 3 C15 3 18 5.5 18 8.5 C18 11.5 14.5 13.5 10 13.5 C5.5 13.5 2 11.5 2 8.5 C2 5.5 5 3 10 3 Z M7 13 C6 15 6 16.5 8 17 C10 17.5 10.5 16 10 14";
         case "knife": return "M3 17 L14 6 L17 3 L16 8 L6 18 Z M11 9 L13 11";
         case "warp": return "M3 7 C6 4 8 10 11 7 C14 4 16 10 17 7 M3 13 C6 10 8 16 11 13 C14 10 16 16 17 13";
         case "bucket": return "M4 9 L10 3 L16 9 L10 15 Z M4 9 L16 9 M17 12 C17 14 18 15 18 16 A1 1 0 1 1 16 16 C16 15 17 14 17 12";
         case "brush": return "M17 3 L9 11 M9 11 C6 11 5 13 5 14 C5 16 3 17 3 17 C6 17 9 16 9 13 Z";
         case "eraser": return "M8 17 L3 12 L11 4 L17 10 L10 17 Z M7 8 L13 14 M10 17 L17 17";
+        // Verrouillage d'une région (RegionTools, menu contextuel de segmentation).
+        case "lock": return "M5 9 L5 17 L15 17 L15 9 Z M7 9 L7 6 C7 3 13 3 13 6 L13 9";
         default: return "";
         }
     }

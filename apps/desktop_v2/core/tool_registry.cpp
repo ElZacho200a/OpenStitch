@@ -75,6 +75,8 @@ ToolRegistry ToolRegistry::builtin() {
     //          outil historique
     r.add({"select", "Sélection", "V", kAllWorkspaces, Gesture::None, "Select"});
     r.add({"pan", "Déplacer la vue", "H", kAllWorkspaces, Gesture::None, "Pan"});
+    // Sélection par contour main levée : Maj/Ctrl ajoute, Alt prend aussi les objets touchés.
+    r.add({"select.lasso", "Lasso", "Maj+V", kAllWorkspaces, Gesture::Freehand, ""});
     r.add({"crop", "Recadrer / sélection rectangle", "C", D, Gesture::DragBox, "Rect"});
     r.add({"draw.rectangle", "Rectangle", "R", D, Gesture::DragBox, "DrawRectangle"});
     r.add({"draw.ellipse", "Ellipse", "E", D, Gesture::DragBox, "DrawEllipse"});

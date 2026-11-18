@@ -1755,6 +1755,13 @@ libre, colonne satin manuelle, ligne de coupe satin ; édition de nœuds
 
 ### HP-VEC-004 — Couteau : couper une forme en deux [P1] — ☑ Fait (2026-10-13, constaté sur `main`, `eee6188`)
 - Livré : outil **Couteau** (K) sur toute forme vectorielle (`commands::make_split_command`, `geometry/cut.hpp`) ; chaque morceau garde son type de broderie (remplissages clonés). Vérifié par vrais gestes souris (`sidebarKnifeRealGesture`, PR #25).
+- Studio (2026-11-18) : **couteau en tracé libre** (case « Tracé libre » des options de l'outil) :
+  le trait à main levée est allégé (Douglas-Peucker, 1 px) puis coupe selon la polyligne
+  (`geometry::cut_path_set_polyline`, bande de 20 µm à extrémités franches, rien n'est
+  prolongé ; `commands::make_polyline_split_command` ; opération `split_path`). Mêmes règles
+  d'identité et de refus que la coupe droite ; une étape d'annulation. Un tracé qui entre et
+  ressort par le même bord détache le triangle entre ses branches (voulu). Le mode droit reste
+  le défaut.
 - Correctif (2026-10-29) : le couteau ignorait une coupe de pont quand une seconde
   jonction gardait la forme connexe (condition erronée `cut->size() >= 2`).
   Désormais une coupe avec une seule composante restante met à jour le
@@ -4852,3 +4859,4 @@ ouvrant le lot (§0.1).
 | 2026-11-17 | Claude (R02, calcul GPU et performances) | **HP-PERF-037 ☑** (nouvelle entrée). Tirage du tissu et grille des ponts cachés réécrits à sortie identique : marine 179 → 74 ms, tentabrode 270 → 216 ms, texte 40 → 32 ms (p50 chauds, natif, A/B entrelacé). GPU D3D11 remesuré sur RTX 5060 Ti de bureau : toujours 3 à 5× plus lent que le CPU, transferts compris (no-go confirmé). **HP-PERF-015** : constat ajouté (livraison annulée dans `main` par `af61f094`). Dossier `docs/performance/gpu-compute/`. |
 | 2026-11-17 | Claude (R02 lot 1) | **HP-PERF-037 ☑** (précisé) : `render_threads` utilise `parallel_for` sur des bandes de 8 à 64 lignes au lieu de 8 bandes égales ; aperçu tentabrode −29 %, octets identiques. |
 | 2026-11-17 | Claude (câblage Studio du fondu depuis l'image) | **HP-STI-011 ◐** (inchangé). Panneau *Fondu de fils* de Studio : section « Fondu depuis l'image » (fils 2 à 8, case de grille 0,5 à 5 mm, rangées continues), désactivée avec sa raison sans image ou sur une forme incompatible ; `core/image_fade` (calcul sur instantané via `TaskManager`, application en UNE commande annulable), `FadeController::fadeFromImage`. Test QTest `test_desktop_v2_studio_fade_image`. Limite : pas d'entrée de palette d'actions (le catalogue exécute de façon synchrone). |
+| 2026-11-18 | Claude (lasso et couteau libre, Studio) | **HP-VEC-004** (précisé) et **HP-UX-065** (lasso porté dans Studio) : outil **Lasso** (Maj+V) : contour main levée, objets entièrement dedans, Alt = aussi les objets touchés, Maj/Ctrl = ajouter ; calcul pur `lasso_select`. **Couteau en tracé libre** (option « Tracé libre ») : `cut_path_set_polyline`, `make_polyline_split_command`, opération `split_path`, `batchSplitPath`. Tests Catch2 (géométrie, commandes, opérations, lot, lasso) et QTest (vrais gestes souris). Reste : le lasso sélectionne par boîte englobante (comme le cadre), pas par la géométrie réelle des fils ; pas de lasso de nœuds (HP-VEC-017) ; pas d'aperçu de la coupe avant relâchement. |
