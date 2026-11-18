@@ -976,6 +976,17 @@ void generate_tatami(stitch::StitchSequence& sequence, const document::VectorObj
     }
 }
 
+// Sous-couche d'une zone selon le type de remplissage. Deux surcharges plutôt qu'un lambda à
+// `if constexpr` imbriqué dans le visiteur générique : MSVC 14.50 (C1001) plante en Release sur
+// ce motif à l'instanciation pour `TatamiParams`.
+auto boundary_underlay_for(const document::TatamiParams& params, const geometry::PathSet& region) {
+    return tatami_underlay(region, resolve_underlay(params, region));
+}
+auto boundary_underlay_for(const document::DirectionalFillParams& params,
+                           const geometry::PathSet& region) {
+    return directional_underlay(region, resolve_underlay(params, region));
+}
+
 // Couche d'une zone en FONDU À LA FRONTIÈRE : sous-couches sur la zone privée de sa demi-bande
 // (jamais sous le fil voisin, et pas le long de la frontière où la couche supérieure clairsemée
 // ne les couvrirait plus), puis la couche masquée, prolongée dans la demi-bande de l'autre zone
@@ -991,13 +1002,7 @@ void generate_boundary_blend_layer(stitch::StitchSequence& sequence,
                           std::is_same_v<T, document::DirectionalFillParams>) {
                 const auto regions = fill_regions_in_sewing_order(sequence, source, params.inset);
                 for (const geometry::PathSet& region : layer.underlay_zones) {
-                    const auto underlay = [&] {
-                        if constexpr (std::is_same_v<T, document::TatamiParams>) {
-                            return tatami_underlay(region, resolve_underlay(params, region));
-                        } else {
-                            return directional_underlay(region, resolve_underlay(params, region));
-                        }
-                    }();
+                    const auto underlay = boundary_underlay_for(params, region);
                     for (const auto& up : underlay) {
                         emit_underlay_pass(sequence, up, object.id, nullptr);
                     }
