@@ -1,0 +1,13 @@
+{
+  "$comment": "Mouvements Bubblegum : un peu plus lents et rebondis (OutBack) que Neo Studio. Tous tombent à 0 avec « Réduire les animations ».",
+  "motion": {
+    "durationMs": 200,
+    "fastMs": 120,
+    "slowMs": 320,
+    "easing": "OutCubic",
+    "easingEmphasis": "OutBack",
+    "pressScale": 0.94,
+    "hoverLift": 2,
+    "popupScale": 0.92
+  }
+}

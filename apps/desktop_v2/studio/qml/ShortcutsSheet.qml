@@ -19,7 +19,9 @@ Controls.Popup {
     height: Math.min(560, parent ? parent.height - 32 : 560)
     padding: 16
 
-    background: Rectangle { color: Theme.panel; border.color: Theme.border; radius: Theme.radius }
+    background: StudioPopupBackground { }
+    enter: StudioPopupEnter { }
+    exit: StudioPopupExit { }
 
     function openSheet() { open(); closeButton.forceActiveFocus() }
 

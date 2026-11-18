@@ -38,6 +38,7 @@ add_library(openstitch_studio_ui STATIC
     layers/vector_layer.cpp layers/vector_layer.hpp
     companion_controller.cpp companion_controller.hpp
     preferences_controller.cpp preferences_controller.hpp
+    theme_controller.cpp theme_controller.hpp
     help_controller.cpp help_controller.hpp
     digitize_gestures.cpp digitize_gestures.hpp
     pull_controller.cpp pull_controller.hpp
@@ -49,19 +50,25 @@ add_library(openstitch_studio_ui STATIC
     segmentation_space_controller.cpp segmentation_space_controller.hpp
     layers/region_layer.cpp layers/region_layer.hpp)
 add_library(openstitch::studio_ui ALIAS openstitch_studio_ui)
+# Thèmes livrés (resources/themes) : repli quand le Studio tourne depuis le dossier de build.
+target_compile_definitions(openstitch_studio_ui PRIVATE
+    OPENSTITCH_THEMES_SOURCE_DIR="${PROJECT_SOURCE_DIR}/resources/themes")
 target_include_directories(openstitch_studio_ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(openstitch_studio_ui PUBLIC openstitch::desktop_v2_core
     openstitch::ai_segmentation openstitch::companion_backends
     openstitch::desktop_v2_live Qt6::Network Qt6::Quick
     Qt6::QuickControls2 PRIVATE openstitch::warnings
     # qTriangulate (layers/vector_layer.cpp) : formes vectorielles en triangles pour le GPU.
-    Qt6::GuiPrivate)
+    Qt6::GuiPrivate
+    # QZipReader / QZipWriter (theme_controller.cpp) : import et export des archives de thèmes.
+    Qt6::CorePrivate)
 
 set(studio_qml_files
     qml/Main.qml qml/HistoryPanel.qml qml/Theme.qml qml/StudioButton.qml qml/StudioIcon.qml
     qml/StudioLabel.qml qml/StudioPanel.qml qml/StudioToolTip.qml qml/StudioTextField.qml
     qml/StudioCheckBox.qml qml/StudioSwitch.qml qml/StudioSlider.qml qml/StudioSpinBox.qml
-    qml/StudioComboBox.qml qml/StudioCard.qml
+    qml/StudioComboBox.qml qml/StudioCard.qml qml/ThemedSurface.qml qml/StudioPopupBackground.qml
+    qml/StudioPopupEnter.qml qml/StudioPopupExit.qml qml/ThemeGallery.qml qml/ThemeSection.qml
     qml/SectionLabel.qml qml/ActionPalette.qml qml/ObjectTree.qml qml/LayerPanel.qml
     qml/CanvasContextMenu.qml qml/HoopPopover.qml qml/TransformHandles.qml qml/EditBar.qml qml/FilePanel.qml
     qml/Inspector.qml qml/ParamField.qml qml/ParamSection.qml qml/RecipeCatalog.qml
@@ -93,6 +100,13 @@ if(TARGET openstitch-mcp)
     add_dependencies(openstitch_v2_studio openstitch-mcp)
 endif()
 qt_add_resources(openstitch_v2_studio studio_qml PREFIX "/studio" FILES ${studio_qml_files})
+
+# Thèmes livrés à côté de l'exécutable (<exe>/themes) : données seulement, chargées sans
+# compilation par le moteur de thèmes.
+add_custom_command(TARGET openstitch_v2_studio POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/resources/themes"
+        "$<TARGET_FILE_DIR:openstitch_v2_studio>/themes"
+    COMMENT "Copy builtin Studio themes")
 
 if(WIN32 AND TARGET Qt6::windeployqt)
     add_custom_command(TARGET openstitch_v2_studio POST_BUILD

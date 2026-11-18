@@ -1,0 +1,13 @@
+{
+  "schema": "openstitch-theme",
+  "schemaVersion": 1,
+  "id": "neo-studio",
+  "name": "Neo Studio",
+  "description": "Thème par défaut : graphite et bleu nuit, framboise pour l'action. Sobre, lisible, la broderie reste au premier plan.",
+  "author": "OpenStitch",
+  "version": "1.0.0",
+  "license": "Apache-2.0",
+  "compatibility": { "minEngine": 1 },
+  "variants": ["dark", "light"],
+  "defaultVariant": "dark"
+}

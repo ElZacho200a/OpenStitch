@@ -9,6 +9,11 @@ Item {
     property color color: Theme.muted
     implicitWidth: 20
     implicitHeight: 20
+    // Icône du thème : tracé SVG (icons.json, teinté comme les icônes intégrées) ou fichier
+    // (assets/icons/<nom>.svg|png, en couleurs propres). Absente : icône intégrée.
+    readonly property var themed: Theme.icons[name]
+    readonly property string themedPath: themed && themed.path ? themed.path : ""
+    readonly property string themedSource: themed && themed.source ? themed.source : ""
 
     function pathForName() {
         switch (name) {
@@ -67,17 +72,29 @@ case "plus": return "M4 10 L16 10 M10 4 L10 16";
     }
 
     Shape {
+        visible: icon.themedSource.length === 0
         anchors.centerIn: parent
         width: 20
         height: 20
         scale: Math.min(icon.width, icon.height) / 20
         ShapePath {
             strokeColor: icon.color
-            strokeWidth: 1.45
+            strokeWidth: Theme.iconStroke
             fillColor: "transparent"
             capStyle: ShapePath.RoundCap
             joinStyle: ShapePath.RoundJoin
-            PathSvg { path: icon.pathForName() }
+            PathSvg { path: icon.themedPath.length > 0 ? icon.themedPath : icon.pathForName() }
+        }
+    }
+    Loader {
+        active: icon.themedSource.length > 0
+        anchors.fill: parent
+        sourceComponent: Image {
+            source: icon.themedSource
+            sourceSize: Qt.size(width, height)
+            fillMode: Image.PreserveAspectFit
+            smooth: true
+            asynchronous: false
         }
     }
 }

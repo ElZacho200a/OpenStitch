@@ -12,20 +12,20 @@ Controls.Popup {
     readonly property bool hasPrefs: typeof prefs !== "undefined" && prefs !== null
     readonly property bool hasUsage: typeof usage !== "undefined" && usage !== null
     readonly property bool hasCompanion: typeof companion !== "undefined" && companion !== null
+    // Préférences ▸ Thèmes ▸ « Galerie des composants » : la galerie vit dans Main.qml.
+    signal galleryRequested()
     modal: true
     focus: true
     closePolicy: Controls.Popup.CloseOnEscape | Controls.Popup.CloseOnPressOutside
     parent: Controls.Overlay.overlay
     anchors.centerIn: parent
-    width: Math.min(480, parent ? parent.width - 32 : 480)
-    height: Math.min(560, parent ? parent.height - 32 : 560)
+    width: Math.min(560, parent ? parent.width - 32 : 560)
+    height: Math.min(720, parent ? parent.height - 32 : 720)
     padding: 16
 
-    background: Rectangle {
-        color: Theme.panel
-        border.color: Theme.border
-        radius: Theme.radius
-    }
+    background: StudioPopupBackground { }
+    enter: StudioPopupEnter { }
+    exit: StudioPopupExit { }
 
     function openDialog() {
         keyField.text = ""
@@ -57,7 +57,7 @@ Controls.Popup {
             SectionLabel { text: qsTr("APPARENCE") }
             RowLayout {
                 spacing: 6
-                Text { text: qsTr("Thème"); color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.bodySize; Layout.preferredWidth: 90 }
+                Text { text: qsTr("Apparence"); color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.bodySize; Layout.preferredWidth: 90 }
                 Repeater {
                     model: [{ id: "system", label: qsTr("Système") }, { id: "light", label: qsTr("Clair") }, { id: "dark", label: qsTr("Sombre") }]
                     delegate: StudioButton {
@@ -109,6 +109,12 @@ Controls.Popup {
                 wrapMode: Text.WordWrap
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.smallSize
+            }
+
+            SectionLabel { text: qsTr("THÈMES") }
+            ThemeSection {
+                Layout.fillWidth: true
+                onGalleryRequested: { dialog.close(); dialog.galleryRequested() }
             }
 
             SectionLabel { text: qsTr("USAGE") }
