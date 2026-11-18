@@ -432,6 +432,16 @@ vérifié sur tissu.
   alternés » ou « superposés »), bouton « Retirer le fondu ».
 - Calculs hors du fil d'interface (`BusyIndicator::run`) ; aucune logique métier dans les
   contrôleurs : tout passe par les commandes du §7.
+- **Plusieurs fondus par zone** (2026-11-18) : le modèle porte `std::vector<BoundaryBlendLink>
+  boundary_blends` (trié par partenaire, un lien par voisine ; `.osp` : objet `boundaryBlend`
+  pour un seul lien, inchangé, tableau `boundaryBlends` au-delà). Le panneau du fondu liste les
+  fondus de la zone principale (`boundaryBlendList` : voisine, largeurs, frontière tracée ou
+  calculée, mode des rangées ; clic ou Entrée pour choisir le fondu courant, croix pour le
+  retirer). Les réglages s'appliquent au fondu courant : la seconde zone sélectionnée, sinon le
+  fondu choisi dans la liste, sinon le premier. Le calque `BoundaryBlendFrontiers.qml` (espaces
+  Points et Vecteurs) trace toutes les frontières de la zone principale, la courante en trait
+  plein, les autres en pointillés. Retrait sans voisine précisée refusé si la zone a plusieurs
+  fondus (`E_BLEND_AMBIGUOUS`). Génération : §6.4.
 
 ## 9. Tests et critères d'acceptation
 
