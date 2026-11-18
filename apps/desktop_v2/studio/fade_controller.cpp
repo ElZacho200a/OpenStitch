@@ -274,7 +274,7 @@ bool FadeController::satinTarget() const {
         return false;
     }
     const auto* layer = studio_.session().project().findEmbroidery(ObjectId{id_});
-    return layer != nullptr && layer->is_satin();
+    return layer != nullptr && (layer->is_satin() || layer->is_auto_satin());
 }
 
 QColor FadeController::foreground() const {

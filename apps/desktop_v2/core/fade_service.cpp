@@ -149,7 +149,7 @@ bool rotate_gradient(document::DensityGradient& gradient, double degrees) {
 
 std::string fadeIncompatibility(const document::Project& project, std::uint64_t objectId) {
     const auto* emb = project.findEmbroidery(ObjectId{objectId});
-    if (emb && emb->is_satin()) {
+    if (emb && (emb->is_satin() || emb->is_auto_satin())) {
         // Contrairement à l'ancien fondu, le satin entrelacé autonome sait dériver ses rails
         // depuis le contour source. C'est le correctif réel du diagnostic couvert par la PR #340 :
         // le simple choix de Satin ne doit plus conduire à l'erreur trompeuse « tatami seulement ».
@@ -208,7 +208,7 @@ ServiceResult createFade(DocumentSession& session, std::uint64_t objectId,
     multi.complementary = settings.complementary;
     multi.texture = settings.texture;
     multi.geometry = settings.geometry;
-    multi.method = object->is_satin() ? static_cast<int>(document::GradientMethod::SatinInterlaced)
+    multi.method = (object->is_satin() || object->is_auto_satin()) ?static_cast<int>(document::GradientMethod::SatinInterlaced)
                                       : method_for_texture(settings.texture);
     return createMultiFade(session, objectId, multi);
 }

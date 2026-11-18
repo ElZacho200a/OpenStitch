@@ -968,6 +968,7 @@ plus.
   nombreuses sur un tableau entier (433 contre 332 à l'auto-numérisation actuelle), câblage
   Studio, essais textiles. Statut ◐ conservé.
 - 2026-11-17 : trajets cachés sous les couches suivantes d'un fondu à parts image (part couverte ≥ 0,75, 12 mm au plus) et choix de la rangée suivante joignable par trajet caché : 433 → 318 coupes sur le tableau entier, sous les 332 de l'auto-numérisation actuelle (`docs/source/directional-fill.md`). Restent : stries, câblage Studio, essais textiles. Statut ◐ conservé.
+- 2026-11-18 : un auto-satin (type « Satin » de Studio, objets numérisés) peut porter un fondu multicolore en satin entrelacé ; il était refusé (« tatami, directionnel ou satin ») car seuls les satins à rails explicites étaient reconnus. Les rails sont dérivés du contour ; une forme sans deux côtés allongés (lettre, anneau) reste refusée. Restent : transition courte du satin entrelacé, rails par colonne pour les formes complexes. Statut ◐ conservé.
 - 2026-11-15 : recette black-box actualisée pour les rangées partagées (triples
   position/poids/début, profils échantillonnés, grille de surcouche à 60 %) et
   réactivée sur les PR suivantes et `main`, au lieu de la seule PR #336 fermée.
