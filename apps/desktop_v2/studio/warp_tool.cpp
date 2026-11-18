@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "warp_tool.hpp"
 
+#include "shape_resolver.hpp"
 #include "task_pump.hpp"
 #include <cmath>
 
@@ -43,12 +44,15 @@ bool WarpTool::begin(PointMm point) {
     cancel();
     const auto p = position(point);
     const auto& selection = studio_.session().selection().targets();
-    if (!p || selection.size() != 1 || selection.front().kind != TargetKind::EmbroideryObject) {
+    // Une forme vectorielle suffit, convertie en points ou non : le pinceau ne déplace que son
+    // contour.
+    if (!p || selection.size() != 1 || selection.front().kind == TargetKind::Region ||
+        !shapeOfTarget(studio_.session().project(), selection.front())) {
         emit message(tr("Sélectionnez d'abord UNE forme vectorielle"));
         return false;
     }
     snapshot_ = studio_.session().snapshot();
-    object_ = ObjectId{selection.front().id};
+    object_ = selection.front();
     revision_ = studio_.session().revision();
     strokeOptions_ = options_;
     touches_ = {{*p, false}};

@@ -18,8 +18,9 @@ struct WarpPreview {
     std::unique_ptr<commands::ICommand> command;
 };
 [[nodiscard]] Result<void> validateWarpOptions(WarpOptions options);
-// `object` is an embroidery id, as in the Studio selection. Work only on the supplied snapshot.
-[[nodiscard]] Result<WarpPreview> previewWarp(const document::Project& project, ObjectId object,
+// `target` is a shape or an embroidery of the Studio selection: the warp only moves the shape's
+// contours, so an unconverted shape works too. Work only on the supplied snapshot.
+[[nodiscard]] Result<WarpPreview> previewWarp(const document::Project& project, Target target,
                                               WarpOptions options,
                                               const std::vector<WarpTouch>& touches,
                                               bool prepareCommand, const TaskContext& task = {});

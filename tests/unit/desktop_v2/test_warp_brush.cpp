@@ -22,13 +22,14 @@ TEST_CASE("warp validates exact bounds and produces deterministic undoable conto
     REQUIRE(session.applyBatch(batchAddRect({0, 0}, 20, 10), "Fixture").committed);
     const auto before = session.project();
     const auto id = before.embroidery_objects.front().id;
+    const Target target{TargetKind::EmbroideryObject, id.value};
     const auto source = before.embroidery_objects.front().source_vector;
     const auto revision = session.revision();
     const std::vector<WarpTouch> touches{{Vec2um{Micrometers{0}, Micrometers{5000}}, false},
                                          {Vec2um{Micrometers{0}, Micrometers{7000}}, false}};
-    auto a = previewWarp(before, id, {}, touches, true);
+    auto a = previewWarp(before, target, {}, touches, true);
     REQUIRE(a);
-    auto b = previewWarp(before, id, {}, touches, true);
+    auto b = previewWarp(before, target, {}, touches, true);
     REQUIRE(b);
     CHECK(a->paths == b->paths);
     CHECK(a->paths != before.findObject(source)->paths);
@@ -50,8 +51,9 @@ TEST_CASE("warp validates exact bounds and produces deterministic undoable conto
     REQUIRE(session.undo());
     CHECK(dst(session.project()) == initial);
     CHECK(session.project().findObject(source)->paths == before.findObject(source)->paths);
-    CHECK_FALSE(previewWarp(before, ObjectId{999999}, {}, touches, true));
-    CHECK_FALSE(previewWarp(before, id, {}, {}, true));
+    CHECK_FALSE(
+        previewWarp(before, Target{TargetKind::EmbroideryObject, 999999}, {}, touches, true));
+    CHECK_FALSE(previewWarp(before, target, {}, {}, true));
     const std::vector<WarpTouch> outside{{Vec2um{Micrometers{1000001}, Micrometers{0}}, false}};
-    CHECK_FALSE(previewWarp(before, id, {}, outside, false));
+    CHECK_FALSE(previewWarp(before, target, {}, outside, false));
 }

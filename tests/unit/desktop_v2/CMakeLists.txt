@@ -14,6 +14,7 @@ add_executable(test_desktop_v2_core
     test_radial_menu.cpp
     test_shape_batch.cpp
     test_warp_brush.cpp
+    test_shape_resolver.cpp
     test_paint_bucket.cpp
     test_transform_batch.cpp
     test_edit_batch.cpp

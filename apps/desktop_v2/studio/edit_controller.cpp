@@ -15,6 +15,7 @@
 #include "inspector_model.hpp"
 #include "object_labels.hpp"
 #include "openstitch/commands/project_commands.hpp"
+#include "shape_resolver.hpp"
 #include "transform_batch.hpp"
 
 namespace openstitch::desktop_v2::studio {
@@ -132,6 +133,12 @@ std::vector<std::uint64_t> EditController::selectedIds() const {
         }
     }
     return ids;
+}
+
+int EditController::selectedShapeCount() const {
+    const auto& session = studio_.session();
+    return static_cast<int>(
+        resolveEditableShapes(session.project(), session.selection().targets()).size());
 }
 
 int EditController::selectedCount() const {
@@ -541,6 +548,20 @@ bool EditController::deleteSelection() {
     const auto ids = selectedIds();
     return applyBatch(batchRemove(ids), QStringLiteral("Supprimer"),
                       QStringLiteral("%1 objet(s) supprimé(s)").arg(ids.size()));
+}
+
+bool EditController::deleteShapes() {
+    auto& session = studio_.session();
+    auto removal = prepareShapeRemoval(session.project(), session.selection().targets());
+    if (!removal.command) {
+        return refuse(QStringLiteral("Supprimer la forme : rien à supprimer (sélection vide, "
+                                     "verrouillée ou lettre de texte)"));
+    }
+    session.execute(std::move(removal.command)); // la sélection est élaguée par la session
+    say(QStringLiteral("%1 forme(s) supprimée(s) avec %2 broderie(s)")
+            .arg(removal.shapes)
+            .arg(removal.embroideries));
+    return true;
 }
 
 bool EditController::align(const QString& mode) {
