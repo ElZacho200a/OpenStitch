@@ -208,8 +208,9 @@ ServiceResult createFade(DocumentSession& session, std::uint64_t objectId,
     multi.complementary = settings.complementary;
     multi.texture = settings.texture;
     multi.geometry = settings.geometry;
-    multi.method = (object->is_satin() || object->is_auto_satin()) ?static_cast<int>(document::GradientMethod::SatinInterlaced)
-                                      : method_for_texture(settings.texture);
+    multi.method = (object->is_satin() || object->is_auto_satin())
+                       ? static_cast<int>(document::GradientMethod::SatinInterlaced)
+                       : method_for_texture(settings.texture);
     return createMultiFade(session, objectId, multi);
 }
 
