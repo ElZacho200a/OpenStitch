@@ -62,6 +62,8 @@ case "plus": return "M4 10 L16 10 M10 4 L10 16";
         case "bucket": return "M4 9 L10 3 L16 9 L10 15 Z M4 9 L16 9 M17 12 C17 14 18 15 18 16 A1 1 0 1 1 16 16 C16 15 17 14 17 12";
         case "brush": return "M17 3 L9 11 M9 11 C6 11 5 13 5 14 C5 16 3 17 3 17 C6 17 9 16 9 13 Z";
         case "eraser": return "M8 17 L3 12 L11 4 L17 10 L10 17 Z M7 8 L13 14 M10 17 L17 17";
+        // Verrouillage d'une région (RegionTools, menu contextuel de segmentation).
+        case "lock": return "M5 9 L5 17 L15 17 L15 9 Z M7 9 L7 6 C7 3 13 3 13 6 L13 9";
         default: return "";
         }
     }
