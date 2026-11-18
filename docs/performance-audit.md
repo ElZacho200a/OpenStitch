@@ -783,8 +783,35 @@ Empreinte de la séquence effective `ea127e23e0aa42b8` identique avant et après
 Test : « chunk cache : testeurs de la fusion des points courts suivent paramètres et géométrie »
 (avec/sans cache, invalidation par paramètre et par géométrie, 1 fil = 8 fils).
 
-**Pistes restantes** (non faites) : plancher à chaud ~4 ms = copies de 60 000 commandes (assemblage,
-trois passes de finition) ; `knocked_out_source` recalcule la forme privée des remplissages posés
-au-dessus à chaque appel (phase 1, séquentielle, hors cache ; nul sur tentabrode car sans
-recouvrement, à mesurer sur un projet avec `knockout`) ; objets satin non routés et auto-satin
-hors squelette régénérés à chaque appel (pas de cache de séquence).
+**Suite : « knockout » (`knocked_out_source`)**. Avec l'option « Retirer les recouvrements »
+(`--knockout` du banc, ajouté), la phase 1 de `generate_sequence` recalculait pour CHAQUE objet,
+et pour chaque remplissage opaque posé au-dessus, le rétrécissement Clipper de la couverture puis
+la différence booléenne, séquentiellement et hors de tout cache : `effective_sequence` à cache
+chaud passait de 5 à **~230 ms** (tentabrode, 158 objets). Deux caches à clé exacte
+(`generate.cpp`, `KnockoutPlanner`) : couvertures rétrécies par (forme, marge) et résultat par
+objet, validé par la liste ordonnée (forme, version) des couvertures (une version neuve à chaque
+changement de contenu, après comparaison exacte des tracés) ; index des formes par identifiant à
+la place de la recherche linéaire. Mêmes interrupteur et vidage que `chunk_cache`, 4096 entrées
+au plus.
+
+| Étape (tentabrode, `--knockout`, Release, médianes de 5) | Avant | Après 1 fil | Après 8 fils |
+|---|---|---|---|
+| cache chaud | 262 ms | 4,8 ms | 5,3 ms |
+| 1 objet médian modifié | 261 ms | 4,4 ms | 5,1 ms |
+| plus gros objet modifié | 317 ms | 37 ms | 38 ms |
+
+Empreinte `ea127e23e0aa42b8` inchangée (sur ce projet, les régions ne se recouvrent pas : le
+banc ne prouve donc que l'absence de régression). L'identité est prouvée par le test « le
+knockout en cache suit marge, géométrie et couvertures » : fond sous deux remplissages qui le
+recouvrent, résultat avec/sans cache identique après chaque modification (marge, couverture
+déplacée, fond modifié, couverture rendue non opaque), le knockout retire bien des points, 1 fil
+= 8 fils.
+
+**Satin : mesuré, pas de cache.** Avec `--satin-bands` (115 auto-satins), la phase 3 entière
+coûte 2,5 ms à chaud, dont 2,0 ms de `generate_auto_satin` : le squelette, la partie coûteuse,
+est déjà en cache. Mettre la séquence en cache serait délicat (l'ordre des colonnes et les
+jointures lisent la fin de la séquence déjà assemblée, `sequence.commands.back()`) pour moins de
+2 ms : écarté. Satin manuel non mesuré à part (même ordre de grandeur attendu).
+
+**Pistes restantes** (non faites) : plancher à chaud ~4 ms = copies de 60 000 commandes
+(assemblage, trois passes de finition) ; gain à mesurer avant de toucher.

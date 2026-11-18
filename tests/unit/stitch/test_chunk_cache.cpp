@@ -327,3 +327,88 @@ TEST_CASE("chunk cache : testeurs de la fusion des points courts suivent paramet
     REQUIRE(many.has_value());
     CHECK(one->commands == many->commands);
 }
+
+// Le « knockout » (forme privee de ce que les remplissages opaques posent au-dessus) est mis en
+// cache (couvertures retrecies + resultat par objet). Le resultat doit suivre chaque
+// modification des entrees, avec ou sans cache, et ne pas dependre du nombre de fils.
+namespace {
+
+// Fond large sous deux remplissages qui le recouvrent en partie, plus un contour sans recouvrement.
+document::Project make_knockout_project() {
+    document::Project project;
+    const auto add = [&](std::int32_t x, std::int32_t size, bool knockout,
+                         document::StitchParams params) {
+        document::VectorObject vec;
+        vec.id = project.object_ids.next();
+        vec.paths.push_back(geometry::PathSet{square_at(x, size), {}});
+        project.vector_objects.push_back(vec);
+        document::EmbroideryObject emb;
+        emb.id = project.object_ids.next();
+        emb.source_vector = vec.id;
+        emb.knockout = knockout;
+        emb.rgb = {static_cast<std::uint8_t>(30 + 40 * project.embroidery_objects.size()), 60, 90};
+        emb.params = std::move(params);
+        project.embroidery_objects.push_back(emb);
+    };
+    add(0, 40'000, true, document::TatamiParams{});
+    add(5'000, 12'000, true, document::DirectionalFillParams{});
+    add(20'000, 14'000, false, document::TatamiParams{});
+    add(60'000, 8'000, true, document::RunningStitchParams{});
+    return project;
+}
+
+} // namespace
+
+TEST_CASE("chunk cache : le knockout en cache suit marge, geometrie et couvertures") {
+    document::Project project = make_knockout_project();
+    const auto check = [&](const char* label) {
+        CAPTURE(label);
+        set_chunk_cache_enabled(false);
+        const auto reference = effective_sequence(project);
+        set_chunk_cache_enabled(true);
+        REQUIRE(reference.has_value());
+        const auto first = effective_sequence(project);
+        const auto again = effective_sequence(project);
+        REQUIRE(first.has_value());
+        REQUIRE(again.has_value());
+        CHECK(first->commands == reference->commands);
+        CHECK(again->commands == reference->commands);
+        return reference->commands.size();
+    };
+
+    clear_chunk_cache();
+    const std::size_t withKnockout = check("depart");
+    // Le knockout retire bien des points (sinon le test ne prouverait rien).
+    auto without = project;
+    for (auto& emb : without.embroidery_objects) {
+        emb.knockout = false;
+    }
+    set_chunk_cache_enabled(false);
+    const auto plain = effective_sequence(without);
+    set_chunk_cache_enabled(true);
+    REQUIRE(plain.has_value());
+    CHECK(withKnockout < plain->commands.size());
+
+    project.embroidery_objects[0].knockout_margin = Micrometers{300};
+    check("marge modifiee");
+    // Une couverture deplacee sous le meme identifiant : le fond doit etre recalcule.
+    project.vector_objects[1].paths[0].outer.nodes[2].pos.x = Micrometers{30'000};
+    check("couverture modifiee");
+    // Le fond lui-meme change de forme.
+    project.vector_objects[0].paths[0].outer.nodes[1].pos.x = Micrometers{45'000};
+    check("fond modifie");
+    // Une couverture cesse d'etre opaque : le fond n'est plus decoupe par elle.
+    project.embroidery_objects[1].params = document::RunningStitchParams{};
+    check("couverture non opaque");
+
+    set_threads("1");
+    clear_chunk_cache();
+    const auto one = effective_sequence(project);
+    set_threads("8");
+    clear_chunk_cache();
+    const auto many = effective_sequence(project);
+    set_threads("");
+    REQUIRE(one.has_value());
+    REQUIRE(many.has_value());
+    CHECK(one->commands == many->commands);
+}
