@@ -25,6 +25,18 @@ double mm(Micrometers v) {
 
 } // namespace
 
+QString BoundaryBlendController::rows() const {
+    switch (rows_) {
+    case document::BoundaryBlendRows::Shared:
+        return QStringLiteral("shared");
+    case document::BoundaryBlendRows::Rotating:
+        return QStringLiteral("rotating");
+    case document::BoundaryBlendRows::PerZone:
+        break;
+    }
+    return QStringLiteral("per_zone");
+}
+
 BoundaryBlendController::BoundaryBlendController(StudioController& studio, QObject* parent)
     : QObject(parent), studio_(studio) {
     // Recalcul seulement quand le document ou la sélection changent réellement (révisions) : les
@@ -71,6 +83,7 @@ void BoundaryBlendController::refresh() {
     frontierMm_ = 0.0;
     frontier_.clear();
     manual_.clear();
+    rows_ = document::BoundaryBlendRows::PerZone;
 
     if (snapshot && primary_ != 0) {
         if (const auto info = project_ops::boundary_blend_info(*snapshot, ObjectId{primary_})) {
@@ -80,6 +93,7 @@ void BoundaryBlendController::refresh() {
             partnerWidthMm_ = mm(info->options.width_b);
             curve_ = static_cast<int>(info->options.curve);
             manual_ = info->options.manual_frontier;
+            rows_ = info->options.rows;
             if (const auto* partner = snapshot->findEmbroidery(info->b)) {
                 partnerName_ = QString::fromStdString(partner->name);
             }
@@ -116,11 +130,18 @@ QString BoundaryBlendController::summary() const {
     if (!active_) {
         return QStringLiteral("Fondu avec %1 inactif : les zones ne se touchent plus").arg(with);
     }
-    return QStringLiteral("Fondu avec %1 · %2 mm ici, %3 mm chez la voisine · frontière %4 mm")
-        .arg(with)
-        .arg(widthMm_, 0, 'f', 1)
-        .arg(partnerWidthMm_, 0, 'f', 1)
-        .arg(frontierMm_, 0, 'f', 1);
+    QString text =
+        QStringLiteral("Fondu avec %1 · %2 mm ici, %3 mm chez la voisine · frontière %4 mm")
+            .arg(with)
+            .arg(widthMm_, 0, 'f', 1)
+            .arg(partnerWidthMm_, 0, 'f', 1)
+            .arg(frontierMm_, 0, 'f', 1);
+    if (rows_ == document::BoundaryBlendRows::Shared) {
+        text += QStringLiteral(" · angle commun");
+    } else if (rows_ == document::BoundaryBlendRows::Rotating) {
+        text += QStringLiteral(" · rangées qui tournent");
+    }
+    return text;
 }
 
 bool BoundaryBlendController::apply(std::uint64_t a, std::uint64_t b, double widthA, double widthB,
@@ -142,6 +163,7 @@ bool BoundaryBlendController::apply(std::uint64_t a, std::uint64_t b, double wid
     options.width_b = um(widthB);
     options.curve = static_cast<document::DensityCurve>(curve);
     options.manual_frontier = frontier;
+    options.rows = rows_;
     auto cmd =
         project_ops::make_boundary_blend_command(*snapshot, ObjectId{a}, ObjectId{b}, options);
     if (!cmd) {
@@ -175,6 +197,37 @@ bool BoundaryBlendController::edit(double widthMm, double partnerWidthMm, int cu
         return false;
     }
     return apply(primary_, other_, widthMm, partnerWidthMm, curve, manual_);
+}
+
+bool BoundaryBlendController::setRows(const QString& rows) {
+    refresh();
+    document::BoundaryBlendRows value{};
+    if (rows == QLatin1String("per_zone")) {
+        value = document::BoundaryBlendRows::PerZone;
+    } else if (rows == QLatin1String("shared")) {
+        value = document::BoundaryBlendRows::Shared;
+    } else if (rows == QLatin1String("rotating")) {
+        value = document::BoundaryBlendRows::Rotating;
+    } else {
+        say(false, QStringLiteral("Sens des rangées inconnu"));
+        return false;
+    }
+    if (value == rows_) {
+        return true;
+    }
+    if (!hasBlend_) {
+        rows_ = value; // choix en attente pour la prochaine création
+        emit changed();
+        return true;
+    }
+    const auto previous = rows_;
+    rows_ = value;
+    if (!apply(primary_, other_, widthMm_, partnerWidthMm_, curve_, manual_)) {
+        rows_ = previous;
+        emit changed();
+        return false;
+    }
+    return true;
 }
 
 bool BoundaryBlendController::setFrontier(const QVariantList& pointsMm) {

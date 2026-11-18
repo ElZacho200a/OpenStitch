@@ -83,6 +83,8 @@ private slots:
     void refusalsDoNotMutate();
     void drawnFrontierJourney();
     void panelIsHostedAndDrivesTheController();
+    void rowsSettingJourney();
+    void rowsPropertyReflectsDocument();
 };
 
 void StudioBoundaryBlendTest::initTestCase() {
@@ -198,6 +200,64 @@ void StudioBoundaryBlendTest::panelIsHostedAndDrivesTheController() {
     auto* remove = findVisual(window->contentItem(), QStringLiteral("boundaryBlendRemove"));
     QVERIFY(remove);
     QTRY_VERIFY(remove->isVisible());
+}
+
+void StudioBoundaryBlendTest::rowsSettingJourney() {
+    Rig rig;
+    rig.build();
+    rig.select({rig.left, rig.right});
+    QVERIFY(rig.blend.create(2.5, 2.5, 1));
+    QCOMPARE(rig.blend.rows(), QStringLiteral("per_zone"));
+
+    const auto before = rig.steps();
+    QVERIFY(!rig.blend.setRows(QStringLiteral("zigzag")));
+    QCOMPARE(rig.steps(), before);
+    QVERIFY(!rig.blend.lastOk());
+
+    QQmlApplicationEngine engine;
+    engine.rootContext()->setContextProperty(QStringLiteral("boundaryBlend"), &rig.blend);
+    engine.loadData(R"(
+        import QtQuick
+        import QtQuick.Window
+        import "qrc:/studio/qml"
+        Window {
+            width: 360; height: 400; visible: true
+            BoundaryBlendPanel { anchors.fill: parent; controller: boundaryBlend }
+        })");
+    QVERIFY(!engine.rootObjects().isEmpty());
+    auto* window = qobject_cast<QQuickWindow*>(engine.rootObjects().front());
+    auto* combo = findVisual(window->contentItem(), QStringLiteral("blendRowsCombo"));
+    QVERIFY(combo);
+    // Le signal activated ne change pas currentIndex : le panneau lit l'index courant.
+    combo->setProperty("currentIndex", 2);
+    QVERIFY(QMetaObject::invokeMethod(combo, "activated", Q_ARG(int, 2)));
+
+    QCOMPARE(rig.steps(), before + 1);
+    QCOMPARE(rig.blend.rows(), QStringLiteral("rotating"));
+    for (const auto id : {rig.left, rig.right}) {
+        QCOMPARE(rig.session.project().findEmbroidery(ObjectId{id})->boundary_blend->rows,
+                 document::BoundaryBlendRows::Rotating);
+    }
+    rig.session.undo();
+    QCOMPARE(rig.blend.rows(), QStringLiteral("per_zone"));
+    for (const auto id : {rig.left, rig.right}) {
+        QCOMPARE(rig.session.project().findEmbroidery(ObjectId{id})->boundary_blend->rows,
+                 document::BoundaryBlendRows::PerZone);
+    }
+}
+
+void StudioBoundaryBlendTest::rowsPropertyReflectsDocument() {
+    Rig rig;
+    rig.build();
+    rig.select({rig.left, rig.right});
+    // Choix en attente avant création, appliqué à la création.
+    QVERIFY(rig.blend.setRows(QStringLiteral("shared")));
+    QCOMPARE(rig.blend.rows(), QStringLiteral("shared"));
+    QVERIFY(rig.blend.create(2.5, 2.5, 0));
+    QCOMPARE(rig.blend.rows(), QStringLiteral("shared"));
+    QVERIFY(rig.blend.summary().contains(QStringLiteral("angle commun")));
+    rig.select({rig.left});
+    QCOMPARE(rig.blend.rows(), QStringLiteral("shared"));
 }
 
 QTEST_MAIN(StudioBoundaryBlendTest)
