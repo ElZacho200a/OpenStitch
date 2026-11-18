@@ -49,6 +49,7 @@ struct BoundaryBlendPair {
     if (!link.partner.valid() || link.partner == id || partner == nullptr ||
         !partner->boundary_blend || partner->boundary_blend->partner != id ||
         partner->boundary_blend->curve != link.curve ||
+        partner->boundary_blend->rows != link.rows ||
         partner->boundary_blend->manual_frontier != link.manual_frontier ||
         link.manual_frontier.size() == 1 || !widthOk(link.width_self) ||
         !widthOk(partner->boundary_blend->width_self) || !boundary_blend_fill_supported(*self) ||

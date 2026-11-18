@@ -2147,6 +2147,12 @@ json project_to_json(const document::Project& project) {
             eo["boundaryBlend"] = {{"partner", e.boundary_blend->partner.value},
                                    {"width", e.boundary_blend->width_self.value},
                                    {"curve", static_cast<int>(e.boundary_blend->curve)}};
+            // Sens des rangées (§6.3) : absent = par zone (fichiers antérieurs inchangés).
+            if (e.boundary_blend->rows != document::BoundaryBlendRows::PerZone) {
+                eo["boundaryBlend"]["rows"] =
+                    e.boundary_blend->rows == document::BoundaryBlendRows::Shared ? "shared"
+                                                                                  : "rotating";
+            }
             if (!e.boundary_blend->manual_frontier.empty()) {
                 json pts = json::array();
                 for (const Vec2um p : e.boundary_blend->manual_frontier) {
@@ -2516,6 +2522,15 @@ Result<document::Project> project_from_json(const json& j) {
                 if (curve >= 0 &&
                     curve <= static_cast<int>(document::DensityCurve::ConcaveConvex)) {
                     b.curve = static_cast<document::DensityCurve>(curve);
+                }
+                // Sens des rangées : valeur inconnue (fichier plus récent) = par zone.
+                if (link.contains("rows") && link.at("rows").is_string()) {
+                    const auto rows = link.at("rows").get<std::string>();
+                    if (rows == "shared") {
+                        b.rows = document::BoundaryBlendRows::Shared;
+                    } else if (rows == "rotating") {
+                        b.rows = document::BoundaryBlendRows::Rotating;
+                    }
                 }
                 // Frontière tracée (lot L4) : [[x, y], …] en µm ; absente = calculée.
                 if (link.contains("frontier")) {

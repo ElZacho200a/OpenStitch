@@ -183,6 +183,54 @@ TEST_CASE("blended zone keeps its underlay out of its half band", "[project_ops]
     CHECK(underlay(*blended, ObjectId{4}, 22'500.0, 40'000.0) > 0);
 }
 
+TEST_CASE("row direction setting is stored, saved and exposed", "[project_ops][blend][rows]") {
+    auto project = make_project();
+    commands::UndoStack stack;
+    project_ops::BoundaryBlendOptions options;
+    options.rows = document::BoundaryBlendRows::Rotating;
+    auto cmd = project_ops::make_boundary_blend_command(project, ObjectId{2}, ObjectId{4}, options);
+    REQUIRE(cmd.has_value());
+    stack.execute(std::move(*cmd), project);
+    CHECK(project.findEmbroidery(ObjectId{2})->boundary_blend->rows ==
+          document::BoundaryBlendRows::Rotating);
+    CHECK(project.findEmbroidery(ObjectId{4})->boundary_blend->rows ==
+          document::BoundaryBlendRows::Rotating);
+    const auto info = project_ops::boundary_blend_info(project, ObjectId{4});
+    REQUIRE(info.has_value());
+    CHECK(info->options.rows == document::BoundaryBlendRows::Rotating);
+    // Liens incohérents (un seul côté modifié) : fondu sans effet.
+    auto broken = project;
+    broken.findEmbroidery(ObjectId{4})->boundary_blend->rows = document::BoundaryBlendRows::Shared;
+    CHECK_FALSE(document::find_boundary_blend(broken, ObjectId{2}).has_value());
+    // Aller-retour .osp.
+    const auto path = std::filesystem::temp_directory_path() / "os_blend_rows.osp";
+    REQUIRE(project_io::save_project(path, project).has_value());
+    const auto loaded = project_io::load_project(path);
+    REQUIRE(loaded.has_value());
+    CHECK(loaded->findEmbroidery(ObjectId{2})->boundary_blend->rows ==
+          document::BoundaryBlendRows::Rotating);
+    std::filesystem::remove(path);
+    // Opération : argument `rows`, inspect renvoie la valeur.
+    auto viaOp = make_project();
+    const auto r = project_ops::apply_operation(
+        viaOp, R"({"op":"blend_boundary","a":2,"b":4,"rows":"shared"})");
+    INFO(r.to_json());
+    REQUIRE(r.ok);
+    CHECK(viaOp.findEmbroidery(ObjectId{2})->boundary_blend->rows ==
+          document::BoundaryBlendRows::Shared);
+    const auto text = project_ops::inspect_project_json(viaOp);
+    REQUIRE(text.has_value());
+    const json doc = json::parse(*text);
+    bool found = false;
+    for (const auto& object : doc["embroidery_objects"]) {
+        if (object["id"] == 2) {
+            CHECK(object["boundary_blend"]["rows"] == "shared");
+            found = true;
+        }
+    }
+    CHECK(found);
+}
+
 TEST_CASE("removing one link or zone deactivates the blend", "[project_ops][blend]") {
     auto project = make_project();
     commands::UndoStack stack;

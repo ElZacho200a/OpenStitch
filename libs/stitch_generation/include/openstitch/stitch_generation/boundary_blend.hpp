@@ -32,6 +32,8 @@ struct BoundaryBlendSpec {
     Micrometers min_frontier{1'000}; // morceau de frontière plus court : ignoré
     // Frontière TRACÉE à la main (lot L4) : remplace la frontière calculée. Vide : calculée.
     std::vector<Vec2um> manual_frontier;
+    // Sens des rangées dans la bande (§6.3). PerZone : comportement des lots L1b-L1c.
+    document::BoundaryBlendRows rows{document::BoundaryBlendRows::PerZone};
 
     bool operator==(const BoundaryBlendSpec&) const = default;
 };

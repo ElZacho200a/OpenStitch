@@ -445,6 +445,7 @@ std::optional<BoundaryBlendLayer> boundary_blend_layer(const document::Project& 
     spec.width_b = second.boundary_blend->width_self;
     spec.curve = first.boundary_blend->curve;
     spec.manual_frontier = first.boundary_blend->manual_frontier;
+    spec.rows = first.boundary_blend->rows;
     auto fills = fill_boundary_blend(zonesFirst, fillParams(first, zonesFirst.front()), zonesSecond,
                                      fillParams(second, zonesSecond.front()), spec);
     if (!fills) {

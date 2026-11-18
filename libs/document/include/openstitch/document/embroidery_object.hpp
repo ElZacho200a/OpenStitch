@@ -835,6 +835,14 @@ struct ColorBlendLink {
 // sont toujours dérivés à la génération (`stitch_generation::boundary_blend_layer`). La courbe
 // est la même des deux côtés ; un lien non réciproque ou incohérent est sans effet
 // (`document::find_boundary_blend`).
+// Sens des rangées dans la bande d'un fondu à la frontière (docs/studio-fondu-frontiere-spec.md
+// §6.3) :
+// - PerZone : chaque zone garde son angle (deux trames croisées si les angles diffèrent) ;
+// - Shared : les deux zones cousent à un angle commun (moyenne) dans toute la bande ;
+// - Rotating : les rangées pivotent progressivement de l'angle de A à celui de B en travers de
+//   la bande (rangées courbes communes aux deux couleurs).
+enum class BoundaryBlendRows : std::uint8_t { PerZone, Shared, Rotating };
+
 struct BoundaryBlendLink {
     ObjectId partner;
     Micrometers width_self{2'500}; // demi-bande dans CETTE zone, [0,5 ; 15] mm
@@ -842,6 +850,8 @@ struct BoundaryBlendLink {
     // Frontière TRACÉE à la main (lot L4), polyligne ouverte en coordonnées modèle, identique sur
     // les deux liens. Vide : frontière calculée là où les deux zones se touchent.
     std::vector<Vec2um> manual_frontier;
+    // Sens des rangées dans la bande, identique sur les deux liens.
+    BoundaryBlendRows rows{BoundaryBlendRows::PerZone};
 
     bool operator==(const BoundaryBlendLink&) const = default;
 };
