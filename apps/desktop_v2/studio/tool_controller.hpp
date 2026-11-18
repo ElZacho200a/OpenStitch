@@ -97,6 +97,8 @@ public:
     // ---------------------------------------
     bool press(double x, double y, double pxPerMm, Qt::KeyboardModifiers mods);
     void move(double x, double y, Qt::KeyboardModifiers mods);
+    // Survol sans bouton : l'outil dessine son curseur (cercle du pinceau de déformation).
+    void hover(double x, double y);
     void release(double x, double y, Qt::KeyboardModifiers mods);
     void doubleClick(double x, double y, double pxPerMm);
     // Touche traitée par l'outil (Entrée, Échap, Suppr, Retour arrière, C/S sur nœuds).

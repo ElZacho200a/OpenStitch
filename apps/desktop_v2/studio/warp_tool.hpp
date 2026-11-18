@@ -23,6 +23,9 @@ public:
     void move(PointMm point, bool smooth);
     void end(PointMm point, bool smooth);
     bool cancel();
+    // Cercle du pinceau qui suit le curseur (UI seule : aucun calcul, aucune etape d'annulation).
+    void hoverAt(PointMm point);
+    [[nodiscard]] std::vector<PointMm> ring() const;
     bool active() const { return active_; }
     const std::vector<geometry::PathSet>& preview() const { return preview_; }
 signals:
@@ -44,6 +47,9 @@ private:
     bool finishing_{false};
     std::vector<WarpTouch> touches_;
     std::vector<geometry::PathSet> preview_;
+    WarpStroke
+        stroke_; // contour deja calcule : chaque mise a jour ne rejoue que les nouvelles touches
+    std::optional<PointMm> hover_;
     TaskManager tasks_;
 };
 } // namespace openstitch::desktop_v2::studio

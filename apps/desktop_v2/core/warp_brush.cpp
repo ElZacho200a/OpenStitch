@@ -13,7 +13,7 @@ Result<void> validateWarpOptions(WarpOptions options) {
 }
 Result<WarpPreview> previewWarp(const document::Project& project, Target target,
                                 WarpOptions options, const std::vector<WarpTouch>& touches,
-                                bool prepareCommand, const TaskContext& task) {
+                                bool prepareCommand, const TaskContext& task, WarpStroke resume) {
     if (const auto valid = validateWarpOptions(options); !valid)
         return std::unexpected(valid.error());
     if (touches.empty() || touches.size() > 4096)
@@ -28,9 +28,14 @@ Result<WarpPreview> previewWarp(const document::Project& project, Target target,
         (embroidery && (embroidery->locked || !embroidery->visible)))
         return fail(ErrorCategory::UserInput,
                     "Sélectionnez une forme vectorielle visible et déverrouillée");
-    WarpPreview result{vector->paths, {}};
-    auto last = touches.front().point;
-    for (const auto& touch : touches) {
+    // Reprise : on ne rejoue que les touches non encore consommees. Sans reprise valide, on part
+    // du contour de la forme (meme suite de touches de pinceau, donc memes octets).
+    const bool resuming = resume.consumed > 0 && resume.consumed <= touches.size() &&
+                          resume.paths.size() == vector->paths.size();
+    WarpPreview result{resuming ? std::move(resume.paths) : vector->paths, {}, {}};
+    auto last = resuming ? resume.last : touches.front().point;
+    for (std::size_t index = resuming ? resume.consumed : 0; index < touches.size(); ++index) {
+        const auto& touch = touches[index];
         if (task.cancelled())
             return cancelled_error();
         if (std::abs(static_cast<double>(touch.point.x.value)) > 1000000 ||
@@ -48,6 +53,7 @@ Result<WarpPreview> previewWarp(const document::Project& project, Target target,
             set = geometry::apply_brush_dab(set, dab);
         last = touch.point;
     }
+    result.stroke = {result.paths, last, touches.size()};
     if (prepareCommand) {
         auto made = commands::make_brush_stroke_command(project, vector->id, result.paths);
         if (!made.command)
