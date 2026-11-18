@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
 import QtQuick
-import QtQuick.Controls as Controls
 import QtQuick.Layouts
 import "."
 
@@ -122,9 +121,8 @@ ColumnLayout {
             model: [qsTr("Chaque zone son angle"), qsTr("Angle commun"), qsTr("Rangées qui tournent")]
             currentIndex: root.ready ? Math.max(0, root.rowsKeys.indexOf(root.controller.rows)) : 0
             Accessible.name: qsTr("Sens des rangées dans la bande du fondu")
-            Controls.ToolTip.visible: hovered
-            Controls.ToolTip.text: qsTr("L'angle commun montre une cassure au bord de la bande ; les rangées qui tournent suivent les deux angles en continu.")
             onActivated: root.controller.setRows(root.rowsKeys[currentIndex])
+            StudioToolTip { text: qsTr("L'angle commun montre une cassure au bord de la bande ; les rangées qui tournent suivent les deux angles en continu.") }
         }
     }
     RowLayout {
