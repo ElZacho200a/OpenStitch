@@ -830,6 +830,22 @@ struct ColorBlendLink {
     bool operator==(const ColorBlendLink&) const = default;
 };
 
+// FONDU À LA FRONTIÈRE entre deux zones voisines (docs/studio-fondu-frontiere-spec.md §4.1) :
+// lien réciproque entre deux remplissages de formes DISTINCTES. Pure métadonnée : les points
+// sont toujours dérivés à la génération (`stitch_generation::boundary_blend_layer`). La courbe
+// est la même des deux côtés ; un lien non réciproque ou incohérent est sans effet
+// (`document::find_boundary_blend`).
+struct BoundaryBlendLink {
+    ObjectId partner;
+    Micrometers width_self{2'500}; // demi-bande dans CETTE zone, [0,5 ; 15] mm
+    DensityCurve curve{DensityCurve::Linear};
+    // Frontière TRACÉE à la main (lot L4), polyligne ouverte en coordonnées modèle, identique sur
+    // les deux liens. Vide : frontière calculée là où les deux zones se touchent.
+    std::vector<Vec2um> manual_frontier;
+
+    bool operator==(const BoundaryBlendLink&) const = default;
+};
+
 // Groupe de fils N-aire : un seul identifiant logique, une couche cousue
 // par fil, et un ordre stable dans la séquence machine. Les couleurs et les
 // profils de points restent la propriété des couches (pas de données doublées).
@@ -888,6 +904,7 @@ struct EmbroideryObject {
     std::optional<thread_palette::ThreadKey> thread;
     std::optional<ColorBlendLink> color_blend;
     std::optional<MultiBlendLink> multi_blend;
+    std::optional<BoundaryBlendLink> boundary_blend;
     std::optional<SemanticAnnotation> semantic; // reconnaissance persistée et facultative
 
     [[nodiscard]] bool is_tatami() const { return std::holds_alternative<TatamiParams>(params); }

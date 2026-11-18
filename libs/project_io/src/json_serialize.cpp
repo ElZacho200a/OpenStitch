@@ -2141,6 +2141,20 @@ json project_to_json(const document::Project& project) {
             eo["colorBlend"] = {{"partner", e.color_blend->partner.value},
                                 {"foreground", e.color_blend->foreground}};
         }
+        // Fondu à la frontière (docs/studio-fondu-frontiere-spec.md §4.3) : champ facultatif,
+        // absent des anciens projets (génération inchangée).
+        if (e.boundary_blend) {
+            eo["boundaryBlend"] = {{"partner", e.boundary_blend->partner.value},
+                                   {"width", e.boundary_blend->width_self.value},
+                                   {"curve", static_cast<int>(e.boundary_blend->curve)}};
+            if (!e.boundary_blend->manual_frontier.empty()) {
+                json pts = json::array();
+                for (const Vec2um p : e.boundary_blend->manual_frontier) {
+                    pts.push_back(json::array({p.x.value, p.y.value}));
+                }
+                eo["boundaryBlend"]["frontier"] = std::move(pts);
+            }
+        }
         if (e.multi_blend) {
             eo["multiBlend"] = {{"group", e.multi_blend->group.value},
                                 {"index", e.multi_blend->index},
@@ -2479,6 +2493,50 @@ Result<document::Project> project_from_json(const json& j) {
                 }
                 e.color_blend =
                     document::ColorBlendLink{ObjectId{*partner}, link.at("foreground").get<bool>()};
+            }
+            if (eo.contains("boundaryBlend")) {
+                const auto& link = eo.at("boundaryBlend");
+                if (!link.is_object() || !link.contains("partner") || !link.contains("width") ||
+                    !link.at("width").is_number_integer()) {
+                    return fail(ErrorCategory::InvalidFile,
+                                "Fondu à la frontière invalide : boundaryBlend doit porter partner "
+                                "et width");
+                }
+                auto partner = strict_uint64(link.at("partner"), "boundaryBlend.partner");
+                if (!partner) {
+                    return std::unexpected(partner.error());
+                }
+                document::BoundaryBlendLink b;
+                b.partner = ObjectId{*partner};
+                b.width_self = Micrometers{link.at("width").get<std::int32_t>()};
+                // Courbe inconnue (fichier plus récent ou édité à la main) : linéaire, comme les
+                // dégradés de densité. Largeur hors bornes : conservée, le lien est alors sans
+                // effet (`document::find_boundary_blend`).
+                const int curve = link.value("curve", 0);
+                if (curve >= 0 &&
+                    curve <= static_cast<int>(document::DensityCurve::ConcaveConvex)) {
+                    b.curve = static_cast<document::DensityCurve>(curve);
+                }
+                // Frontière tracée (lot L4) : [[x, y], …] en µm ; absente = calculée.
+                if (link.contains("frontier")) {
+                    const auto& pts = link.at("frontier");
+                    if (!pts.is_array()) {
+                        return fail(ErrorCategory::InvalidFile,
+                                    "Fondu à la frontière invalide : frontier doit être une liste");
+                    }
+                    for (const auto& pt : pts) {
+                        if (!pt.is_array() || pt.size() != 2 || !pt.at(0).is_number_integer() ||
+                            !pt.at(1).is_number_integer()) {
+                            return fail(ErrorCategory::InvalidFile,
+                                        "Fondu à la frontière invalide : point de frontier attendu "
+                                        "[x, y] en µm entiers");
+                        }
+                        b.manual_frontier.push_back(
+                            Vec2um{Micrometers{pt.at(0).get<std::int32_t>()},
+                                   Micrometers{pt.at(1).get<std::int32_t>()}});
+                    }
+                }
+                e.boundary_blend = b;
             }
 
             // Fil de nuancier (schéma v6) : absent dans un projet v1..v5 -> couleur libre.

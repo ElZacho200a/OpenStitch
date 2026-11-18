@@ -161,6 +161,7 @@ VectorOpResult make_fill_pockets_command(document::Project& project,
                 emb.edited_fingerprint = 0;
                 emb.edited_point_count = 0;
                 emb.color_blend.reset();
+                emb.boundary_blend.reset();
             } else {
                 emb.rgb = source.rgb;
                 emb.thread = source.thread;

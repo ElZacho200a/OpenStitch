@@ -27,6 +27,7 @@ add_library(openstitch_studio_ui STATIC
     region_controller.cpp region_controller.hpp
     satin_controller.cpp satin_controller.hpp
     fade_controller.cpp fade_controller.hpp
+    boundary_blend_controller.cpp boundary_blend_controller.hpp
     point_edit_controller.cpp point_edit_controller.hpp
     tool_controller.cpp tool_controller.hpp
     warp_tool.cpp warp_tool.hpp
@@ -68,7 +69,7 @@ set(studio_qml_files
     qml/PreparePanel.qml qml/ImagePrepSection.qml qml/SegmentationSection.qml
     qml/RegionTools.qml qml/AiSection.qml qml/CompanionPanel.qml qml/PreferencesDialog.qml
     qml/HelpDialog.qml qml/ShortcutsSheet.qml
-    qml/SatinPanel.qml qml/FadeProperties.qml qml/FadeStylePreview.qml qml/PointEditPanel.qml qml/DigitizeHub.qml qml/CanvasToolRail.qml qml/ToolRail.qml qml/ToolOptions.qml qml/ToolOverlay.qml qml/RealisticToggle.qml qml/HandlesOverlay.qml qml/NeedleOriginMarker.qml qml/PullPanel.qml qml/AppliquePanel.qml qml/FixPanel.qml qml/qmldir
+    qml/SatinPanel.qml qml/FadeProperties.qml qml/FadeStylePreview.qml qml/BoundaryBlendPanel.qml qml/PointEditPanel.qml qml/DigitizeHub.qml qml/CanvasToolRail.qml qml/ToolRail.qml qml/ToolOptions.qml qml/ToolOverlay.qml qml/RealisticToggle.qml qml/HandlesOverlay.qml qml/NeedleOriginMarker.qml qml/PullPanel.qml qml/AppliquePanel.qml qml/FixPanel.qml qml/qmldir
     qml/spaces/SpaceHost.qml qml/spaces/ImageSpace.qml qml/spaces/SegmentationSpace.qml
     qml/spaces/VectorSpace.qml qml/spaces/PointsSpace.qml)
 list(APPEND studio_qml_files qml/spaces/vector/VectorShapePanel.qml)

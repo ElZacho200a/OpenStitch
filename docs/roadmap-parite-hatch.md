@@ -1031,15 +1031,12 @@ plus.
   entre deux zones** (rampe selon la distance à la limite commune, zones conservées) :
   spécification `docs/studio-fondu-frontiere-spec.md`. Lots L1a (masque de rangées du
   tatami), L1b (frontière commune, champ de densité, paire tatami–tatami) et L1c (directionnel, en
-  superposition) livrés le 2026-11-16, pas encore branchés ; restent L2 (lien, commandes,
-  `.osp`, CLI), L3 (Studio), L4, L5.
-  spécification `docs/studio-fondu-frontiere-spec.md`. Lots L1a (masque de rangées du tatami)
-  et L1b (frontière commune, champ de densité, paire tatami–tatami) livrés le 2026-11-16, pas
-  encore branchés ; restent L1c (directionnel), L2 (lien, commandes, `.osp`, CLI), L3 (Studio),
-  L4, L5.
-  spécification `docs/studio-fondu-frontiere-spec.md`. Lot L1a livré le 2026-11-16 (masque
-  de rangées du tatami, pas encore branché) ; restent L1b (frontière, géométrie `Boundary`,
-  directionnel), L2 (lien, commandes, `.osp`, CLI), L3 (Studio), L4, L5.
+  superposition) puis L2 (lien du document, commandes, `.osp`, opérations `blend_boundary` /
+  `unblend_boundary`, génération) livrés le 2026-11-16 ; L3 (Studio : panneau d'inspecteur,
+  actions du catalogue), L4 (frontière tracée : lien, moteur, `.osp`, opération) et L5
+  (proposition depuis l'image, `propose_boundary_blends`) livrés le 2026-11-17. Restent : geste
+  de tracé et poignées de largeur sur le canevas, appel depuis la numérisation automatique,
+  recette Studio réelle et essai sur tissu.
 - Dépend de : HP-STI-010.
 
 ### HP-STI-012 — Point de croix [P2] — ◐ Partiel (2026-10-31)
@@ -4657,6 +4654,8 @@ ouvrant le lot (§0.1).
 | 2026-11-18 | Claude (Studio : la forme, unité d'édition, lot 1) | Roadmap : aucune entrée de parité concernée (correctif d'ergonomie Studio). `shape_resolver` résout toute cible (forme ou broderie) vers sa forme ; Suppr de l'espace Vecteur supprime la forme et ses broderies en une étape d'annulation (avant : la broderie seule, et rien pour une forme non convertie) ; le pinceau de déformation fonctionne sur une forme sans broderie. Espace Points inchangé (retire la broderie seule). Tests : `test_shape_resolver.cpp` (4 cas). Mesure de performance et invalidations ciblées : lots suivants, non faits. |
 | 2026-11-17 | Claude (fondus à parts image, étape 1) | **HP-STI-011 ◐** et **HP-AUTO-017 ☐** (inchangés, précisés). Les profils d'un fondu multicolore peuvent venir d'une grille de parts calculée depuis l'image (mélange en RVB linéaire, moindres carrés sous contrainte, palette de mélange proposée) ; couches en grille partagée ou en rangées continues (Hatch). Opération `image_blend`. *Le Téméraire* entier, 6 fils : 17 911 points et 433 coupes contre 35 428 et 332 (auto-numérisation à 12 couleurs) ; îlots et tissu visible supprimés, stries visibles. Tests : `test_image_blend.cpp` (6 cas). Studio non câblé ; pas de validation textile. |
 | 2026-11-17 | Claude (fondus à parts image, coupes) | **HP-STI-011 ◐** (inchangé). Un fil rare d'un fondu à parts image voyage en point courant sous les zones que les couches suivantes couvriront (part ≥ 0,75 hors du premier et du dernier millimètre) au lieu de couper ; l'ordre des rangées préfère celles joignables ainsi. *Le Téméraire*, 6 fils, meilleur réglage : 433 → 318 coupes (auto-numérisation 12 couleurs : 332). Seuil balayé 0,45-0,9. Aucun essai sur tissu. |
+| 2026-11-17 | Claude (fondu à la frontière, L3 à L5) | **HP-STI-011 ◐** (inchangé, validation textile en attente). L3 : `BoundaryBlendController`, panneau `BoundaryBlendPanel` dans l'inspecteur, actions `fade.boundary` / `fade.boundary_remove` (QTest headless). L4 : frontière tracée (`manual_frontier`, refus `E_BLEND_FRONTIER_SHORT` / `_FAR`, `.osp`, argument `frontier`). L5 : `propose_boundary_blends` (transition douce lue en travers des frontières, action `fade.boundary_auto`). |
+| 2026-11-16 | Claude (fondu à la frontière, L2) | **HP-STI-011 ◐** (inchangé). Lien `BoundaryBlendLink` et `find_boundary_blend`, commande à un pas d'annulation, service `project_ops` (création, réédition, retrait, refus `E_BLEND_*`, infos), opérations `blend_boundary` / `unblend_boundary`, champ `boundary_blend` de `inspect`, champ `.osp` `boundaryBlend`, génération branchée (`boundary_blend_layer`, sens canonique, pas de cache de séquence). Interface Studio en L3 ; non validé sur tissu. |
 | 2026-11-16 | Claude (fondu à la frontière, L1c) | **HP-STI-011 ◐** (inchangé). `fill_directional(…, const RowMask*)` (seuil par rang de ligne de courant, superposition) et `fill_boundary_blend` (tatami ou directionnel de chaque côté) ; `RowMask::coverage` pour refuser les liaisons dans les zones où le fil est absent. Rien de branché. |
 | 2026-11-16 | Claude (fondu à la frontière, L1b) | **HP-STI-011 ◐** (inchangé). `geometry::shared_frontier` (bord de A à moins de la tolérance de B, chemins ouverts Clipper2, bouts rognés) et `polyline_band` ; `stitch_generation::plan_boundary_blend` / `fill_boundary_blend_tatami` : zones prolongées dans la demi-bande de l'autre, densité selon la distance signée à la frontière, décision du masque par case de pénétrations. Partition exacte à grille commune, superposition à angles croisés ; directionnel reporté en L1c ; rien de branché. |
 | 2026-11-16 | Claude (fondu à la frontière, spec + L1a) | **HP-STI-011 ◐** (inchangé). Spécification `docs/studio-fondu-frontiere-spec.md` (fondu selon la distance à la limite de deux zones, zones conservées, tatami en dégradé natif). L1a : `RowMask` / `DensityRowMask` / `row_threshold` et `fill_tatami(…, const RowMask*)` (grille ancrée, découpe aux pénétrations, liaison à la prochaine rangée gardée) ; sans masque, sortie identique octet pour octet ; aucun appelant branché. |

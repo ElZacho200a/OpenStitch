@@ -17,4 +17,5 @@ StudioSlider 1.0 StudioSlider.qml
 StudioSpinBox 1.0 StudioSpinBox.qml
 StudioComboBox 1.0 StudioComboBox.qml
 FadeProperties 1.0 FadeProperties.qml
+BoundaryBlendPanel 1.0 BoundaryBlendPanel.qml
 FadeStylePreview 1.0 FadeStylePreview.qml
