@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <numbers>
 #include <utility>
 
 #include "openstitch/document/boundary_blend.hpp"
@@ -138,7 +139,158 @@ void append_fill(std::vector<FillStitch>& out, std::vector<FillStitch> part) {
     out.insert(out.end(), part.begin(), part.end());
 }
 
+// --- Sens des rangées dans la bande (§6.3) ---------------------------------------------------
+
+// Écart d'angles de rangée ramené dans ]-π/2 ; π/2] (une rangée et son opposée sont la même).
+double wrap_half_turn(double d) {
+    constexpr double kPi = std::numbers::pi;
+    double r = std::fmod(d, kPi);
+    if (r > 0.5 * kPi) {
+        r -= kPi;
+    } else if (r <= -0.5 * kPi) {
+        r += kPi;
+    }
+    return r;
+}
+
+// Découpe d'un fondu Shared / Rotating : cœur de chaque zone (privé de sa demi-bande) et bande
+// commune (élargie du recouvrement sur les cœurs), cousue par les deux couches.
+struct BandSplit {
+    std::vector<geometry::PathSet> core_a;
+    std::vector<geometry::PathSet> core_b;
+    std::vector<geometry::PathSet> band;
+};
+
+Result<BandSplit> split_band(const std::vector<geometry::PathSet>& a,
+                             const std::vector<geometry::PathSet>& b,
+                             const std::vector<geometry::Polyline>& frontier,
+                             const BoundaryBlendSpec& spec) {
+    const std::int32_t wA = std::clamp(spec.width_a.value, kMinWidth, kMaxWidth);
+    const std::int32_t wB = std::clamp(spec.width_b.value, kMinWidth, kMaxWidth);
+    auto bandA = geometry::polyline_band(frontier, Micrometers{wA});
+    auto bandB = geometry::polyline_band(frontier, Micrometers{wB});
+    auto growA = geometry::polyline_band(frontier, Micrometers{wA + kBoundaryBlendSeamOverlap});
+    auto growB = geometry::polyline_band(frontier, Micrometers{wB + kBoundaryBlendSeamOverlap});
+    if (!bandA) {
+        return std::unexpected(bandA.error());
+    }
+    if (!bandB) {
+        return std::unexpected(bandB.error());
+    }
+    if (!growA) {
+        return std::unexpected(growA.error());
+    }
+    if (!growB) {
+        return std::unexpected(growB.error());
+    }
+    BandSplit split;
+    auto coreA = geometry::difference_polygons(a, *bandA);
+    if (!coreA) {
+        return std::unexpected(coreA.error());
+    }
+    auto coreB = geometry::difference_polygons(b, *bandB);
+    if (!coreB) {
+        return std::unexpected(coreB.error());
+    }
+    split.core_a = std::move(*coreA);
+    split.core_b = std::move(*coreB);
+    // Côté B : fermeture de A ∪ B privée de A (B et le couloir de retrait entre les zones).
+    std::vector<geometry::PathSet> both = a;
+    both.insert(both.end(), b.begin(), b.end());
+    auto merged = geometry::union_polygons_closing(both, spec.tolerance);
+    if (!merged) {
+        return std::unexpected(merged.error());
+    }
+    auto restB = geometry::difference_polygons(*merged, a);
+    if (!restB) {
+        return std::unexpected(restB.error());
+    }
+    auto partA = geometry::intersect_polygons(a, *growA);
+    if (!partA) {
+        return std::unexpected(partA.error());
+    }
+    auto partB = geometry::intersect_polygons(*restB, *growB);
+    if (!partB) {
+        return std::unexpected(partB.error());
+    }
+    std::vector<geometry::PathSet> parts = std::move(*partA);
+    parts.insert(parts.end(), partB->begin(), partB->end());
+    auto band = geometry::union_polygons(parts);
+    if (!band) {
+        return std::unexpected(band.error());
+    }
+    split.band = std::move(*band);
+    return split;
+}
+
+// Remplissage de la bande commune : tatami à l'angle commun (Shared) ou directionnel à champ
+// pivotant (Rotating), mêmes rangées pour les deux couches quel que soit le masque.
+class BandFiller {
+public:
+    BandFiller(std::shared_ptr<const BoundaryBlendField> field, const document::TatamiParams& pa,
+               const document::TatamiParams& pb, document::BoundaryBlendRows rows)
+        : field_(std::move(field)), rotating_(rows == document::BoundaryBlendRows::Rotating),
+          angleA_(pa.angle.radians), angleB_(pb.angle.radians), tatami_(pa) {
+        tatami_.angle = Angle{boundary_blend_shared_angle(angleA_, angleB_)};
+        tatami_.row_spacing = Micrometers{std::min(pa.row_spacing.value, pb.row_spacing.value)};
+        tatami_.entry_point.reset();
+        directional_.row_spacing = tatami_.row_spacing;
+        directional_.stitch_length = pa.stitch_length;
+        directional_.stagger = pa.stagger;
+        directional_.inset = Micrometers{0};
+        directional_.pull_compensation = pa.pull_compensation;
+        directional_.hidden_underpath = false;
+    }
+
+    [[nodiscard]] std::vector<FillStitch> fill(const geometry::PathSet& band,
+                                               const RowMask& mask) const {
+        if (!rotating_) {
+            return fill_tatami(band, tatami_, &mask);
+        }
+        const BoundaryBlendField& field = *field_;
+        const double a = angleA_;
+        const double b = angleB_;
+        return fill_directional_field(
+            band, directional_,
+            [&field, a, b](Vec2um p) { return boundary_blend_row_angle(field, a, b, p); }, &mask);
+    }
+
+private:
+    std::shared_ptr<const BoundaryBlendField> field_;
+    bool rotating_;
+    double angleA_;
+    double angleB_;
+    document::TatamiParams tatami_;
+    document::DirectionalFillParams directional_;
+};
+
+Micrometers blend_margin(const BoundaryBlendFillParams& a, const BoundaryBlendFillParams& b) {
+    const auto stitchLength = [](const BoundaryBlendFillParams& p) {
+        return std::visit([](const auto& v) { return v.stitch_length.value; }, p);
+    };
+    // Une case de pénétrations au-delà de la demi-bande (cf. `plan_boundary_blend`), et au moins
+    // le recouvrement cœur-bande : la bande commune reste dans la boîte du champ.
+    return Micrometers{std::max({stitchLength(a), stitchLength(b), kBoundaryBlendSeamOverlap})};
+}
+
 } // namespace
+
+double boundary_blend_shared_angle(double angle_a, double angle_b) {
+    return angle_a + 0.5 * wrap_half_turn(angle_b - angle_a);
+}
+
+double boundary_blend_row_angle(const BoundaryBlendField& field, double angle_a, double angle_b,
+                                Vec2um p) {
+    double t = 0.0;
+    if (field.near_frontier(p)) {
+        const double s = field.signed_distance(p);
+        t = std::clamp((s + field.width_a()) / (field.width_a() + field.width_b()), 0.0, 1.0);
+    } else {
+        t = field.density_a(p) >= 0.5 ? 0.0 : 1.0; // aplat : cœur de A ou de B
+    }
+    const double u = t * t * (3.0 - 2.0 * t);
+    return angle_a + wrap_half_turn(angle_b - angle_a) * u;
+}
 
 BoundaryBlendField::BoundaryBlendField(const std::vector<geometry::PathSet>& a,
                                        std::vector<geometry::Polyline> frontier,
@@ -348,14 +500,38 @@ Result<BoundaryBlendFills> fill_boundary_blend(const std::vector<geometry::PathS
                                                const std::vector<geometry::PathSet>& b,
                                                const BoundaryBlendFillParams& params_b,
                                                const BoundaryBlendSpec& spec) {
-    const auto stitchLength = [](const BoundaryBlendFillParams& p) {
-        return std::visit([](const auto& v) { return v.stitch_length.value; }, p);
-    };
-    // Une case de pénétrations au-delà de la demi-bande (cf. `plan_boundary_blend`).
-    const Micrometers margin{std::max(stitchLength(params_a), stitchLength(params_b))};
-    auto plan = plan_boundary_blend(a, b, spec, margin);
+    auto plan = plan_boundary_blend(a, b, spec, blend_margin(params_a, params_b));
     if (!plan) {
         return std::unexpected(plan.error());
+    }
+    const auto* tatamiA = std::get_if<document::TatamiParams>(&params_a);
+    const auto* tatamiB = std::get_if<document::TatamiParams>(&params_b);
+    // Shared / Rotating : cœurs à leur angle, bande commune partagée (§6.3). Une zone
+    // directionnelle a ses propres lignes de courant : repli sur PerZone.
+    if (spec.rows != document::BoundaryBlendRows::PerZone && tatamiA != nullptr &&
+        tatamiB != nullptr) {
+        auto split = split_band(a, b, plan->frontier, spec);
+        if (!split) {
+            return std::unexpected(split.error());
+        }
+        const BandFiller band(plan->field, *tatamiA, *tatamiB, spec.rows);
+        const BoundaryRowMask lower(*plan->field, true, false);
+        const BoundaryRowMask upper(*plan->field, false, false);
+        BoundaryBlendFills fills;
+        fills.frontier = plan->frontier;
+        for (const auto& core : split->core_a) {
+            append_fill(fills.a, fill_tatami(core, *tatamiA));
+        }
+        for (const auto& part : split->band) {
+            append_fill(fills.a, band.fill(part, lower));
+        }
+        for (const auto& part : split->band) {
+            append_fill(fills.b, band.fill(part, upper));
+        }
+        for (const auto& core : split->core_b) {
+            append_fill(fills.b, fill_tatami(core, *tatamiB));
+        }
+        return fills;
     }
     const bool overlap = !same_row_grid(params_a, params_b);
     const BoundaryRowMask maskA(*plan->field, true, overlap);
@@ -376,6 +552,35 @@ Result<BoundaryBlendFills> fill_boundary_blend(const std::vector<geometry::PathS
         append_fill(fills.b, fillLayer(region, params_b, maskB));
     }
     return fills;
+}
+
+Result<std::vector<FillStitch>> boundary_blend_band_rows(const geometry::PathSet& a,
+                                                         const document::TatamiParams& params_a,
+                                                         const geometry::PathSet& b,
+                                                         const document::TatamiParams& params_b,
+                                                         const BoundaryBlendSpec& spec) {
+    std::vector<FillStitch> out;
+    if (spec.rows == document::BoundaryBlendRows::PerZone) {
+        return out;
+    }
+    const std::vector<geometry::PathSet> za{a};
+    const std::vector<geometry::PathSet> zb{b};
+    auto plan = plan_boundary_blend(
+        za, zb, spec,
+        blend_margin(BoundaryBlendFillParams{params_a}, BoundaryBlendFillParams{params_b}));
+    if (!plan) {
+        return std::unexpected(plan.error());
+    }
+    auto split = split_band(za, zb, plan->frontier, spec);
+    if (!split) {
+        return std::unexpected(split.error());
+    }
+    const BandFiller band(plan->field, params_a, params_b, spec.rows);
+    const DensityRowMask full([](Vec2um) { return 1.0; }, DensityRowMask::Slice::Lower);
+    for (const auto& part : split->band) {
+        append_fill(out, band.fill(part, full));
+    }
+    return out;
 }
 
 std::vector<geometry::PathSet> boundary_blend_zone(const document::Project& project,

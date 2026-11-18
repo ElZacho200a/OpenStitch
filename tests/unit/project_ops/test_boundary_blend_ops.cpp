@@ -398,3 +398,33 @@ TEST_CASE("blend_boundary operation accepts and clears a drawn frontier",
     CHECK(project.findEmbroidery(ObjectId{2})->boundary_blend->manual_frontier.empty());
     CHECK(document::find_boundary_blend(project, ObjectId{2}).has_value());
 }
+
+TEST_CASE("row direction setting changes generation deterministically",
+          "[project_ops][blend][rows]") {
+    // Angles différents : PerZone croise les trames, Shared et Rotating partagent la bande.
+    const auto generate = [](document::BoundaryBlendRows rows) {
+        auto project = make_project();
+        std::get<document::TatamiParams>(project.findEmbroidery(ObjectId{2})->params).angle =
+            Angle{0.785};
+        std::get<document::TatamiParams>(project.findEmbroidery(ObjectId{4})->params).angle =
+            Angle{-0.52};
+        commands::UndoStack stack;
+        project_ops::BoundaryBlendOptions options;
+        options.rows = rows;
+        auto cmd =
+            project_ops::make_boundary_blend_command(project, ObjectId{2}, ObjectId{4}, options);
+        REQUIRE(cmd.has_value());
+        stack.execute(std::move(*cmd), project);
+        auto seq = stitch_generation::generate_sequence(project); // raw-sequence-ok: test
+        REQUIRE(seq.has_value());
+        return seq->commands;
+    };
+    const auto perZone = generate(document::BoundaryBlendRows::PerZone);
+    const auto shared = generate(document::BoundaryBlendRows::Shared);
+    const auto rotating = generate(document::BoundaryBlendRows::Rotating);
+    CHECK(shared != perZone);
+    CHECK(rotating != perZone);
+    CHECK(rotating != shared);
+    CHECK(generate(document::BoundaryBlendRows::Shared) == shared);
+    CHECK(generate(document::BoundaryBlendRows::Rotating) == rotating);
+}
