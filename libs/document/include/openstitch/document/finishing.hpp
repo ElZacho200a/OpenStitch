@@ -21,7 +21,7 @@ struct HiddenTravel {
     // ni point d'arrêt. 0 : jamais de saut sans coupe.
     Micrometers max_hidden_jump{2'000};
     // Longueur maximale du trajet cousu (mesurée le long du chemin).
-    Micrometers max_bridge_length{15'000};
+    Micrometers max_bridge_length{50'000};
     // Longueur des points du trajet cousu.
     Micrometers bridge_stitch_length{2'500};
     // Largeur de fil supposée de la couche qui recouvre, et marge de sécurité ajoutée de chaque

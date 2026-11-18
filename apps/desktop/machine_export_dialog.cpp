@@ -287,7 +287,7 @@ MachineExportDialog::MachineExportDialog(SummaryFn summarize, const QString& ini
 
     reduceTrims_->setChecked(settings.value(kSettingsReduceTrims, false).toBool());
     sameColour_->setChecked(settings.value(kSettingsSameColour, false).toBool());
-    maxBridge_->setValue(settings.value(kSettingsMaxBridge, 15.0).toDouble());
+    maxBridge_->setValue(settings.value(kSettingsMaxBridge, 50.0).toDouble());
     between_->setChecked(settings.value(kSettingsBetween, true).toBool());
     within_->setChecked(settings.value(kSettingsWithin, true).toBool());
     underlay_->setChecked(settings.value(kSettingsUnderlay, true).toBool());
@@ -355,7 +355,7 @@ MachineExportDialog::SavedExport MachineExportDialog::loadSavedExport() {
     saved.optimizations.hidden_travel.allow_same_color_surface =
         reduce && settings.value(kSettingsSameColour, false).toBool();
     saved.optimizations.hidden_travel.max_bridge_length = Micrometers{static_cast<std::int32_t>(
-        std::lround(settings.value(kSettingsMaxBridge, 15.0).toDouble() * 1000.0))};
+        std::lround(settings.value(kSettingsMaxBridge, 50.0).toDouble() * 1000.0))};
     saved.optimizations.hidden_travel.between_objects =
         settings.value(kSettingsBetween, true).toBool();
     saved.optimizations.hidden_travel.within_object =
