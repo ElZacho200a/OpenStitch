@@ -56,6 +56,8 @@ bool WarpTool::begin(PointMm point) {
     revision_ = studio_.session().revision();
     strokeOptions_ = options_;
     touches_ = {{*p, false}};
+    stroke_ = {};
+    hover_ = point;
     active_ = true;
     calculate();
     return true;
@@ -64,6 +66,7 @@ void WarpTool::move(PointMm point, bool smooth) {
     if (!active_ || finishing_)
         return;
     const auto p = position(point);
+    hover_ = point;
     if (!p || touches_.size() >= 4096) {
         cancel();
         emit message(tr("Geste hors limites ou trop long"));
@@ -90,9 +93,29 @@ bool WarpTool::cancel() {
     active_ = running_ = finishing_ = false;
     touches_.clear();
     preview_.clear();
+    stroke_ = {};
     snapshot_.reset();
     emit changed();
     return had;
+}
+void WarpTool::hoverAt(PointMm point) {
+    if (!std::isfinite(point.x) || !std::isfinite(point.y))
+        return;
+    hover_ = point;
+    emit changed();
+}
+std::vector<PointMm> WarpTool::ring() const {
+    std::vector<PointMm> points;
+    if (!hover_)
+        return points;
+    constexpr int kSegments = 48;
+    points.reserve(kSegments);
+    for (int i = 0; i < kSegments; ++i) {
+        const double angle = 2.0 * 3.14159265358979323846 * i / kSegments;
+        points.push_back({hover_->x + options_.radiusMm * std::cos(angle),
+                          hover_->y + options_.radiusMm * std::sin(angle)});
+    }
+    return points;
 }
 void WarpTool::calculate() {
     running_ = true;
@@ -102,8 +125,8 @@ void WarpTool::calculate() {
     tasks_.submit<WarpPreview>(
         "studio.warp-preview",
         [snapshot = snapshot_, object = object_, options = strokeOptions_, touches = touches_,
-         finish](const TaskContext& task) {
-            return previewWarp(*snapshot, object, options, touches, finish, task);
+         resume = stroke_, finish](const TaskContext& task) {
+            return previewWarp(*snapshot, object, options, touches, finish, task, resume);
         },
         [this, request, count, finish](Result<WarpPreview>&& result) {
             if (request != request_)
@@ -121,6 +144,7 @@ void WarpTool::calculate() {
                 return;
             }
             preview_ = std::move(result->paths);
+            stroke_ = std::move(result->stroke);
             emit changed();
             if (count != touches_.size() || finish != finishing_) {
                 calculate();

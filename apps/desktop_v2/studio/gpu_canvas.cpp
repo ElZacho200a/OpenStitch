@@ -1125,9 +1125,11 @@ void GpuCanvas::hoverMoveEvent(QHoverEvent* event) {
     if (tools_ && tools_->capturesMouse()) {
         setHover(std::nullopt);
         setCursor(Qt::CrossCursor);
+        const auto p = camera_.screenToWorld({event->position().x(), event->position().y()});
         if (tools_->busy()) {
-            const auto p = camera_.screenToWorld({event->position().x(), event->position().y()});
             tools_->move(p.x, p.y, event->modifiers());
+        } else {
+            tools_->hover(p.x, p.y);
         }
         return;
     }

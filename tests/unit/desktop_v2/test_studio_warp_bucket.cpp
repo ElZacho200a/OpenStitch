@@ -138,7 +138,8 @@ private slots:
         QTest::mouseRelease(rig.window, Qt::LeftButton, {}, rig.at(0, 7));
         QVERIFY(rig.settle());
         QCOMPARE(rig.session.revision(), revision);
-        QVERIFY(rig.tools.overlay().empty());
+        // Plus d'aperçu de contour : il ne reste que le cercle du pinceau qui suit le curseur.
+        QCOMPARE(rig.tools.overlay().size(), std::size_t{1});
         QTest::mousePress(rig.window, Qt::LeftButton, {}, rig.at(0, 5));
         QTest::mouseMove(rig.window, rig.at(0, 7));
         QTest::mouseRelease(rig.window, Qt::LeftButton, {}, rig.at(0, 7));

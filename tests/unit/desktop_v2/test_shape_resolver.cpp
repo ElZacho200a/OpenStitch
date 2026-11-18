@@ -115,3 +115,37 @@ TEST_CASE("warp brush works on a shape that has no embroidery", "[desktop_v2][sh
 
     CHECK_FALSE(previewWarp(now, {TargetKind::Region, 1}, {}, touches, false));
 }
+
+TEST_CASE("warp brush resumes a stroke with the same bytes as a full replay",
+          "[desktop_v2][shape][warp]") {
+    Fixture f;
+    fill(f);
+    const auto& project = f.session.project();
+    std::vector<WarpTouch> touches;
+    for (int i = 0; i < 40; ++i) {
+        touches.push_back({Vec2um{Micrometers{38000 + i * 600}, Micrometers{3000 + (i % 7) * 900}},
+                           i % 11 == 10});
+    }
+    const auto full = previewWarp(project, f.bare, {}, touches, false);
+    REQUIRE(full);
+
+    // Le geste arrive par morceaux : chaque appel ne rejoue que les nouvelles touches.
+    WarpStroke state;
+    Result<WarpPreview> step = fail(ErrorCategory::UserInput, "vide");
+    for (const std::size_t count : {1U, 5U, 6U, 23U, 40U}) {
+        const std::vector<WarpTouch> prefix(touches.begin(), touches.begin() + count);
+        step = previewWarp(project, f.bare, {}, prefix, false, {}, state);
+        REQUIRE(step);
+        CHECK(step->stroke.consumed == count);
+        state = step->stroke;
+    }
+    CHECK(step->paths == full->paths);
+
+    // Une reprise incoherente (autre taille de contour) repart de la forme, sans planter.
+    WarpStroke stale;
+    stale.consumed = 3;
+    stale.paths.resize(7);
+    const auto recovered = previewWarp(project, f.bare, {}, touches, false, {}, stale);
+    REQUIRE(recovered);
+    CHECK(recovered->paths == full->paths);
+}
