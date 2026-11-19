@@ -2,7 +2,8 @@
 
 > Statut : livré (format 1, moteur niveau 1). Studio Qt Quick (`apps/desktop_v2/studio`).
 > Thèmes livrés : **Neo Studio** (défaut, sombre et clair), **Neo Cobalt** (exemple d'héritage),
-> **Bubblegum** (thème expérimental, test de résistance).
+> **Bubblegum** (thème expérimental, test de résistance), **Abysse** (sombre seulement : halo
+> bioluminescent obtenu par une ombre colorée sans décalage, `shadowOffset: 0`).
 
 Un thème est un **dossier de données** (JSON, SVG, PNG, polices) chargé sans compilation. Le
 moteur couvre couleurs, formes, typographie, effets (dégradés, ombres douces, reflets, relief,

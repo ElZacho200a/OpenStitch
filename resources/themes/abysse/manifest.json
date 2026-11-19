@@ -1,0 +1,13 @@
+{
+  "schema": "openstitch-theme",
+  "schemaVersion": 1,
+  "id": "abysse",
+  "name": "Abysse",
+  "description": "Grands fonds : noir bleuté qui s'assombrit avec la profondeur, plancton en suspension, accents bioluminescents cyan et violet méduse qui rayonnent au survol. Mouvements lents et flottants.",
+  "author": "OpenStitch",
+  "version": "1.0.0",
+  "license": "Apache-2.0",
+  "compatibility": { "minEngine": 1 },
+  "variants": ["dark"],
+  "defaultVariant": "dark"
+}
