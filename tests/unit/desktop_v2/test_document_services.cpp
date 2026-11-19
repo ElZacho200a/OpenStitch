@@ -91,7 +91,10 @@ TEST_CASE("calques: add, rename, hide, lock, reorder, assign and remove",
     CHECK(calques(s.project())[0].id == second);
     CHECK_FALSE(moveCalque(s, second, -1).ok); // déjà au fond
 
-    const auto obj = rect(s, 0);
+    const auto obj = rect(s, 0); // nouvelle forme : calque du fond (`second`, verrouillé)
+    CHECK_FALSE(moveObjectsToCalque(s, {obj}, first).ok);  // un calque verrouillé ne se vide pas
+    CHECK_FALSE(moveObjectsToCalque(s, {obj}, second).ok); // ni ne se remplit
+    REQUIRE(setCalqueLocked(s, second, false).ok);
     REQUIRE(moveObjectsToCalque(s, {obj}, first).ok);
     const auto* o = &s.project().embroidery_objects.front();
     const auto* shape = s.project().findObject(o->source_vector);

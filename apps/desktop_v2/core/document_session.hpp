@@ -70,6 +70,10 @@ public:
     // --- Mutations --------------------------------------------------------------------------
     void execute(std::unique_ptr<commands::ICommand> command);
     bool selectImageSource(ObjectId calque);
+    // Calque actif (état d'interface, ni annulable ni enregistré) : il reçoit les formes créées et,
+    // s'il porte une image, devient aussi la source image active des espaces Image, Segmentation
+    // et Vecteurs. Une seule notion de « calque courant » pour tous les canevas. Faux si inconnu.
+    bool selectCalque(ObjectId calque);
     bool undo();
     bool redo();
     // Jump within the existing history. Reject invalid positions before touching the project;

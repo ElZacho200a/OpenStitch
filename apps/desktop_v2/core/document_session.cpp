@@ -58,12 +58,35 @@ bool DocumentSession::selectImageSource(ObjectId calque) {
     if (source == nullptr || source->original.empty()) {
         return false;
     }
+    if (calque.valid() && project_.findCalque(calque) != nullptr) {
+        return selectCalque(calque); // la source suit le calque actif, et réciproquement
+    }
     if (project_.imageSourceId() != calque) {
         project_.active_image_source = calque;
         lastChangeAffectsEmbroidery_ = false;
         lastChangeAffectsSegmentation_ = true;
         changed(ChangeKind::ImageSelected);
     }
+    return true;
+}
+
+bool DocumentSession::selectCalque(ObjectId calque) {
+    if (project_.findCalque(calque) == nullptr) {
+        return false;
+    }
+    const auto* source = project_.findImageSource(calque);
+    const bool withImage = source != nullptr && !source->original.empty();
+    const bool sourceChanges = withImage && project_.imageSourceId() != calque;
+    if (project_.active_calque == calque && !sourceChanges) {
+        return true;
+    }
+    project_.active_calque = calque;
+    if (sourceChanges) {
+        project_.active_image_source = calque;
+    }
+    lastChangeAffectsEmbroidery_ = false;
+    lastChangeAffectsSegmentation_ = sourceChanges;
+    changed(sourceChanges ? ChangeKind::ImageSelected : ChangeKind::Edited);
     return true;
 }
 
