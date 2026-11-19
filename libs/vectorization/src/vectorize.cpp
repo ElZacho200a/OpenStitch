@@ -23,6 +23,159 @@ namespace openstitch::vectorization {
 
 namespace {
 
+// Largeur locale (lot C) : transformées de distance de la forme et du fond sur le masque bordé de
+// `radius` pixels, puis maximum glissant (dilatation) dans un disque de ce rayon.
+struct LocalWidth {
+    cv::Mat fgMax;
+    cv::Mat bgMax;
+    int originX{0}; // pixel image de la colonne 0 de `fgMax`
+    int originY{0};
+    double radius{10.0};
+
+    static LocalWidth build(const cv::Mat& mask, int x0, int y0, double radiusPx) {
+        LocalWidth out;
+        const int r = std::max(2, static_cast<int>(std::lround(radiusPx)));
+        out.radius = static_cast<double>(r);
+        out.originX = x0 - r;
+        out.originY = y0 - r;
+        cv::Mat padded;
+        cv::copyMakeBorder(mask, padded, r, r, r, r, cv::BORDER_CONSTANT, cv::Scalar(0));
+        cv::Mat inverse;
+        cv::bitwise_not(padded, inverse);
+        cv::Mat fg;
+        cv::Mat bg;
+        cv::distanceTransform(padded, fg, cv::DIST_L2, cv::DIST_MASK_PRECISE);
+        cv::distanceTransform(inverse, bg, cv::DIST_L2, cv::DIST_MASK_PRECISE);
+        const cv::Mat disc =
+            cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(2 * r + 1, 2 * r + 1));
+        cv::dilate(fg, out.fgMax, disc);
+        cv::dilate(bg, out.bgMax, disc);
+        return out;
+    }
+
+    // Facteur local en un point du modèle (µm, origine au centre de l'image, Y vers le haut).
+    [[nodiscard]] double factor_at(Vec2um p, int width, int height, double mmPerPx,
+                                   double minFactor) const {
+        const double px = p.x.value / 1000.0 / mmPerPx + width / 2.0 - 0.5;
+        const double py = height / 2.0 - p.y.value / 1000.0 / mmPerPx - 0.5;
+        const int cx = std::clamp(static_cast<int>(std::lround(px)) - originX, 0, fgMax.cols - 1);
+        const int cy = std::clamp(static_cast<int>(std::lround(py)) - originY, 0, fgMax.rows - 1);
+        const double w = std::min(static_cast<double>(fgMax.at<float>(cy, cx)),
+                                  static_cast<double>(bgMax.at<float>(cy, cx)));
+        return std::clamp(w / radius, minFactor, 1.0);
+    }
+};
+
+// Ajustement à tolérance variable le long d'un contour fermé (lot C). `uniformTol` : tolérance de
+// la région (µm, déjà bornée) ; `regionFactor` : facteur déjà inclus dans `uniformTol`.
+geometry::Path fit_local(const geometry::Path& path, double uniformTol, double regionFactor,
+                         const LocalWidth& local, int width, int height,
+                         const VectorizeOptions& options) {
+    const auto uniform = [&] {
+        return geometry::fit_curves(
+            path, {.tolerance = Micrometers{static_cast<std::int32_t>(uniformTol)}});
+    };
+    const std::size_t n = path.nodes.size();
+    if (!path.closed || n < 12) {
+        return uniform();
+    }
+    const double minF = std::clamp(options.adaptive.min_factor, 0.05, 1.0);
+    const double mid = (1.0 + minF) / 2.0;
+    // Paliers : 0 = plancher, 1 = milieu, 2 = large.
+    std::vector<int> level(n);
+    for (std::size_t i = 0; i < n; ++i) {
+        const double f =
+            local.factor_at(path.nodes[i].pos, width, height, options.mm_per_px.value, minF);
+        level[i] = f <= (minF + mid) / 2.0 ? 0 : f <= (mid + 1.0) / 2.0 ? 1 : 2;
+    }
+    // Protège le voisinage des zones fines (2 sommets de part et d'autre).
+    std::vector<int> grown = level;
+    for (std::size_t i = 0; i < n; ++i) {
+        for (std::size_t k = 1; k <= 2; ++k) {
+            grown[i] = std::min({grown[i], level[(i + k) % n], level[(i + n - k) % n]});
+        }
+    }
+    level = std::move(grown);
+    // Tronçons de moins de 4 sommets : absorbés par le voisin le plus fin.
+    for (int pass = 0; pass < 2; ++pass) {
+        std::size_t i = 0;
+        while (i < n) {
+            std::size_t j = i;
+            while (j + 1 < n && level[j + 1] == level[i]) {
+                ++j;
+            }
+            if (j - i + 1 < 4 && j - i + 1 < n) {
+                const int prev = level[(i + n - 1) % n];
+                const int next = level[(j + 1) % n];
+                const int target = std::min(prev, next);
+                for (std::size_t k = i; k <= j; ++k) {
+                    level[k] = target;
+                }
+            }
+            i = j + 1;
+        }
+    }
+    const auto first =
+        std::find_if(level.begin(), level.end(), [&](int l) { return l != level.front(); });
+    if (first == level.end()) {
+        // Un seul palier : ajustement uniforme à ce palier.
+        const double f = level.front() == 0 ? minF : level.front() == 1 ? mid : 1.0;
+        const double tol = std::max(1.0, uniformTol * std::min(1.0, f / regionFactor));
+        return geometry::fit_curves(path,
+                                    {.tolerance = Micrometers{static_cast<std::int32_t>(tol)}});
+    }
+    // Départ sur une frontière de tronçon, puis ajustement de chaque tronçon ouvert.
+    const auto start = static_cast<std::size_t>(first - level.begin());
+    geometry::Path out;
+    out.closed = true;
+    std::size_t i = 0;
+    while (i < n) {
+        const std::size_t a = (start + i) % n;
+        std::size_t len = 1;
+        while (i + len < n && level[(start + i + len) % n] == level[a]) {
+            ++len;
+        }
+        geometry::Path piece;
+        piece.closed = false;
+        for (std::size_t k = 0; k <= len; ++k) { // inclut le premier sommet du tronçon suivant
+            piece.nodes.push_back(path.nodes[(a + k) % n]);
+        }
+        const double f = level[a] == 0 ? minF : level[a] == 1 ? mid : 1.0;
+        const double tol = std::max(1.0, uniformTol * std::min(1.0, f / regionFactor));
+        auto fitted =
+            geometry::fit_curves(piece, {.tolerance = Micrometers{static_cast<std::int32_t>(tol)}});
+        if (fitted.nodes.empty()) {
+            return uniform();
+        }
+        // Jonction : le dernier nœud du tronçon précédent est le premier de celui-ci.
+        if (!out.nodes.empty()) {
+            auto& joint = out.nodes.back();
+            joint.type = geometry::NodeType::Corner;
+            joint.tan_out = fitted.nodes.front().tan_out;
+            fitted.nodes.erase(fitted.nodes.begin());
+        }
+        for (auto& node : fitted.nodes) {
+            out.nodes.push_back(std::move(node));
+        }
+        i += len;
+    }
+    // Fermeture : le dernier nœud est le premier.
+    if (out.nodes.size() >= 2) {
+        auto last = out.nodes.back();
+        out.nodes.pop_back();
+        auto& head = out.nodes.front();
+        head.type = geometry::NodeType::Corner;
+        head.tan_in = last.tan_in;
+    }
+    // Repli conservateur : orientation inversée ou dégénérée.
+    const double before = geometry::signed_area_um2(path);
+    const double after = geometry::signed_area_um2(out);
+    if (out.nodes.size() < 3 || (before > 0.0) != (after > 0.0)) {
+        return uniform();
+    }
+    return out;
+}
+
 // Facteur de tolérance d'une région à partir de son masque (bordé de zéros) : surcharge de
 // l'utilisateur si présente, sinon min(zones de détail, précision intelligente).
 double tolerance_factor(const cv::Mat& mask, RegionId id, bool isDetail,
@@ -206,6 +359,13 @@ Result<std::vector<geometry::PathSet>> vectorize_impl(const segmentation::Segmen
         std::max(std::min(100.0, static_cast<double>(options.simplify_tolerance.value)),
                  static_cast<double>(options.simplify_tolerance.value) * factor);
     const double curveTol = static_cast<double>(options.curve_tolerance.value) * factor;
+    const bool overridden =
+        options.factor_overrides != nullptr && options.factor_overrides->contains(id);
+    std::optional<LocalWidth> localWidth;
+    if (options.adaptive.enabled && options.adaptive.local && !overridden &&
+        options.curve_tolerance.value > 0) {
+        localWidth = LocalWidth::build(mask, x0, y0, options.adaptive.local_radius_px);
+    }
 
     // Contours extérieurs ET trous (RETR_CCOMP) ; CHAIN_APPROX_SIMPLE retire
     // déjà les points colinéaires. La hiérarchie exacte est reconstruite plus
@@ -271,8 +431,12 @@ Result<std::vector<geometry::PathSet>> vectorize_impl(const segmentation::Segmen
             for (std::size_t i = 0; i < path.nodes.size(); ++i) {
                 perim += length_um(path.nodes[(i + 1) % path.nodes.size()].pos - path.nodes[i].pos);
             }
-            const auto tol = Micrometers{
-                static_cast<std::int32_t>(std::max(1.0, std::min<double>(curveTol, perim / 16.0)))};
+            const double bounded = std::max(1.0, std::min<double>(curveTol, perim / 16.0));
+            const auto tol = Micrometers{static_cast<std::int32_t>(bounded)};
+            if (localWidth) {
+                return fit_local(path, bounded, factor, *localWidth, seg.width, seg.height,
+                                 options);
+            }
             return geometry::fit_curves(path, {.tolerance = tol});
         };
         for (geometry::PathSet& set : *sets) {

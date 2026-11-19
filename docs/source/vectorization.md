@@ -228,6 +228,33 @@ Non fait : adaptation par tronçon (lot C), mémorisation de la case globale dan
 avertissement avant de remplacer un vecteur retouché à la main, effet sur les points et essai
 textile.
 
+## Tolérance par tronçon (VEC-ADAPT-01, lot C : expérimental, non exposé dans Studio)
+
+`AdaptiveTolerance::local` (moteur), argument `adaptive_local` de `vectorize_segmentation`
+(avec `adaptive` et `curves`). Mode courbes seulement. Largeur locale en chaque sommet = plus
+grande valeur de la transformée de distance dans un rayon de 10 px, dans la forme (pointe,
+pétale) et dans le fond (encoche) ; facteur clamp(largeur / 10 px, 1/3, 1) arrondi à trois
+paliers ; zones fines élargies de 2 sommets, tronçons de moins de 4 sommets absorbés par le
+voisin le plus fin. Chaque tronçon est ajusté comme un chemin ouvert et les tronçons partagent
+leurs extrémités (contour fermé exact, jonctions en nœuds Coin). Repli sur l'ajustement uniforme
+avec un seul palier, si l'orientation s'inverse, ou si la région a une surcharge.
+
+Banc (Debug) :
+
+| Réglage | Nœuds | Écart moyen | Écart max | Écart d'aire | Temps |
+|---|---:|---:|---:|---:|---:|
+| MonetGasque, Bézier auto (région) | 8 411 | 163 µm | 579 µm | 2,77 % | 0,6 s |
+| MonetGasque, Bézier auto + tronçons | 13 643 | 168 µm | 1 180 µm | 2,83 % | 1,8 s |
+| Synthétique, Bézier auto (région) | 60 | 55 µm | 73 µm | 3,31 % | 56 ms |
+| Synthétique, Bézier auto + tronçons | 117 | 53 µm | 69 µm | 2,45 % | 383 ms |
+
+Décision : **non déployé dans Studio**. Sur le cas réel, +62 % de nœuds et ×3 de temps sans gain
+de fidélité (l'écart maximal double, sans doute aux jonctions de tronçons ; non analysé) ; le gain
+n'apparaît que sur des formes synthétiques à pointe fine. La fiche du chantier demande de ne
+déployer ce mode que si le banc confirme sa valeur. Pistes avant de réessayer : jonctions lisses
+(tangentes continues) au lieu de coins, critère de largeur moins sensible aux escaliers, et
+comparaison polygone / hybride.
+
 ## Robustesse
 
 La correction de la tolérance de simplification (adaptative) évite un défaut

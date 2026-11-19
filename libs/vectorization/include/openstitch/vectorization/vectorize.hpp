@@ -24,6 +24,15 @@ struct AdaptiveTolerance {
     bool enabled{false}; // désactivé : résultat strictement inchangé
     double reference_px{30.0};
     double min_factor{1.0 / 3.0};
+    // Lot C (courbes seulement, requiert `enabled`) : la tolérance varie aussi le long d'un même
+    // contour. Largeur locale en chaque sommet = plus grande valeur de la transformée de distance
+    // dans un rayon `local_radius_px`, dans la forme (pointe, pétale) ET dans le fond (encoche) ;
+    // facteur local = clamp(largeur / rayon, min_factor, 1), arrondi à trois paliers. Chaque
+    // tronçon de même palier est ajusté à part ; les tronçons partagent leurs extrémités (contour
+    // fermé exact). Repli sur l'ajustement uniforme si un seul palier ou si l'orientation
+    // s'inverse. Une surcharge de région désactive l'adaptation locale pour cette région.
+    bool local{false};
+    double local_radius_px{10.0};
 };
 
 // Facteur multiplicatif de tolérance pour une région (1 si désactivé ou entrée vide). Pur et

@@ -517,3 +517,79 @@ TEST_CASE("precision de region : la surcharge remplace le facteur calcule") {
     CHECK(f < 1.0);
     CHECK(f >= 1.0 / 3.0);
 }
+
+namespace {
+
+// 240 x 240 : grand disque (r = 70) prolongé d'une pointe fine (largeur 6 px, longueur 90 px).
+image::Image disc_with_spike() {
+    image::Image img;
+    img.width = 240;
+    img.height = 240;
+    img.rgba.assign(240 * 240 * 4, 0);
+    for (int y = 0; y < 240; ++y) {
+        for (int x = 0; x < 240; ++x) {
+            const bool disc = std::hypot(x - 90.0, y - 120.0) <= 70.0;
+            const bool spike = x >= 150 && x < 240 && std::abs(y - 120) < 3 + (225 - x) / 30;
+            if (disc || spike) {
+                set_px(img, x, y, 220, 30, 30);
+            } else {
+                set_px(img, x, y, 250, 250, 250);
+            }
+        }
+    }
+    return img;
+}
+
+} // namespace
+
+TEST_CASE("precision locale : la pointe fine gagne des noeuds, le contour reste ferme") {
+    const auto seg =
+        segmentation::segment(disc_with_spike(), {.max_colors = 2, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+    const auto red = segmentation::region_at(*seg, 90, 120);
+    REQUIRE(red.has_value());
+    VectorizeOptions region{.mm_per_px = Millimeters{0.25},
+                            .curve_tolerance = Micrometers{375},
+                            .adaptive = {.enabled = true}};
+    VectorizeOptions local = region;
+    local.adaptive.local = true;
+
+    const auto byRegion = vectorize_region(*seg, *red, region);
+    const auto byPiece = vectorize_region(*seg, *red, local);
+    REQUIRE((byRegion.has_value() && byPiece.has_value()));
+    REQUIRE(byPiece->size() == 1);
+    CHECK(byPiece->front().outer.closed);
+    CHECK(node_count(*byPiece) > node_count(*byRegion));
+    // Fidélité : l'aire reste proche de celle du contour uniforme (±3 %).
+    const double a = std::abs(geometry::signed_area_um2(byRegion->front().outer));
+    const double b = std::abs(geometry::signed_area_um2(byPiece->front().outer));
+    CHECK(std::abs(a - b) / a < 0.03);
+    // Déterminisme.
+    CHECK(*byPiece == *vectorize_region(*seg, *red, local));
+}
+
+TEST_CASE("precision locale : sans effet si desactivee, polygone ou surcharge") {
+    const auto seg =
+        segmentation::segment(disc_with_spike(), {.max_colors = 2, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+    const auto red = segmentation::region_at(*seg, 90, 120);
+    REQUIRE(red.has_value());
+    VectorizeOptions base{.mm_per_px = Millimeters{0.25}, .curve_tolerance = Micrometers{375}};
+    VectorizeOptions localOnly = base;
+    localOnly.adaptive.local = true; // sans `enabled` : ignoré
+    CHECK(*vectorize_region(*seg, *red, localOnly) == *vectorize_region(*seg, *red, base));
+
+    VectorizeOptions poly{.mm_per_px = Millimeters{0.25},
+                          .simplify_tolerance = Micrometers{400},
+                          .adaptive = {.enabled = true}};
+    VectorizeOptions polyLocal = poly;
+    polyLocal.adaptive.local = true; // polygone : ignoré
+    CHECK(*vectorize_region(*seg, *red, polyLocal) == *vectorize_region(*seg, *red, poly));
+
+    const std::map<RegionId, double> standard{{*red, 1.0}};
+    VectorizeOptions forced = base;
+    forced.factor_overrides = &standard;
+    VectorizeOptions forcedLocal = forced;
+    forcedLocal.adaptive = {.enabled = true, .local = true};
+    CHECK(*vectorize_region(*seg, *red, forcedLocal) == *vectorize_region(*seg, *red, forced));
+}

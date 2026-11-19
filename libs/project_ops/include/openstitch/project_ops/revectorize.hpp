@@ -28,6 +28,9 @@ struct RevectorizeOptions {
     // Précision intelligente (VEC-ADAPT-01, lot B) : tolérances réduites sur les petites formes et
     // les formes fines (`vectorization::AdaptiveTolerance`). Désactivée : résultat inchangé.
     bool adaptive{false};
+    // Lot C : la tolérance varie aussi le long d'un contour (courbes seulement, requiert
+    // `adaptive`) : pointes, pétales et encoches plus fidèles que les bords larges.
+    bool adaptive_local{false};
     // Calque image à revectoriser ; absent = l'image active (identifiant invalide = l'original).
     std::optional<ObjectId> image_source{};
 };

@@ -62,7 +62,7 @@ vectorization::VectorizeOptions engine_options(const document::ImageSource& sour
                                          opt.curve_tolerance_px * source.mm_per_px.value * 1000.0))}
                                    : Micrometers{0},
             .detail_mask = &source.detail_mask,
-            .adaptive = {.enabled = opt.adaptive},
+            .adaptive = {.enabled = opt.adaptive, .local = opt.adaptive && opt.adaptive_local},
             .factor_overrides = overrides.empty() ? nullptr : &overrides};
 }
 
@@ -369,6 +369,12 @@ OpStatus op_vectorize_segmentation(OpContext& ctx) {
         }
         options.adaptive = it->get<bool>();
     }
+    if (const auto it = ctx.args.find("adaptive_local"); it != ctx.args.end() && !it->is_null()) {
+        if (!it->is_boolean()) {
+            return OpStatus::failure(code::kUsage, "argument « adaptive_local » : booléen attendu");
+        }
+        options.adaptive_local = it->get<bool>();
+    }
     bool prune = false;
     if (const auto it = ctx.args.find("prune_orphans"); it != ctx.args.end() && !it->is_null()) {
         if (!it->is_boolean()) {
@@ -522,6 +528,10 @@ void register_step_ops(std::vector<OpSpec>& out) {
          {"adaptive", "boolean", "",
           "précision intelligente : tolérances réduites (jusqu'à /3) sur les petites formes et "
           "les formes fines, inchangées sur les grandes (défaut faux)",
+          false, ""},
+         {"adaptive_local", "boolean", "",
+          "avec adaptive et curves : tolérance variable le long des contours (pointes, pétales, "
+          "encoches plus fidèles ; défaut faux)",
           false, ""},
          {"prune_orphans", "boolean", "",
           "retire aussi les formes dont la région a disparu et leurs objets de broderie (après "
