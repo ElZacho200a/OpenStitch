@@ -152,6 +152,8 @@ def main() -> int:
     ap.add_argument("--px-per-mm", type=float, default=10.0)
     ap.add_argument("--width-px", type=int, default=0,
                     help="largeur de l'image en pixels (remplace --px-per-mm ; 3840 = 4K)")
+    ap.add_argument("--height-px", type=int, default=0,
+                    help="avec --width-px : hauteur imposée (2160 = 4K UHD), cadre élargi")
     ap.add_argument("--margin-mm", type=float, default=3.0)
     ap.add_argument("--spp", type=int, default=64, help="échantillons par pixel (défaut 64)")
     ap.add_argument("--tilt", type=float, default=0.0, help="inclinaison de la caméra (degrés)")
@@ -183,6 +185,14 @@ def main() -> int:
     fw, fh = x1 - x0, y1 - y0  # tissu = motif + marge
     border = max(0.0, args.border)
     w, h = fw * (1 + 2 * border), fh * (1 + 2 * border)  # cadre = tissu + fond autour
+    if args.width_px and args.height_px:
+        # Format imposé (ex. 3840 x 2160) : le cadre s'élargit sans déformer, tissu étendu.
+        aspect = args.width_px / args.height_px
+        if w / h < aspect:
+            w = h * aspect
+        else:
+            h = w / aspect
+        fw, fh = w / (1 + 2 * border), h / (1 + 2 * border)
     px_per_mm = args.width_px / w if args.width_px else args.px_per_mm
     width = max(16, round(w * px_per_mm))
     height = max(16, round(h * px_per_mm))
