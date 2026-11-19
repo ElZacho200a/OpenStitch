@@ -975,7 +975,9 @@ std::optional<MulticolorGradientSpec> default_multicolor_gradient(const document
         return std::nullopt;
     }
     MulticolorGradientSpec spec;
-    if (base->is_satin()) {
+    // Un auto-satin (type « Satin » de Studio, objets numérisés) est aussi un satin : ses rails
+    // sont dérivés du contour source par `gradient_object_layers`.
+    if (base->is_satin() || base->is_auto_satin()) {
         spec.method = document::GradientMethod::SatinInterlaced;
         spec.palette = {document::GradientThread{base->rgb},
                         document::GradientThread{{255, 255, 255}}};
@@ -1009,7 +1011,8 @@ std::string multicolor_gradient_incompatibility(const document::Project& project
         return "Cet objet appartient déjà à un fondu à deux fils ; modifiez-le depuis son "
                "panneau de fondu plutôt que d'en créer un nouveau.";
     }
-    if (!(base->is_tatami() || base->is_directional() || base->is_satin())) {
+    if (!(base->is_tatami() || base->is_directional() || base->is_satin() ||
+          base->is_auto_satin())) {
         return "Choisissez un remplissage (tatami, directionnel ou satin) pour porter un fondu "
                "multicolore.";
     }
