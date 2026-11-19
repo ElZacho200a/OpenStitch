@@ -26,6 +26,8 @@ class PreferencesController : public QObject {
     Q_OBJECT
     Q_PROPERTY(QString theme READ theme WRITE setTheme NOTIFY changed)
     Q_PROPERTY(QString effectiveTheme READ effectiveTheme NOTIFY changed)
+    // Thème actif du moteur de thèmes (ThemeController) ; `theme` reste l'apparence demandée.
+    Q_PROPERTY(QString themeId READ themeId WRITE setThemeId NOTIFY changed)
     Q_PROPERTY(QString density READ density WRITE setDensity NOTIFY changed)
     Q_PROPERTY(double densityScale READ densityScale NOTIFY changed)
     Q_PROPERTY(bool reducedMotion READ reducedMotion WRITE setReducedMotion NOTIFY changed)
@@ -37,6 +39,7 @@ public:
     [[nodiscard]] QString theme() const;
     // « light » ou « dark » : « system » suit le schéma de couleurs de la plateforme.
     [[nodiscard]] QString effectiveTheme() const;
+    [[nodiscard]] QString themeId() const;
     [[nodiscard]] QString density() const;
     [[nodiscard]] double densityScale() const;
     [[nodiscard]] bool reducedMotion() const { return reducedMotion_; }
@@ -44,6 +47,7 @@ public:
     [[nodiscard]] QVariantMap session() const;
 
     void setTheme(const QString& id);
+    void setThemeId(const QString& id);
     void setDensity(const QString& id);
     void setReducedMotion(bool on);
 

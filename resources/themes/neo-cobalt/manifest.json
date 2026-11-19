@@ -1,0 +1,12 @@
+{
+  "schema": "openstitch-theme",
+  "schemaVersion": 1,
+  "id": "neo-cobalt",
+  "name": "Neo Cobalt",
+  "description": "Exemple d'héritage : Neo Studio dont seul l'accent change (bleu cobalt au lieu de framboise).",
+  "author": "OpenStitch",
+  "version": "1.0.0",
+  "license": "Apache-2.0",
+  "parent": "neo-studio",
+  "compatibility": { "minEngine": 1 }
+}

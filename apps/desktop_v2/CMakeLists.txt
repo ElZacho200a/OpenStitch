@@ -58,6 +58,9 @@ add_library(openstitch_desktop_v2_core STATIC
     core/hoop_store.cpp
     core/thread_palette_service.cpp
     core/preferences.cpp
+    core/theme_schema.cpp
+    core/theme_package.cpp
+    core/theme_library.cpp
     core/render_settings.cpp
     core/file_io.cpp
     core/direction_guides.cpp
@@ -77,6 +80,9 @@ target_link_libraries(openstitch_desktop_v2_core
            openstitch::stitch openstitch::stitch_generation openstitch::stitch_render openstitch::formats openstitch::image
            openstitch::mcp openstitch::optimization openstitch::stitch_analysis openstitch::autodigitize openstitch::segmentation openstitch::stipple openstitch::project_io
     PRIVATE openstitch::warnings)
+# Moteur de thèmes (core/theme_*) : JSON lu derrière une API sans type tiers.
+find_package(nlohmann_json CONFIG REQUIRED)
+target_link_libraries(openstitch_desktop_v2_core PRIVATE nlohmann_json::nlohmann_json)
 
 # Interface Qt Widgets. Désactivée avec OPENSTITCH_BUILD_DESKTOP=OFF (CI linux-core) ou sans Qt6.
 if(NOT OPENSTITCH_BUILD_DESKTOP)

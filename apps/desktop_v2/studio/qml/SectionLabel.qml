@@ -6,6 +6,6 @@ Text {
     color: Theme.muted
     font.family: Theme.fontFamily
     font.pixelSize: Theme.captionSize
-    font.weight: Font.DemiBold
-    font.letterSpacing: 1.0
+    font.weight: Theme.strongWeight
+    font.letterSpacing: Theme.sectionLetterSpacing
 }

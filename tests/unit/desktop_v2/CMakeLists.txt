@@ -73,6 +73,15 @@ target_compile_definitions(test_desktop_v2_core
             OPENSTITCH_LEGACY_TOOLS_HEADER="${PROJECT_SOURCE_DIR}/apps/desktop/tools.hpp")
 catch_discover_tests(test_desktop_v2_core)
 
+# Moteur de thèmes (core/theme_*) : format, héritage, sécurité, thèmes livrés (resources/themes).
+add_executable(test_desktop_v2_theme test_theme_engine.cpp)
+target_link_libraries(test_desktop_v2_theme
+    PRIVATE openstitch::desktop_v2_core Catch2::Catch2WithMain openstitch::warnings)
+target_compile_definitions(test_desktop_v2_theme
+    PRIVATE OPENSTITCH_THEMES_DIR="${PROJECT_SOURCE_DIR}/resources/themes"
+            OPENSTITCH_STUDIO_QML_DIR="${PROJECT_SOURCE_DIR}/apps/desktop_v2/studio/qml")
+catch_discover_tests(test_desktop_v2_theme)
+
 # Qt Quick integration uses the real QML shell and the explicit CPU fallback in CI.
 if(TARGET openstitch::studio_ui)
     find_package(Qt6 COMPONENTS Test QUIET)
@@ -111,6 +120,20 @@ file(GLOB_RECURSE studio_all_qml CONFIGURE_DEPENDS "${studio_test_qml_root}/qml/
         add_test(NAME test_desktop_v2_studio_inspector COMMAND test_desktop_v2_studio_inspector -o -,txt)
         add_test(NAME test_desktop_v2_studio_shell COMMAND test_desktop_v2_studio_shell -o -,txt)
         # Design system guard rails: WCAG contrast of the Theme tokens + QML lint (no GUI needed).
+        # Moteur de thèmes côté Qt : changement à chaud, persistance, archives, document intact.
+        add_executable(test_desktop_v2_studio_theme test_studio_theme.cpp)
+        target_link_libraries(test_desktop_v2_studio_theme
+            PRIVATE openstitch::studio_ui Qt6::Test openstitch::warnings)
+        target_compile_definitions(test_desktop_v2_studio_theme PRIVATE
+            OPENSTITCH_THEMES_DIR="${PROJECT_SOURCE_DIR}/resources/themes")
+        qt_add_resources(test_desktop_v2_studio_theme studio_theme_qml PREFIX "/studio"
+            BASE "${studio_test_qml_root}" FILES ${studio_all_qml}
+                "${studio_test_qml_root}/qml/qmldir")
+        add_test(NAME test_desktop_v2_studio_theme COMMAND test_desktop_v2_studio_theme -o -,txt)
+        get_filename_component(studio_theme_qml_imports "${Qt6_DIR}/../../../qml" ABSOLUTE)
+        set_tests_properties(test_desktop_v2_studio_theme PROPERTIES
+            ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QUICK_CONTROLS_STYLE=Basic;QML_IMPORT_PATH=${studio_theme_qml_imports};QT_QPA_FONTDIR=${PROJECT_SOURCE_DIR}/resources/fonts"
+            ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
         add_executable(test_desktop_v2_studio_design test_studio_design.cpp)
         target_link_libraries(test_desktop_v2_studio_design PRIVATE Qt6::Test openstitch::warnings)
         target_compile_definitions(test_desktop_v2_studio_design PRIVATE

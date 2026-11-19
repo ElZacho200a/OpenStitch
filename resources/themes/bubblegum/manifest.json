@@ -1,0 +1,14 @@
+{
+  "schema": "openstitch-theme",
+  "schemaVersion": 1,
+  "id": "bubblegum",
+  "name": "Bubblegum",
+  "description": "Thème expérimental : pastels rose, lavande, turquoise, crème et jaune, boutons bombés et brillants, ombres douces, typographie ronde. Amusant, mais jamais au détriment de la lisibilité.",
+  "author": "OpenStitch",
+  "version": "1.0.0",
+  "license": "Apache-2.0 ; police Nunito : SIL OFL 1.1 (assets/fonts/OFL.txt)",
+  "compatibility": { "minEngine": 1 },
+  "variants": ["light"],
+  "defaultVariant": "light",
+  "fonts": ["assets/fonts/Nunito[wght].ttf"]
+}

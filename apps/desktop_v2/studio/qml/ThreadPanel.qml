@@ -59,7 +59,9 @@ Rectangle {
         modal: true
         width: Math.min(360, parent ? parent.width - 32 : 360)
         padding: 16
-        background: Rectangle { color: Theme.panel; radius: Theme.radius; border.color: Theme.border }
+        background: StudioPopupBackground { }
+        enter: StudioPopupEnter { }
+        exit: StudioPopupExit { }
         contentItem: ColumnLayout {
             spacing: 12
             Text {
@@ -101,7 +103,9 @@ Rectangle {
         modal: true
         width: Math.min(360, parent ? parent.width - 32 : 360)
         padding: 16
-        background: Rectangle { color: Theme.panel; radius: Theme.radius; border.color: Theme.border }
+        background: StudioPopupBackground { }
+        enter: StudioPopupEnter { }
+        exit: StudioPopupExit { }
         contentItem: ColumnLayout {
             spacing: 10
             Text {
@@ -132,7 +136,9 @@ Rectangle {
         modal: true
         width: Math.min(330, parent ? parent.width - 32 : 330)
         padding: 16
-        background: Rectangle { color: Theme.panel; radius: Theme.radius; border.color: Theme.border }
+        background: StudioPopupBackground { }
+        enter: StudioPopupEnter { }
+        exit: StudioPopupExit { }
         contentItem: ColumnLayout {
             spacing: 8
             Text { text: qsTr("Renommer le coloris"); color: Theme.foreground }

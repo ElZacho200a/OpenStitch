@@ -17,6 +17,9 @@ Item {
     id: host
     objectName: "spaceHost"
     required property var workspace
+    // Onglet actif (pastille) : style « tab/selected » du thème et encre de son libellé.
+    readonly property var tabSelectedStyle: Theme.style("tab", "default", "selected")
+    readonly property color tabSelectedInk: tabSelectedStyle.text !== undefined ? tabSelectedStyle.text : Theme.accentInk
     // Racine de l'espace actif (contrat : `canvas`, `active`) et son canevas.
     readonly property var space: internal.loadedId === "image" ? imageLoader.item
                                   : internal.loadedId === "segmentation" ? segmentationLoader.item
@@ -198,7 +201,7 @@ Item {
         border.color: Theme.divider
 
         // Pastille pleine qui glisse d'une étape à l'autre, y compris via Ctrl+1..4.
-        Rectangle {
+        ThemedSurface {
             id: activePill
             objectName: "activeSpaceUnderline"
             // `count` rend la liaison réactive à la création des étapes (itemAt seul ne notifie pas).
@@ -208,13 +211,15 @@ Item {
             y: 4
             width: currentTab ? currentTab.width : 0
             height: parent.height - 8
+            themeStyle: host.tabSelectedStyle
             radius: 9
-            color: Theme.accent
+            fill: Theme.accent
+            animated: false
             // Pas de glissement à l'ouverture : la pastille est posée d'emblée sur l'étape active.
             property bool settled: false
             Timer { interval: 300; running: true; onTriggered: activePill.settled = true }
-            Behavior on x { enabled: activePill.settled; NumberAnimation { duration: Theme.feedbackSlowMs; easing.type: Easing.OutCubic } }
-            Behavior on width { enabled: activePill.settled; NumberAnimation { duration: Theme.feedbackSlowMs; easing.type: Easing.OutCubic } }
+            Behavior on x { enabled: activePill.settled; NumberAnimation { duration: Theme.feedbackSlowMs; easing.type: Theme.easingEmphasis } }
+            Behavior on width { enabled: activePill.settled; NumberAnimation { duration: Theme.feedbackSlowMs; easing.type: Theme.easingEmphasis } }
         }
 
         Row {
@@ -240,13 +245,15 @@ Item {
                     Accessible.name: modelData.label + " : " + host.stateLabel(modelData.state)
                     Accessible.description: modelData.detail + ". " + qsTr("Raccourci ") + modelData.shortcut
                     onClicked: host.workspace.setCurrent(modelData.id)
-                    background: Rectangle {
+                    background: ThemedSurface {
+                        // La pastille active est dessinée par activePill : ici, survol et focus.
+                        themeStyle: tab.current ? ({}) : Theme.style("tab", "default", Theme.stateOf(true, tab.down, false, tab.hovered))
+                        focusStyle: Theme.style("tab", "default", "focus")
+                        focused: tab.activeFocus
+                        focusBorder: tab.current ? Theme.accentInk : Theme.focus
                         radius: 9
-                        color: tab.current ? "transparent" : tab.down ? Theme.hover
+                        fill: tab.current ? "transparent" : tab.down ? Theme.hover
                                : tab.hovered ? Theme.raised : "transparent"
-                        border.width: tab.activeFocus ? 2 : 0
-                        border.color: tab.current ? Theme.accentInk : Theme.accent
-                        Behavior on color { ColorAnimation { duration: Theme.animationMs } }
                     }
                     contentItem: Item {
                         implicitWidth: tabContent.implicitWidth
@@ -283,10 +290,10 @@ Item {
                                 visible: !stepper.compact || tab.current
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: tab.modelData.label
-                                color: tab.current ? Theme.accentInk : Theme.muted
+                                color: tab.current ? host.tabSelectedInk : Theme.muted
                                 font.family: Theme.fontFamily
                                 font.pixelSize: Theme.bodySize
-                                font.weight: tab.current ? Font.DemiBold : Font.Normal
+                                font.weight: tab.current ? Theme.strongWeight : Theme.bodyWeight
                                 Behavior on color { ColorAnimation { duration: Theme.animationMs } }
                             }
                         }
