@@ -98,8 +98,15 @@ public:
     // Objets de broderie issus des régions sélectionnées (identifiants).
     Q_INVOKABLE [[nodiscard]] QVariantList objectsOfSelection() const;
 
+    // Couleur de la région à sa première apparition dans cette session (pas enregistrée dans le
+    // projet : "" si inconnue, par ex. avant le premier rafraîchissement).
+    Q_INVOKABLE [[nodiscard]] QString originalColorOf(double id) const;
+
     // --- Retouches (chacune : UNE étape d'annulation ; "" = fait, sinon le refus) -------------
     Q_INVOKABLE QString recolorSelected(const QString& hexColor);
+    // Reprend la couleur d'origine (mémorisée en session, pas dans le projet) de chaque région
+    // sélectionnée qui a changé depuis ; une commande par teinte d'origine distincte.
+    Q_INVOKABLE QString restoreSelectedColor();
     Q_INVOKABLE QString mergeSelected();
     // Merge the single selected (source) region into a user-chosen target.
     Q_INVOKABLE QString mergeSelectedInto(double target);
@@ -117,6 +124,10 @@ public:
     Q_INVOKABLE QString reducePalette(int maxColors, double maxDistance, bool mergeAdjacent);
     // Pinceau / gomme sur la région sélectionnée : points {x, y} en pixels de l'image de travail.
     Q_INVOKABLE QString paintStroke(const QVariantList& pointsPx, bool erase);
+    // Pot de peinture : remplit dans la région sélectionnée la poche de fond fermée sous (x, y),
+    // pixel de l'image de travail. Refus : pas UNE région choisie, ou la poche sous le clic n'est
+    // pas entièrement fermée (ce serait le fond extérieur).
+    Q_INVOKABLE QString paintBucket(int x, int y);
 
     // --- Régénération des objets -------------------------------------------------------------
     // Sans `confirmed`, des retouches de points qui seraient remplacées déclenchent
@@ -163,6 +174,9 @@ private:
     std::vector<std::uint64_t> selected_;
     std::set<std::uint64_t> locked_;
     void applyLockFlags();
+    // Couleur observée pour chaque région à sa première apparition dans `regions_` (session
+    // uniquement) ; sert de "couleur d'origine" sans ajouter de champ au format `.osp`.
+    std::map<std::uint64_t, QString> originalColor_;
     bool stale_{false};
     QString staleReason_;
     bool busy_{false};

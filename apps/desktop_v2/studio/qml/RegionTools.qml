@@ -131,7 +131,9 @@ ColumnLayout {
         Layout.fillWidth: true
         text: regionTools.tool === "brush"
               ? qsTr("Pinceau actif : peignez sur le canevas pour agrandir la région choisie.")
-              : qsTr("Gomme active : peignez sur le canevas pour retirer de la région choisie.")
+              : regionTools.tool === "erase"
+              ? qsTr("Gomme active : peignez sur le canevas pour retirer de la région choisie.")
+              : qsTr("Pot de peinture actif : cliquez une poche de fond entièrement fermée pour la remplir dans la région choisie.")
     }
 
     SectionLabel { text: qsTr("RÉGIONS (%1)").arg(regionTools.regions.length) }

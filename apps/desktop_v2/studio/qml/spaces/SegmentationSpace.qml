@@ -107,7 +107,8 @@ Item {
             toolPrefix: "regionTool_"
             entries: [
                 { id: "brush", icon: "brush", label: qsTr("Pinceau de frontière : peindre la région choisie"), shortcut: "U", group: "regions" },
-                { id: "erase", icon: "eraser", label: qsTr("Gomme : retirer de la région choisie"), shortcut: "Maj+U", group: "regions" }
+                { id: "erase", icon: "eraser", label: qsTr("Gomme : retirer de la région choisie"), shortcut: "Maj+U", group: "regions" },
+                { id: "bucket", icon: "bucket", label: qsTr("Pot de peinture : remplir une poche de fond fermée"), shortcut: "Maj+B", group: "regions" }
             ]
             activeTool: root.hasTools && regionTools.tool !== "select" ? regionTools.tool : ""
             onToolTriggered: id => { if (root.hasTools) regionTools.tool = id === "" ? "select" : id }
@@ -178,13 +179,16 @@ Item {
                 anchors.left: parent.left
                 anchors.leftMargin: 10
                 spacing: 6
+                readonly property bool hasRadius: root.hasTools && regionTools.tool !== "bucket"
                 StudioLabel {
+                    visible: optionsRow.hasRadius
                     text: qsTr("Rayon")
                     tone: "foreground"
                     wrapMode: Text.NoWrap
                 }
                 StudioButton {
                     objectName: "brushSmaller"
+                    visible: optionsRow.hasRadius
                     text: "−"
                     quiet: true
                     tooltip: qsTr("Pinceau : rayon plus petit")
@@ -192,6 +196,7 @@ Item {
                 }
                 StudioSpinBox {
                     objectName: "regionBrushRadius"
+                    visible: optionsRow.hasRadius
                     from: 1; to: 200; editable: true
                     value: root.hasTools ? regionTools.brushRadius : 1
                     Accessible.name: qsTr("Rayon du pinceau (px)")
@@ -199,6 +204,7 @@ Item {
                 }
                 StudioButton {
                     objectName: "brushLarger"
+                    visible: optionsRow.hasRadius
                     text: "+"
                     quiet: true
                     tooltip: qsTr("Pinceau : rayon plus grand")
@@ -307,7 +313,9 @@ Item {
             acceptedButtons: Qt.LeftButton | Qt.RightButton
             enabled: root.seg !== null
             property var stroke: []
-            readonly property bool painting: root.hasTools && regionTools.tool !== "select"
+            readonly property bool painting: root.hasTools
+                && (regionTools.tool === "brush" || regionTools.tool === "erase")
+            readonly property bool filling: root.hasTools && regionTools.tool === "bucket"
             function scenePoint(mx, my) {
                 const v = spaceCanvas.viewState()
                 return Qt.point(v.centerX + (mx - width / 2) / v.zoom,
@@ -317,7 +325,7 @@ Item {
                 // Clic droit : sélectionne la région sous le curseur (sauf pinceau/gomme actifs,
                 // où il resterait sans effet visible) puis ouvre le menu contextuel pour elle.
                 if (mouse.button === Qt.RightButton) {
-                    if (pick.painting || !root.hasTools) return
+                    if (pick.painting || pick.filling || !root.hasTools) return
                     const rp = pick.scenePoint(mouse.x, mouse.y)
                     root.seg.pickAt(rp.x, rp.y, false)
                     if (regionTools.selectedCount === 1)
@@ -325,7 +333,11 @@ Item {
                     return
                 }
                 const p = pick.scenePoint(mouse.x, mouse.y)
-                if (pick.painting) {
+                if (pick.filling) {
+                    // Un seul clic : pas de trait à accumuler, contrairement au pinceau/gomme.
+                    const px = root.seg.pixelAt(p.x, p.y)
+                    if (px.valid) regionTools.paintBucket(px.x, px.y)
+                } else if (pick.painting) {
                     const px = root.seg.pixelAt(p.x, p.y)
                     pick.stroke = px.valid ? [{ x: px.x, y: px.y }] : []
                 } else {
@@ -354,6 +366,15 @@ Item {
         RegionContextMenu {
             id: regionContextMenu
             region: root.hasTools ? regionTools : null
+        }
+
+        RegionQuickBar {
+            anchors.top: parent.top
+            anchors.topMargin: 8
+            anchors.horizontalCenter: parent.horizontalCenter
+            z: 5
+            region: root.hasTools ? regionTools : null
+            spaceActive: root.active
         }
 
         Loader {

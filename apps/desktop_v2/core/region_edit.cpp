@@ -97,6 +97,56 @@ std::vector<HoleFix> planSmallHoles(const segmentation::Segmentation& seg, std::
     return fixes;
 }
 
+// Pourtour de fond (label 0) connexe à (x, y), comme un groupe de `planSmallHoles` mais choisi
+// par un seul pixel de départ plutôt que par un balayage complet de l'image (coût proportionnel
+// à la poche cliquée, pas à l'image entière). `std::nullopt` : hors image, pas du fond à cet
+// endroit, ou la poche touche le bord (ce serait le fond extérieur, jamais une poche fermée).
+std::optional<std::vector<std::uint32_t>> backgroundClusterAt(const segmentation::Segmentation& seg,
+                                                              int x, int y) {
+    if (seg.width <= 0 || seg.height <= 0 || x < 0 || y < 0 || x >= seg.width || y >= seg.height) {
+        return std::nullopt;
+    }
+    const auto w = static_cast<std::size_t>(seg.width);
+    const auto h = static_cast<std::size_t>(seg.height);
+    if (h > std::numeric_limits<std::uint32_t>::max() / w || seg.labels.size() != w * h) {
+        return std::nullopt;
+    }
+    const auto start = static_cast<std::size_t>(y) * w + static_cast<std::size_t>(x);
+    if (seg.labels[start] != 0) {
+        return std::nullopt;
+    }
+    std::vector<std::uint8_t> seen(seg.labels.size(), 0);
+    std::vector<std::uint32_t> cluster{static_cast<std::uint32_t>(start)};
+    seen[start] = 1;
+    bool outside = false;
+    for (std::size_t cursor = 0; cursor < cluster.size(); ++cursor) {
+        const auto at = cluster[cursor];
+        const auto cx = static_cast<int>(at % w);
+        const auto cy = static_cast<int>(at / w);
+        if (cx == 0 || cy == 0 || cx == seg.width - 1 || cy == seg.height - 1) {
+            outside = true;
+        }
+        const auto visit = [&](int nx, int ny) {
+            if (nx < 0 || ny < 0 || nx >= seg.width || ny >= seg.height) {
+                return;
+            }
+            const auto next = static_cast<std::size_t>(ny) * w + static_cast<std::size_t>(nx);
+            if (seg.labels[next] == 0 && !seen[next]) {
+                seen[next] = 1;
+                cluster.push_back(static_cast<std::uint32_t>(next));
+            }
+        };
+        visit(cx - 1, cy);
+        visit(cx + 1, cy);
+        visit(cx, cy - 1);
+        visit(cx, cy + 1);
+    }
+    if (outside) {
+        return std::nullopt;
+    }
+    return cluster;
+}
+
 class FillSmallHolesCommand final : public commands::ICommand {
 public:
     explicit FillSmallHolesCommand(std::vector<HoleFix> holes) : holes_(std::move(holes)) {}
@@ -582,6 +632,25 @@ ServiceResult fillSmallHoles(DocumentSession& session, std::size_t maxPixels) {
     if (plan.empty()) {
         return {false, "Aucun petit trou fermé : le fond extérieur reste intact."};
     }
+    session.execute(std::make_unique<FillSmallHolesCommand>(std::move(plan)));
+    return {true, {}};
+}
+
+ServiceResult fillEnclosedAreaInto(DocumentSession& session, std::uint64_t regionId, int x, int y) {
+    const auto* seg = segmentationOf(session.project());
+    if (seg == nullptr) {
+        return noSegmentation();
+    }
+    const RegionId target{regionId};
+    if (!target.valid() || seg->find(target) == nullptr) {
+        return {false, "Choisissez d'abord la région à remplir (outil Pot de peinture)."};
+    }
+    auto cluster = backgroundClusterAt(*seg, x, y);
+    if (!cluster) {
+        return {false, "Cliquez une poche de fond entièrement fermée, à l'intérieur de l'image."};
+    }
+    std::vector<HoleFix> plan;
+    plan.push_back({target, std::move(*cluster)});
     session.execute(std::make_unique<FillSmallHolesCommand>(std::move(plan)));
     return {true, {}};
 }

@@ -79,7 +79,7 @@ list(APPEND studio_qml_files qml/spaces/image/ImageOpStack.qml qml/spaces/image/
     qml/spaces/image/CropOverlay.qml qml/spaces/image/ImageToolOverlay.qml
     qml/spaces/image/ImageSizeSection.qml)
 list(APPEND studio_qml_files qml/spaces/segmentation/SegmentationPanels.qml qml/spaces/segmentation/RegionLayerControls.qml
-    qml/spaces/segmentation/RegionContextMenu.qml)
+    qml/spaces/segmentation/RegionContextMenu.qml qml/spaces/segmentation/RegionQuickBar.qml)
 list(APPEND studio_qml_files
     qml/spaces/points/PointsToolRail.qml qml/spaces/points/PointsPanelBar.qml
     qml/spaces/points/PointsOptionsBar.qml qml/spaces/points/PointsObjectsPanel.qml)

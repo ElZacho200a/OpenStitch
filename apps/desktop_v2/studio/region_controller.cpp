@@ -138,7 +138,7 @@ void RegionController::setStale(bool stale, const QString& reason) {
 
 void RegionController::setTool(const QString& tool) {
     if ((tool != QLatin1String("select") && tool != QLatin1String("brush") &&
-         tool != QLatin1String("erase")) ||
+         tool != QLatin1String("erase") && tool != QLatin1String("bucket")) ||
         tool == tool_) {
         return;
     }
@@ -163,9 +163,13 @@ void RegionController::refresh() {
     const auto& project = studio_.session().project();
     regions_.clear();
     for (const auto& info : listRegions(project)) {
+        const auto color = hexOf(info.rgb);
+        // Première apparition de cette région dans la session : sa couleur actuelle devient sa
+        // "couleur d'origine" (ni enregistrée dans le projet, ni modifiée par la suite ici).
+        originalColor_.try_emplace(info.id, color);
         regions_.append(
             QVariantMap{{QStringLiteral("id"), static_cast<qulonglong>(info.id)},
-                        {QStringLiteral("color"), hexOf(info.rgb)},
+                        {QStringLiteral("color"), color},
                         {QStringLiteral("pixels"), static_cast<qulonglong>(info.pixels)},
                         {QStringLiteral("locked"), locked_.find(info.id) != locked_.end()}});
     }
@@ -180,6 +184,10 @@ void RegionController::refresh() {
     std::erase_if(locked_, [&](std::uint64_t id) {
         return !project.imageSource().segmentation ||
                !project.imageSource().segmentation->find(RegionId{id});
+    });
+    std::erase_if(originalColor_, [&](const auto& entry) {
+        return !project.imageSource().segmentation ||
+               !project.imageSource().segmentation->find(RegionId{entry.first});
     });
     if (project.imageSource().segmentation && project.imageSource().segmentation->width > 0 &&
         project.imageSource().segmentation->height > 0) {
@@ -476,6 +484,56 @@ QString RegionController::report(const ServiceResult& result, const QString& don
     return {};
 }
 
+QString RegionController::originalColorOf(double id) const {
+    const auto it = originalColor_.find(idOf(id));
+    return it == originalColor_.end() ? QString() : it->second;
+}
+
+QString RegionController::restoreSelectedColor() {
+    if (selected_.empty()) {
+        const auto text = QStringLiteral("Sélectionnez au moins une région.");
+        setMessage(text, true);
+        return text;
+    }
+    // Regroupe par teinte d'origine distincte : chaque groupe est une commande annulable, comme
+    // une recoloration normale ; les régions déjà à leur couleur d'origine n'ont rien à faire.
+    // Couleur ACTUELLE lue directement dans le document, jamais dans `regions_` (reconstruite de
+    // façon différée par `scheduleRefresh()` : encore périmée juste après une commande).
+    std::map<QString, std::vector<std::uint64_t>> byOriginal;
+    for (const auto& info : listRegions(studio_.session().project())) {
+        const auto it = originalColor_.find(info.id);
+        if (it != originalColor_.end() && hexOf(info.rgb) != it->second &&
+            std::find(selected_.begin(), selected_.end(), info.id) != selected_.end()) {
+            byOriginal[it->second].push_back(info.id);
+        }
+    }
+    if (byOriginal.empty()) {
+        const auto text = QStringLiteral("Déjà à la couleur d'origine.");
+        setMessage(text, false);
+        return {};
+    }
+    QString refusal;
+    for (const auto& [hex, ids] : byOriginal) {
+        const QColor color(hex);
+        const auto result = recolorRegionSet(studio_.session(), ids,
+                                             {static_cast<std::uint8_t>(color.red()),
+                                              static_cast<std::uint8_t>(color.green()),
+                                              static_cast<std::uint8_t>(color.blue())});
+        if (!result.ok) {
+            refusal = fromUtf8(result.message);
+        }
+    }
+    if (!refusal.isEmpty()) {
+        setMessage(refusal, true);
+        return refusal;
+    }
+    setStale(true, QStringLiteral("des régions ont été retouchées"));
+    setMessage(QStringLiteral("Couleur d'origine rétablie. Régénérez les objets pour appliquer "
+                              "(Ctrl+Z annule)."),
+               false);
+    return {};
+}
+
 QString RegionController::recolorSelected(const QString& hexColor) {
     const QColor color(hexColor);
     if (!color.isValid()) {
@@ -617,6 +675,16 @@ QString RegionController::paintStroke(const QVariantList& pointsPx, bool erase) 
         paintRegionStroke(studio_.session(), selected_.front(), centres, brushRadius_, erase),
         erase ? QStringLiteral("Région effacée au pinceau.")
               : QStringLiteral("Frontière retouchée."));
+}
+
+QString RegionController::paintBucket(int x, int y) {
+    if (selected_.size() != 1) {
+        const auto text = QStringLiteral("Pot de peinture : choisissez d'abord UNE région.");
+        setMessage(text, true);
+        return text;
+    }
+    return report(fillEnclosedAreaInto(studio_.session(), selected_.front(), x, y),
+                  QStringLiteral("Poche de fond remplie."));
 }
 
 // --- Régénération -------------------------------------------------------------------------

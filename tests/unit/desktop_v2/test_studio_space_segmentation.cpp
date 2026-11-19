@@ -668,6 +668,32 @@ private slots:
         QVERIFY(msg.contains("choisissez"));
     }
 
+    // Pot de peinture : refuse tant qu'il n'y a pas de poche de fond fermée sous le clic ; la
+    // gomme en perce une (petit disque entièrement intérieur à la région) ; le pot de peinture la
+    // remplit dans la région choisie en UNE commande annulable ; refus hors poche de fond.
+    void regionPaintBucketFillsEnclosedPocket() {
+        Rig rig;
+        open(rig);
+        rig.regions.selectAtPixel(20, 20);
+        QTRY_COMPARE(rig.regions.selectedCount(), 1);
+
+        QVERIFY(!rig.regions.paintBucket(20, 20).isEmpty()); // rien à remplir : pas encore de trou
+
+        QCOMPARE(rig.regions.paintStroke(QVariantList{QVariantMap{{"x", 20}, {"y", 20}}}, true),
+                 QString());
+        QTRY_VERIFY(rig.regions.stale());
+
+        const auto depth = rig.session.undoNames().size();
+        QCOMPARE(rig.regions.paintBucket(20, 20), QString());
+        QCOMPARE(rig.session.undoNames().size(), depth + 1);
+
+        QVERIFY(
+            !rig.regions.paintBucket(0, 0).isEmpty()); // (0,0) est une région vivante, pas du fond
+
+        rig.session.undo();
+        QCOMPARE(rig.session.undoNames().size(), depth);
+    }
+
     // regionSelectAllAndInvert : selectAll() puis invertSelection() ; apres inversion la selection
     // est vide.
     void regionSelectAllAndInvert() {
@@ -812,6 +838,39 @@ private slots:
         QVERIFY(!rig.regions.isRegionLocked(a));
         rig.regions.selectRegion(a);
         QCOMPARE(rig.regions.selectedCount(), 1); // déverrouillée : de nouveau sélectionnable
+    }
+    // Couleur d'origine (mémoire de session, pas de champ projet) : recolorer puis rétablir
+    // revient à la couleur observée à l'ouverture ; sans changement, rien à annuler.
+    void regionRestoreOriginalColorUndoes() {
+        Rig rig;
+        open(rig);
+        const auto regions = rig.regions.regions();
+        QVERIFY(!regions.isEmpty());
+        const double id = regions[0].toMap().value("id").toDouble();
+        const QString original = rig.regions.originalColorOf(id);
+        QVERIFY(!original.isEmpty());
+
+        rig.regions.selectRegion(id);
+        const auto depth = rig.session.undoNames().size();
+        QCOMPARE(rig.regions.restoreSelectedColor(), QString()); // déjà à l'origine : rien à faire
+        QCOMPARE(rig.session.undoNames().size(), depth);
+
+        QCOMPARE(rig.regions.recolorSelected(QStringLiteral("#123456")), QString());
+        QCOMPARE(rig.session.undoNames().size(), depth + 1);
+        QCOMPARE(rig.regions.originalColorOf(id), original); // inchangée par la recoloration
+
+        QCOMPARE(rig.regions.restoreSelectedColor(), QString());
+        QCOMPARE(rig.session.undoNames().size(), depth + 2);
+        bool restored = false;
+        for (const auto& region : rig.regions.regions()) {
+            if (region.toMap().value("id").toDouble() == id) {
+                restored = region.toMap().value("color").toString() == original;
+            }
+        }
+        QVERIFY(restored);
+        rig.session.undo();
+        rig.session.undo();
+        QCOMPARE(rig.session.undoNames().size(), depth);
     }
     // Aperçu en direct (V1) : un changement de réglage relance l'aperçu tout seul, sans toucher au
     // document ; la case le désactive.

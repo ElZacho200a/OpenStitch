@@ -113,6 +113,13 @@ ServiceResult cleanSmallIslands(DocumentSession& session, std::size_t minPixels)
 // Rebouche uniquement les composants transparents enclavés de taille <= maxPixels.
 ServiceResult fillSmallHoles(DocumentSession& session, std::size_t maxPixels);
 
+// Pot de peinture : remplit dans `regionId` la poche de fond (label 0) connexe au pixel (x, y) de
+// l'image de travail, quelle que soit sa taille, si et seulement si elle est entièrement
+// intérieure à l'image (sinon refus : ce n'est pas une poche fermée, ce serait le fond extérieur
+// entier). UNE commande annulable ; mêmes limites que `fillSmallHoles` (ni objets ni couleurs
+// touchés, seuls les labels de segmentation changent).
+ServiceResult fillEnclosedAreaInto(DocumentSession& session, std::uint64_t regionId, int x, int y);
+
 // Régénération des objets depuis la segmentation courante. `working` : image de travail que la
 // segmentation a lue ; `settings` : réglages de numérisation (types de points, fond, lissage…).
 struct Regeneration {
