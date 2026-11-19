@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "thread_controller.hpp"
 #include "change_gate.hpp"
+#include "perf_log.hpp"
 
 #include <QColor>
 #include <QDir>
@@ -47,7 +48,15 @@ ThreadController::ThreadController(StudioController& studio, std::filesystem::pa
                                    QObject* parent)
     : QObject(parent), studio_(studio) {
     gateStamp_ = documentStamp(studio_);
+    // Connecté en premier : caches invalidés avant que QML ne relise les listes.
+    connect(this, &ThreadController::changed, this, [this] {
+        entriesCache_.reset();
+        threadCountCache_.reset();
+        orderCache_.reset();
+        colorwaysCache_.reset();
+    });
     connect(&studio_, &StudioController::changed, this, [this] {
+        const PerfScope perf("chg.thread");
         const auto stamp = documentStamp(studio_);
         if (stamp != gateStamp_) { // pas de recalcul des listes de fils pour un simple statut
             gateStamp_ = stamp;
@@ -209,6 +218,15 @@ auto ThreadController::nearestChoices(Rgb rgb, const QString& chart, int n) cons
 }
 
 QVariantList ThreadController::entries() const {
+    // Relu par chaque binding QML à chaque `changed` : une construction par émission.
+    if (!entriesCache_) {
+        const PerfScope perf("get.thread.entries");
+        entriesCache_ = buildEntries();
+    }
+    return *entriesCache_;
+}
+
+QVariantList ThreadController::buildEntries() const {
     QVariantList list;
     const auto& project = studio_.session().project();
     std::unordered_set<std::uint64_t> visible;
@@ -244,10 +262,22 @@ QVariantList ThreadController::entries() const {
 }
 
 int ThreadController::threadCount() const {
-    return static_cast<int>(threadEntries(studio_.session().project()).size());
+    if (!threadCountCache_) {
+        const PerfScope perf("get.thread.count");
+        threadCountCache_ = static_cast<int>(threadEntries(studio_.session().project()).size());
+    }
+    return *threadCountCache_;
 }
 
 QVariantList ThreadController::sewingOrder() const {
+    if (!orderCache_) {
+        const PerfScope perf("get.thread.sewingOrder");
+        orderCache_ = buildSewingOrder();
+    }
+    return *orderCache_;
+}
+
+QVariantList ThreadController::buildSewingOrder() const {
     QVariantList list;
     int position = 0;
     for (const auto& row : orderRows(studio_.session().project())) {
@@ -261,6 +291,14 @@ QVariantList ThreadController::sewingOrder() const {
 }
 
 QVariantList ThreadController::colorways() const {
+    if (!colorwaysCache_) {
+        const PerfScope perf("get.thread.colorways");
+        colorwaysCache_ = buildColorways();
+    }
+    return *colorwaysCache_;
+}
+
+QVariantList ThreadController::buildColorways() const {
     QVariantList list;
     for (const auto& row : colorwayRows(studio_.session().project())) {
         list.push_back(QVariantMap{{QStringLiteral("name"), q(row.name)},

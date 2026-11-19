@@ -523,7 +523,7 @@ Rectangle {
                 spacing: 8
                 SectionLabel { text: qsTr("ORDRE DE COUTURE") }
             Repeater {
-                model: panel.controller ? panel.controller.sewingOrder : []
+                model: parent.visible && panel.controller ? panel.controller.sewingOrder : []
                 delegate: RowLayout {
                     id: ord
                     required property var modelData
@@ -554,7 +554,7 @@ Rectangle {
                     onToggled: if (panel.controller) panel.controller.limitToStock = checked
                 }
                 Repeater {
-                    model: panel.controller ? panel.controller.ownedThreads : []
+                    model: parent.visible && panel.controller ? panel.controller.ownedThreads : []
                     delegate: RowLayout {
                         id: stockRow
                         required property var modelData
@@ -648,7 +648,7 @@ Rectangle {
                           .arg(panel.controller ? panel.controller.filmChanges : 0)
                 }
                 Repeater {
-                    model: panel.controller ? panel.controller.colorFilm : []
+                    model: parent.visible && panel.controller ? panel.controller.colorFilm : []
                     delegate: RowLayout {
                         id: filmRow
                         required property var modelData
