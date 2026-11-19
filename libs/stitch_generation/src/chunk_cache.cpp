@@ -204,6 +204,7 @@ void clear_chunk_cache() {
     clear_router_cache();
     clear_length_bounds_cache();
     clear_knockout_cache();
+    clear_boundary_blend_cache();
 }
 
 bool chunk_cache_enabled() {

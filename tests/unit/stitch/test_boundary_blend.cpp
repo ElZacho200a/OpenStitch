@@ -4,9 +4,13 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <initializer_list>
+#include <limits>
+#include <numbers>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -14,6 +18,7 @@
 #include "openstitch/geometry/boolean.hpp"
 #include "openstitch/stitch_generation/boundary_blend.hpp"
 #include "openstitch/stitch_generation/directional_fill.hpp"
+#include "openstitch/stitch_generation/generate.hpp"
 #include "openstitch/stitch_generation/row_mask.hpp"
 
 using namespace openstitch;
@@ -1103,5 +1108,294 @@ TEST_CASE("multi blend: group layers are deterministic and the group is listed",
         CHECK(group[0] == document::BoundaryBlendPair{t.a, t.b});
         CHECK(group[1] == document::BoundaryBlendPair{t.a, t.c});
         CHECK(group[2] == document::BoundaryBlendPair{t.b, t.c});
+    }
+}
+
+// --- Banc (caché)
+// ---------------------------------------------------------------------------------
+//
+// `test_stitch "[.perf_boundary_blend]"`, Release. Deux zones de 120 x 30 mm séparées par une
+// frontière ondulée de ~1 200 segments (pas de 100 µm), demi-bandes de 5 mm, puis un groupe en T
+// (troisième zone à droite). Pour chaque mode : couches des zones comme les génère
+// `generate_sequence` (une par zone), caches vidés à chaque répétition (« froid »), puis un
+// passage cache plein (« chaud »). L'empreinte des points doit rester identique avant/après toute
+// optimisation.
+namespace {
+
+geometry::PathSet polygon(const std::vector<Vec2um>& pts) {
+    geometry::PathSet set;
+    set.outer.closed = true;
+    for (const Vec2um p : pts) {
+        set.outer.nodes.push_back(geometry::PathNode{p, geometry::NodeType::Corner, {}, {}});
+    }
+    return set;
+}
+
+std::vector<Vec2um> wave(std::int32_t x0, std::int32_t x1) {
+    std::vector<Vec2um> pts;
+    for (std::int32_t x = x0; x <= x1; x += 100) {
+        const double t = static_cast<double>(x);
+        const double y = 30'000.0 + 4'000.0 * std::sin(2.0 * std::numbers::pi * t / 25'000.0) +
+                         1'500.0 * std::sin(2.0 * std::numbers::pi * t / 7'000.0);
+        pts.push_back(at(x, static_cast<std::int32_t>(std::lround(y))));
+    }
+    return pts;
+}
+
+void link_wide(document::Project& p, ObjectId x, ObjectId y, Rows rows) {
+    document::BoundaryBlendLink l;
+    l.rows = rows;
+    l.width_self = Micrometers{5'000};
+    document::set_boundary_blend_link(p.findEmbroidery(x)->boundary_blends, y, l);
+    document::set_boundary_blend_link(p.findEmbroidery(y)->boundary_blends, x, l);
+}
+
+struct BenchScene {
+    document::Project project;
+    std::vector<ObjectId> zones;
+};
+
+// `group` : troisième zone C (x de 120 à 160 mm) liée à A et B (jonction en T ondulée).
+BenchScene bench_scene(Rows rows, double angleB, bool group) {
+    BenchScene s;
+    auto low = wave(0, 120'000);
+    std::vector<Vec2um> a{at(120'000, 0), at(0, 0)};
+    a.insert(a.end(), low.begin(), low.end());
+    std::vector<Vec2um> b(low.rbegin(), low.rend());
+    b.push_back(at(0, 60'000));
+    b.push_back(at(120'000, 60'000));
+    const ObjectId za = add_zone(s.project, polygon(a), 0.0, 10);
+    const ObjectId zb = add_zone(s.project, polygon(b), angleB, 20);
+    link_wide(s.project, za, zb, rows);
+    s.zones = {za, zb};
+    if (group) {
+        const ObjectId zc = add_zone(s.project, rect(120'000, 0, 40'000, 60'000), -0.52, 30);
+        link_wide(s.project, za, zc, rows);
+        link_wide(s.project, zb, zc, rows);
+        s.zones.push_back(zc);
+    }
+    return s;
+}
+
+std::uint64_t layers_hash(const BenchScene& s, std::size_t& count) {
+    std::uint64_t h = 1469598103934665603ULL;
+    count = 0;
+    for (const ObjectId id : s.zones) {
+        const auto layer = boundary_blend_layer(s.project, *s.project.findEmbroidery(id));
+        REQUIRE(layer.has_value());
+        for (const FillStitch& f : layer->stitches) {
+            const auto mix = [&h](std::uint64_t v) { h = (h ^ v) * 1099511628211ULL; };
+            mix(static_cast<std::uint32_t>(f.pos.x.value));
+            mix(static_cast<std::uint32_t>(f.pos.y.value));
+            mix((f.jump ? 1U : 0U) | (f.travel ? 2U : 0U));
+        }
+        count += layer->stitches.size();
+        for (const auto& z : layer->underlay_zones) {
+            h = (h ^ z.outer.nodes.size()) * 1099511628211ULL;
+        }
+    }
+    return h;
+}
+
+} // namespace
+
+TEST_CASE("boundary blend: bench on a long wavy frontier", "[.perf_boundary_blend]") {
+    struct Case {
+        const char* name;
+        Rows rows;
+        double angleB;
+        bool group;
+    };
+    const Case cases[] = {
+        {"perzone-grille", Rows::PerZone, 0.0, false},
+        {"perzone-superp", Rows::PerZone, 0.785, false},
+        {"shared", Rows::Shared, 0.785, false},
+        {"rotating", Rows::Rotating, 0.785, false},
+        {"interlaced", Rows::Interlaced, 0.785, false},
+        {"groupe-rotating", Rows::Rotating, 0.785, true},
+        {"groupe-perzone", Rows::PerZone, 0.785, true},
+    };
+    for (const Case& c : cases) {
+        const BenchScene scene = bench_scene(c.rows, c.angleB, c.group);
+        double best = 1e30;
+        std::uint64_t hash = 0;
+        std::size_t count = 0;
+        for (int rep = 0; rep < 3; ++rep) {
+            clear_chunk_cache();
+            const auto t0 = std::chrono::steady_clock::now();
+            hash = layers_hash(scene, count);
+            best = std::min(best, std::chrono::duration<double, std::milli>(
+                                      std::chrono::steady_clock::now() - t0)
+                                      .count());
+        }
+        const auto t0 = std::chrono::steady_clock::now();
+        std::size_t warmCount = 0;
+        const std::uint64_t warm = layers_hash(scene, warmCount);
+        const double warmMs =
+            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0)
+                .count();
+        CHECK(warm == hash);
+        std::printf("[perf_boundary_blend] %-16s froid %8.1f ms  chaud %8.1f ms  points %7zu  "
+                    "empreinte %016llx\n",
+                    c.name, best, warmMs, count, static_cast<unsigned long long>(hash));
+    }
+}
+
+// --- Index spatial et caches : résultats identiques au calcul direct -----------------------------
+
+namespace {
+
+// Références : parcours complets, mêmes expressions que la version d'origine du champ.
+double ref_seg_distance(Vec2um p, Vec2um a, Vec2um b) {
+    const double px = p.x.value;
+    const double py = p.y.value;
+    const double ax = a.x.value;
+    const double ay = a.y.value;
+    const double dx = static_cast<double>(b.x.value) - ax;
+    const double dy = static_cast<double>(b.y.value) - ay;
+    const double len2 = dx * dx + dy * dy;
+    double t = len2 > 0.0 ? ((px - ax) * dx + (py - ay) * dy) / len2 : 0.0;
+    t = std::clamp(t, 0.0, 1.0);
+    const double qx = ax + t * dx - px;
+    const double qy = ay + t * dy - py;
+    return std::sqrt(qx * qx + qy * qy);
+}
+
+double ref_signed_distance(const std::vector<geometry::PathSet>& a,
+                           const std::vector<geometry::Polyline>& frontier, Vec2um p) {
+    double best = std::numeric_limits<double>::max();
+    for (const auto& line : frontier) {
+        for (std::size_t i = 1; i < line.points.size(); ++i) {
+            best = std::min(best, ref_seg_distance(p, line.points[i - 1], line.points[i]));
+        }
+    }
+    bool inside = false;
+    const double px = p.x.value;
+    const double py = p.y.value;
+    const auto scan = [&](const geometry::Path& path) {
+        const std::size_t m = path.nodes.size();
+        if (m < 3) {
+            return;
+        }
+        for (std::size_t i = 0, j = m - 1; i < m; j = i++) {
+            const double ax = path.nodes[i].pos.x.value;
+            const double ay = path.nodes[i].pos.y.value;
+            const double bx = path.nodes[j].pos.x.value;
+            const double by = path.nodes[j].pos.y.value;
+            if ((ay > py) != (by > py) && px < (bx - ax) * (py - ay) / (by - ay) + ax) {
+                inside = !inside;
+            }
+        }
+    };
+    for (const auto& component : a) {
+        const auto flat = geometry::flatten_to_polygon(component, Micrometers{20});
+        scan(flat.outer);
+        for (const auto& hole : flat.holes) {
+            scan(hole);
+        }
+    }
+    return inside ? -best : best;
+}
+
+double ref_cross_angle(const BoundaryBlendField& field, Vec2um p) {
+    const double sigma = std::max(1.0, 0.5 * (field.width_a() + field.width_b()));
+    double dmin = std::numeric_limits<double>::max();
+    for (const auto& line : field.frontier()) {
+        for (std::size_t i = 1; i < line.points.size(); ++i) {
+            dmin = std::min(dmin, ref_seg_distance(p, line.points[i - 1], line.points[i]));
+        }
+    }
+    double c2 = 0.0;
+    double s2 = 0.0;
+    for (const auto& line : field.frontier()) {
+        for (std::size_t i = 1; i < line.points.size(); ++i) {
+            const Vec2um a = line.points[i - 1];
+            const Vec2um b = line.points[i];
+            const double dx = static_cast<double>(b.x.value) - a.x.value;
+            const double dy = static_cast<double>(b.y.value) - a.y.value;
+            const double len = std::hypot(dx, dy);
+            if (len <= 0.0) {
+                continue;
+            }
+            const double u = (ref_seg_distance(p, a, b) - dmin) / sigma;
+            if (u > 4.0) {
+                continue;
+            }
+            const double w = len * std::exp(-u * u);
+            const double theta = std::atan2(dy, dx);
+            c2 += w * std::cos(2.0 * theta);
+            s2 += w * std::sin(2.0 * theta);
+        }
+    }
+    return 0.5 * std::atan2(s2, c2) + 0.5 * std::numbers::pi;
+}
+
+} // namespace
+
+TEST_CASE("boundary blend: indexed field matches the full scan bit for bit",
+          "[boundary_blend][perf]") {
+    const BenchScene scene = bench_scene(Rows::PerZone, 0.785, false);
+    const auto& p = scene.project;
+    const auto za = boundary_blend_zone(p, *p.findEmbroidery(scene.zones[0]));
+    const auto zb = boundary_blend_zone(p, *p.findEmbroidery(scene.zones[1]));
+    BoundaryBlendSpec spec;
+    spec.width_a = Micrometers{5'000};
+    spec.width_b = Micrometers{3'000};
+    const auto plan = plan_boundary_blend(za, zb, spec, Micrometers{3'000});
+    REQUIRE(plan);
+    const BoundaryBlendField& field = *plan->field;
+    std::uint32_t rng = 7;
+    int checked = 0;
+    // Points dans la bande, hors de la boîte, sur les sommets de la frontière et loin du dessin.
+    std::vector<Vec2um> points;
+    for (int k = 0; k < 4'000; ++k) {
+        rng = rng * 1664525U + 1013904223U;
+        const auto x = static_cast<std::int32_t>(rng % 180'000U) - 30'000;
+        rng = rng * 1664525U + 1013904223U;
+        const auto y = static_cast<std::int32_t>(rng % 90'000U) - 15'000;
+        points.push_back(at(x, y));
+    }
+    for (const auto& line : plan->frontier) {
+        for (std::size_t i = 0; i < line.points.size(); i += 37) {
+            points.push_back(line.points[i]);
+        }
+    }
+    points.push_back(at(-2'000'000, 5'000'000));
+    for (const Vec2um q : points) {
+        const double ref = ref_signed_distance(za, plan->frontier, q);
+        CHECK(field.signed_distance(q) == ref);
+        CHECK(boundary_blend_cross_angle(field, q) == ref_cross_angle(field, q));
+        ++checked;
+    }
+    CHECK(checked > 4'000);
+}
+
+TEST_CASE("boundary blend: cached layers equal a fresh computation and follow the geometry",
+          "[boundary_blend][perf]") {
+    for (const Rows rows : {Rows::PerZone, Rows::Shared}) {
+        BenchScene scene = bench_scene(rows, 0.785, false);
+        const auto layers = [&scene] {
+            std::vector<std::vector<FillStitch>> out;
+            for (const ObjectId id : scene.zones) {
+                out.push_back(layer_of(scene.project, id));
+            }
+            return out;
+        };
+        set_chunk_cache_enabled(false);
+        const auto fresh = layers();
+        set_chunk_cache_enabled(true);
+        clear_chunk_cache();
+        CHECK(layers() == fresh); // cache vide, puis rempli par la première zone
+        CHECK(layers() == fresh); // tout servi du cache
+        // La zone B change : le cache ne doit pas servir l'ancien résultat.
+        auto& source =
+            *scene.project.findObject(scene.project.findEmbroidery(scene.zones[1])->source_vector);
+        source.paths.front().outer.nodes.back().pos.y = Micrometers{58'000};
+        const auto changedCached = layers();
+        set_chunk_cache_enabled(false);
+        const auto changedFresh = layers();
+        set_chunk_cache_enabled(true);
+        CHECK(changedCached == changedFresh);
+        CHECK(changedCached != fresh);
     }
 }
