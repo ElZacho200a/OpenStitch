@@ -70,6 +70,14 @@ inline constexpr std::size_t kVerticesPerSegment = 6;
 inline constexpr int kOrientationBins = 16;
 [[nodiscard]] int orientationBin(float dx, float dy); // direction unitaire, repère écran (Y bas)
 
+// Torsion à pas physique constant : l'atlas empile kTwistClasses rangées ; la rangée c porte
+// c + 1 périodes de torsion sur la longueur du sprite. Un segment choisit la rangée dont le
+// nombre de périodes approche sa longueur (bouts compris) divisée par le pas, au lieu d'étirer
+// une torsion fixe. Pas = kTwistPitchWidths largeurs de fil.
+inline constexpr int kTwistClasses = 8;
+inline constexpr double kTwistPitchWidths = 2.0;
+[[nodiscard]] int twistClass(double quadLengthMm, double threadWidthMm);
+
 // Écrit 6 sommets par segment (quadrilatère du fil / de son ombre portée) ; renvoie le nombre de
 // sommets écrits. `out` doit contenir 6 * segments.size() sommets. Déterministe.
 std::size_t writeThreadQuads(std::span<const StudioSegment> segments, const RealisticStyle& style,

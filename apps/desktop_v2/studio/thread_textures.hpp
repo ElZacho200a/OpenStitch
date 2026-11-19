@@ -33,9 +33,10 @@ inline constexpr int kSpriteHeight = 32;     // pixels le long du fil
 inline constexpr int kFabricTilePixels = 64; // côté de la tuile de tissage
 
 // Sprite de fil d'une couleur : atlas kOrientationBins cellules de kSpriteCellWidth x
-// kSpriteHeight. Éclairage cylindrique en travers (même modèle que libs/stitch_render/src/
-// raster.cpp : lumière haut-gauche, assombrissement des bords, reflet pow 28), torsion le long,
-// bords adoucis et bouts effacés en alpha.
+// kSpriteHeight, empilé sur kTwistClasses rangées (torsion à pas constant). Éclairage cylindrique
+// en travers (même modèle que libs/stitch_render/src/ raster.cpp : lumière haut-gauche,
+// assombrissement des bords, reflet pow 28), torsion le long, bords adoucis et bouts effacés en
+// alpha.
 [[nodiscard]] PixelImage generateThreadSprite(std::array<std::uint8_t, 3> rgb,
                                               const RealisticStyle& style);
 // Ombre portée : silhouette du fil, noir translucide (alpha = intensité d'ombre).
