@@ -53,6 +53,11 @@ std::string recolor(ObjectId id, const char* hex) {
            std::to_string(id.value) + R"(,"rgb":")" + hex + R"("}]})";
 }
 
+// FAIL lève : le return final ne sert qu'aux compilateurs sans [[noreturn]] (C4702 sous MSVC).
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4702)
+#endif
 const document::EmbroideryObject& find(const document::Project& p, ObjectId id) {
     for (const auto& e : p.embroidery_objects) {
         if (e.id == id) {
@@ -62,6 +67,9 @@ const document::EmbroideryObject& find(const document::Project& p, ObjectId id) 
     FAIL("objet introuvable");
     return p.embroidery_objects.front();
 }
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 
 bool has_rgb(const document::Project& p, ObjectId id, std::array<std::uint8_t, 3> rgb) {
     return find(p, id).rgb == rgb;

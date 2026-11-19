@@ -587,17 +587,17 @@ TEST_CASE("multicolor directional: no long stitched bridges across inactive colo
         bool connected = false;
         Vec2um last{};
         double longest = 0.0;
-        for (const auto& command : result->commands) {
-            if (command.type != stitch::CommandType::Stitch) {
+        for (const auto& cmd : result->commands) {
+            if (cmd.type != stitch::CommandType::Stitch) {
                 connected = false;
                 continue;
             }
             if (connected) {
-                const double dx = double(command.pos.x.value) - double(last.x.value);
-                const double dy = double(command.pos.y.value) - double(last.y.value);
+                const double dx = double(cmd.pos.x.value) - double(last.x.value);
+                const double dy = double(cmd.pos.y.value) - double(last.y.value);
                 longest = std::max(longest, std::hypot(dx, dy));
             }
-            last = command.pos;
+            last = cmd.pos;
             connected = true;
         }
         CAPTURE(static_cast<int>(texture), longest);

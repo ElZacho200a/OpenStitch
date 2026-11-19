@@ -791,12 +791,12 @@ Result<Regeneration> regenerateObjects(std::shared_ptr<const document::Project> 
         }
     }
     for (auto& object : produced->objects.embroideries) {
-        const auto source = vectorIdRemap.find(object.source_vector.value);
-        if (source == vectorIdRemap.end()) {
+        const auto remapped = vectorIdRemap.find(object.source_vector.value);
+        if (remapped == vectorIdRemap.end()) {
             continue;
         }
-        object.source_vector = source->second;
-        const auto previous = oldThreadsByVector.find(source->second.value);
+        object.source_vector = remapped->second;
+        const auto previous = oldThreadsByVector.find(remapped->second.value);
         if (previous == oldThreadsByVector.end()) {
             continue;
         }

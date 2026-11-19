@@ -711,9 +711,9 @@ template <class P> Field<P> auto_satin_guides_field(std::string name) {
                     refuse(code::kUsage, "champ « " + name + " » : path_mm exige 2..1024 points");
                 }
                 for (const auto& point : g["path_mm"]) {
-                    const Vec2um p = point_from_json(name, point);
-                    if (guide.path.empty() || guide.path.back() != p) {
-                        guide.path.push_back(p);
+                    const Vec2um pt = point_from_json(name, point);
+                    if (guide.path.empty() || guide.path.back() != pt) {
+                        guide.path.push_back(pt);
                     }
                 }
                 if (guide.path.size() < 2) {
@@ -745,8 +745,8 @@ template <class P> Field<P> auto_satin_guides_field(std::string name) {
                       {"absolute", g.absolute}};
             if (!g.path.empty()) {
                 item["path_mm"] = json::array();
-                for (const Vec2um p : g.path) {
-                    item["path_mm"].push_back(point_json(p));
+                for (const Vec2um pt : g.path) {
+                    item["path_mm"].push_back(point_json(pt));
                 }
             }
             out.push_back(std::move(item));
