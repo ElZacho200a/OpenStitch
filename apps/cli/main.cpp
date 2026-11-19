@@ -63,6 +63,7 @@
 #include "openstitch/stitch_generation/satin.hpp"
 #include "openstitch/stitch_generation/tatami.hpp"
 #include "openstitch/stitch_render/presentation.hpp"
+#include "openstitch/stitch_render/segments.hpp"
 #include "openstitch/vectorization/vectorize.hpp"
 #include "project_cmd.hpp"
 
@@ -490,7 +491,32 @@ struct RenderArgs {
     bool simulatePull{false}; // décale chaque point du déplacement prédit du tissu (niveau 3)
     bool pullMap{false};      // carte de déplacement prédit (PNG) au lieu du rendu brodé
     std::string fabric{"default"}; // réglage de tissu empirique : default, linen, stable
+    std::string sceneJson; // RENDER-PBR-01 lot D : scène de brins pour un moteur de ray tracing
 };
+
+// Scène de brins (lot D, ray tracing hors écran) : brins de la séquence effective dans l'ordre de
+// couture, repère écran en mm (Y vers le bas), couleur et largeur de fil. Format neutre lu par
+// tools/raytrace/render_mitsuba.py ; aucun moteur n'est lié au dépôt.
+bool write_thread_scene(const std::string& path,
+                        const std::vector<openstitch::stitch_render::ThreadSegment>& segments,
+                        double threadWidthMm) {
+    std::ofstream out(std::filesystem::path(path), std::ios::binary);
+    if (!out) {
+        return false;
+    }
+    out << fmt::format("{{\"format\": \"openstitch-thread-scene\", \"version\": 1, "
+                       "\"units\": \"mm\", \"y_axis\": \"down\", \"thread_width_mm\": {},\n"
+                       "\"segments\": [",
+                       threadWidthMm);
+    for (std::size_t i = 0; i < segments.size(); ++i) {
+        const auto& g = segments[i];
+        out << fmt::format("{}\n[{:.4f}, {:.4f}, {:.4f}, {:.4f}, {}, {}, {}]", i == 0 ? "" : ",",
+                           g.ax, g.ay, g.bx, g.by, g.rgb[0], g.rgb[1], g.rgb[2]);
+    }
+    out << "\n]}\n";
+    out.close();
+    return static_cast<bool>(out);
+}
 
 int run_render(const RenderArgs& a) {
     using namespace openstitch;
@@ -561,17 +587,27 @@ int run_render(const RenderArgs& a) {
         for (const auto& emb : project->embroidery_objects) {
             colors[emb.id.value] = emb.rgb;
         }
-        raster = stitch_render::render_sequence(
-            shown,
+        const stitch_render::ThreadColorFn colorOf =
             [&](ObjectId id) -> std::optional<std::array<std::uint8_t, 3>> {
-                const auto it = colors.find(id.value);
-                if (it == colors.end()) {
-                    return std::nullopt;
-                }
-                return it->second;
-            },
-            options);
+            const auto it = colors.find(id.value);
+            if (it == colors.end()) {
+                return std::nullopt;
+            }
+            return it->second;
+        };
+        if (!a.sceneJson.empty()) {
+            const auto segments =
+                stitch_render::build_thread_segments(shown, shown.commands.size(), colorOf);
+            if (!write_thread_scene(a.sceneJson, segments, options.params.thread_width_mm)) {
+                return cli_error("render", "Écriture impossible : " + a.sceneJson);
+            }
+            fmt::print("Scène de brins écrite : {} ({} brins)\n", a.sceneJson, segments.size());
+        }
+        raster = stitch_render::render_sequence(shown, colorOf, options);
     } else {
+        if (!a.sceneJson.empty()) {
+            return cli_error("render", "--scene-json demande un projet .osp (couleurs des objets)");
+        }
         const auto seq = read_machine_sequence(a.input);
         if (!seq) {
             return cli_error("render", seq.error().message, kDstHint);
@@ -1892,6 +1928,9 @@ int main(int argc, char** argv) {
         ->check(CLI::Range(0.0, 50.0));
     render_cmd->add_flag("--transparent", rnd.transparent, "Fond transparent (sans tissu)");
     render_cmd->add_flag("--fast", rnd.fast, "Rendu rapide (sans torsion ni ombre portée)");
+    render_cmd->add_option("--scene-json", rnd.sceneJson,
+                           "Écrit aussi la scène de brins (.json, projet .osp) pour un rendu par "
+                           "lancer de rayons (tools/raytrace/render_mitsuba.py)");
     render_cmd->add_flag("--simulate-pull", rnd.simulatePull,
                          "Décale chaque point du tirage prédit du tissu (niveau 3, non calibré) "
                          "pour voir les trous entre couleurs");

@@ -60,15 +60,11 @@ Occlusion entre fils d'un meme run : passe de hauteur (rendu des fils dans une t
 hauteur, puis ombrage par difference de hauteur) ; tissu : normal map de tissage au lieu d'une
 tuile de luminance. A mesurer sur 10k / 100k segments en Release (`openstitch-studio-bench`).
 
-### Lot D - ray tracing : decision provisoire NO-GO temps reel, GO conditionnel hors ecran
-- Temps reel RTX : Qt RHI n'expose ni BLAS/TLAS ni ray queries ; une integration native
-  (D3D12 DXR / Vulkan RT) contournerait le RHI, exclurait le repli logiciel et une partie du parc.
-  Le gain visible vient d'abord du materiau (B) et de l'occlusion (C), pas du lancer de rayons.
-- Hors ecran (export HD / vignette « photo ») : export de la sequence effective en courbes
-  (fils = tubes de rayon largeur/2 suivant les points) vers un moteur de rendu progressif externe
-  (ex. Blender Cycles, Apache-2.0 compatible via processus separe, aucun lien de code). POC a faire
-  sur un echantillon reduit apres le lot A, decision finale apres comparaison au PBR.
-
+### Lot D - ray tracing : decision NO-GO temps reel dans le Studio, GO hors ecran
+- Temps reel RTX dans le canevas : Qt RHI n'expose ni BLAS/TLAS ni ray queries ; une integration
+  native (D3D12 DXR / Vulkan RT) contournerait le RHI et perdrait le repli logiciel. Le shader de
+  fil et les ombres entrelacees couvrent l'usage interactif.
+- Hors ecran : prototype livre (voir ci-dessous), concluant.
 ### Shader de fil - MVP (19/11/2026)
 `ThreadShaderMaterial` (canvas_renderer.cpp), active par `OPENSTITCH_THREAD_SHADER=1`, chemin RHI
 seulement. Meme geometrie et memes (u, v) que l'atlas : le fragment retrouve la cellule
@@ -95,3 +91,21 @@ l'encodage (u, v) du fil decale de 2 en u ; le shader y reconnait le mode ombre 
 estompee, intensite 0,65 x reglage, comme le sprite CPU). Chemin par textures inchange (ombre du
 run entier avant ses fils). Test : `interleavedShadowsPrecedeEachThread`. Non fait : occlusion par
 passe de hauteur, tissu en normal map, mesures Release.
+
+### Lot D - prototype de ray tracing hors ecran (19/11/2026)
+Chaine : `openstitch-cli render projet.osp ref.png --scene-json scene.json` ecrit, en plus du PNG
+de reference CPU, la scene de brins (sequence effective, ordre de couture, mm, couleur, largeur ;
+format neutre `openstitch-thread-scene` v1). `tools/raytrace/render_mitsuba.py scene.json out.png
+[--spp N] [--tilt deg]` la rend avec Mitsuba 3 (BSD-3, `pip install --user mitsuba`, outil externe,
+aucun lien de code) : chaque brin = courbe lineaire de rayon largeur/2, enfoncee aux points
+d'aiguille, empilee selon l'ordre de couture ; tissu diffus ; soleil haut-gauche + ciel. Ombres,
+occlusion et reflets entre fils sont calcules. Variante choisie automatiquement : cuda (OptiX, RTX
+materiel) > llvm > scalar.
+Mesure (motif bateau numerise depuis tests/fixtures/ai-benchmark/marine-synth-01/source.png,
+6 921 brins, 8 couleurs, poste local, variante cuda_ad_rgb) : 908 x 688 px a 64 spp en 0,4 s ;
+1816 x 1377 px vue inclinee 35 degres en 0,8 s. Captures : `captures/raytrace-bateau-dessus.jpg`,
+`raytrace-bateau-incline.jpg`, reference CPU `raytrace-bateau-reference-cpu.jpg`.
+Limites : pas de tissu tisse ni de relief de sous-couche (fils sur un plan), materiau « principled »
+generique (pas de BSDF de fibre), pas d'integration Studio (export a lancer en CLI), pas de
+comparaison photo reelle, variante CPU (llvm) non disponible ici (LLVM absent) donc non mesuree.
+Suite proposee : bouton « Rendu photo » du Studio qui lance l'outil si Mitsuba est present.
