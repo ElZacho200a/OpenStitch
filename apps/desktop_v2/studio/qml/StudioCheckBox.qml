@@ -27,20 +27,26 @@ Controls.CheckBox {
     Accessible.role: Accessible.CheckBox
     Accessible.name: text
 
-    indicator: Rectangle {
+    readonly property string themeState: Theme.stateOf(enabled, down, checkState !== Qt.Unchecked, hovered)
+    readonly property var themeStyle: Theme.style("checkbox", "default", themeState)
+    readonly property color tickColor: themeStyle.icon !== undefined ? themeStyle.icon : Theme.accentInk
+
+    indicator: ThemedSurface {
         implicitWidth: 18
         implicitHeight: 18
         x: control.leftPadding
         y: control.topPadding + (control.availableHeight - height) / 2
+        themeStyle: control.themeStyle
+        focusStyle: Theme.style("checkbox", "default", "focus")
+        focused: control.visualFocus
+        focusBorder: Theme.foreground
+        alert: control.invalid
         radius: 4
-        color: control.checkState === Qt.Unchecked ? (control.hovered ? Theme.hover : Theme.raised) : Theme.accent
-        border.width: control.visualFocus ? 2 : 1
-        border.color: control.invalid ? Theme.error
-                     : control.visualFocus ? Theme.foreground
-                     : control.checkState === Qt.Unchecked ? Theme.muted : Theme.accent
-        opacity: control.enabled ? (control.down ? 0.8 : 1) : 0.5
-        Behavior on border.color { ColorAnimation { duration: Theme.feedbackFastMs } }
-        Behavior on color { ColorAnimation { duration: Theme.animationMs } }
+        fill: control.checkState === Qt.Unchecked ? (control.hovered ? Theme.hover : Theme.raised) : Theme.accent
+        borderWidth: Theme.borderWidth
+        border: control.checkState === Qt.Unchecked ? Theme.muted : Theme.accent
+        opacity: control.themeStyle.opacity !== undefined ? control.themeStyle.opacity
+                 : control.enabled ? (control.down ? 0.8 : 1) : 0.5
         Behavior on opacity { NumberAnimation { duration: Theme.animationMs } }
         // Tick drawn with two rotated bars (no glyph dependency, no shader).
         Item {
@@ -48,15 +54,15 @@ Controls.CheckBox {
             visible: control.checkState === Qt.Checked
             width: 10
             height: 10
-            Rectangle { x: 0; y: 5; width: 5; height: 2; radius: 1; rotation: 45; color: Theme.accentInk }
-            Rectangle { x: 2; y: 4; width: 9; height: 2; radius: 1; rotation: -50; color: Theme.accentInk }
+            Rectangle { x: 0; y: 5; width: 5; height: 2; radius: 1; rotation: 45; color: control.tickColor }
+            Rectangle { x: 2; y: 4; width: 9; height: 2; radius: 1; rotation: -50; color: control.tickColor }
         }
         Rectangle {
             anchors.centerIn: parent
             visible: control.checkState === Qt.PartiallyChecked
             width: 10
             height: 2
-            color: Theme.accentInk
+            color: control.tickColor
         }
     }
 

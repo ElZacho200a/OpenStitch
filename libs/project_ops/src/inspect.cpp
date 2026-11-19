@@ -15,6 +15,7 @@
 #include "openstitch/geometry/polyline.hpp"
 #include "openstitch/image/ops.hpp"
 #include "openstitch/project_io/project_io.hpp"
+#include "openstitch/project_ops/boundary_blend.hpp"
 #include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_analysis/analyze.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
@@ -527,6 +528,33 @@ json embroidery_json(const document::Project& project, const document::Embroider
         j["color_blend"] = json{{"partner", e.color_blend->partner.value},
                                 {"foreground", e.color_blend->foreground}};
     }
+    // Fondus à la frontière, un élément par couple (trié par partenaire) : `active` faux si le
+    // lien est orphelin ou si la frontière a disparu (la zone est alors cousue en aplat).
+    // `boundary_blend` (= le premier) reste pour les consommateurs d'une zone à un seul fondu.
+    if (const auto blends = boundary_blend_infos(project, e.id); !blends.empty()) {
+        json list = json::array();
+        for (const auto& blend : blends) {
+            double frontier_mm = 0.0;
+            for (const auto& line : blend.frontier) {
+                frontier_mm += geometry::polyline_length(line.points) / 1000.0;
+            }
+            const auto rows = blend.options.rows;
+            list.push_back(
+                json{{"partner", blend.b.value},
+                     {"width_mm", mm(blend.options.width_a)},
+                     {"partner_width_mm", mm(blend.options.width_b)},
+                     {"curve", density_curve_name(blend.options.curve)},
+                     {"active", blend.active},
+                     {"manual_frontier", !blend.options.manual_frontier.empty()},
+                     {"rows", rows == document::BoundaryBlendRows::Shared       ? "shared"
+                              : rows == document::BoundaryBlendRows::Rotating   ? "rotating"
+                              : rows == document::BoundaryBlendRows::Interlaced ? "interlaced"
+                                                                                : "per_zone"},
+                     {"frontier_mm", std::round(frontier_mm * 1000.0) / 1000.0}});
+        }
+        j["boundary_blend"] = list.front();
+        j["boundary_blends"] = std::move(list);
+    }
     if (const auto* v = project.findObject(e.source_vector)) {
         j["region_area_mm2"] = vector_area_mm2(*v);
         j["geometry_bounds"] = vector_bounds(*v).to_json();
@@ -585,7 +613,8 @@ json finishing_json(const document::SequenceFinishing& f) {
                       {"within_object", f.hidden_travel.within_object},
                       {"reorder_underlay", f.hidden_travel.reorder_underlay},
                       {"reorder_regions", f.hidden_travel.reorder_regions},
-                      {"allow_same_color_surface", f.hidden_travel.allow_same_color_surface}}}};
+                      {"allow_same_color_surface", f.hidden_travel.allow_same_color_surface},
+                      {"underlap_mm", mm(f.hidden_travel.underlap)}}}};
 }
 
 Result<json> build_project_doc(const document::Project& project, const InspectOptions& options) {

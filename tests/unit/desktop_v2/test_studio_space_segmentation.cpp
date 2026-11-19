@@ -166,14 +166,15 @@ struct Rig {
     // Position (coordonnées fenêtre) du pixel (px, py) de l'image de travail.
     QPointF windowPos(int px, int py) const {
         auto* area = named("segmentationPickArea");
-        const auto view = canvas()->viewState();
+        const auto viewState = canvas()->viewState();
         const double mm = session.project().mm_per_px.value;
         const auto& seg = *session.project().segmentation;
         const double sx = (px + 0.5 - seg.width / 2.0) * mm;
         const double sy = (py + 0.5 - seg.height / 2.0) * mm;
-        const double zoom = view.value("zoom").toDouble();
-        const QPointF item(area->width() / 2.0 + (sx - view.value("centerX").toDouble()) * zoom,
-                           area->height() / 2.0 + (sy - view.value("centerY").toDouble()) * zoom);
+        const double zoom = viewState.value("zoom").toDouble();
+        const QPointF item(
+            area->width() / 2.0 + (sx - viewState.value("centerX").toDouble()) * zoom,
+            area->height() / 2.0 + (sy - viewState.value("centerY").toDouble()) * zoom);
         return area->mapToScene(item);
     }
 };
@@ -778,6 +779,40 @@ private slots:
         QCOMPARE(rig.regions.brushRadius(), 1.0);
         rig.regions.stepBrushRadius(1000);
         QCOMPARE(rig.regions.brushRadius(), 200.0);
+    }
+    // Verrouillage (état de session) : une région verrouillée ne peut pas être sélectionnée, est
+    // exclue de "Toutes" et ne peut pas être la cible d'une fusion ; déverrouiller la rend à
+    // nouveau disponible pour les deux.
+    void regionLockPreventsSelectionAndMergeTarget() {
+        Rig rig;
+        open(rig);
+        const auto regions = rig.regions.regions();
+        QVERIFY(regions.size() >= 3);
+        const double a = regions[0].toMap().value("id").toDouble();
+        const double b = regions[1].toMap().value("id").toDouble();
+
+        QVERIFY(!rig.regions.isRegionLocked(a));
+        rig.regions.selectRegion(a);
+        rig.regions.toggleLockRegion(a);
+        QVERIFY(rig.regions.isRegionLocked(a));
+        QCOMPARE(rig.regions.selectedCount(), 0); // verrouiller désélectionne
+
+        rig.regions.selectRegion(a);
+        QCOMPARE(rig.regions.selectedCount(), 0); // toujours refusée tant que verrouillée
+
+        rig.regions.selectAll();
+        for (const auto& id : rig.regions.selected()) {
+            QVERIFY(id.toDouble() != a);
+        }
+
+        rig.regions.clearSelection();
+        rig.regions.selectRegion(b);
+        QVERIFY(!rig.regions.mergeSelectedInto(a).isEmpty()); // cible verrouillée : refus
+
+        rig.regions.toggleLockRegion(a);
+        QVERIFY(!rig.regions.isRegionLocked(a));
+        rig.regions.selectRegion(a);
+        QCOMPARE(rig.regions.selectedCount(), 1); // déverrouillée : de nouveau sélectionnable
     }
     // Aperçu en direct (V1) : un changement de réglage relance l'aperçu tout seul, sans toucher au
     // document ; la case le désactive.

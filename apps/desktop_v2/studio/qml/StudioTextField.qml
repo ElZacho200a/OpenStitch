@@ -33,17 +33,17 @@ Controls.TextField {
     Accessible.role: Accessible.EditableText
     Accessible.name: placeholderText
 
-    background: Rectangle {
+    background: ThemedSurface {
+        themeStyle: Theme.style("input", "default", Theme.stateOf(control.enabled, false, false, control.hovered))
+        focusStyle: Theme.style("input", "default", "focus")
+        focused: control.activeFocus
+        focusBorder: Theme.accent
+        alert: control.invalid
         radius: 5
-        color: control.enabled ? Theme.raised : Theme.surface
-        border.width: control.activeFocus ? 2 : 1
-        border.color: control.invalid ? Theme.error
-                     : control.activeFocus ? Theme.accent
-                     : control.hovered && control.enabled ? Theme.muted
-                     : Theme.outline
+        fill: control.enabled ? Theme.raised : Theme.surface
+        borderWidth: Theme.borderWidth
+        border: control.hovered && control.enabled ? Theme.muted : Theme.outline
         opacity: control.enabled ? 1 : 0.7
-        Behavior on border.color { ColorAnimation { duration: Theme.animationMs } }
-        Behavior on border.width { NumberAnimation { duration: Theme.feedbackFastMs } }
     }
 
     Timer {

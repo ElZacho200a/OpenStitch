@@ -7,6 +7,7 @@
 #include <map>
 
 #include "openstitch/commands/transform_ops.hpp"
+#include "openstitch/document/boundary_blend.hpp"
 
 namespace openstitch::commands {
 
@@ -113,6 +114,7 @@ void InsertDesignCommand::apply(document::Project& project) {
             embroidery_ids_.push_back(fresh);
         }
         for (auto& object : incoming_.embroidery_objects) {
+            document::remap_boundary_blend_links(object.boundary_blends, embroidery_map);
             if (object.color_blend) {
                 const auto it = embroidery_map.find(object.color_blend->partner);
                 if (it != embroidery_map.end()) {

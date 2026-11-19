@@ -7,8 +7,13 @@
 #include <atomic>
 #include <cmath>
 #include <deque>
+#include <map>
 #include <memory>
+#include <mutex>
 #include <numbers>
+#include <optional>
+#include <span>
+#include <unordered_map>
 #include <variant>
 
 #include "chunk_cache.hpp"
@@ -22,6 +27,7 @@
 #include "openstitch/stitch_generation/auto_satin_engine.hpp"
 #include "openstitch/stitch_generation/blanket_stitch.hpp"
 #include "openstitch/stitch_generation/border_satin.hpp"
+#include "openstitch/stitch_generation/boundary_blend.hpp"
 #include "openstitch/stitch_generation/contour_fill.hpp"
 #include "openstitch/stitch_generation/couching.hpp"
 #include "openstitch/stitch_generation/cross_stitch.hpp"
@@ -972,6 +978,48 @@ void generate_tatami(stitch::StitchSequence& sequence, const document::VectorObj
     }
 }
 
+// Sous-couche d'une zone selon le type de remplissage. Deux surcharges plutôt qu'un lambda à
+// `if constexpr` imbriqué dans le visiteur générique : MSVC 14.50 (C1001) plante en Release sur
+// ce motif à l'instanciation pour `TatamiParams`.
+auto boundary_underlay_for(const document::TatamiParams& params, const geometry::PathSet& region) {
+    return tatami_underlay(region, resolve_underlay(params, region));
+}
+auto boundary_underlay_for(const document::DirectionalFillParams& params,
+                           const geometry::PathSet& region) {
+    return directional_underlay(region, resolve_underlay(params, region));
+}
+
+// Couche d'une zone en FONDU À LA FRONTIÈRE : sous-couches sur la zone privée de sa demi-bande
+// (jamais sous le fil voisin, et pas le long de la frontière où la couche supérieure clairsemée
+// ne les couvrirait plus), puis la couche masquée, prolongée dans la demi-bande de l'autre zone
+// (`boundary_blend_layer`). Contour de bord éventuel sur la zone elle-même.
+void generate_boundary_blend_layer(stitch::StitchSequence& sequence,
+                                   const document::VectorObject& source,
+                                   const document::EmbroideryObject& object,
+                                   BoundaryBlendLayer layer) {
+    std::visit(
+        [&](const auto& params) {
+            using T = std::decay_t<decltype(params)>;
+            if constexpr (std::is_same_v<T, document::TatamiParams> ||
+                          std::is_same_v<T, document::DirectionalFillParams>) {
+                const auto regions = fill_regions_in_sewing_order(sequence, source, params.inset);
+                for (const geometry::PathSet& region : layer.underlay_zones) {
+                    const auto underlay = boundary_underlay_for(params, region);
+                    for (const auto& up : underlay) {
+                        emit_underlay_pass(sequence, up, object.id, nullptr);
+                    }
+                }
+                emit_fill(sequence, std::move(layer.stitches), object.id, nullptr);
+                for (const geometry::PathSet& region : regions) {
+                    if (params.edge_outline) {
+                        emit_edge_outline(sequence, region, object.id, params.underlay_inset);
+                    }
+                }
+            }
+        },
+        object.params);
+}
+
 // Remplissage directionnel : même enveloppe que le tatami (retrait de bord,
 // repli sur la forme brute si le retrait la fait disparaître, sous-couches
 // puis couche supérieure), seul le générateur de lignes change.
@@ -1083,44 +1131,257 @@ bool covers_opaquely(const document::EmbroideryObject& o) {
 // Forme de `objects[index]` privée de la partie cachée par les remplissages opaques posés après
 // elle, chacun rétréci de `knockout_margin` (le recouvrement garde le fond couvert). `nullopt` :
 // rien à retirer ou calcul impossible -> la forme d'origine est cousue (jamais moins que avant).
+//
+// Recalcul évité (chasse aux recalculs, 2026-11-18) : ce calcul est une fonction pure de la forme,
+// de la marge et des tracés des formes au-dessus, et coûtait ~225 ms par régénération sur
+// tentabrode (158 objets) alors que presque rien n'avait changé. Deux caches à clé EXACTE
+// (copie des entrées, comparée entièrement) : les couvertures rétrécies par (forme, marge), et le
+// résultat par objet, validé par la liste ordonnée (forme, version) des couvertures. Une version
+// est un numéro neuf attribué chaque fois que le contenu d'une couverture change : comparer les
+// versions revient à comparer les tracés sans les relire.
+struct ResolvedCover {
+    std::uint64_t version{0};
+    std::shared_ptr<const std::vector<geometry::PathSet>> shrunk;
+};
+
+struct CoverEntry {
+    std::vector<geometry::PathSet> paths;
+    ResolvedCover resolved;
+};
+
+struct KnockoutEntry {
+    std::vector<geometry::PathSet> source;
+    std::int32_t margin{0};
+    std::vector<std::pair<std::uint64_t, std::uint64_t>> covers; // (forme, version), dans l'ordre
+    std::shared_ptr<const std::vector<geometry::PathSet>> remaining; // nul : forme d'origine
+};
+
+struct KnockoutCache {
+    std::mutex mutex;
+    std::map<std::pair<std::uint64_t, std::int32_t>, CoverEntry> covers;
+    std::unordered_map<std::uint64_t, KnockoutEntry> objects;
+    std::atomic<std::uint64_t> nextVersion{1};
+};
+
+KnockoutCache& knockout_cache() {
+    static KnockoutCache instance;
+    return instance;
+}
+
+constexpr std::size_t kKnockoutCacheEntries = 4096;
+
+std::shared_ptr<const std::vector<geometry::PathSet>>
+shrink_cover(const document::VectorObject& vec, Micrometers margin) {
+    auto out = std::make_shared<std::vector<geometry::PathSet>>();
+    for (const geometry::PathSet& set : vec.paths) {
+        if (margin.value <= 0) {
+            out->push_back(set);
+        } else if (auto shrunk = geometry::inset_path_set(set, margin)) {
+            out->insert(out->end(), shrunk->begin(), shrunk->end());
+        }
+    }
+    return out;
+}
+
+ResolvedCover resolve_cover(const document::VectorObject& vec, Micrometers margin) {
+    KnockoutCache& cache = knockout_cache();
+    const bool enabled = chunk_cache_enabled();
+    const auto key = std::make_pair(vec.id.value, margin.value);
+    if (enabled) {
+        const std::lock_guard<std::mutex> lock(cache.mutex);
+        const auto it = cache.covers.find(key);
+        if (it != cache.covers.end() && it->second.paths == vec.paths) {
+            return it->second.resolved;
+        }
+    }
+    ResolvedCover resolved{cache.nextVersion.fetch_add(1), shrink_cover(vec, margin)};
+    if (enabled) {
+        const std::lock_guard<std::mutex> lock(cache.mutex);
+        if (cache.covers.size() >= kKnockoutCacheEntries) {
+            cache.covers.clear();
+        }
+        cache.covers.insert_or_assign(key, CoverEntry{vec.paths, resolved});
+    }
+    return resolved;
+}
+
+// Index des formes et couvertures déjà résolues, pour UN appel de `generate_sequence`.
+class KnockoutPlanner {
+public:
+    explicit KnockoutPlanner(const document::Project& project) {
+        byId_.reserve(project.vector_objects.size());
+        for (const auto& vec : project.vector_objects) {
+            byId_.emplace(vec.id.value, &vec); // première occurrence, comme la recherche linéaire
+        }
+    }
+
+    [[nodiscard]] const document::VectorObject* find(ObjectId id) const {
+        const auto it = byId_.find(id.value);
+        return it == byId_.end() ? nullptr : it->second;
+    }
+
+    std::optional<document::VectorObject>
+    knocked_out(const std::vector<document::EmbroideryObject>& objects, std::size_t index,
+                const document::VectorObject& source) {
+        const document::EmbroideryObject& self = objects[index];
+        std::vector<ResolvedCover> list;
+        std::vector<std::pair<std::uint64_t, std::uint64_t>> tokens;
+        bool any = false;
+        for (std::size_t j = index + 1; j < objects.size(); ++j) {
+            const document::EmbroideryObject& above = objects[j];
+            if (!covers_opaquely(above) || above.source_vector == self.source_vector) {
+                continue;
+            }
+            const document::VectorObject* vec = find(above.source_vector);
+            if (vec == nullptr) {
+                continue;
+            }
+            const auto key = std::make_pair(vec->id.value, self.knockout_margin.value);
+            auto it = resolved_.find(key);
+            if (it == resolved_.end()) {
+                it = resolved_.emplace(key, resolve_cover(*vec, self.knockout_margin)).first;
+            }
+            list.push_back(it->second);
+            tokens.emplace_back(key.first, it->second.version);
+            any = any || !it->second.shrunk->empty();
+        }
+        if (!any) {
+            return std::nullopt;
+        }
+        KnockoutCache& cache = knockout_cache();
+        const bool enabled = chunk_cache_enabled();
+        if (enabled) {
+            const std::lock_guard<std::mutex> lock(cache.mutex);
+            const auto it = cache.objects.find(self.id.value);
+            if (it != cache.objects.end() && it->second.margin == self.knockout_margin.value &&
+                it->second.covers == tokens && it->second.source == source.paths) {
+                return rebuilt(source, it->second.remaining);
+            }
+        }
+        std::vector<geometry::PathSet> covers;
+        for (const ResolvedCover& cover : list) {
+            covers.insert(covers.end(), cover.shrunk->begin(), cover.shrunk->end());
+        }
+        std::shared_ptr<const std::vector<geometry::PathSet>> remaining;
+        if (auto diff = geometry::difference_polygons(source.paths, covers)) {
+            remaining = std::make_shared<const std::vector<geometry::PathSet>>(std::move(*diff));
+        }
+        if (enabled) {
+            const std::lock_guard<std::mutex> lock(cache.mutex);
+            if (cache.objects.size() >= kKnockoutCacheEntries) {
+                cache.objects.clear();
+            }
+            cache.objects.insert_or_assign(self.id.value,
+                                           KnockoutEntry{source.paths, self.knockout_margin.value,
+                                                         std::move(tokens), remaining});
+        }
+        return rebuilt(source, remaining);
+    }
+
+private:
+    static std::optional<document::VectorObject>
+    rebuilt(const document::VectorObject& source,
+            const std::shared_ptr<const std::vector<geometry::PathSet>>& remaining) {
+        if (!remaining) {
+            return std::nullopt;
+        }
+        document::VectorObject copy = source;
+        copy.paths = *remaining;
+        return copy;
+    }
+
+    std::unordered_map<std::uint64_t, const document::VectorObject*> byId_;
+    std::map<std::pair<std::uint64_t, std::int32_t>, ResolvedCover> resolved_;
+};
+
+// Forme de `objects[index]` élargie, le long des frontières communes, de `underlap` UNIQUEMENT sous
+// les remplissages opaques cousus après elle (débord orienté, HiddenTravel::underlap) : la bande
+// ajoutée est (forme élargie) ∩ (formes des remplissages suivants), donc toujours recouverte plus
+// tard. `nullopt` : rien à ajouter ou calcul impossible -> forme d'origine (jamais moins qu'avant).
 std::optional<document::VectorObject>
-knocked_out_source(const document::Project& project,
+underlapped_source(const document::Project& project,
                    const std::vector<document::EmbroideryObject>& objects, std::size_t index,
-                   const document::VectorObject& source) {
+                   const document::VectorObject& source, Micrometers underlap) {
     const document::EmbroideryObject& self = objects[index];
-    std::vector<geometry::PathSet> covers;
+    std::vector<geometry::PathSet> above;
     for (std::size_t j = index + 1; j < objects.size(); ++j) {
-        const document::EmbroideryObject& above = objects[j];
-        if (!covers_opaquely(above) || above.source_vector == self.source_vector) {
+        const document::EmbroideryObject& later = objects[j];
+        if (!covers_opaquely(later) || later.source_vector == self.source_vector) {
             continue;
         }
-        const document::VectorObject* vec = nullptr;
         for (const auto& candidate : project.vector_objects) {
-            if (candidate.id == above.source_vector) {
-                vec = &candidate;
+            if (candidate.id == later.source_vector) {
+                above.insert(above.end(), candidate.paths.begin(), candidate.paths.end());
                 break;
             }
         }
-        if (vec == nullptr) {
+    }
+    if (above.empty()) {
+        return std::nullopt;
+    }
+    // Le remplissage rentre son bord de `inset` : on déborde de `underlap + inset` pour qu'après ce
+    // retrait il reste `underlap` sous le voisin (sinon 0,3 mm de débord et 0,2 mm de retrait ne
+    // laissent que des lamelles qui fragmentent le remplissage).
+    std::int32_t inset = 0;
+    if (self.is_tatami()) {
+        inset = std::get<document::TatamiParams>(self.params).inset.value;
+    } else if (self.is_directional()) {
+        inset = std::get<document::DirectionalFillParams>(self.params).inset.value;
+    }
+    const std::int32_t growBy = underlap.value + std::max(0, inset);
+    std::vector<geometry::PathSet> grown;
+    for (const geometry::PathSet& set : source.paths) {
+        if (auto g = geometry::inset_path_set(set, Micrometers{-growBy}); g) {
+            grown.insert(grown.end(), g->begin(), g->end());
+        } else {
+            return std::nullopt;
+        }
+    }
+    // Les formes voisines ne sont pas jointives au micron près (contours vectorisés indépendants) :
+    // un débord limité à la forme exacte des voisins resterait détaché de la zone et deviendrait un
+    // îlot cousu à part (coupes en plus). On élargit donc les voisins de la même distance : le
+    // débord reste collé à la zone et comble le filet de tissu nu entre les deux.
+    std::vector<geometry::PathSet> aboveGrown;
+    for (const geometry::PathSet& set : above) {
+        if (auto g = geometry::inset_path_set(set, Micrometers{-growBy}); g) {
+            aboveGrown.insert(aboveGrown.end(), g->begin(), g->end());
+        } else {
+            return std::nullopt;
+        }
+    }
+    auto band = geometry::intersect_polygons(grown, aboveGrown);
+    if (!band || band->empty()) {
+        return std::nullopt;
+    }
+    // Jamais sur une zone déjà cousue (le débord y serait visible).
+    std::vector<geometry::PathSet> before;
+    for (std::size_t j = 0; j < index; ++j) {
+        const document::EmbroideryObject& earlier = objects[j];
+        if (!earlier.visible || earlier.source_vector == self.source_vector) {
             continue;
         }
-        for (const geometry::PathSet& set : vec->paths) {
-            if (self.knockout_margin.value <= 0) {
-                covers.push_back(set);
-            } else if (auto shrunk = geometry::inset_path_set(set, self.knockout_margin)) {
-                covers.insert(covers.end(), shrunk->begin(), shrunk->end());
+        for (const auto& candidate : project.vector_objects) {
+            if (candidate.id == earlier.source_vector) {
+                before.insert(before.end(), candidate.paths.begin(), candidate.paths.end());
+                break;
             }
         }
     }
-    if (covers.empty()) {
-        return std::nullopt;
+    if (!before.empty()) {
+        auto trimmed = geometry::difference_polygons(*band, before);
+        if (!trimmed || trimmed->empty()) {
+            return std::nullopt;
+        }
+        band = std::move(trimmed);
     }
-    auto remaining = geometry::difference_polygons(source.paths, covers);
-    if (!remaining) {
+    std::vector<geometry::PathSet> parts = source.paths;
+    parts.insert(parts.end(), band->begin(), band->end());
+    auto merged = geometry::union_polygons(parts);
+    if (!merged || merged->empty()) {
         return std::nullopt;
     }
     document::VectorObject copy = source;
-    copy.paths = std::move(*remaining);
+    copy.paths = std::move(*merged);
     return copy;
 }
 
@@ -1132,6 +1393,16 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
 
 Result<stitch::StitchSequence> generate_sequence(const document::Project& project,
                                                  const TaskContext& task) {
+    const auto& cfg = project.finishing.hidden_travel;
+    return generate_sequence(project, task,
+                             project.finishing.enabled && cfg.enabled && cfg.between_objects
+                                 ? cfg.underlap
+                                 : Micrometers{0});
+}
+
+Result<stitch::StitchSequence> generate_sequence(const document::Project& project,
+                                                 const TaskContext& task,
+                                                 Micrometers hiddenUnderlap) {
     // S2a (AD-04) : un design importé est une donnée SOURCE, jamais
     // régénérée par objet -- restituée telle quelle, avant toute
     // construction depuis `embroidery_objects` (vide pour un projet
@@ -1180,6 +1451,7 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
     };
     std::vector<Unit> units;
     std::deque<document::VectorObject> knockedSources; // adresses stables (HP-ENG-011)
+    KnockoutPlanner knockout(project);
     for (std::size_t idx = 0; idx < objects.size();) {
         const document::EmbroideryObject& object = objects[idx];
         // L'ancre d'un fondu multicolore ne porte aucun point propre (ses couches
@@ -1193,12 +1465,7 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
         Unit unit;
         unit.first = idx;
         if (!object.is_satin()) {
-            for (const auto& vec : project.vector_objects) {
-                if (vec.id == object.source_vector) {
-                    unit.source = &vec;
-                    break;
-                }
-            }
+            unit.source = knockout.find(object.source_vector);
             if (unit.source == nullptr) {
                 return fail(ErrorCategory::Internal,
                             "Objet vectoriel source introuvable pour « " + object.name + " »",
@@ -1206,8 +1473,15 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
             }
         }
         if (object.knockout && covers_opaquely(object) && unit.source != nullptr) {
-            if (auto knocked = knocked_out_source(project, objects, idx, *unit.source)) {
+            if (auto knocked = knockout.knocked_out(objects, idx, *unit.source)) {
                 knockedSources.push_back(std::move(*knocked));
+                unit.source = &knockedSources.back();
+            }
+        } else if (hiddenUnderlap.value > 0 && covers_opaquely(object) && !object.knockout &&
+                   unit.source != nullptr) {
+            if (auto grown =
+                    underlapped_source(project, objects, idx, *unit.source, hiddenUnderlap)) {
+                knockedSources.push_back(std::move(*grown));
                 unit.source = &knockedSources.back();
             }
         }
@@ -1274,6 +1548,16 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
             return;
         }
         stitch::StitchSequence& chunk = chunks[u];
+        // Fondu à la frontière (docs/studio-fondu-frontiere-spec.md) : la couche dépend aussi de
+        // TOUTES les zones de son groupe de fondus (formes, paramètres, liens ; §6.4), hors de la
+        // clé du cache de séquences -> jamais servie ni rangée dans ce cache. Lien invalide ou
+        // frontière disparue : génération habituelle ci-dessous.
+        if (!object.boundary_blends.empty()) {
+            if (auto layer = boundary_blend_layer(project, object)) {
+                generate_boundary_blend_layer(chunk, *unit.source, object, std::move(*layer));
+                return;
+            }
+        }
         // HP-PERF-002 : séquence inchangée depuis le dernier calcul -> servie du cache (clé
         // exacte : identifiant, paramètres, géométrie source).
         if (const auto hit = chunk_cache_find(object.id, object.params, unit.source->paths)) {
@@ -1342,6 +1626,30 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
         }
         return chunks[index].commands;
     };
+    // HP-PERF-002 (suite) : unité satin / auto-satin routée. Le générateur ne lit de la séquence
+    // précédente que sa dernière commande (position et type) : le résultat est une fonction pure
+    // de (identifiants, paramètres effectifs, géométrie source, dernière commande), clés d'un
+    // cache exact (chunk_cache.hpp). On n'y met que les commandes AJOUTÉES par l'unité ; un hit
+    // les rejoue, un échec génère directement dans `sequence` puis mémorise la plage ajoutée.
+    const auto cachedRouted = [&](std::span<const RoutedMember> members,
+                                  const std::vector<geometry::PathSet>* paths,
+                                  const auto& generate) {
+        std::optional<RoutedTail> tail;
+        if (!sequence.commands.empty()) {
+            tail = RoutedTail{sequence.commands.back().pos, sequence.commands.back().type};
+        }
+        if (const auto hit = routed_cache_find(members, paths, tail)) {
+            sequence.commands.insert(sequence.commands.end(), hit->commands.begin(),
+                                     hit->commands.end());
+            return;
+        }
+        const std::size_t before = sequence.commands.size();
+        generate();
+        auto added = std::make_shared<stitch::StitchSequence>();
+        added->commands.assign(sequence.commands.begin() + static_cast<std::ptrdiff_t>(before),
+                               sequence.commands.end());
+        routed_cache_store(members, paths, tail, std::move(added));
+    };
     const document::EmbroideryObject* previous = nullptr;
     for (std::size_t u = 0; u < units.size(); ++u) {
         if (task.cancelled()) {
@@ -1365,7 +1673,12 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
                 group.push_back(&objects[j]);
             }
             if (group.size() >= 2) {
-                generate_satin_group(sequence, group);
+                std::vector<RoutedMember> members;
+                members.reserve(group.size());
+                for (const auto* member : group) {
+                    members.push_back({member->id, &member->params});
+                }
+                cachedRouted(members, nullptr, [&] { generate_satin_group(sequence, group); });
             } else {
                 document::SatinParams single = std::get<document::SatinParams>(object.params);
                 // Entrée automatique (HP-ENG-010) : même règle que pour les autres colonnes.
@@ -1373,7 +1686,11 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
                     !single.entry_point && !single.exit_point) {
                     single.entry_point = sequence.commands.back().pos;
                 }
-                generate_satin(sequence, object, single);
+                // Clé : paramètres EFFECTIFS (entrée automatique incluse).
+                const document::StitchParams effective{single};
+                const RoutedMember member{object.id, &effective};
+                cachedRouted(std::span<const RoutedMember>(&member, 1), nullptr,
+                             [&] { generate_satin(sequence, object, single); });
             }
             previous = group.back();
             continue;
@@ -1412,21 +1729,25 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
             [&](const auto& params) {
                 using T = std::decay_t<decltype(params)>;
                 if constexpr (std::is_same_v<T, document::SatinParams>) {
+                    T effectiveParams = params;
                     if (previousEnd && !params.entry_point && !params.exit_point) {
-                        document::SatinParams joined = params;
-                        joined.entry_point = previousEnd;
-                        generate_satin(sequence, object, joined);
-                    } else {
-                        generate_satin(sequence, object, params);
+                        effectiveParams.entry_point = previousEnd;
                     }
+                    const document::StitchParams effective{effectiveParams};
+                    const RoutedMember member{object.id, &effective};
+                    cachedRouted(std::span<const RoutedMember>(&member, 1), nullptr,
+                                 [&] { generate_satin(sequence, object, effectiveParams); });
                 } else if constexpr (std::is_same_v<T, document::AutoSatinParams>) {
+                    T effectiveParams = params;
                     if (previousEnd && !params.entry_point && !params.exit_point) {
-                        document::AutoSatinParams joined = params;
-                        joined.entry_point = previousEnd;
-                        generate_auto_satin(sequence, *unit.source, object, joined);
-                    } else {
-                        generate_auto_satin(sequence, *unit.source, object, params);
+                        effectiveParams.entry_point = previousEnd;
                     }
+                    const document::StitchParams effective{effectiveParams};
+                    const RoutedMember member{object.id, &effective};
+                    cachedRouted(
+                        std::span<const RoutedMember>(&member, 1), &unit.source->paths, [&] {
+                            generate_auto_satin(sequence, *unit.source, object, effectiveParams);
+                        });
                 }
             },
             object.params);
@@ -1439,6 +1760,13 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
     sequence.commands.push_back(
         {sequence.commands.back().pos, stitch::CommandType::End, ObjectId{}});
     return sequence;
+}
+
+void clear_knockout_cache() {
+    KnockoutCache& cache = knockout_cache();
+    const std::lock_guard<std::mutex> lock(cache.mutex);
+    cache.covers.clear();
+    cache.objects.clear();
 }
 
 auto_satin::SkeletonSatinParameters auto_satin_engine(const document::AutoSatinParams& params) {

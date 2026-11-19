@@ -157,3 +157,16 @@ les installe dans le préfixe, crée la cale `boost_polygon` (apt fournit les en
 de configuration CMake par composant de vcpkg) puis configure et compile le CLI. Idempotent. Versions
 d'apt (OpenCV 4.6, fmt 9, CLI11 2.4) différentes de vcpkg : les mesures sont identiques, mais le test
 `cli_help` échoue (CLI11 écrit « Positionals », attendu « POSITIONALS »). Lancer `ctest` **sans `-j`**.
+
+## 7. Build rapide : méthode et protocole de mesure
+
+Détail et protocole complets : `docs/source/build-system.md` § « Workflow de build rapide ».
+Rappel agents : itérer avec `--target openstitch_<lib> test_<lib>` + filtre de test, jamais de
+build complet entre deux essais ; suite complète (`msvc-debug` + `ctest`) une fois avant livraison ;
+mesurer (`Measure-Command`, médiane de 3, froid / incrémental trivial / incrémental réaliste)
+avant d'annoncer un gain.
+
+Outils livrés (BUILD-OPT-01) : `scripts/build-dev.ps1` (build ciblé Studio, presets `dev-*`),
+mode QML externe (`OPENSTITCH_STUDIO_DEV_QML` + `OPENSTITCH_DEV_QML=1`, jamais en Release),
+`scripts/build-jobs.ps1` (jobs selon la RAM), `scripts/measure-build.ps1` (mesure), preset
+`msvc-sccache` et `OPENSTITCH_PCH` (opt-in, voir `docs/source/build-*.md`).

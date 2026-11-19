@@ -44,41 +44,47 @@ Controls.SpinBox {
         inputMethodHints: Qt.ImhFormattedNumbersOnly
     }
 
-    up.indicator: Rectangle {
+    up.indicator: ThemedSurface {
         x: control.mirrored ? 0 : parent.width - width
         height: parent.height
         implicitWidth: 24
         implicitHeight: 24
-        radius: 5
-        color: control.up.pressed ? Theme.hover : control.up.hovered ? Theme.hover : Theme.raised
-        border.width: 1
-        border.color: Theme.outline
+        themeStyle: Theme.style("button", "default", Theme.stateOf(control.enabled, control.up.pressed, false, control.up.hovered))
+        radius: Math.min(5, Theme.radius)
+        fill: control.up.pressed ? Theme.hover : control.up.hovered ? Theme.hover : Theme.raised
+        borderWidth: Theme.borderWidth
+        border: Theme.outline
+        animated: false
         opacity: control.enabled ? 1 : 0.5
         Rectangle { anchors.centerIn: parent; width: 10; height: 2; color: control.up.indicator.enabled ? Theme.foreground : Theme.faint }
         Rectangle { anchors.centerIn: parent; width: 2; height: 10; color: control.up.indicator.enabled ? Theme.foreground : Theme.faint }
     }
 
-    down.indicator: Rectangle {
+    down.indicator: ThemedSurface {
         x: control.mirrored ? parent.width - width : 0
         height: parent.height
         implicitWidth: 24
         implicitHeight: 24
-        radius: 5
-        color: control.down.pressed ? Theme.hover : control.down.hovered ? Theme.hover : Theme.raised
-        border.width: 1
-        border.color: Theme.outline
+        themeStyle: Theme.style("button", "default", Theme.stateOf(control.enabled, control.down.pressed, false, control.down.hovered))
+        radius: Math.min(5, Theme.radius)
+        fill: control.down.pressed ? Theme.hover : control.down.hovered ? Theme.hover : Theme.raised
+        borderWidth: Theme.borderWidth
+        border: Theme.outline
+        animated: false
         opacity: control.enabled ? 1 : 0.5
         Rectangle { anchors.centerIn: parent; width: 10; height: 2; color: control.down.indicator.enabled ? Theme.foreground : Theme.faint }
     }
 
-    background: Rectangle {
+    background: ThemedSurface {
         implicitWidth: 110
+        themeStyle: Theme.style("input", "default", Theme.stateOf(control.enabled, false, false, control.hovered))
+        focusStyle: Theme.style("input", "default", "focus")
+        focused: control.activeFocus
+        focusBorder: Theme.accent
+        alert: control.invalid
         radius: 5
-        color: control.enabled ? Theme.surface : Theme.background
-        border.width: control.activeFocus ? 2 : 1
-        border.color: control.invalid ? Theme.error
-                     : control.activeFocus ? Theme.accent
-                     : control.hovered ? Theme.muted
-                     : Theme.outline
+        fill: control.enabled ? Theme.surface : Theme.background
+        borderWidth: Theme.borderWidth
+        border: control.hovered ? Theme.muted : Theme.outline
     }
 }

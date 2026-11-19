@@ -552,6 +552,25 @@ public:
         }
     }
 
+    // Champ IMPOSÉ (fondu à la frontière, rangées pivotantes) : orientation `angle_at` en chaque
+    // nœud de la grille, sans guide, sans bord ni ondulation.
+    DirectionField(const DirectionalAngleField& angle_at, P2 lo, P2 hi, double cell) : cell_(cell) {
+        ox_ = lo.x - 2.0 * cell_;
+        oy_ = lo.y - 2.0 * cell_;
+        nx_ = static_cast<int>(std::ceil((hi.x - ox_) / cell_)) + 3;
+        ny_ = static_cast<int>(std::ceil((hi.y - oy_) / cell_)) + 3;
+        values_.resize(static_cast<std::size_t>(nx_) * static_cast<std::size_t>(ny_));
+        for (int j = 0; j < ny_; ++j) {
+            for (int i = 0; i < nx_; ++i) {
+                const P2 p{ox_ + i * cell_, oy_ + j * cell_};
+                const double a = angle_at(to_um(p));
+                values_[static_cast<std::size_t>(j) * static_cast<std::size_t>(nx_) +
+                        static_cast<std::size_t>(i)] =
+                    doubled(from_angle(std::isfinite(a) ? a : 0.0));
+            }
+        }
+    }
+
     // Orientation unitaire en p (signe arbitraire), ondulation comprise.
     [[nodiscard]] P2 dir(P2 p) const { return from_angle(angle(p)); }
 
@@ -1297,6 +1316,28 @@ std::vector<Sector> build_sectors(const geometry::PathSet& region,
     return sectors;
 }
 
+// Un seul secteur (la région entière) orienté par un champ imposé.
+std::vector<Sector> build_field_sectors(const geometry::PathSet& region,
+                                        const document::DirectionalFillParams& params,
+                                        const DirectionalAngleField& angle_at) {
+    std::vector<Sector> sectors;
+    Sector s;
+    s.polys = region_polys(region);
+    if (s.polys.empty() || !angle_at) {
+        return sectors;
+    }
+    const double indexCell = std::clamp(clamp_spacing(params), 250.0, 1'000.0);
+    s.own = RegionIndex(s.polys, indexCell);
+    s.tracePolys = s.polys;
+    s.trace = RegionIndex(s.tracePolys, indexCell);
+    P2 lo;
+    P2 hi;
+    bounds(s.tracePolys, lo, hi);
+    s.field = DirectionField(angle_at, lo, hi, indexCell);
+    sectors.push_back(std::move(s));
+    return sectors;
+}
+
 // --- Lignes de courant (Jobard & Lefer) ---------------------------------------
 
 struct Traced {
@@ -1394,8 +1435,8 @@ private:
 
 class StreamlineTracer {
 public:
-    StreamlineTracer(const Sector& sector, const SpacingField& spacing)
-        : sector_(sector), spacing_(spacing), step_(0.2 * spacing.lo),
+    StreamlineTracer(const Sector& sector, const SpacingField& spacing, double fillSeed = 0.9)
+        : sector_(sector), spacing_(spacing), fillSeed_(fillSeed), step_(0.2 * spacing.lo),
           selfWindow_(3.0 * spacing.hi), grid_(make_grid(sector, spacing.cell())) {
         P2 lo;
         P2 hi;
@@ -1428,11 +1469,12 @@ public:
         seed_and_propagate(*first, 1.0);
 
         // 2) Balayage de comblement : tout point de grille resté à plus de
-        //    0,9 × dsep de toute ligne reçoit une nouvelle graine — aucune
-        //    zone vide (convergences, îlots non atteints par propagation).
+        //    `fillSeed_` (0,9 par défaut) × dsep de toute ligne reçoit une
+        //    nouvelle graine — aucune zone vide (convergences, îlots non
+        //    atteints par propagation). Écart maximal entre lignes ≈ 2 × fillSeed_.
         for (double y = lo_.y + g / 2.0; y < hi_.y; y += g) {
             for (double x = lo_.x + g / 2.0; x < hi_.x; x += g) {
-                seed_and_propagate(P2{x, y}, 0.9);
+                seed_and_propagate(P2{x, y}, fillSeed_);
             }
         }
         return std::move(lines_);
@@ -1609,6 +1651,7 @@ private:
 
     const Sector& sector_;
     SpacingField spacing_;
+    double fillSeed_;
     double step_;
     double selfWindow_;
     SeparationGrid grid_;
@@ -2186,7 +2229,7 @@ std::vector<double> row_thresholds(const std::vector<Traced>& traced, const Spac
         for (const P2 p : traced[li].pts) {
             sum = sum + p;
         }
-        const double n = std::max<std::size_t>(1, traced[li].pts.size());
+        const double n = static_cast<double>(std::max<std::size_t>(1, traced[li].pts.size()));
         keys.push_back({dot(sum * (1.0 / n), unit), li});
     }
     std::sort(keys.begin(), keys.end());
@@ -2291,7 +2334,8 @@ struct SectorLines {
 std::vector<SectorLines> compute_lines(const geometry::PathSet& region,
                                        const std::vector<Sector>& sectors,
                                        const document::DirectionalFillParams& params,
-                                       bool withStitches, const RowMask* mask = nullptr) {
+                                       bool withStitches, const RowMask* mask = nullptr,
+                                       double fillSeed = 0.9) {
     std::vector<SectorLines> result;
     const SpacingField spacing = make_spacing_field(params, &region);
     // Grille partagée : mêmes rangées dans toutes les couches, chacune garde sa tranche.
@@ -2310,7 +2354,7 @@ std::vector<SectorLines> compute_lines(const geometry::PathSet& region,
     plan.seed = params.seed;
     for (std::size_t si = 0; si < sectors.size(); ++si) {
         SectorLines sl;
-        StreamlineTracer tracer(sectors[si], spacing);
+        StreamlineTracer tracer(sectors[si], spacing, fillSeed);
         sl.traced = tracer.run();
         regularize_lines(sl.traced, sectors[si], spacing, params.spacing_regularity);
         if (withStitches) {
@@ -2411,15 +2455,53 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
     return fill_directional(region, params, nullptr);
 }
 
+namespace {
+// Raccords courts autorisés sous un masque de rangées (fondu), en µm.
+constexpr double kMaskedLinkUm = 2'400.0;
+constexpr double kFieldLinkUm = 2'000.0;
+std::vector<FillStitch> fill_directional_sectors(const geometry::PathSet& region,
+                                                 const document::DirectionalFillParams& params,
+                                                 const RowMask* mask,
+                                                 const std::vector<Sector>& sectors,
+                                                 double maskedLinkUm, double fillSeed = 0.9);
+} // namespace
+
 std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
                                          const document::DirectionalFillParams& params,
                                          const RowMask* mask) {
+    return fill_directional_sectors(region, params, mask, build_sectors(region, params),
+                                    kMaskedLinkUm);
+}
+
+std::vector<FillStitch> fill_directional_field(const geometry::PathSet& region,
+                                               const document::DirectionalFillParams& params,
+                                               const DirectionalAngleField& angle_at,
+                                               const RowMask* mask, double fill_seed) {
+    // Guides, ruptures, dégradé, bord et aspect fait main sans objet sous un champ imposé.
+    auto clean = params;
+    clean.guides.clear();
+    clean.break_lines.clear();
+    clean.density_gradient.reset();
+    clean.edge_weight = 0.0;
+    clean.handmade = false;
+    // Rangées courbes d'une bande de fondu : lignes souvent courtes, extrémités espacées le long
+    // des bords ; au-delà de 2 mm, une liaison serait un long point visible (saut à la place).
+    return fill_directional_sectors(
+        region, clean, mask, build_field_sectors(region, clean, angle_at), kFieldLinkUm,
+        std::clamp(std::isfinite(fill_seed) ? fill_seed : 0.9, 0.5, 0.9));
+}
+
+namespace {
+std::vector<FillStitch> fill_directional_sectors(const geometry::PathSet& region,
+                                                 const document::DirectionalFillParams& params,
+                                                 const RowMask* mask,
+                                                 const std::vector<Sector>& sectors,
+                                                 double maskedLinkUm, double fillSeed) {
     std::vector<FillStitch> out;
-    const auto sectors = build_sectors(region, params);
     if (sectors.empty()) {
         return out;
     }
-    const auto lines = compute_lines(region, sectors, params, true, mask);
+    const auto lines = compute_lines(region, sectors, params, true, mask, fillSeed);
     const double spacing = clamp_spacing(params);
     const double L =
         std::clamp(static_cast<double>(params.stitch_length.value), kMinTarget, kMaxTarget);
@@ -2441,9 +2523,9 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
     // Raccords courts (~2,4 mm) autorises uniquement DANS la zone ou le fil
     // contribue deja au camaieu. La limite est independante de l'espacement
     // local, qui peut devenir enorme au bord d'une couleur.
-    constexpr double kMaskedLinkUm = 2'400.0;
+    // (2,4 mm ; plafond plus court pour un champ imposé, cf. `fill_directional_field`.)
     const auto sewLimit = [&](P2 p) {
-        return masked ? kMaskedLinkUm : std::max(4.0 * field.at(p), 1'500.0);
+        return masked ? maskedLinkUm : std::max(4.0 * field.at(p), 1'500.0);
     };
     const auto underpathLimit = [&](P2 p) {
         return masked ? 0.0 : std::max(6.0 * field.at(p), 8'000.0);
@@ -2456,7 +2538,7 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
     // scalaires au plus, sans géométrie/caches supplémentaires.
     const auto linkInside = [&](P2 a, P2 b) {
         if (masked) {
-            if (dist2(a, b) > kMaskedLinkUm * kMaskedLinkUm) {
+            if (dist2(a, b) > maskedLinkUm * maskedLinkUm) {
                 return false;
             }
             if (!whole.segment_inside(a, b)) {
@@ -2645,9 +2727,9 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
             for (std::size_t a = 0; a < n; ++a) {
                 candidates.clear();
                 for (const P2 ea : {stitched[a].front(), stitched[a].back()}) {
-                    const Endpoint lower{ea.x - kMaskedLinkUm, 0};
+                    const Endpoint lower{ea.x - maskedLinkUm, 0};
                     auto it = std::lower_bound(ends.begin(), ends.end(), lower);
-                    while (it != ends.end() && it->first <= ea.x + kMaskedLinkUm) {
+                    while (it != ends.end() && it->first <= ea.x + maskedLinkUm) {
                         if (it->second > a) {
                             candidates.push_back(it->second);
                         }
@@ -2802,6 +2884,7 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
     }
     return out;
 }
+} // namespace
 
 std::vector<std::vector<Vec2um>>
 directional_underlay(const geometry::PathSet& region,

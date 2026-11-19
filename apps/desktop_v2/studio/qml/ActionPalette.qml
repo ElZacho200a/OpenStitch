@@ -85,11 +85,9 @@ Controls.Popup {
             error = refusal
     }
 
-    background: Rectangle {
-        color: Theme.panel
-        border.color: Theme.border
-        radius: Theme.radius
-    }
+    background: StudioPopupBackground { }
+    enter: StudioPopupEnter { }
+    exit: StudioPopupExit { }
 
     FileDialog {
         id: fileDialog

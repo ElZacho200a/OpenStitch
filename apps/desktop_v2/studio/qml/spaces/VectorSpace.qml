@@ -144,12 +144,20 @@ Item {
                 }
 
                 // Clic droit : mêmes actions de sélection que dans l'espace Points.
-                CanvasContextMenu { id: contextMenu }
+                CanvasContextMenu { id: contextMenu; shapeScope: true }
 
                 ToolOverlay {
                     objectName: "toolOverlay"
                     anchors.fill: parent
                     gpu: spaceCanvas
+                }
+
+                // Frontières des fondus de la zone principale (le fondu édité mis en évidence).
+                BoundaryBlendFrontiers {
+                    objectName: "boundaryBlendFrontiers"
+                    anchors.fill: parent
+                    gpu: spaceCanvas
+                    controller: typeof boundaryBlend !== "undefined" ? boundaryBlend : null
                 }
 
                 NeedleOriginMarker {
@@ -310,6 +318,7 @@ Item {
                                 Layout.topMargin: 12
                             }
                             EditBar {
+                                shapeScope: true
                                 Layout.fillWidth: true
                                 Layout.leftMargin: 12
                                 Layout.rightMargin: 12

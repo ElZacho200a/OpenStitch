@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <map>
 #include <optional>
+#include <set>
 #include <vector>
 
 #include "image_controller.hpp"
@@ -83,6 +84,10 @@ public:
     // (ou à la dernière) en bout de liste. Faux si la segmentation n'a aucune région.
     Q_INVOKABLE bool selectNextRegion();
     Q_INVOKABLE bool selectPreviousRegion();
+    // Verrouillage d'une région : état de SESSION (non enregistré dans le projet), pour protéger
+    // une région déjà jugée correcte pendant qu'on retouche les autres. Désélectionne si besoin.
+    Q_INVOKABLE void toggleLockRegion(double id);
+    Q_INVOKABLE [[nodiscard]] bool isRegionLocked(double id) const;
     // Agrandit (pas > 0) ou réduit (pas < 0) le rayon du pinceau d'un pixel par pas, borné 1-200.
     Q_INVOKABLE void stepBrushRadius(int steps);
     Q_INVOKABLE void clearSelection();
@@ -156,6 +161,8 @@ private:
     ObjectId observedImageSource_;
     std::map<ObjectId, QString> staleSources_;
     std::vector<std::uint64_t> selected_;
+    std::set<std::uint64_t> locked_;
+    void applyLockFlags();
     bool stale_{false};
     QString staleReason_;
     bool busy_{false};

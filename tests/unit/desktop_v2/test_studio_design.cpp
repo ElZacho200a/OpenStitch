@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Design-system guard rails for OpenStitch Studio (no GUI needed):
-//   1. WCAG contrast of every text / background pair of Theme.qml, in both modes;
+//   1. (WCAG contrast: test_desktop_v2_theme, for every builtin theme and variant);
 //   2. QML lint: no unstyled Qt control, no hex colour and no numeric font.pixelSize outside the
 //      theme, so that nobody can reintroduce the white-on-dark controls.
 #include <QDir>
@@ -14,36 +14,6 @@
 
 namespace {
 
-struct Rgb {
-    double r{0}, g{0}, b{0};
-};
-
-Rgb parseHex(const QString& hex) {
-    bool ok = false;
-    const auto value = hex.mid(1, 6).toUInt(&ok, 16);
-    return {static_cast<double>((value >> 16) & 0xFF), static_cast<double>((value >> 8) & 0xFF),
-            static_cast<double>(value & 0xFF)};
-}
-
-double channel(double v) {
-    const double c = v / 255.0;
-    return c <= 0.03928 ? c / 12.92 : qPow((c + 0.055) / 1.055, 2.4);
-}
-
-double luminance(const QString& hex) {
-    const auto c = parseHex(hex);
-    return 0.2126 * channel(c.r) + 0.7152 * channel(c.g) + 0.0722 * channel(c.b);
-}
-
-double contrast(const QString& a, const QString& b) {
-    auto x = luminance(a);
-    auto y = luminance(b);
-    if (x < y) {
-        std::swap(x, y);
-    }
-    return (x + 0.05) / (y + 0.05);
-}
-
 QString readFile(const QString& path) {
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -52,88 +22,15 @@ QString readFile(const QString& path) {
     return QString::fromUtf8(f.readAll());
 }
 
-// token -> {dark, light}
-QMap<QString, QStringList> readTokens() {
-    QMap<QString, QStringList> tokens;
-    const auto theme = readFile(QStringLiteral(OPENSTITCH_STUDIO_QML_DIR "/Theme.qml"));
-    static const QRegularExpression re(QStringLiteral(
-        "property color (\\w+): light \\? \"(#[0-9a-fA-F]{6})\" : \"(#[0-9a-fA-F]{6})\""));
-    auto it = re.globalMatch(theme);
-    while (it.hasNext()) {
-        const auto m = it.next();
-        tokens[m.captured(1)] = {m.captured(3), m.captured(2)};
-    }
-    return tokens;
-}
-
 } // namespace
 
 class StudioDesignTest : public QObject {
     Q_OBJECT
 
 private slots:
-    void themeTokensAreReadable() {
-        const auto tokens = readTokens();
-        QVERIFY2(tokens.size() >= 15, "Theme.qml tokens not parsed");
-        // Text-like tokens on every surface they are actually drawn on.
-        const QStringList texts{"foreground", "muted",   "faint", "accent",         "error",
-                                "warning",    "success", "info",  "secondaryAccent"};
-        const QStringList grounds{"background", "surface", "panel",
-                                  "raised",     "hover",   "accentSoft"};
-        QStringList failures;
-        for (int mode = 0; mode < 2; ++mode) {
-            const char* name = mode == 0 ? "dark" : "light";
-            for (const auto& fg : texts) {
-                for (const auto& bg : grounds) {
-                    QVERIFY2(tokens.contains(fg) && tokens.contains(bg), qPrintable(fg + "/" + bg));
-                    const auto ratio = contrast(tokens[fg][mode], tokens[bg][mode]);
-                    if (ratio < 4.5) {
-                        failures << QStringLiteral("%1 %2 on %3 = %4 (< 4.5)")
-                                        .arg(QLatin1String(name), fg, bg)
-                                        .arg(ratio, 0, 'f', 2);
-                    }
-                }
-            }
-            // Ink on the accent fills (buttons, selection, checked boxes).
-            for (const auto& fill : QStringList{"accent", "accentPressed"}) {
-                const auto ratio = contrast(tokens["accentInk"][mode], tokens[fill][mode]);
-                if (ratio < 4.5) {
-                    failures << QStringLiteral("%1 accentInk on %2 = %3 (< 4.5)")
-                                    .arg(QLatin1String(name), fill)
-                                    .arg(ratio, 0, 'f', 2);
-                }
-            }
-        }
-        QVERIFY2(failures.isEmpty(), qPrintable(failures.join('\n')));
-    }
-
-    void interfaceElementsHaveThreeToOne() {
-        const auto tokens = readTokens();
-        QStringList failures;
-        for (int mode = 0; mode < 2; ++mode) {
-            const char* name = mode == 0 ? "dark" : "light";
-            // Outlines of inputs / boxes / sliders against the surfaces around them, and the
-            // accent (focus ring, checked fill, slider handle) against every surface.
-            for (const auto& bg : QStringList{"background", "surface", "panel"}) {
-                const auto ratio = contrast(tokens["outline"][mode], tokens[bg][mode]);
-                if (ratio < 3.0) {
-                    failures << QStringLiteral("%1 outline on %2 = %3 (< 3)")
-                                    .arg(QLatin1String(name), bg)
-                                    .arg(ratio, 0, 'f', 2);
-                }
-            }
-            for (const auto& bg :
-                 QStringList{"background", "surface", "panel", "raised", "hover"}) {
-                const auto ratio = contrast(tokens["accent"][mode], tokens[bg][mode]);
-                if (ratio < 3.0) {
-                    failures << QStringLiteral("%1 accent on %2 = %3 (< 3)")
-                                    .arg(QLatin1String(name), bg)
-                                    .arg(ratio, 0, 'f', 2);
-                }
-            }
-        }
-        QVERIFY2(failures.isEmpty(), qPrintable(failures.join('\n')));
-    }
+    // Contrastes WCAG : vérifiés pour CHAQUE thème livré et chaque variante par
+    // test_desktop_v2_theme (« every builtin theme resolves cleanly and is readable »), depuis
+    // que les couleurs viennent des fichiers de thème (resources/themes) et non plus de Theme.qml.
 
     // Lint over qml/**. Exceptions (kept short on purpose):
     //  - Theme.qml defines the tokens (hex colours, pixel sizes);
@@ -270,7 +167,8 @@ private slots:
         // Default buttons are tonal: the outline is reserved for hover and keyboard focus.
         QVERIFY(
             button.contains(QStringLiteral("button.hovered && button.enabled && !button.quiet")));
-        QVERIFY(button.contains(QStringLiteral("border.width: button.activeFocus ? 2")));
+        // Focus clavier : anneau du thème, jamais sous 2 px (borne du schéma shape.focusWidth).
+        QVERIFY(button.contains(QStringLiteral("focused: button.activeFocus")));
         // The vector space exposes its main action as the filled one.
         QVERIFY(vector.contains(QStringLiteral("emphasized: enabled")));
     }

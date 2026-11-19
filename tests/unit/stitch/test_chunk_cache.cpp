@@ -202,6 +202,142 @@ TEST_CASE("chunk cache : effective_sequence suit une retouche de parametres") {
     CHECK(after->commands == reference->commands);
 }
 
+namespace {
+
+geometry::PathNode corner(std::int32_t x, std::int32_t y) {
+    return {Vec2um{Micrometers{x}, Micrometers{y}}, geometry::NodeType::Corner, {}, {}};
+}
+
+// Colonne satin droite de x0 a x0+len, a la hauteur y0, deux barreaux (donc « routable »).
+document::SatinParams column(std::int32_t x0, std::int32_t y0, std::int32_t len = 12'000) {
+    document::SatinParams sp;
+    sp.rail_a.closed = false;
+    sp.rail_a.nodes = {corner(x0, y0), corner(x0 + len, y0)};
+    sp.rail_b.closed = false;
+    sp.rail_b.nodes = {corner(x0, y0 + 4'000), corner(x0 + len, y0 + 4'000)};
+    sp.rungs = {{Vec2um{Micrometers{x0}, Micrometers{y0}},
+                 Vec2um{Micrometers{x0}, Micrometers{y0 + 4'000}}},
+                {Vec2um{Micrometers{x0 + len}, Micrometers{y0}},
+                 Vec2um{Micrometers{x0 + len}, Micrometers{y0 + 4'000}}}};
+    return sp;
+}
+
+// Indices : 0 tatami, 1-3 groupe de trois colonnes routees (meme couleur et meme source),
+// 4 tatami, 5 colonne routee seule, 6 satin legacy sans barreaux, 7 auto-satin.
+document::Project make_satin_project() {
+    document::Project project;
+    const auto addVector = [&](std::int32_t x) {
+        document::VectorObject vec;
+        vec.id = project.object_ids.next();
+        vec.paths.push_back(geometry::PathSet{square_at(x, 10'000), {}});
+        project.vector_objects.push_back(vec);
+        return vec.id;
+    };
+    const auto addObject = [&](document::StitchParams params, ObjectId source, std::uint8_t r) {
+        document::EmbroideryObject emb;
+        emb.id = project.object_ids.next();
+        emb.name = "objet " + std::to_string(project.embroidery_objects.size());
+        emb.source_vector = source;
+        emb.rgb = {r, 30, 200};
+        emb.params = std::move(params);
+        project.embroidery_objects.push_back(std::move(emb));
+    };
+    const ObjectId v0 = addVector(0);
+    const ObjectId v1 = addVector(40'000);
+    const ObjectId v2 = addVector(80'000);
+    addObject(document::TatamiParams{}, v0, 10);
+    addObject(column(0, 20'000), ObjectId{}, 50);
+    addObject(column(14'000, 22'000), ObjectId{}, 50);
+    addObject(column(28'000, 20'000), ObjectId{}, 50);
+    addObject(document::TatamiParams{}, v1, 90);
+    addObject(column(40'000, 40'000), ObjectId{}, 130);
+    document::SatinParams legacy = column(60'000, 40'000);
+    legacy.rungs.clear();
+    addObject(legacy, ObjectId{}, 170);
+    addObject(document::AutoSatinParams{}, v2, 210);
+    return project;
+}
+
+} // namespace
+
+TEST_CASE("chunk cache : satins routes et auto-satin identiques avec et sans cache") {
+    for (const bool join : {false, true}) {
+        document::Project project = make_satin_project();
+        project.finishing.auto_join = join;
+        const auto reference = uncached(project);
+
+        clear_chunk_cache();
+        const auto cold = generate_sequence(project);
+        const auto warm = generate_sequence(project);
+        REQUIRE(cold.has_value());
+        REQUIRE(warm.has_value());
+        CHECK(cold->commands == reference.commands);
+        CHECK(warm->commands == reference.commands);
+        // Deuxieme passe : tous les objets (independants et unites routees) sont servis.
+        const ChunkCacheStats stats = chunk_cache_stats();
+        CHECK(stats.hits == stats.misses);
+        // 2 tatamis + groupe de 3 colonnes + colonne seule + satin legacy + auto-satin.
+        CHECK(stats.entries == 6);
+
+        const auto effectiveCached = effective_sequence(project);
+        set_chunk_cache_enabled(false);
+        const auto effectiveRef = effective_sequence(project);
+        set_chunk_cache_enabled(true);
+        REQUIRE(effectiveCached.has_value());
+        REQUIRE(effectiveRef.has_value());
+        CHECK(effectiveCached->commands == effectiveRef->commands);
+    }
+}
+
+TEST_CASE("chunk cache : une modification en amont change le contexte des satins routes") {
+    document::Project project = make_satin_project();
+    project.finishing.auto_join = true;
+    clear_chunk_cache();
+    REQUIRE(generate_sequence(project).has_value());
+
+    // Deplacer le tatami 0 change la derniere commande vue par le groupe de colonnes : la cle
+    // (derniere commande) differe, l'entree ne doit jamais etre servie perimee.
+    project.vector_objects[0].paths.front() = geometry::PathSet{square_at(-3'000, 7'000), {}};
+    const auto after = generate_sequence(project);
+    REQUIRE(after.has_value());
+    CHECK(after->commands == uncached(project).commands);
+
+    // Modifier une colonne du groupe, puis un parametre de l'auto-satin, puis l'ordre.
+    std::get<document::SatinParams>(project.embroidery_objects[2].params).density =
+        Micrometers{450};
+    CHECK(generate_sequence(project)->commands == uncached(project).commands);
+    std::get<document::AutoSatinParams>(project.embroidery_objects[7].params).spacing =
+        Micrometers{500};
+    CHECK(generate_sequence(project)->commands == uncached(project).commands);
+    std::swap(project.embroidery_objects[4], project.embroidery_objects[5]);
+    CHECK(generate_sequence(project)->commands == uncached(project).commands);
+    // Geometrie source de l'auto-satin.
+    project.vector_objects[2].paths.front() = geometry::PathSet{square_at(80'000, 12'000), {}};
+    CHECK(generate_sequence(project)->commands == uncached(project).commands);
+}
+
+TEST_CASE("chunk cache : satins routes identiques avec un seul fil et avec plusieurs") {
+    for (const bool join : {false, true}) {
+        document::Project project = make_satin_project();
+        project.finishing.auto_join = join;
+        set_threads("1");
+        clear_chunk_cache();
+        const auto one = generate_sequence(project);
+        const auto oneWarm = generate_sequence(project);
+        set_threads("8");
+        clear_chunk_cache();
+        const auto many = generate_sequence(project);
+        const auto manyWarm = generate_sequence(project);
+        set_threads("");
+        REQUIRE(one.has_value());
+        REQUIRE(many.has_value());
+        CHECK(one->commands == many->commands);
+        CHECK(oneWarm->commands == many->commands);
+        CHECK(manyWarm->commands == many->commands);
+        CHECK(many->commands == uncached(project).commands);
+    }
+}
+
 TEST_CASE("task control : effective_sequence annulable identique sans annulation") {
     const document::Project project = make_project();
     const auto reference = effective_sequence(project);
@@ -281,4 +417,134 @@ TEST_CASE("chunk cache : etat du routeur reutilise entre deux reglages, sequence
         REQUIRE(warm.has_value());
         CHECK(warm->commands == uncached(project).commands);
     }
+}
+
+// Les testeurs de region de la fusion des points courts sont mis en cache par objet (cle exacte :
+// parametres + trace). Le resultat doit suivre chaque modification, avec ou sans cache, et ne pas
+// changer avec le nombre de fils.
+TEST_CASE("chunk cache : testeurs de la fusion des points courts suivent parametres et geometrie") {
+    document::Project project = make_project();
+    project.finishing.enabled = true;
+    project.finishing.filter_short_stitches = true;
+    project.finishing.min_stitch_length = Micrometers{2'000};
+
+    const auto check = [&](const char* label) {
+        CAPTURE(label);
+        set_chunk_cache_enabled(false);
+        const auto reference = effective_sequence(project);
+        set_chunk_cache_enabled(true);
+        REQUIRE(reference.has_value());
+        const auto first = effective_sequence(project);
+        const auto again = effective_sequence(project);
+        REQUIRE(first.has_value());
+        REQUIRE(again.has_value());
+        CHECK(first->commands == reference->commands);
+        CHECK(again->commands == reference->commands);
+    };
+
+    clear_chunk_cache();
+    check("depart");
+    // Un parametre qui change le tirage effectif (donc la region elargie des testeurs).
+    std::get<document::TatamiParams>(project.embroidery_objects[1].params).pull_compensation =
+        Micrometers{400};
+    check("tirage modifie");
+    // Une geometrie modifiee sous le meme identifiant.
+    project.vector_objects[3].paths[0].outer.nodes[2].pos.x = Micrometers{52'000};
+    check("geometrie modifiee");
+    // Meme resultat avec un fil et avec plusieurs.
+    set_threads("1");
+    clear_chunk_cache();
+    const auto one = effective_sequence(project);
+    set_threads("8");
+    clear_chunk_cache();
+    const auto many = effective_sequence(project);
+    set_threads("");
+    REQUIRE(one.has_value());
+    REQUIRE(many.has_value());
+    CHECK(one->commands == many->commands);
+}
+
+// Le « knockout » (forme privee de ce que les remplissages opaques posent au-dessus) est mis en
+// cache (couvertures retrecies + resultat par objet). Le resultat doit suivre chaque
+// modification des entrees, avec ou sans cache, et ne pas dependre du nombre de fils.
+namespace {
+
+// Fond large sous deux remplissages qui le recouvrent en partie, plus un contour sans recouvrement.
+document::Project make_knockout_project() {
+    document::Project project;
+    const auto add = [&](std::int32_t x, std::int32_t size, bool knockout,
+                         document::StitchParams params) {
+        document::VectorObject vec;
+        vec.id = project.object_ids.next();
+        vec.paths.push_back(geometry::PathSet{square_at(x, size), {}});
+        project.vector_objects.push_back(vec);
+        document::EmbroideryObject emb;
+        emb.id = project.object_ids.next();
+        emb.source_vector = vec.id;
+        emb.knockout = knockout;
+        emb.rgb = {static_cast<std::uint8_t>(30 + 40 * project.embroidery_objects.size()), 60, 90};
+        emb.params = std::move(params);
+        project.embroidery_objects.push_back(emb);
+    };
+    add(0, 40'000, true, document::TatamiParams{});
+    add(5'000, 12'000, true, document::DirectionalFillParams{});
+    add(20'000, 14'000, false, document::TatamiParams{});
+    add(60'000, 8'000, true, document::RunningStitchParams{});
+    return project;
+}
+
+} // namespace
+
+TEST_CASE("chunk cache : le knockout en cache suit marge, geometrie et couvertures") {
+    document::Project project = make_knockout_project();
+    const auto check = [&](const char* label) {
+        CAPTURE(label);
+        set_chunk_cache_enabled(false);
+        const auto reference = effective_sequence(project);
+        set_chunk_cache_enabled(true);
+        REQUIRE(reference.has_value());
+        const auto first = effective_sequence(project);
+        const auto again = effective_sequence(project);
+        REQUIRE(first.has_value());
+        REQUIRE(again.has_value());
+        CHECK(first->commands == reference->commands);
+        CHECK(again->commands == reference->commands);
+        return reference->commands.size();
+    };
+
+    clear_chunk_cache();
+    const std::size_t withKnockout = check("depart");
+    // Le knockout retire bien des points (sinon le test ne prouverait rien).
+    auto without = project;
+    for (auto& emb : without.embroidery_objects) {
+        emb.knockout = false;
+    }
+    set_chunk_cache_enabled(false);
+    const auto plain = effective_sequence(without);
+    set_chunk_cache_enabled(true);
+    REQUIRE(plain.has_value());
+    CHECK(withKnockout < plain->commands.size());
+
+    project.embroidery_objects[0].knockout_margin = Micrometers{300};
+    check("marge modifiee");
+    // Une couverture deplacee sous le meme identifiant : le fond doit etre recalcule.
+    project.vector_objects[1].paths[0].outer.nodes[2].pos.x = Micrometers{30'000};
+    check("couverture modifiee");
+    // Le fond lui-meme change de forme.
+    project.vector_objects[0].paths[0].outer.nodes[1].pos.x = Micrometers{45'000};
+    check("fond modifie");
+    // Une couverture cesse d'etre opaque : le fond n'est plus decoupe par elle.
+    project.embroidery_objects[1].params = document::RunningStitchParams{};
+    check("couverture non opaque");
+
+    set_threads("1");
+    clear_chunk_cache();
+    const auto one = effective_sequence(project);
+    set_threads("8");
+    clear_chunk_cache();
+    const auto many = effective_sequence(project);
+    set_threads("");
+    REQUIRE(one.has_value());
+    REQUIRE(many.has_value());
+    CHECK(one->commands == many->commands);
 }

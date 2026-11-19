@@ -15,6 +15,8 @@
 #include <QQuickWindow>
 #include <QTemporaryDir>
 #include <QtTest/QtTest>
+#include <algorithm>
+#include <chrono>
 
 using namespace openstitch;
 using namespace openstitch::desktop_v2;
@@ -34,6 +36,22 @@ QQuickItem* find(QQuickItem* root, const QString& name) {
         if (auto* result = find(child, name))
             return result;
     return nullptr;
+}
+
+// Attente pilotee par les evenements (le sondage de qWaitFor dort 10 a 16 ms sous Windows, ce qui
+// masquerait des latences de quelques millisecondes).
+template <typename Predicate> bool waitEvents(Predicate done, int timeoutMs) {
+    QTimer wake;
+    wake.setInterval(5); // garantit un evenement meme si rien d'autre n'arrive
+    wake.start();
+    QElapsedTimer clock;
+    clock.start();
+    while (!done()) {
+        if (clock.elapsed() > timeoutMs)
+            return false;
+        QCoreApplication::processEvents(QEventLoop::WaitForMoreEvents);
+    }
+    return true;
 }
 struct Rig {
     DocumentSession session;
@@ -138,7 +156,8 @@ private slots:
         QTest::mouseRelease(rig.window, Qt::LeftButton, {}, rig.at(0, 7));
         QVERIFY(rig.settle());
         QCOMPARE(rig.session.revision(), revision);
-        QVERIFY(rig.tools.overlay().empty());
+        // Plus d'aperçu de contour : il ne reste que le cercle du pinceau qui suit le curseur.
+        QCOMPARE(rig.tools.overlay().size(), std::size_t{1});
         QTest::mousePress(rig.window, Qt::LeftButton, {}, rig.at(0, 5));
         QTest::mouseMove(rig.window, rig.at(0, 7));
         QTest::mouseRelease(rig.window, Qt::LeftButton, {}, rig.at(0, 7));
@@ -157,6 +176,47 @@ private slots:
         QVERIFY(rig.settle());
         QCOMPARE(dst(rig.session.project()), initial);
         QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+    }
+    // Latence de bout en bout du pinceau (hors rendu GPU), seulement si OPENSTITCH_PERF=1 : delai
+    // entre chaque mouvement de souris et la mise a jour de l'apercu, puis entre le relachement et
+    // la scene a jour. Affiche les chiffres, n'affirme rien (dependent de la machine).
+    void warpLatencyReport() {
+        if (qEnvironmentVariableIsEmpty("OPENSTITCH_PERF"))
+            QSKIP("mesure : definir OPENSTITCH_PERF=1");
+        Rig rig;
+        QVERIFY(rig.open());
+        QVERIFY(rig.choose("warp-brush"));
+        QSignalSpy overlay(&rig.tools, &ToolController::overlayChanged);
+        using Clock = std::chrono::steady_clock;
+        const auto msSince = [](Clock::time_point t) {
+            return std::chrono::duration<double, std::milli>(Clock::now() - t).count();
+        };
+        QTest::mousePress(rig.window, Qt::LeftButton, {}, rig.at(0, 5));
+        QTRY_VERIFY_WITH_TIMEOUT(overlay.count() > 0, 10000);
+        std::vector<double> samples;
+        for (int i = 1; i <= 40; ++i) {
+            const auto before = overlay.count();
+            const auto start = Clock::now();
+            QTest::mouseMove(rig.window, rig.at(0.1 * i, 5.0 + 0.08 * i));
+            if (!waitEvents([&] { return overlay.count() > before; }, 5000))
+                break;
+            samples.push_back(msSince(start));
+        }
+        QVERIFY(!samples.empty());
+        std::sort(samples.begin(), samples.end());
+        const auto at = [&](double q) {
+            return samples[static_cast<std::size_t>(q * static_cast<double>(samples.size() - 1))];
+        };
+        const auto revision = rig.session.revision();
+        const auto releaseStart = Clock::now();
+        QTest::mouseRelease(rig.window, Qt::LeftButton, {}, rig.at(4.0, 8.2));
+        QVERIFY(waitEvents([&] { return rig.session.revision() != revision; }, 10000));
+        const double executeMs = msSince(releaseStart);
+        QVERIFY(rig.settle());
+        const double sceneMs = msSince(releaseStart);
+        qInfo("PINCEAU latence: mouvement->apercu p50 %.2f ms, p95 %.2f ms, max %.2f ms "
+              "(%zu mesures) | relachement->document %.1f ms, ->scene a jour %.1f ms",
+              at(0.5), at(0.95), samples.back(), samples.size(), executeMs, sceneMs);
     }
     void mouseBucketPreviewEscapeAndSingleCommit() {
         Rig rig;

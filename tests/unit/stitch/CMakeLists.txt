@@ -8,6 +8,7 @@ add_executable(test_stitch
     test_join_closest.cpp
     test_knockout.cpp
     test_hidden_travel.cpp
+    test_underlap.cpp
     test_hidden_travel_grid.cpp
     test_tatami.cpp
     test_row_mask.cpp

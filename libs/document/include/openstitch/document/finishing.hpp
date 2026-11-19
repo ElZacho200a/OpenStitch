@@ -21,7 +21,7 @@ struct HiddenTravel {
     // ni point d'arrêt. 0 : jamais de saut sans coupe.
     Micrometers max_hidden_jump{2'000};
     // Longueur maximale du trajet cousu (mesurée le long du chemin).
-    Micrometers max_bridge_length{15'000};
+    Micrometers max_bridge_length{50'000};
     // Longueur des points du trajet cousu.
     Micrometers bridge_stitch_length{2'500};
     // Largeur de fil supposée de la couche qui recouvre, et marge de sécurité ajoutée de chaque
@@ -46,6 +46,12 @@ struct HiddenTravel {
     // HP-SEQ-006.b -- une surface déjà cousue plus tôt avec le MÊME fil compte aussi comme cachée
     // (le fil de liaison s'y confond ; léger relief possible). Désactivé par défaut.
     bool allow_same_color_surface{false};
+    // Débord orienté (0 = désactivé, défaut) : chaque tatami / remplissage directionnel déborde de
+    // cette distance, le long des frontières communes, UNIQUEMENT sous les remplissages opaques
+    // cousus après lui. Le débord est donc toujours caché (jamais posé sur une zone déjà cousue ni
+    // vers le tissu nu) et offre aux ponts une surface recouverte plus tard. Sans effet si
+    // `enabled` est faux ou si `between_objects` l'est.
+    Micrometers underlap{0};
 
     bool operator==(const HiddenTravel&) const = default;
 };

@@ -131,3 +131,45 @@ TEST_CASE("a knife line splits a shape into independent objects in one undo step
     const auto miss = s.applyBatch(batchSplit({id}, {100, -20}, {100, 20}), "Découper");
     CHECK_FALSE(miss.committed);
 }
+
+TEST_CASE("edit batch: split_path coupe selon un trace libre, une etape d'annulation",
+          "[desktop_v2][edit]") {
+    auto s = newSession();
+    const auto id = addRect(s, {0, 0}, 40, 20);
+    CHECK(batchSplitPath({id}, {}).empty());
+    CHECK(batchSplitPath({id}, {{0, 0}}).empty());
+    CHECK(batchSplitPath({id}, {{0, 0}, {0, 0}}).empty()); // aucun trace
+    CHECK(batchSplitPath({}, {{0, -20}, {0, 20}}).empty());
+    const auto depth = s.undoNames().size();
+    // Un trace qui entre et s'arrete dans la forme n'est qu'une entaille : refuse, rien d'empile.
+    const auto blind = s.applyBatch(batchSplitPath({id}, {{-5, 15}, {0, 0}}), "Découper");
+    CHECK_FALSE(blind.committed);
+    CHECK(s.undoNames().size() == depth);
+    const auto cut = s.applyBatch(batchSplitPath({id}, {{-5, 15}, {0, 0}, {5, -15}}), "Découper");
+    REQUIRE(cut.committed);
+    CHECK(s.undoNames().size() == depth + 1);
+    CHECK(s.project().embroidery_objects.size() == 2);
+    REQUIRE(s.undo());
+    CHECK(s.project().embroidery_objects.size() == 1);
+}
+
+TEST_CASE("edit batch: simplifyPath garde extremites et coins, retire le bruit",
+          "[desktop_v2][edit]") {
+    // Ligne droite bruitee puis un coin franc.
+    std::vector<PointMm> path;
+    for (int i = 0; i <= 20; ++i) {
+        path.push_back({static_cast<double>(i), (i % 2 == 0 ? 0.01 : -0.01)});
+    }
+    for (int j = 1; j <= 10; ++j) {
+        path.push_back({20.0, static_cast<double>(j)});
+    }
+    const auto out = simplifyPath(path, 0.1);
+    REQUIRE(out.size() == 3);
+    CHECK(out.front().x == Catch::Approx(0.0));
+    CHECK(out[1].x == Catch::Approx(20.0));
+    CHECK(out.back().y == Catch::Approx(10.0));
+    // Tolerance nulle ou trace court : inchange ; deterministe.
+    CHECK(simplifyPath(path, 0.0).size() == path.size());
+    CHECK(simplifyPath({{0, 0}, {1, 1}}, 1.0).size() == 2);
+    CHECK(simplifyPath(path, 0.1).size() == out.size());
+}

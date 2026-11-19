@@ -2,6 +2,8 @@
 #pragma once
 
 #include <memory>
+#include <optional>
+#include <span>
 #include <vector>
 
 #include "openstitch/document/embroidery_object.hpp"
@@ -37,5 +39,43 @@ void chunk_cache_store(ObjectId id, const document::StitchParams& params,
 
 // Vide le cache des états de routeur (défini dans tatami.cpp) ; appelé par clear_chunk_cache.
 void clear_router_cache();
+
+// Vide le cache des testeurs de région de la fusion des points courts (length_bounds.cpp) ;
+// appelé par clear_chunk_cache.
+void clear_length_bounds_cache();
+
+// Vide les caches du « knockout » (generate.cpp) ; appelé par clear_chunk_cache.
+void clear_knockout_cache();
+// --- Satins routés et auto-satin (HP-PERF-002, suite) -----------------------------------------
+//
+// Ces unités ne sont pas des fonctions pures de leur seul objet : elles lisent la DERNIÈRE
+// commande déjà émise (position, et type pour décider d'un saut de tête ; absence = début de
+// séquence). Aucune autre lecture de la séquence précédente (vérifié dans generate_satin,
+// generate_auto_satin et generate_satin_group). Le résultat est donc une fonction pure de
+// (identifiants, paramètres EFFECTIFS -- point d'entrée automatique déjà injecté --, géométrie
+// source de l'auto-satin, dernière commande). Le cache mémorise uniquement les commandes
+// AJOUTÉES par l'unité ; la clé compare ces quatre éléments intégralement, sans empreinte.
+// Même budget, même LRU et même mutex que le cache des objets indépendants.
+struct RoutedMember {
+    ObjectId id;
+    const document::StitchParams* params{nullptr};
+};
+
+struct RoutedTail {
+    Vec2um pos{};
+    stitch::CommandType type{stitch::CommandType::Stitch};
+
+    bool operator==(const RoutedTail&) const = default;
+};
+
+[[nodiscard]] std::shared_ptr<const stitch::StitchSequence>
+routed_cache_find(std::span<const RoutedMember> members,
+                  const std::vector<geometry::PathSet>* paths,
+                  const std::optional<RoutedTail>& tail);
+
+void routed_cache_store(std::span<const RoutedMember> members,
+                        const std::vector<geometry::PathSet>* paths,
+                        const std::optional<RoutedTail>& tail,
+                        std::shared_ptr<const stitch::StitchSequence> added);
 
 } // namespace openstitch::stitch_generation

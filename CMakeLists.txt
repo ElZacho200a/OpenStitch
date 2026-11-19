@@ -20,6 +20,8 @@ add_library(openstitch_warnings INTERFACE)
 add_library(openstitch::warnings ALIAS openstitch_warnings)
 if(MSVC)
     target_compile_options(openstitch_warnings INTERFACE /W4 /permissive- /utf-8)
+    # CRT « non sûr » (sscanf, getenv, fopen) : code portable, sans variantes _s propres à MSVC.
+    target_compile_definitions(openstitch_warnings INTERFACE _CRT_SECURE_NO_WARNINGS)
 else()
     target_compile_options(openstitch_warnings INTERFACE -Wall -Wextra -Wconversion)
 endif()
@@ -29,6 +31,9 @@ if(OPENSTITCH_BUILD_TESTS)
     find_package(Catch2 3 CONFIG REQUIRED)
     include(Catch)
 endif()
+
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+include(OpenStitchBuildOpt)
 
 add_subdirectory(libs/core)
 add_subdirectory(libs/geometry)
@@ -53,6 +58,10 @@ add_subdirectory(libs/commands)
 add_subdirectory(libs/project_ops)
 add_subdirectory(libs/mcp)
 add_subdirectory(libs/agent)
+# BUILD-OPT-01.6 : PCH/Unity opt-in (no-op par defaut).
+openstitch_apply_build_opt(openstitch_geometry openstitch_stitch_generation openstitch_stitch_analysis
+    ${OPENSTITCH_UNITY_TARGETS})
+
 add_subdirectory(apps/cli)
 add_subdirectory(apps/mcp)
 add_subdirectory(apps/companion)

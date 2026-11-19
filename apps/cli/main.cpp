@@ -1190,6 +1190,10 @@ int run_osp2dst(const std::string& ospPath, const std::string& outDst, bool noCl
                    "{} pont(s) cousu(s), {:.1f} mm de fil ajouté)\n",
                    report.trims_removed, report.candidate_gaps, report.hidden_jumps, report.bridges,
                    report.bridge_length_um / 1000.0);
+        fmt::print("  refus : trop long {} | extrémité non recouverte {} | aucun chemin {} ; "
+                   "coupes conservées : changement de fil {}, coupe posée {}\n",
+                   report.refused_too_long, report.refused_no_cover, report.refused_no_path,
+                   report.kept_color_change, report.kept_manual_trim);
         fmt::print(
             "Sous-couche : {} groupe(s) de passes réordonné(s), {:.1f} mm de saut en moins\n",
             report.underlay_blocks, report.underlay_jump_saved_um / 1000.0);
@@ -1992,7 +1996,9 @@ int main(int argc, char** argv) {
     bool od_reduce_trims = false;
     bool od_reduce_same_colour = false;
     std::string od_reduce_levels = "all";
-    double od_reduce_max_mm = 15.0;
+    double od_reduce_max_mm = 50.0;
+    double od_reduce_underlap_mm = 0.0;
+    double od_reduce_margin_mm = 0.15;
     od_cmd->add_flag(
         "--reduce-trims", od_reduce_trims,
         "Remplace des coupes par des sauts ou des ponts cousus cachés sous des points "
@@ -2007,8 +2013,20 @@ int main(int argc, char** argv) {
                      "comme cachée");
     od_cmd
         ->add_option("--reduce-trims-max", od_reduce_max_mm,
-                     "Avec --reduce-trims : longueur maximale d'un pont, en mm (défaut : 15)")
+                     "Avec --reduce-trims : longueur maximale d'un pont, en mm (défaut : 50)")
         ->check(CLI::Range(0.0, 100.0));
+    od_cmd
+        ->add_option(
+            "--reduce-trims-underlap", od_reduce_underlap_mm,
+            "Avec --reduce-trims : débord (mm) de chaque remplissage sous les remplissages "
+            "cousus après lui, pour offrir plus de surface cachée aux ponts (défaut : 0)")
+        ->check(CLI::Range(0.0, 3.0));
+    od_cmd
+        ->add_option(
+            "--reduce-trims-margin", od_reduce_margin_mm,
+            "Avec --reduce-trims : marge de sécurité (mm) de chaque côté d'un pont, en plus "
+            "de la demi-largeur du fil (défaut : 0.15)")
+        ->check(CLI::Range(0.0, 2.0));
     od_cmd->add_flag("--no-color-changes", od_no_color_changes,
                      "Supprime les changements de couleur (motif monochrome)");
     std::string od_start;
@@ -2170,6 +2188,10 @@ int main(int argc, char** argv) {
         }
         optimizations.hidden_travel.max_bridge_length = openstitch::Micrometers{
             static_cast<std::int32_t>(std::lround(od_reduce_max_mm * 1000.0))};
+        optimizations.hidden_travel.cover_margin = openstitch::Micrometers{
+            static_cast<std::int32_t>(std::lround(od_reduce_margin_mm * 1000.0))};
+        optimizations.hidden_travel.underlap = openstitch::Micrometers{
+            static_cast<std::int32_t>(std::lround(od_reduce_underlap_mm * 1000.0))};
         return run_osp2dst(od_in, od_out, od_noclobber, machineOptions, optimizations,
                            od_color_file, od_start.empty());
     }

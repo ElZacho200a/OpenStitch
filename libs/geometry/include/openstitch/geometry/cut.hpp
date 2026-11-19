@@ -47,4 +47,13 @@ namespace openstitch::geometry {
 cut_path_set_bounded(const PathSet& region, Vec2um a, Vec2um b, double reach_um,
                      Micrometers cut_width = Micrometers{20});
 
+// Coupe en TRACÉ LIBRE : retire de `region` une bande de largeur `cut_width` le long de la
+// polyligne `polyline` (au moins deux points distincts), extrémités franches. Contrairement aux
+// variantes à droite, rien n'est prolongé : seule la partie réellement tracée coupe. Mêmes
+// garanties de renvoi que `cut_path_set` (région inchangée, tangentes comprises, sans
+// intersection ; un morceau par composante connexe sinon).
+[[nodiscard]] Result<std::vector<PathSet>>
+cut_path_set_polyline(const PathSet& region, const std::vector<Vec2um>& polyline,
+                      Micrometers cut_width = Micrometers{20});
+
 } // namespace openstitch::geometry

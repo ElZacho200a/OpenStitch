@@ -435,7 +435,7 @@ void add_digitize_options(CLI::App* cmd, DigitizeOptionValues& v) {
                   "Avec --hidden-travel : une surface déjà cousue du même fil compte aussi comme "
                   "cachée (léger relief possible)");
     cmd->add_option("--hidden-travel-max", s.hidden_max_mm,
-                    "Avec --hidden-travel : longueur maximale d'un pont, en mm (défaut : 15)")
+                    "Avec --hidden-travel : longueur maximale d'un pont, en mm (défaut : 50)")
         ->check(CLI::Range(0.0, 100.0));
     cmd->add_option("--mode", s.mode,
                     "Stratégie : shapes (formes pleines, défaut) | contours (dessin au trait) | "
@@ -848,7 +848,8 @@ CLI::App* register_project_commands(CLI::App& app, bool& jsonOut) {
         std::string osp, out, format, stops{"native"}, levels{"all"}, start;
         bool noTrims{false}, noColorChanges{false}, reduceTrims{false}, sameColour{false};
         bool outlines{false}, noClobber{false};
-        double reduceMax{15.0};
+        double reduceMax{50.0};
+        double reduceUnderlap{0.0};
         std::uint64_t only{0};
     };
     auto exArgs = std::make_shared<ExportArgs>();
@@ -877,6 +878,9 @@ CLI::App* register_project_commands(CLI::App& app, bool& jsonOut) {
                 "Une surface déjà cousue du même fil compte comme cachée");
     c->add_option("--reduce-trims-max", exArgs->reduceMax, "Longueur maximale d'un pont, en mm")
         ->check(CLI::Range(0.0, 100.0));
+    c->add_option("--reduce-trims-underlap", exArgs->reduceUnderlap,
+                  "Débord (mm) des remplissages sous ceux cousus après eux (défaut : 0)")
+        ->check(CLI::Range(0.0, 3.0));
     c->add_flag("--outlines", exArgs->outlines, "SVG : superpose les contours des régions");
     c->add_option("--only", exArgs->only, "SVG : limite à un objet de broderie");
     c->add_flag("--no-clobber", exArgs->noClobber, "Refuse d'écraser le fichier de sortie");
@@ -966,6 +970,8 @@ CLI::App* register_project_commands(CLI::App& app, bool& jsonOut) {
             }
             optimizations.hidden_travel.max_bridge_length = openstitch::Micrometers{
                 static_cast<std::int32_t>(std::lround(a.reduceMax * 1000.0))};
+            optimizations.hidden_travel.underlap = openstitch::Micrometers{
+                static_cast<std::int32_t>(std::lround(a.reduceUnderlap * 1000.0))};
             openstitch::stitch_generation::TrimReport trimReport;
             if (auto w = openstitch::project_io::export_machine_file(opened->project, info->id,
                                                                      fs::path(a.out), options,

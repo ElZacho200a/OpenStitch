@@ -1,13 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <variant>
 #include <vector>
 
 #include "openstitch/core/error.hpp"
 #include "openstitch/core/units.hpp"
+#include "openstitch/document/boundary_blend.hpp"
 #include "openstitch/document/embroidery_object.hpp"
+#include "openstitch/document/project.hpp"
 #include "openstitch/geometry/path.hpp"
 #include "openstitch/geometry/polyline.hpp"
 #include "openstitch/stitch_generation/tatami.hpp"
@@ -28,6 +32,10 @@ struct BoundaryBlendSpec {
     document::DensityCurve curve{document::DensityCurve::Linear};
     Micrometers tolerance{600};      // contact entre A et B (jours de vectorisation, inset)
     Micrometers min_frontier{1'000}; // morceau de frontière plus court : ignoré
+    // Frontière TRACÉE à la main (lot L4) : remplace la frontière calculée. Vide : calculée.
+    std::vector<Vec2um> manual_frontier;
+    // Sens des rangées dans la bande (§6.3). PerZone : comportement des lots L1b-L1c.
+    document::BoundaryBlendRows rows{document::BoundaryBlendRows::PerZone};
 
     bool operator==(const BoundaryBlendSpec&) const = default;
 };
@@ -38,8 +46,10 @@ class BoundaryBlendField {
 public:
     // `reach_margin` : prolongation des régions au-delà des demi-bandes (cf.
     // `plan_boundary_blend`) ; la boîte de `near_frontier` l'englobe.
-    BoundaryBlendField(const geometry::PathSet& a, std::vector<geometry::Polyline> frontier,
-                       const BoundaryBlendSpec& spec, Micrometers reach_margin = {});
+    // `a` : la zone A (une ou plusieurs composantes).
+    BoundaryBlendField(const std::vector<geometry::PathSet>& a,
+                       std::vector<geometry::Polyline> frontier, const BoundaryBlendSpec& spec,
+                       Micrometers reach_margin = {});
 
     // Distance signée (µm) à la frontière : < 0 dans A, > 0 hors de A.
     [[nodiscard]] double signed_distance(Vec2um p) const;
@@ -87,12 +97,19 @@ struct BoundaryBlendPlan {
                                                             const geometry::PathSet& b,
                                                             const BoundaryBlendSpec& spec,
                                                             Micrometers reach_margin = {});
+// Zones en plusieurs composantes : frontière = réunion des frontières de chaque couple de
+// composantes (dans l'ordre des listes), régions prolongées réunies.
+[[nodiscard]] Result<BoundaryBlendPlan> plan_boundary_blend(const std::vector<geometry::PathSet>& a,
+                                                            const std::vector<geometry::PathSet>& b,
+                                                            const BoundaryBlendSpec& spec,
+                                                            Micrometers reach_margin = {});
 
 // Points des deux couches d'un fondu tatami–tatami (chacune dans sa région prolongée, avec son
 // angle et son écart). Plusieurs composantes : concaténées, chacune commençant par un saut.
 struct BoundaryBlendFills {
     std::vector<FillStitch> a;
     std::vector<FillStitch> b;
+    std::vector<geometry::Polyline> frontier; // frontière du plan (calculée ou tracée)
 };
 
 // Paramètres de remplissage d'une zone du fondu : tatami (grille fixe, partition exacte possible)
@@ -108,8 +125,92 @@ fill_boundary_blend(const geometry::PathSet& a, const BoundaryBlendFillParams& p
                     const BoundaryBlendSpec& spec);
 
 [[nodiscard]] Result<BoundaryBlendFills>
+fill_boundary_blend(const std::vector<geometry::PathSet>& a,
+                    const BoundaryBlendFillParams& params_a,
+                    const std::vector<geometry::PathSet>& b,
+                    const BoundaryBlendFillParams& params_b, const BoundaryBlendSpec& spec);
+
+[[nodiscard]] Result<BoundaryBlendFills>
 fill_boundary_blend_tatami(const geometry::PathSet& a, const document::TatamiParams& params_a,
                            const geometry::PathSet& b, const document::TatamiParams& params_b,
                            const BoundaryBlendSpec& spec);
+
+// --- Sens des rangées dans la bande (§6.3) ------------------------------------------------------
+//
+// `BoundaryBlendSpec::rows` = Shared ou Rotating, deux zones TATAMI : chaque couche est cousue en
+// deux parties, (1) le CŒUR de sa zone (zone privée de sa demi-bande, son angle, sans masque) et
+// (2) la BANDE commune (A ∩ demi-bande w_A, plus le reste de la fermeture de A ∪ B dans la
+// demi-bande w_B, élargie de `kBoundaryBlendSeamOverlap` sur les cœurs), cousue par les deux
+// couches sur les MÊMES rangées, A gardant la tranche basse du masque, B la tranche haute :
+// partition exacte. Les rangées de la bande sont droites à l'angle commun (Shared), courbes,
+// pivotant de l'angle de A à celui de B (Rotating), ou en travers de la frontière (Interlaced).
+// Paramètres de la bande : ceux de A (longueur de point, décalage, compensation), écart = le plus
+// petit des deux. Une zone directionnelle : repli sur PerZone.
+
+// Recouvrement de la bande sur chaque cœur (µm) : la couture cœur–bande ne laisse aucun filet nu.
+inline constexpr std::int32_t kBoundaryBlendSeamOverlap = 300;
+
+// Angle commun des rangées en mode Shared : moyenne circulaire de `angle_a` et `angle_b` modulo
+// π (milieu de l'arc le plus court ; à π/2 d'écart exact, celui qui part de A dans le sens
+// direct). Radians.
+[[nodiscard]] double boundary_blend_shared_angle(double angle_a, double angle_b);
+
+// Orientation des rangées en mode Rotating au point `p` : angle_a + Δ × u(t), Δ = écart de B à A
+// ramené dans ]-π/2 ; π/2], t = (s + w_A) / (w_A + w_B) borné à [0 ; 1] (même variable que la
+// densité), u(t) = 3t² - 2t³ (tangente nulle aux bords de bande : raccord sans cassure avec le
+// cœur de chaque zone). Radians.
+[[nodiscard]] double boundary_blend_row_angle(const BoundaryBlendField& field, double angle_a,
+                                              double angle_b, Vec2um p);
+
+// Orientation des rangées en mode Interlaced au point `p` : perpendiculaire à la tangente de la
+// frontière LISSÉE autour de p (moyenne des directions des segments voisins, pondérée par leur
+// longueur et une gaussienne de largeur la demi-bande moyenne) ; exacte le long d'une frontière
+// droite, continue partout, sans croisement du côté concave d'une frontière courbe. Les rangées
+// traversent la bande : chacune passe de A à B là où d_A franchit son seuil, en un point qui varie
+// d'une rangée à l'autre. Radians.
+[[nodiscard]] double boundary_blend_cross_angle(const BoundaryBlendField& field, Vec2um p);
+
+// Diagnostic : rangées de la bande commune cousues PLEINES (masque plein, une seule couche), telles
+// que les deux couches se les partagent en mode Shared ou Rotating. Vide en PerZone ou si une zone
+// n'est pas un tatami.
+[[nodiscard]] Result<std::vector<FillStitch>>
+boundary_blend_band_rows(const geometry::PathSet& a, const document::TatamiParams& params_a,
+                         const geometry::PathSet& b, const document::TatamiParams& params_b,
+                         const BoundaryBlendSpec& spec);
+
+// --- Branchement sur le document (lot L2) -----------------------------------------------------
+
+// Zones d'un remplissage telles que la génération les coud : formes de `source_vector` aplaties
+// (50 µm), retrait de bord (`inset`) appliqué, forme brute si le retrait la fait disparaître.
+// Vide pour un objet sans forme source ou qui n'est ni tatami ni directionnel.
+[[nodiscard]] std::vector<geometry::PathSet>
+boundary_blend_zone(const document::Project& project, const document::EmbroideryObject& object);
+
+// Couche d'une zone en fondu à la frontière.
+struct BoundaryBlendLayer {
+    std::vector<FillStitch> stitches; // couche supérieure, masquée et prolongée
+    // Zone de l'objet privée de SA demi-bande : la sous-couche s'y limite. Sur la zone entière,
+    // son tour de bord suivrait la frontière, là où la couche supérieure clairsemée ne la couvre
+    // plus : un trait visible au milieu du fondu (recette Studio). Vide : bande plus large que la
+    // zone, pas de sous-couche.
+    std::vector<geometry::PathSet> underlay_zones;
+};
+
+// Groupe de fondus de `id` : composante connexe des couples valides
+// (`document::find_boundary_blends`) qui contient `id`, parcourue en largeur. Chaque couple est
+// rendu dans son sens canonique (`self` = identifiant le plus petit, `partner` = le plus grand),
+// la liste triée par (self, partner). Vide si `id` ne porte aucun fondu valide.
+[[nodiscard]] std::vector<document::BoundaryBlendPair>
+boundary_blend_group(const document::Project& project, ObjectId id);
+
+// Couche de `object` dans ses fondus à la frontière. Chaque plan est toujours calculé dans le
+// même sens (zone d'identifiant le plus petit en A), pour que les zones cousent des couches
+// complémentaires exactement. Un seul couple utile dans le groupe : couche du couple (lots
+// L1-L4). Plusieurs couples (§6.4) : en chaque point, le couple dont la frontière est la plus
+// proche gouverne (parmi ceux dont la bande et les zones contiennent le point) ; toutes les
+// couches du groupe évaluent la même règle. nullopt si `object` ne porte pas de fondu valide
+// ou si les frontières ont disparu : la génération coud alors l'aplat habituel.
+[[nodiscard]] std::optional<BoundaryBlendLayer>
+boundary_blend_layer(const document::Project& project, const document::EmbroideryObject& object);
 
 } // namespace openstitch::stitch_generation

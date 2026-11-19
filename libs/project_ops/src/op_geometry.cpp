@@ -796,6 +796,33 @@ OpStatus op_split(OpContext& ctx) {
     return pieces_result(ctx, target, before_emb, before_vec);
 }
 
+// Coupe en tracé libre : même résultat que `split`, le long d'une polyligne (couteau main levée).
+OpStatus op_split_path(OpContext& ctx) {
+    Target target;
+    if (auto st = resolve_target(ctx, "object", target); !st.ok) {
+        return st;
+    }
+    std::vector<Vec2um> path;
+    if (auto st = read_points(ctx, "path_mm", 2, 2000, path); !st.ok) {
+        return st;
+    }
+    double length = 0.0;
+    for (std::size_t i = 1; i < path.size(); ++i) {
+        length += length_um(path[i] - path[i - 1]);
+    }
+    if (length < 10.0) {
+        return refused("tracé de coupe dégénéré : les points sont (quasi) confondus");
+    }
+    const auto before_emb = embroidery_ids(ctx.project);
+    const auto before_vec = vector_ids(ctx.project);
+    auto made = commands::make_polyline_split_command(ctx.project, {target.vector}, path);
+    if (!made.command) {
+        return refused(made.error.empty() ? "découpe impossible" : made.error);
+    }
+    ctx.stack.execute(std::move(made.command), ctx.project);
+    return pieces_result(ctx, target, before_emb, before_vec);
+}
+
 OpStatus op_break_apart(OpContext& ctx) {
     Target target;
     // Forme vectorielle pas encore convertie : séparée directement, sans objet de broderie.
@@ -1156,6 +1183,15 @@ void register_geometry_ops(std::vector<OpSpec>& out) {
                            true, "2 points distincts"}},
                          R"({"op":"split","object":1,"line_mm":[[0,-20],[0,20]]})",
                          op_split});
+
+    out.push_back(OpSpec{"split_path",
+                         "Découpe un objet le long d'un tracé libre (polyligne) ; chaque morceau "
+                         "devient un objet. Rien n'est prolongé au-delà du tracé.",
+                         {object_arg(),
+                          {"path_mm", "array", "mm", "tracé de coupe [[x1,y1],[x2,y2],...]", true,
+                           "2 à 2000 points, pas tous confondus"}},
+                         R"({"op":"split_path","object":1,"path_mm":[[-20,-5],[0,10],[20,-5]]})",
+                         op_split_path});
 
     out.push_back(OpSpec{"break_apart",
                          "Sépare les morceaux disjoints d'un objet en objets distincts.",

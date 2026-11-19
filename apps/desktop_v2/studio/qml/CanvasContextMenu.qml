@@ -9,6 +9,8 @@ Controls.Menu {
     id: menu
     objectName: "canvasContextMenu"
     readonly property bool hasSelection: editor.selectedCount > 0
+    // Espace Vecteur : « Supprimer » retire la forme et ses broderies (sinon : la broderie seule).
+    property bool shapeScope: false
     property real atX: 0
     property real atY: 0
     // Réglage du cadre, commun à tous les canevas (ouvert par SpaceHost).
@@ -41,9 +43,10 @@ Controls.Menu {
     Controls.MenuItem { objectName: "contextDuplicate"; text: qsTr("Dupliquer"); enabled: menu.hasSelection; onTriggered: editor.duplicate(5) }
     Controls.MenuItem {
         objectName: "contextDelete"
-        text: qsTr("Supprimer %1 objet(s)").arg(editor.selectedCount)
-        enabled: menu.hasSelection
-        onTriggered: editor.deleteSelection()
+        text: menu.shapeScope ? qsTr("Supprimer %1 forme(s)").arg(editor.selectedShapeCount)
+                              : qsTr("Supprimer %1 objet(s)").arg(editor.selectedCount)
+        enabled: menu.shapeScope ? editor.selectedShapeCount > 0 : menu.hasSelection
+        onTriggered: menu.shapeScope ? editor.deleteShapes() : editor.deleteSelection()
     }
     Controls.MenuSeparator { }
     // Opérations sur les formes : aussi au clic droit, là où la main est déjà.

@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <map>
 #include <set>
 #include <string>
 
@@ -15,6 +16,7 @@
 #include "inspector_model.hpp"
 #include "object_labels.hpp"
 #include "openstitch/commands/project_commands.hpp"
+#include "shape_resolver.hpp"
 #include "transform_batch.hpp"
 
 namespace openstitch::desktop_v2::studio {
@@ -134,6 +136,12 @@ std::vector<std::uint64_t> EditController::selectedIds() const {
     return ids;
 }
 
+int EditController::selectedShapeCount() const {
+    const auto& session = studio_.session();
+    return static_cast<int>(
+        resolveEditableShapes(session.project(), session.selection().targets()).size());
+}
+
 int EditController::selectedCount() const {
     int count = 0;
     for (const auto& target : studio_.session().selection().targets()) {
@@ -146,6 +154,16 @@ bool EditController::visibleObject(std::uint64_t id) const {
     const auto& project = studio_.session().project();
     const auto* object = project.findEmbroidery(ObjectId{id});
     return object && object->visible && project.calqueVisible(*object);
+}
+
+// Sélectionnable en masse (tout, inverser, par couleur/type/calque, rectangle) : visible ET hors
+// d'un calque verrouillé. Un verrou de calque protège ses objets de toute édition accidentelle ;
+// ils restent des cibles d'aimantation (`visibleObject`).
+bool EditController::selectableObject(std::uint64_t id) const {
+    const auto& project = studio_.session().project();
+    const auto* object = project.findEmbroidery(ObjectId{id});
+    return object && object->visible && project.calqueVisible(*object) &&
+           !project.shapeLockedByCalque(object->source_vector);
 }
 
 bool EditController::selectIds(const std::vector<std::uint64_t>& ids, bool additive) {
@@ -223,7 +241,7 @@ PointMm EditController::selectionCentreModel() const {
 int EditController::selectAll() {
     std::vector<std::uint64_t> ids;
     for (const auto& object : studio_.session().project().embroidery_objects) {
-        if (visibleObject(object.id.value)) {
+        if (selectableObject(object.id.value)) {
             ids.push_back(object.id.value);
         }
     }
@@ -243,7 +261,7 @@ int EditController::invertSelection() {
     std::vector<std::uint64_t> ids;
     for (const auto& object : studio_.session().project().embroidery_objects) {
         const Target target{TargetKind::EmbroideryObject, object.id.value};
-        if (visibleObject(object.id.value) && !studio_.session().selection().contains(target)) {
+        if (selectableObject(object.id.value) && !studio_.session().selection().contains(target)) {
             ids.push_back(object.id.value);
         }
     }
@@ -265,7 +283,7 @@ int EditController::selectSameColor() {
     }
     std::vector<std::uint64_t> ids;
     for (const auto& object : project.embroidery_objects) {
-        if (colours.contains(object.rgb) && visibleObject(object.id.value)) {
+        if (colours.contains(object.rgb) && selectableObject(object.id.value)) {
             ids.push_back(object.id.value);
         }
     }
@@ -281,7 +299,7 @@ int EditController::selectNeighbors() {
     }
     std::vector<std::uint64_t> ids;
     for (const auto& [id, box] : scene->objectBounds) {
-        if (!visibleObject(id)) {
+        if (!selectableObject(id)) {
             continue;
         }
         const Target self{TargetKind::EmbroideryObject, id};
@@ -306,7 +324,7 @@ int EditController::selectByType(const QString& typeId) {
     for (const auto& object : studio_.session().project().embroidery_objects) {
         const auto type = stitchTypeId(object);
         if (QString::fromUtf8(type.data(), static_cast<qsizetype>(type.size())) == typeId &&
-            visibleObject(object.id.value)) {
+            selectableObject(object.id.value)) {
             ids.push_back(object.id.value);
         }
     }
@@ -323,6 +341,15 @@ int EditController::selectByLayer(const QString& calqueId) {
     const auto& project = studio_.session().project();
     if (!wanted) {
         return 0;
+    }
+    const auto* layer = project.findCalque(ObjectId{*wanted});
+    if (layer == nullptr) {
+        return refuse(QStringLiteral("Calque inconnu")), 0;
+    }
+    (void)studio_.session().selectCalque(layer->id); // un clic sur le calque le rend actif
+    if (layer->locked) {
+        studio_.session().selection().clear();
+        return refuse(QStringLiteral("Calque verrouillé : ses objets ne se sélectionnent pas")), 0;
     }
     std::vector<std::uint64_t> ids;
     for (const auto& object : project.embroidery_objects) {
@@ -362,7 +389,7 @@ int EditController::selectRect(double x0, double y0, double x1, double y1, bool 
     const RectMm rect{std::min(x0, x1), std::min(y0, y1), std::max(x0, x1), std::max(y0, y1)};
     std::vector<std::uint64_t> ids;
     for (const auto& [id, box] : scene->objectBounds) { // std::map : ordre croissant, déterministe
-        if (!visibleObject(id)) {
+        if (!selectableObject(id)) {
             continue;
         }
         const bool inside =
@@ -541,6 +568,20 @@ bool EditController::deleteSelection() {
     const auto ids = selectedIds();
     return applyBatch(batchRemove(ids), QStringLiteral("Supprimer"),
                       QStringLiteral("%1 objet(s) supprimé(s)").arg(ids.size()));
+}
+
+bool EditController::deleteShapes() {
+    auto& session = studio_.session();
+    auto removal = prepareShapeRemoval(session.project(), session.selection().targets());
+    if (!removal.command) {
+        return refuse(QStringLiteral("Supprimer la forme : rien à supprimer (sélection vide, "
+                                     "verrouillée ou lettre de texte)"));
+    }
+    session.execute(std::move(removal.command)); // la sélection est élaguée par la session
+    say(QStringLiteral("%1 forme(s) supprimée(s) avec %2 broderie(s)")
+            .arg(removal.shapes)
+            .arg(removal.embroideries));
+    return true;
 }
 
 bool EditController::align(const QString& mode) {
@@ -812,15 +853,102 @@ bool EditController::moveObjectToLayer(const QString& objectId, const QString& l
     return r.ok;
 }
 
+bool EditController::setActiveLayer(const QString& id) {
+    const auto value = parseId(id);
+    if (!value || !studio_.session().selectCalque(ObjectId{*value})) {
+        return refuse(QStringLiteral("Calque inconnu"));
+    }
+    return true;
+}
+
+bool EditController::isolateLayer(const QString& id) {
+    const auto value = parseId(id);
+    const auto r = value ? openstitch::desktop_v2::isolateCalque(studio_.session(), *value)
+                         : ServiceResult{false, "Calque inconnu"};
+    say(r.ok ? QString::fromStdString(studio_.session().undoName())
+             : QString::fromStdString(r.message));
+    return r.ok;
+}
+
+bool EditController::showAllLayers() {
+    const auto r = openstitch::desktop_v2::showAllCalques(studio_.session());
+    say(r.ok ? QStringLiteral("Tous les calques sont visibles")
+             : QString::fromStdString(r.message));
+    return r.ok;
+}
+
+bool EditController::reorderLayer(const QString& id, int displayIndex) {
+    const auto value = parseId(id);
+    const auto count = static_cast<int>(studio_.session().project().calques.size());
+    if (!value || count == 0) {
+        return refuse(QStringLiteral("Calque inconnu"));
+    }
+    const int clamped = std::clamp(displayIndex, 0, count - 1);
+    const auto toIndex = static_cast<std::size_t>(count - 1 - clamped); // affiché : dessus d'abord
+    const auto r = openstitch::desktop_v2::reorderCalque(studio_.session(), *value, toIndex);
+    say(r.ok ? QStringLiteral("Calque déplacé : l'ordre de couture suit")
+             : QString::fromStdString(r.message));
+    return r.ok;
+}
+
+int EditController::selectTreeRange(const QString& anchorId, const QString& id, bool additive) {
+    std::vector<std::uint64_t> shown; // objets dans l'ordre affiché par l'arbre
+    for (const auto& row : tree()) {
+        const auto map = row.toMap();
+        if (map.value(QStringLiteral("kind")).toString() == QStringLiteral("object")) {
+            shown.push_back(map.value(QStringLiteral("id")).toString().toULongLong());
+        }
+    }
+    auto from = std::ranges::find(shown, anchorId.toULongLong());
+    auto to = std::ranges::find(shown, id.toULongLong());
+    if (from == shown.end() || to == shown.end()) {
+        return 0;
+    }
+    if (to < from) {
+        std::swap(from, to);
+    }
+    std::vector<std::uint64_t> ids;
+    for (auto it = from; it <= to; ++it) {
+        if (selectableObject(*it)) {
+            ids.push_back(*it);
+        }
+    }
+    (void)selectIds(ids, additive);
+    say(QStringLiteral("%1 objet(s) sélectionné(s)").arg(ids.size()));
+    return static_cast<int>(ids.size());
+}
+
+QString EditController::activeLayer() const {
+    const auto& project = studio_.session().project();
+    if (project.calques.empty()) {
+        return {};
+    }
+    const auto* active = project.findCalque(project.active_calque);
+    return idText((active != nullptr ? active : &project.calques.front())->id.value);
+}
+
 QVariantList EditController::layers() const {
     QVariantList list;
     const auto& project = studio_.session().project();
+    // Une passe : nombre d'objets par calque (aucune recherche par calque).
+    std::map<std::uint64_t, int> objects;
+    for (const auto& object : project.embroidery_objects) {
+        if (const auto* calque = project.calqueOfShape(object.source_vector)) {
+            ++objects[calque->id.value];
+        }
+    }
+    const auto active = activeLayer();
     const auto all = openstitch::desktop_v2::calques(project); // du fond au dessus
     for (auto it = all.rbegin(); it != all.rend(); ++it) {     // le dessus en premier, comme V1
-        list.push_back(QVariantMap{{QStringLiteral("id"), idText(it->id)},
-                                   {QStringLiteral("name"), QString::fromStdString(it->name)},
-                                   {QStringLiteral("visible"), it->visible},
-                                   {QStringLiteral("locked"), it->locked}});
+        const auto id = idText(it->id);
+        list.push_back(QVariantMap{
+            {QStringLiteral("id"), id},
+            {QStringLiteral("name"), QString::fromStdString(it->name)},
+            {QStringLiteral("visible"), it->visible},
+            {QStringLiteral("locked"), it->locked},
+            {QStringLiteral("active"), id == active},
+            {QStringLiteral("objects"), objects[it->id]},
+            {QStringLiteral("hasImage"), project.findImageSource(ObjectId{it->id}) != nullptr}});
     }
     return list;
 }
@@ -831,6 +959,22 @@ QVariantList EditController::tree() const {
     const auto& selection = studio_.session().selection();
     const auto order = project.sewingOrder();
     const auto all = openstitch::desktop_v2::calques(project);
+    const auto active = activeLayer();
+    // Index calculé une fois : calque et groupe de chaque objet, membres de chaque groupe dans
+    // l'ordre de couture. Évite de rebalayer tout l'ordre pour chaque groupe (O(n x groupes)).
+    std::vector<std::uint64_t> calqueOf(project.embroidery_objects.size(), 0);
+    std::vector<std::uint64_t> groupOf(project.embroidery_objects.size(), 0);
+    std::map<std::uint64_t, std::vector<std::size_t>> members;
+    for (const auto index : order) {
+        const auto& object = project.embroidery_objects[index];
+        const auto* calque = project.calqueOfShape(object.source_vector);
+        calqueOf[index] = calque ? calque->id.value : 0;
+        const auto* shape = project.findObject(object.source_vector);
+        groupOf[index] = shape && project.findGroup(shape->group) ? shape->group.value : 0;
+        if (groupOf[index] != 0) {
+            members[groupOf[index]].push_back(index);
+        }
+    }
     const auto objectRow = [&](const document::EmbroideryObject& object, int depth) {
         const Target target{TargetKind::EmbroideryObject, object.id.value};
         const auto type = stitchTypeId(object);
@@ -853,12 +997,10 @@ QVariantList EditController::tree() const {
         std::set<std::uint64_t> groupsDone;
         for (const auto index : order) {
             const auto& object = project.embroidery_objects[index];
-            const auto* calque = project.calqueOfShape(object.source_vector);
-            if (!implicit && (!calque || calque->id.value != calqueId)) {
+            if (!implicit && calqueOf[index] != calqueId) {
                 continue;
             }
-            const auto* shape = project.findObject(object.source_vector);
-            const auto groupId = shape ? shape->group.value : 0;
+            const auto groupId = groupOf[index];
             const auto* group = groupId ? project.findGroup(ObjectId{groupId}) : nullptr;
             if (!group) {
                 rows.push_back(objectRow(object, depth));
@@ -872,13 +1014,9 @@ QVariantList EditController::tree() const {
                             {QStringLiteral("id"), idText(groupId)},
                             {QStringLiteral("label"), QString::fromStdString(group->name)},
                             {QStringLiteral("depth"), depth}});
-            for (const auto inner : order) {
-                const auto& member = project.embroidery_objects[inner];
-                const auto* memberShape = project.findObject(member.source_vector);
-                const auto* memberCalque = project.calqueOfShape(member.source_vector);
-                if (memberShape && memberShape->group.value == groupId &&
-                    (implicit || (memberCalque && memberCalque->id.value == calqueId))) {
-                    rows.push_back(objectRow(member, depth + 1));
+            for (const auto inner : members[groupId]) {
+                if (implicit || calqueOf[inner] == calqueId) {
+                    rows.push_back(objectRow(project.embroidery_objects[inner], depth + 1));
                 }
             }
         }
@@ -893,7 +1031,8 @@ QVariantList EditController::tree() const {
                                    {QStringLiteral("label"), QString::fromStdString(it->name)},
                                    {QStringLiteral("depth"), 0},
                                    {QStringLiteral("visible"), it->visible},
-                                   {QStringLiteral("locked"), it->locked}});
+                                   {QStringLiteral("locked"), it->locked},
+                                   {QStringLiteral("active"), idText(it->id) == active}});
         emitScope(it->id, false, 1);
     }
     return rows;

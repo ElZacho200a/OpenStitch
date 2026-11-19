@@ -474,6 +474,37 @@ TEST_CASE("vector ops: split ignores a segment that stops inside the shape", "[v
     CHECK_FALSE(result.command);
 }
 
+TEST_CASE("vector ops: polyline split cuts along a bent free path", "[vector_ops]") {
+    document::Project project;
+    const ObjectId id = add_object(project, rect(0, 0, 20'000, 10'000), false);
+    // Trace en V qui traverse la forme de part en part.
+    auto result = make_polyline_split_command(
+        project, {id}, {pt(-2'000, 8'000), pt(10'000, 2'000), pt(22'000, 8'000)});
+    REQUIRE(result.command);
+    CHECK(result.resulting_objects == 2);
+    UndoStack stack;
+    stack.execute(std::move(result.command), project);
+    CHECK(project.vector_objects.size() == 2);
+    REQUIRE(stack.undo(project));
+    CHECK(project.vector_objects.size() == 1);
+    CHECK(area_mm2(project.vector_objects[0]) == 200.0);
+}
+
+TEST_CASE("vector ops: polyline split refuses degenerate, missing and blind paths",
+          "[vector_ops]") {
+    document::Project project;
+    const ObjectId id = add_object(project, rect(0, 0, 20'000, 10'000), false);
+    CHECK_FALSE(make_polyline_split_command(project, {id}, {}).command);
+    CHECK_FALSE(make_polyline_split_command(project, {id}, {pt(1, 1)}).command);
+    CHECK_FALSE(make_polyline_split_command(project, {id}, {pt(1, 1), pt(1, 1)}).command);
+    CHECK_FALSE(make_polyline_split_command(project, {id}, {pt(50'000, -5'000), pt(50'000, 15'000)})
+                    .command);
+    // S'arrete dans la forme : simple entaille, refusee comme pour la coupe droite.
+    CHECK_FALSE(make_polyline_split_command(project, {id},
+                                            {pt(-2'000, 5'000), pt(8'000, 5'000), pt(9'000, 7'000)})
+                    .command);
+}
+
 TEST_CASE("vector ops: break apart separates disjoint pieces", "[vector_ops]") {
     document::Project project;
     const ObjectId id = add_object(project, rect(0, 0, 10'000, 10'000), true);

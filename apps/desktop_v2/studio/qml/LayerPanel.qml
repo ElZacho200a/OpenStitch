@@ -12,15 +12,18 @@ ColumnLayout {
     // ObjectTree owns its scrolling. Never let an undersized dock paint over its siblings.
     clip: true
     readonly property alias tree: objectTree
-    readonly property string layerId: objectTree.currentLayer.length > 0
-                                      ? objectTree.currentLayer
-                                      : (editor.layers.length > 0 ? editor.layers[0].id : "")
+    // Le calque actif du document : le même dans tous les canevas (clic sur un calque de l'arbre).
+    readonly property string layerId: editor.activeLayer
+    readonly property bool layerLocked: {
+        for (const l of editor.layers) if (l.id === panel.layerId) return l.locked
+        return false
+    }
 
     Connections {
         target: studio
         function onDocumentReplaced() {
-            objectTree.currentLayer = ""
             objectTree.dragActive = false
+            objectTree.anchorId = ""
             renameField.visible = false
             renameField.text = ""
         }
@@ -55,7 +58,8 @@ ColumnLayout {
             text: qsTr("Renommer")
             implicitHeight: 28
             enabled: panel.layerId.length > 0
-            onClicked: { renameField.text = ""; renameField.visible = true; renameField.forceActiveFocus() }
+            tooltip: qsTr("Renommer le calque actif (F2, ou double-clic dans l'arbre)")
+            onClicked: panel.startRename()
         }
         StudioButton {
             objectName: "layerRemoveButton"
@@ -63,7 +67,7 @@ ColumnLayout {
             implicitHeight: 28
             enabled: editor.layers.length > 1 && panel.layerId.length > 0
             disabledReason: qsTr("Le dernier calque du document ne peut pas être supprimé.")
-            onClicked: { editor.removeLayer(panel.layerId); objectTree.currentLayer = "" }
+            onClicked: editor.removeLayer(panel.layerId)
         }
         StudioButton {
             objectName: "layerUpButton"
@@ -85,11 +89,40 @@ ColumnLayout {
             objectName: "layerMoveHereButton"
             text: qsTr("Sélection ici")
             implicitHeight: 28
-            enabled: editor.selectedCount > 0 && panel.layerId.length > 0
+            enabled: editor.selectedCount > 0 && panel.layerId.length > 0 && !panel.layerLocked
+            disabledReason: panel.layerLocked ? qsTr("Le calque actif est verrouillé.") : ""
             tooltip: qsTr("Déplacer la sélection dans ce calque")
             onClicked: editor.moveSelectionToLayer(panel.layerId)
         }
+        StudioButton {
+            objectName: "layerIsolateButton"
+            text: qsTr("Isoler")
+            implicitHeight: 28
+            enabled: editor.layers.length > 1 && panel.layerId.length > 0
+            tooltip: qsTr("N'afficher que le calque actif ; un second clic réaffiche tout (Alt+clic sur l'oeil)")
+            onClicked: editor.isolateLayer(panel.layerId)
+        }
+        StudioButton {
+            objectName: "layerShowAllButton"
+            text: qsTr("Tout afficher")
+            implicitHeight: 28
+            enabled: editor.layers.some(l => !l.visible)
+            tooltip: qsTr("Réafficher tous les calques")
+            onClicked: editor.showAllLayers()
+        }
     }
+
+    function startRename() {
+        for (const l of editor.layers) if (l.id === panel.layerId) renameField.text = l.name
+        renameField.visible = true
+        renameField.forceActiveFocus()
+        renameField.selectAll()
+    }
+    // Raccourcis des calques, actifs quand le panneau est affiché (mêmes dans Vecteurs et Points).
+    Shortcut { sequence: "Ctrl+Shift+N"; enabled: panel.visible; onActivated: editor.addLayer(qsTr("Calque %1").arg(editor.layers.length + 1)) }
+    Shortcut { sequence: "F2"; enabled: panel.visible && panel.layerId.length > 0; onActivated: panel.startRename() }
+    Shortcut { sequence: "Ctrl+Alt+]"; enabled: panel.visible && panel.layerId.length > 0; onActivated: editor.moveLayer(panel.layerId, 1) }
+    Shortcut { sequence: "Ctrl+Alt+["; enabled: panel.visible && panel.layerId.length > 0; onActivated: editor.moveLayer(panel.layerId, -1) }
 
     StudioTextField {
         id: renameField

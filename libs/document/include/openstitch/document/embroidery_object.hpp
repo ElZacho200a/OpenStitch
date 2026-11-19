@@ -830,6 +830,35 @@ struct ColorBlendLink {
     bool operator==(const ColorBlendLink&) const = default;
 };
 
+// FONDU À LA FRONTIÈRE entre deux zones voisines (docs/studio-fondu-frontiere-spec.md §4.1) :
+// lien réciproque entre deux remplissages de formes DISTINCTES. Pure métadonnée : les points
+// sont toujours dérivés à la génération (`stitch_generation::boundary_blend_layer`). La courbe
+// est la même des deux côtés ; un lien non réciproque ou incohérent est sans effet
+// (`document::find_boundary_blend`). Une zone peut porter plusieurs liens, un par voisine
+// (`EmbroideryObject::boundary_blends`).
+// Sens des rangées dans la bande d'un fondu à la frontière (docs/studio-fondu-frontiere-spec.md
+// §6.3) :
+// - PerZone : chaque zone garde son angle (deux trames croisées si les angles diffèrent) ;
+// - Shared : les deux zones cousent à un angle commun (moyenne) dans toute la bande ;
+// - Rotating : les rangées pivotent progressivement de l'angle de A à celui de B en travers de
+//   la bande (rangées courbes communes aux deux couleurs) ;
+// - Interlaced : les rangées de la bande TRAVERSENT la frontière (perpendiculaires) et chacune
+//   passe d'une couleur à l'autre en un point qui varie d'une rangée à l'autre (passé empiétant).
+enum class BoundaryBlendRows : std::uint8_t { PerZone, Shared, Rotating, Interlaced };
+
+struct BoundaryBlendLink {
+    ObjectId partner;
+    Micrometers width_self{2'500}; // demi-bande dans CETTE zone, [0,5 ; 15] mm
+    DensityCurve curve{DensityCurve::Linear};
+    // Frontière TRACÉE à la main (lot L4), polyligne ouverte en coordonnées modèle, identique sur
+    // les deux liens. Vide : frontière calculée là où les deux zones se touchent.
+    std::vector<Vec2um> manual_frontier;
+    // Sens des rangées dans la bande, identique sur les deux liens.
+    BoundaryBlendRows rows{BoundaryBlendRows::PerZone};
+
+    bool operator==(const BoundaryBlendLink&) const = default;
+};
+
 // Groupe de fils N-aire : un seul identifiant logique, une couche cousue
 // par fil, et un ordre stable dans la séquence machine. Les couleurs et les
 // profils de points restent la propriété des couches (pas de données doublées).
@@ -888,6 +917,9 @@ struct EmbroideryObject {
     std::optional<thread_palette::ThreadKey> thread;
     std::optional<ColorBlendLink> color_blend;
     std::optional<MultiBlendLink> multi_blend;
+    // Fondus à la frontière de cette zone, un par voisine : au plus un lien par partenaire, liste
+    // TRIÉE par `partner.value` croissant (déterminisme). Vide = aucun fondu.
+    std::vector<BoundaryBlendLink> boundary_blends;
     std::optional<SemanticAnnotation> semantic; // reconnaissance persistée et facultative
 
     [[nodiscard]] bool is_tatami() const { return std::holds_alternative<TatamiParams>(params); }

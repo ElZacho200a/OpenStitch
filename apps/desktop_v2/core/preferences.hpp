@@ -20,7 +20,8 @@ namespace openstitch::desktop_v2 {
 enum class UiDensity { Compact, Normal, Spacious };
 
 struct Preferences {
-    std::string theme{"system"}; // "system" | "light" | "dark"
+    std::string theme{"system"};       // apparence : "system" | "light" | "dark"
+    std::string themeId{"neo-studio"}; // thème actif (moteur de thèmes, core/theme_library)
     UiDensity density{UiDensity::Normal};
     RenderSettings render; // qualité du rendu réaliste de l'aperçu
 

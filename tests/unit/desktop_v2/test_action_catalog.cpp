@@ -474,3 +474,37 @@ TEST_CASE("a whole text is removed with all its letters in one undo step",
     CHECK(error.find("Sélectionnez") != std::string::npos);
     CHECK(contextAction("text.remove") != nullptr);
 }
+
+TEST_CASE("boundary blend actions link, edit and unlink two neighbouring zones",
+          "[desktop_v2][actions]") {
+    auto s = blank();
+    const auto a = *createdObjectId(s.applyBatch(batchAddRect({-10, 0}, 20, 20), "A").report);
+    const auto b = *createdObjectId(s.applyBatch(batchAddRect({10, 0}, 20, 20), "B").report);
+    REQUIRE(
+        s.applyBatch(R"({"schema":"openstitch.batch/1","operations":[{"op":"set_color","object":)" +
+                         std::to_string(b) + R"(,"rgb":"#C81E1E"}]})",
+                     "Couleur")
+            .committed);
+
+    // Une seule zone : refus avant tout lot.
+    std::string error;
+    ActionContext one;
+    one.ids = {a};
+    CHECK(buildAction(*findAction("fade.boundary"), {}, one, error).empty());
+    CHECK(error.find("deux") != std::string::npos);
+
+    const auto depth = s.undoNames().size();
+    REQUIRE(
+        run(s, "fade.boundary", {{"width_a", "2"}, {"width_b", "3"}, {"curve", "smooth"}}, {a, b})
+            .committed);
+    CHECK(s.undoNames().size() == depth + 1);
+    const auto* zb = s.project().findEmbroidery(ObjectId{b});
+    REQUIRE_FALSE(zb->boundary_blends.empty());
+    CHECK(zb->boundary_blends.front().width_self ==
+          Micrometers{2'000}); // zone principale = dernière
+    CHECK(zb->boundary_blends.front().curve == document::DensityCurve::Smooth);
+
+    REQUIRE(run(s, "fade.boundary_remove", {}, {a}).committed);
+    CHECK(s.project().findEmbroidery(ObjectId{a})->boundary_blends.empty());
+    CHECK(s.project().findEmbroidery(ObjectId{b})->boundary_blends.empty());
+}

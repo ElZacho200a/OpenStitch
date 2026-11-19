@@ -207,9 +207,8 @@ void report_travel(const document::Project& project, const stitch::StitchSequenc
 
 int main(int argc, char** argv) {
     if (argc < 2) {
-        std::fprintf(
-            stderr,
-            "usage: openstitch-bench <image> [--reps N] [--dpi D] [--order] [--satin-bands]\n");
+        std::fprintf(stderr, "usage: openstitch-bench <image> [--reps N] [--dpi D] [--order] "
+                             "[--satin-bands] [--knockout]\n");
         return 2;
     }
     std::string imagePath = argv[1];
@@ -217,6 +216,7 @@ int main(int argc, char** argv) {
     double dpi = 96.0;
     bool orderOnly = false;
     bool satinBands = false;
+    bool knockout = false;
     std::string saveOsp;
     std::string fromOsp;
     for (int i = 2; i < argc; ++i) {
@@ -229,6 +229,8 @@ int main(int argc, char** argv) {
         } else if (std::strcmp(argv[i], "--satin-bands") == 0) {
             satinBands =
                 true; // option « Satin automatique » du dialogue (essai de satin par région)
+        } else if (std::strcmp(argv[i], "--knockout") == 0) {
+            knockout = true; // option « Retirer les recouvrements » (HP-ENG-011)
         } else if (std::strcmp(argv[i], "--save-osp") == 0 && i + 1 < argc) {
             saveOsp = argv[++i];
         } else if (std::strcmp(argv[i], "--from-osp") == 0 && i + 1 < argc) {
@@ -346,6 +348,7 @@ int main(int argc, char** argv) {
         const auto cand = segmentation::background_candidate(seg);
         opts.skip_largest_region = cand && cand->recommended;
         opts.satin_bands = satinBands;
+        opts.remove_overlaps = knockout;
 
         autodigitize::AutoResult auto_result;
         measure("auto_digitize", std::max(1, reps / 2), [&] {
@@ -421,6 +424,41 @@ int main(int argc, char** argv) {
                      bySize[bySize.size() / 2].second);
             touchOne("effective_sequence (le plus gros objet modifié)", bySize.back().second);
         }
+        // Satins et auto-satin : cache à clé (paramètres effectifs, dernière commande). On touche
+        // l'objet médian de chaque famille présente.
+        const auto touchFamily = [&](const char* label, auto isFamily, auto edit) {
+            std::vector<std::size_t> idx;
+            for (std::size_t i = 0; i < project.embroidery_objects.size(); ++i) {
+                if (isFamily(project.embroidery_objects[i])) {
+                    idx.push_back(i);
+                }
+            }
+            if (idx.empty()) {
+                return;
+            }
+            document::Project one = project;
+            auto& obj = one.embroidery_objects[idx[idx.size() / 2]];
+            bool flip = false;
+            measure(label, reps, [&] {
+                flip = !flip;
+                edit(obj, flip);
+                (void)stitch_generation::effective_sequence(one);
+            });
+        };
+        touchFamily(
+            "effective_sequence (1 satin médian modifié)",
+            [](const document::EmbroideryObject& o) { return o.is_satin(); },
+            [](document::EmbroideryObject& o, bool flip) {
+                std::get<document::SatinParams>(o.params).density =
+                    Micrometers{400 + (flip ? 20 : 0)};
+            });
+        touchFamily(
+            "effective_sequence (1 auto-satin médian modifié)",
+            [](const document::EmbroideryObject& o) { return o.is_auto_satin(); },
+            [](document::EmbroideryObject& o, bool flip) {
+                std::get<document::AutoSatinParams>(o.params).spacing =
+                    Micrometers{400 + (flip ? 20 : 0)};
+            });
         const auto cs = stitch_generation::chunk_cache_stats();
         std::printf("  cache : %zu objets, %.1f Mo | %zu succès, %zu échecs\n", cs.entries,
                     static_cast<double>(cs.bytes) / (1024.0 * 1024.0), cs.hits, cs.misses);

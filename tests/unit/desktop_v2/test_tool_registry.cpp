@@ -78,8 +78,9 @@ TEST_CASE("every legacy canvas tool has a V2 equivalent", "[desktop_v2][tools][p
         REQUIRE_FALSE(name.empty());
         CHECK(registry.findByLegacy(name) != nullptr);
     }
-    // + retouche de points, nœuds du contour, axe du fondu et pinceau de frontière, propres à la V2
-    CHECK(registry.tools().size() == 26);
+    // + retouche de points, nœuds du contour, axe du fondu, pinceau de frontière et lasso, propres
+    // à la V2
+    CHECK(registry.tools().size() == 27);
 }
 
 TEST_CASE("workspaces always expose selection and pan", "[desktop_v2][tools]") {

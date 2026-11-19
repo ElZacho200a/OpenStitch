@@ -14,11 +14,55 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+  # Commit vcpkg epingle = builtin-baseline de vcpkg.json (a garder identique). Un clone de master
+  # change les scripts/ports a chaque commit amont, donc les empreintes ABI des paquets, donc le cache.
+  # Cache binaire : backend `files` + actions/cache (le backend `x-gha` a ete retire de vcpkg ;
+  # voir docs/source/build-vcpkg-audit.md). VCPKG_BINARY_SOURCES est fixe dans l'etape « Set up vcpkg ».
+  VCPKG_COMMIT: 4e82e29f14eac2b3422f18f72c7524d04f19924e
+
+permissions:
+  contents: read
 
 jobs:
+  # Aiguillage rapide (quelques secondes) : une PR qui ne touche que des fichiers sans effet sur
+  # le build ni sur les tests (voir docs/source/build-ci.md) saute les builds lourds. Tout push sur
+  # main, tout changement de workflow/CMake/code, et tout doute => validation complète.
+  changes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Classer les fichiers modifiés
+        id: filter
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          code=true
+          if [ "$EVENT" = "pull_request" ]; then
+            if files="$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" --jq '.[].filename')" && [ -n "$files" ]; then
+              # Chemins sans effet sur le build/les tests. Tout le reste compte comme du code.
+              # (docs/source, docs/desktop-v2, docs/adr sont lus par des tests CTest : jamais exclus.)
+              if ! echo "$files" | grep -Evq '^(\.claude/|docs/agents/|docs/ai/|docs/assets/|\.github/ISSUE_TEMPLATE/|[^/]+\.md$)'; then
+                code=false
+              fi
+            else
+              echo '::warning::Liste des fichiers indisponible : validation complète par prudence'
+            fi
+          fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "Validation lourde requise : $code"
+
   windows-msvc:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: windows-2022
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
 
@@ -35,11 +79,23 @@ jobs:
           version: "6.8.3"
           arch: win64_msvc2022_64
 
+      - name: Restore vcpkg binary cache
+        id: vcpkg-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/vcpkg-bincache
+          key: vcpkg-windows-${{ hashFiles('vcpkg.json') }}-${{ env.VCPKG_COMMIT }}
+          restore-keys: vcpkg-windows-
+
       - name: Set up vcpkg
         shell: pwsh
         run: |
           git clone https://github.com/microsoft/vcpkg.git "$env:RUNNER_TEMP/vcpkg"
           if ($LASTEXITCODE -ne 0) { throw 'Unable to clone vcpkg' }
+          git -C "$env:RUNNER_TEMP/vcpkg" checkout --detach $env:VCPKG_COMMIT
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to check out the pinned vcpkg commit' }
+          New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP/vcpkg-bincache" | Out-Null
+          "VCPKG_BINARY_SOURCES=clear;files,$env:RUNNER_TEMP/vcpkg-bincache,readwrite" | Out-File -Append -FilePath $env:GITHUB_ENV
           # GitHub release assets intermittently return 502/504. Retry only the download,
           # never the build or the tests, and fail if the tool is still unavailable.
           $ready = $false
@@ -93,6 +149,15 @@ jobs:
             Write-Warning "Release build attempt $attempt failed; retrying after transient dependency download outage..."
             Start-Sleep -Seconds 20
           }
+
+      # Sauvegarde meme si la compilation echoue (les paquets vcpkg deja construits restent utiles) ;
+      # uniquement sur main pour ne pas saturer le quota de 10 Go du depot.
+      - name: Save vcpkg binary cache
+        if: ${{ !cancelled() && github.ref == 'refs/heads/main' && steps.vcpkg-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/vcpkg-bincache
+          key: vcpkg-windows-${{ hashFiles('vcpkg.json') }}-${{ env.VCPKG_COMMIT }}
 
       # Disponible des la compilation, meme si les tests suivants echouent (build Release seul).
       # La publication stable reste conditionnee au succes de tous les jobs.
@@ -217,8 +282,11 @@ jobs:
   # Garde-fou de portabilité : le cœur et la CLI doivent compiler sans Qt
   # et sans dépendance Windows involontaire.
   linux-core:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     # Pinned runner: avoids silently raising the glibc baseline of the binary.
     runs-on: ubuntu-24.04
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
 
@@ -229,11 +297,22 @@ jobs:
             core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
+      - name: Restore vcpkg binary cache
+        id: vcpkg-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/vcpkg-bincache
+          key: vcpkg-linux-${{ hashFiles('vcpkg.json') }}-${{ env.VCPKG_COMMIT }}
+          restore-keys: vcpkg-linux-
+
       - name: Set up vcpkg
         run: |
           git clone https://github.com/microsoft/vcpkg.git "$RUNNER_TEMP/vcpkg"
+          git -C "$RUNNER_TEMP/vcpkg" checkout --detach "$VCPKG_COMMIT"
           "$RUNNER_TEMP/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
           echo "VCPKG_ROOT=$RUNNER_TEMP/vcpkg" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/vcpkg-bincache"
+          echo "VCPKG_BINARY_SOURCES=clear;files,$RUNNER_TEMP/vcpkg-bincache,readwrite" >> "$GITHUB_ENV"
 
       - name: Prefetch Boost CMake from official codeload (best effort)
         shell: bash
@@ -269,6 +348,13 @@ jobs:
             echo "Configure attempt $attempt failed; retrying external downloads…" >&2
             sleep 15
           done
+
+      - name: Save vcpkg binary cache
+        if: ${{ !cancelled() && github.ref == 'refs/heads/main' && steps.vcpkg-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/vcpkg-bincache
+          key: vcpkg-linux-${{ hashFiles('vcpkg.json') }}-${{ env.VCPKG_COMMIT }}
 
       - name: Build
         run: cmake --build --preset linux-core -j "$(nproc)"
@@ -320,6 +406,7 @@ jobs:
 
   format:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - name: clang-format (vérification, sans modification)
@@ -333,15 +420,43 @@ jobs:
           esac
           git ls-files '*.cpp' '*.hpp' | xargs clang-format-18 --dry-run --Werror
 
+  # Point de contrôle unique (à exiger dans la protection de branche) : vert seulement si les trois
+  # jobs ont réussi, ou s'ils ont été sautés par l'aiguillage `changes` (PR sans code). Un job
+  # échoué, annulé ou un aiguillage en erreur rend ce contrôle rouge : rien n'est masqué.
+  ci-gate:
+    name: CI complète
+    needs: [changes, windows-msvc, linux-core, format]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Vérifier les résultats
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          CODE: ${{ needs.changes.outputs.code }}
+          WINDOWS: ${{ needs.windows-msvc.result }}
+          LINUX: ${{ needs.linux-core.result }}
+          FORMAT: ${{ needs.format.result }}
+        run: |
+          echo "changes=$CHANGES code=$CODE windows=$WINDOWS linux=$LINUX format=$FORMAT"
+          [ "$CHANGES" = success ] || { echo 'aiguillage en échec' >&2; exit 1; }
+          [ "$FORMAT" = success ] || { echo 'format en échec' >&2; exit 1; }
+          if [ "$CODE" = true ]; then
+            [ "$WINDOWS" = success ] && [ "$LINUX" = success ] || { echo 'build/tests en échec' >&2; exit 1; }
+          else
+            [ "$WINDOWS" = skipped ] && [ "$LINUX" = skipped ] || { echo 'résultat inattendu' >&2; exit 1; }
+          fi
+
   # Publie l'exécutable Windows sur une release GitHub "latest", uniquement
   # une fois que build + tests + garde-fou Linux + formatage sont tous verts
   # sur main. La release est glissante : chaque push sur main remplace le
   # tag et les binaires précédents.
   release:
     name: Release GitHub (dernier build de main)
-    needs: [windows-msvc, linux-core, format]
+    needs: [windows-msvc, linux-core, format, ci-gate]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     concurrency:
       group: openstitch-latest-release
       cancel-in-progress: false

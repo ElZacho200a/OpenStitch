@@ -587,17 +587,17 @@ TEST_CASE("multicolor directional: no long stitched bridges across inactive colo
         bool connected = false;
         Vec2um last{};
         double longest = 0.0;
-        for (const auto& command : result->commands) {
-            if (command.type != stitch::CommandType::Stitch) {
+        for (const auto& cmd : result->commands) {
+            if (cmd.type != stitch::CommandType::Stitch) {
                 connected = false;
                 continue;
             }
             if (connected) {
-                const double dx = double(command.pos.x.value) - double(last.x.value);
-                const double dy = double(command.pos.y.value) - double(last.y.value);
+                const double dx = double(cmd.pos.x.value) - double(last.x.value);
+                const double dy = double(cmd.pos.y.value) - double(last.y.value);
                 longest = std::max(longest, std::hypot(dx, dy));
             }
-            last = command.pos;
+            last = cmd.pos;
             connected = true;
         }
         CAPTURE(static_cast<int>(texture), longest);
@@ -916,6 +916,36 @@ TEST_CASE("multicolor gradient object: satin interlaced derives rails when none 
     const auto stitched = stitch_generation::effective_sequence(f.project);
     REQUIRE(stitched);
     CHECK(stitched->commands.size() > 10);
+}
+
+TEST_CASE("multicolor gradient object: an auto satin becomes an interlaced satin",
+          "[project_ops][gradient][multicolor][object][satin]") {
+    auto f = rectangle_fill();
+    f.project.embroidery_objects[0].params = document::AutoSatinParams{};
+    REQUIRE(f.project.embroidery_objects[0].is_auto_satin());
+
+    CHECK(project_ops::multicolor_gradient_incompatibility(
+              f.project, f.fill, document::GradientMethod::SatinInterlaced)
+              .empty());
+    const auto defaults = project_ops::default_multicolor_gradient(f.project, f.fill);
+    REQUIRE(defaults);
+    CHECK(defaults->method == document::GradientMethod::SatinInterlaced);
+
+    auto spec = *defaults;
+    spec.satin_density = Micrometers{400};
+    commands::UndoStack stack;
+    auto created = project_ops::make_create_multicolor_gradient_command(f.project, f.fill, spec);
+    REQUIRE(created);
+    stack.execute(std::move(*created), f.project);
+
+    const auto group = document::find_gradient_group(f.project, f.fill);
+    REQUIRE(group);
+    REQUIRE(group->layers.size() == 2);
+    for (const auto id : group->layers) {
+        const auto* layer = f.project.findEmbroidery(id);
+        REQUIRE(layer);
+        CHECK(layer->is_satin());
+    }
 }
 
 TEST_CASE(

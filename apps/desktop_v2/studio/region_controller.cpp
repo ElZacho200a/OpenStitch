@@ -166,11 +166,18 @@ void RegionController::refresh() {
         regions_.append(
             QVariantMap{{QStringLiteral("id"), static_cast<qulonglong>(info.id)},
                         {QStringLiteral("color"), hexOf(info.rgb)},
-                        {QStringLiteral("pixels"), static_cast<qulonglong>(info.pixels)}});
+                        {QStringLiteral("pixels"), static_cast<qulonglong>(info.pixels)},
+                        {QStringLiteral("locked"), locked_.find(info.id) != locked_.end()}});
     }
     // Élague la sélection : une région fusionnée ou supprimée n'existe plus.
     const auto before = selected_.size();
     std::erase_if(selected_, [&](std::uint64_t id) {
+        return !project.imageSource().segmentation ||
+               !project.imageSource().segmentation->find(RegionId{id});
+    });
+    // Idem pour le verrouillage : état de session, pas de raison de le garder pour une région
+    // qui n'existe plus (fusionnée, supprimée).
+    std::erase_if(locked_, [&](std::uint64_t id) {
         return !project.imageSource().segmentation ||
                !project.imageSource().segmentation->find(RegionId{id});
     });
@@ -226,12 +233,53 @@ void RegionController::refresh() {
     }
 }
 
+// --- Verrouillage (état de session) --------------------------------------------------------
+
+void RegionController::applyLockFlags() {
+    for (int i = 0; i < regions_.size(); ++i) {
+        auto row = regions_[i].toMap();
+        const auto id = idOf(row.value(QStringLiteral("id")).toDouble());
+        row[QStringLiteral("locked")] = locked_.find(id) != locked_.end();
+        regions_[i] = row;
+    }
+}
+
+bool RegionController::isRegionLocked(double id) const {
+    return locked_.find(idOf(id)) != locked_.end();
+}
+
+void RegionController::toggleLockRegion(double id) {
+    const auto region = idOf(id);
+    if (region == 0) {
+        return;
+    }
+    if (locked_.erase(region) == 0) {
+        locked_.insert(region);
+        // Verrouiller retire la région de la sélection : on ne retouche pas une région verrouillée.
+        const auto found = std::find(selected_.begin(), selected_.end(), region);
+        if (found != selected_.end()) {
+            selected_.erase(found);
+            if (mergeTargetMode_) {
+                setMergeTargetMode(false);
+            }
+            emit selectionChanged();
+        }
+    }
+    applyLockFlags();
+    emit regionsChanged();
+}
+
 // --- Sélection ----------------------------------------------------------------------------
 
 void RegionController::selectRegion(double id, const QString& mode) {
     const auto region = idOf(id);
     const auto& seg = studio_.session().project().imageSource().segmentation;
     if (!seg || region == 0 || !seg->find(RegionId{region})) {
+        return;
+    }
+    if (locked_.find(region) != locked_.end()) {
+        setMessage(QStringLiteral("Région verrouillée : déverrouillez-la pour la sélectionner."),
+                   true);
         return;
     }
     const auto found = std::find(selected_.begin(), selected_.end(), region);
@@ -286,6 +334,7 @@ void RegionController::selectSameColor() {
             }
         }
     }
+    std::erase_if(all, [this](std::uint64_t id) { return locked_.find(id) != locked_.end(); });
     selected_ = std::move(all);
     emit selectionChanged();
 }
@@ -294,7 +343,10 @@ void RegionController::selectNeighbours() {
     if (selected_.empty()) {
         return;
     }
-    selected_ = neighboursOfSet(studio_.session().project(), selected_);
+    auto neighbours = neighboursOfSet(studio_.session().project(), selected_);
+    std::erase_if(neighbours,
+                  [this](std::uint64_t id) { return locked_.find(id) != locked_.end(); });
+    selected_ = std::move(neighbours);
     emit selectionChanged();
 }
 
@@ -314,9 +366,16 @@ bool RegionController::stepRegion(int direction) {
             }
         }
     }
-    const int next = ((index + direction) % count + count) % count;
-    selectRegion(regions_[next].toMap().value(QStringLiteral("id")).toDouble());
-    return true;
+    // Saute les régions verrouillées ; si elles le sont toutes, rien à sélectionner.
+    for (int step = 0; step < count; ++step) {
+        index = ((index + direction) % count + count) % count;
+        const auto candidate = idOf(regions_[index].toMap().value(QStringLiteral("id")).toDouble());
+        if (locked_.find(candidate) == locked_.end()) {
+            selectRegion(static_cast<double>(candidate));
+            return true;
+        }
+    }
+    return false;
 }
 
 bool RegionController::selectNextRegion() {
@@ -332,12 +391,16 @@ void RegionController::stepBrushRadius(int steps) {
 }
 
 void RegionController::invertSelection() {
-    selected_ = invertRegionSet(studio_.session().project(), selected_);
+    auto inverted = invertRegionSet(studio_.session().project(), selected_);
+    std::erase_if(inverted, [this](std::uint64_t id) { return locked_.find(id) != locked_.end(); });
+    selected_ = std::move(inverted);
     emit selectionChanged();
 }
 
 void RegionController::selectAll() {
-    selected_ = allRegionIds(studio_.session().project());
+    auto all = allRegionIds(studio_.session().project());
+    std::erase_if(all, [this](std::uint64_t id) { return locked_.find(id) != locked_.end(); });
+    selected_ = std::move(all);
     emit selectionChanged();
 }
 
@@ -448,6 +511,11 @@ QString RegionController::mergeSelectedInto(double target) {
         setMessage(text, true);
         return text;
     }
+    if (isRegionLocked(target)) {
+        const auto text = QStringLiteral("Région cible verrouillée : déverrouillez-la d'abord.");
+        setMessage(text, true);
+        return text;
+    }
     // The target keeps its region ID and colour; the source is absorbed in
     // one undoable document command, rather than merging into an arbitrary
     // first neighbour.
@@ -461,9 +529,17 @@ QString RegionController::mergeSelectedInto(double target) {
 
 QString RegionController::mergeWithNeighbour(double id) {
     const auto region = idOf(id);
-    const auto neighbours = neighbourRegions(studio_.session().project(), region);
+    if (locked_.find(region) != locked_.end()) {
+        const auto text = QStringLiteral("Région verrouillée : déverrouillez-la d'abord.");
+        setMessage(text, true);
+        return text;
+    }
+    const auto all = neighbourRegions(studio_.session().project(), region);
+    std::vector<std::uint64_t> neighbours;
+    std::ranges::copy_if(all, std::back_inserter(neighbours),
+                         [this](std::uint64_t n) { return locked_.find(n) == locked_.end(); });
     if (neighbours.empty()) {
-        const auto text = QStringLiteral("Cette région n'a pas de voisine.");
+        const auto text = QStringLiteral("Cette région n'a pas de voisine (libre).");
         setMessage(text, true);
         return text;
     }

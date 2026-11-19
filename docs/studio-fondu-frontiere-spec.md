@@ -1,6 +1,6 @@
 # Fondu à la frontière entre deux zones — spécification
 
-Statut : **en cours**. Rattachement roadmap : HP-STI-011 (mélange de couleurs), dépend de
+Statut : **lots L1a à L5 livrés** (2026-11-17), recette Studio réelle et essai sur tissu à faire. Rattachement roadmap : HP-STI-011 (mélange de couleurs), dépend de
 HP-STI-010 (dégradé de densité).
 
 - 2026-11-16, **L1a livré** (branche `feat/fondu-frontiere-l1a`) : `RowMask`,
@@ -50,6 +50,51 @@ HP-STI-010 (dégradé de densité).
   densité sera refusée en L2 (combinaison non définie). Tests `[directional]` : masque nul
   identique, demi-densité ≈ moitié des lignes, tatami contre directionnel ≈ une couche,
   déterminisme.
+- 2026-11-16, **L2 livré** (branche `feat/fondu-frontiere-l2`, empilée sur L1c) :
+  `document::BoundaryBlendLink` (partenaire, demi-bande de cette zone, courbe) sur
+  `EmbroideryObject::boundary_blend` ; `document::find_boundary_blend` (liens réciproques, deux
+  formes distinctes, tatami ou directionnel sans dégradé de densité, même courbe, largeurs dans
+  les bornes) ; `commands::SetBoundaryBlendLinkCommand` (les deux liens en un pas
+  d'annulation) ; `project_ops::make_boundary_blend_command`, `make_remove_boundary_blend_command`,
+  `boundary_blend_refusal`, `boundary_blend_info` ; opérations `blend_boundary` et
+  `unblend_boundary` ; champ `boundary_blend` de `project inspect` ; champ `.osp`
+  `boundaryBlend` (facultatif). Génération : `stitch_generation::boundary_blend_layer`, calculé
+  toujours dans le même sens (zone d'identifiant le plus petit en A) pour que les deux couches
+  viennent du même plan ; sous-couches sur la zone seule ; pas de cache de séquence pour ces
+  zones (elles dépendent de la voisine). Copier-coller, insertion de design : le lien suit
+  seulement si les deux zones sont copiées ensemble. Tests `[blend]` (7 cas) : un pas
+  d'annulation, refus codés, génération modifiée près de la frontière seulement et
+  déterministe, retrait et lien orphelin, aller-retour `.osp`, opérations, `inspect`.
+- Écarts à la spec dans L2 :
+  - **Pas de texture** dans le lien pour l'instant (le champ de densité ne l'applique pas
+    encore) ; à ajouter avec le panneau Studio si le besoin se confirme.
+  - **Suppression d'une zone** : le lien de la voisine devient orphelin et sans effet, au lieu
+    d'être effacé ; un « annuler » de la suppression rend le fondu actif sans autre commande.
+  - **Évidement (knockout)** et cache de séquence ignorés pour les zones liées (v1).
+  - Le SVG doré reste à faire ; il demande une forme d'essai réaliste, prévue avec la recette
+    Studio (L3).
+- 2026-11-17, **L3 livré** (Studio) : `BoundaryBlendController` (propriétés `canCreate`,
+  `refusal`, `hasBlend`, `active`, largeurs, transition, frontière ; `create`, `edit`, `remove`),
+  panneau `BoundaryBlendPanel.qml` dans l'inspecteur (deux zones sélectionnées : réglages et
+  « Créer le fondu » ; zone liée : résumé, réglages immédiats, « Retirer le fondu »), actions du
+  catalogue `fade.boundary` et `fade.boundary_remove` (palette Ctrl+K, menus). Chaque action est
+  un pas d'annulation. Tests : `test_desktop_v2_studio_boundary_blend` (QTest headless) et
+  `boundary blend actions…` dans `test_desktop_v2_core`. **Pas encore** de tracé de la
+  frontière ni de poignées de largeur sur le canevas : la frontière se lit dans le panneau.
+- 2026-11-17, **L4 livré** (frontière tracée) : `BoundaryBlendLink::manual_frontier` (identique
+  sur les deux liens, vide = calculée), `BoundaryBlendSpec::manual_frontier`, refus
+  `E_BLEND_FRONTIER_SHORT` et `E_BLEND_FRONTIER_FAR`, clé `.osp` `boundaryBlend.frontier`
+  (µm), argument `frontier` de `blend_boundary` (mm, `[]` = calculée), `manual_frontier` dans
+  `inspect`, `setFrontier` / `clearFrontier` / `manualFrontier` dans le contrôleur Studio. Les
+  zones peuvent ne pas se toucher. Reste : le geste de tracé sur le canevas.
+- 2026-11-17, **L5 livré** (proposition depuis l'image) : `project_ops::propose_boundary_blends`
+  lit l'image source en travers de chaque frontière commune (un profil par mm, ±6 mm) ; une
+  transition de couleur d'au moins 1,5 mm (10 %-90 %) donne une proposition, demi-bandes
+  reprises de la mesure de chaque côté ; un bord net ne donne rien. Opération
+  `propose_boundary_blends` (`apply`, `min_transition`) et action Studio `fade.boundary_auto`
+  (pose tout en un pas d'annulation). Refus `E_BLEND_NO_IMAGE`, `E_BLEND_NO_PROPOSAL`. Tests sur
+  image synthétique : transition de 6 mm proposée avec ≈ 2,4 mm de chaque côté, bord net
+  ignoré. Pas encore d'appel depuis la numérisation automatique elle-même.
 - Écart au découpage initial : le **branchement du masque dans le directionnel** passe en
   L1b. La grille partagée actuelle classe ses rangées par rang dans la région ; l'ancrer
   changerait la sortie des fondus directionnels existants, ce qui doit se faire avec la
@@ -224,6 +269,141 @@ autre limite : outil « Tracer la frontière » (polyligne ou Bézier) stocké d
 6. **Cache** : la clé de génération de A inclut désormais la géométrie et les paramètres de B
    (et inversement). Garde à ajouter : modifier B invalide A.
 
+### 6.2 Corrections après la première recette Studio (2026-11-18)
+
+Captures Studio d'un motif à limite douce et courbe (deux tatamis d'angles différents) : longs
+traits le long de la frontière, filet de tissu nu, liaisons visibles. Causes et corrections :
+
+- **Sous-couche le long de la frontière** : calculée sur la zone entière, son tour de bord
+  suivait la frontière, là où la couche supérieure clairsemée ne la couvre plus. Elle est
+  désormais calculée sur la zone privée de sa demi-bande (`BoundaryBlendLayer::underlay_zones`).
+- **Couloir entre zones** : les zones arrivent rentrées de leur retrait de bord ; le couloir
+  qui les sépare n'appartenait à aucune région prolongée. Les régions prolongées sont prises
+  dans la fermeture de A ∪ B (écart ≤ tolérance de contact).
+- **Couche presque vide** : à densité `d`, une rangée gardée sur ≈ `1/d`, d'où des liaisons de
+  plusieurs millimètres. Densité plancher `0,2` (en dessous rien, au-dessus de `0,8` tout ; le
+  partage reste exact), liaison à au plus 6 rangées.
+- **Superposition** (grilles différentes) : deux couches indépendantes à leur part exacte
+  laissent des creux communs. Chaque couche garde `min(1 ; 1,5 × part)` : tissu nu < 0,5 % sur
+  le banc, ≈ 1,15 couche en moyenne dans la bande.
+
+Mesure : `test_boundary_blend.cpp`, cas `seam has no long links nor bare fabric` (frontière
+droite, brisée, zones séparées d'un couloir ; angles égaux, croisés, quelconques). Reste à
+vérifier sur tissu.
+
+### 6.3 Sens des rangées dans la bande (`BoundaryBlendRows`)
+
+Deux tatamis d'angles différents, en `PerZone` (comportement des lots L1b-L1c, inchangé octet pour
+octet) : chaque couleur garde son angle dans la bande, deux trames croisées en superposition
+renforcée (×1,5). Deux autres modes, pour deux zones **tatami** :
+
+- **Structure commune** (`fill_boundary_blend`, `boundary_blend.cpp`). Chaque couche est cousue en
+  deux parties : son **cœur** (zone privée de sa demi-bande, son angle, sans masque, tatami
+  habituel), puis la **bande commune** : `A ∩ demi-bande(w_A)` réunie à la fermeture de `A ∪ B`
+  privée de `A` dans `demi-bande(w_B)` (le couloir de retrait est donc cousu), élargie de
+  `kBoundaryBlendSeamOverlap` = 0,3 mm sur chaque cœur. Les deux couches cousent la bande sur les
+  **mêmes rangées** (même région, mêmes paramètres, rangées indépendantes du masque) : A garde la
+  tranche basse du masque `[0 ; d_A)`, B la tranche haute. **Partition exacte**, pas de
+  superposition ni de renfort. Dans le recouvrement, `d_A` vaut 1 côté A (0 côté B) : seule la
+  couleur du cœur y coud. Paramètres de la bande : ceux de A (zone d'identifiant le plus petit :
+  longueur de point, décalage, compensation), écart = le plus petit des deux.
+- **Shared** : rangées droites à l'angle commun, moyenne circulaire des deux angles modulo π
+  (`boundary_blend_shared_angle` : milieu de l'arc le plus court ; à π/2 d'écart exact, celui
+  qui part de A dans le sens direct). Grille tatami ancrée. **Cassure d'angle acceptée** au bord
+  de bande, entre le cœur et la bande (au plus la moitié de l'écart des angles).
+- **Rotating** : rangées courbes, orientation `θ(p) = θ_A + Δ × u(t)` (`boundary_blend_row_angle`)
+  avec `Δ` = écart de B à A ramené dans ]-π/2 ; π/2], `t` la variable de la densité (distance
+  signée) et `u(t) = 3t² - 2t³` (tangente nulle aux bords : pas de cassure avec le cœur). Les
+  lignes sont tracées une seule fois par géométrie par le remplissage directionnel à champ imposé
+  (`fill_directional_field` : un secteur, champ échantillonné puis interpolé comme celui des
+  guides, lignes de courant de Jobard-Lefer) ; liaisons sous masque plafonnées à 2 mm (au lieu de
+  2,4 mm) : les extrémités des lignes courbes s'espacent le long des bords, une liaison plus
+  longue devient un saut. Le directionnel ordinaire est inchangé.
+- **Interlaced** (entrelacé, passé empiétant) : en Shared et Rotating, sur une frontière presque
+  parallèle aux rangées, chaque rangée de la bande reste d'une seule couleur et le dégradé
+  apparaît en bandes alternées (recette Studio). Ici les rangées **traversent** la frontière :
+  orientation perpendiculaire à la tangente de la frontière lissée autour du point
+  (`boundary_blend_cross_angle` : moyenne des directions des segments en angles doublés, pondérée
+  par la longueur et `exp(-((d - d_min)/σ)²)`, `σ` = demi-bande moyenne ; la simple perpendiculaire
+  au point le plus proche croisait les rangées du côté concave d'une frontière courbe). Chaque
+  rangée passe de A à B là où `d_A` franchit son seuil (Weyl) : les points de passage s'étalent
+  sur toute la largeur de la bande. Pas de plancher de densité (`kMinLayerDensity`) : il alignerait
+  les bouts de 20 % des rangées sur une même ligne, et une couche clairsemée ne relie ici aucune
+  rangée lointaine. **Densité adaptative** : en éventail du côté convexe, les rangées s'écartent ;
+  le traceur sème une nouvelle rangée dès que l'écart dépasse 2 × `kInterlacedFillSeed` (0,5) ×
+  l'écart voulu au lieu de 1,8 × (`fill_directional_field(..., fill_seed)`), écart régularisé.
+  Mesure sur le motif de recette (DST, fil de 0,4 mm, tissu nu du motif entier) : PerZone 7,24 %,
+  Shared 7,03 %, Rotating 7,46 % ; Interlaced 8,98 % au seuil 0,9, 7,81 % à 0,6, **7,31 % à 0,5**,
+  pour 5 453 points contre 4 430 en PerZone et 4 684 en Rotating (+23 % de points : bande plus
+  dense et morceaux de rangée plus courts). Cassure d'angle au bord de bande, comme Shared.
+- **Zone directionnelle** : ses lignes de courant lui sont propres, repli sur `PerZone`.
+- **Sous-couche** : inchangée (zone privée de sa demi-bande, §6.2).
+- **Coût** : cœur et bande sont deux remplissages successifs, reliés par un saut dans chaque couche.
+
+Mesures (`test_boundary_blend.cpp`, tag `[rows]` ; frontière droite et brisée, angles
+0,785 / -0,52 et 0 / π/2) : longueur de rangée A + B dans une fenêtre de la bande = rangées
+pleines de la bande à 3 % près (`boundary_blend_band_rows`), liaisons visibles ≤ 2,3 mm, tissu
+nu ≤ 1 % ; Rotating : au milieu de la bande l'angle médian des points est à 0,2 rad de l'angle
+moyen (et à plus de 0,25 rad des deux angles), à 0,05-0,55 mm des bords de bande à 0,15 rad de
+l'angle de la zone (écart théorique ≤ 0,05 rad ; marge pour la grille du champ à 0,4 mm et les
+cordes). Dans le critère de liaison, une rangée de la bande est reconnue à 0,3 rad près : la
+dernière corde d'une rangée courbe qui aborde le contour en biais est replacée dans le contour
+(écart mesuré jusqu'à 0,27 rad). Interlaced : mêmes critères de partage et de couture, et les
+bouts des morceaux de rangée de A dans la bande couvrent au moins 2,5 mm des 5 mm de bande
+(déciles 10 et 90) ; perpendiculaire exacte à une frontière droite. Reste à vérifier sur tissu.
+
+### 6.4 Plusieurs fondus par zone
+
+Depuis le lot « fondu multiple », une zone porte un lien par voisine (`boundary_blends`, §4.1).
+La génération (`boundary_blend_layer`) coud TOUS les fondus valides d'une zone.
+
+- **Groupe** : composante connexe des couples valides qui contient la zone, parcourue en largeur
+  par `document::find_boundary_blends` (`boundary_blend_group`, ordre (plus petit id, plus grand
+  id)). Chaque couple garde son plan canonique (zone d'identifiant le plus petit = A), son champ,
+  ses largeurs, sa courbe et son sens des rangées.
+- **Un seul couple utile** : chemin des lots L1-L4, sortie identique octet pour octet. Couples
+  utiles d'une couche : les siens, et ceux dont la boîte des deux zones, élargie de
+  2 demi-bandes + tolérance + marge, touche la boîte de ses couples (un couple ne gouverne que
+  dans la boîte de son champ) : toute couche voit tous les couples qui peuvent gouverner un
+  point de sa région, sans planifier tout un grand groupe. Un couple dont le plan échoue
+  (frontière disparue) est retiré pour toutes les couches.
+- **Règle de la frontière la plus proche** : en p, le couple qui gouverne est, parmi ceux dont p
+  est dans la bande (|s| ≤ demi-bande du côté de p + marge de prolongation) et dans une des deux
+  régions prolongées, celui dont |s| est minimal ; égalité : premier dans l'ordre (lo, hi). Test
+  de boîte du champ avant tout calcul de distance. Toutes les couches évaluent la même fonction.
+- **Couche principale de la zone X** (un remplissage de X, son type et ses paramètres) : région
+  = cœur de X (zone privée des demi-bandes de ses couples « bande », découpe géométrique) ∪ pour
+  chaque couple PerZone, sa région prolongée près de sa frontière. Masque composé : aucun couple
+  ne gouverne → aplat ; un couple sans X gouverne → rien ; un couple PerZone de X gouverne → le
+  masque de ce couple (partition, superposition ×1,5, plancher de densité : §6.1-6.2) ; un couple
+  « bande » de X gouverne → aplat du côté de X au-delà de sa demi-bande moins le recouvrement
+  cœur-bande (le masque décide au milieu de la case des pénétrations ramené dans le morceau,
+  souvent exactement sur le bord de bande : sans cette tolérance, un jour périodique).
+- **Couples Shared / Rotating / Interlaced de X** : la bande commune du couple (`split_band`) est
+  remplie avec ses rangées et son masque, limitée aux points qu'il gouverne, plus un recouvrement
+  de 0,3 mm sur le couple qui gouverne (`kGroupBandOverlap` : deux bandes de grilles différentes
+  coupent sinon leurs morceaux de rangée au milieu et laissent une rangée nue le long de la
+  limite ; mesuré 1,6 % de tissu nu). Deux bandes Shared de même grille : aucun recouvrement
+  (partition exacte). Les modes peuvent se mêler dans un groupe ; une zone directionnelle replie
+  le couple sur PerZone.
+- **Sous-couche** : zone privée de toutes ses demi-bandes.
+- **Cache** : une couche de fondu n'est jamais servie ni rangée dans le cache des morceaux
+  (`generate.cpp`) : elle suit les formes, paramètres et liens de tout son groupe.
+
+Mesures (`test_boundary_blend.cpp`, tag `[multi]`) : jonction en T, A = moitié gauche, B = quart
+haut-droit, C = quart bas-droit, fondus A-B, A-C (+ B-C ou non), fenêtre 10 × 10 mm centrée sur
+la jonction. Pour les 4 modes, angles égaux (0/0/0) et différents (0/0,785/-0,52) : liaison
+visible ≤ 2,04 mm (seuil 2,3), tissu nu ≤ 0,19 % (seuil 1 %). Même angle et même écart, PerZone :
+longueur de rangée cousue = aplat exactement (260 000 µm, seuil 3 %). Modes « bande » sans
+fondu B-C, comparés à un couple seul (A contre la moitié droite) : Shared identique (275 600),
+Rotating +3,9 %, Interlaced +2,0 % (recouvrement aux limites de gouvernance ; seuil 5 %). Le
+second fondu de A change sa couche ; générations identiques ; via le projet, changer la forme de
+C change la couche de A (pas de cache périmé), revenir à la forme initiale rend la séquence
+initiale. Limites : demi-bandes très inégales d'une même zone dans deux couples « bande »
+voisins : près de la jonction, un point de la demi-bande large mais gouverné par le couple à la
+bande étroite, hors de celle-ci, n'est cousu par aucune couche (cas non testé) ; rien n'est
+vérifié sur tissu.
+
 ## 7. Commandes et API
 
 - `project_ops::make_create_boundary_blend_command(project, a, b, params)` : valide
@@ -252,6 +432,16 @@ autre limite : outil « Tracer la frontière » (polyligne ou Bézier) stocké d
   alternés » ou « superposés »), bouton « Retirer le fondu ».
 - Calculs hors du fil d'interface (`BusyIndicator::run`) ; aucune logique métier dans les
   contrôleurs : tout passe par les commandes du §7.
+- **Plusieurs fondus par zone** (2026-11-18) : le modèle porte `std::vector<BoundaryBlendLink>
+  boundary_blends` (trié par partenaire, un lien par voisine ; `.osp` : objet `boundaryBlend`
+  pour un seul lien, inchangé, tableau `boundaryBlends` au-delà). Le panneau du fondu liste les
+  fondus de la zone principale (`boundaryBlendList` : voisine, largeurs, frontière tracée ou
+  calculée, mode des rangées ; clic ou Entrée pour choisir le fondu courant, croix pour le
+  retirer). Les réglages s'appliquent au fondu courant : la seconde zone sélectionnée, sinon le
+  fondu choisi dans la liste, sinon le premier. Le calque `BoundaryBlendFrontiers.qml` (espaces
+  Points et Vecteurs) trace toutes les frontières de la zone principale, la courante en trait
+  plein, les autres en pointillés. Retrait sans voisine précisée refusé si la zone a plusieurs
+  fondus (`E_BLEND_AMBIGUOUS`). Génération : §6.4.
 
 ## 9. Tests et critères d'acceptation
 
@@ -302,10 +492,10 @@ tissu dans la bande. Statut « Validé » seulement après cette recette.
 | L1a ☑ | Masque de rangées : grille ancrée, seuils par `k`, surcharge `fill_tatami(…, RowMask*)` ; non-régression octet pour octet sans masque | `stitch_generation` |
 | L1b ☑ | `shared_frontier`, `polyline_band`, champ de densité, régions prolongées, paire tatami–tatami dans les deux régimes, tests cœur | `geometry`, `stitch_generation` |
 | L1c ☑ | Masque dans le directionnel (superposition), `fill_boundary_blend` pour les trois combinaisons | `stitch_generation` |
-| L2 | Lien, commandes, `.osp`, opération CLI / MCP, codes d'erreur | `document`, `commands`, `project_ops`, `project_io` |
-| L3 | Studio : action, poignées de bande, panneau, QTest | `apps/desktop_v2` |
-| L4 | Frontière dessinée à la main | `geometry`, Studio |
-| L5 | Proposition automatique depuis l'image : transition douce à travers une frontière de segmentation | `autodigitize` |
+| L2 ☑ | Lien, commandes, `.osp`, opérations CLI / MCP, génération, `inspect`, codes d'erreur | `document`, `commands`, `project_ops`, `project_io`, `stitch_generation` |
+| L3 ☑ | Studio : contrôleur, panneau d'inspecteur, actions du catalogue, QTest (poignées de canevas : reste) | `apps/desktop_v2` |
+| L4 ☑ | Frontière tracée : lien, moteur, `.osp`, opération, contrôleur (geste de tracé sur le canevas : reste) | `document`, `stitch_generation`, `project_ops`, Studio |
+| L5 ☑ | Proposition depuis l'image : transition douce en travers des frontières, opération et action Studio | `project_ops`, Studio |
 
 L1a passe en premier : il touche le cœur du tatami et doit prouver seul qu'il ne change rien
 sans lien. L1c et L2 peuvent ensuite avancer en parallèle si le struct du §4.1 est figé

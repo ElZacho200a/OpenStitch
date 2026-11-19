@@ -25,12 +25,16 @@ class EditController : public QObject {
     Q_OBJECT
     Q_PROPERTY(QVariantList tree READ tree NOTIFY treeChanged)
     Q_PROPERTY(QVariantList layers READ layers NOTIFY treeChanged)
+    // Calque actif du document (reçoit les formes créées, pilote la source image) ; "" sans calque.
+    Q_PROPERTY(QString activeLayer READ activeLayer NOTIFY treeChanged)
     Q_PROPERTY(QStringList savedSelections READ savedSelections NOTIFY savedSelectionsChanged)
     Q_PROPERTY(QStringList stitchTypes READ stitchTypes NOTIFY treeChanged)
     Q_PROPERTY(QString message READ message NOTIFY messageChanged)
     Q_PROPERTY(bool snapEnabled READ snapEnabled WRITE setSnapEnabled NOTIFY snapChanged)
     Q_PROPERTY(bool eyedropper READ eyedropper WRITE setEyedropper NOTIFY eyedropperChanged)
     Q_PROPERTY(int selectedCount READ selectedCount NOTIFY treeChanged)
+    // Formes éditables désignées par la sélection (broderie ou non) : cible de `deleteShapes`.
+    Q_PROPERTY(int selectedShapeCount READ selectedShapeCount NOTIFY treeChanged)
     // Boîte de la sélection (mm scène) : x, y, width, height, cx, cy ; vide sans sélection.
     Q_PROPERTY(QVariantMap selectionBox READ selectionBox NOTIFY treeChanged)
 public:
@@ -39,6 +43,7 @@ public:
 
     [[nodiscard]] QVariantList tree() const;
     [[nodiscard]] QVariantList layers() const;
+    [[nodiscard]] QString activeLayer() const;
     [[nodiscard]] QStringList savedSelections() const;
     [[nodiscard]] QStringList stitchTypes() const;
     [[nodiscard]] QString message() const { return message_; }
@@ -47,6 +52,7 @@ public:
     [[nodiscard]] bool eyedropper() const { return eyedropper_; }
     void setEyedropper(bool value);
     [[nodiscard]] int selectedCount() const;
+    [[nodiscard]] int selectedShapeCount() const;
     [[nodiscard]] QVariantMap selectionBox() const;
     // Union des boîtes de la sélection, en mm scène ; vide sans sélection ni scène.
     [[nodiscard]] std::optional<stitch_render::RectMm> selectionBounds() const;
@@ -79,7 +85,11 @@ public:
     Q_INVOKABLE bool mirror(bool horizontal);
     Q_INVOKABLE bool scale(double factor, double anchorXmm, double anchorYmm); // ancre en mm scène
     Q_INVOKABLE bool duplicate(double offsetMm = 5.0);
+    // Retire la BRODERIE des objets sélectionnés (la forme vectorielle reste, reconvertible).
     Q_INVOKABLE bool deleteSelection();
+    // Supprime la FORME sélectionnée (convertie ou non) et les broderies qui en dépendent, en une
+    // seule étape d'annulation. Suppr de l'espace Vecteur.
+    Q_INVOKABLE bool deleteShapes();
     Q_INVOKABLE bool align(const QString& mode); // left centerH right top centerV bottom
     Q_INVOKABLE bool distribute(bool horizontal);
     // Placement numérique de la boîte (centre en mm modèle ; NaN = inchangé). Un seul objet :
@@ -114,6 +124,17 @@ public:
     // Glisser-déposer de l'arbre : déplace toute la sélection si `objectId` en fait partie, sinon
     // cet objet seul (la sélection ne change pas pendant le geste : l'arbre n'est pas reconstruit).
     Q_INVOKABLE bool moveObjectToLayer(const QString& objectId, const QString& layerId);
+    // Rend ce calque actif sans toucher à la sélection (même notion dans tous les canevas).
+    Q_INVOKABLE bool setActiveLayer(const QString& id);
+    // Isoler (Alt+clic sur l'oeil) : seul ce calque reste visible ; rappelé sur le calque déjà
+    // isolé, réaffiche tout. Une étape d'annulation, aucun recalcul de segmentation.
+    Q_INVOKABLE bool isolateLayer(const QString& id);
+    Q_INVOKABLE bool showAllLayers();
+    // Glisser-déposer d'un calque : `displayIndex` est le rang dans la liste affichée (0 = dessus).
+    Q_INVOKABLE bool reorderLayer(const QString& id, int displayIndex);
+    // Maj+clic dans l'arbre : sélectionne les objets entre `anchorId` et `id` (ordre affiché),
+    // hors objets masqués ou dans un calque verrouillé.
+    Q_INVOKABLE int selectTreeRange(const QString& anchorId, const QString& id, bool additive);
 signals:
     void treeChanged();
     void messageChanged();
@@ -126,6 +147,7 @@ private:
     [[nodiscard]] std::vector<std::uint64_t> selectedIds() const;
     [[nodiscard]] bool selectIds(const std::vector<std::uint64_t>& ids, bool additive = false);
     [[nodiscard]] bool visibleObject(std::uint64_t id) const;
+    [[nodiscard]] bool selectableObject(std::uint64_t id) const;
     bool applyBatch(const std::string& batch, const QString& label, const QString& done);
     bool refuse(const QString& why);
     void say(const QString& text);

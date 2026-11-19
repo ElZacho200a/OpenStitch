@@ -578,6 +578,19 @@ void GpuCanvas::centerOnScene(double x, double y) {
     panBy(width() / 2.0 - p.x, height() / 2.0 - p.y);
 }
 
+QVariantList GpuCanvas::modelToScreen(const QVariantList& pointsMm) const {
+    QVariantList out;
+    out.reserve(pointsMm.size() * 2);
+    for (const auto& value : pointsMm) {
+        const auto map = value.toMap();
+        // Model Y points up, scene Y points down (same convention as `needleOrigin`).
+        const auto s = camera_.worldToScreen({map.value(QStringLiteral("x")).toDouble(),
+                                              -map.value(QStringLiteral("y")).toDouble()});
+        out << s.x << s.y;
+    }
+    return out;
+}
+
 QVariantList GpuCanvas::rulerTicks(bool horizontal) const {
     QVariantList ticks;
     const double length = horizontal ? width() : height();
@@ -1125,9 +1138,11 @@ void GpuCanvas::hoverMoveEvent(QHoverEvent* event) {
     if (tools_ && tools_->capturesMouse()) {
         setHover(std::nullopt);
         setCursor(Qt::CrossCursor);
+        const auto p = camera_.screenToWorld({event->position().x(), event->position().y()});
         if (tools_->busy()) {
-            const auto p = camera_.screenToWorld({event->position().x(), event->position().y()});
             tools_->move(p.x, p.y, event->modifiers());
+        } else {
+            tools_->hover(p.x, p.y);
         }
         return;
     }

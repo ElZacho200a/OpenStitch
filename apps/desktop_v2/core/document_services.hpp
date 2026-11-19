@@ -5,6 +5,7 @@
 // préréglages de points et calques. Chaque fonction exécute UNE commande sur la session (une étape
 // d'annulation), valide ses entrées et dit pourquoi elle refuse. Sans Qt.
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -43,6 +44,12 @@ ServiceResult removeCalque(DocumentSession& session, std::uint64_t id);
 ServiceResult setCalqueVisible(DocumentSession& session, std::uint64_t id, bool visible);
 ServiceResult setCalqueLocked(DocumentSession& session, std::uint64_t id, bool locked);
 ServiceResult moveCalque(DocumentSession& session, std::uint64_t id, int direction); // +1 dessus
+// Glisser-déposer : place le calque au rang `toIndex` (0 = fond), en UNE étape.
+ServiceResult reorderCalque(DocumentSession& session, std::uint64_t id, std::size_t toIndex);
+// Isoler (solo) : n'affiche que ce calque ; s'il est déjà le seul visible, réaffiche tous les
+// calques. Une étape d'annulation ; jamais de recalcul de segmentation.
+ServiceResult isolateCalque(DocumentSession& session, std::uint64_t id);
+ServiceResult showAllCalques(DocumentSession& session);
 // Place les formes sources des objets de broderie donnés dans ce calque.
 ServiceResult moveObjectsToCalque(DocumentSession& session,
                                   const std::vector<std::uint64_t>& objectIds,
