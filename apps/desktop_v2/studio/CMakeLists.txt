@@ -115,3 +115,18 @@ if(WIN32 AND TARGET Qt6::windeployqt)
             --qmldir "${CMAKE_CURRENT_SOURCE_DIR}/qml" "$<TARGET_FILE:openstitch_v2_studio>"
         COMMENT "Deploy Qt Quick Studio runtime and QML imports")
 endif()
+
+# « Ouvrir Claude Code » pointe vers <dossier de openstitch.exe>/mcp/openstitch-mcp(.exe), comme
+# l'installateur (packaging/windows/installer.iss). Sans cette copie, en build de développement, la
+# commande copiée visait un fichier inexistant et le pont ne répondait jamais.
+if(TARGET openstitch-mcp)
+    add_dependencies(openstitch_v2_studio openstitch-mcp)
+    add_custom_command(TARGET openstitch_v2_studio POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:openstitch_v2_studio>/mcp"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:openstitch-mcp>"
+            "$<TARGET_FILE_DIR:openstitch_v2_studio>/mcp/$<TARGET_FILE_NAME:openstitch-mcp>"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_RUNTIME_DLLS:openstitch-mcp>
+            "$<TARGET_FILE_DIR:openstitch_v2_studio>/mcp"
+        COMMAND_EXPAND_LISTS
+        COMMENT "Copie du serveur MCP et de ses DLL (mcp/) à côté de Studio")
+endif()
