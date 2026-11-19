@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "edit_controller.hpp"
 #include "change_gate.hpp"
+#include "perf_log.hpp"
 
 #include <QColor>
 #include <algorithm>
@@ -77,6 +78,8 @@ std::optional<RectMm> vectorShapeSceneBounds(const document::VectorObject& shape
 EditController::EditController(StudioController& studio, QObject* parent)
     : QObject(parent), studio_(studio) {
     gateStamp_ = documentStamp(studio_);
+    // Connecté en premier : le cache est invalidé avant que QML ne relise `tree`.
+    connect(this, &EditController::treeChanged, this, [this] { treeCache_.reset(); });
     connect(&studio_, &StudioController::changed, this, [this] {
         const auto stamp = documentStamp(studio_);
         if (stamp != gateStamp_) { // l'arbre d'objets n'est reconstruit que s'il a changé
@@ -216,6 +219,7 @@ std::optional<RectMm> EditController::selectionBounds() const {
 }
 
 QVariantMap EditController::selectionBox() const {
+    const PerfScope perf("get.selectionBox");
     const auto box = selectionBounds();
     if (!box) {
         return {};
@@ -928,6 +932,7 @@ QString EditController::activeLayer() const {
 }
 
 QVariantList EditController::layers() const {
+    const PerfScope perf("get.layers");
     QVariantList list;
     const auto& project = studio_.session().project();
     // Une passe : nombre d'objets par calque (aucune recherche par calque).
@@ -954,6 +959,16 @@ QVariantList EditController::layers() const {
 }
 
 QVariantList EditController::tree() const {
+    // QML relit `tree` une fois par binding (des dizaines de milliers de fois sur 570 objets) :
+    // la liste n'est reconstruite qu'après un `treeChanged` (QVariantList est à copie partagée).
+    if (!treeCache_) {
+        const PerfScope perf("get.tree");
+        treeCache_ = buildTree();
+    }
+    return *treeCache_;
+}
+
+QVariantList EditController::buildTree() const {
     QVariantList rows;
     const auto& project = studio_.session().project();
     const auto& selection = studio_.session().selection();

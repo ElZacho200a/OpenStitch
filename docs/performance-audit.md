@@ -888,3 +888,20 @@ scénario, et pour une retouche de géométrie il faudrait prouver que l'ordre d
 « plus proche voisin depuis la position courante » (`fill_regions_in_sewing_order`) et les liaisons
 cachées restent identiques, ce qu'une clé exacte par région ne garantit pas sans cacher aussi la
 position d'entrée de chaque région.
+
+## 2026-11-19 : lag d'interface de Studio (sélection, pinceau, couteau)
+
+Mesuré avec `OPENSTITCH_PERF_LOG` sur un projet réel (570 objets, 102 000 segments, Release).
+
+| Étape (fil d'interface) | Avant | Après |
+|---|---|---|
+| `EditController::tree` | 27 385 reconstructions (19 s) | 24 (15 ms) |
+| `scene.apply(UI)` par changement des points | 3,5 à 6,2 s | 0,11 s (max 0,19 s) |
+| `apply.changed` (dont `StudioController::objects`) | 893 ms | 73 ms |
+
+Causes : getters `Q_PROPERTY` reconstruits à chaque lecture QML (mis en cache, invalidés par leur
+signal) ; opérations de géométrie (couteau, fusion, séparation...) classées « modifie la
+segmentation » dans `DocumentSession::applyBatch`. Écartés avec chiffres : moteur de points
+(~20 ms), copie de projet (1,8 ms), rafraîchissement de segmentation (~7 ms), `GpuCanvas::setScene`
+(0,1 ms). Reste : écart entre `scene.rebuild` en temps réel et le calcul (attente de la file
+d'événements).
