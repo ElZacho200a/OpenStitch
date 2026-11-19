@@ -735,3 +735,34 @@ TEST_CASE("a zone with two blends sews both and follows every neighbour shape",
     REQUIRE(restored.has_value());
     CHECK(restored->commands == both->commands);
 }
+
+TEST_CASE("multi zone blend links every touching pair in one undo step", "[project_ops][blend]") {
+    auto project = make_project();
+    const auto before = project;
+    commands::UndoStack stack;
+    // 2-4 se touchent ; 6 est lointaine ; 8 est un point droit (non pris en charge).
+    auto multi = project_ops::make_multi_boundary_blend_command(
+        project, {ObjectId{8}, ObjectId{4}, ObjectId{6}, ObjectId{2}, ObjectId{4}}, {});
+    REQUIRE(multi.has_value());
+    REQUIRE(multi->created.size() == 1);
+    CHECK(multi->created.front() == std::pair{ObjectId{2}, ObjectId{4}});
+    CHECK(multi->kept == 0);
+    stack.execute(std::move(multi->command), project);
+    CHECK(document::find_boundary_blend(project, ObjectId{2}, ObjectId{4}).has_value());
+    CHECK(project.findEmbroidery(ObjectId{6})->boundary_blends.empty());
+
+    // Relancer : le couple déjà fondu est conservé, plus rien à créer.
+    auto again = project_ops::make_multi_boundary_blend_command(
+        project, {ObjectId{2}, ObjectId{4}, ObjectId{6}}, {});
+    REQUIRE_FALSE(again.has_value());
+    CHECK(again.error().code == "E_BLEND_NO_PAIR");
+
+    stack.undo(project);
+    CHECK(project.findEmbroidery(ObjectId{2})->boundary_blends ==
+          before.findEmbroidery(ObjectId{2})->boundary_blends);
+    CHECK(project.findEmbroidery(ObjectId{4})->boundary_blends.empty());
+
+    auto few = project_ops::make_multi_boundary_blend_command(project, {ObjectId{2}}, {});
+    REQUIRE_FALSE(few.has_value());
+    CHECK(few.error().code == "E_BLEND_FEW_ZONES");
+}

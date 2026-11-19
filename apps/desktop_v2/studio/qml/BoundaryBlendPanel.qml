@@ -16,12 +16,13 @@ ColumnLayout {
     readonly property bool canCreate: ready && controller.canCreate
     readonly property bool refused: ready && !hasBlend && controller.refusal !== ""
     readonly property var blends: ready ? controller.blends : []
+    readonly property bool canCreateAll: ready && controller.canCreateAll
     // Transition simplifiée : mêmes profils que le fondu de fils (linéaire, lissée, nette).
     readonly property var softnessCurves: [0, 1, 2]
     readonly property var rowsKeys: ["per_zone", "shared", "rotating", "interlaced"]
 
     spacing: 6
-    visible: hasBlend || canCreate || refused || blends.length > 0
+    visible: hasBlend || canCreate || canCreateAll || refused || blends.length > 0
 
     function curveIndex(curve) {
         const i = softnessCurves.indexOf(curve)
@@ -155,7 +156,7 @@ ColumnLayout {
     GridLayout {
         Layout.fillWidth: true
         columns: 2
-        visible: root.hasBlend || root.canCreate
+        visible: root.hasBlend || root.canCreate || root.canCreateAll
         columnSpacing: 8
         rowSpacing: 4
         Text {
@@ -232,6 +233,14 @@ ColumnLayout {
             tooltip: qsTr("Fondre les deux zones sélectionnées le long de leur limite commune")
             emphasized: true
             onClicked: root.commit()
+        }
+        StudioButton {
+            objectName: "boundaryBlendCreateAll"
+            visible: root.canCreateAll
+            text: qsTr("Fondre les %1 zones").arg(root.ready ? root.controller.zoneCount : 0)
+            tooltip: qsTr("Poser un fondu sur chaque limite commune entre les zones sélectionnées (les fondus existants sont conservés)")
+            emphasized: true
+            onClicked: root.controller.createAll(widthHere.value / 10.0, root.softnessCurves[softness.currentIndex])
         }
         StudioButton {
             objectName: "boundaryBlendRemove"

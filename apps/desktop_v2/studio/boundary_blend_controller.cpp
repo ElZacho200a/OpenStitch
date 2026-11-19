@@ -275,6 +275,42 @@ bool BoundaryBlendController::create(double widthMm, double partnerWidthMm, int 
     return apply(primary_, secondSelected(), widthMm, partnerWidthMm, curve, {});
 }
 
+bool BoundaryBlendController::createAll(double widthMm, int curve) {
+    refresh();
+    if (zones_.size() < 2) {
+        say(false, QStringLiteral("Sélectionnez plusieurs zones remplies"));
+        return false;
+    }
+    if (curve < 0 || curve >= kCurveCount) {
+        say(false, QStringLiteral("Profil de transition inconnu"));
+        return false;
+    }
+    const auto snapshot = studio_.session().snapshot();
+    if (!snapshot) {
+        return false;
+    }
+    project_ops::BoundaryBlendOptions options;
+    options.width_a = um(widthMm);
+    options.width_b = um(widthMm);
+    options.curve = static_cast<document::DensityCurve>(curve);
+    options.rows = rows_;
+    std::vector<ObjectId> ids;
+    ids.reserve(zones_.size());
+    for (const auto z : zones_) {
+        ids.push_back(ObjectId{z});
+    }
+    auto multi = project_ops::make_multi_boundary_blend_command(*snapshot, ids, options);
+    if (!multi) {
+        say(false, QString::fromStdString(multi.error().message));
+        return false;
+    }
+    const auto created = multi->created.size();
+    studio_.session().execute(std::move(multi->command)); // UN pas d'annulation
+    say(true, created == 1 ? QStringLiteral("1 fondu posé entre zones voisines")
+                           : QStringLiteral("%1 fondus posés entre zones voisines").arg(created));
+    return true;
+}
+
 bool BoundaryBlendController::edit(double widthMm, double partnerWidthMm, int curve) {
     refresh();
     if (!hasBlend_) {
