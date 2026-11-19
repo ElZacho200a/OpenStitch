@@ -16,8 +16,9 @@
 .PARAMETER Configuration
     Debug, Release, ou Both (defaut : Both).
 .PARAMETER Jobs
-    Nombre maximal de taches de compilation paralleles (defaut : nombre
-    de processeurs logiques disponibles). Utiliser -Jobs 1 pour serialiser.
+    Nombre maximal de taches de compilation paralleles (defaut : calcule par
+    scriptsuild-jobs.ps1 selon la RAM libre, borne par les processeurs
+    logiques ; OPENSTITCH_JOBS le force). Utiliser -Jobs 1 pour serialiser.
 .PARAMETER Test
     Lance ctest apres la compilation, pour chaque configuration compilee.
 .PARAMETER Clean
@@ -49,7 +50,7 @@ param(
     [ValidateSet('Debug', 'Release', 'Both')]
     [string]$Configuration = 'Both',
     [ValidateRange(1, [int]::MaxValue)]
-    [int]$Jobs = [Environment]::ProcessorCount,
+    [int]$Jobs = 0,
     [switch]$Test,
     [switch]$Clean,
     [switch]$SkipBootstrap,
@@ -58,6 +59,9 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
+
+# BUILD-OPT-01.6 : sans -Jobs explicite, borner selon la RAM libre (MSVC ~1,5 Go/tache).
+if ($Jobs -lt 1) { $Jobs = [int](& "$PSScriptRoot\build-jobs.ps1") }
 Set-Location $repoRoot
 
 $QtVersion = '6.8.3'
