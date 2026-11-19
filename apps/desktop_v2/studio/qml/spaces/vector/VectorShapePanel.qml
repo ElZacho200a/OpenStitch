@@ -200,31 +200,35 @@ ColumnLayout {
             StudioCheckBox {
                 id: pullBox
                 objectName: "vectorConvertPullBox"
-                text: qsTr("Compensation du tirage automatique (agrandit les formes de 0,1 à 0,4 mm)")
+                Layout.fillWidth: true
+                text: qsTr("Compensation du tirage (auto)")
                 palette.windowText: Theme.foreground
             }
             StudioCheckBox {
                 id: overlapBox
                 objectName: "vectorConvertOverlapBox"
-                text: qsTr("Bloc uni : déborder de 0,5 mm sous les voisins")
+                Layout.fillWidth: true
+                text: qsTr("Bloc uni (débord 0,5 mm)")
                 palette.windowText: Theme.foreground
             }
             StudioCheckBox {
                 id: satinBox
                 objectName: "vectorConvertSatinBox"
-                text: qsTr("Bandes étroites en satin (sinon tout en remplissage)")
+                Layout.fillWidth: true
+                text: qsTr("Bandes étroites en satin")
                 palette.windowText: Theme.foreground
             }
             RowLayout {
                 Layout.fillWidth: true
                 Text {
-                    text: qsTr("Espacement des fils (mm)")
+                    text: qsTr("Espacement (mm)")
                     color: Theme.foreground; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize
                 }
                 StudioSlider {
                     id: spacingSlider
                     objectName: "vectorConvertSpacingSlider"
                     Layout.fillWidth: true
+                    Layout.minimumWidth: 40
                     from: 0.2; to: 0.8; stepSize: 0.05
                     value: 0.4
                     Accessible.name: qsTr("Espacement des rangées de fils en millimètres")
@@ -236,7 +240,7 @@ ColumnLayout {
             }
             Text {
                 Layout.fillWidth: true
-                text: qsTr("Tout est décoché par défaut : les points suivent exactement les contours vectoriels. Les réglages restent modifiables ensuite objet par objet.")
+                text: qsTr("Tout est décoché par défaut : les points suivent exactement les contours vectoriels. Le tirage auto agrandit les formes de 0,1 à 0,4 mm ; le bloc uni les fait déborder sous leurs voisines ; sans satin, tout est en remplissage. Modifiable ensuite objet par objet.")
                 color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize; wrapMode: Text.WordWrap
             }
             RowLayout {
