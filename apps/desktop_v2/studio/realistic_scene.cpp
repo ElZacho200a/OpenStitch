@@ -100,6 +100,7 @@ std::size_t writeThreadQuads(std::span<const StudioSegment> segments, const Real
     const float step = 1.0F / static_cast<float>(kOrientationBins);
     const float rowStep = 1.0F / static_cast<float>(kTwistClasses);
     constexpr float kRowInset = 0.5F / 32.0F; // demi-texel d'une rangée de 32 pixels
+    constexpr float kSideInset = 0.999F;
     for (std::size_t i = 0; i < segments.size(); ++i) {
         const auto& t = segments[i].thread;
         float dx = t.bx - t.ax;
@@ -117,8 +118,9 @@ std::size_t writeThreadQuads(std::span<const StudioSegment> segments, const Real
         const int row = twistClass(len + 2.0F * halfW, style.threadWidthMm);
         const float v0 = (static_cast<float>(row) + kRowInset) * rowStep;
         const float v1 = (static_cast<float>(row + 1) - kRowInset) * rowStep;
-        quad(out + i * kVerticesPerSegment, t.ax, t.ay, t.bx, t.by, halfW, halfW, u0, u0 + step, v0,
-             v1);
+        // u1 légèrement rentré dans la cellule : le shader de fil distingue ainsi les deux côtés.
+        quad(out + i * kVerticesPerSegment, t.ax, t.ay, t.bx, t.by, halfW, halfW, u0,
+             u0 + step * kSideInset, v0, v1);
     }
     return segments.size() * kVerticesPerSegment;
 }

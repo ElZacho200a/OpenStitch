@@ -452,13 +452,15 @@ private:
 // Shader de fil : éclairage analytique (cylindre, spéculaire anisotrope à deux lobes, torsion à
 // pas constant, variation de brin) calculé depuis les mêmes (u, v) que l'atlas de sprite : la
 // géométrie et l'ordre de couture sont inchangés. Disposition std140 du bloc : matrice (0),
-// couleur (64), paramètres (80), opacité (96) ; voir shaders/thread.{vert,frag}.
+// couleur (64), paramètres (80), vue et largeur du fil (96), opacité (112) ;
+// voir shaders/thread.{vert,frag}.
 class ThreadShaderMaterial final : public QSGMaterial {
 public:
     ThreadShaderMaterial(std::array<std::uint8_t, 3> rgb, const RealisticStyle& style)
         : color_{rgb[0] / 255.0F, rgb[1] / 255.0F, rgb[2] / 255.0F, 1.0F},
           params_{static_cast<float>(style.relief), static_cast<float>(style.sheen),
-                  static_cast<float>(style.twist), 0.0F} {
+                  static_cast<float>(style.twist), 0.0F},
+          widthMm_{static_cast<float>(style.threadWidthMm)} {
         setFlag(Blending);
     }
     [[nodiscard]] QSGMaterialType* type() const override {
@@ -472,14 +474,19 @@ public:
         if (const int c = std::memcmp(color_.data(), o->color_.data(), sizeof(color_)); c != 0) {
             return c;
         }
-        return std::memcmp(params_.data(), o->params_.data(), sizeof(params_));
+        if (const int c = std::memcmp(params_.data(), o->params_.data(), sizeof(params_)); c != 0) {
+            return c;
+        }
+        return widthMm_ < o->widthMm_ ? -1 : (widthMm_ > o->widthMm_ ? 1 : 0);
     }
     [[nodiscard]] const std::array<float, 4>& color() const { return color_; }
     [[nodiscard]] const std::array<float, 4>& params() const { return params_; }
+    [[nodiscard]] float widthMm() const { return widthMm_; }
 
 private:
     std::array<float, 4> color_;
     std::array<float, 4> params_;
+    float widthMm_;
 };
 
 class ThreadShader final : public QSGMaterialShader {
@@ -491,7 +498,7 @@ public:
     bool updateUniformData(RenderState& state, QSGMaterial* newMaterial,
                            QSGMaterial* oldMaterial) override {
         QByteArray* buffer = state.uniformData();
-        Q_ASSERT(buffer->size() >= 100);
+        Q_ASSERT(buffer->size() >= 116);
         bool changed = false;
         if (state.isMatrixDirty()) {
             std::memcpy(buffer->data(), state.combinedMatrix().constData(), 64);
@@ -503,9 +510,17 @@ public:
             std::memcpy(buffer->data() + 80, m->params().data(), 16);
             changed = true;
         }
+        // Vue en pixels et largeur du fil : marge d'anticrénelage d'un pixel quel que soit le zoom.
+        const QRect viewport = state.viewportRect();
+        const std::array<float, 4> extra{static_cast<float>(viewport.width()),
+                                         static_cast<float>(viewport.height()), m->widthMm(), 0.0F};
+        if (std::memcmp(buffer->data() + 96, extra.data(), sizeof(extra)) != 0) {
+            std::memcpy(buffer->data() + 96, extra.data(), sizeof(extra));
+            changed = true;
+        }
         if (state.isOpacityDirty()) {
             const float opacity = state.opacity();
-            std::memcpy(buffer->data() + 96, &opacity, 4);
+            std::memcpy(buffer->data() + 112, &opacity, 4);
             changed = true;
         }
         return changed;

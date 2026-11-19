@@ -7,11 +7,14 @@
 // brin déterministe, contact assombri aux bouts. Sortie prémultipliée.
 #version 440
 layout(location = 0) in vec2 vTex;
+layout(location = 1) in float vAcrossScale;
+layout(location = 2) in float vHalfPx;
 layout(location = 0) out vec4 fragColor;
 layout(std140, binding = 0) uniform buf {
     mat4 qt_Matrix;
     vec4 color;
     vec4 params;
+    vec4 extra;
     float qt_Opacity;
 };
 
@@ -29,7 +32,9 @@ void main() {
     float twist = params.z;
 
     float bin = floor(vTex.x * kBins);
-    float across = fract(vTex.x * kBins) * 2.0 - 1.0; // [-1, 1] en travers
+    // [-1, 1] en travers sur le fil ; au-delà sur la marge d'anticrénelage.
+    float acrossRaw = (fract(vTex.x * kBins) * 2.0 - 1.0) * vAcrossScale;
+    float across = clamp(acrossRaw, -1.0, 1.0);
     float row = floor(vTex.y * kClasses);
     float along = fract(vTex.y * kClasses); // [0, 1] le long
     float periods = row + 1.0;
@@ -74,7 +79,11 @@ void main() {
     vec3 spec = sheen * lift * (vec3(0.65) * lobe1 + color.rgb * 0.35 * lobe2);
 
     // Silhouette (comme le sprite CPU) et contact fil/tissu assombri aux bouts.
-    float acrossAlpha = clamp((1.0 - abs(across)) / 0.18, 0.0, 1.0);
+    // Bord : rampe douce (18 % de la demi-largeur) mais jamais plus raide qu'un pixel ; fil plus
+    // fin qu'un pixel : couverture proportionnelle à sa largeur.
+    float edgePx = max(1.0, 0.18 * vHalfPx);
+    float acrossAlpha = clamp((1.0 - abs(acrossRaw)) * vHalfPx / edgePx + 0.5 / edgePx, 0.0, 1.0);
+    acrossAlpha *= min(1.0, 2.0 * vHalfPx);
     float edge = min(along, 1.0 - along);
     float endAlpha = clamp(edge / 0.14, 0.0, 1.0);
     float alpha = acrossAlpha * (0.35 + 0.65 * endAlpha);

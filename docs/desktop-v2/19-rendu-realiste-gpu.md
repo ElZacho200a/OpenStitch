@@ -81,6 +81,8 @@ Verification : variante CTest `test_desktop_v2_studio_realistic_gpu_shader` (WAR
 le test echoue desormais sur tout avertissement « shader » ou « pipeline » (sans `BATCHABLE`, le
 pipeline echouait silencieusement et le test passait quand meme).
 Mesure (scene de test minuscule, Debug, WARP) : aire d'encre 12,3 mm2 contre 20,0 pour les textures
-et 34,7 pour la reference CPU ; couleurs plus vives. Limites : pas d'anticrenelage analytique
-(fils fins a petite echelle plus minces et un peu pointilles), orientation quantifiee a 16
+et 34,7 pour la reference CPU ; couleurs plus vives. Anticrenelage (ajoute ensuite) : le vertex shader elargit le quad d'un pixel de chaque cote selon
+le zoom courant (vue en pixels + largeur du fil en uniformes ; u1 rentre de 0,1 % pour reconnaitre
+le cote), le fragment fond le bord sur au moins un pixel et module la couverture des fils plus fins
+qu'un pixel : encre 12,3 -> 15,8 mm2. Limites : orientation quantifiee a 16
 directions (heritee de l'encodage u), pas de comparaison photo, pas de mesure Release.
