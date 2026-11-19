@@ -14,7 +14,11 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+  # Commit vcpkg epingle = builtin-baseline de vcpkg.json (a garder identique). Un clone de master
+  # change les scripts/ports a chaque commit amont, donc les empreintes ABI des paquets, donc le cache.
+  # Cache binaire : backend `files` + actions/cache (le backend `x-gha` a ete retire de vcpkg ;
+  # voir docs/source/build-vcpkg-audit.md). VCPKG_BINARY_SOURCES est fixe dans l'etape « Set up vcpkg ».
+  VCPKG_COMMIT: 4e82e29f14eac2b3422f18f72c7524d04f19924e
 
 jobs:
   windows-msvc:
@@ -35,11 +39,23 @@ jobs:
           version: "6.8.3"
           arch: win64_msvc2022_64
 
+      - name: Restore vcpkg binary cache
+        id: vcpkg-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/vcpkg-bincache
+          key: vcpkg-windows-${{ hashFiles('vcpkg.json') }}-${{ env.VCPKG_COMMIT }}
+          restore-keys: vcpkg-windows-
+
       - name: Set up vcpkg
         shell: pwsh
         run: |
           git clone https://github.com/microsoft/vcpkg.git "$env:RUNNER_TEMP/vcpkg"
           if ($LASTEXITCODE -ne 0) { throw 'Unable to clone vcpkg' }
+          git -C "$env:RUNNER_TEMP/vcpkg" checkout --detach $env:VCPKG_COMMIT
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to check out the pinned vcpkg commit' }
+          New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP/vcpkg-bincache" | Out-Null
+          "VCPKG_BINARY_SOURCES=clear;files,$env:RUNNER_TEMP/vcpkg-bincache,readwrite" | Out-File -Append -FilePath $env:GITHUB_ENV
           # GitHub release assets intermittently return 502/504. Retry only the download,
           # never the build or the tests, and fail if the tool is still unavailable.
           $ready = $false
@@ -93,6 +109,15 @@ jobs:
             Write-Warning "Release build attempt $attempt failed; retrying after transient dependency download outage..."
             Start-Sleep -Seconds 20
           }
+
+      # Sauvegarde meme si la compilation echoue (les paquets vcpkg deja construits restent utiles) ;
+      # uniquement sur main pour ne pas saturer le quota de 10 Go du depot.
+      - name: Save vcpkg binary cache
+        if: ${{ !cancelled() && github.ref == 'refs/heads/main' && steps.vcpkg-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/vcpkg-bincache
+          key: vcpkg-windows-${{ hashFiles('vcpkg.json') }}-${{ env.VCPKG_COMMIT }}
 
       # Disponible des la compilation, meme si les tests suivants echouent (build Release seul).
       # La publication stable reste conditionnee au succes de tous les jobs.
@@ -229,11 +254,22 @@ jobs:
             core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
+      - name: Restore vcpkg binary cache
+        id: vcpkg-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/vcpkg-bincache
+          key: vcpkg-linux-${{ hashFiles('vcpkg.json') }}-${{ env.VCPKG_COMMIT }}
+          restore-keys: vcpkg-linux-
+
       - name: Set up vcpkg
         run: |
           git clone https://github.com/microsoft/vcpkg.git "$RUNNER_TEMP/vcpkg"
+          git -C "$RUNNER_TEMP/vcpkg" checkout --detach "$VCPKG_COMMIT"
           "$RUNNER_TEMP/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
           echo "VCPKG_ROOT=$RUNNER_TEMP/vcpkg" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/vcpkg-bincache"
+          echo "VCPKG_BINARY_SOURCES=clear;files,$RUNNER_TEMP/vcpkg-bincache,readwrite" >> "$GITHUB_ENV"
 
       - name: Prefetch Boost CMake from official codeload (best effort)
         shell: bash
@@ -269,6 +305,13 @@ jobs:
             echo "Configure attempt $attempt failed; retrying external downloads…" >&2
             sleep 15
           done
+
+      - name: Save vcpkg binary cache
+        if: ${{ !cancelled() && github.ref == 'refs/heads/main' && steps.vcpkg-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/vcpkg-bincache
+          key: vcpkg-linux-${{ hashFiles('vcpkg.json') }}-${{ env.VCPKG_COMMIT }}
 
       - name: Build
         run: cmake --build --preset linux-core -j "$(nproc)"
