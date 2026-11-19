@@ -35,6 +35,7 @@
 #include "points_space_controller.hpp"
 #include "preferences_controller.hpp"
 #include "pull_controller.hpp"
+#include "qml_dev_loader.hpp"
 #include "region_controller.hpp"
 #include "satin_controller.hpp"
 #include "segmentation_space_controller.hpp"
@@ -200,7 +201,12 @@ int main(int argc, char** argv) {
     engine.rootContext()->setContextProperty(QStringLiteral("regionTools"), &regionTools);
     engine.rootContext()->setContextProperty(QStringLiteral("segmentationSpace"),
                                              &segmentationSpace);
-    engine.load(QUrl(QStringLiteral("qrc:/studio/qml/Main.qml")));
+    // Mode QML externe (opt-in, Studio Dev) : repli sur les ressources embarquées sinon.
+    const auto qmlSource = decideQmlSource(qmlSourceInputsFromBuild());
+    if (qmlSource.external) {
+        qInfo("%s", qPrintable(qmlSource.reason));
+    }
+    engine.load(qmlSource.mainUrl);
     if (engine.rootObjects().isEmpty()) {
         return 2;
     }
@@ -368,6 +374,11 @@ int main(int argc, char** argv) {
         });
         capture.start();
         QTimer::singleShot(60'000, &app, [&app] { app.exit(5); });
+    }
+    std::unique_ptr<QmlDevReloader> qmlReloader;
+    if (qmlSource.external && !parser.isSet(QStringLiteral("screenshot")) &&
+        !parser.isSet(QStringLiteral("frame-stats"))) {
+        qmlReloader = std::make_unique<QmlDevReloader>(engine, qmlSource.mainUrl, qmlSource.dir);
     }
     return app.exec();
 }
