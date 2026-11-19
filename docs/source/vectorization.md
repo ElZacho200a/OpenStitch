@@ -273,8 +273,24 @@ aux deux tronçons, sauf sur un vrai coin (> 55°) ; la jonction devient un nœu
 Synthétique : aire 3,31 → 2,16 %, écart max 73 → 69 µm, 60 → 116 nœuds. Les jonctions causaient
 bien le pire écart ; il passe désormais sous celui du mode par région. Mais l'écart moyen et
 l'aire ne s'améliorent pas, pour +63 % de nœuds et ×3 de temps : le mode reste **non déployé**.
-Pistes restantes : couper seulement aux coins déjà détectés, critère de largeur moins sensible
-aux escaliers, budget de nœuds, comparaison polygone / hybride.
+
+Budget de nœuds (2026-11-19, essai écarté, code retiré) : découpage gardé seulement sous
+nœuds(région) × (1 + budget), sinon palier le plus fin seul, sinon ajustement par région.
+
+| MonetGasque | Nœuds | Écart moyen | Écart max | Écart d'aire | Temps |
+|---|---:|---:|---:|---:|---:|
+| Sans budget | 13 699 | 166 µm | 474 µm | 2,83 % | 2,6 s |
+| Budget +50 % | 9 287 | 167 µm | 579 µm | 2,88 % | 3,3 s |
+| Budget +25 % | 8 801 | 164 µm | 579 µm | 2,87 % | 3,5 s |
+| Budget +10 % | 8 450 | 163 µm | 579 µm | 2,82 % | 3,6 s |
+
+Sous budget, le seul gain (l'écart maximal) disparaît et le résultat rejoint le mode par région,
+pour un temps ×5 ; sur le corpus synthétique, tout budget ramène exactement au mode par région.
+
+**Conclusion du lot C** : sur le cas pilote, faire varier la tolérance le long d'un contour
+n'apporte pas de fidélité moyenne par rapport à la tolérance par région ; seul le pire écart
+baisse, au prix de nœuds supplémentaires. Le moteur (`AdaptiveTolerance::local`, tangentes
+imposées de `fit_curves`) reste disponible pour des mesures, sans exposition dans Studio.
 
 ## Robustesse
 
