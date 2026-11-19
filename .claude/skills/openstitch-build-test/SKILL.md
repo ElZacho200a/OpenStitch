@@ -166,7 +166,7 @@ build complet entre deux essais ; suite complète (`msvc-debug` + `ctest`) une f
 mesurer (`Measure-Command`, médiane de 3, froid / incrémental trivial / incrémental réaliste)
 avant d'annoncer un gain.
 
-> **À RÉCONCILIER (à jour quand BUILD-OPT-01.x est fusionné)** : noms prévus, non encore vérifiés
-> dans le dépôt : `scripts/build-dev.ps1` (build ciblé Studio, 01.2), mode QML externe pour
-> modifier le QML sans recompiler (01.3), presets de dev, sccache/vcpkg cache/PCH (01.4-01.6).
-> N'utiliser ces commandes qu'après avoir vérifié qu'elles existent (`Test-Path`, `cmake --list-presets`).
+Outils livrés (BUILD-OPT-01) : `scripts/build-dev.ps1` (build ciblé Studio, presets `dev-*`),
+mode QML externe (`OPENSTITCH_STUDIO_DEV_QML` + `OPENSTITCH_DEV_QML=1`, jamais en Release),
+`scripts/build-jobs.ps1` (jobs selon la RAM), `scripts/measure-build.ps1` (mesure), preset
+`msvc-sccache` et `OPENSTITCH_PCH` (opt-in, voir `docs/source/build-*.md`).

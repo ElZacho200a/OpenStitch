@@ -76,20 +76,28 @@ section « Existant aujourd'hui » sont garanties ; le reste est la **méthode p
 - QML de Studio : `apps/desktop_v2/studio/qml/`. Aujourd'hui, toute modification QML passe
   par une reconstruction de la cible Studio.
 
-### Prévu — à jour quand 01.x est fusionné
+### Outils de build rapide (BUILD-OPT-01)
 
-> **À RÉCONCILIER** : les éléments ci-dessous dépendent des sous-tâches 01.2 à 01.7 de
-> BUILD-OPT-01, non fusionnées lors de la rédaction. Noms prévus, non vérifiés ; corriger ou
-> supprimer selon ce qui a réellement été livré.
+Noms vérifiés dans le dépôt ; chaque outil a sa page de détail.
 
-- **Script `scripts/build-dev.ps1` et presets de dev** (01.2) : build ciblé d'une cible Studio
-  ou d'une lib en une commande, sans reconstruire le reste.
-- **QML sans recompilation** (01.3) : mode « QML externe/dev » où Studio charge les `.qml`
-  depuis le disque ; une modification QML se vérifie en relançant l'exécutable, sans lien.
-  Les changements C++ (types exposés à QML, `qmldir`, ressources) imposent toujours un build.
-- **Cache de compilation (sccache)** (01.4), **cache vcpkg** (01.5), **en-têtes précompilés**
-  (01.6) : réduisent les temps à froid ; décrire ici l'activation et le diagnostic.
-- **CI** (01.7) : jobs et caches du workflow `.github/workflows/ci.yml`.
+- **Build ciblé de développement** (01.2) : `scripts/build-dev.ps1` (Ninja + MSVC, Studio seul,
+  Widgets V1 non construits). Presets `dev-debug`, `dev-relwithdebinfo`, `dev-notests` de
+  `CMakePresets.json` ; les presets historiques et `scripts/build.ps1` sont inchangés.
+- **QML sans recompilation** (01.3) : option CMake `OPENSTITCH_STUDIO_DEV_QML` (désactivée par
+  défaut, jamais en Release) et variable d'exécution `OPENSTITCH_DEV_QML=1` ; Studio charge les
+  `.qml` depuis le disque et recharge à chaud. Les changements C++ (types exposés, `qmldir`,
+  ressources) imposent toujours un build.
+- **Cache d'objets sccache** (01.4) : preset `msvc-sccache`, POC optionnel, voir
+  [build-sccache.md](build-sccache.md) (utile pour les rebuilds dans le même arbre, pas entre
+  worktrees).
+- **Cache vcpkg et préparation CI** (01.5) : voir [build-vcpkg-audit.md](build-vcpkg-audit.md).
+- **Parallélisme, PCH, Unity** (01.6) : `scripts/build-jobs.ps1`, option `OPENSTITCH_PCH`
+  (désactivée par défaut), `scripts/check-unity-safety.py`, `scripts/measure-build-ab.ps1` ;
+  voir [build-pch-unity.md](build-pch-unity.md).
+- **CI** (01.7) : jobs rapides et porte de validation dans `.github/workflows/ci.yml`, voir
+  [build-ci.md](build-ci.md).
+- **Mesure** (01.1) : `scripts/measure-build.ps1`, résultats dans
+  [build-baseline.md](build-baseline.md).
 
 ### Protocole de mesure
 
