@@ -482,6 +482,36 @@ cousues en satin à cordes parallèles (`AutoSatinParams::compact_axis`, voir
 Essai CLI (anneau 2,4 mm, arc 3,7 mm, disque 11,6 mm) : les trois en satin,
 7 sauts au lieu de 12 et plus de points courts de tatami.
 
+### Formes larges : satin guidé (`satin_wide_guided`, HP-ENG-009)
+
+Un **anneau large** (7 à 12 mm, au-delà de `satin_max_width`) ou une forme refusée par les deux voies
+ci-dessus peut être cousu en **satin guidé** (`AutoSatinStrategy::Guided`, ligne centrale
+automatique) au lieu d'un tatami à angle fixe, **seulement si la mesure le donne meilleur**
+(`plan_wide_guided_satin`, `quality_metrics.cpp`). Pour un anneau, la ligne centrale est le contour
+extérieur rentré de la demi-largeur moyenne, rééchantillonné au pas du moteur (un segment par
+station) et lissé ; elle est stockée dans `AutoSatinParams::guides[0].path` (modifiable ensuite).
+Le tatami de repli est mesuré à son angle naturel (`natural_fill_angle`). Critères (tous requis) :
+couverture >= `satin_min_coverage`, aucun rail croisé, au plus 2 colonnes (coupes), tour max entre
+deux fils <= 12°, fils <= max(`satin_compact_max_width`, `satin_max_width`) (12 mm), écart entre fils
+dans [0,16 ; 0,7] mm (densité), désalignement des fils avec la normale du bord <= 70 % de celui du
+tatami et fils rasants (< 30° du bord) pas plus fréquents.
+
+Mesure (`test_quality_metrics.cpp`, polygones de 360 côtés, tatami à l'angle naturel) :
+
+| Forme | désalignement guidé / tatami | tour max | écart fils (mm) | Verdict |
+|---|---|---|---|---|
+| anneau 30/12 mm | 0,005 / 0,50 | 2,8° | 0,18-0,62 | guidé |
+| anneau 40/20 mm | 0,006 / 0,50 | 2,2° | 0,21-0,59 | guidé |
+| anneau 24/10 mm | 0,005 / 0,51 | 3,1° | 0,21-0,59 | guidé |
+| anneau excentré 30/12 | 0,13 / 0,50 | 2,8° | 0,08-0,62 | tatami (densité) |
+| disque 15 et 30 mm | 0,50 / 0,49-0,50 | 0° | | tatami (aucun gain : axe droit = cordes parallèles) |
+| ellipse 30x16, 36x14 | 0,35 / 0,65 ; 0,28 / 0,72 | 0° | | tatami (fils de 14-16 mm) |
+
+Anneau vectorisé de 8 mm (32 mm de diamètre) : 1 colonne, couverture 0,99, 1110 points contre 913
+en tatami. Actif par défaut mais sans effet tant que `satin_bands` est faux. Reste : les disques et
+ellipses pleines gardent le tatami (un vrai satin tournant demande un axe courbe, pas fourni
+automatiquement) ; aucune validation sur machine.
+
 **Limites** : la case du desktop n'a pas été compilée dans l'environnement de
 développement Linux (Qt absent), à vérifier au prochain build Windows ; une région à plusieurs trous n'est pas tentée ; la couverture est
 géométrique, pas validée sur machine ; pas de satin en éventail ou concentrique pour les grands disques

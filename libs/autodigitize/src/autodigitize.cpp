@@ -108,6 +108,10 @@ double fill_threshold(const AutoOptions& options, bool detail) {
 struct SatinChoice {
     bool satin{false};
     bool compact_axis{false}; // forme compacte : axe synthétique (cordes parallèles)
+    // HP-ENG-009 : satin guidé d'une forme large ; `guide` = ligne centrale (vide : axe
+    // automatique).
+    bool guided{false};
+    std::vector<Vec2um> guide;
 };
 
 // Une région est satinable si le satin par squelette la couvre réellement : on
@@ -148,6 +152,18 @@ SatinChoice choose_satin(const geometry::PathSet& region, const AutoOptions& opt
         widthUm <= compactMax && covered(true)) {
         return {true, true};
     }
+    // HP-ENG-009 : forme large ou à trou refusée ci-dessus. Satin guidé seulement si la mesure le
+    // donne meilleur que le tatami de repli (`plan_wide_guided_satin`), sinon tatami.
+    if (options.satin_wide_guided && widthUm >= minWidth &&
+        widthUm <= static_cast<double>(options.satin_wide_max_width.value)) {
+        if (const auto plan = plan_wide_guided_satin(region, options); plan && plan->better) {
+            SatinChoice choice;
+            choice.satin = true;
+            choice.guided = true;
+            choice.guide = plan->guide;
+            return choice;
+        }
+    }
     return {};
 }
 
@@ -185,6 +201,15 @@ void classify_and_build_embroidery(const geometry::PathSet& main, const RegionSo
         // Bande étroite (anneau, ruban, arc) ou petit disque -> auto-satin.
         document::AutoSatinParams sp;
         sp.compact_axis = satin.compact_axis;
+        if (satin.guided) {
+            sp.strategy = document::AutoSatinStrategy::Guided;
+            if (!satin.guide.empty()) {
+                document::AutoSatinGuide g;
+                g.anchor = satin.guide.front();
+                g.path = satin.guide;
+                sp.guides.push_back(std::move(g));
+            }
+        }
         if (options.auto_pull_compensation) {
             sp.pull_mode = document::PullMode::Auto;
         }

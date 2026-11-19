@@ -46,6 +46,10 @@ void clear_length_bounds_cache();
 
 // Vide les caches du « knockout » (generate.cpp) ; appelé par clear_chunk_cache.
 void clear_knockout_cache();
+
+// Vide les caches des fondus à la frontière (plans, couches, bandes ; boundary_blend.cpp) ;
+// appelé par clear_chunk_cache.
+void clear_boundary_blend_cache();
 // --- Satins routés et auto-satin (HP-PERF-002, suite) -----------------------------------------
 //
 // Ces unités ne sont pas des fonctions pures de leur seul objet : elles lisent la DERNIÈRE
