@@ -31,6 +31,7 @@ from scipy import ndimage
 
 MIN_AREA_PX = 40  # ~2,3 mm² à 0,24 mm/px : en dessous, l'angle n'a pas de sens
 MIN_DIR_PX = 25  # pixels porteurs d'une direction dans la région
+MIN_MAG = 0.9  # norme minimale d'un pixel de direction (voir `regions_of`)
 EIGHT = np.ones((3, 3), dtype=bool)
 
 FEATURES = [
@@ -197,7 +198,9 @@ def regions_of(item: dict) -> list[dict]:
         area = len(xs)
         if area < MIN_AREA_PX:
             continue
-        sel = mask & (mag > 0.05)
+        # Seuls les pixels de norme proche de 1 portent une direction exacte : la carte
+        # moyenne des vecteurs ORIENTÉS, et les allers-retours (satin, rangées) s'annulent.
+        sel = mask & (mag > MIN_MAG)
         if sel.sum() < MIN_DIR_PX:
             continue
         true_angle, coherence, perp_share = dominant_axis(ang[sel], mag[sel])
@@ -222,6 +225,25 @@ def regions_of(item: dict) -> list[dict]:
         if len(nb_ids):
             nb_c /= len(nb_ids)
             nb_s /= len(nb_ids)
+        # Accord des vrais points avec trois hypothèses (erreur axiale moyenne, degrés) :
+        # - « travers » : le long du gradient de la transformée de distance, donc à travers
+        #   la bande, même si elle tourne (satin) ;
+        # - « constant » : l'axe dominant de la région (tatami) ;
+        # - « long » : perpendiculaire au gradient, le long des bords (contour, point droit).
+        dt = ndimage.gaussian_filter(ndimage.distance_transform_edt(np.pad(mask, 2)), 1.0)[2:-2, 2:-2]
+        gy, gx = np.gradient(dt)
+        valid = sel & (np.hypot(gx, gy) > 0.3)
+        if valid.sum() >= MIN_DIR_PX:
+            wv = mag[valid]
+            across = np.arctan2(gy[valid], gx[valid]) % math.pi
+            av = ang[valid]
+            err_across = float((wv * axial_distance(av, across)).sum() / wv.sum())
+            err_along = float((wv * axial_distance(av, (across + math.pi / 2) % math.pi)).sum() / wv.sum())
+        else:
+            err_across = err_along = float("nan")
+        wsel = mag[sel]
+        err_const = float((wsel * axial_distance(ang[sel], true_angle)).sum() / wsel.sum())
+        length_mm = per * mmpp / 2.0  # même définition que `measure_band_shape`
         result.append(
             {
                 "pair_id": item["pair_id"],
@@ -251,6 +273,11 @@ def regions_of(item: dict) -> list[dict]:
                 "coherence": coherence,
                 "perp_share": perp_share,
                 "dir_px": int(sel.sum()),
+                "length_mm": length_mm,
+                "mean_width_mm": area * mmpp * mmpp / max(length_mm, 1e-9),
+                "err_across": err_across,
+                "err_const": err_const,
+                "err_along": err_along,
             }
         )
     return result
@@ -261,11 +288,14 @@ def main() -> int:
     ap.add_argument("--data", type=Path, required=True)
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--min-mag", type=float, default=MIN_MAG)
     args = ap.parse_args()
+    globals()["MIN_MAG"] = args.min_mag
     index = load_index(args.data)
     if args.limit:
         index = index[: args.limit]
-    cols = ["pair_id", "family", "region", *FEATURES, "theta_principal", "theta_true", "coherence", "perp_share", "dir_px"]
+    cols = ["pair_id", "family", "region", *FEATURES, "theta_principal", "theta_true", "coherence", "perp_share", "dir_px",
+            "length_mm", "mean_width_mm", "err_across", "err_const", "err_along"]
     n = 0
     with open(args.out, "w", newline="", encoding="utf-8") as f:
         wr = csv.DictWriter(f, fieldnames=cols)
