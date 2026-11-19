@@ -1,0 +1,267 @@
+﻿run_id,sha,event,created,run_total_s,job,job_s,step,step_s
+44383502174,b1017289,pull_request,2026-11-18T19:44:58Z,2565,"windows-msvc",2562,"Set up job",4
+44383502174,b1017289,pull_request,2026-11-18T19:44:58Z,2565,"windows-msvc",2562,"Run actions/checkout@v4",5
+44383502174,b1017289,pull_request,2026-11-18T19:44:58Z,2565,"windows-msvc",2562,"Export GitHub Actions cache environment (vcpkg)",0
+44383502174,b1017289,pull_request,2026-11-18T19:44:58Z,2565,"windows-msvc",2562,"Install Qt",62
+44383502174,b1017289,pull_request,2026-11-18T19:44:58Z,2565,"windows-msvc",2562,"Set up vcpkg",12
+44383502174,b1017289,pull_request,2026-11-18T19:44:58Z,2565,"windows-msvc",2562,"Prefetch Boost CMake from official codeload (best effort)",1
+44383502174,b1017289,pull_request,2026-11-18T19:44:58Z,2565,"windows-msvc",2562,"Configure and build Release",1907
+44383502174,b1017289,pull_request,2026-11-18T19:44:58Z,2565,"windows-msvc",2562,"Upload Windows beta binaries",9
+44383502174,b1017289,pull_request,2026-11-18T19:44:58Z,2565,"windows-msvc",2562,"QA fondus — 20 variantes / OSP / DST / previews",10
+44383502174,b1017289,pull_request,2026-11-18T19:44:58Z,2565,"windows-msvc",2562,"Upload fondus — vrais projets, exports et previews",2
+44383502174,b1017289,pull_request,2026-11-18T19:44:58Z,2565,"windows-msvc",2562,"Build and capture experimental Qt Quick Studio",16
+44383502174,b1017289,pull_request,2026-11-18T19:44:58Z,2565,"windows-msvc",2562,"Upload actual Qt Studio screenshots",1
+44383502174,b1017289,pull_request,2026-11-18T19:44:58Z,2565,"windows-msvc",2562,"Test (Release)",525
+44383502174,b1017289,pull_request,2026-11-18T19:44:58Z,2565,"windows-msvc",2562,"Package and smoke-test Windows MCP (Release)",1
+44383502174,b1017289,pull_request,2026-11-18T19:44:58Z,2565,"windows-msvc",2562,"Upload Windows MCP ZIP + SHA256",2
+44383502174,b1017289,pull_request,2026-11-18T19:44:58Z,2565,"windows-msvc",2562,"Diagnose failed tests (Release)",0
+44383502174,b1017289,pull_request,2026-11-18T19:44:58Z,2565,"windows-msvc",2562,"Post Install Qt",0
+44383502174,b1017289,pull_request,2026-11-18T19:44:58Z,2565,"windows-msvc",2562,"Post Run actions/checkout@v4",1
+44383502174,b1017289,pull_request,2026-11-18T19:44:58Z,2565,"windows-msvc",2562,"Complete job",0
+44383502174,b1017289,pull_request,2026-11-18T19:44:58Z,2565,"format",25,"Set up job",1
+44383502174,b1017289,pull_request,2026-11-18T19:44:58Z,2565,"format",25,"Run actions/checkout@v4",2
+44383502174,b1017289,pull_request,2026-11-18T19:44:58Z,2565,"format",25,"clang-format (vérification, sans modification)",19
+44383502174,b1017289,pull_request,2026-11-18T19:44:58Z,2565,"format",25,"Post Run actions/checkout@v4",0
+44383502174,b1017289,pull_request,2026-11-18T19:44:58Z,2565,"format",25,"Complete job",0
+44383502174,b1017289,pull_request,2026-11-18T19:44:58Z,2565,"linux-core",2141,"Set up job",3
+44383502174,b1017289,pull_request,2026-11-18T19:44:58Z,2565,"linux-core",2141,"Run actions/checkout@v4",6
+44383502174,b1017289,pull_request,2026-11-18T19:44:58Z,2565,"linux-core",2141,"Export GitHub Actions cache environment (vcpkg)",0
+44383502174,b1017289,pull_request,2026-11-18T19:44:58Z,2565,"linux-core",2141,"Set up vcpkg",10
+44383502174,b1017289,pull_request,2026-11-18T19:44:58Z,2565,"linux-core",2141,"Prefetch Boost CMake from official codeload (best effort)",1
+44383502174,b1017289,pull_request,2026-11-18T19:44:58Z,2565,"linux-core",2141,"System dependencies (OpenCV via vcpkg)",60
+44383502174,b1017289,pull_request,2026-11-18T19:44:58Z,2565,"linux-core",2141,"Configure",512
+44383502174,b1017289,pull_request,2026-11-18T19:44:58Z,2565,"linux-core",2141,"Build",473
+44383502174,b1017289,pull_request,2026-11-18T19:44:58Z,2565,"linux-core",2141,"Test malformed OSP with the compiled CLI",0
+44383502174,b1017289,pull_request,2026-11-18T19:44:58Z,2565,"linux-core",2141,"Test",400
+44383502174,b1017289,pull_request,2026-11-18T19:44:58Z,2565,"linux-core",2141,"Test Linux CLI installer",0
+44383502174,b1017289,pull_request,2026-11-18T19:44:58Z,2565,"linux-core",2141,"Build Linux CLI (Release)",644
+44383502174,b1017289,pull_request,2026-11-18T19:44:58Z,2565,"linux-core",2141,"Build and package Linux MCP server (Release)",23
+44383502174,b1017289,pull_request,2026-11-18T19:44:58Z,2565,"linux-core",2141,"Upload Linux MCP binary and checksum",3
+44383502174,b1017289,pull_request,2026-11-18T19:44:58Z,2565,"linux-core",2141,"Upload Linux CLI binary and checksum",2
+44383502174,b1017289,pull_request,2026-11-18T19:44:58Z,2565,"linux-core",2141,"Post Run actions/checkout@v4",0
+44383502174,b1017289,pull_request,2026-11-18T19:44:58Z,2565,"linux-core",2141,"Complete job",0
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"windows-msvc",3232,"Set up job",4
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"windows-msvc",3232,"Run actions/checkout@v4",6
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"windows-msvc",3232,"Export GitHub Actions cache environment (vcpkg)",0
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"windows-msvc",3232,"Install Qt",78
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"windows-msvc",3232,"Set up vcpkg",16
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"windows-msvc",3232,"Prefetch Boost CMake from official codeload (best effort)",0
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"windows-msvc",3232,"Configure and build Release",2430
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"windows-msvc",3232,"Upload Windows beta binaries",11
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"windows-msvc",3232,"QA fondus — 20 variantes / OSP / DST / previews",13
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"windows-msvc",3232,"Upload fondus — vrais projets, exports et previews",1
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"windows-msvc",3232,"Build and capture experimental Qt Quick Studio",20
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"windows-msvc",3232,"Upload actual Qt Studio screenshots",1
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"windows-msvc",3232,"Test (Release)",643
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"windows-msvc",3232,"Package and smoke-test Windows MCP (Release)",1
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"windows-msvc",3232,"Upload Windows MCP ZIP + SHA256",2
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"windows-msvc",3232,"Diagnose failed tests (Release)",0
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"windows-msvc",3232,"Post Install Qt",0
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"windows-msvc",3232,"Post Run actions/checkout@v4",1
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"windows-msvc",3232,"Complete job",0
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"linux-core",3240,"Set up job",1
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"linux-core",3240,"Run actions/checkout@v4",2
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"linux-core",3240,"Export GitHub Actions cache environment (vcpkg)",0
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"linux-core",3240,"Set up vcpkg",14
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"linux-core",3240,"Prefetch Boost CMake from official codeload (best effort)",0
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"linux-core",3240,"System dependencies (OpenCV via vcpkg)",10
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"linux-core",3240,"Configure",774
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"linux-core",3240,"Build",711
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"linux-core",3240,"Test malformed OSP with the compiled CLI",1
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"linux-core",3240,"Test",657
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"linux-core",3240,"Test Linux CLI installer",0
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"linux-core",3240,"Build Linux CLI (Release)",1028
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"linux-core",3240,"Build and package Linux MCP server (Release)",33
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"linux-core",3240,"Upload Linux MCP binary and checksum",2
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"linux-core",3240,"Upload Linux CLI binary and checksum",2
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"linux-core",3240,"Post Run actions/checkout@v4",1
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"linux-core",3240,"Complete job",0
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"format",18,"Set up job",1
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"format",18,"Run actions/checkout@v4",2
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"format",18,"clang-format (vérification, sans modification)",13
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"format",18,"Post Run actions/checkout@v4",0
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"format",18,"Complete job",0
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"Release GitHub (dernier build de main)",28,"Set up job",1
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"Release GitHub (dernier build de main)",28,"Run actions/checkout@v4",2
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"Release GitHub (dernier build de main)",28,"Télécharger l'artefact Windows",3
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"Release GitHub (dernier build de main)",28,"Télécharger l'archive Windows MCP",1
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"Release GitHub (dernier build de main)",28,"Télécharger l'artefact Linux CLI",1
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"Release GitHub (dernier build de main)",28,"Télécharger l'artefact Linux MCP",1
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"Release GitHub (dernier build de main)",28,"Empaqueter",13
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"Release GitHub (dernier build de main)",28,"Publier/remplacer la release "latest"",4
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"Release GitHub (dernier build de main)",28,"Post Run actions/checkout@v4",0
+44382736619,bbe66c36,push,2026-11-18T19:40:36Z,3935,"Release GitHub (dernier build de main)",28,"Complete job",1
+44371525330,babadf58,pull_request,2026-11-18T18:36:17Z,3844,"format",22,"Set up job",0
+44371525330,babadf58,pull_request,2026-11-18T18:36:17Z,3844,"format",22,"Run actions/checkout@v4",2
+44371525330,babadf58,pull_request,2026-11-18T18:36:17Z,3844,"format",22,"clang-format (vérification, sans modification)",17
+44371525330,babadf58,pull_request,2026-11-18T18:36:17Z,3844,"format",22,"Post Run actions/checkout@v4",0
+44371525330,babadf58,pull_request,2026-11-18T18:36:17Z,3844,"format",22,"Complete job",0
+44371525330,babadf58,pull_request,2026-11-18T18:36:17Z,3844,"linux-core",2090,"Set up job",3
+44371525330,babadf58,pull_request,2026-11-18T18:36:17Z,3844,"linux-core",2090,"Run actions/checkout@v4",6
+44371525330,babadf58,pull_request,2026-11-18T18:36:17Z,3844,"linux-core",2090,"Export GitHub Actions cache environment (vcpkg)",0
+44371525330,babadf58,pull_request,2026-11-18T18:36:17Z,3844,"linux-core",2090,"Set up vcpkg",11
+44371525330,babadf58,pull_request,2026-11-18T18:36:17Z,3844,"linux-core",2090,"Prefetch Boost CMake from official codeload (best effort)",0
+44371525330,babadf58,pull_request,2026-11-18T18:36:17Z,3844,"linux-core",2090,"System dependencies (OpenCV via vcpkg)",33
+44371525330,babadf58,pull_request,2026-11-18T18:36:17Z,3844,"linux-core",2090,"Configure",497
+44371525330,babadf58,pull_request,2026-11-18T18:36:17Z,3844,"linux-core",2090,"Build",462
+44371525330,babadf58,pull_request,2026-11-18T18:36:17Z,3844,"linux-core",2090,"Test malformed OSP with the compiled CLI",1
+44371525330,babadf58,pull_request,2026-11-18T18:36:17Z,3844,"linux-core",2090,"Test",404
+44371525330,babadf58,pull_request,2026-11-18T18:36:17Z,3844,"linux-core",2090,"Test Linux CLI installer",1
+44371525330,babadf58,pull_request,2026-11-18T18:36:17Z,3844,"linux-core",2090,"Build Linux CLI (Release)",639
+44371525330,babadf58,pull_request,2026-11-18T18:36:17Z,3844,"linux-core",2090,"Build and package Linux MCP server (Release)",23
+44371525330,babadf58,pull_request,2026-11-18T18:36:17Z,3844,"linux-core",2090,"Upload Linux MCP binary and checksum",3
+44371525330,babadf58,pull_request,2026-11-18T18:36:17Z,3844,"linux-core",2090,"Upload Linux CLI binary and checksum",3
+44371525330,babadf58,pull_request,2026-11-18T18:36:17Z,3844,"linux-core",2090,"Post Run actions/checkout@v4",0
+44371525330,babadf58,pull_request,2026-11-18T18:36:17Z,3844,"linux-core",2090,"Complete job",0
+44371525330,babadf58,pull_request,2026-11-18T18:36:17Z,3844,"windows-msvc",3839,"Set up job",5
+44371525330,babadf58,pull_request,2026-11-18T18:36:17Z,3844,"windows-msvc",3839,"Run actions/checkout@v4",7
+44371525330,babadf58,pull_request,2026-11-18T18:36:17Z,3844,"windows-msvc",3839,"Export GitHub Actions cache environment (vcpkg)",0
+44371525330,babadf58,pull_request,2026-11-18T18:36:17Z,3844,"windows-msvc",3839,"Install Qt",79
+44371525330,babadf58,pull_request,2026-11-18T18:36:17Z,3844,"windows-msvc",3839,"Set up vcpkg",19
+44371525330,babadf58,pull_request,2026-11-18T18:36:17Z,3844,"windows-msvc",3839,"Prefetch Boost CMake from official codeload (best effort)",1
+44371525330,babadf58,pull_request,2026-11-18T18:36:17Z,3844,"windows-msvc",3839,"Configure and build Release",3053
+44371525330,babadf58,pull_request,2026-11-18T18:36:17Z,3844,"windows-msvc",3839,"Upload Windows beta binaries",13
+44371525330,babadf58,pull_request,2026-11-18T18:36:17Z,3844,"windows-msvc",3839,"QA fondus — 20 variantes / OSP / DST / previews",13
+44371525330,babadf58,pull_request,2026-11-18T18:36:17Z,3844,"windows-msvc",3839,"Upload fondus — vrais projets, exports et previews",2
+44371525330,babadf58,pull_request,2026-11-18T18:36:17Z,3844,"windows-msvc",3839,"Build and capture experimental Qt Quick Studio",23
+44371525330,babadf58,pull_request,2026-11-18T18:36:17Z,3844,"windows-msvc",3839,"Upload actual Qt Studio screenshots",2
+44371525330,babadf58,pull_request,2026-11-18T18:36:17Z,3844,"windows-msvc",3839,"Test (Release)",611
+44371525330,babadf58,pull_request,2026-11-18T18:36:17Z,3844,"windows-msvc",3839,"Package and smoke-test Windows MCP (Release)",1
+44371525330,babadf58,pull_request,2026-11-18T18:36:17Z,3844,"windows-msvc",3839,"Upload Windows MCP ZIP + SHA256",3
+44371525330,babadf58,pull_request,2026-11-18T18:36:17Z,3844,"windows-msvc",3839,"Diagnose failed tests (Release)",0
+44371525330,babadf58,pull_request,2026-11-18T18:36:17Z,3844,"windows-msvc",3839,"Post Install Qt",0
+44371525330,babadf58,pull_request,2026-11-18T18:36:17Z,3844,"windows-msvc",3839,"Post Run actions/checkout@v4",1
+44371525330,babadf58,pull_request,2026-11-18T18:36:17Z,3844,"windows-msvc",3839,"Complete job",0
+44362346688,cba44220,pull_request,2026-11-18T17:46:21Z,3237,"linux-core",2095,"Set up job",2
+44362346688,cba44220,pull_request,2026-11-18T17:46:21Z,3237,"linux-core",2095,"Run actions/checkout@v4",5
+44362346688,cba44220,pull_request,2026-11-18T17:46:21Z,3237,"linux-core",2095,"Export GitHub Actions cache environment (vcpkg)",0
+44362346688,cba44220,pull_request,2026-11-18T17:46:21Z,3237,"linux-core",2095,"Set up vcpkg",10
+44362346688,cba44220,pull_request,2026-11-18T17:46:21Z,3237,"linux-core",2095,"Prefetch Boost CMake from official codeload (best effort)",1
+44362346688,cba44220,pull_request,2026-11-18T17:46:21Z,3237,"linux-core",2095,"System dependencies (OpenCV via vcpkg)",51
+44362346688,cba44220,pull_request,2026-11-18T17:46:21Z,3237,"linux-core",2095,"Configure",492
+44362346688,cba44220,pull_request,2026-11-18T17:46:21Z,3237,"linux-core",2095,"Build",458
+44362346688,cba44220,pull_request,2026-11-18T17:46:21Z,3237,"linux-core",2095,"Test malformed OSP with the compiled CLI",0
+44362346688,cba44220,pull_request,2026-11-18T17:46:21Z,3237,"linux-core",2095,"Test",400
+44362346688,cba44220,pull_request,2026-11-18T17:46:21Z,3237,"linux-core",2095,"Test Linux CLI installer",0
+44362346688,cba44220,pull_request,2026-11-18T17:46:21Z,3237,"linux-core",2095,"Build Linux CLI (Release)",648
+44362346688,cba44220,pull_request,2026-11-18T17:46:21Z,3237,"linux-core",2095,"Build and package Linux MCP server (Release)",23
+44362346688,cba44220,pull_request,2026-11-18T17:46:21Z,3237,"linux-core",2095,"Upload Linux MCP binary and checksum",1
+44362346688,cba44220,pull_request,2026-11-18T17:46:21Z,3237,"linux-core",2095,"Upload Linux CLI binary and checksum",2
+44362346688,cba44220,pull_request,2026-11-18T17:46:21Z,3237,"linux-core",2095,"Post Run actions/checkout@v4",0
+44362346688,cba44220,pull_request,2026-11-18T17:46:21Z,3237,"linux-core",2095,"Complete job",0
+44362346688,cba44220,pull_request,2026-11-18T17:46:21Z,3237,"windows-msvc",3234,"Set up job",3
+44362346688,cba44220,pull_request,2026-11-18T17:46:21Z,3237,"windows-msvc",3234,"Run actions/checkout@v4",7
+44362346688,cba44220,pull_request,2026-11-18T17:46:21Z,3237,"windows-msvc",3234,"Export GitHub Actions cache environment (vcpkg)",0
+44362346688,cba44220,pull_request,2026-11-18T17:46:21Z,3237,"windows-msvc",3234,"Install Qt",81
+44362346688,cba44220,pull_request,2026-11-18T17:46:21Z,3237,"windows-msvc",3234,"Set up vcpkg",16
+44362346688,cba44220,pull_request,2026-11-18T17:46:21Z,3237,"windows-msvc",3234,"Prefetch Boost CMake from official codeload (best effort)",1
+44362346688,cba44220,pull_request,2026-11-18T17:46:21Z,3237,"windows-msvc",3234,"Configure and build Release",2277
+44362346688,cba44220,pull_request,2026-11-18T17:46:21Z,3237,"windows-msvc",3234,"Upload Windows beta binaries",9
+44362346688,cba44220,pull_request,2026-11-18T17:46:21Z,3237,"windows-msvc",3234,"QA fondus — 20 variantes / OSP / DST / previews",12
+44362346688,cba44220,pull_request,2026-11-18T17:46:21Z,3237,"windows-msvc",3234,"Upload fondus — vrais projets, exports et previews",2
+44362346688,cba44220,pull_request,2026-11-18T17:46:21Z,3237,"windows-msvc",3234,"Build and capture experimental Qt Quick Studio",18
+44362346688,cba44220,pull_request,2026-11-18T17:46:21Z,3237,"windows-msvc",3234,"Upload actual Qt Studio screenshots",1
+44362346688,cba44220,pull_request,2026-11-18T17:46:21Z,3237,"windows-msvc",3234,"Test (Release)",799
+44362346688,cba44220,pull_request,2026-11-18T17:46:21Z,3237,"windows-msvc",3234,"Package and smoke-test Windows MCP (Release)",1
+44362346688,cba44220,pull_request,2026-11-18T17:46:21Z,3237,"windows-msvc",3234,"Upload Windows MCP ZIP + SHA256",1
+44362346688,cba44220,pull_request,2026-11-18T17:46:21Z,3237,"windows-msvc",3234,"Diagnose failed tests (Release)",0
+44362346688,cba44220,pull_request,2026-11-18T17:46:21Z,3237,"windows-msvc",3234,"Post Install Qt",0
+44362346688,cba44220,pull_request,2026-11-18T17:46:21Z,3237,"windows-msvc",3234,"Post Run actions/checkout@v4",1
+44362346688,cba44220,pull_request,2026-11-18T17:46:21Z,3237,"windows-msvc",3234,"Complete job",0
+44362346688,cba44220,pull_request,2026-11-18T17:46:21Z,3237,"format",787,"Set up job",3
+44362346688,cba44220,pull_request,2026-11-18T17:46:21Z,3237,"format",787,"Run actions/checkout@v4",5
+44362346688,cba44220,pull_request,2026-11-18T17:46:21Z,3237,"format",787,"clang-format (vérification, sans modification)",776
+44362346688,cba44220,pull_request,2026-11-18T17:46:21Z,3237,"format",787,"Post Run actions/checkout@v4",0
+44362346688,cba44220,pull_request,2026-11-18T17:46:21Z,3237,"format",787,"Complete job",0
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"windows-msvc",3890,"Set up job",4
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"windows-msvc",3890,"Run actions/checkout@v4",7
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"windows-msvc",3890,"Export GitHub Actions cache environment (vcpkg)",0
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"windows-msvc",3890,"Install Qt",75
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"windows-msvc",3890,"Set up vcpkg",19
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"windows-msvc",3890,"Prefetch Boost CMake from official codeload (best effort)",0
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"windows-msvc",3890,"Configure and build Release",3041
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"windows-msvc",3890,"Upload Windows beta binaries",12
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"windows-msvc",3890,"QA fondus — 20 variantes / OSP / DST / previews",13
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"windows-msvc",3890,"Upload fondus — vrais projets, exports et previews",2
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"windows-msvc",3890,"Build and capture experimental Qt Quick Studio",23
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"windows-msvc",3890,"Upload actual Qt Studio screenshots",1
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"windows-msvc",3890,"Test (Release)",684
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"windows-msvc",3890,"Package and smoke-test Windows MCP (Release)",1
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"windows-msvc",3890,"Upload Windows MCP ZIP + SHA256",2
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"windows-msvc",3890,"Diagnose failed tests (Release)",0
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"windows-msvc",3890,"Post Install Qt",0
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"windows-msvc",3890,"Post Run actions/checkout@v4",1
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"windows-msvc",3890,"Complete job",0
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"linux-core",2094,"Set up job",3
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"linux-core",2094,"Run actions/checkout@v4",8
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"linux-core",2094,"Export GitHub Actions cache environment (vcpkg)",0
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"linux-core",2094,"Set up vcpkg",10
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"linux-core",2094,"Prefetch Boost CMake from official codeload (best effort)",0
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"linux-core",2094,"System dependencies (OpenCV via vcpkg)",43
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"linux-core",2094,"Configure",501
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"linux-core",2094,"Build",458
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"linux-core",2094,"Test malformed OSP with the compiled CLI",1
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"linux-core",2094,"Test",398
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"linux-core",2094,"Test Linux CLI installer",0
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"linux-core",2094,"Build Linux CLI (Release)",639
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"linux-core",2094,"Build and package Linux MCP server (Release)",22
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"linux-core",2094,"Upload Linux MCP binary and checksum",4
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"linux-core",2094,"Upload Linux CLI binary and checksum",2
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"linux-core",2094,"Post Run actions/checkout@v4",0
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"linux-core",2094,"Complete job",0
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"format",26,"Set up job",0
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"format",26,"Run actions/checkout@v4",2
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"format",26,"clang-format (vérification, sans modification)",21
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"format",26,"Post Run actions/checkout@v4",0
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"format",26,"Complete job",0
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"Release GitHub (dernier build de main)",30,"Set up job",1
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"Release GitHub (dernier build de main)",30,"Run actions/checkout@v4",2
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"Release GitHub (dernier build de main)",30,"Télécharger l'artefact Windows",3
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"Release GitHub (dernier build de main)",30,"Télécharger l'archive Windows MCP",2
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"Release GitHub (dernier build de main)",30,"Télécharger l'artefact Linux CLI",1
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"Release GitHub (dernier build de main)",30,"Télécharger l'artefact Linux MCP",1
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"Release GitHub (dernier build de main)",30,"Empaqueter",9
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"Release GitHub (dernier build de main)",30,"Publier/remplacer la release "latest"",8
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"Release GitHub (dernier build de main)",30,"Post Run actions/checkout@v4",0
+44296629868,a667d588,push,2026-11-18T11:39:10Z,4169,"Release GitHub (dernier build de main)",30,"Complete job",0
+44288632298,f6ef98d6,pull_request,2026-11-18T10:47:02Z,3073,"format",73,"Set up job",3
+44288632298,f6ef98d6,pull_request,2026-11-18T10:47:02Z,3073,"format",73,"Run actions/checkout@v4",7
+44288632298,f6ef98d6,pull_request,2026-11-18T10:47:02Z,3073,"format",73,"clang-format (vérification, sans modification)",60
+44288632298,f6ef98d6,pull_request,2026-11-18T10:47:02Z,3073,"format",73,"Post Run actions/checkout@v4",0
+44288632298,f6ef98d6,pull_request,2026-11-18T10:47:02Z,3073,"format",73,"Complete job",0
+44288632298,f6ef98d6,pull_request,2026-11-18T10:47:02Z,3073,"linux-core",2154,"Set up job",3
+44288632298,f6ef98d6,pull_request,2026-11-18T10:47:02Z,3073,"linux-core",2154,"Run actions/checkout@v4",8
+44288632298,f6ef98d6,pull_request,2026-11-18T10:47:02Z,3073,"linux-core",2154,"Export GitHub Actions cache environment (vcpkg)",0
+44288632298,f6ef98d6,pull_request,2026-11-18T10:47:02Z,3073,"linux-core",2154,"Set up vcpkg",11
+44288632298,f6ef98d6,pull_request,2026-11-18T10:47:02Z,3073,"linux-core",2154,"Prefetch Boost CMake from official codeload (best effort)",0
+44288632298,f6ef98d6,pull_request,2026-11-18T10:47:02Z,3073,"linux-core",2154,"System dependencies (OpenCV via vcpkg)",41
+44288632298,f6ef98d6,pull_request,2026-11-18T10:47:02Z,3073,"linux-core",2154,"Configure",515
+44288632298,f6ef98d6,pull_request,2026-11-18T10:47:02Z,3073,"linux-core",2154,"Build",479
+44288632298,f6ef98d6,pull_request,2026-11-18T10:47:02Z,3073,"linux-core",2154,"Test malformed OSP with the compiled CLI",0
+44288632298,f6ef98d6,pull_request,2026-11-18T10:47:02Z,3073,"linux-core",2154,"Test",399
+44288632298,f6ef98d6,pull_request,2026-11-18T10:47:02Z,3073,"linux-core",2154,"Test Linux CLI installer",0
+44288632298,f6ef98d6,pull_request,2026-11-18T10:47:02Z,3073,"linux-core",2154,"Build Linux CLI (Release)",665
+44288632298,f6ef98d6,pull_request,2026-11-18T10:47:02Z,3073,"linux-core",2154,"Build and package Linux MCP server (Release)",24
+44288632298,f6ef98d6,pull_request,2026-11-18T10:47:02Z,3073,"linux-core",2154,"Upload Linux MCP binary and checksum",3
+44288632298,f6ef98d6,pull_request,2026-11-18T10:47:02Z,3073,"linux-core",2154,"Upload Linux CLI binary and checksum",3
+44288632298,f6ef98d6,pull_request,2026-11-18T10:47:02Z,3073,"linux-core",2154,"Post Run actions/checkout@v4",0
+44288632298,f6ef98d6,pull_request,2026-11-18T10:47:02Z,3073,"linux-core",2154,"Complete job",0
+44288632298,f6ef98d6,pull_request,2026-11-18T10:47:02Z,3073,"windows-msvc",3069,"Set up job",4
+44288632298,f6ef98d6,pull_request,2026-11-18T10:47:02Z,3073,"windows-msvc",3069,"Run actions/checkout@v4",6
+44288632298,f6ef98d6,pull_request,2026-11-18T10:47:02Z,3073,"windows-msvc",3069,"Export GitHub Actions cache environment (vcpkg)",0
+44288632298,f6ef98d6,pull_request,2026-11-18T10:47:02Z,3073,"windows-msvc",3069,"Install Qt",74
+44288632298,f6ef98d6,pull_request,2026-11-18T10:47:02Z,3073,"windows-msvc",3069,"Set up vcpkg",15
+44288632298,f6ef98d6,pull_request,2026-11-18T10:47:02Z,3073,"windows-msvc",3069,"Prefetch Boost CMake from official codeload (best effort)",0
+44288632298,f6ef98d6,pull_request,2026-11-18T10:47:02Z,3073,"windows-msvc",3069,"Configure and build Release",2228
+44288632298,f6ef98d6,pull_request,2026-11-18T10:47:02Z,3073,"windows-msvc",3069,"Upload Windows beta binaries",10
+44288632298,f6ef98d6,pull_request,2026-11-18T10:47:02Z,3073,"windows-msvc",3069,"QA fondus — 20 variantes / OSP / DST / previews",12
+44288632298,f6ef98d6,pull_request,2026-11-18T10:47:02Z,3073,"windows-msvc",3069,"Upload fondus — vrais projets, exports et previews",1
+44288632298,f6ef98d6,pull_request,2026-11-18T10:47:02Z,3073,"windows-msvc",3069,"Build and capture experimental Qt Quick Studio",19
+44288632298,f6ef98d6,pull_request,2026-11-18T10:47:02Z,3073,"windows-msvc",3069,"Upload actual Qt Studio screenshots",1
+44288632298,f6ef98d6,pull_request,2026-11-18T10:47:02Z,3073,"windows-msvc",3069,"Test (Release)",691
+44288632298,f6ef98d6,pull_request,2026-11-18T10:47:02Z,3073,"windows-msvc",3069,"Package and smoke-test Windows MCP (Release)",1
+44288632298,f6ef98d6,pull_request,2026-11-18T10:47:02Z,3073,"windows-msvc",3069,"Upload Windows MCP ZIP + SHA256",1
+44288632298,f6ef98d6,pull_request,2026-11-18T10:47:02Z,3073,"windows-msvc",3069,"Diagnose failed tests (Release)",0
+44288632298,f6ef98d6,pull_request,2026-11-18T10:47:02Z,3073,"windows-msvc",3069,"Post Install Qt",1
+44288632298,f6ef98d6,pull_request,2026-11-18T10:47:02Z,3073,"windows-msvc",3069,"Post Run actions/checkout@v4",1
+44288632298,f6ef98d6,pull_request,2026-11-18T10:47:02Z,3073,"windows-msvc",3069,"Complete job",0
