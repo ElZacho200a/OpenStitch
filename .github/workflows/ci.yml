@@ -78,6 +78,7 @@ jobs:
         with:
           version: "6.8.3"
           arch: win64_msvc2022_64
+          modules: qtshadertools
 
       - name: Restore vcpkg binary cache
         id: vcpkg-cache

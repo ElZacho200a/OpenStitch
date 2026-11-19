@@ -44,9 +44,9 @@ nombre de sommets, aucun shader. Demi-texel d'ecart en v pour ne pas lire la ran
 Test : `twistKeepsAConstantPhysicalPitch`. Comparatif visuel photo : non fait (lot A).
 
 ### Bloquant pour le PBR complet
-Qt 6.8.3 local sans module `qtshadertools` (ni `qsb`, ni `Qt6ShaderTools`) : pas de
-`QSGMaterialShader` personnalise. Etape suivante : installer le module (Maintenance Tool, meme
-version), l'ajouter a vcpkg/CI, puis brancher sur `ThreadMaterialProvider` un materiau de fil :
+Module `qtshadertools` installe (aqtinstall : `python -m aqt install-qt windows desktop 6.8.3
+win64_msvc2022_64 -m qtshadertools`) et declare dans les workflows CI et release
+(`modules: qtshadertools`). Etape suivante : brancher sur `ThreadMaterialProvider` un materiau de fil :
 - sommets enrichis (x, y, axe du fil, abscisse en mm, largeur) au lieu de (x, y, u, v) ;
 - fragment : normale de cylindre analytique, speculaire anisotrope (Kajiya-Kay, deux lobes
   decales pour la torsion des brins), torsion a pas exact en mm, bruit de brin deterministe
