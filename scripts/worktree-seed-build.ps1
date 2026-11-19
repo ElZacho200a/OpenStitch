@@ -12,7 +12,10 @@
          (CMake, projets Visual Studio, .tlog) ;
       3. redonne aux fichiers suivis identiques (même blob git, non modifiés dans la source) la date
          de la source : seuls les fichiers qui diffèrent sont recompilés ;
-      4. relance `cmake --preset <Preset>` dans la cible.
+      4. relance `cmake --preset <Preset>` dans la cible ;
+      5. renomme les dossiers de suivi MSBuild `<nom>.<GUID8>.tlog` : leur suffixe est le début du
+         ProjectGuid, que CMake dérive du chemin du projet. Sans ce renommage, MSBuild ne retrouve
+         pas l'historique incrémental et recompile chaque projet en entier.
     Le build suivant (ciblé ou complet) ne recompile que ce qui diffère de la source.
 
 .EXAMPLE
@@ -62,6 +65,8 @@ $variants = @(
 $patterns = @('*.txt', '*.cmake', '*.vcxproj', '*.vcxproj.filters', '*.sln', '*.slnx', '*.tlog',
               '*.props', '*.targets', '*.rule', '*.json', '*.ninja', '*.recipe', '*.lastbuildstate')
 $rewritten = 0
+$TargetUpper = $Target.ToUpperInvariant()
+$quoteTarget = ($Target -match '[^A-Za-z0-9\\:._]') -and -not ($Source -match '[^A-Za-z0-9\\:._]')
 Get-ChildItem $dstBuild -Recurse -File -Include $patterns -ErrorAction SilentlyContinue |
     ForEach-Object {
         $file = $_
@@ -80,6 +85,13 @@ Get-ChildItem $dstBuild -Recurse -File -Include $patterns -ErrorAction SilentlyC
             }
             $new = [regex]::Replace($new, [regex]::Escape($v.From), $evaluator,
                                     [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+        }
+        # MSBuild met entre guillemets un chemin de /I contenant un caractère hors de
+        # [A-Za-z0-9\:._] (un tiret, typiquement). Si la cible en a besoin et pas la source,
+        # la ligne de commande enregistrée diffère et tout le projet est recompilé.
+        if ($quoteTarget -and $file.Name -like '*.command.*.tlog') {
+            $new = [regex]::Replace($new, '(?<=[\s^]|^)(/[A-Za-z:]+)(' + [regex]::Escape($TargetUpper) + '[^\s"]*)',
+                                    '$1"$2"')
         }
         if ($new -ne $text) {
             $time = $file.LastWriteTimeUtc
@@ -118,6 +130,18 @@ foreach ($line in (& git -C $Target ls-files -s)) {
 }
 Write-Host "[seed] dates alignées sur la source : $synced fichiers ; $differ différents (recompilés)"
 
+# GUID (8 premiers caractères) de chaque projet avant reconfiguration : nom des dossiers .tlog.
+function Get-ProjectGuids([string]$Dir) {
+    $map = @{}
+    Get-ChildItem $Dir -Recurse -File -Filter *.vcxproj -ErrorAction SilentlyContinue | ForEach-Object {
+        $m = Select-String -LiteralPath $_.FullName -Pattern '<ProjectGuid>\{([0-9A-Fa-f]{8})' |
+            Select-Object -First 1
+        if ($m) { $map[$_.FullName] = $m.Matches[0].Groups[1].Value.ToUpperInvariant() }
+    }
+    return $map
+}
+$oldGuids = Get-ProjectGuids $dstBuild
+
 # 4. Reconfiguration (régénère les projets avec les nouveaux chemins).
 if (-not $SkipConfigure) {
     Push-Location $Target
@@ -125,5 +149,29 @@ if (-not $SkipConfigure) {
         & cmake --preset $Preset *> (Join-Path $dstBuild "seed-configure.log")
         if ($LASTEXITCODE -ne 0) { throw "cmake --preset $Preset a échoué (voir $dstBuild\seed-configure.log)" }
     } finally { Pop-Location }
+}
+# 5. Dossiers de suivi MSBuild renommés vers le nouveau GUID (sinon tout est recompilé).
+if (-not $SkipConfigure) {
+    $newGuids = Get-ProjectGuids $dstBuild
+    # Correspondance ancien -> nouveau GUID8, puis un seul parcours des dossiers .tlog.
+    $guidMap = @{}
+    foreach ($proj in $newGuids.Keys) {
+        $old = $oldGuids[$proj]
+        if ($old -and $old -ne $newGuids[$proj]) { $guidMap[$old] = $newGuids[$proj] }
+    }
+    $renamed = 0
+    if ($guidMap.Count -gt 0) {
+        Get-ChildItem $dstBuild -Recurse -Directory -Filter *.tlog -ErrorAction SilentlyContinue |
+            ForEach-Object {
+                if ($_.Name -match '^(.+)\.([0-9A-F]{8})((_MD)?\.tlog)$' -and $guidMap.ContainsKey($Matches[2])) {
+                    $leaf = $Matches[1] + '.' + $guidMap[$Matches[2]] + $Matches[3]
+                    if (-not (Test-Path -LiteralPath (Join-Path $_.Parent.FullName $leaf))) {
+                        Rename-Item -LiteralPath $_.FullName -NewName $leaf
+                        $renamed++
+                    }
+                }
+            }
+    }
+    Write-Host "[seed] dossiers .tlog renommés vers le nouveau GUID : $renamed"
 }
 Write-Host ("[seed] terminé en {0:N0} s ; lancer ensuite le build ciblé habituel" -f $sw.Elapsed.TotalSeconds)
