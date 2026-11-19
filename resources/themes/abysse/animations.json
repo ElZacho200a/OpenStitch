@@ -1,0 +1,13 @@
+{
+  "$comment": "Mouvements « en apesanteur » : lents, sans rebond. Tout tombe à 0 avec « Réduire les animations ».",
+  "motion": {
+    "durationMs": 260,
+    "fastMs": 140,
+    "slowMs": 420,
+    "easing": "InOutSine",
+    "easingEmphasis": "OutSine",
+    "pressScale": 0.98,
+    "hoverLift": 1,
+    "popupScale": 0.94
+  }
+}
