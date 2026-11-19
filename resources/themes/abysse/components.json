@@ -1,0 +1,74 @@
+{
+  "$comment": "Abysse : surfaces sombres et mates ; ce qui est actif ou survolé « s'allume » (halo = ombre colorée, shadowOffset 0). L'action principale brille en permanence.",
+  "button": {
+    "normal": {
+      "fill": "{custom.btnTop}", "fillEnd": "{custom.btnBottom}",
+      "border": "{custom.btnBorder}", "borderWidth": 1, "radius": 10,
+      "shadowLayers": 0
+    },
+    "hover": {
+      "fill": "{custom.hoverTop}", "fillEnd": "{custom.hoverBottom}", "border": "{custom.glow}",
+      "shadowColor": "{custom.glow}", "shadowLayers": 3, "shadowSpread": 2, "shadowOffset": 0, "shadowOpacity": 0.16
+    },
+    "pressed": { "fill": "{custom.hoverBottom}", "fillEnd": "{custom.hoverTop}", "shadowLayers": 0 },
+    "selected": {
+      "fill": "#0f3a3c", "fillEnd": "#0a2a2d", "border": "{custom.glow}", "text": "{color.accent}", "icon": "{color.accent}",
+      "shadowColor": "{custom.glow}", "shadowLayers": 2, "shadowSpread": 2, "shadowOffset": 0, "shadowOpacity": 0.12
+    },
+    "disabled": { "opacity": 0.45, "shadowLayers": 0 },
+    "focus": { "border": "{color.focus}", "borderWidth": 2 },
+    "emphasized": {
+      "normal": {
+        "fill": "{custom.lumTop}", "fillEnd": "{custom.lumBottom}", "border": "{custom.lumBorder}",
+        "text": "{color.accentInk}", "icon": "{color.accentInk}", "gloss": 0.35,
+        "shadowColor": "{custom.glow}", "shadowLayers": 4, "shadowSpread": 3, "shadowOffset": 0, "shadowOpacity": 0.28
+      },
+      "hover": { "shadowOpacity": 0.42, "shadowSpread": 4 },
+      "pressed": { "fill": "{custom.lumBottom}", "fillEnd": "{custom.lumTop}", "shadowOpacity": 0.2 }
+    },
+    "quiet": {
+      "normal": { "fill": "transparent", "fillEnd": "transparent", "border": "transparent" },
+      "hover": { "fill": "{custom.hoverTop}", "fillEnd": "{custom.hoverBottom}", "border": "transparent", "shadowLayers": 0 },
+      "selected": { "fill": "#0f3a3c", "fillEnd": "#0a2a2d", "border": "transparent", "shadowLayers": 0 }
+    }
+  },
+  "card": {
+    "fill": "{custom.cardFill}", "border": "{custom.cardBorder}", "borderWidth": 1, "radius": 16,
+    "shadowColor": "{color.shadow}", "shadowLayers": 4, "shadowSpread": 5, "shadowOffset": 8, "shadowOpacity": 0.5
+  },
+  "header": { "fill": "#071422", "fillEnd": "#040c16", "border": "{custom.cardBorder}" },
+  "popup": {
+    "fill": "#071624", "fillEnd": "#040d17", "border": "{custom.glowViolet}", "borderWidth": 1, "radius": 16,
+    "shadowColor": "{custom.glowViolet}", "shadowLayers": 5, "shadowSpread": 4, "shadowOffset": 0, "shadowOpacity": 0.14
+  },
+  "desk": { "fill": "{custom.abyssTop}", "fillEnd": "{custom.abyssBottom}" },
+  "input": {
+    "normal": { "fill": "#071624", "border": "{custom.btnBorder}", "radius": 8 },
+    "hover": { "border": "#2a5878" },
+    "focus": { "border": "{color.focus}", "borderWidth": 2 }
+  },
+  "checkbox": {
+    "normal": { "radius": 5 },
+    "selected": { "shadowColor": "{custom.glow}", "shadowLayers": 2, "shadowSpread": 2, "shadowOffset": 0, "shadowOpacity": 0.25 }
+  },
+  "switch.track": {
+    "selected": { "shadowColor": "{custom.glow}", "shadowLayers": 2, "shadowSpread": 2, "shadowOffset": 0, "shadowOpacity": 0.25 }
+  },
+  "slider.track": { "fill": "#0d2133", "border": "transparent", "radius": 3, "height": 6 },
+  "slider.fill": { "fill": "{custom.glowViolet}", "fillEnd": "{custom.glow}", "gradient": "horizontal", "radius": 3 },
+  "slider.handle": {
+    "normal": { "shadowColor": "{custom.glow}", "shadowLayers": 3, "shadowSpread": 2, "shadowOffset": 0, "shadowOpacity": 0.3 }
+  },
+  "tooltip": { "fill": "{custom.tipFill}", "border": "{custom.glow}", "radius": 8, "shadowColor": "{custom.glow}", "shadowLayers": 2, "shadowOffset": 0, "shadowOpacity": 0.15 },
+  "tab": {
+    "normal": { "radius": 10 },
+    "selected": {
+      "fill": "{custom.lumTop}", "fillEnd": "{custom.lumBottom}", "text": "{color.accentInk}", "gloss": 0.25,
+      "shadowColor": "{custom.glow}", "shadowLayers": 3, "shadowSpread": 2, "shadowOffset": 0, "shadowOpacity": 0.25
+    }
+  },
+  "listItem": {
+    "normal": { "radius": 8 },
+    "selected": { "fill": "#0f3a3c", "fillEnd": "#0a2a2d" }
+  }
+}
