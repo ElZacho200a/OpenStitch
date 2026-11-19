@@ -9,6 +9,7 @@ description: Numériser, analyser et améliorer une broderie OpenStitch de faço
 
 ## Documents à consulter selon le besoin
 
+- [Direction artistique agentique](references/direction-artistique-agentique.md) — plan textile par région avant mutation, critique des previews, corrections locales et portes d'arrêt pour les images déjà préparées.
 - [Segmentation sémantique et fusion raisonnée](references/segmentation-semantique.md) — masques, instances, structures porteuses, reconstructions et refus de fusion.
 - [Sélection expérimentale des trois satins](references/selection-satins.md) — squelette, balayage, axe médian, couverture et rendu.
 - [Planification textile, remplissages directionnels et portes de validation](references/directions-et-planification-textile.md) — rôle textile, guides, sous-couches/occlusions, protocole et retour d'expérience du navire.
@@ -18,6 +19,8 @@ description: Numériser, analyser et améliorer une broderie OpenStitch de faço
 - [Réglages](references/parametres.md), [diagnostic](references/diagnostic.md), [journal d'essais historiques](references/journal-essais.md).
 - Hors Claude Code, ce même texte est servi par le serveur MCP `openstitch-mcp` (outil `digitize_guide`, ressources, prompt `digitize` ; voir [mcp.md](../../../docs/source/mcp.md)) : modifier ce skill suffit, le serveur l'embarque au build.
 - [CLI projet](../../../docs/source/cli-project.md), [auto-numérisation](../../../docs/source/auto-numerisation.md), [satin-squelette](../../../docs/source/satin-squelette.md), [segmentation](../../../docs/source/segmentation.md), [workflow.sh](scripts/workflow.sh).
+
+Pour une **image artistique déjà préparée** et une demande de transformation en broderie, lire d'abord `direction-artistique-agentique` et produire un plan par région avant d'appliquer des opérations. Après chaque rendu, comparer explicitement l'intention artistique aux preuves techniques ; ne pas confondre image jolie et broderie réalisable.
 
 ## Principes de décision
 
