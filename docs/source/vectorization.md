@@ -208,8 +208,25 @@ Banc, MonetGasque (341 régions, Debug) :
 | **Polygone auto (base 0,2 mm)** | **12 112** | 3 826 | — | 1,2 % | 75 ms |
 
 Le mode auto atteint la fidélité du réglage global à 0,5 px avec 45 % de ses nœuds : les nœuds
-supplémentaires vont aux petites formes. Non fait : tolérance appliquée visible dans l'inspecteur,
-surcharge par région, adaptation par tronçon (lot C), effet sur les points et essai textile.
+supplémentaires vont aux petites formes.
+
+### Diagnostic et surcharge par région
+
+Le panneau Vecteurs affiche, pour la forme sélectionnée, la tolérance effectivement appliquée à
+sa région d'origine (valeur, facteur et origine : réglage de base, précision intelligente ou
+surcharge), calculée par `project_ops::region_tolerance` avec le même code que la
+vectorisation (`vectorization::region_tolerance_factor`).
+
+Le menu « Précision de la région » enregistre une surcharge : Détail maximum (×1/3), Standard
+(×1) ou Simplifier (×2) ; « Réglage global » la retire. La surcharge est une préférence de
+l'utilisateur (`ImageSource::vector_precision`, clé OSP `vectorPrecision` écrite seulement si
+non vide), posée par `SetRegionVectorPrecisionCommand` (une étape d'annulation) ; elle remplace
+le facteur calculé, que la précision intelligente soit cochée ou non, et ne change les formes
+qu'à la prochaine mise à jour des formes. Une entrée dont la région a disparu est inerte.
+
+Non fait : adaptation par tronçon (lot C), mémorisation de la case globale dans le projet,
+avertissement avant de remplacer un vecteur retouché à la main, effet sur les points et essai
+textile.
 
 ## Robustesse
 

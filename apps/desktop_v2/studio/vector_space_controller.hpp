@@ -39,6 +39,8 @@ class VectorSpaceController : public QObject {
     // Vrai pendant qu'un calque est rasterisé sur un worker : l'ancien reste affiché.
     Q_PROPERTY(bool layerPending READ layerPending NOTIFY layerChanged)
     Q_PROPERTY(QVariantMap selectedShape READ selectedShape NOTIFY layerChanged)
+    // Tolérance appliquée à la région de la forme sélectionnée et sa surcharge (VEC-ADAPT-01).
+    Q_PROPERTY(QVariantMap selectedTolerance READ selectedTolerance NOTIFY toleranceChanged)
     Q_PROPERTY(QString stageState READ stageState NOTIFY layerChanged)
     Q_PROPERTY(QString stageDetail READ stageDetail NOTIFY layerChanged)
     Q_PROPERTY(QString message READ message NOTIFY messageChanged)
@@ -79,6 +81,11 @@ public:
     // Lien amont : sélectionne la région d'origine de la forme choisie (sélection partagée) ;
     // l'appelant bascule ensuite sur l'espace Segmentation.
     Q_INVOKABLE bool selectOriginRegion();
+    [[nodiscard]] QVariantMap selectedTolerance() const;
+    // Surcharge de précision de la région d'origine de la forme sélectionnée : "auto" (retire la
+    // surcharge), "maximum", "standard" ou "simplify". Une étape d'annulation ; les formes
+    // changent à la prochaine mise à jour des formes.
+    Q_INVOKABLE bool setSelectedRegionPrecision(const QString& level);
 
     // Mise à jour depuis la segmentation : `updatePlan()` = {replace, add, keep, orphan} sans rien
     // modifier ; `updateFromSegmentation()` exécute UNE étape d'annulation (remplace les formes
@@ -112,6 +119,7 @@ public:
 signals:
     void convertingChanged();
     void optionsChanged();
+    void toleranceChanged();
     void layerChanged();
     void messageChanged();
 

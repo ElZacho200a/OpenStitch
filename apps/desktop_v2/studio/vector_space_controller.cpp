@@ -85,6 +85,10 @@ VectorSpaceController::VectorSpaceController(StudioController& studio, QObject* 
     connect(&studio_, &StudioController::selectionChanged, this,
             &VectorSpaceController::layerChanged);
     connect(&studio_, &StudioController::changed, this, &VectorSpaceController::refresh);
+    connect(this, &VectorSpaceController::layerChanged, this,
+            &VectorSpaceController::toleranceChanged);
+    connect(this, &VectorSpaceController::optionsChanged, this,
+            &VectorSpaceController::toleranceChanged);
     attachTaskPump(tasks_, this);
     attachTaskPump(convertTasks_, this);
     refresh();
@@ -417,6 +421,100 @@ QVariantMap VectorSpaceController::selectedShape() const {
             {QStringLiteral("pieces"), static_cast<int>(shape->paths.size())},
             {QStringLiteral("embroidered"), object != nullptr},
             {QStringLiteral("count"), static_cast<int>(ids.size())}};
+}
+
+namespace {
+
+QString precisionName(std::optional<document::VectorPrecision> level) {
+    if (!level) {
+        return QStringLiteral("auto");
+    }
+    switch (*level) {
+    case document::VectorPrecision::Maximum:
+        return QStringLiteral("maximum");
+    case document::VectorPrecision::Standard:
+        return QStringLiteral("standard");
+    case document::VectorPrecision::Simplify:
+        return QStringLiteral("simplify");
+    }
+    return QStringLiteral("auto");
+}
+
+} // namespace
+
+QVariantMap VectorSpaceController::selectedTolerance() const {
+    const auto ids = selectedShapeIds();
+    if (ids.empty()) {
+        return {};
+    }
+    const auto& project = studio_.session().project();
+    const auto* shape = project.findObject(ObjectId{ids.back()});
+    if (shape == nullptr || !shape->source_region) {
+        return {};
+    }
+    const auto* source = project.findImageSource(shape->source_image);
+    if (source == nullptr || !source->segmentation ||
+        source->segmentation->find(*shape->source_region) == nullptr) {
+        return {};
+    }
+    const auto it = source->vector_precision.find(*shape->source_region);
+    const auto level =
+        it != source->vector_precision.end() ? std::optional{it->second} : std::nullopt;
+    const auto tol = project_ops::region_tolerance(project,
+                                                   {.precision_mm = precisionMm_,
+                                                    .curves = curves_,
+                                                    .curve_tolerance_px = curveTolerancePx_,
+                                                    .adaptive = adaptive_,
+                                                    .image_source = shape->source_image},
+                                                   *shape->source_region);
+    const QString value =
+        tol.curves ? tr("%1 px").arg(tol.value, 0, 'f', 2) : tr("%1 mm").arg(tol.value, 0, 'f', 2);
+    const QString why = tol.overridden       ? tr("surcharge de la région")
+                        : tol.factor < 0.999 ? tr("précision intelligente")
+                                             : tr("réglage de base");
+    return {
+        {QStringLiteral("available"), true},
+        {QStringLiteral("level"), precisionName(level)},
+        {QStringLiteral("factor"), tol.factor},
+        {QStringLiteral("value"), tol.value},
+        {QStringLiteral("text"),
+         tr("Tolérance appliquée : %1 (×%2, %3)").arg(value).arg(tol.factor, 0, 'f', 2).arg(why)}};
+}
+
+bool VectorSpaceController::setSelectedRegionPrecision(const QString& level) {
+    std::optional<document::VectorPrecision> parsed;
+    if (level == QStringLiteral("maximum")) {
+        parsed = document::VectorPrecision::Maximum;
+    } else if (level == QStringLiteral("standard")) {
+        parsed = document::VectorPrecision::Standard;
+    } else if (level == QStringLiteral("simplify")) {
+        parsed = document::VectorPrecision::Simplify;
+    } else if (level != QStringLiteral("auto")) {
+        return false;
+    }
+    const auto ids = selectedShapeIds();
+    if (ids.empty()) {
+        return false;
+    }
+    auto& session = studio_.session();
+    const auto* shape = session.project().findObject(ObjectId{ids.back()});
+    if (shape == nullptr || !shape->source_region) {
+        return false;
+    }
+    const auto* source = session.project().findImageSource(shape->source_image);
+    if (source == nullptr) {
+        return false;
+    }
+    const auto it = source->vector_precision.find(*shape->source_region);
+    const auto current =
+        it != source->vector_precision.end() ? std::optional{it->second} : std::nullopt;
+    if (current == parsed) {
+        return true;
+    }
+    session.execute(std::make_unique<commands::SetRegionVectorPrecisionCommand>(
+        shape->source_image, *shape->source_region, parsed));
+    emit toleranceChanged();
+    return true;
 }
 
 bool VectorSpaceController::selectOriginRegion() {

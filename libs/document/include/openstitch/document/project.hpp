@@ -3,6 +3,8 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
+#include <map>
 #include <numeric>
 #include <optional>
 #include <string>
@@ -28,6 +30,11 @@
 namespace openstitch::document {
 
 // Chaque source possède son échelle, ses retouches et sa segmentation.
+// Surcharge de précision de vectorisation d'une région (VEC-ADAPT-01, lot B). Absente : réglage
+// global (« Précision intelligente » ou non). Facteurs de tolérance : Maximum 1/3, Standard 1,
+// Simplify 2 (`project_ops::vector_precision_factor`).
+enum class VectorPrecision : std::uint8_t { Maximum, Standard, Simplify };
+
 struct ImageSource {
     image::Image original;              // jamais modifiée après l'import
     Millimeters mm_per_px{25.4 / 96.0}; // résolution de travail
@@ -41,6 +48,10 @@ struct ImageSource {
     // Elles pilotent le lissage et le nettoyage de la segmentation (`SegmentationOptions::
     // detail_mask`) ; modifiées par `PaintDetailMaskCommand`, enregistrées dans le projet.
     segmentation::DetailMask detail_mask;
+
+    // Surcharges de précision par région, choisies par l'utilisateur (préférences persistantes,
+    // distinctes des tolérances calculées). Une entrée dont la région a disparu est inerte.
+    std::map<RegionId, VectorPrecision> vector_precision;
 };
 
 struct ImageSourceLayer {

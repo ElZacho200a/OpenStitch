@@ -5,6 +5,7 @@
 // annulable, comme le bouton correspondant de Studio.
 #include <algorithm>
 #include <cmath>
+#include <map>
 #include <memory>
 #include <string>
 #include <utility>
@@ -22,12 +23,76 @@
 
 namespace openstitch::project_ops {
 
+double vector_precision_factor(document::VectorPrecision level) {
+    switch (level) {
+    case document::VectorPrecision::Maximum:
+        return 1.0 / 3.0;
+    case document::VectorPrecision::Standard:
+        return 1.0;
+    case document::VectorPrecision::Simplify:
+        return 2.0;
+    }
+    return 1.0;
+}
+
+namespace {
+
+const document::ImageSource* revectorize_source(const document::Project& project,
+                                                const RevectorizeOptions& opt) {
+    return opt.image_source           ? project.findImageSource(*opt.image_source)
+           : project.hasActiveImage() ? &project.imageSource()
+                                      : nullptr;
+}
+
+std::map<RegionId, double> factor_overrides(const document::ImageSource& source) {
+    std::map<RegionId, double> out;
+    for (const auto& [region, level] : source.vector_precision) {
+        out.emplace(region, vector_precision_factor(level));
+    }
+    return out;
+}
+
+vectorization::VectorizeOptions engine_options(const document::ImageSource& source,
+                                               const RevectorizeOptions& opt,
+                                               const std::map<RegionId, double>& overrides) {
+    return {.mm_per_px = source.mm_per_px,
+            .simplify_tolerance = to_micrometers(Millimeters{opt.precision_mm}),
+            .curve_tolerance = opt.curves
+                                   ? Micrometers{static_cast<std::int32_t>(std::lround(
+                                         opt.curve_tolerance_px * source.mm_per_px.value * 1000.0))}
+                                   : Micrometers{0},
+            .detail_mask = &source.detail_mask,
+            .adaptive = {.enabled = opt.adaptive},
+            .factor_overrides = overrides.empty() ? nullptr : &overrides};
+}
+
+} // namespace
+
+RegionTolerance region_tolerance(const document::Project& project, const RevectorizeOptions& opt,
+                                 RegionId region) {
+    RegionTolerance out{.curves = opt.curves};
+    const auto* source = revectorize_source(project, opt);
+    const double base = opt.curves ? opt.curve_tolerance_px : opt.precision_mm;
+    out.value = base;
+    if (source == nullptr || !source->segmentation) {
+        return out;
+    }
+    const auto overrides = factor_overrides(*source);
+    out.overridden = overrides.contains(region);
+    out.factor = vectorization::region_tolerance_factor(*source->segmentation, region,
+                                                        engine_options(*source, opt, overrides));
+    out.value = base * out.factor;
+    if (!opt.curves) {
+        // Plancher du moteur : le polygone ne descend pas sous min(0,1 mm, base).
+        out.value = std::max(std::min(0.1, base), out.value);
+    }
+    return out;
+}
+
 RevectorizePlan revectorize(const document::Project& project, const RevectorizeOptions& opt) {
     RevectorizePlan out;
     const ObjectId sourceId = opt.image_source.value_or(project.imageSourceId());
-    const auto* found = opt.image_source           ? project.findImageSource(sourceId)
-                        : project.hasActiveImage() ? &project.imageSource()
-                                                   : nullptr;
+    const auto* found = revectorize_source(project, opt);
     if (found == nullptr || !found->segmentation) {
         return out;
     }
@@ -41,15 +106,8 @@ RevectorizePlan revectorize(const document::Project& project, const RevectorizeO
             ids.push_back(slot->id);
         }
     }
-    const vectorization::VectorizeOptions options{
-        .mm_per_px = source.mm_per_px,
-        .simplify_tolerance = to_micrometers(Millimeters{opt.precision_mm}),
-        .curve_tolerance =
-            opt.curves ? Micrometers{static_cast<std::int32_t>(
-                             std::lround(opt.curve_tolerance_px * source.mm_per_px.value * 1000.0))}
-                       : Micrometers{0},
-        .detail_mask = &source.detail_mask,
-        .adaptive = {.enabled = opt.adaptive}};
+    const auto overrides = factor_overrides(source);
+    const auto options = engine_options(source, opt, overrides);
     const auto results = vectorization::vectorize_regions(*source.segmentation, ids, options);
     for (std::size_t i = 0; i < ids.size(); ++i) {
         if (!results[i]) {

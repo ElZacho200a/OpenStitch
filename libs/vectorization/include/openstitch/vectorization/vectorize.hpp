@@ -2,6 +2,7 @@
 #pragma once
 
 #include <cstdint>
+#include <map>
 #include <span>
 #include <vector>
 
@@ -47,7 +48,15 @@ struct VectorizeOptions {
     const segmentation::DetailMask* detail_mask{nullptr};
     double detail_tolerance_factor{0.5};
     AdaptiveTolerance adaptive{};
+    // Facteurs imposés par région (surcharges de l'utilisateur) : remplacent le facteur calculé
+    // (adaptatif et zones de détail) pour ces régions, que `adaptive` soit actif ou non.
+    const std::map<RegionId, double>* factor_overrides{nullptr};
 };
+
+// Facteur de tolérance qu'appliquerait `vectorize_region` à cette région (surcharge, zones de
+// détail, précision intelligente). Diagnostic pour l'interface : même calcul, sans contours.
+[[nodiscard]] double region_tolerance_factor(const segmentation::Segmentation& seg, RegionId id,
+                                             const VectorizeOptions& options);
 
 // Index des pixels de chaque région, construit en UNE passe sur `labels` (tri par comptage ;
 // pixels de chaque région en ordre de balayage). Permet à `vectorize_region` de ne toucher que

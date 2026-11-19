@@ -325,6 +325,38 @@ ColumnLayout {
         wrapMode: Text.WordWrap
     }
 
+    // Tolérance appliquée et surcharge de la région (VEC-ADAPT-01, lot B).
+    Text {
+        objectName: "vectorShapeTolerance"
+        Layout.fillWidth: true
+        readonly property var tol: panel.stage ? panel.stage.selectedTolerance : ({})
+        visible: tol.available === true
+        text: tol.available === true ? tol.text : ""
+        color: Theme.muted
+        font.family: Theme.fontFamily
+        font.pixelSize: Theme.smallSize
+        wrapMode: Text.WordWrap
+    }
+    RowLayout {
+        Layout.fillWidth: true
+        readonly property var tol: panel.stage ? panel.stage.selectedTolerance : ({})
+        visible: tol.available === true
+        Text {
+            text: qsTr("Précision de la région")
+            color: Theme.foreground; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize
+        }
+        StudioComboBox {
+            id: precisionBox
+            objectName: "vectorRegionPrecision"
+            Layout.fillWidth: true
+            readonly property var levels: ["auto", "maximum", "standard", "simplify"]
+            model: [qsTr("Réglage global"), qsTr("Détail maximum"), qsTr("Standard"), qsTr("Simplifier")]
+            currentIndex: Math.max(0, levels.indexOf(parent.tol.level || "auto"))
+            Accessible.name: qsTr("Précision de vectorisation de la région d'origine")
+            onActivated: (index) => panel.stage.setSelectedRegionPrecision(levels[index])
+        }
+    }
+
     StudioButton {
         objectName: "vectorGoToRegionButton"
         Layout.fillWidth: true

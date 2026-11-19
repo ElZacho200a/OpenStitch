@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <map>
 #include <optional>
 #include <stdexcept>
 #include <unordered_map>
@@ -132,6 +133,52 @@ private:
     double hardness_;
     bool wasEmpty_{false};
     std::vector<segmentation::DetailMaskChange> changes_;
+};
+
+// Surcharge de précision de vectorisation d'une région (VEC-ADAPT-01, lot B) ; `nullopt` la
+// retire. Préférence seulement : les formes changent à la prochaine mise à jour des formes.
+class SetRegionVectorPrecisionCommand final : public ICommand {
+public:
+    SetRegionVectorPrecisionCommand(ObjectId source, RegionId region,
+                                    std::optional<document::VectorPrecision> level)
+        : source_(source), region_(region), level_(level) {}
+
+    void apply(document::Project& project) override {
+        auto& map = sourceOf(project).vector_precision;
+        const auto it = map.find(region_);
+        previous_ = it != map.end() ? std::optional{it->second} : std::nullopt;
+        set(map, level_);
+    }
+    void revert(document::Project& project) override {
+        set(sourceOf(project).vector_precision, previous_);
+    }
+    [[nodiscard]] std::string name() const override {
+        return "Précision de vectorisation d'une région";
+    }
+    [[nodiscard]] bool affectsEmbroidery() const override { return false; }
+    [[nodiscard]] bool affectsSegmentation() const override { return false; }
+
+private:
+    document::ImageSource& sourceOf(document::Project& project) const {
+        const auto* found = project.findImageSource(source_);
+        if (found == nullptr) {
+            throw std::logic_error("SetRegionVectorPrecisionCommand : source d'image inconnue");
+        }
+        return const_cast<document::ImageSource&>(*found);
+    }
+    void set(std::map<RegionId, document::VectorPrecision>& map,
+             std::optional<document::VectorPrecision> level) const {
+        if (level) {
+            map[region_] = *level;
+        } else {
+            map.erase(region_);
+        }
+    }
+
+    ObjectId source_;
+    RegionId region_;
+    std::optional<document::VectorPrecision> level_;
+    std::optional<document::VectorPrecision> previous_;
 };
 
 // Efface toutes les zones de détail (annulable : le masque est restitué tel quel).

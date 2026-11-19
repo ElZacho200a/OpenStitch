@@ -40,6 +40,20 @@ struct RevectorizePlan {
     int orphan{0}; // formes dont la région n'existe plus (laissées telles quelles)
 };
 
+// Facteur de tolérance d'une surcharge de région (Maximum 1/3, Standard 1, Simplify 2).
+[[nodiscard]] double vector_precision_factor(document::VectorPrecision level);
+
+// Tolérance effectivement appliquée à une région par `revectorize` avec ces options : facteur
+// (1 = réglage de base), valeur en px (courbes) ou en mm (polygone), et origine du facteur.
+struct RegionTolerance {
+    double factor{1.0};
+    double value{0.0}; // px si `curves`, mm sinon
+    bool curves{false};
+    bool overridden{false}; // surcharge de l'utilisateur
+};
+[[nodiscard]] RegionTolerance region_tolerance(const document::Project& project,
+                                               const RevectorizeOptions& options, RegionId region);
+
 // Plan vide sans segmentation. Ne modifie pas le projet.
 [[nodiscard]] RevectorizePlan revectorize(const document::Project& project,
                                           const RevectorizeOptions& options);

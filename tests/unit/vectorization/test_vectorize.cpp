@@ -486,3 +486,34 @@ TEST_CASE("precision intelligente : petite forme plus fidele, grande forme incha
         CHECK(*bigAdaptive == *bigBase);
     }
 }
+
+TEST_CASE("precision de region : la surcharge remplace le facteur calcule") {
+    const auto large =
+        segmentation::segment(disc_image(240, 100, 0), {.max_colors = 2, .min_region_px = 1});
+    REQUIRE(large.has_value());
+    const auto big = segmentation::region_at(*large, 120, 120);
+    REQUIRE(big.has_value());
+    VectorizeOptions options{.mm_per_px = Millimeters{0.25},
+                             .simplify_tolerance = Micrometers{400},
+                             .curve_tolerance = Micrometers{375}};
+    CHECK(region_tolerance_factor(*large, *big, options) == 1.0);
+    const auto base = vectorize_region(*large, *big, options);
+
+    const std::map<RegionId, double> finer{{*big, 1.0 / 3.0}};
+    options.factor_overrides = &finer;
+    CHECK(region_tolerance_factor(*large, *big, options) == Catch::Approx(1.0 / 3.0));
+    const auto fine = vectorize_region(*large, *big, options);
+    REQUIRE((base.has_value() && fine.has_value()));
+    CHECK(node_count(*fine) > node_count(*base));
+
+    // Petite forme + précision intelligente : le diagnostic suit le même calcul.
+    const auto small =
+        segmentation::segment(disc_image(100, 12, 0), {.max_colors = 2, .min_region_px = 1});
+    REQUIRE(small.has_value());
+    const auto red = segmentation::region_at(*small, 50, 50);
+    REQUIRE(red.has_value());
+    VectorizeOptions adaptive{.mm_per_px = Millimeters{0.25}, .adaptive = {.enabled = true}};
+    const double f = region_tolerance_factor(*small, *red, adaptive);
+    CHECK(f < 1.0);
+    CHECK(f >= 1.0 / 3.0);
+}

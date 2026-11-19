@@ -419,6 +419,24 @@ private slots:
         auto* origin = deepItem(rig.window->contentItem(), QStringLiteral("vectorShapeOrigin"));
         QVERIFY(origin);
         QVERIFY(origin->property("text").toString().contains(QStringLiteral("région 2")));
+        // Tolérance appliquée et surcharge de la région d'origine (VEC-ADAPT-01, lot B).
+        auto tol = rig.stage.selectedTolerance();
+        QVERIFY(tol.value("available").toBool());
+        QCOMPARE(tol.value("level").toString(), QStringLiteral("auto"));
+        QVERIFY(tol.value("text").toString().contains(QStringLiteral("réglage de base")));
+        auto* tolText = deepItem(rig.window->contentItem(), QStringLiteral("vectorShapeTolerance"));
+        QVERIFY(tolText);
+        QTRY_VERIFY_WITH_TIMEOUT(tolText->isVisible(), 3'000);
+        const auto depthBefore = steps(rig);
+        QVERIFY(rig.stage.setSelectedRegionPrecision(QStringLiteral("maximum")));
+        QCOMPARE(steps(rig), depthBefore + 1);
+        tol = rig.stage.selectedTolerance();
+        QCOMPARE(tol.value("level").toString(), QStringLiteral("maximum"));
+        QVERIFY(tol.value("factor").toDouble() < 0.34);
+        QVERIFY(tol.value("text").toString().contains(QStringLiteral("surcharge")));
+        QVERIFY(!rig.stage.setSelectedRegionPrecision(QStringLiteral("nimporte")));
+        QVERIFY(rig.stage.setSelectedRegionPrecision(QStringLiteral("auto")));
+        QCOMPARE(rig.stage.selectedTolerance().value("level").toString(), QStringLiteral("auto"));
         // Clic dans le vide : plus de sélection.
         QTest::mouseClick(rig.window, Qt::LeftButton, {}, at(rig, 0.0, 6.0));
         QTRY_VERIFY_WITH_TIMEOUT(rig.session.selection().empty(), 3'000);

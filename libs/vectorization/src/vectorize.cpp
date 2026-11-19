@@ -23,6 +23,29 @@ namespace openstitch::vectorization {
 
 namespace {
 
+// Facteur de tolérance d'une région à partir de son masque (bordé de zéros) : surcharge de
+// l'utilisateur si présente, sinon min(zones de détail, précision intelligente).
+double tolerance_factor(const cv::Mat& mask, RegionId id, bool isDetail,
+                        const VectorizeOptions& options) {
+    if (options.factor_overrides != nullptr) {
+        if (const auto it = options.factor_overrides->find(id);
+            it != options.factor_overrides->end()) {
+            return std::clamp(it->second, 0.05, 4.0);
+        }
+    }
+    double factor = isDetail ? std::clamp(options.detail_tolerance_factor, 0.05, 1.0) : 1.0;
+    if (options.adaptive.enabled) {
+        // Rayon inscrit : maximum de la transformée de distance.
+        cv::Mat dist;
+        cv::distanceTransform(mask, dist, cv::DIST_L2, cv::DIST_MASK_PRECISE);
+        double inscribed = 0.0;
+        cv::minMaxLoc(dist, nullptr, &inscribed);
+        const double area = static_cast<double>(cv::countNonZero(mask));
+        factor = std::min(factor, adaptive_tolerance_factor(area, inscribed, options.adaptive));
+    }
+    return factor;
+}
+
 // Centre de pixel -> coordonnées physiques (µm), origine au centre de
 // l'image, Y vers le haut (le repère du modèle, ADR-003).
 geometry::PathNode to_model(const cv::Point& px, int width, int height, double mmPerPx) {
@@ -178,16 +201,7 @@ Result<std::vector<geometry::PathSet>> vectorize_impl(const segmentation::Segmen
     // Région « de détail » : tolérances réduites (le plancher de 0,1 mm = pas machine reste
     // respecté pour le polygone ; 1 µm pour les courbes).
     const bool isDetail = useDetail && regionPixels > 0 && detailSum >= 128ULL * regionPixels;
-    double factor = isDetail ? std::clamp(options.detail_tolerance_factor, 0.05, 1.0) : 1.0;
-    if (options.adaptive.enabled) {
-        // Rayon inscrit : maximum de la transformée de distance (masque bordé de zéros).
-        cv::Mat dist;
-        cv::distanceTransform(mask, dist, cv::DIST_L2, cv::DIST_MASK_PRECISE);
-        double inscribed = 0.0;
-        cv::minMaxLoc(dist, nullptr, &inscribed);
-        const double area = static_cast<double>(cv::countNonZero(mask));
-        factor = std::min(factor, adaptive_tolerance_factor(area, inscribed, options.adaptive));
-    }
+    const double factor = tolerance_factor(mask, id, isDetail, options);
     const double simplifyTol =
         std::max(std::min(100.0, static_cast<double>(options.simplify_tolerance.value)),
                  static_cast<double>(options.simplify_tolerance.value) * factor);
@@ -278,6 +292,48 @@ Result<std::vector<geometry::PathSet>> vectorize_impl(const segmentation::Segmen
 }
 
 } // namespace
+
+double region_tolerance_factor(const segmentation::Segmentation& seg, RegionId id,
+                               const VectorizeOptions& options) {
+    const auto label = static_cast<std::uint32_t>(id.value);
+    const auto width = static_cast<std::size_t>(seg.width);
+    int minX = seg.width, minY = seg.height, maxX = -1, maxY = -1;
+    for (int y = 0; y < seg.height; ++y) {
+        const std::uint32_t* row = seg.labels.data() + static_cast<std::size_t>(y) * width;
+        for (int x = 0; x < seg.width; ++x) {
+            if (row[x] == label) {
+                minX = std::min(minX, x);
+                maxX = std::max(maxX, x);
+                minY = std::min(minY, y);
+                maxY = y;
+            }
+        }
+    }
+    if (maxX < 0) {
+        return 1.0;
+    }
+    const bool useDetail =
+        options.detail_mask != nullptr && options.detail_mask->matches(seg.width, seg.height);
+    std::uint64_t detailSum = 0;
+    std::uint64_t pixels = 0;
+    cv::Mat mask(maxY - minY + 3, maxX - minX + 3, CV_8U, cv::Scalar(0));
+    for (int y = minY; y <= maxY; ++y) {
+        const std::uint32_t* row = seg.labels.data() + static_cast<std::size_t>(y) * width;
+        auto* dst = mask.ptr<std::uint8_t>(y - minY + 1);
+        for (int x = minX; x <= maxX; ++x) {
+            if (row[x] == label) {
+                dst[x - minX + 1] = 255;
+                ++pixels;
+                if (useDetail) {
+                    detailSum += options.detail_mask->weights[static_cast<std::size_t>(y) * width +
+                                                              static_cast<std::size_t>(x)];
+                }
+            }
+        }
+    }
+    const bool isDetail = useDetail && detailSum >= 128ULL * pixels;
+    return tolerance_factor(mask, id, isDetail, options);
+}
 
 double adaptive_tolerance_factor(double area_px, double inscribed_radius_px,
                                  const AdaptiveTolerance& adaptive) {

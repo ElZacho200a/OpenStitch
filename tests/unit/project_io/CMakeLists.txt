@@ -23,6 +23,7 @@ test_group_persistence.cpp
     test_radial_spiral_crosshatch_persistence.cpp
     test_colorway_persistence.cpp
     test_detail_mask_persistence.cpp
+    test_vector_precision_persistence.cpp
     test_boundary_blend_persistence.cpp
 )
 target_link_libraries(test_project_io

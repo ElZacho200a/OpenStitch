@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include "openstitch/commands/project_commands.hpp"
 #include "openstitch/document/project.hpp"
 #include "openstitch/geometry/boolean.hpp"
 #include "openstitch/geometry/path.hpp"
@@ -116,6 +117,30 @@ TEST_CASE("step ops: vectorize_segmentation fine tolerance bounds", "[project_op
     CHECK_FALSE(run(project, R"({"op":"vectorize_segmentation","adaptive":"oui"})").ok);
     CHECK(project_ops::kCurveToleranceMinPx == 0.1);
     CHECK(project_ops::kPrecisionMinMm == 0.01);
+}
+
+TEST_CASE("step ops: region precision override drives revectorize", "[project_ops][steps]") {
+    auto project = two_color_project();
+    REQUIRE(run(project, R"({"op":"segment_image","max_colors":2,"min_region_px":4})").ok);
+    REQUIRE(run(project, R"({"op":"vectorize_segmentation"})").ok);
+    const auto region = *project.vector_objects.front().source_region;
+    const project_ops::RevectorizeOptions opts{};
+    CHECK_FALSE(project_ops::region_tolerance(project, opts, region).overridden);
+    CHECK(project_ops::region_tolerance(project, opts, region).value == 0.2);
+
+    commands::SetRegionVectorPrecisionCommand cmd(ObjectId{}, region,
+                                                  document::VectorPrecision::Simplify);
+    cmd.apply(project);
+    CHECK(project.imageSource().vector_precision.at(region) == document::VectorPrecision::Simplify);
+    const auto tol = project_ops::region_tolerance(project, opts, region);
+    CHECK(tol.overridden);
+    CHECK(tol.factor == 2.0);
+    CHECK(tol.value == 0.4);
+    CHECK_FALSE(cmd.affectsEmbroidery());
+    CHECK_FALSE(cmd.affectsSegmentation());
+    cmd.revert(project);
+    CHECK(project.imageSource().vector_precision.empty());
+    CHECK(project_ops::revectorize(project, opts).replace.empty());
 }
 
 TEST_CASE("step ops: image_prep crop and refusals", "[project_ops][steps]") {

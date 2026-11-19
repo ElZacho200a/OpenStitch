@@ -1923,6 +1923,16 @@ void write_image_source(json& j, const document::ImageSource& source) {
         }
         j["segmentation"] = s;
     }
+    // Clé absente quand vide : les projets sans surcharge restent identiques octet pour octet.
+    if (!source.vector_precision.empty()) {
+        j["vectorPrecision"] = json::array();
+        for (const auto& [region, level] : source.vector_precision) {
+            const char* name = level == document::VectorPrecision::Maximum    ? "maximum"
+                               : level == document::VectorPrecision::Simplify ? "simplify"
+                                                                              : "standard";
+            j["vectorPrecision"].push_back({{"region", region.value}, {"level", name}});
+        }
+    }
 }
 
 Result<void> read_image_source(const json& j, document::ImageSource& source) {
@@ -1933,6 +1943,22 @@ Result<void> read_image_source(const json& j, document::ImageSource& source) {
             return std::unexpected(parsed.error());
         }
         source.ops.push_back(std::move(*parsed));
+    }
+
+    if (const auto it = j.find("vectorPrecision"); it != j.end() && it->is_array()) {
+        for (const auto& entry : *it) {
+            const auto level = entry.at("level").get<std::string>();
+            document::VectorPrecision parsed = document::VectorPrecision::Standard;
+            if (level == "maximum") {
+                parsed = document::VectorPrecision::Maximum;
+            } else if (level == "simplify") {
+                parsed = document::VectorPrecision::Simplify;
+            } else if (level != "standard") {
+                return fail(ErrorCategory::InvalidFile,
+                            "vectorPrecision : niveau inconnu « " + level + " »");
+            }
+            source.vector_precision[RegionId{entry.at("region").get<std::uint64_t>()}] = parsed;
+        }
     }
 
     if (j.contains("segmentation")) {
