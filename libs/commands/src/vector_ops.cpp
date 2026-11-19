@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <functional>
 #include <limits>
 #include <map>
 #include <utility>
@@ -10,6 +11,7 @@
 
 #include "openstitch/commands/composite_command.hpp"
 #include "openstitch/commands/project_commands.hpp"
+#include "openstitch/document/boundary_blend.hpp"
 #include "openstitch/geometry/boolean.hpp"
 #include "openstitch/geometry/cut.hpp"
 #include "openstitch/geometry/fill_gap.hpp"
@@ -37,14 +39,7 @@ void remap_color_blend_links(std::vector<document::EmbroideryObject>& copies,
             }
         }
         // Fondu à la frontière : suit la copie seulement si les deux zones sont copiées ensemble.
-        if (copy.boundary_blend) {
-            const auto partner = remap.find(copy.boundary_blend->partner);
-            if (partner == remap.end()) {
-                copy.boundary_blend.reset();
-            } else {
-                copy.boundary_blend->partner = partner->second;
-            }
-        }
+        document::remap_boundary_blend_links(copy.boundary_blends, remap);
         if (copy.multi_blend) {
             const auto group = remap.find(copy.multi_blend->group);
             if (group == remap.end()) {
@@ -450,11 +445,13 @@ VectorOpResult make_fill_gap_command(document::Project& project, Vec2um seed, Mi
     return out;
 }
 
-VectorOpResult make_split_command(document::Project& project, const std::vector<ObjectId>& ids,
-                                  Vec2um a, Vec2um b, Micrometers cut_width) {
-    if (a == b) {
-        return failure("La ligne de coupe est réduite à un point.");
-    }
+namespace {
+
+using RegionCutter = std::function<Result<std::vector<PathSet>>(const PathSet&)>;
+
+// Cœur commun des coupes (droite ou tracé libre) : `cutter` découpe UNE région.
+VectorOpResult split_with(document::Project& project, const std::vector<ObjectId>& ids,
+                          const RegionCutter& cutter) {
     auto group = std::make_unique<CompositeCommand>("Découper les formes");
     std::size_t total = 0;
     // Copie : `add_piece_commands` tire des ids du projet, sans toucher aux objets.
@@ -464,15 +461,12 @@ VectorOpResult make_split_command(document::Project& project, const std::vector<
             targets.push_back(*object);
         }
     }
-    // La coupe se limite au segment [a,b] tracé (bande centrée sur son milieu,
-    // demi-portée |ab|/2) : les parties hors de cette bande ne sont pas touchées.
-    const double reach = length_um(b - a) / 2.0;
     for (const auto& object : targets) {
         std::vector<PathSet> pieces;
         bool changed = false;
         bool separated = false;
         for (const PathSet& set : object.paths) {
-            auto cut = geometry::cut_path_set_bounded(set, a, b, reach, cut_width);
+            auto cut = cutter(set);
             if (!cut) {
                 return failure(cut.error().message);
             }
@@ -517,6 +511,35 @@ VectorOpResult make_split_command(document::Project& project, const std::vector<
     out.resulting_objects = total;
     out.command = std::move(group);
     return out;
+}
+
+} // namespace
+
+VectorOpResult make_split_command(document::Project& project, const std::vector<ObjectId>& ids,
+                                  Vec2um a, Vec2um b, Micrometers cut_width) {
+    if (a == b) {
+        return failure("La ligne de coupe est réduite à un point.");
+    }
+    // La coupe se limite au segment [a,b] tracé (bande centrée sur son milieu,
+    // demi-portée |ab|/2) : les parties hors de cette bande ne sont pas touchées.
+    const double reach = length_um(b - a) / 2.0;
+    return split_with(project, ids, [&](const PathSet& set) {
+        return geometry::cut_path_set_bounded(set, a, b, reach, cut_width);
+    });
+}
+
+VectorOpResult make_polyline_split_command(document::Project& project,
+                                           const std::vector<ObjectId>& ids,
+                                           const std::vector<Vec2um>& path, Micrometers cut_width) {
+    const bool distinct =
+        path.size() >= 2 &&
+        std::any_of(path.begin() + 1, path.end(), [&](const Vec2um& p) { return p != path[0]; });
+    if (!distinct) {
+        return failure("Le tracé de coupe est réduit à un point.");
+    }
+    return split_with(project, ids, [&](const PathSet& set) {
+        return geometry::cut_path_set_polyline(set, path, cut_width);
+    });
 }
 
 VectorOpResult make_break_apart_command(document::Project& project, ObjectId id) {

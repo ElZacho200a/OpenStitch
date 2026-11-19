@@ -35,10 +35,12 @@
 #include "points_space_controller.hpp"
 #include "preferences_controller.hpp"
 #include "pull_controller.hpp"
+#include "qml_dev_loader.hpp"
 #include "region_controller.hpp"
 #include "satin_controller.hpp"
 #include "segmentation_space_controller.hpp"
 #include "studio_controller.hpp"
+#include "theme_controller.hpp"
 #include "thread_controller.hpp"
 #include "tool_controller.hpp"
 #include "usage_controller.hpp"
@@ -77,8 +79,13 @@ int main(int argc, char** argv) {
          QStringLiteral(
              "Recette : ouvre ces panneaux avant --screenshot (liste séparée par des "
              "virgules : vue, fils, analyse, satin, fondu, points, tirage, applique, corriger, "
-             "inspecteur ; un seul panneau à la fois par groupe, le dernier gagne)"),
+             "inspecteur, preferences ; un seul panneau à la fois par groupe, le dernier gagne)"),
          QStringLiteral("liste")});
+    parser.addOption({QStringLiteral("theme"),
+                      QStringLiteral("Recette : active ce thème (identifiant, ex. bubblegum)"),
+                      QStringLiteral("id")});
+    parser.addOption({QStringLiteral("theme-gallery"),
+                      QStringLiteral("Recette : ouvre la galerie des composants du thème")});
     parser.addOption({QStringLiteral("realistic"),
                       QStringLiteral("Force le rendu réaliste (déjà le défaut hors --software)")});
     parser.addOption({QStringLiteral("flat"),
@@ -148,6 +155,11 @@ int main(int argc, char** argv) {
     BoundaryBlendController boundaryBlend(controller);
     PointEditController pointEdit(controller);
     PreferencesController prefs(configDir);
+    // Moteur de thèmes : thèmes livrés (<exe>/themes) et thèmes importés (AppData/themes).
+    ThemeController themeEngine(ThemeController::defaultBuiltinDir(), configDir / "themes", &prefs);
+    if (parser.isSet(QStringLiteral("theme"))) {
+        (void)themeEngine.activate(parser.value(QStringLiteral("theme")), /*persist=*/false);
+    }
     HelpController help;
     CompanionController companion(controller);
     DigitizeGestures digitizer(controller, pointEdit, fade, satin);
@@ -167,6 +179,7 @@ int main(int argc, char** argv) {
     engine.rootContext()->setContextProperty(QStringLiteral("fade"), &fade);
     engine.rootContext()->setContextProperty(QStringLiteral("boundaryBlend"), &boundaryBlend);
     engine.rootContext()->setContextProperty(QStringLiteral("prefs"), &prefs);
+    engine.rootContext()->setContextProperty(QStringLiteral("themeEngine"), &themeEngine);
     engine.rootContext()->setContextProperty(QStringLiteral("usage"), &usage);
     engine.rootContext()->setContextProperty(QStringLiteral("help"), &help);
     engine.rootContext()->setContextProperty(QStringLiteral("companion"), &companion);
@@ -188,7 +201,12 @@ int main(int argc, char** argv) {
     engine.rootContext()->setContextProperty(QStringLiteral("regionTools"), &regionTools);
     engine.rootContext()->setContextProperty(QStringLiteral("segmentationSpace"),
                                              &segmentationSpace);
-    engine.load(QUrl(QStringLiteral("qrc:/studio/qml/Main.qml")));
+    // Mode QML externe (opt-in, Studio Dev) : repli sur les ressources embarquées sinon.
+    const auto qmlSource = decideQmlSource(qmlSourceInputsFromBuild());
+    if (qmlSource.external) {
+        qInfo("%s", qPrintable(qmlSource.reason));
+    }
+    engine.load(qmlSource.mainUrl);
     if (engine.rootObjects().isEmpty()) {
         return 2;
     }
@@ -236,8 +254,13 @@ int main(int argc, char** argv) {
                 }
             } else if (name == QStringLiteral("inspecteur")) {
                 window->setProperty("editOpen", true);
+            } else if (name == QStringLiteral("preferences")) {
+                QMetaObject::invokeMethod(window, "openPreferences");
             }
         }
+    }
+    if (parser.isSet(QStringLiteral("theme-gallery"))) {
+        QMetaObject::invokeMethod(window, "openThemeGallery");
     }
     if (parser.isSet(QStringLiteral("window-size"))) {
         // Captures aux largeurs de référence (1280x720, 1920x1200…) : la taille minimale de la
@@ -351,6 +374,11 @@ int main(int argc, char** argv) {
         });
         capture.start();
         QTimer::singleShot(60'000, &app, [&app] { app.exit(5); });
+    }
+    std::unique_ptr<QmlDevReloader> qmlReloader;
+    if (qmlSource.external && !parser.isSet(QStringLiteral("screenshot")) &&
+        !parser.isSet(QStringLiteral("frame-stats"))) {
+        qmlReloader = std::make_unique<QmlDevReloader>(engine, qmlSource.mainUrl, qmlSource.dir);
     }
     return app.exec();
 }

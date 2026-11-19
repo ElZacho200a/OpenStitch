@@ -108,6 +108,78 @@ std::string batchSplit(const std::vector<std::uint64_t>& ids, PointMm p0, PointM
     return wrap(ops);
 }
 
+std::vector<PointMm> simplifyPath(const std::vector<PointMm>& path, double toleranceMm) {
+    if (path.size() < 3 || toleranceMm <= 0.0) {
+        return path;
+    }
+    std::vector<bool> keep(path.size(), false);
+    keep.front() = true;
+    keep.back() = true;
+    // Pile explicite : un tracé de plusieurs milliers de points ne doit pas récurser.
+    std::vector<std::pair<std::size_t, std::size_t>> stack{{0, path.size() - 1}};
+    while (!stack.empty()) {
+        const auto [lo, hi] = stack.back();
+        stack.pop_back();
+        const PointMm a = path[lo];
+        const PointMm b = path[hi];
+        const double len = std::hypot(b.x - a.x, b.y - a.y);
+        double worst = 0.0;
+        std::size_t at = lo;
+        for (std::size_t i = lo + 1; i < hi; ++i) {
+            const double d =
+                len < 1e-12
+                    ? std::hypot(path[i].x - a.x, path[i].y - a.y)
+                    : std::abs((b.x - a.x) * (a.y - path[i].y) - (a.x - path[i].x) * (b.y - a.y)) /
+                          len;
+            if (d > worst) {
+                worst = d;
+                at = i;
+            }
+        }
+        if (worst > toleranceMm) {
+            keep[at] = true;
+            stack.emplace_back(lo, at);
+            stack.emplace_back(at, hi);
+        }
+    }
+    std::vector<PointMm> out;
+    for (std::size_t i = 0; i < path.size(); ++i) {
+        if (keep[i]) {
+            out.push_back(path[i]);
+        }
+    }
+    return out;
+}
+
+std::string batchSplitPath(const std::vector<std::uint64_t>& ids,
+                           const std::vector<PointMm>& path) {
+    // Au plus 2000 points côté moteur ; un tracé plus long est refusé plutôt que tronqué.
+    if (ids.empty() || path.size() < 2 || path.size() > 2000) {
+        return {};
+    }
+    double length = 0.0;
+    std::string points;
+    for (std::size_t i = 0; i < path.size(); ++i) {
+        if (!pivotOk(path[i])) {
+            return {};
+        }
+        if (i > 0) {
+            length += std::hypot(path[i].x - path[i - 1].x, path[i].y - path[i - 1].y);
+        }
+        points +=
+            std::string(i == 0 ? "" : ",") + "[" + num(path[i].x) + "," + num(path[i].y) + "]";
+    }
+    if (length < 1e-3) {
+        return {};
+    }
+    std::string ops;
+    for (std::size_t i = 0; i < ids.size(); ++i) {
+        ops += std::string(i == 0 ? "" : ",") + R"({"op":"split_path","object":)" +
+               std::to_string(ids[i]) + R"(,"path_mm":[)" + points + "]}";
+    }
+    return wrap(ops);
+}
+
 std::vector<std::uint64_t> createdObjectIds(const project_ops::BatchReport& report) {
     std::vector<std::uint64_t> out;
     for (const auto& o : report.outcomes) {

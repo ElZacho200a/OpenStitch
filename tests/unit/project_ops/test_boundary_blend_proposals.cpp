@@ -112,14 +112,14 @@ TEST_CASE("propose_boundary_blends operation lists then applies in one undo step
         project_ops::apply_operation(project, R"({"op":"propose_boundary_blends"})");
     INFO(listed.to_json());
     REQUIRE(listed.ok);
-    CHECK_FALSE(project.findEmbroidery(ObjectId{2})->boundary_blend.has_value());
+    CHECK(project.findEmbroidery(ObjectId{2})->boundary_blends.empty());
     CHECK(listed.to_json().find("transition_mm") != std::string::npos);
 
     const auto applied =
         project_ops::apply_operation(project, R"({"op":"propose_boundary_blends","apply":true})");
     INFO(applied.to_json());
     REQUIRE(applied.ok);
-    CHECK(document::find_boundary_blend(project, ObjectId{2}).has_value());
+    CHECK(document::find_boundary_blend(project, ObjectId{2}, ObjectId{4}).has_value());
 
     // Plus rien à proposer : les deux zones sont liées.
     const auto again =

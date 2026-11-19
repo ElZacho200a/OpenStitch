@@ -105,19 +105,11 @@ double mm(Micrometers v) {
 } // namespace
 
 TEST_CASE("geometry_ops catalogue complet et exemples valides", "[project_ops][geometry]") {
-    const std::vector<std::string> expected{"add_shape",
-                                            "duplicate_object",
-                                            "translate",
-                                            "rotate",
-                                            "scale",
-                                            "mirror",
-                                            "merge",
-                                            "split",
-                                            "break_apart",
-                                            "remove_holes",
-                                            "fill_block_holes",
-                                            "set_geometry",
-                                            "auto_satin"};
+    const std::vector<std::string> expected{
+        "add_shape",    "duplicate_object", "translate",    "rotate",
+        "scale",        "mirror",           "merge",        "split",
+        "split_path",   "break_apart",      "remove_holes", "fill_block_holes",
+        "set_geometry", "auto_satin"};
     REQUIRE(registry().size() == expected.size());
     for (const auto& name : expected) {
         const OpSpec* found = nullptr;
@@ -405,6 +397,45 @@ TEST_CASE("split coupe une forme et annule exactement", "[project_ops][geometry]
               .error.code == "E_REFUSED");
     CHECK(env.run("split",
                   json{{"object", obj.value}, {"line_mm", json::array({json::array({1, 1})})}})
+              .error.code == "E_USAGE");
+    CHECK(signature(env.project) == original);
+}
+
+TEST_CASE("split_path coupe selon un trace libre et annule exactement", "[project_ops][geometry]") {
+    Env env;
+    const ObjectId obj = add_rect(env, 0, 0, 20, 10);
+    const std::string original = signature(env.project);
+    const auto pt = [](double x, double y) { return json::array({x, y}); };
+    const auto r =
+        env.run("split_path", json{{"object", obj.value},
+                                   {"path_mm", json::array({pt(-12, 8), pt(0, -2), pt(12, 8)})}});
+    // Trace en V qui ressort par le meme bord : detache le triangle entre ses branches.
+    REQUIRE(r.ok);
+    CHECK(env.project.embroidery_objects.size() == 2);
+    REQUIRE(r.result["created"].size() == 1);
+    REQUIRE(env.stack.undo(env.project));
+    CHECK(signature(env.project) == original);
+
+    // Trace de part en part, coude.
+    const auto through =
+        env.run("split_path", json{{"object", obj.value},
+                                   {"path_mm", json::array({pt(-3, -8), pt(1, 0), pt(-3, 8)})}});
+    REQUIRE(through.ok);
+    CHECK(env.project.embroidery_objects.size() == 2);
+    REQUIRE(env.stack.undo(env.project));
+    CHECK(signature(env.project) == original);
+
+    // Refus : hors forme, entaille borgne, tracé dégénéré ; usage : un seul point.
+    CHECK(env.run("split_path",
+                  json{{"object", obj.value}, {"path_mm", json::array({pt(50, -20), pt(50, 20)})}})
+              .error.code == "E_REFUSED");
+    CHECK(env.run("split_path",
+                  json{{"object", obj.value}, {"path_mm", json::array({pt(-12, 0), pt(-2, 0)})}})
+              .error.code == "E_REFUSED");
+    CHECK(env.run("split_path",
+                  json{{"object", obj.value}, {"path_mm", json::array({pt(1, 1), pt(1, 1)})}})
+              .error.code == "E_REFUSED");
+    CHECK(env.run("split_path", json{{"object", obj.value}, {"path_mm", json::array({pt(1, 1)})}})
               .error.code == "E_USAGE");
     CHECK(signature(env.project) == original);
 }

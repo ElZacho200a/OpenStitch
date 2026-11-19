@@ -122,11 +122,9 @@ Item {
         width: Math.min(460, parent ? parent.width - 32 : 460)
         padding: 18
         closePolicy: Controls.Popup.CloseOnEscape
-        background: Rectangle {
-            color: Theme.panel
-            radius: Theme.radius
-            border.color: Theme.border
-        }
+        background: StudioPopupBackground { }
+        enter: StudioPopupEnter { }
+        exit: StudioPopupExit { }
         contentItem: ColumnLayout {
             spacing: 12
             Text {
@@ -344,7 +342,9 @@ Item {
         width: 330
         padding: 8
         closePolicy: Controls.Popup.CloseOnEscape | Controls.Popup.CloseOnPressOutside
-        background: Rectangle { color: Theme.panel; radius: Theme.radius; border.color: Theme.border }
+        background: StudioPopupBackground { }
+        enter: StudioPopupEnter { }
+        exit: StudioPopupExit { }
         // A short window (1000x640) cuts the menu: bound its height and scroll the entries
         // so EXPORTER / PROJET stay reachable (QA-STUDIO-001 CTL-013/015, POL-001/023).
         height: Math.min(implicitHeight, (parent ? parent.height : 640) - y - 12)

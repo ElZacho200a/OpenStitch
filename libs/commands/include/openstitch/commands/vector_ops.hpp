@@ -53,6 +53,14 @@ struct VectorOpResult {
                                                 const std::vector<ObjectId>& ids, Vec2um a,
                                                 Vec2um b, Micrometers cut_width = Micrometers{20});
 
+// Même découpe que `make_split_command`, mais le long d'un TRACÉ LIBRE (polyligne d'au moins deux
+// points distincts, extrémités franches : rien n'est prolongé). Mêmes règles d'identité et de
+// refus (la coupe doit changer la topologie).
+[[nodiscard]] VectorOpResult make_polyline_split_command(document::Project& project,
+                                                         const std::vector<ObjectId>& ids,
+                                                         const std::vector<Vec2um>& path,
+                                                         Micrometers cut_width = Micrometers{20});
+
 // Retire les trous des objets `ids` (HP-VEC-005) : tous si `max_area_um2` <= 0, sinon
 // seulement ceux dont l'aire ne dépasse pas ce seuil (« combler les petits trous »). Une seule
 // commande ; refusé si aucun trou n'est concerné. `resulting_objects` = nombre de trous retirés.

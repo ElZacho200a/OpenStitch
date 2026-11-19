@@ -143,8 +143,7 @@ propose_boundary_blends(const document::Project& project,
     }
     std::vector<const document::EmbroideryObject*> zones;
     for (const auto& object : project.embroidery_objects) {
-        if (object.visible && document::boundary_blend_fill_supported(object) &&
-            !document::find_boundary_blend(project, object.id)) {
+        if (object.visible && document::boundary_blend_fill_supported(object)) {
             zones.push_back(&object);
         }
     }
@@ -153,6 +152,11 @@ propose_boundary_blends(const document::Project& project,
         for (std::size_t j = i + 1; j < zones.size(); ++j) {
             const auto& za = *zones[i];
             const auto& zb = *zones[j];
+            // Une zone peut fondre avec plusieurs voisines : seul un COUPLE déjà en fondu est
+            // écarté.
+            if (document::find_boundary_blend(project, za.id, zb.id)) {
+                continue;
+            }
             if (boundary_blend_refusal(project, za.id, zb.id)) {
                 continue; // pas de frontière, même couleur, même forme…
             }

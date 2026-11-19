@@ -10,6 +10,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "openstitch/document/boundary_blend.hpp"
 #include "openstitch/document/multi_blend.hpp"
 
 namespace openstitch::project_io::detail {
@@ -1956,6 +1957,81 @@ Result<void> read_image_source(const json& j, document::ImageSource& source) {
     return {};
 }
 
+// Fondu à la frontière (docs/studio-fondu-frontiere-spec.md §4.3) : un lien en JSON. Champs
+// facultatifs absents des anciens projets (génération inchangée).
+json boundary_blend_to_json(const document::BoundaryBlendLink& link) {
+    json j = {{"partner", link.partner.value},
+              {"width", link.width_self.value},
+              {"curve", static_cast<int>(link.curve)}};
+    // Sens des rangées (§6.3) : absent = par zone (fichiers antérieurs inchangés).
+    if (link.rows != document::BoundaryBlendRows::PerZone) {
+        j["rows"] = link.rows == document::BoundaryBlendRows::Shared     ? "shared"
+                    : link.rows == document::BoundaryBlendRows::Rotating ? "rotating"
+                                                                         : "interlaced";
+    }
+    if (!link.manual_frontier.empty()) {
+        json pts = json::array();
+        for (const Vec2um p : link.manual_frontier) {
+            pts.push_back(json::array({p.x.value, p.y.value}));
+        }
+        j["frontier"] = std::move(pts);
+    }
+    return j;
+}
+
+Result<document::BoundaryBlendLink> boundary_blend_from_json(const json& link) {
+    if (!link.is_object() || !link.contains("partner") || !link.contains("width") ||
+        !link.at("width").is_number_integer()) {
+        return fail(ErrorCategory::InvalidFile,
+                    "Fondu à la frontière invalide : boundaryBlend doit porter partner "
+                    "et width");
+    }
+    auto partner = strict_uint64(link.at("partner"), "boundaryBlend.partner");
+    if (!partner) {
+        return std::unexpected(partner.error());
+    }
+    document::BoundaryBlendLink b;
+    b.partner = ObjectId{*partner};
+    b.width_self = Micrometers{link.at("width").get<std::int32_t>()};
+    // Courbe inconnue (fichier plus récent ou édité à la main) : linéaire, comme les
+    // dégradés de densité. Largeur hors bornes : conservée, le lien est alors sans
+    // effet (`document::find_boundary_blend`).
+    const int curve = link.value("curve", 0);
+    if (curve >= 0 && curve <= static_cast<int>(document::DensityCurve::ConcaveConvex)) {
+        b.curve = static_cast<document::DensityCurve>(curve);
+    }
+    // Sens des rangées : valeur inconnue (fichier plus récent) = par zone.
+    if (link.contains("rows") && link.at("rows").is_string()) {
+        const auto rows = link.at("rows").get<std::string>();
+        if (rows == "shared") {
+            b.rows = document::BoundaryBlendRows::Shared;
+        } else if (rows == "rotating") {
+            b.rows = document::BoundaryBlendRows::Rotating;
+        } else if (rows == "interlaced") {
+            b.rows = document::BoundaryBlendRows::Interlaced;
+        }
+    }
+    // Frontière tracée (lot L4) : [[x, y], …] en µm ; absente = calculée.
+    if (link.contains("frontier")) {
+        const auto& pts = link.at("frontier");
+        if (!pts.is_array()) {
+            return fail(ErrorCategory::InvalidFile,
+                        "Fondu à la frontière invalide : frontier doit être une liste");
+        }
+        for (const auto& pt : pts) {
+            if (!pt.is_array() || pt.size() != 2 || !pt.at(0).is_number_integer() ||
+                !pt.at(1).is_number_integer()) {
+                return fail(ErrorCategory::InvalidFile,
+                            "Fondu à la frontière invalide : point de frontier attendu "
+                            "[x, y] en µm entiers");
+            }
+            b.manual_frontier.push_back(Vec2um{Micrometers{pt.at(0).get<std::int32_t>()},
+                                               Micrometers{pt.at(1).get<std::int32_t>()}});
+        }
+    }
+    return b;
+}
+
 } // namespace
 
 json project_to_json(const document::Project& project) {
@@ -2143,23 +2219,16 @@ json project_to_json(const document::Project& project) {
         }
         // Fondu à la frontière (docs/studio-fondu-frontiere-spec.md §4.3) : champ facultatif,
         // absent des anciens projets (génération inchangée).
-        if (e.boundary_blend) {
-            eo["boundaryBlend"] = {{"partner", e.boundary_blend->partner.value},
-                                   {"width", e.boundary_blend->width_self.value},
-                                   {"curve", static_cast<int>(e.boundary_blend->curve)}};
-            // Sens des rangées (§6.3) : absent = par zone (fichiers antérieurs inchangés).
-            if (e.boundary_blend->rows != document::BoundaryBlendRows::PerZone) {
-                eo["boundaryBlend"]["rows"] =
-                    e.boundary_blend->rows == document::BoundaryBlendRows::Shared ? "shared"
-                                                                                  : "rotating";
+        // Un seul fondu : objet `boundaryBlend` (format historique, octet pour octet) ; plusieurs
+        // fondus (un par voisine) : tableau `boundaryBlends` d'objets au même format.
+        if (e.boundary_blends.size() == 1) {
+            eo["boundaryBlend"] = boundary_blend_to_json(e.boundary_blends.front());
+        } else if (e.boundary_blends.size() > 1) {
+            json links = json::array();
+            for (const auto& link : e.boundary_blends) {
+                links.push_back(boundary_blend_to_json(link));
             }
-            if (!e.boundary_blend->manual_frontier.empty()) {
-                json pts = json::array();
-                for (const Vec2um p : e.boundary_blend->manual_frontier) {
-                    pts.push_back(json::array({p.x.value, p.y.value}));
-                }
-                eo["boundaryBlend"]["frontier"] = std::move(pts);
-            }
+            eo["boundaryBlends"] = std::move(links);
         }
         if (e.multi_blend) {
             eo["multiBlend"] = {{"group", e.multi_blend->group.value},
@@ -2500,58 +2569,38 @@ Result<document::Project> project_from_json(const json& j) {
                 e.color_blend =
                     document::ColorBlendLink{ObjectId{*partner}, link.at("foreground").get<bool>()};
             }
+            // Fondus à la frontière : `boundaryBlend` (objet, un seul fondu) et/ou `boundaryBlends`
+            // (tableau, plusieurs fondus). Un partenaire en double est une erreur de lecture.
             if (eo.contains("boundaryBlend")) {
-                const auto& link = eo.at("boundaryBlend");
-                if (!link.is_object() || !link.contains("partner") || !link.contains("width") ||
-                    !link.at("width").is_number_integer()) {
+                auto link = boundary_blend_from_json(eo.at("boundaryBlend"));
+                if (!link) {
+                    return std::unexpected(link.error());
+                }
+                e.boundary_blends.push_back(std::move(*link));
+            }
+            if (eo.contains("boundaryBlends")) {
+                const auto& links = eo.at("boundaryBlends");
+                if (!links.is_array()) {
+                    return fail(
+                        ErrorCategory::InvalidFile,
+                        "Fondu à la frontière invalide : boundaryBlends doit être une liste");
+                }
+                for (const auto& lj : links) {
+                    auto link = boundary_blend_from_json(lj);
+                    if (!link) {
+                        return std::unexpected(link.error());
+                    }
+                    e.boundary_blends.push_back(std::move(*link));
+                }
+            }
+            document::sort_boundary_blend_links(e.boundary_blends);
+            for (std::size_t i = 1; i < e.boundary_blends.size(); ++i) {
+                if (e.boundary_blends[i].partner == e.boundary_blends[i - 1].partner) {
                     return fail(ErrorCategory::InvalidFile,
-                                "Fondu à la frontière invalide : boundaryBlend doit porter partner "
-                                "et width");
+                                "Fondu à la frontière invalide : deux fondus vers la même zone "
+                                "(partner " +
+                                    std::to_string(e.boundary_blends[i].partner.value) + ")");
                 }
-                auto partner = strict_uint64(link.at("partner"), "boundaryBlend.partner");
-                if (!partner) {
-                    return std::unexpected(partner.error());
-                }
-                document::BoundaryBlendLink b;
-                b.partner = ObjectId{*partner};
-                b.width_self = Micrometers{link.at("width").get<std::int32_t>()};
-                // Courbe inconnue (fichier plus récent ou édité à la main) : linéaire, comme les
-                // dégradés de densité. Largeur hors bornes : conservée, le lien est alors sans
-                // effet (`document::find_boundary_blend`).
-                const int curve = link.value("curve", 0);
-                if (curve >= 0 &&
-                    curve <= static_cast<int>(document::DensityCurve::ConcaveConvex)) {
-                    b.curve = static_cast<document::DensityCurve>(curve);
-                }
-                // Sens des rangées : valeur inconnue (fichier plus récent) = par zone.
-                if (link.contains("rows") && link.at("rows").is_string()) {
-                    const auto rows = link.at("rows").get<std::string>();
-                    if (rows == "shared") {
-                        b.rows = document::BoundaryBlendRows::Shared;
-                    } else if (rows == "rotating") {
-                        b.rows = document::BoundaryBlendRows::Rotating;
-                    }
-                }
-                // Frontière tracée (lot L4) : [[x, y], …] en µm ; absente = calculée.
-                if (link.contains("frontier")) {
-                    const auto& pts = link.at("frontier");
-                    if (!pts.is_array()) {
-                        return fail(ErrorCategory::InvalidFile,
-                                    "Fondu à la frontière invalide : frontier doit être une liste");
-                    }
-                    for (const auto& pt : pts) {
-                        if (!pt.is_array() || pt.size() != 2 || !pt.at(0).is_number_integer() ||
-                            !pt.at(1).is_number_integer()) {
-                            return fail(ErrorCategory::InvalidFile,
-                                        "Fondu à la frontière invalide : point de frontier attendu "
-                                        "[x, y] en µm entiers");
-                        }
-                        b.manual_frontier.push_back(
-                            Vec2um{Micrometers{pt.at(0).get<std::int32_t>()},
-                                   Micrometers{pt.at(1).get<std::int32_t>()}});
-                    }
-                }
-                e.boundary_blend = b;
             }
 
             // Fil de nuancier (schéma v6) : absent dans un projet v1..v5 -> couleur libre.

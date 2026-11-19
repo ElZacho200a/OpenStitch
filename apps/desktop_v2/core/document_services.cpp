@@ -173,21 +173,81 @@ ServiceResult moveCalque(DocumentSession& session, std::uint64_t id, int directi
     return ok();
 }
 
+ServiceResult reorderCalque(DocumentSession& session, std::uint64_t id, std::size_t toIndex) {
+    const auto& list = session.project().calques;
+    const auto it = std::ranges::find_if(list, [&](const auto& c) { return c.id.value == id; });
+    if (it == list.end()) {
+        return refuse("Calque inconnu.");
+    }
+    const auto target = std::min(toIndex, list.size() - 1);
+    if (static_cast<std::size_t>(it - list.begin()) == target) {
+        return refuse("Le calque est déjà à cette place.");
+    }
+    session.execute(std::make_unique<commands::ReorderCalqueCommand>(ObjectId{id}, target));
+    return ok();
+}
+
+ServiceResult isolateCalque(DocumentSession& session, std::uint64_t id) {
+    const auto& list = session.project().calques;
+    if (!hasCalque(session.project(), id)) {
+        return refuse("Calque inconnu.");
+    }
+    const bool alreadySolo =
+        std::ranges::all_of(list, [&](const auto& c) { return c.visible == (c.id.value == id); });
+    std::vector<std::pair<ObjectId, bool>> wanted;
+    wanted.reserve(list.size());
+    for (const auto& c : list) {
+        wanted.emplace_back(c.id, alreadySolo || c.id.value == id);
+    }
+    if (alreadySolo && list.size() == 1) {
+        return refuse("Le calque est déjà le seul du document.");
+    }
+    session.execute(std::make_unique<commands::SetCalquesVisibilityCommand>(
+        std::move(wanted), alreadySolo ? "Afficher tous les calques" : "Isoler le calque"));
+    return ok();
+}
+
+ServiceResult showAllCalques(DocumentSession& session) {
+    const auto& list = session.project().calques;
+    if (std::ranges::all_of(list, [](const auto& c) { return c.visible; })) {
+        return refuse("Tous les calques sont déjà visibles.");
+    }
+    std::vector<std::pair<ObjectId, bool>> wanted;
+    for (const auto& c : list) {
+        wanted.emplace_back(c.id, true);
+    }
+    session.execute(std::make_unique<commands::SetCalquesVisibilityCommand>(
+        std::move(wanted), "Afficher tous les calques"));
+    return ok();
+}
+
 ServiceResult moveObjectsToCalque(DocumentSession& session,
                                   const std::vector<std::uint64_t>& objectIds,
                                   std::uint64_t calqueId) {
-    if (!hasCalque(session.project(), calqueId)) {
+    const auto& project = session.project();
+    const auto* target = project.findCalque(ObjectId{calqueId});
+    if (target == nullptr) {
         return refuse("Calque inconnu.");
     }
+    if (target->locked) {
+        return refuse("Le calque de destination est verrouillé.");
+    }
     std::vector<ObjectId> shapes;
+    bool skippedLocked = false;
     for (const auto id : objectIds) {
-        if (const auto* o = findObject(session.project(), id);
-            o != nullptr && o->source_vector.valid()) {
-            shapes.push_back(o->source_vector);
+        if (const auto* o = findObject(project, id); o != nullptr && o->source_vector.valid()) {
+            if (project.shapeLockedByCalque(o->source_vector)) {
+                skippedLocked = true; // ne jamais vider un calque verrouillé
+                continue;
+            }
+            if (std::ranges::find(shapes, o->source_vector) == shapes.end()) {
+                shapes.push_back(o->source_vector);
+            }
         }
     }
     if (shapes.empty()) {
-        return refuse("Sélectionnez au moins un objet.");
+        return refuse(skippedLocked ? "Les objets choisis sont dans un calque verrouillé."
+                                    : "Sélectionnez au moins un objet.");
     }
     session.execute(
         std::make_unique<commands::SetShapesCalqueCommand>(std::move(shapes), ObjectId{calqueId}));

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "preferences.hpp"
 
+#include "theme_package.hpp"
+
 #include <fstream>
 #include <sstream>
 #include <system_error>
@@ -71,8 +73,8 @@ std::string densityLabel(UiDensity density) {
 }
 
 std::string preferencesToText(const Preferences& p) {
-    return "theme=" + p.theme + "\ndensity=" + densityId(p.density) + "\n" +
-           renderSettingsToText(p.render);
+    return "theme=" + p.theme + "\nthemeId=" + p.themeId + "\ndensity=" + densityId(p.density) +
+           "\n" + renderSettingsToText(p.render);
 }
 
 Preferences preferencesFromText(std::string_view text) {
@@ -88,6 +90,8 @@ Preferences preferencesFromText(std::string_view text) {
         const std::string value = trim(std::string_view(line).substr(eq + 1));
         if (key == "theme" && validTheme(value)) {
             out.theme = value;
+        } else if (key == "themeId" && theme::isValidThemeId(value)) {
+            out.themeId = value;
         } else if (key == "density") {
             if (const auto d = parseDensity(value)) {
                 out.density = *d;

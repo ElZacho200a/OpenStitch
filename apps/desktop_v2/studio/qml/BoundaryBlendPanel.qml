@@ -4,9 +4,10 @@ import QtQuick.Layouts
 import "."
 
 // Fondu à la frontière entre deux zones voisines (docs/studio-fondu-frontiere-spec.md §8).
-// Deux zones sélectionnées : réglages puis « Créer le fondu ». Une zone qui porte un fondu :
-// résumé, réglages immédiats et « Retirer ». Chaque action est UN pas d'annulation ; aucune
-// logique métier ici (contrôleur `boundaryBlend`).
+// Une zone peut fondre avec plusieurs voisines : la liste montre ses fondus, une ligne choisit le
+// fondu édité, la croix d'une ligne le retire. Les réglages s'appliquent au fondu courant. Deux
+// zones sélectionnées sans fondu entre elles : réglages puis « Créer le fondu ». Chaque action est
+// UN pas d'annulation ; aucune logique métier ici (contrôleur `boundaryBlend`).
 ColumnLayout {
     id: root
     property var controller: null
@@ -14,16 +15,31 @@ ColumnLayout {
     readonly property bool hasBlend: ready && controller.hasBlend
     readonly property bool canCreate: ready && controller.canCreate
     readonly property bool refused: ready && !hasBlend && controller.refusal !== ""
+    readonly property var blends: ready ? controller.blends : []
     // Transition simplifiée : mêmes profils que le fondu de fils (linéaire, lissée, nette).
     readonly property var softnessCurves: [0, 1, 2]
-    readonly property var rowsKeys: ["per_zone", "shared", "rotating"]
+    readonly property var rowsKeys: ["per_zone", "shared", "rotating", "interlaced"]
 
     spacing: 6
-    visible: hasBlend || canCreate || refused
+    visible: hasBlend || canCreate || refused || blends.length > 0
 
     function curveIndex(curve) {
         const i = softnessCurves.indexOf(curve)
         return i < 0 ? 1 : i
+    }
+    function rowsLabel(key) {
+        const i = rowsKeys.indexOf(key)
+        return i <= 0 ? "" : [qsTr("chaque zone son angle"), qsTr("angle commun"), qsTr("rangées qui tournent"), qsTr("entrelacé")][i]
+    }
+    function blendDetails(b) {
+        if (!b.active)
+            return qsTr("inactif : les zones ne se touchent plus")
+        let text = qsTr("%1 mm ici, %2 mm chez la voisine").arg(b.widthMm.toFixed(1)).arg(b.partnerWidthMm.toFixed(1))
+        text += b.manualFrontier ? qsTr(" · frontière tracée") : qsTr(" · frontière calculée")
+        const rows = rowsLabel(b.rows)
+        if (rows !== "")
+            text += " · " + rows
+        return text
     }
     function commit() {
         const here = widthHere.value / 10.0
@@ -54,6 +70,87 @@ ColumnLayout {
         color: root.refused || (root.hasBlend && !root.controller.active) ? Theme.warning : Theme.faint
         font.family: Theme.fontFamily
         font.pixelSize: Theme.captionSize
+    }
+    // Fondus de la zone principale, un par voisine ; le fondu édité est surligné.
+    ColumnLayout {
+        objectName: "boundaryBlendList"
+        Layout.fillWidth: true
+        spacing: 2
+        visible: root.blends.length > 1 || (root.blends.length === 1 && !root.hasBlend)
+        Accessible.role: Accessible.List
+        Accessible.name: qsTr("Fondus de la zone sélectionnée")
+        Repeater {
+            model: root.blends
+            delegate: Rectangle {
+                id: blendRow
+                required property var modelData
+                readonly property bool current: modelData.current
+                function choose() { root.controller.selectBlend(modelData.partnerId) }
+                objectName: "boundaryBlendRow_" + modelData.partnerId
+                Layout.fillWidth: true
+                implicitHeight: rowContent.implicitHeight + 8
+                radius: 4
+                color: current ? Theme.accentSoft : rowMouse.containsMouse ? Theme.hover : Theme.raised
+                border.width: activeFocus ? 2 : 0
+                border.color: Theme.accent
+                activeFocusOnTab: true
+                Accessible.role: Accessible.ListItem
+                Accessible.name: qsTr("Fondu avec %1").arg(modelData.partnerName !== "" ? modelData.partnerName : qsTr("la zone voisine"))
+                Accessible.description: root.blendDetails(modelData)
+                Accessible.selected: current
+                Accessible.onPressAction: choose()
+                Keys.onReturnPressed: choose()
+                Keys.onSpacePressed: choose()
+                MouseArea {
+                    id: rowMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    onClicked: blendRow.choose()
+                }
+                StudioToolTip {
+                    visible: (rowMouse.containsMouse || blendRow.activeFocus) && text.length > 0
+                    text: qsTr("Régler ce fondu avec les réglages ci-dessous")
+                }
+                RowLayout {
+                    id: rowContent
+                    anchors.fill: parent
+                    anchors.leftMargin: 6
+                    anchors.rightMargin: 2
+                    spacing: 4
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 0
+                        Text {
+                            Layout.fillWidth: true
+                            elide: Text.ElideRight
+                            text: blendRow.modelData.partnerName !== "" ? blendRow.modelData.partnerName : qsTr("Zone voisine")
+                            color: Theme.foreground
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.captionSize
+                            font.bold: blendRow.current
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
+                            text: root.blendDetails(blendRow.modelData)
+                            color: blendRow.modelData.active ? Theme.faint : Theme.warning
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.captionSize
+                        }
+                    }
+                    StudioButton {
+                        objectName: "boundaryBlendRowRemove_" + blendRow.modelData.partnerId
+                        iconName: "close"
+                        tooltip: qsTr("Retirer ce fondu")
+                        Accessible.name: qsTr("Retirer le fondu avec %1").arg(blendRow.modelData.partnerName)
+                        quiet: true
+                        implicitWidth: 24
+                        implicitHeight: 24
+                        onClicked: root.controller.removeBlend(blendRow.modelData.partnerId)
+                    }
+                }
+            }
+        }
     }
     GridLayout {
         Layout.fillWidth: true
@@ -118,11 +215,11 @@ ColumnLayout {
         StudioComboBox {
             id: rowsCombo
             objectName: "blendRowsCombo"
-            model: [qsTr("Chaque zone son angle"), qsTr("Angle commun"), qsTr("Rangées qui tournent")]
+            model: [qsTr("Chaque zone son angle"), qsTr("Angle commun"), qsTr("Rangées qui tournent"), qsTr("Entrelacé")]
             currentIndex: root.ready ? Math.max(0, root.rowsKeys.indexOf(root.controller.rows)) : 0
             Accessible.name: qsTr("Sens des rangées dans la bande du fondu")
             onActivated: root.controller.setRows(root.rowsKeys[currentIndex])
-            StudioToolTip { text: qsTr("L'angle commun montre une cassure au bord de la bande ; les rangées qui tournent suivent les deux angles en continu.") }
+            StudioToolTip { text: qsTr("L'angle commun montre une cassure au bord de la bande ; les rangées qui tournent suivent les deux angles en continu ; l'entrelacé traverse la frontière et mêle les deux couleurs dans chaque rangée.") }
         }
     }
     RowLayout {

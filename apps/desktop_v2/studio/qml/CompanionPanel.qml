@@ -27,11 +27,9 @@ Controls.Popup {
             input.forceActiveFocus()
     }
 
-    background: Rectangle {
-        color: Theme.panel
-        border.color: Theme.border
-        radius: Theme.radius
-    }
+    background: StudioPopupBackground { }
+    enter: StudioPopupEnter { }
+    exit: StudioPopupExit { }
 
     ColumnLayout {
         anchors.fill: parent

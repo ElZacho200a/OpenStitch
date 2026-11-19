@@ -189,7 +189,11 @@ Window {
     }
     ActionPalette { id: palette }
     CompanionPanel { id: companionPanel }
-    PreferencesDialog { id: prefsDialog }
+    PreferencesDialog { id: prefsDialog; onGalleryRequested: themeGallery.openGallery() }
+    ThemeGallery { id: themeGallery }
+    // Recettes (--open-panels preferences, --theme-gallery) et palette de commandes.
+    function openPreferences() { prefsDialog.openDialog() }
+    function openThemeGallery() { themeGallery.openGallery() }
     ShortcutsSheet { id: shortcutsSheet }
     HelpDialog { id: helpDialog }
 
@@ -197,7 +201,14 @@ Window {
     readonly property bool hasPrefs: typeof prefs !== "undefined" && prefs !== null
     Binding { target: Theme; property: "mode"; value: window.hasPrefs ? prefs.effectiveTheme : "dark" }
     Binding { target: Theme; property: "densityScale"; value: window.hasPrefs ? prefs.densityScale : 1.0 }
-    Binding { target: Theme; property: "reducedMotion"; value: window.hasPrefs ? prefs.reducedMotion : false }
+    // Mouvement réduit : préférence du Studio OU réglage système (« Afficher les animations »).
+    Binding { target: Theme; property: "reducedMotion"; value: (window.hasPrefs && prefs.reducedMotion) || (window.hasThemeEngine && themeEngine.systemReducedMotion) }
+    // Moteur de thèmes : thème résolu en C++ (ThemeController). Sans moteur, Theme garde Neo Studio.
+    readonly property bool hasThemeEngine: typeof themeEngine !== "undefined" && themeEngine !== null
+    Binding { target: Theme; property: "tokens"; value: window.hasThemeEngine ? themeEngine.tokens : ({}) }
+    Binding { target: Theme; property: "styles"; value: window.hasThemeEngine ? themeEngine.styles : ({}) }
+    Binding { target: Theme; property: "icons"; value: window.hasThemeEngine ? themeEngine.icons : ({}) }
+    Binding { target: Theme; property: "meta"; value: window.hasThemeEngine ? themeEngine.meta : ({}) }
 
     // Invalidate the transient saved check as soon as the actual document becomes dirty.
     Connections {
@@ -407,12 +418,24 @@ Window {
 
     // Plan de travail : semis de points fixe derrière les cartes et le canevas (transparent).
     // Dessiné une fois par taille de fenêtre ; aucun shader, donc identique en rendu logiciel.
+    // Fond du plan de travail : style « desk » du thème (dégradé, texture en mosaïque).
+    ThemedSurface {
+        objectName: "studioDeskSurface"
+        anchors.fill: parent
+        themeStyle: Theme.style("desk", "default", "normal")
+        fill: Theme.background
+        texture: Theme.deskTexture
+        textureOpacity: Theme.deskTextureOpacity
+        animated: false
+    }
     Canvas {
         id: desk
         objectName: "studioDesk"
         anchors.fill: parent
         property color dot: Theme.deskDot
+        property int step: Theme.deskStep
         onDotChanged: requestPaint()
+        onStepChanged: requestPaint()
         onPaint: {
             const ctx = getContext("2d")
             ctx.reset()
@@ -434,6 +457,7 @@ Window {
         StudioCard {
             id: headerCard
             objectName: "studioHeader"
+            themeComponent: "header"
             z: 3
             Layout.fillWidth: true
             Layout.preferredHeight: 52

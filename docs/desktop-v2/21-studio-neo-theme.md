@@ -1,6 +1,8 @@
 # Neo Studio — thème par défaut (première passe)
 
-> Contrat visuel pour **Qt Quick / GPU** (`apps/desktop_v2/studio/qml/`). Il ne crée pas de moteur de thèmes personnalisables.
+> Contrat visuel pour **Qt Quick / GPU** (`apps/desktop_v2/studio/qml/`). Depuis le 2026-11-18,
+> Neo Studio est un thème du moteur de thèmes (`resources/themes/neo-studio`, voir
+> [22-moteur-de-themes.md](22-moteur-de-themes.md)) ; ses valeurs sont aussi les replis compilés.
 
 ## Principes
 - Fond graphite / bleu nuit ; la broderie et les couleurs de fils restent prioritaires.
@@ -12,7 +14,7 @@
 - Transitions de couleurs 150 ms par défaut, désactivées via « Réduire les animations ».
 
 ## Source de vérité
-`Theme.qml` fournit les tokens ; `StudioButton.qml` et `SectionLabel.qml` les consomment. Les couleurs documentaires et les champs HEX de l'utilisateur ne sont pas des couleurs de thème.
+`Theme.qml` expose les tokens (valeurs fournies par le moteur de thèmes, replis Neo écrits dans le fichier) ; `StudioButton.qml` et `SectionLabel.qml` les consomment. Les couleurs documentaires et les champs HEX de l'utilisateur ne sont pas des couleurs de thème.
 
 ## Validation à effectuer
 1. Ouvrir le shell et vérifier typographie, clavier et états de boutons ; contrôler clair / sombre, densité et mouvement réduit.

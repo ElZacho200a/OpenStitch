@@ -144,6 +144,9 @@ public:
     Q_INVOKABLE void centerOnScene(double x, double y);
     // [{pos, label}] along one viewport axis, in logical px, for QML rulers (<= 60).
     Q_INVOKABLE [[nodiscard]] QVariantList rulerTicks(bool horizontal) const;
+    // MODEL polyline ([{x, y}] in mm, Y up) -> flat [x0, y0, x1, y1, ...] in logical px, for QML
+    // overlays that draw document geometry (boundary-blend frontiers). Pure view mapping.
+    Q_INVOKABLE [[nodiscard]] QVariantList modelToScreen(const QVariantList& pointsMm) const;
 signals:
     void controllerChanged();
     void panModeChanged();

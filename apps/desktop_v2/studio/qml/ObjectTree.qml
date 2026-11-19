@@ -6,11 +6,32 @@ import "."
 
 // Arbre documentaire : calques (du dessus au fond) > groupes > objets, dans l'ordre de couture.
 // Pure présentation : toute action appelle l'EditController (`editor`) ou le StudioController.
-// Glisser-déposer : glisser une ligne d'objet sur une ligne de calque déplace la sélection.
+// Glisser-déposer : une ligne d'objet déposée sur un calque y déplace la sélection ; une ligne de
+// calque déposée sur un autre calque prend sa place (l'ordre de couture suit l'ordre des calques).
+// Clic = sélection, Ctrl+clic = ajout, Maj+clic = plage ; Alt+clic sur l'oeil = isoler le calque.
 Item {
     id: root
     objectName: "objectTree"
-    property string currentLayer: ""
+    // Calque courant : celui du document (`editor.activeLayer`), le même dans tous les canevas.
+    property string currentLayer: editor.activeLayer
+    // Ancre de la sélection par plage (Maj+clic), dernier objet cliqué sans Maj.
+    property string anchorId: ""
+    property bool dragLayer: false
+    property string dropId: "" // calque survolé pendant un glisser-déposer
+    function layerDisplayIndex(id) {
+        const list = editor.layers
+        for (let i = 0; i < list.length; ++i)
+            if (list[i].id === id) return i
+        return -1
+    }
+    function clickObject(id, modifiers) {
+        if ((modifiers & Qt.ShiftModifier) && root.anchorId.length > 0) {
+            editor.selectTreeRange(root.anchorId, id, Boolean(modifiers & Qt.ControlModifier))
+            return
+        }
+        studio.selectObject(id, Boolean(modifiers & Qt.ControlModifier))
+        root.anchorId = id
+    }
     property bool dragActive: false
     property string dragLabel: ""
     property point dragPos: Qt.point(0, 0)
@@ -80,20 +101,33 @@ Item {
             Accessible.selected: isObject && modelData.selected
             Keys.onReturnPressed: {
                 if (row.isObject) studio.selectObject(row.modelData.id)
-                else if (row.isLayer) { root.currentLayer = row.modelData.id; editor.selectByLayer(row.modelData.id) }
+                else if (row.isLayer) editor.selectByLayer(row.modelData.id)
                 else if (row.isGroup) editor.selectGroup(row.modelData.id)
             }
             width: view.width
             height: 30
 
+            readonly property bool isActiveLayer: isLayer && modelData.active === true
+            readonly property bool dropTarget: root.dragActive && isLayer && root.dropId === modelData.id
             Rectangle {
                 anchors.fill: parent
                 color: row.isObject && row.modelData.selected ? Theme.accentSoft
+                       : row.dropTarget ? Theme.accentSoft
                        : row.isLayer ? Theme.raised
                        : area.containsMouse || row.activeFocus ? Theme.hover : "transparent"
-                border.width: row.activeFocus || (row.isLayer && root.currentLayer === row.modelData.id) ? 1 : 0
+                border.width: row.activeFocus || row.isActiveLayer || row.dropTarget ? 1 : 0
                 border.color: Theme.accent
                 Behavior on color { ColorAnimation { duration: Theme.animationMs } }
+                // Calque actif : barre d'accent, comme l'objet principal de la sélection.
+                Rectangle {
+                    objectName: "activeLayerMarker"
+                    visible: row.isActiveLayer
+                    width: 3
+                    anchors.left: parent.left
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    color: Theme.accent
+                }
                 Rectangle {
                     width: row.primarySelected ? 4 : 2
                     anchors.left: parent.left
@@ -110,19 +144,23 @@ Item {
                 hoverEnabled: true
                 cursorShape: row.isObject && row.modelData.locked ? Qt.ForbiddenCursor
                              : root.dragActive ? Qt.ClosedHandCursor : Qt.PointingHandCursor
-                acceptedButtons: Qt.LeftButton
+                acceptedButtons: Qt.LeftButton | Qt.RightButton
                 preventStealing: true // le défilement de la liste ne doit pas voler le glisser
-                onCanceled: root.dragActive = false
+                onCanceled: { root.dragActive = false; root.dropId = "" }
                 property point pressPoint: Qt.point(0, 0)
                 onPressed: function(mouse) {
                     pressPoint = Qt.point(mouse.x, mouse.y)
                 }
                 onPositionChanged: function(mouse) {
-                    if (!pressed || !row.isObject)
+                    if (!pressed || !(row.isObject || row.isLayer) || (pressedButtons & Qt.RightButton))
                         return
                     if (Math.abs(mouse.x - pressPoint.x) + Math.abs(mouse.y - pressPoint.y) > 8) {
                         root.dragActive = true
+                        root.dragLayer = row.isLayer
                         root.dragLabel = row.modelData.label
+                        const hp = mapToItem(view.contentItem, mouse.x, mouse.y)
+                        const over = view.itemAt(hp.x, hp.y)
+                        root.dropId = over && over.isLayer ? over.modelData.id : ""
                         root.dragPos = mapToItem(root, mouse.x, mouse.y)
                     }
                 }
@@ -130,19 +168,29 @@ Item {
                     if (!root.dragActive)
                         return
                     root.dragActive = false
+                    root.dropId = ""
                     const p = mapToItem(view.contentItem, mouse.x, mouse.y)
                     const target = view.itemAt(p.x, p.y)
-                    if (target && target.isLayer)
+                    if (!target || !target.isLayer || target.modelData.id === row.modelData.id)
+                        return
+                    if (row.isLayer)
+                        editor.reorderLayer(row.modelData.id, root.layerDisplayIndex(target.modelData.id))
+                    else
                         editor.moveObjectToLayer(row.modelData.id, target.modelData.id)
                 }
                 onClicked: function(mouse) {
+                    if (mouse.button === Qt.RightButton) {
+                        if (row.isLayer) {
+                            layerMenu.layer = row.modelData
+                            layerMenu.popup()
+                        }
+                        return
+                    }
                     if (row.isObject) {
-                        studio.selectObject(row.modelData.id,
-                                            Boolean(mouse.modifiers & Qt.ControlModifier))
+                        root.clickObject(row.modelData.id, mouse.modifiers)
                     } else if (row.isGroup) {
                         editor.selectGroup(row.modelData.id)
                     } else if (row.isLayer) {
-                        root.currentLayer = row.modelData.id
                         editor.selectByLayer(row.modelData.id)
                     }
                 }
@@ -197,10 +245,14 @@ Item {
                     Layout.fillWidth: true
                     visible: !row.renaming
                     text: row.modelData.label + (row.isObject && row.modelData.locked ? "  (verrouillé)" : "")
-                          + (row.isCollapsed ? "  · " + row.childCount : "")
-                    color: row.isObject && row.modelData.selected ? Theme.foreground : Theme.muted
+                          + (row.isLayer || row.isCollapsed ? "  · " + row.childCount : "")
+                    // Un calque masqué reste lisible mais s'efface : l'état se voit sans icône.
+                    color: row.isObject && row.modelData.selected ? Theme.foreground
+                           : row.isLayer && !row.modelData.visible ? Theme.faint
+                           : row.isActiveLayer ? Theme.foreground : Theme.muted
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.bodySize
+                    font.italic: (row.isLayer || row.isObject) && !row.modelData.visible
                     font.weight: row.isLayer ? Font.DemiBold : Font.Normal
                     elide: Text.ElideRight
                 }
@@ -223,30 +275,54 @@ Item {
                     Keys.onEscapePressed: row.renaming = false
                     onActiveFocusChanged: if (!activeFocus) row.renaming = false
                 }
-                Text {
+                StudioIcon {
+                    objectName: "treeVisibilityToggle"
                     visible: row.isObject || row.isLayer
-                    text: row.modelData.visible ? "Voir" : "Caché"
-                    color: row.modelData.visible ? Theme.muted : Theme.faint
-                    font.pixelSize: Theme.smallSize
+                    name: row.modelData.visible ? "eye" : "eye-off"
+                    color: eyeArea.containsMouse ? Theme.foreground
+                           : row.modelData.visible ? Theme.muted : Theme.faint
+                    implicitWidth: 16
+                    implicitHeight: 16
+                    Accessible.role: Accessible.CheckBox
+                    Accessible.name: row.modelData.visible ? qsTr("Masquer") : qsTr("Afficher")
                     MouseArea {
+                        id: eyeArea
                         anchors.fill: parent
-                        anchors.margins: -4
-                        onClicked: {
-                            if (row.isLayer)
+                        anchors.margins: -5
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: function(mouse) {
+                            if (row.isLayer && (mouse.modifiers & Qt.AltModifier))
+                                editor.isolateLayer(row.modelData.id)
+                            else if (row.isLayer)
                                 editor.setLayerVisible(row.modelData.id, !row.modelData.visible)
                             else
                                 editor.setObjectVisible(row.modelData.id, !row.modelData.visible)
                         }
                     }
+                    StudioToolTip {
+                        visible: eyeArea.containsMouse
+                        text: row.isLayer ? qsTr("Afficher / masquer — Alt+clic : isoler ce calque")
+                                          : qsTr("Afficher / masquer l'objet")
+                    }
                 }
-                Text {
+                StudioIcon {
+                    objectName: "treeLockToggle"
                     visible: row.isObject || row.isLayer
-                    text: row.modelData.locked ? "Verr." : "Libre"
-                    color: row.modelData.locked ? Theme.accent : Theme.faint
-                    font.pixelSize: Theme.smallSize
+                    name: row.modelData.locked ? "lock" : "unlock"
+                    color: row.modelData.locked ? Theme.accent
+                           : lockArea.containsMouse ? Theme.foreground : Theme.faint
+                    opacity: row.modelData.locked || lockArea.containsMouse || row.isLayer ? 1 : 0.55
+                    implicitWidth: 16
+                    implicitHeight: 16
+                    Accessible.role: Accessible.CheckBox
+                    Accessible.name: row.modelData.locked ? qsTr("Déverrouiller") : qsTr("Verrouiller")
                     MouseArea {
+                        id: lockArea
                         anchors.fill: parent
-                        anchors.margins: -4
+                        anchors.margins: -5
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
                         onClicked: {
                             if (row.isLayer)
                                 editor.setLayerLocked(row.modelData.id, !row.modelData.locked)
@@ -254,8 +330,41 @@ Item {
                                 editor.setObjectLocked(row.modelData.id, !row.modelData.locked)
                         }
                     }
+                    StudioToolTip {
+                        visible: lockArea.containsMouse
+                        text: row.isLayer ? qsTr("Verrouiller : ses objets ne se sélectionnent ni ne se modifient")
+                                          : qsTr("Verrouiller l'objet")
+                    }
                 }
             }
+        }
+    }
+
+    // Menu contextuel d'un calque (clic droit) : toutes les actions de calque à un clic.
+    Controls.Menu {
+        id: layerMenu
+        objectName: "layerContextMenu"
+        property var layer: ({})
+        readonly property string layerId: layer && layer.id ? layer.id : ""
+        Controls.MenuItem { text: qsTr("Rendre actif"); onTriggered: editor.setActiveLayer(layerMenu.layerId) }
+        Controls.MenuItem { text: qsTr("Sélectionner son contenu"); onTriggered: editor.selectByLayer(layerMenu.layerId) }
+        Controls.MenuItem {
+            text: qsTr("Déplacer la sélection ici")
+            enabled: editor.selectedCount > 0 && !(layerMenu.layer && layerMenu.layer.locked)
+            onTriggered: editor.moveSelectionToLayer(layerMenu.layerId)
+        }
+        Controls.MenuSeparator { }
+        Controls.MenuItem { text: qsTr("Isoler / tout afficher"); onTriggered: editor.isolateLayer(layerMenu.layerId) }
+        Controls.MenuItem {
+            text: layerMenu.layer && layerMenu.layer.locked ? qsTr("Déverrouiller") : qsTr("Verrouiller")
+            onTriggered: editor.setLayerLocked(layerMenu.layerId, !layerMenu.layer.locked)
+        }
+        Controls.MenuItem { text: qsTr("Dupliquer"); onTriggered: editor.duplicateLayer(layerMenu.layerId) }
+        Controls.MenuSeparator { }
+        Controls.MenuItem {
+            text: qsTr("Supprimer (objets gardés dans le calque voisin)")
+            enabled: editor.layers.length > 1
+            onTriggered: editor.removeLayer(layerMenu.layerId)
         }
     }
 

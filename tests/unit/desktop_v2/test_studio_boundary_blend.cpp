@@ -12,6 +12,7 @@
 #include <QtTest/QtTest>
 
 #include "boundary_blend_controller.hpp"
+#include "openstitch/document/boundary_blend.hpp"
 #include "openstitch/project_ops/factory.hpp"
 #include "shape_batch.hpp"
 #include "studio_controller.hpp"
@@ -85,6 +86,8 @@ private slots:
     void panelIsHostedAndDrivesTheController();
     void rowsSettingJourney();
     void rowsPropertyReflectsDocument();
+    void severalBlendsPerZone();
+    void panelListSelectsAndRemoves();
 };
 
 void StudioBoundaryBlendTest::initTestCase() {
@@ -123,7 +126,7 @@ void StudioBoundaryBlendTest::createEditRemoveJourney() {
     QVERIFY(rig.blend.remove());
     QCOMPARE(rig.steps(), before + 3);
     QVERIFY(!rig.blend.hasBlend());
-    QVERIFY(!rig.session.project().findEmbroidery(ObjectId{rig.right})->boundary_blend);
+    QVERIFY(rig.session.project().findEmbroidery(ObjectId{rig.right})->boundary_blends.empty());
 
     rig.session.undo();
     QVERIFY(rig.blend.hasBlend());
@@ -235,15 +238,22 @@ void StudioBoundaryBlendTest::rowsSettingJourney() {
     QCOMPARE(rig.steps(), before + 1);
     QCOMPARE(rig.blend.rows(), QStringLiteral("rotating"));
     for (const auto id : {rig.left, rig.right}) {
-        QCOMPARE(rig.session.project().findEmbroidery(ObjectId{id})->boundary_blend->rows,
+        QCOMPARE(rig.session.project().findEmbroidery(ObjectId{id})->boundary_blends.front().rows,
                  document::BoundaryBlendRows::Rotating);
     }
     rig.session.undo();
     QCOMPARE(rig.blend.rows(), QStringLiteral("per_zone"));
     for (const auto id : {rig.left, rig.right}) {
-        QCOMPARE(rig.session.project().findEmbroidery(ObjectId{id})->boundary_blend->rows,
+        QCOMPARE(rig.session.project().findEmbroidery(ObjectId{id})->boundary_blends.front().rows,
                  document::BoundaryBlendRows::PerZone);
     }
+    // Quatrième entrée : entrelacé.
+    combo->setProperty("currentIndex", 3);
+    QVERIFY(QMetaObject::invokeMethod(combo, "activated", Q_ARG(int, 3)));
+    QCOMPARE(rig.blend.rows(), QStringLiteral("interlaced"));
+    QCOMPARE(rig.session.project().findEmbroidery(ObjectId{rig.left})->boundary_blends.front().rows,
+             document::BoundaryBlendRows::Interlaced);
+    QVERIFY(rig.blend.summary().contains(QStringLiteral("entrelacé")));
 }
 
 void StudioBoundaryBlendTest::rowsPropertyReflectsDocument() {
@@ -258,6 +268,149 @@ void StudioBoundaryBlendTest::rowsPropertyReflectsDocument() {
     QVERIFY(rig.blend.summary().contains(QStringLiteral("angle commun")));
     rig.select({rig.left});
     QCOMPARE(rig.blend.rows(), QStringLiteral("shared"));
+}
+
+namespace {
+
+// Trois zones A (centre), B (à gauche) et C (à droite) : A touche B et C. Fondus A-B puis A-C.
+struct ThreeZones : Rig {
+    std::uint64_t a{0};
+    std::uint64_t b{0};
+    std::uint64_t c{0};
+    void buildBlends() {
+        a = add(0, "#1E50C8");
+        b = add(-20, "#C81E1E");
+        c = add(20, "#1EC850");
+        select({b, a});
+        (void)blend.create(2.0, 2.0, 0);
+        select({c, a});
+        (void)blend.create(3.0, 3.0, 0);
+        select({a});
+    }
+    [[nodiscard]] const document::BoundaryBlendLink* link(std::uint64_t from,
+                                                          std::uint64_t to) const {
+        return document::boundary_blend_link(*session.project().findEmbroidery(ObjectId{from}),
+                                             ObjectId{to});
+    }
+};
+
+QString partnerOf(const QVariant& entry) {
+    return entry.toMap().value(QStringLiteral("partnerId")).toString();
+}
+
+} // namespace
+
+void StudioBoundaryBlendTest::severalBlendsPerZone() {
+    ThreeZones rig;
+    rig.buildBlends();
+    const QString bId = QString::number(rig.b);
+    const QString cId = QString::number(rig.c);
+    QVERIFY(rig.link(rig.a, rig.b));
+    QVERIFY(rig.link(rig.a, rig.c));
+
+    // Une zone : ses deux fondus, le premier (plus petit partenaire) est le courant.
+    QCOMPARE(rig.blend.blends().size(), 2);
+    QCOMPARE(rig.blend.allFrontiers().size(), 2);
+    const QString first = rig.b < rig.c ? bId : cId;
+    QCOMPARE(rig.blend.currentPartner(), first);
+    QVERIFY(rig.blend.hasBlend());
+    int currents = 0;
+    for (const auto& f : rig.blend.allFrontiers()) {
+        const auto map = f.toMap();
+        QVERIFY(!map.value(QStringLiteral("polylines")).toList().isEmpty());
+        currents += map.value(QStringLiteral("current")).toBool() ? 1 : 0;
+    }
+    QCOMPARE(currents, 1);
+
+    // Choisir A-C : les propriétés décrivent A-C ; aucune mutation.
+    const auto before = rig.steps();
+    QVERIFY(rig.blend.selectBlend(cId));
+    QCOMPARE(rig.steps(), before);
+    QCOMPARE(rig.blend.currentPartner(), cId);
+    QCOMPARE(rig.blend.widthMm(), 3.0);
+    QVERIFY(!rig.blend.selectBlend(QStringLiteral("999999")));
+    QCOMPARE(rig.blend.currentPartner(), cId);
+
+    // Changer la largeur de A-C : A-B inchangé, un seul pas d'annulation, choix conservé.
+    QVERIFY(rig.blend.edit(4.5, 3.0, 0));
+    QCOMPARE(rig.steps(), before + 1);
+    QCOMPARE(rig.blend.currentPartner(), cId);
+    QCOMPARE(rig.blend.widthMm(), 4.5);
+    QCOMPARE(rig.link(rig.a, rig.c)->width_self.value, 4'500);
+    QCOMPARE(rig.link(rig.a, rig.b)->width_self.value, 2'000);
+    QCOMPARE(rig.link(rig.b, rig.a)->width_self.value, 2'000);
+
+    // Retirer A-B depuis la liste : A-C reste, une frontière.
+    QVERIFY(rig.blend.removeBlend(bId));
+    QCOMPARE(rig.steps(), before + 2);
+    QVERIFY(!rig.link(rig.a, rig.b));
+    QVERIFY(!rig.link(rig.b, rig.a));
+    QVERIFY(rig.link(rig.a, rig.c));
+    QCOMPARE(rig.blend.blends().size(), 1);
+    QCOMPARE(partnerOf(rig.blend.blends().front()), cId);
+    QCOMPARE(rig.blend.allFrontiers().size(), 1);
+    QCOMPARE(rig.blend.currentPartner(), cId);
+    QVERIFY(!rig.blend.removeBlend(bId));
+    QCOMPARE(rig.steps(), before + 2);
+
+    rig.session.undo();
+    QCOMPARE(rig.blend.blends().size(), 2);
+
+    // Deux zones sélectionnées : le couple (principale, seconde) est le courant.
+    rig.select({rig.c, rig.a});
+    QCOMPARE(rig.blend.currentPartner(), cId);
+    rig.select({rig.b, rig.c}); // pas de fondu B-C : création proposée, liste de C
+    QCOMPARE(rig.blend.currentPartner(), bId);
+    QVERIFY(!rig.blend.hasBlend());
+    QCOMPARE(rig.blend.blends().size(), 1);
+}
+
+void StudioBoundaryBlendTest::panelListSelectsAndRemoves() {
+    ThreeZones rig;
+    rig.buildBlends();
+    const QString bId = QString::number(rig.b);
+    const QString cId = QString::number(rig.c);
+    QQmlApplicationEngine engine;
+    engine.rootContext()->setContextProperty(QStringLiteral("boundaryBlend"), &rig.blend);
+    engine.loadData(R"(
+        import QtQuick
+        import QtQuick.Window
+        import "qrc:/studio/qml"
+        Window {
+            width: 360; height: 600; visible: true
+            BoundaryBlendPanel { anchors.fill: parent; controller: boundaryBlend }
+        })");
+    QVERIFY(!engine.rootObjects().isEmpty());
+    auto* window = qobject_cast<QQuickWindow*>(engine.rootObjects().front());
+    QVERIFY(window);
+    auto* list = findVisual(window->contentItem(), QStringLiteral("boundaryBlendList"));
+    QVERIFY(list);
+    QTRY_VERIFY(list->isVisible());
+    auto* rowC = findVisual(window->contentItem(), QStringLiteral("boundaryBlendRow_") + cId);
+    QVERIFY(rowC);
+    QVERIFY(findVisual(window->contentItem(), QStringLiteral("boundaryBlendRow_") + bId));
+
+    const auto before = rig.steps();
+    QVERIFY(QMetaObject::invokeMethod(rowC, "choose"));
+    QCOMPARE(rig.blend.currentPartner(), cId);
+    QCOMPARE(rig.steps(), before);
+    // Le modèle de la liste est reconstruit : relire la ligne après le choix.
+    QTRY_VERIFY([&] {
+        auto* row = findVisual(window->contentItem(), QStringLiteral("boundaryBlendRow_") + cId);
+        return row != nullptr && row->property("current").toBool();
+    }());
+    auto* width = findVisual(window->contentItem(), QStringLiteral("boundaryBlendWidthHere"));
+    QVERIFY(width);
+    QTRY_COMPARE(width->property("value").toInt(), 30);
+
+    auto* removeB =
+        findVisual(window->contentItem(), QStringLiteral("boundaryBlendRowRemove_") + bId);
+    QVERIFY(removeB);
+    QVERIFY(QMetaObject::invokeMethod(removeB, "click"));
+    QCOMPARE(rig.steps(), before + 1);
+    QVERIFY(!rig.link(rig.a, rig.b));
+    QVERIFY(rig.link(rig.a, rig.c));
+    QCOMPARE(rig.blend.allFrontiers().size(), 1);
 }
 
 QTEST_MAIN(StudioBoundaryBlendTest)
