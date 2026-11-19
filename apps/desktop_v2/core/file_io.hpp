@@ -11,6 +11,7 @@
 #include "document_services.hpp"
 #include "openstitch/core/error.hpp"
 #include "openstitch/document/project.hpp"
+#include "openstitch/stitch/sequence.hpp"
 
 namespace openstitch::desktop_v2 {
 
@@ -64,6 +65,12 @@ ServiceResult exportVectorsToDxf(const document::Project& project,
 // ordre;marque;nuancier;reference;nom;couleur;objets;points;longueur_mm;duree_s. Refus clair s'il
 // n'y a aucun point ou si le fichier ne s'écrit pas. `rows` : nombre de fils écrits.
 ServiceResult exportThreadListCsv(const document::Project& project,
+                                  const std::filesystem::path& file, std::size_t* rows = nullptr);
+// Même export à partir d'une séquence EFFECTIVE déjà calculée (celle de la scène du Studio) : ne
+// régénère aucun point, donc sans risque sur le fil d'interface. `sequence` DOIT provenir de
+// `effective_sequence(project)`.
+ServiceResult exportThreadListCsv(const document::Project& project,
+                                  const stitch::StitchSequence& sequence,
                                   const std::filesystem::path& file, std::size_t* rows = nullptr);
 
 } // namespace openstitch::desktop_v2
