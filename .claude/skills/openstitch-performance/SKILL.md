@@ -154,16 +154,3 @@ Start-Process build\msvc\apps\desktop_v2\studio\Release\openstitch.exe   # Relea
   (570 objets, 102 000 segments).
 - Reste à explorer : `scene.rebuild` mesure encore 224 ms en moyenne (max 945 ms) en temps réel
   alors que le calcul dure ~20 ms : attente de la file d'événements, non élucidée.
-- **Piège n°4 : `Repeater` masqué mais peuplé.** `visible: false` ne détruit pas les délégués d'un
-  `Repeater` : `ThreadPanel.qml` recréait 570 lignes (ordre de couture, film couleur, stock) à chaque
-  `changed`, panneau fermé (`chg.thread` ~115 ms, la moitié du coût d'une suppression). Correctif :
-  `model: parent.visible && ... ? liste : []` (garde-fou : ne pas le faire si un test attend les
-  délégués d'une page fermée, cf. `colorwayRename0` de `test_studio_view`). **À vérifier dans les
-  autres panneaux** (`grep -n "Repeater" -A2 apps/desktop_v2/studio/qml/*.qml`), préférer `ListView`.
-- **Piège n°5 : tout lire dans l'émission.** `del.selectionPrune` mesurait 400 ms alors que
-  `exists()` est linéaire : le coût était la notification (`commit` -> `selectionChanged` ->
-  `changed` -> récepteurs QML). Chronométrer chaque `emit` séparément (`sel.emit.*`, `chg.*`) avant
-  de toucher au code appelant. Les getters mesurés à 0 ms peuvent masquer un coût de **vue**.
-- Suppression d'un objet (570 objets, Release) : `edit.deleteSelection` 472 -> 57 ms,
-  `chg.thread` 115 -> 3 ms, `sel.emit.changed` 243 -> 32 ms. Reste : `sel.inspector.bump` ~26 ms,
-  `chg.edit` ~9 ms.

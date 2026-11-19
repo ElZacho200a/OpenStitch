@@ -979,14 +979,3 @@ part. Interlaced reste à 1,7 s à froid : environ 400 segments pèsent dans cha
 l'angle (rayon 4σ = 20 mm) ; réduire ce rayon ou échantillonner le champ sur une grille
 changerait la sortie. Parallélisme supplémentaire : les zones sont déjà réparties par le
 `parallel_for` des unités de génération.
-
-### Suppression d'objets (suite du 2026-11-19)
-
-Même projet (570 objets, Release) : `edit.deleteSelection` 472 -> 57 ms, `sel.emit.changed`
-243 -> 32 ms, `chg.thread` 115 -> 3 ms.
-Causes : getters de `ThreadController` (`entries`, `sewingOrder`, `colorways`, `threadCount`)
-relus par QML sans cache (mis en cache, invalidés par `changed`) ; `Repeater` masqués de
-`ThreadPanel.qml` (ordre de couture, film couleur, stock) recréés à chaque `changed` (peuplés
-seulement si leur section est visible). Écartés avec chiffres : copie de projet (4,7 ms),
-`apply_batch` (3,3 ms), pile d'annulation (0,9 ms), `exists()`, canevas, outil, historique.
-Reste : `sel.inspector.bump` ~26 ms, `chg.edit` ~9 ms ; autres `Repeater` masqués à auditer.

@@ -112,13 +112,6 @@ signals:
     void stockChanged();
 
 private:
-    [[nodiscard]] QVariantList buildEntries() const;
-    [[nodiscard]] QVariantList buildSewingOrder() const;
-    [[nodiscard]] QVariantList buildColorways() const;
-    mutable std::optional<QVariantList> entriesCache_;
-    mutable std::optional<QVariantList> orderCache_;
-    mutable std::optional<QVariantList> colorwaysCache_;
-    mutable std::optional<int> threadCountCache_;
     std::uint64_t gateStamp_{0}; // documentStamp() au dernier changed rediffusé
     bool report(const ServiceResult& result, const QString& success);
     [[nodiscard]] bool persistStock(const thread_palette::ThreadStock& stock);
