@@ -95,11 +95,13 @@ using DirectionalAngleField = std::function<double(Vec2um)>;
 // sont ignorés ; lignes de courant, pénétrations, seuils, masque et liaisons comme
 // `fill_directional(region, params, mask)`. Les lignes ne dépendent pas du masque : deux appels
 // de même région, paramètres et champ, à masques complémentaires, se partagent exactement les
-// morceaux de rangée.
-[[nodiscard]] std::vector<FillStitch>
-fill_directional_field(const geometry::PathSet& region,
-                       const document::DirectionalFillParams& params,
-                       const DirectionalAngleField& angle_at, const RowMask* mask);
+// morceaux de rangée. `fill_seed` : distance (× écart) au-delà de laquelle le balayage de
+// comblement sème une nouvelle ligne, bornée à [0,5 ; 0,9] ; l'écart entre lignes voisines reste
+// sous ≈ 2 × fill_seed × écart. 0,9 (défaut) : comportement du remplissage directionnel ; plus
+// bas, des lignes en éventail (champ divergent) ne laissent plus de jour.
+[[nodiscard]] std::vector<FillStitch> fill_directional_field(
+    const geometry::PathSet& region, const document::DirectionalFillParams& params,
+    const DirectionalAngleField& angle_at, const RowMask* mask, double fill_seed = 0.9);
 
 // Sous-couches : réutilise `tatami_underlay` (contour rentré + rangées
 // droites), les rangées étant perpendiculaires à la direction MOYENNE du

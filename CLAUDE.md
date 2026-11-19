@@ -45,6 +45,7 @@ Prérequis : VS 2022+, CMake ≥ 3.27, vcpkg, Qt 6.8.3 ; variables `VCPKG_ROOT`,
 Presets : `msvc` (configure), `msvc-debug`, `msvc-release`. **Itération : cible + exécutable
 de test seulement ; suite complète avant livraison.** Commandes, table lib → exécutable,
 sorties compactes (`scripts/qrun.ps1`) : skill `openstitch-build-test`.
+Workflow rapide (build ciblé, QML, protocole de mesure) : `docs/source/build-system.md`.
 
 Format : clang-format **18** exactement (la 23 locale fait échouer la CI) ; `-i` sur les
 fichiers modifiés seulement.

@@ -253,8 +253,10 @@ const EnumTable<document::PullMode>& pull_mode_table() {
 }
 const EnumTable<document::BoundaryBlendRows>& boundary_blend_rows_table() {
     using Rows = document::BoundaryBlendRows;
-    static const EnumTable<Rows> t{
-        {"per_zone", Rows::PerZone}, {"shared", Rows::Shared}, {"rotating", Rows::Rotating}};
+    static const EnumTable<Rows> t{{"per_zone", Rows::PerZone},
+                                   {"shared", Rows::Shared},
+                                   {"rotating", Rows::Rotating},
+                                   {"interlaced", Rows::Interlaced}};
     return t;
 }
 
@@ -1356,8 +1358,7 @@ OpSpec op_blend_boundary() {
         const ObjectId b = need_emb(ctx, "b").id;
         project_ops::BoundaryBlendOptions options;
         // Valeurs actuelles en cas de réédition partielle.
-        if (const auto info = project_ops::boundary_blend_info(ctx.project, a);
-            info && info->b == b) {
+        if (const auto info = project_ops::boundary_blend_info(ctx.project, a, b)) {
             options = info->options;
         }
         const auto mm = [&](const char* key, Micrometers fallback) {
@@ -1400,7 +1401,7 @@ OpSpec op_blend_boundary() {
                                      cmd.error().message, cmd.error().hint);
         }
         ctx.stack.execute(std::move(*cmd), ctx.project);
-        const auto info = project_ops::boundary_blend_info(ctx.project, a);
+        const auto info = project_ops::boundary_blend_info(ctx.project, a, b);
         double frontier_mm = 0.0;
         if (info) {
             for (const auto& line : info->frontier) {
@@ -1471,17 +1472,28 @@ OpSpec op_propose_boundary_blends() {
 OpSpec op_unblend_boundary() {
     OpSpec s;
     s.name = "unblend_boundary";
-    s.summary = "Retire le fondu à la frontière d'une zone (et le lien de sa voisine).";
-    s.args = {arg("object", "object_id", "zone qui porte le fondu", true)};
-    s.example = R"({"op":"unblend_boundary","object":2})";
+    s.summary = "Retire le fondu à la frontière d'une zone avec une voisine (et le lien de cette "
+                "voisine) ; les autres fondus de la zone restent.";
+    s.args = {arg("object", "object_id", "zone qui porte le fondu", true),
+              arg("partner", "object_id",
+                  "voisine du fondu à retirer (obligatoire si la zone a plusieurs fondus, sinon "
+                  "refus E_BLEND_AMBIGUOUS)")};
+    s.example = R"({"op":"unblend_boundary","object":2,"partner":4})";
     s.apply = guarded([](OpContext& ctx) {
         const ObjectId id = need_emb(ctx, "object").id;
-        auto cmd = project_ops::make_remove_boundary_blend_command(ctx.project, id);
+        const bool hasPartner = ctx.args.contains("partner");
+        const ObjectId partner = hasPartner ? need_emb(ctx, "partner").id : ObjectId{};
+        auto cmd = hasPartner
+                       ? project_ops::make_remove_boundary_blend_command(ctx.project, id, partner)
+                       : project_ops::make_remove_boundary_blend_command(ctx.project, id);
         if (!cmd) {
             return OpStatus::failure(cmd.error().code.empty() ? code::kRefused : cmd.error().code,
                                      cmd.error().message, cmd.error().hint);
         }
         ctx.stack.execute(std::move(*cmd), ctx.project);
+        if (hasPartner) {
+            return OpStatus::success({{"id", id.value}, {"partner", partner.value}});
+        }
         return OpStatus::success({{"id", id.value}});
     });
     return s;

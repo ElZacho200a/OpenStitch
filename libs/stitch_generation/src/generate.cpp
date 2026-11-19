@@ -11,6 +11,8 @@
 #include <memory>
 #include <mutex>
 #include <numbers>
+#include <optional>
+#include <span>
 #include <unordered_map>
 #include <variant>
 
@@ -1166,97 +1168,6 @@ KnockoutCache& knockout_cache() {
     return instance;
 }
 
-// Forme de `objects[index]` élargie, le long des frontières communes, de `underlap` UNIQUEMENT sous
-// les remplissages opaques cousus après elle (débord orienté, HiddenTravel::underlap) : la bande
-// ajoutée est (forme élargie) ∩ (formes des remplissages suivants), donc toujours recouverte plus
-// tard. `nullopt` : rien à ajouter ou calcul impossible -> forme d'origine (jamais moins qu'avant).
-std::optional<document::VectorObject>
-underlapped_source(const document::Project& project,
-                   const std::vector<document::EmbroideryObject>& objects, std::size_t index,
-                   const document::VectorObject& source, Micrometers underlap) {
-    const document::EmbroideryObject& self = objects[index];
-    std::vector<geometry::PathSet> above;
-    for (std::size_t j = index + 1; j < objects.size(); ++j) {
-        const document::EmbroideryObject& later = objects[j];
-        if (!covers_opaquely(later) || later.source_vector == self.source_vector) {
-            continue;
-        }
-        for (const auto& candidate : project.vector_objects) {
-            if (candidate.id == later.source_vector) {
-                above.insert(above.end(), candidate.paths.begin(), candidate.paths.end());
-                break;
-            }
-        }
-    }
-    if (above.empty()) {
-        return std::nullopt;
-    }
-    // Le remplissage rentre son bord de `inset` : on déborde de `underlap + inset` pour qu'après ce
-    // retrait il reste `underlap` sous le voisin (sinon 0,3 mm de débord et 0,2 mm de retrait ne
-    // laissent que des lamelles qui fragmentent le remplissage).
-    std::int32_t inset = 0;
-    if (self.is_tatami()) {
-        inset = std::get<document::TatamiParams>(self.params).inset.value;
-    } else if (self.is_directional()) {
-        inset = std::get<document::DirectionalFillParams>(self.params).inset.value;
-    }
-    const std::int32_t growBy = underlap.value + std::max(0, inset);
-    std::vector<geometry::PathSet> grown;
-    for (const geometry::PathSet& set : source.paths) {
-        if (auto g = geometry::inset_path_set(set, Micrometers{-growBy}); g) {
-            grown.insert(grown.end(), g->begin(), g->end());
-        } else {
-            return std::nullopt;
-        }
-    }
-    // Les formes voisines ne sont pas jointives au micron près (contours vectorisés indépendants) :
-    // un débord limité à la forme exacte des voisins resterait détaché de la zone et deviendrait un
-    // îlot cousu à part (coupes en plus). On élargit donc les voisins de la même distance : le
-    // débord reste collé à la zone et comble le filet de tissu nu entre les deux.
-    std::vector<geometry::PathSet> aboveGrown;
-    for (const geometry::PathSet& set : above) {
-        if (auto g = geometry::inset_path_set(set, Micrometers{-growBy}); g) {
-            aboveGrown.insert(aboveGrown.end(), g->begin(), g->end());
-        } else {
-            return std::nullopt;
-        }
-    }
-    auto band = geometry::intersect_polygons(grown, aboveGrown);
-    if (!band || band->empty()) {
-        return std::nullopt;
-    }
-    // Jamais sur une zone déjà cousue (le débord y serait visible).
-    std::vector<geometry::PathSet> before;
-    for (std::size_t j = 0; j < index; ++j) {
-        const document::EmbroideryObject& earlier = objects[j];
-        if (!earlier.visible || earlier.source_vector == self.source_vector) {
-            continue;
-        }
-        for (const auto& candidate : project.vector_objects) {
-            if (candidate.id == earlier.source_vector) {
-                before.insert(before.end(), candidate.paths.begin(), candidate.paths.end());
-                break;
-            }
-        }
-    }
-    if (!before.empty()) {
-        auto trimmed = geometry::difference_polygons(*band, before);
-        if (!trimmed || trimmed->empty()) {
-            return std::nullopt;
-        }
-        band = std::move(trimmed);
-    }
-    std::vector<geometry::PathSet> parts = source.paths;
-    parts.insert(parts.end(), band->begin(), band->end());
-    auto merged = geometry::union_polygons(parts);
-    if (!merged || merged->empty()) {
-        return std::nullopt;
-    }
-    document::VectorObject copy = source;
-    copy.paths = std::move(*merged);
-    return copy;
-}
-
 constexpr std::size_t kKnockoutCacheEntries = 4096;
 
 std::shared_ptr<const std::vector<geometry::PathSet>>
@@ -1382,6 +1293,97 @@ private:
     std::unordered_map<std::uint64_t, const document::VectorObject*> byId_;
     std::map<std::pair<std::uint64_t, std::int32_t>, ResolvedCover> resolved_;
 };
+
+// Forme de `objects[index]` élargie, le long des frontières communes, de `underlap` UNIQUEMENT sous
+// les remplissages opaques cousus après elle (débord orienté, HiddenTravel::underlap) : la bande
+// ajoutée est (forme élargie) ∩ (formes des remplissages suivants), donc toujours recouverte plus
+// tard. `nullopt` : rien à ajouter ou calcul impossible -> forme d'origine (jamais moins qu'avant).
+std::optional<document::VectorObject>
+underlapped_source(const document::Project& project,
+                   const std::vector<document::EmbroideryObject>& objects, std::size_t index,
+                   const document::VectorObject& source, Micrometers underlap) {
+    const document::EmbroideryObject& self = objects[index];
+    std::vector<geometry::PathSet> above;
+    for (std::size_t j = index + 1; j < objects.size(); ++j) {
+        const document::EmbroideryObject& later = objects[j];
+        if (!covers_opaquely(later) || later.source_vector == self.source_vector) {
+            continue;
+        }
+        for (const auto& candidate : project.vector_objects) {
+            if (candidate.id == later.source_vector) {
+                above.insert(above.end(), candidate.paths.begin(), candidate.paths.end());
+                break;
+            }
+        }
+    }
+    if (above.empty()) {
+        return std::nullopt;
+    }
+    // Le remplissage rentre son bord de `inset` : on déborde de `underlap + inset` pour qu'après ce
+    // retrait il reste `underlap` sous le voisin (sinon 0,3 mm de débord et 0,2 mm de retrait ne
+    // laissent que des lamelles qui fragmentent le remplissage).
+    std::int32_t inset = 0;
+    if (self.is_tatami()) {
+        inset = std::get<document::TatamiParams>(self.params).inset.value;
+    } else if (self.is_directional()) {
+        inset = std::get<document::DirectionalFillParams>(self.params).inset.value;
+    }
+    const std::int32_t growBy = underlap.value + std::max(0, inset);
+    std::vector<geometry::PathSet> grown;
+    for (const geometry::PathSet& set : source.paths) {
+        if (auto g = geometry::inset_path_set(set, Micrometers{-growBy}); g) {
+            grown.insert(grown.end(), g->begin(), g->end());
+        } else {
+            return std::nullopt;
+        }
+    }
+    // Les formes voisines ne sont pas jointives au micron près (contours vectorisés indépendants) :
+    // un débord limité à la forme exacte des voisins resterait détaché de la zone et deviendrait un
+    // îlot cousu à part (coupes en plus). On élargit donc les voisins de la même distance : le
+    // débord reste collé à la zone et comble le filet de tissu nu entre les deux.
+    std::vector<geometry::PathSet> aboveGrown;
+    for (const geometry::PathSet& set : above) {
+        if (auto g = geometry::inset_path_set(set, Micrometers{-growBy}); g) {
+            aboveGrown.insert(aboveGrown.end(), g->begin(), g->end());
+        } else {
+            return std::nullopt;
+        }
+    }
+    auto band = geometry::intersect_polygons(grown, aboveGrown);
+    if (!band || band->empty()) {
+        return std::nullopt;
+    }
+    // Jamais sur une zone déjà cousue (le débord y serait visible).
+    std::vector<geometry::PathSet> before;
+    for (std::size_t j = 0; j < index; ++j) {
+        const document::EmbroideryObject& earlier = objects[j];
+        if (!earlier.visible || earlier.source_vector == self.source_vector) {
+            continue;
+        }
+        for (const auto& candidate : project.vector_objects) {
+            if (candidate.id == earlier.source_vector) {
+                before.insert(before.end(), candidate.paths.begin(), candidate.paths.end());
+                break;
+            }
+        }
+    }
+    if (!before.empty()) {
+        auto trimmed = geometry::difference_polygons(*band, before);
+        if (!trimmed || trimmed->empty()) {
+            return std::nullopt;
+        }
+        band = std::move(trimmed);
+    }
+    std::vector<geometry::PathSet> parts = source.paths;
+    parts.insert(parts.end(), band->begin(), band->end());
+    auto merged = geometry::union_polygons(parts);
+    if (!merged || merged->empty()) {
+        return std::nullopt;
+    }
+    document::VectorObject copy = source;
+    copy.paths = std::move(*merged);
+    return copy;
+}
 
 } // namespace
 
@@ -1547,9 +1549,10 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
         }
         stitch::StitchSequence& chunk = chunks[u];
         // Fondu à la frontière (docs/studio-fondu-frontiere-spec.md) : la couche dépend aussi de
-        // la zone voisine, hors de la clé du cache de séquences -> jamais servie ni rangée dans
-        // ce cache. Lien invalide ou frontière disparue : génération habituelle ci-dessous.
-        if (object.boundary_blend) {
+        // TOUTES les zones de son groupe de fondus (formes, paramètres, liens ; §6.4), hors de la
+        // clé du cache de séquences -> jamais servie ni rangée dans ce cache. Lien invalide ou
+        // frontière disparue : génération habituelle ci-dessous.
+        if (!object.boundary_blends.empty()) {
             if (auto layer = boundary_blend_layer(project, object)) {
                 generate_boundary_blend_layer(chunk, *unit.source, object, std::move(*layer));
                 return;
@@ -1623,6 +1626,30 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
         }
         return chunks[index].commands;
     };
+    // HP-PERF-002 (suite) : unité satin / auto-satin routée. Le générateur ne lit de la séquence
+    // précédente que sa dernière commande (position et type) : le résultat est une fonction pure
+    // de (identifiants, paramètres effectifs, géométrie source, dernière commande), clés d'un
+    // cache exact (chunk_cache.hpp). On n'y met que les commandes AJOUTÉES par l'unité ; un hit
+    // les rejoue, un échec génère directement dans `sequence` puis mémorise la plage ajoutée.
+    const auto cachedRouted = [&](std::span<const RoutedMember> members,
+                                  const std::vector<geometry::PathSet>* paths,
+                                  const auto& generate) {
+        std::optional<RoutedTail> tail;
+        if (!sequence.commands.empty()) {
+            tail = RoutedTail{sequence.commands.back().pos, sequence.commands.back().type};
+        }
+        if (const auto hit = routed_cache_find(members, paths, tail)) {
+            sequence.commands.insert(sequence.commands.end(), hit->commands.begin(),
+                                     hit->commands.end());
+            return;
+        }
+        const std::size_t before = sequence.commands.size();
+        generate();
+        auto added = std::make_shared<stitch::StitchSequence>();
+        added->commands.assign(sequence.commands.begin() + static_cast<std::ptrdiff_t>(before),
+                               sequence.commands.end());
+        routed_cache_store(members, paths, tail, std::move(added));
+    };
     const document::EmbroideryObject* previous = nullptr;
     for (std::size_t u = 0; u < units.size(); ++u) {
         if (task.cancelled()) {
@@ -1646,7 +1673,12 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
                 group.push_back(&objects[j]);
             }
             if (group.size() >= 2) {
-                generate_satin_group(sequence, group);
+                std::vector<RoutedMember> members;
+                members.reserve(group.size());
+                for (const auto* member : group) {
+                    members.push_back({member->id, &member->params});
+                }
+                cachedRouted(members, nullptr, [&] { generate_satin_group(sequence, group); });
             } else {
                 document::SatinParams single = std::get<document::SatinParams>(object.params);
                 // Entrée automatique (HP-ENG-010) : même règle que pour les autres colonnes.
@@ -1654,7 +1686,11 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
                     !single.entry_point && !single.exit_point) {
                     single.entry_point = sequence.commands.back().pos;
                 }
-                generate_satin(sequence, object, single);
+                // Clé : paramètres EFFECTIFS (entrée automatique incluse).
+                const document::StitchParams effective{single};
+                const RoutedMember member{object.id, &effective};
+                cachedRouted(std::span<const RoutedMember>(&member, 1), nullptr,
+                             [&] { generate_satin(sequence, object, single); });
             }
             previous = group.back();
             continue;
@@ -1693,21 +1729,25 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
             [&](const auto& params) {
                 using T = std::decay_t<decltype(params)>;
                 if constexpr (std::is_same_v<T, document::SatinParams>) {
+                    T effectiveParams = params;
                     if (previousEnd && !params.entry_point && !params.exit_point) {
-                        document::SatinParams joined = params;
-                        joined.entry_point = previousEnd;
-                        generate_satin(sequence, object, joined);
-                    } else {
-                        generate_satin(sequence, object, params);
+                        effectiveParams.entry_point = previousEnd;
                     }
+                    const document::StitchParams effective{effectiveParams};
+                    const RoutedMember member{object.id, &effective};
+                    cachedRouted(std::span<const RoutedMember>(&member, 1), nullptr,
+                                 [&] { generate_satin(sequence, object, effectiveParams); });
                 } else if constexpr (std::is_same_v<T, document::AutoSatinParams>) {
+                    T effectiveParams = params;
                     if (previousEnd && !params.entry_point && !params.exit_point) {
-                        document::AutoSatinParams joined = params;
-                        joined.entry_point = previousEnd;
-                        generate_auto_satin(sequence, *unit.source, object, joined);
-                    } else {
-                        generate_auto_satin(sequence, *unit.source, object, params);
+                        effectiveParams.entry_point = previousEnd;
                     }
+                    const document::StitchParams effective{effectiveParams};
+                    const RoutedMember member{object.id, &effective};
+                    cachedRouted(
+                        std::span<const RoutedMember>(&member, 1), &unit.source->paths, [&] {
+                            generate_auto_satin(sequence, *unit.source, object, effectiveParams);
+                        });
                 }
             },
             object.params);

@@ -544,7 +544,9 @@ void StudioFilesTest::openingAnotherProjectClearsLayerAndObjectSelection() {
     auto* tree = layerPanel->findChild<QObject*>(QStringLiteral("objectTree"));
     auto* rename = layerPanel->findChild<QObject*>(QStringLiteral("layerRenameField"));
     QVERIFY(tree && rename);
-    QVERIFY(tree->setProperty("currentLayer", QStringLiteral("201")));
+    // Le calque courant de l'arbre est le calque actif du document (même notion partout).
+    QVERIFY(rig.session.selectCalque(ObjectId{201}));
+    QTRY_COMPARE(tree->property("currentLayer").toString(), QStringLiteral("201"));
     QVERIFY(rename->setProperty("text", QStringLiteral("Ancien brouillon")));
     QVERIFY(rename->setProperty("visible", true));
     const Target selected{TargetKind::EmbroideryObject, firstId};
@@ -563,8 +565,9 @@ void StudioFilesTest::openingAnotherProjectClearsLayerAndObjectSelection() {
     QTRY_VERIFY_WITH_TIMEOUT(
         rig.studio.path() == secondPath && !rig.studio.busy() && rig.studio.scene(), 15'000);
     QVERIFY(rig.session.selection().targets().empty());
-    QCOMPARE(tree->property("currentLayer").toString(), QString());
-    QCOMPARE(layerPanel->property("layerId").toString(), QStringLiteral("302"));
+    // Nouveau document : aucun calque actif enregistré, c'est le fond qui reçoit les formes.
+    QTRY_COMPARE(tree->property("currentLayer").toString(), QStringLiteral("301"));
+    QCOMPARE(layerPanel->property("layerId").toString(), QStringLiteral("301"));
     QVERIFY(!rename->property("visible").toBool());
     QVERIFY(rename->property("text").toString().isEmpty());
 }

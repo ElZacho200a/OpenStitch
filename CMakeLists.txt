@@ -32,6 +32,9 @@ if(OPENSTITCH_BUILD_TESTS)
     include(Catch)
 endif()
 
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+include(OpenStitchBuildOpt)
+
 add_subdirectory(libs/core)
 add_subdirectory(libs/geometry)
 add_subdirectory(libs/thread_palette)
@@ -55,6 +58,10 @@ add_subdirectory(libs/commands)
 add_subdirectory(libs/project_ops)
 add_subdirectory(libs/mcp)
 add_subdirectory(libs/agent)
+# BUILD-OPT-01.6 : PCH/Unity opt-in (no-op par defaut).
+openstitch_apply_build_opt(openstitch_geometry openstitch_stitch_generation openstitch_stitch_analysis
+    ${OPENSTITCH_UNITY_TARGETS})
+
 add_subdirectory(apps/cli)
 add_subdirectory(apps/mcp)
 add_subdirectory(apps/companion)

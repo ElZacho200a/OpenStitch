@@ -21,7 +21,9 @@ Controls.Popup {
     height: Math.min(460, parent ? parent.height - 32 : 460)
     padding: 16
 
-    background: Rectangle { color: Theme.panel; border.color: Theme.border; radius: Theme.radius }
+    background: StudioPopupBackground { }
+    enter: StudioPopupEnter { }
+    exit: StudioPopupExit { }
 
     function show(newMode, text) {
         mode = newMode

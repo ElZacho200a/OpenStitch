@@ -31,20 +31,28 @@ struct BoundaryBlendOptions {
 
 // Pourquoi (a, b) ne peut pas recevoir de fondu à la frontière, ou nullopt si c'est possible.
 // Codes stables : E_BLEND_SAME_OBJECT, E_BLEND_UNSUPPORTED_FILL, E_BLEND_SAME_SHAPE,
-// E_BLEND_ALREADY_LINKED, E_BLEND_SAME_COLOR, E_BLEND_WIDTH_RANGE, E_BLEND_NO_FRONTIER.
-// Un fondu déjà posé ENTRE a et b n'est pas un refus (réédition).
+// E_BLEND_SAME_COLOR, E_BLEND_WIDTH_RANGE, E_BLEND_NO_FRONTIER.
+// Un fondu déjà posé ENTRE a et b n'est pas un refus (réédition), ni un fondu de a ou de b avec
+// une AUTRE zone (une zone peut fondre avec plusieurs voisines, un fondu par couple).
 [[nodiscard]] std::optional<Error> boundary_blend_refusal(const document::Project& project,
                                                           ObjectId a, ObjectId b,
                                                           const BoundaryBlendOptions& options = {});
 
-// Pose ou réédite le fondu entre a et b : une commande, un pas d'annulation, aucun changement de
-// type, de paramètres ni d'ordre. Erreur codée (cf. `boundary_blend_refusal`) sinon.
+// Pose ou réédite le fondu du couple a-b : une commande, un pas d'annulation, aucun changement de
+// type, de paramètres ni d'ordre, les autres fondus de a et de b intacts. Erreur codée (cf.
+// `boundary_blend_refusal`) sinon.
 [[nodiscard]] Result<std::unique_ptr<commands::ICommand>>
 make_boundary_blend_command(const document::Project& project, ObjectId a, ObjectId b,
                             const BoundaryBlendOptions& options);
 
-// Retire le fondu porté par `id` (et le lien de son partenaire s'il pointe vers `id`). Erreur
-// E_BLEND_NONE si `id` ne porte aucun lien.
+// Retire le fondu du couple (`id`, `partner`) : le lien de `id` vers `partner` et, s'il existe,
+// celui de `partner` vers `id`. Les autres fondus des deux zones restent intacts. Erreur
+// E_BLEND_NONE si `id` ne porte aucun lien vers `partner`.
+[[nodiscard]] Result<std::unique_ptr<commands::ICommand>>
+make_remove_boundary_blend_command(const document::Project& project, ObjectId id, ObjectId partner);
+
+// Retire l'UNIQUE fondu porté par `id`. Erreurs E_BLEND_NONE (aucun lien) et E_BLEND_AMBIGUOUS
+// (plusieurs fondus : préciser le partenaire avec la surcharge ci-dessus).
 [[nodiscard]] Result<std::unique_ptr<commands::ICommand>>
 make_remove_boundary_blend_command(const document::Project& project, ObjectId id);
 
@@ -59,6 +67,17 @@ struct BoundaryBlendInfo {
     std::vector<geometry::Polyline> frontier;
 };
 
+// Fondu du couple (`id`, `partner`), nullopt si `id` ne porte aucun lien vers `partner` (un lien
+// orphelin ou non réciproque est décrit, avec `active` faux).
+[[nodiscard]] std::optional<BoundaryBlendInfo> boundary_blend_info(const document::Project& project,
+                                                                   ObjectId id, ObjectId partner);
+
+// Tous les fondus portés par `id`, un par lien, triés par partenaire (`b.value`) croissant.
+[[nodiscard]] std::vector<BoundaryBlendInfo> boundary_blend_infos(const document::Project& project,
+                                                                  ObjectId id);
+
+// COMPATIBILITÉ (une zone, un fondu) : le PREMIER de `boundary_blend_infos` (plus petit
+// partenaire), nullopt si `id` ne porte aucun lien. Préférer la surcharge à partenaire.
 [[nodiscard]] std::optional<BoundaryBlendInfo> boundary_blend_info(const document::Project& project,
                                                                    ObjectId id);
 

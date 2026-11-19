@@ -19,12 +19,13 @@ Text {
          : tone === "warning" ? Theme.warning
          : tone === "success" ? Theme.success
          : Theme.muted
-    font.family: Theme.fontFamily
+    font.family: role === "heading" ? Theme.headingFamily : Theme.fontFamily
+    font.letterSpacing: Theme.letterSpacing
     font.pixelSize: role === "caption" ? Theme.captionSize
                   : role === "body" ? Theme.bodySize
                   : role === "heading" ? Theme.headingSize
                   : Theme.smallSize
-    font.weight: role === "heading" ? Font.DemiBold : Font.Normal
+    font.weight: role === "heading" ? Theme.headingWeight : Theme.bodyWeight
     wrapMode: Text.WordWrap
     Accessible.role: Accessible.StaticText
     Accessible.name: text

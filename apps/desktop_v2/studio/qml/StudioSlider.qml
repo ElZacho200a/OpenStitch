@@ -32,36 +32,51 @@ Controls.Slider {
     }
     Accessible.role: Accessible.Slider
 
-    background: Rectangle {
+    readonly property string themeState: Theme.stateOf(enabled, pressed, false, hovered)
+    readonly property var trackStyle: Theme.style("slider.track", "default", themeState)
+    readonly property var handleStyle: Theme.style("slider.handle", "default", themeState)
+
+    background: ThemedSurface {
         x: control.leftPadding
         y: control.topPadding + control.availableHeight / 2 - height / 2
         width: control.availableWidth
-        height: 4
+        height: control.trackStyle.height !== undefined ? control.trackStyle.height : 4
+        themeStyle: control.trackStyle
         radius: 2
-        color: Theme.hover
-        border.width: 1
-        border.color: Theme.outline
+        fill: Theme.hover
+        borderWidth: Theme.borderWidth
+        border: Theme.outline
         opacity: control.enabled ? 1 : 0.5
-        Rectangle {
-            width: control.visualPosition * parent.width
+        ThemedSurface {
+            width: Math.max(height, control.visualPosition * parent.width)
+            visible: control.visualPosition > 0
             height: parent.height
+            themeStyle: Theme.style("slider.fill", "default", control.themeState)
             radius: 2
-            color: Theme.accent
+            fill: Theme.accent
+            animated: false
         }
     }
 
-    handle: Rectangle {
+    handle: ThemedSurface {
         x: control.leftPadding + control.visualPosition * (control.availableWidth - width)
         y: control.topPadding + control.availableHeight / 2 - height / 2
-        implicitWidth: control.pressed ? 20 : control.hovered ? 18 : 16
+        implicitWidth: 16
         implicitHeight: implicitWidth
+        // Retour au survol / à l'appui : agrandissement (échelle du thème, 18/20 px par défaut).
+        scale: Theme.reducedMotion ? 1
+               : control.handleStyle.scale !== undefined ? control.handleStyle.scale
+               : control.pressed ? 1.25 : control.hovered ? 1.125 : 1
+        Behavior on scale { NumberAnimation { duration: Theme.feedbackFastMs; easing.type: Theme.easingEmphasis } }
+        themeStyle: control.handleStyle
+        focusStyle: Theme.style("slider.handle", "default", "focus")
+        focused: control.visualFocus
+        focusBorder: Theme.foreground
         radius: width / 2
-        Behavior on implicitWidth { NumberAnimation { duration: Theme.feedbackFastMs } }
-        color: control.pressed ? Theme.accentPressed : Theme.accent
-        border.width: control.visualFocus ? 3 : 1
-        border.color: control.visualFocus ? Theme.foreground : Theme.accentPressed
+        fill: control.pressed ? Theme.accentPressed : Theme.accent
+        borderWidth: Theme.borderWidth
+        border: Theme.accentPressed
         opacity: control.enabled ? 1 : 0.5
-        Behavior on color { ColorAnimation { duration: Theme.animationMs } }
         Rectangle {
             objectName: "sliderValueBubble"
             visible: control.pressed
@@ -70,9 +85,11 @@ Controls.Slider {
             anchors.bottomMargin: 7
             width: sliderValue.implicitWidth + 12
             height: sliderValue.implicitHeight + 6
-            radius: 4
+            radius: Theme.radius / 2
             color: Theme.surface
             border.color: Theme.accent
+            // Le texte de la bulle ne suit pas l'agrandissement de la poignée.
+            scale: 1 / parent.scale
             Text {
                 id: sliderValue
                 anchors.centerIn: parent

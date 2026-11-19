@@ -25,27 +25,35 @@ Controls.Switch {
     Accessible.role: Accessible.CheckBox
     Accessible.name: text
 
-    indicator: Rectangle {
+    readonly property string themeState: Theme.stateOf(enabled, down, checked, hovered)
+
+    indicator: ThemedSurface {
         implicitWidth: 36
         implicitHeight: 20
         x: control.leftPadding
         y: control.topPadding + (control.availableHeight - height) / 2
+        themeStyle: Theme.style("switch.track", "default", control.themeState)
+        focusStyle: Theme.style("switch.track", "default", "focus")
+        focused: control.visualFocus
+        focusBorder: Theme.foreground
         radius: height / 2
-        color: control.checked ? Theme.accent : Theme.raised
-        border.width: control.visualFocus ? 2 : 1
-        border.color: control.visualFocus ? Theme.foreground : control.checked ? Theme.accent : Theme.muted
+        fill: control.checked ? Theme.accent : Theme.raised
+        borderWidth: Theme.borderWidth
+        border: control.checked ? Theme.accent : Theme.muted
         opacity: control.enabled ? (control.down ? 0.8 : 1) : 0.5
-        Behavior on border.color { ColorAnimation { duration: Theme.feedbackFastMs } }
-        Behavior on color { ColorAnimation { duration: Theme.animationMs } }
         Behavior on opacity { NumberAnimation { duration: Theme.animationMs } }
-        Rectangle {
+        ThemedSurface {
+            readonly property var thumbStyle: Theme.style("switch.thumb", "default", control.themeState)
             x: control.checked ? parent.width - width - 3 : 3
             anchors.verticalCenter: parent.verticalCenter
             width: 14
             height: 14
+            themeStyle: thumbStyle
             radius: 7
-            color: control.checked ? Theme.accentInk : Theme.foreground
-            Behavior on x { NumberAnimation { duration: Theme.animationMs } }
+            fill: control.checked ? Theme.accentInk : Theme.foreground
+            scale: thumbStyle.scale !== undefined && !Theme.reducedMotion ? thumbStyle.scale : 1
+            Behavior on x { NumberAnimation { duration: Theme.animationMs; easing.type: Theme.easingEmphasis } }
+            Behavior on scale { NumberAnimation { duration: Theme.feedbackFastMs } }
         }
     }
 

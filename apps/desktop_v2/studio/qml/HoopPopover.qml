@@ -22,7 +22,9 @@ Controls.Popup {
     modal: false
     focus: true
     closePolicy: Controls.Popup.CloseOnEscape | Controls.Popup.CloseOnPressOutside
-    background: Rectangle { color: Theme.panel; radius: Theme.radius; border.color: Theme.border }
+    background: StudioPopupBackground { }
+    enter: StudioPopupEnter { }
+    exit: StudioPopupExit { }
 
     // Ouvre le panneau au point (x, y) de `item`, gardé dans la fenêtre.
     function openAt(item, x, y) {

@@ -19,7 +19,7 @@ class BoundaryBlendController : public QObject {
     Q_PROPERTY(bool canCreate READ canCreate NOTIFY changed)
     // Raison affichable quand deux zones sont sélectionnées mais refusées (vide sinon).
     Q_PROPERTY(QString refusal READ refusal NOTIFY changed)
-    // La zone principale de la sélection porte un fondu à la frontière.
+    // Le couple courant (zone principale, `currentPartner`) porte un fondu à la frontière.
     Q_PROPERTY(bool hasBlend READ hasBlend NOTIFY changed)
     // Le fondu est actif (lien valide et frontière trouvée) ; faux : la zone est cousue en aplat.
     Q_PROPERTY(bool active READ active NOTIFY changed)
@@ -32,10 +32,20 @@ class BoundaryBlendController : public QObject {
     Q_PROPERTY(QVariantList frontier READ frontier NOTIFY changed)
     // La frontière du fondu de la zone principale est tracée à la main (lot L4).
     Q_PROPERTY(bool manualFrontier READ manualFrontier NOTIFY changed)
-    // Sens des rangées dans la bande : "per_zone" | "shared" | "rotating". Sans fondu, c'est le
-    // choix en attente, appliqué à la prochaine création.
+    // Sens des rangées dans la bande : "per_zone" | "shared" | "rotating" | "interlaced". Sans
+    // fondu, c'est le choix en attente, appliqué à la prochaine création.
     Q_PROPERTY(QString rows READ rows NOTIFY changed)
     Q_PROPERTY(QString summary READ summary NOTIFY changed)
+    // Tous les fondus de la zone principale, un par voisine, triés par voisine : {partnerId
+    // (chaîne), partnerName, widthMm, partnerWidthMm, curve, rows, active, manualFrontier,
+    // frontierMm, current}.
+    Q_PROPERTY(QVariantList blends READ blends NOTIFY changed)
+    // Voisine du fondu édité (chaîne, vide si aucune) : deux zones sélectionnées → la seconde,
+    // sauf choix explicite dans la liste ; une zone → le fondu choisi (par défaut le premier).
+    Q_PROPERTY(QString currentPartner READ currentPartner NOTIFY changed)
+    // Frontières de TOUS les fondus de la zone principale pour le canevas : liste de {partnerId,
+    // current (bool), polylines (liste de listes de {x, y} en mm modèle)}.
+    Q_PROPERTY(QVariantList allFrontiers READ allFrontiers NOTIFY changed)
     Q_PROPERTY(QString message READ message NOTIFY messageChanged)
     Q_PROPERTY(bool lastOk READ lastOk NOTIFY messageChanged)
 
@@ -55,18 +65,30 @@ public:
     [[nodiscard]] bool manualFrontier() const { return !manual_.empty(); }
     [[nodiscard]] QString rows() const;
     [[nodiscard]] QString summary() const;
+    [[nodiscard]] QVariantList blends() const { return blends_; }
+    [[nodiscard]] QString currentPartner() const {
+        return other_ == 0 ? QString() : QString::number(other_);
+    }
+    [[nodiscard]] QVariantList allFrontiers() const { return allFrontiers_; }
     [[nodiscard]] QString message() const { return message_; }
     [[nodiscard]] bool lastOk() const { return ok_; }
 
     // Pose (ou réédite) le fondu entre les deux zones sélectionnées. Largeurs en mm, vues depuis
     // la zone principale (dernière sélectionnée) puis l'autre. Un pas d'annulation.
     Q_INVOKABLE bool create(double widthMm, double partnerWidthMm, int curve);
-    // Réédite le fondu de la zone principale (largeurs vues depuis elle). Un pas d'annulation.
+    // Choisit le fondu édité parmi `blends` (voisine donnée par son identifiant). Aucune mutation
+    // du document. Refus si la zone principale ne fond pas avec cette voisine.
+    Q_INVOKABLE bool selectBlend(const QString& partnerId);
+    // Retire le fondu entre la zone principale et la voisine donnée (ligne de la liste). Un pas
+    // d'annulation ; les autres fondus de la zone restent intacts.
+    Q_INVOKABLE bool removeBlend(const QString& partnerId);
+    // Réédite le fondu courant (largeurs vues depuis la zone principale). Un pas d'annulation.
     Q_INVOKABLE bool edit(double widthMm, double partnerWidthMm, int curve);
-    // Retire le fondu de la zone principale (et le lien de sa voisine). Un pas d'annulation.
+    // Retire le fondu courant (et le lien de sa voisine). Un pas d'annulation.
     Q_INVOKABLE bool remove();
-    // Sens des rangées ("per_zone" | "shared" | "rotating"). Avec un fondu : le réédite en UN pas
-    // d'annulation ; sans fondu : mémorise le choix pour la création. Valeur inconnue : refus.
+    // Sens des rangées ("per_zone" | "shared" | "rotating" | "interlaced"). Avec un fondu : le
+    // réédite en UN pas d'annulation ; sans fondu : mémorise le choix pour la création. Valeur
+    // inconnue : refus.
     Q_INVOKABLE bool setRows(const QString& rows);
     // Frontière tracée à la main (lot L4) : liste de {x, y} en mm modèle, au moins deux points.
     // Sur deux zones sélectionnées sans fondu, crée le fondu avec cette frontière (les zones
@@ -82,6 +104,7 @@ signals:
 
 private:
     void refresh();
+    void rebuild();
     void say(bool ok, const QString& text);
     bool apply(std::uint64_t a, std::uint64_t b, double widthA, double widthB, int curve,
                const std::vector<Vec2um>& frontier);
@@ -92,7 +115,11 @@ private:
     std::uint64_t seenSel_{0};
     bool refreshed_{false};
     std::uint64_t primary_{0};
-    std::uint64_t other_{0}; // seconde zone sélectionnée, ou partenaire du fondu
+    std::uint64_t other_{0};  // voisine du couple courant (seconde zone ou fondu choisi)
+    std::uint64_t chosen_{0}; // voisine choisie dans la liste (0 : choix par défaut)
+    std::vector<std::uint64_t> zones_;
+    QVariantList blends_;
+    QVariantList allFrontiers_;
     bool canCreate_{false};
     QString refusal_;
     bool hasBlend_{false};

@@ -9,6 +9,11 @@ Item {
     property color color: Theme.muted
     implicitWidth: 20
     implicitHeight: 20
+    // Icône du thème : tracé SVG (icons.json, teinté comme les icônes intégrées) ou fichier
+    // (assets/icons/<nom>.svg|png, en couleurs propres). Absente : icône intégrée.
+    readonly property var themed: Theme.icons[name]
+    readonly property string themedPath: themed && themed.path ? themed.path : ""
+    readonly property string themedSource: themed && themed.source ? themed.source : ""
 
     function pathForName() {
         switch (name) {
@@ -57,27 +62,48 @@ case "plus": return "M4 10 L16 10 M10 4 L10 16";
         case "bezier": return "M3 16 C3 8 17 12 17 4 M3 16 L7 10 M17 4 L13 10";
         case "freeform": return "M3 14 C5 8 7 16 10 10 C12 6 14 14 17 6";
         case "node": return "M3 15 L10 4 L17 15 Z M1.5 13.5 L4.5 13.5 L4.5 16.5 L1.5 16.5 Z M8.5 2.5 L11.5 2.5 L11.5 5.5 L8.5 5.5 Z M15.5 13.5 L18.5 13.5 L18.5 16.5 L15.5 16.5 Z";
+        case "lasso": return "M10 3 C15 3 18 5.5 18 8.5 C18 11.5 14.5 13.5 10 13.5 C5.5 13.5 2 11.5 2 8.5 C2 5.5 5 3 10 3 Z M7 13 C6 15 6 16.5 8 17 C10 17.5 10.5 16 10 14";
         case "knife": return "M3 17 L14 6 L17 3 L16 8 L6 18 Z M11 9 L13 11";
         case "warp": return "M3 7 C6 4 8 10 11 7 C14 4 16 10 17 7 M3 13 C6 10 8 16 11 13 C14 10 16 16 17 13";
         case "bucket": return "M4 9 L10 3 L16 9 L10 15 Z M4 9 L16 9 M17 12 C17 14 18 15 18 16 A1 1 0 1 1 16 16 C16 15 17 14 17 12";
         case "brush": return "M17 3 L9 11 M9 11 C6 11 5 13 5 14 C5 16 3 17 3 17 C6 17 9 16 9 13 Z";
+        // Calques : visibilité et verrou (traits seulement, couleur héritée du thème).
+        case "eye": return "M2 10 C5 5 15 5 18 10 C15 15 5 15 2 10 Z M10 7.5 C11.5 7.5 12.5 8.5 12.5 10 C12.5 11.5 11.5 12.5 10 12.5 C8.5 12.5 7.5 11.5 7.5 10 C7.5 8.5 8.5 7.5 10 7.5 Z";
+        case "eye-off": return "M2 10 C5 5 15 5 18 10 C15 15 5 15 2 10 Z M3 17 L17 3";
+        case "lock": return "M5 9 L15 9 L15 17 L5 17 Z M7 9 L7 6 C7 3 13 3 13 6 L13 9 M10 12 L10 14";
+        case "unlock": return "M5 9 L15 9 L15 17 L5 17 Z M7 9 L7 6 C7 3 12 2.5 13 5";
+        case "solo": return "M10 3 C14 3 17 6 17 10 C17 14 14 17 10 17 C6 17 3 14 3 10 C3 6 6 3 10 3 Z M10 7 C11.7 7 13 8.3 13 10 C13 11.7 11.7 13 10 13 C8.3 13 7 11.7 7 10 C7 8.3 8.3 7 10 7 Z";
         case "eraser": return "M8 17 L3 12 L11 4 L17 10 L10 17 Z M7 8 L13 14 M10 17 L17 17";
+        // Verrouillage d'une région (RegionTools, menu contextuel de segmentation).
+        case "lock": return "M5 9 L5 17 L15 17 L15 9 Z M7 9 L7 6 C7 3 13 3 13 6 L13 9";
         default: return "";
         }
     }
 
     Shape {
+        visible: icon.themedSource.length === 0
         anchors.centerIn: parent
         width: 20
         height: 20
         scale: Math.min(icon.width, icon.height) / 20
         ShapePath {
             strokeColor: icon.color
-            strokeWidth: 1.45
+            strokeWidth: Theme.iconStroke
             fillColor: "transparent"
             capStyle: ShapePath.RoundCap
             joinStyle: ShapePath.RoundJoin
-            PathSvg { path: icon.pathForName() }
+            PathSvg { path: icon.themedPath.length > 0 ? icon.themedPath : icon.pathForName() }
+        }
+    }
+    Loader {
+        active: icon.themedSource.length > 0
+        anchors.fill: parent
+        sourceComponent: Image {
+            source: icon.themedSource
+            sourceSize: Qt.size(width, height)
+            fillMode: Image.PreserveAspectFit
+            smooth: true
+            asynchronous: false
         }
     }
 }

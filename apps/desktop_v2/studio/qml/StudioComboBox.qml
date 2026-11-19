@@ -41,13 +41,17 @@ Controls.ComboBox {
         contentItem: Text {
             text: item.text
             font: control.font
-            color: item.highlighted ? Theme.accentInk : Theme.foreground
+            readonly property var rowStyle: Theme.style("listItem", "default", item.highlighted ? "selected" : "normal")
+            color: item.highlighted ? (rowStyle.text !== undefined ? rowStyle.text
+                                      : Object.keys(rowStyle).length > 0 ? Theme.foreground : Theme.accentInk)
+                                    : Theme.foreground
             elide: Text.ElideRight
             verticalAlignment: Text.AlignVCenter
         }
-        background: Rectangle {
-            color: item.highlighted ? Theme.accent : item.hovered ? Theme.hover : "transparent"
-            Behavior on color { ColorAnimation { duration: Theme.animationMs } }
+        background: ThemedSurface {
+            themeStyle: Theme.style("listItem", "default", item.highlighted ? "selected" : item.hovered ? "hover" : "normal")
+            fill: item.highlighted ? Theme.accent : item.hovered ? Theme.hover : "transparent"
+            anchors.margins: 2
         }
     }
 
@@ -76,17 +80,17 @@ Controls.ComboBox {
         elide: Text.ElideRight
     }
 
-    background: Rectangle {
+    background: ThemedSurface {
+        themeStyle: Theme.style("input", "default", Theme.stateOf(control.enabled, control.pressed, false, control.hovered))
+        focusStyle: Theme.style("input", "default", "focus")
+        focused: control.visualFocus || control.popup.visible
+        focusBorder: Theme.accent
+        alert: control.invalid
         radius: 5
-        color: control.enabled ? (control.pressed ? Theme.hover : Theme.raised) : Theme.surface
-        border.width: control.visualFocus || control.popup.visible ? 2 : 1
-        border.color: control.invalid ? Theme.error
-                     : control.visualFocus || control.popup.visible ? Theme.accent
-                     : control.hovered ? Theme.muted
-                     : Theme.outline
+        fill: control.enabled ? (control.pressed ? Theme.hover : Theme.raised) : Theme.surface
+        borderWidth: Theme.borderWidth
+        border: control.hovered ? Theme.muted : Theme.outline
         opacity: control.enabled ? 1 : 0.7
-        Behavior on color { ColorAnimation { duration: Theme.animationMs } }
-        Behavior on border.color { ColorAnimation { duration: Theme.animationMs } }
     }
 
     popup: Controls.Popup {
@@ -125,11 +129,10 @@ Controls.ComboBox {
             currentIndex: control.highlightedIndex
             Controls.ScrollIndicator.vertical: Controls.ScrollIndicator { }
         }
-        background: Rectangle {
-            color: Theme.raised
+        background: StudioPopupBackground {
+            fill: Theme.raised
             radius: 5
-            border.width: 1
-            border.color: Theme.outline
+            border: Theme.outline
         }
     }
 }

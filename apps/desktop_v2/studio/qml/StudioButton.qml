@@ -15,12 +15,36 @@ Controls.AbstractButton {
     property bool active: false
     property bool showShortcutLabel: true
     property int textSize: Theme.bodySize
-    property color contentColor: !enabled ? Theme.faint
+    // Moteur de thèmes : variante et état lus dans Theme.style("button", …). `forcedState` fige
+    // un état pour la galerie des composants (ThemeGallery) ; vide en usage normal.
+    property string forcedState: ""
+    readonly property string themeVariant: emphasized ? "emphasized" : quiet ? "quiet" : "default"
+    readonly property string themeState: forcedState === "focus" ? "normal"
+        : forcedState.length > 0 ? forcedState
+        : Theme.stateOf(enabled, down, checked || active, hovered)
+    readonly property var themeStyle: Theme.style("button", themeVariant, themeState)
+    readonly property var themeBase: Theme.style("button", themeVariant, "normal")
+    property color contentColor: themeStyle.text !== undefined && enabled ? themeStyle.text
+                                       : !enabled ? Theme.faint
                                        : emphasized ? Theme.accentInk
                                        : checked || active ? Theme.accent
                                        : Theme.foreground
-    implicitWidth: Math.max(Theme.controlHeight, content.implicitWidth + (text.length > 0 ? 22 : 16))
-    implicitHeight: Theme.controlHeight
+    readonly property real themePadding: themeBase.paddingX !== undefined ? themeBase.paddingX : (text.length > 0 ? 11 : 8)
+    implicitWidth: Math.max(implicitHeight, content.implicitWidth + 2 * themePadding)
+    implicitHeight: themeBase.height !== undefined ? Math.round(themeBase.height * Theme.densityScale) : Theme.controlHeight
+    // Réactions au survol et à l'appui : levée et échelle (désactivées en mouvement réduit).
+    readonly property real themeLift: Theme.reducedMotion ? 0
+        : themeStyle.lift !== undefined ? themeStyle.lift
+        : (hovered && enabled && !down ? Theme.hoverLift : 0)
+    readonly property real themeScale: Theme.reducedMotion ? 1
+        : themeStyle.scale !== undefined ? themeStyle.scale
+        : (down && enabled ? Theme.pressScale : 1)
+    transform: Translate {
+        y: -button.themeLift
+        Behavior on y { NumberAnimation { duration: Theme.feedbackSlowMs; easing.type: Theme.easingEmphasis } }
+    }
+    scale: themeScale
+    Behavior on scale { NumberAnimation { duration: Theme.feedbackFastMs; easing.type: Theme.easingEmphasis } }
     hoverEnabled: true
     focusPolicy: Qt.StrongFocus
     // Journal d'usage local : l'identifiant est l'objectName du bouton, à défaut son texte.
@@ -38,28 +62,26 @@ Controls.AbstractButton {
     Accessible.description: !enabled && disabledReason.length > 0 ? disabledReason
                             : shortcutLabel.length > 0 ? qsTr("Raccourci : ") + shortcutLabel : ""
 
-    background: Rectangle {
+    background: ThemedSurface {
+        themeStyle: button.themeStyle
+        focusStyle: Theme.style("button", button.themeVariant, "focus")
+        focused: button.activeFocus || button.forcedState === "focus"
         radius: Theme.radius
-        color: button.emphasized ? (button.down ? Theme.accentPressed : Theme.accent)
+        fill: button.emphasized ? (button.down ? Theme.accentPressed : Theme.accent)
                : button.checked || button.active ? Theme.accentSoft
                : button.down ? Theme.raised
                : button.hovered ? Theme.hover
                : button.quiet ? "transparent" : Theme.raised
         // Hiérarchie : plein (emphasized) > aplat tonal (défaut) > discret (quiet). Le contour
         // n'apparaît qu'au survol ou au focus, pour que l'écran ne soit pas une grille de cadres.
-        border.width: button.activeFocus ? 2
-                      : (button.hovered && button.enabled && !button.quiet && !button.emphasized ? 1 : 0)
-        border.color: button.activeFocus ? Theme.accent : Theme.outline
-        opacity: button.enabled ? (button.down ? 0.88 : 1) : 0.55
-        Behavior on border.color { ColorAnimation { duration: Theme.feedbackFastMs } }
-        Behavior on border.width { NumberAnimation { duration: Theme.feedbackFastMs } }
-        Behavior on opacity { NumberAnimation { duration: Theme.animationMs; easing.type: Easing.OutCubic } }
-        Behavior on color { ColorAnimation { duration: Theme.animationMs; easing.type: Easing.OutCubic } }
+        borderWidth: button.hovered && button.enabled && !button.quiet && !button.emphasized ? Theme.borderWidth : 0
+        border: Theme.outline
+        opacity: button.themeStyle.opacity !== undefined ? button.themeStyle.opacity
+                 : button.enabled ? (button.down ? 0.88 : 1) : 0.55
+        Behavior on opacity { NumberAnimation { duration: Theme.animationMs; easing.type: Theme.easingType } }
     }
 
     contentItem: Item {
-        scale: button.enabled && button.down && !Theme.reducedMotion ? 0.97 : 1
-        Behavior on scale { NumberAnimation { duration: Theme.feedbackFastMs; easing.type: Easing.OutCubic } }
         implicitWidth: content.implicitWidth
         implicitHeight: content.implicitHeight
         Row {
@@ -70,11 +92,11 @@ Controls.AbstractButton {
                 name: button.iconName
                 rotation: button.iconRotation
                 Behavior on rotation { NumberAnimation { duration: Theme.feedbackSlowMs } }
-                color: button.contentColor
+                color: button.themeStyle.icon !== undefined && button.enabled ? button.themeStyle.icon : button.contentColor
                 visible: name.length > 0
                 anchors.verticalCenter: parent.verticalCenter
-                width: 18
-                height: 18
+                width: Theme.iconSize
+                height: Theme.iconSize
             }
             Text {
                 text: button.text
@@ -82,7 +104,9 @@ Controls.AbstractButton {
                 color: button.contentColor
                 font.family: Theme.fontFamily
                 font.pixelSize: button.textSize
-                font.weight: button.emphasized || button.active || button.checked ? Font.DemiBold : Font.Normal
+                font.letterSpacing: Theme.letterSpacing
+                font.weight: button.themeStyle.fontWeight !== undefined ? button.themeStyle.fontWeight
+                             : button.emphasized || button.active || button.checked ? Theme.strongWeight : Theme.bodyWeight
                 anchors.verticalCenter: parent.verticalCenter
             }
             Text {

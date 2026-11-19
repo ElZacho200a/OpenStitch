@@ -170,14 +170,28 @@ ColumnLayout {
                 width: ListView.view.width
                 height: 24
                 color: isSelected ? Theme.accentSoft : "transparent"
-                Row {
-                    anchors.verticalCenter: parent.verticalCenter
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 4
+                    anchors.rightMargin: 4
                     spacing: 6
-                    leftPadding: 4
                     Rectangle { width: 14; height: 14; color: modelData.color; border.color: Theme.border }
                     Text {
+                        Layout.fillWidth: true
                         text: qsTr("Région %1 — %2 px").arg(modelData.id).arg(modelData.pixels)
-                        color: Theme.foreground; font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily
+                        color: modelData.locked ? Theme.faint : Theme.foreground
+                        font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily
+                        elide: Text.ElideRight
+                    }
+                    StudioButton {
+                        objectName: "regionLockToggle_" + modelData.id
+                        iconName: "lock"
+                        quiet: true
+                        active: modelData.locked
+                        tooltip: modelData.locked ? qsTr("Déverrouiller cette région")
+                                                   : qsTr("Verrouiller cette région (empêche sa sélection)")
+                        implicitWidth: 22; implicitHeight: 22
+                        onClicked: regionTools.toggleLockRegion(modelData.id)
                     }
                 }
                 TapHandler {

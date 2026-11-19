@@ -1435,8 +1435,8 @@ private:
 
 class StreamlineTracer {
 public:
-    StreamlineTracer(const Sector& sector, const SpacingField& spacing)
-        : sector_(sector), spacing_(spacing), step_(0.2 * spacing.lo),
+    StreamlineTracer(const Sector& sector, const SpacingField& spacing, double fillSeed = 0.9)
+        : sector_(sector), spacing_(spacing), fillSeed_(fillSeed), step_(0.2 * spacing.lo),
           selfWindow_(3.0 * spacing.hi), grid_(make_grid(sector, spacing.cell())) {
         P2 lo;
         P2 hi;
@@ -1469,11 +1469,12 @@ public:
         seed_and_propagate(*first, 1.0);
 
         // 2) Balayage de comblement : tout point de grille resté à plus de
-        //    0,9 × dsep de toute ligne reçoit une nouvelle graine — aucune
-        //    zone vide (convergences, îlots non atteints par propagation).
+        //    `fillSeed_` (0,9 par défaut) × dsep de toute ligne reçoit une
+        //    nouvelle graine — aucune zone vide (convergences, îlots non
+        //    atteints par propagation). Écart maximal entre lignes ≈ 2 × fillSeed_.
         for (double y = lo_.y + g / 2.0; y < hi_.y; y += g) {
             for (double x = lo_.x + g / 2.0; x < hi_.x; x += g) {
-                seed_and_propagate(P2{x, y}, 0.9);
+                seed_and_propagate(P2{x, y}, fillSeed_);
             }
         }
         return std::move(lines_);
@@ -1650,6 +1651,7 @@ private:
 
     const Sector& sector_;
     SpacingField spacing_;
+    double fillSeed_;
     double step_;
     double selfWindow_;
     SeparationGrid grid_;
@@ -2332,7 +2334,8 @@ struct SectorLines {
 std::vector<SectorLines> compute_lines(const geometry::PathSet& region,
                                        const std::vector<Sector>& sectors,
                                        const document::DirectionalFillParams& params,
-                                       bool withStitches, const RowMask* mask = nullptr) {
+                                       bool withStitches, const RowMask* mask = nullptr,
+                                       double fillSeed = 0.9) {
     std::vector<SectorLines> result;
     const SpacingField spacing = make_spacing_field(params, &region);
     // Grille partagée : mêmes rangées dans toutes les couches, chacune garde sa tranche.
@@ -2351,7 +2354,7 @@ std::vector<SectorLines> compute_lines(const geometry::PathSet& region,
     plan.seed = params.seed;
     for (std::size_t si = 0; si < sectors.size(); ++si) {
         SectorLines sl;
-        StreamlineTracer tracer(sectors[si], spacing);
+        StreamlineTracer tracer(sectors[si], spacing, fillSeed);
         sl.traced = tracer.run();
         regularize_lines(sl.traced, sectors[si], spacing, params.spacing_regularity);
         if (withStitches) {
@@ -2460,7 +2463,7 @@ std::vector<FillStitch> fill_directional_sectors(const geometry::PathSet& region
                                                  const document::DirectionalFillParams& params,
                                                  const RowMask* mask,
                                                  const std::vector<Sector>& sectors,
-                                                 double maskedLinkUm);
+                                                 double maskedLinkUm, double fillSeed = 0.9);
 } // namespace
 
 std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
@@ -2473,7 +2476,7 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
 std::vector<FillStitch> fill_directional_field(const geometry::PathSet& region,
                                                const document::DirectionalFillParams& params,
                                                const DirectionalAngleField& angle_at,
-                                               const RowMask* mask) {
+                                               const RowMask* mask, double fill_seed) {
     // Guides, ruptures, dégradé, bord et aspect fait main sans objet sous un champ imposé.
     auto clean = params;
     clean.guides.clear();
@@ -2483,8 +2486,9 @@ std::vector<FillStitch> fill_directional_field(const geometry::PathSet& region,
     clean.handmade = false;
     // Rangées courbes d'une bande de fondu : lignes souvent courtes, extrémités espacées le long
     // des bords ; au-delà de 2 mm, une liaison serait un long point visible (saut à la place).
-    return fill_directional_sectors(region, clean, mask,
-                                    build_field_sectors(region, clean, angle_at), kFieldLinkUm);
+    return fill_directional_sectors(
+        region, clean, mask, build_field_sectors(region, clean, angle_at), kFieldLinkUm,
+        std::clamp(std::isfinite(fill_seed) ? fill_seed : 0.9, 0.5, 0.9));
 }
 
 namespace {
@@ -2492,12 +2496,12 @@ std::vector<FillStitch> fill_directional_sectors(const geometry::PathSet& region
                                                  const document::DirectionalFillParams& params,
                                                  const RowMask* mask,
                                                  const std::vector<Sector>& sectors,
-                                                 double maskedLinkUm) {
+                                                 double maskedLinkUm, double fillSeed) {
     std::vector<FillStitch> out;
     if (sectors.empty()) {
         return out;
     }
-    const auto lines = compute_lines(region, sectors, params, true, mask);
+    const auto lines = compute_lines(region, sectors, params, true, mask, fillSeed);
     const double spacing = clamp_spacing(params);
     const double L =
         std::clamp(static_cast<double>(params.stitch_length.value), kMinTarget, kMaxTarget);

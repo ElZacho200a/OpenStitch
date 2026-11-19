@@ -152,6 +152,14 @@ Item {
                     gpu: spaceCanvas
                 }
 
+                // Frontières des fondus de la zone principale (le fondu édité mis en évidence).
+                BoundaryBlendFrontiers {
+                    objectName: "boundaryBlendFrontiers"
+                    anchors.fill: parent
+                    gpu: spaceCanvas
+                    controller: typeof boundaryBlend !== "undefined" ? boundaryBlend : null
+                }
+
                 NeedleOriginMarker {
                     objectName: "needleOriginMarker"
                     anchors.fill: parent

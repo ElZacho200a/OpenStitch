@@ -5,6 +5,8 @@
 #include <QStyleHints>
 
 #include <fstream>
+
+#include "theme_package.hpp"
 #include <sstream>
 
 namespace openstitch::desktop_v2::studio {
@@ -75,6 +77,20 @@ QString PreferencesController::effectiveTheme() const {
                                                               : QStringLiteral("dark");
     }
     return QStringLiteral("dark");
+}
+
+QString PreferencesController::themeId() const {
+    return QString::fromStdString(prefs_.themeId);
+}
+
+void PreferencesController::setThemeId(const QString& id) {
+    const auto value = id.toStdString();
+    if (value == prefs_.themeId || !theme::isValidThemeId(value)) {
+        return;
+    }
+    prefs_.themeId = value;
+    save();
+    emit changed();
 }
 
 QString PreferencesController::density() const {

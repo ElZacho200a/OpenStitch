@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -91,6 +92,10 @@ public:
         }
     }
     [[nodiscard]] std::string name() const override { return "Ajouter un calque"; }
+    // Un calque vide ne change ni la séquence (le calque du fond matérialisé garde toutes les
+    // formes au rang 0) ni la segmentation.
+    [[nodiscard]] bool affectsEmbroidery() const override { return false; }
+    [[nodiscard]] bool affectsSegmentation() const override { return false; }
 
 private:
     ObjectId id_;
@@ -163,6 +168,7 @@ public:
         applied_ = false;
     }
     [[nodiscard]] std::string name() const override { return "Supprimer le calque"; }
+    // Portée par défaut : le calque peut emporter une source image (et sa segmentation).
 
 private:
     ObjectId id_;
@@ -201,6 +207,9 @@ public:
         }
     }
     [[nodiscard]] std::string name() const override { return "Renommer le calque"; }
+    // Un nom ne change ni les points ni la segmentation : aucun recalcul.
+    [[nodiscard]] bool affectsEmbroidery() const override { return false; }
+    [[nodiscard]] bool affectsSegmentation() const override { return false; }
 
 private:
     ObjectId id_;
@@ -238,6 +247,8 @@ public:
     [[nodiscard]] std::string name() const override {
         return visible_ ? "Afficher le calque" : "Masquer le calque";
     }
+    // Change la séquence cousue, jamais les régions segmentées.
+    [[nodiscard]] bool affectsSegmentation() const override { return false; }
 
 private:
     ObjectId id_;
@@ -275,6 +286,9 @@ public:
     [[nodiscard]] std::string name() const override {
         return locked_ ? "Verrouiller le calque" : "Déverrouiller le calque";
     }
+    // Le verrou est un état d'édition : les points et les régions restent identiques.
+    [[nodiscard]] bool affectsEmbroidery() const override { return false; }
+    [[nodiscard]] bool affectsSegmentation() const override { return false; }
 
 private:
     ObjectId id_;
@@ -316,6 +330,8 @@ public:
     [[nodiscard]] std::string name() const override {
         return direction_ > 0 ? "Monter le calque" : "Descendre le calque";
     }
+    // Change la séquence cousue, jamais les régions segmentées.
+    [[nodiscard]] bool affectsSegmentation() const override { return false; }
 
 private:
     ObjectId id_;
@@ -349,11 +365,104 @@ public:
         before_.clear();
     }
     [[nodiscard]] std::string name() const override { return "Déplacer vers un calque"; }
+    // Change la séquence cousue, jamais les régions segmentées.
+    [[nodiscard]] bool affectsSegmentation() const override { return false; }
 
 private:
     std::vector<ObjectId> shapes_;
     ObjectId target_;
     std::vector<std::pair<ObjectId, ObjectId>> before_;
+};
+
+// Place un calque au rang `toIndex` (0 = fond) en UNE étape : glisser-déposer dans la liste. Les
+// autres calques gardent leur ordre relatif. Sans effet si le calque est inconnu ou déjà à ce rang.
+class ReorderCalqueCommand final : public ICommand {
+public:
+    ReorderCalqueCommand(ObjectId id, std::size_t toIndex) : id_(id), to_(toIndex) {}
+
+    void apply(document::Project& project) override {
+        applied_ = false;
+        auto& list = project.calques;
+        const auto it =
+            std::find_if(list.begin(), list.end(), [&](const auto& c) { return c.id == id_; });
+        if (it == list.end() || list.empty()) {
+            return;
+        }
+        from_ = static_cast<std::size_t>(it - list.begin());
+        const std::size_t to = std::min(to_, list.size() - 1);
+        if (to == from_) {
+            return;
+        }
+        moveWithin(list, from_, to);
+        appliedTo_ = to;
+        applied_ = true;
+    }
+    void revert(document::Project& project) override {
+        if (applied_ && appliedTo_ < project.calques.size() && from_ < project.calques.size()) {
+            moveWithin(project.calques, appliedTo_, from_);
+        }
+        applied_ = false;
+    }
+    [[nodiscard]] std::string name() const override { return "Réordonner les calques"; }
+    // L'ordre des calques est la clé de couture ; il ne touche jamais aux régions.
+    [[nodiscard]] bool affectsSegmentation() const override { return false; }
+
+private:
+    static void moveWithin(std::vector<document::Calque>& list, std::size_t from, std::size_t to) {
+        const auto first = list.begin();
+        if (from < to) {
+            std::rotate(first + static_cast<std::ptrdiff_t>(from),
+                        first + static_cast<std::ptrdiff_t>(from) + 1,
+                        first + static_cast<std::ptrdiff_t>(to) + 1);
+        } else {
+            std::rotate(first + static_cast<std::ptrdiff_t>(to),
+                        first + static_cast<std::ptrdiff_t>(from),
+                        first + static_cast<std::ptrdiff_t>(from) + 1);
+        }
+    }
+
+    ObjectId id_;
+    std::size_t to_;
+    std::size_t from_{};
+    std::size_t appliedTo_{};
+    bool applied_{false};
+};
+
+// Visibilité de plusieurs calques en UNE étape (isoler un calque, tout réafficher). Seuls les
+// calques dont l'état change sont mémorisés ; une liste sans changement n'a aucun effet.
+class SetCalquesVisibilityCommand final : public ICommand {
+public:
+    SetCalquesVisibilityCommand(std::vector<std::pair<ObjectId, bool>> wanted, std::string label)
+        : wanted_(std::move(wanted)), label_(std::move(label)) {}
+
+    void apply(document::Project& project) override {
+        before_.clear();
+        for (const auto& [id, visible] : wanted_) {
+            for (auto& calque : project.calques) {
+                if (calque.id == id && calque.visible != visible) {
+                    before_.emplace_back(id, calque.visible);
+                    calque.visible = visible;
+                }
+            }
+        }
+    }
+    void revert(document::Project& project) override {
+        for (const auto& [id, visible] : before_) {
+            for (auto& calque : project.calques) {
+                if (calque.id == id) {
+                    calque.visible = visible;
+                }
+            }
+        }
+        before_.clear();
+    }
+    [[nodiscard]] std::string name() const override { return label_; }
+    [[nodiscard]] bool affectsSegmentation() const override { return false; }
+
+private:
+    std::vector<std::pair<ObjectId, bool>> wanted_;
+    std::string label_;
+    std::vector<std::pair<ObjectId, bool>> before_;
 };
 
 } // namespace openstitch::commands
