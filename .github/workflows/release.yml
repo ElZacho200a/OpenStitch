@@ -18,9 +18,6 @@ on:
       - "v*"
   workflow_dispatch:
 
-env:
-  VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
-
 # Nécessaire pour créer/mettre à jour une release et y téléverser
 # l'installeur (GITHUB_TOKEN par défaut, jamais un secret supplémentaire à
 # configurer).
@@ -33,12 +30,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Export GitHub Actions cache environment (vcpkg)
-        uses: actions/github-script@v7
+      - name: Restore vcpkg binary cache
+        uses: actions/cache@v4
         with:
-          script: |
-            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+          path: ${{ runner.temp }}/vcpkg-bincache
+          key: vcpkg-release-windows-${{ hashFiles('vcpkg.json') }}
+          restore-keys: vcpkg-release-windows-
 
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
@@ -53,6 +50,8 @@ jobs:
           git clone https://github.com/microsoft/vcpkg.git "$env:RUNNER_TEMP/vcpkg"
           & "$env:RUNNER_TEMP/vcpkg/bootstrap-vcpkg.bat" -disableMetrics
           "VCPKG_ROOT=$env:RUNNER_TEMP/vcpkg" | Out-File -Append -FilePath $env:GITHUB_ENV
+          New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP/vcpkg-bincache" | Out-Null
+          "VCPKG_BINARY_SOURCES=clear;files,$env:RUNNER_TEMP/vcpkg-bincache,readwrite" | Out-File -Append -FilePath $env:GITHUB_ENV
 
       - name: Configure and build Release
         shell: pwsh
