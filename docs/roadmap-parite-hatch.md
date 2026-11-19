@@ -2167,10 +2167,16 @@ tout utilisateur de Hatch fait Ctrl+C/Ctrl+V, sélection rectangle, rotation.
 - La commande **Segmenter tous les calques** applique les réglages courants aux
   sources du projet en une étape annulable. La recette Studio vérifie les régions
   par calque ainsi que l’annulation et le rétablissement après changement de source.
+- Studio (2026-11-18, `docs/source/multicalque-ergonomie.md`) : calque actif unique pour tous
+  les canevas (il reçoit les formes créées et pilote la source image), réordonnancement par
+  glisser-déposer en une étape (`ReorderCalqueCommand`), isoler / tout afficher en une étape
+  (`SetCalquesVisibilityCommand`, Alt+clic sur l'œil), verrou respecté par la sélection en masse et
+  le transfert intercalque, portées de recalcul exactes (renommer/verrouiller : aucun recalcul ;
+  aucun geste de calque ne resegmente), menu contextuel, raccourcis, Maj+clic de plage.
 - Reste : effets **liés** (une forme d'un calque supérieur qui suit/découpe ses cibles) ;
   sélection d'un calque entier au canevas ; calques dans la CLI `project` (inspect, opérations) ;
-  glisser une forme d'un calque à l'autre dans la liste Document ; réordonner les calques par
-  glisser-déposer.
+  dessin composé et opacité des calques image ; visibilité temporaire hors document ; groupes de
+  calques (matrice complète : `multicalque-ergonomie.md` §4-5).
 - Tests : `test_calque_commands`, `test_calque_persistence`, `test_calques_generation`,
   `test_calques` (QTest : panneau, calque actif, déplacement, ordre, calque masqué/verrouillé).
 
@@ -4658,6 +4664,7 @@ ouvrant le lot (§0.1).
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-11-18 | Claude (Studio : travail multicalque, lot 1) | **HP-OBJ-024 ◐** (précisé). Audit des quatre espaces et du mode simulation, matrice de 10+ améliorations par canevas (`docs/source/multicalque-ergonomie.md`). Livré : calque actif unique (Studio ne fixait jamais `active_calque` : les formes allaient toujours au fond), portées `affectsEmbroidery`/`affectsSegmentation` exactes des commandes de calque, `ReorderCalqueCommand` (glisser-déposer), `SetCalquesVisibilityCommand` (isoler / tout afficher), Ctrl+A et sélections en masse sans les calques verrouillés, transfert intercalque refusé vers ou depuis un calque verrouillé, arbre indexé (plus de balayage par groupe), icônes œil/cadenas, menu contextuel, raccourcis, Maj+clic. Tests : `test_calque_commands` (3 cas), QTest `layerWorkflowIsSharedLockedAndScoped`. Recette visuelle Studio non faite. |
 | 2026-11-18 | Claude (fondu à la frontière : sens des rangées, moteur) | Roadmap : HP-STI-011 inchangé. Génération des modes `Shared` (angle commun) et `Rotating` (rangées pivotantes, directionnel à champ imposé `fill_directional_field`) du réglage `BoundaryBlendRows` : cœur de chaque zone à son angle + bande commune partagée par le masque, partition exacte (±3 %), liaisons ≤ 2,3 mm, tissu nu ≤ 1 % ; zone directionnelle : repli PerZone. Spec §6.3. |
 | 2026-11-18 | Claude (Studio : lot 4, latence du pinceau) | Roadmap : aucune entrée de parité concernée (mesure). Latence bout en bout mesurée à travers la vraie fenêtre : mouvement → aperçu 1-6 ms, relâchement → document 3 ms, → scène 22-26 ms (borne haute) ; instantané du document 6 ms pour une image de 12 Mpx. Aperçu léger **non implémenté** (rien à gagner dans cette chaîne). Rendu GPU réel non mesuré. Test `warpLatencyReport` (activé par `OPENSTITCH_PERF=1`) et cas `[editcost]` d'instantané. |
 | 2026-11-18 | Claude (Studio : lot 2, mesure du coût d'une édition) | Roadmap : aucune entrée de parité concernée (mesure). Banc `[editcost]` (Release) et section dans `docs/desktop-v2/10-performances.md` : copie, application, suppression, annulation et aplatissement de l'aperçu sont négligeables (≤ 0,2 ms) ; le rejeu complet d'un trait coûte 1-2 ms par mise à jour à 2 000 sommets ; séquence + scène après édition ~24 ms à 1 000 objets (le cache par objet n'économise qu'environ 25 %). Latence ressentie (fil de travail → rendu) non mesurée. Aucune optimisation de ce lot. |

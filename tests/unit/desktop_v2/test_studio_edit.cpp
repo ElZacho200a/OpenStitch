@@ -169,6 +169,7 @@ private slots:
     void mouseMoveWithSnapGuidesAndUndo();
     void handlesResizeAndRotate();
     void layersTreeAndObjectEditing();
+    void layerWorkflowIsSharedLockedAndScoped();
     void contextMenuAndEyedropper();
     void shortcutsReachTheEditor();
     void focusedFieldOwnsArrowKeysDeleteAndEscape();
@@ -687,6 +688,86 @@ void StudioEditTest::handlesResizeAndRotate() {
     rig.session.undo();
     rig.session.undo();
     QCOMPARE(steps(rig), base);
+}
+
+// Calque actif partagé, verrou respecté par la sélection en masse, isolation et réordonnancement
+// en une étape, portée de recalcul exacte (aucune resegmentation pour un geste de calque).
+void StudioEditTest::layerWorkflowIsSharedLockedAndScoped() {
+    Rig rig;
+    open(rig);
+    const auto base = steps(rig);
+    // Sans calque actif enregistré, c'est le fond (201) qui reçoit les formes créées.
+    QCOMPARE(rig.editor.activeLayer(), QStringLiteral("201"));
+    QVERIFY(rig.editor.setActiveLayer(QStringLiteral("202")));
+    QCOMPARE(rig.editor.activeLayer(), QStringLiteral("202"));
+    QCOMPARE(steps(rig), base); // état d'interface : pas une étape d'annulation
+    {
+        document::VectorObject shape;
+        shape.id = rig.session.allocateObjectId();
+        const auto shapeId = shape.id;
+        rig.session.execute(std::make_unique<commands::AddVectorObjectCommand>(std::move(shape)));
+        QCOMPARE(rig.session.project().findObject(shapeId)->calque.value, std::uint64_t{202});
+        QVERIFY(rig.session.undo());
+    }
+    const auto layerRow = [&](const QString& id) {
+        for (const auto& row : rig.editor.layers()) {
+            if (row.toMap().value(QStringLiteral("id")).toString() == id) {
+                return row.toMap();
+            }
+        }
+        return QVariantMap{};
+    };
+    QVERIFY(layerRow(QStringLiteral("202")).value(QStringLiteral("active")).toBool());
+    QCOMPARE(layerRow(QStringLiteral("201")).value(QStringLiteral("objects")).toInt(), 3);
+
+    // Renommer / verrouiller : ni points ni segmentation à recalculer.
+    QVERIFY(rig.editor.renameLayer(QStringLiteral("202"), QStringLiteral("Contours")));
+    QVERIFY(!rig.session.lastChangeAffectsEmbroidery());
+    QVERIFY(!rig.session.lastChangeAffectsSegmentation());
+    QVERIFY(rig.editor.setLayerLocked(QStringLiteral("202"), true));
+    QVERIFY(!rig.session.lastChangeAffectsEmbroidery());
+    QVERIFY(!rig.session.lastChangeAffectsSegmentation());
+
+    // Verrou : Tout sélectionner, sélection par calque et transfert vers le calque l'épargnent.
+    QCOMPARE(rig.editor.selectAll(), 3);
+    QVERIFY(!rig.session.selection().contains({TargetKind::EmbroideryObject, kRed2}));
+    QCOMPARE(rig.editor.selectByLayer(QStringLiteral("202")), 0);
+    QVERIFY(rig.session.selection().empty());
+    const auto beforeRefusal = steps(rig);
+    QVERIFY(!rig.editor.moveObjectToLayer(QString::number(kLone), QStringLiteral("202")));
+    QCOMPARE(shapeOf(rig.session.project(), kLone).calque.value, std::uint64_t{201});
+    QCOMPARE(steps(rig), beforeRefusal);
+    QVERIFY(rig.editor.setLayerLocked(QStringLiteral("202"), false));
+
+    // Isoler : une étape, seul 202 visible ; rappelé, tout revient. Jamais de resegmentation.
+    QVERIFY(rig.editor.isolateLayer(QStringLiteral("202")));
+    QVERIFY(!rig.session.lastChangeAffectsSegmentation());
+    QVERIFY(!rig.session.project().findCalque(ObjectId{201})->visible);
+    QVERIFY(rig.session.project().findCalque(ObjectId{202})->visible);
+    QCOMPARE(rig.editor.selectAll(), 2);
+    QVERIFY(rig.editor.isolateLayer(QStringLiteral("202")));
+    QVERIFY(rig.session.project().findCalque(ObjectId{201})->visible);
+    QVERIFY(rig.editor.setLayerVisible(QStringLiteral("201"), false));
+    QVERIFY(rig.editor.showAllLayers());
+    QVERIFY(rig.session.project().findCalque(ObjectId{201})->visible);
+    QVERIFY(!rig.editor.showAllLayers()); // déjà tout visible : refus, aucune étape
+
+    // Réordonner par glisser-déposer : le fond passe au-dessus en UNE étape, la couture suit.
+    const auto beforeReorder = steps(rig);
+    QVERIFY(rig.editor.reorderLayer(QStringLiteral("201"), 0)); // rang affiché 0 = dessus
+    QCOMPARE(steps(rig), beforeReorder + 1);
+    QCOMPARE(rig.session.project().calques.back().id.value, std::uint64_t{201});
+    const auto order = rig.session.project().sewingOrder();
+    QCOMPARE(rig.session.project().embroidery_objects[order.front()].id.value, kRed2);
+    QVERIFY(!rig.session.lastChangeAffectsSegmentation());
+    QVERIFY(rig.session.undo());
+    QCOMPARE(rig.session.project().calques.back().id.value, std::uint64_t{202});
+
+    // Maj+clic : plage dans l'ordre de l'arbre (Dessus : 103, 104 ; Fond : 101, 102, 105).
+    QCOMPARE(rig.editor.selectTreeRange(QString::number(kBlue), QString::number(kGreen), false), 3);
+    QVERIFY(rig.session.selection().contains({TargetKind::EmbroideryObject, kRed1}));
+    QVERIFY(!rig.session.selection().contains({TargetKind::EmbroideryObject, kLone}));
+    settle(rig);
 }
 
 void StudioEditTest::layersTreeAndObjectEditing() {

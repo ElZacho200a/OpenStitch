@@ -5,6 +5,8 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "openstitch/commands/calque_commands.hpp"
@@ -138,4 +140,76 @@ TEST_CASE("calques : une forme creee entre dans le calque actif") {
     fresh.id = project.object_ids.next();
     stack.execute(std::make_unique<commands::AddVectorObjectCommand>(fresh), project);
     CHECK(project.calqueOfShape(fresh.id)->id == c2);
+}
+
+TEST_CASE("calques : renommer et verrouiller ne recalculent ni points ni segmentation") {
+    // Portée exacte : un nom ou un verrou ne change aucune donnée calculée. Masquer, déplacer ou
+    // réordonner change la séquence cousue, jamais les régions segmentées.
+    const ObjectId id{7};
+    CHECK_FALSE(commands::RenameCalqueCommand(id, "x").affectsEmbroidery());
+    CHECK_FALSE(commands::RenameCalqueCommand(id, "x").affectsSegmentation());
+    CHECK_FALSE(commands::SetCalqueLockedCommand(id, true).affectsEmbroidery());
+    CHECK_FALSE(commands::SetCalqueLockedCommand(id, true).affectsSegmentation());
+    CHECK_FALSE(commands::AddCalqueCommand(id, "x").affectsEmbroidery());
+    CHECK_FALSE(commands::AddCalqueCommand(id, "x").affectsSegmentation());
+    CHECK(commands::SetCalqueVisibleCommand(id, false).affectsEmbroidery());
+    CHECK_FALSE(commands::SetCalqueVisibleCommand(id, false).affectsSegmentation());
+    CHECK(commands::MoveCalqueCommand(id, 1).affectsEmbroidery());
+    CHECK_FALSE(commands::MoveCalqueCommand(id, 1).affectsSegmentation());
+    CHECK(commands::ReorderCalqueCommand(id, 0).affectsEmbroidery());
+    CHECK_FALSE(commands::ReorderCalqueCommand(id, 0).affectsSegmentation());
+    CHECK_FALSE(commands::SetShapesCalqueCommand({}, id).affectsSegmentation());
+    // Supprimer peut emporter une source image : portée complète conservée.
+    CHECK(commands::RemoveCalqueCommand(id).affectsSegmentation());
+}
+
+TEST_CASE("calques : reordonner place un calque a un rang en une etape, undo restaure") {
+    document::Project project;
+    project.calques = {
+        {ObjectId{1}, "A"}, {ObjectId{2}, "B"}, {ObjectId{3}, "C"}, {ObjectId{4}, "D"}};
+    commands::UndoStack stack;
+    const auto names = [&] {
+        std::string out;
+        for (const auto& c : project.calques) {
+            out += c.name;
+        }
+        return out;
+    };
+    stack.execute(std::make_unique<commands::ReorderCalqueCommand>(ObjectId{1}, 3), project);
+    CHECK(names() == "BCDA");
+    stack.execute(std::make_unique<commands::ReorderCalqueCommand>(ObjectId{4}, 0), project);
+    CHECK(names() == "DBCA");
+    stack.undo(project);
+    CHECK(names() == "BCDA");
+    stack.undo(project);
+    CHECK(names() == "ABCD");
+    stack.redo(project);
+    CHECK(names() == "BCDA");
+    // Rang hors bornes : ramené au dessus ; calque inconnu : sans effet.
+    stack.execute(std::make_unique<commands::ReorderCalqueCommand>(ObjectId{2}, 99), project);
+    CHECK(names() == "CDAB");
+    stack.execute(std::make_unique<commands::ReorderCalqueCommand>(ObjectId{42}, 0), project);
+    CHECK(names() == "CDAB");
+    stack.undo(project);
+    CHECK(names() == "CDAB");
+}
+
+TEST_CASE("calques : visibilite groupee en une etape, seuls les changements sont annules") {
+    document::Project project;
+    project.calques = {
+        {ObjectId{1}, "A", true}, {ObjectId{2}, "B", false}, {ObjectId{3}, "C", true}};
+    commands::UndoStack stack;
+    stack.execute(std::make_unique<commands::SetCalquesVisibilityCommand>(
+                      std::vector<std::pair<ObjectId, bool>>{
+                          {ObjectId{1}, false}, {ObjectId{2}, true}, {ObjectId{3}, false}},
+                      "Isoler le calque"),
+                  project);
+    CHECK_FALSE(project.calques[0].visible);
+    CHECK(project.calques[1].visible);
+    CHECK_FALSE(project.calques[2].visible);
+    CHECK(stack.undoName() == "Isoler le calque");
+    stack.undo(project);
+    CHECK(project.calques[0].visible);
+    CHECK_FALSE(project.calques[1].visible); // état d'origine, pas « tout visible »
+    CHECK(project.calques[2].visible);
 }
