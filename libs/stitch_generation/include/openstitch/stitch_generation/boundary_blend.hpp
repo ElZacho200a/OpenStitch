@@ -64,10 +64,15 @@ public:
     [[nodiscard]] double width_a() const { return widthA_; }
     [[nodiscard]] double width_b() const { return widthB_; }
 
+    // Index spatial de A et de la frontière (défini dans boundary_blend.cpp) : accélère
+    // `signed_distance` et `density_a` sans changer leurs résultats.
+    struct Index;
+    [[nodiscard]] const Index& index() const { return *index_; }
+
 private:
     [[nodiscard]] bool inside_a(Vec2um p) const;
 
-    std::vector<std::vector<Vec2um>> polysA_; // A aplatie : extérieur puis trous
+    std::shared_ptr<const Index> index_;
     std::vector<geometry::Polyline> frontier_;
     double widthA_{2'500.0};
     double widthB_{2'500.0};
