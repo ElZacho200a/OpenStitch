@@ -108,6 +108,14 @@ file(GLOB_RECURSE studio_all_qml CONFIGURE_DEPENDS "${studio_test_qml_root}/qml/
             BASE "${studio_test_qml_root}" FILES ${studio_all_qml}
                 "${studio_test_qml_root}/qml/qmldir")
         add_test(NAME test_desktop_v2_studio_inspector COMMAND test_desktop_v2_studio_inspector -o -,txt)
+        # BUILD-OPT-01.3 : QML externe + rechargement a chaud (headless).
+        add_executable(test_desktop_v2_studio_qml_dev test_studio_qml_dev.cpp)
+        target_link_libraries(test_desktop_v2_studio_qml_dev
+            PRIVATE openstitch::studio_ui Qt6::Test openstitch::warnings)
+        add_test(NAME test_desktop_v2_studio_qml_dev COMMAND test_desktop_v2_studio_qml_dev -o -,txt)
+        set_tests_properties(test_desktop_v2_studio_qml_dev PROPERTIES
+            ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+            ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
         add_test(NAME test_desktop_v2_studio_shell COMMAND test_desktop_v2_studio_shell -o -,txt)
         # Design system guard rails: WCAG contrast of the Theme tokens + QML lint (no GUI needed).
         add_executable(test_desktop_v2_studio_design test_studio_design.cpp)

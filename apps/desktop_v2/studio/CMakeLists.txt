@@ -8,6 +8,7 @@ endif()
 set(CMAKE_AUTOMOC ON)
 add_library(openstitch_studio_ui STATIC
     studio_controller.cpp perf_log.cpp studio_controller.hpp
+    qml_dev_loader.cpp qml_dev_loader.hpp
     usage_controller.cpp usage_controller.hpp
     history_controller.cpp history_controller.hpp
     action_controller.cpp action_controller.hpp
@@ -56,6 +57,15 @@ target_link_libraries(openstitch_studio_ui PUBLIC openstitch::desktop_v2_core
     Qt6::QuickControls2 PRIVATE openstitch::warnings
     # qTriangulate (layers/vector_layer.cpp) : formes vectorielles en triangles pour le GPU.
     Qt6::GuiPrivate)
+
+# BUILD-OPT-01.3 : QML externe + rechargement a chaud (Studio Dev). Opt-in, OFF par defaut ; meme
+# active, jamais compile pour une config Release (garde-fou aussi dans qml_dev_loader.cpp) et
+# il faut en plus OPENSTITCH_DEV_QML=1 a l'execution. Les ressources embarquees restent inchangees.
+option(OPENSTITCH_STUDIO_DEV_QML "Studio Dev : charger qml/ depuis le disque et recharger a chaud" OFF)
+if(OPENSTITCH_STUDIO_DEV_QML)
+    target_compile_definitions(openstitch_studio_ui PRIVATE
+        "$<$<NOT:$<CONFIG:Release,MinSizeRel,RelWithDebInfo>>:OPENSTITCH_STUDIO_DEV_QML_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/qml\">")
+endif()
 
 set(studio_qml_files
     qml/Main.qml qml/HistoryPanel.qml qml/Theme.qml qml/StudioButton.qml qml/StudioIcon.qml
