@@ -205,4 +205,3 @@
 2026-07-18 15:13:25,977 - aqt.updater - INFO - updater 26324 Patching C:\Users\zache\Qt\6.8.3\msvc2022_64\lib\Qt6Xmld.prl
 2026-07-18 15:13:25,983 - aqt.main - INFO - installer 26324 Finished installation
 2026-07-18 15:13:25,983 - aqt.main - INFO - installer 26324 Time elapsed: 45.52431590 second
-2026-11-19 21:16:38,119 - aqt.main - INFO - installer 308824 aqtinstall(aqt) v3.3.0 on Python 3.14.3 [CPython MSC v.1944 64 bit (AMD64)]
