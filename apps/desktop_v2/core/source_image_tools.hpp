@@ -13,7 +13,9 @@
 #include <vector>
 
 #include "document_services.hpp"
+#include "openstitch/document/project.hpp"
 #include "openstitch/image/image.hpp"
+#include "openstitch/segmentation/segmentation.hpp"
 
 namespace openstitch::desktop_v2 {
 
@@ -51,7 +53,23 @@ ClickResult clickToStitch(DocumentSession& session, const image::Image& processe
 ServiceResult paintDetail(DocumentSession& session, const image::Image& processed,
                           const std::vector<std::pair<double, double>>& centresMm, double radiusMm,
                           bool erase);
+// Même chose en pixels de l'image de travail (`width` x `height`) : c'est ce que manipule l'IHM,
+// qui connaît déjà le pixel sous le curseur. Le rayon reste en mm (réglage indépendant de la
+// résolution).
+ServiceResult paintDetailPixels(DocumentSession& session, int width, int height, double mmPerPx,
+                                const std::vector<std::pair<int, int>>& pixels, double radiusMm,
+                                bool erase);
 ServiceResult clearDetail(DocumentSession& session);
+
+// Bornes du rayon du pinceau de détail (mm).
+inline constexpr double kMinDetailRadiusMm = 0.2;
+inline constexpr double kMaxDetailRadiusMm = 50.0;
+
+// Masque de détail utilisable avec une image de `width` x `height` : le masque du projet, ou
+// nullptr s'il est absent, vide de détail ou d'une autre taille (image recadrée depuis). Le
+// pointeur vit autant que `source`.
+[[nodiscard]] const segmentation::DetailMask* usableDetailMask(const document::ImageSource& source,
+                                                               int width, int height);
 // Valeur du masque (0..255) sous un point ; 0 si pas de masque ou hors image.
 [[nodiscard]] int detailWeightAt(const document::Project& project, const image::Image& processed,
                                  double xScreenMm, double yScreenMm);
