@@ -127,3 +127,7 @@ un fond, bordure 12 %). Options bornees par le controleur, liste fermee pour le 
 Mesure : Impossibke.osp, 131 829 brins, 3840 x 2676 px, 256 spp, vue de dessus, coton noir en
 6,2 s (cuda_ad_rgb) ; en 4K UHD 3840 x 2160 (`--height-px 2160`) en 5,0 s : capture
 `captures/raytrace-impossibke-4k-coton-noir.png`.
+
+8K (7680 x 4320, 256 spp) : le script decoupe en passes de graines fixes au-dela de ~2^30
+echantillons par appel (limite Mitsuba) ; Impossibke sur toile kaki en 19,2 s :
+`captures/raytrace-impossibke-8k-coton-kaki.png` (52 Mo).

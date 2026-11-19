@@ -259,7 +259,17 @@ def main() -> int:
                 },
             }
         loaded = mi.load_dict(scene)
-        image = mi.render(loaded)
+        # Mitsuba lance au plus ~2^32 échantillons par appel : au-delà (8K, beaucoup de spp), on
+        # découpe en passes de graines fixes et on moyenne (résultat reproductible).
+        budget = 1 << 30
+        passes = max(1, math.ceil(width * height * args.spp / budget))
+        spp_pass = max(1, math.ceil(args.spp / passes))
+        image = None
+        for seed in range(passes):
+            part = mi.render(loaded, spp=spp_pass, seed=seed)
+            image = part if image is None else image + part
+        if passes > 1:
+            image = image / passes
         mi.util.write_bitmap(args.output, image)
     elapsed = time.perf_counter() - t0
     print(f"Rendu Mitsuba ({variant}) : {args.output} ({width} x {height} px, {args.spp} spp, "
