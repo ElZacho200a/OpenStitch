@@ -324,6 +324,17 @@ if(TARGET openstitch::studio_ui)
                 ENVIRONMENT "OPENSTITCH_RHI_TEST=1;QT_QPA_PLATFORM=windows;QSG_RHI_BACKEND=d3d11;QSG_RHI_PREFER_SOFTWARE_RENDERER=1;QT_QUICK_CONTROLS_STYLE=Basic;QML_IMPORT_PATH=${studio_realistic_qml_imports};QT_QPA_FONTDIR=${PROJECT_SOURCE_DIR}/resources/fonts"
                 ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
                 WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
+            # Même scénario avec le shader de fil (RENDER-PBR-01) : couverture comparée au CPU.
+            find_package(Qt6 6.8 COMPONENTS ShaderTools QUIET)
+            if(TARGET Qt6::ShaderTools)
+                add_test(NAME test_desktop_v2_studio_realistic_gpu_shader
+                    COMMAND test_desktop_v2_studio_realistic
+                        gpuPathBuildsOncePerRevisionAndMatchesCpuReference -o -,txt)
+                set_tests_properties(test_desktop_v2_studio_realistic_gpu_shader PROPERTIES
+                    ENVIRONMENT "OPENSTITCH_THREAD_SHADER=1;OPENSTITCH_RHI_TEST=1;QT_QPA_PLATFORM=windows;QSG_RHI_BACKEND=d3d11;QSG_RHI_PREFER_SOFTWARE_RENDERER=1;QT_QUICK_CONTROLS_STYLE=Basic;QML_IMPORT_PATH=${studio_realistic_qml_imports};QT_QPA_FONTDIR=${PROJECT_SOURCE_DIR}/resources/fonts"
+                    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
+                    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
+            endif()
         endif()
     endif()
 endif()

@@ -65,6 +65,17 @@ target_link_libraries(openstitch_studio_ui PUBLIC openstitch::desktop_v2_core
     # QZipReader / QZipWriter (theme_controller.cpp) : import et export des archives de thèmes.
     Qt6::CorePrivate)
 
+# RENDER-PBR-01 : shader de fil du rendu réaliste (opt-in OPENSTITCH_THREAD_SHADER=1). Sans le
+# module qtshadertools, le Studio garde les matériaux de texture standard (aucun chemin perdu).
+find_package(Qt6 6.8 COMPONENTS ShaderTools QUIET)
+if(TARGET Qt6::ShaderTools)
+    qt_add_shaders(openstitch_studio_ui "studio_thread_shaders"
+        PREFIX "/studio"
+        BATCHABLE
+        FILES shaders/thread.vert shaders/thread.frag)
+    target_compile_definitions(openstitch_studio_ui PRIVATE OPENSTITCH_HAS_THREAD_SHADER=1)
+endif()
+
 # BUILD-OPT-01.3 : QML externe + rechargement a chaud (Studio Dev). Opt-in, OFF par defaut ; meme
 # active, jamais compile pour une config Release (garde-fou aussi dans qml_dev_loader.cpp) et
 # il faut en plus OPENSTITCH_DEV_QML=1 a l'execution. Les ressources embarquees restent inchangees.

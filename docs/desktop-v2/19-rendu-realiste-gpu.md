@@ -16,8 +16,10 @@ Vue seule : le calque realiste ne modifie jamais le document ni les points. Le m
 - Selection du chemin : backend RHI -> GPU ; backend logiciel -> raster CPU de reference.
 - UI : bouton Realiste (barre), section dans le panneau Vue, Ctrl+Shift+T, indicateur d'etat.
 
-## Pas de shaders personnalises
-Ni Qt local ni la CI n'ont qsb/Qt6ShaderTools : materiaux Qt standard + textures generees.
+## Shader de fil (opt-in)
+Avec le module qtshadertools, `shaders/thread.{vert,frag}` (BATCHABLE) remplacent le materiau de
+texture du fil quand `OPENSTITCH_THREAD_SHADER=1`. Sans le module, ou sans la variable : materiaux
+Qt standard + textures generees (chemin par defaut inchange).
 
 ## Limites
 Ombre entre fils d'un meme run absente ; torsion a pas constant mais quantifiee (1 a 8 periodes) ; bouts
@@ -66,3 +68,19 @@ tuile de luminance. A mesurer sur 10k / 100k segments en Release (`openstitch-st
   (fils = tubes de rayon largeur/2 suivant les points) vers un moteur de rendu progressif externe
   (ex. Blender Cycles, Apache-2.0 compatible via processus separe, aucun lien de code). POC a faire
   sur un echantillon reduit apres le lot A, decision finale apres comparaison au PBR.
+
+### Shader de fil - MVP (19/11/2026)
+`ThreadShaderMaterial` (canvas_renderer.cpp), active par `OPENSTITCH_THREAD_SHADER=1`, chemin RHI
+seulement. Meme geometrie et memes (u, v) que l'atlas : le fragment retrouve la cellule
+d'orientation, l'abscisse en travers, la rangee de torsion et l'abscisse le long, puis calcule
+cylindre + speculaire anisotrope Kajiya-Kay a deux lobes (tangente inclinee par l'helice des
+brins), torsion a pas constant, variation de brin deterministe, contact assombri aux bouts.
+Ombre et tissu : materiaux standard. Uniformes std140 : matrice, couleur, (relief, brillance,
+torsion), opacite.
+Verification : variante CTest `test_desktop_v2_studio_realistic_gpu_shader` (WARP, poste local) ;
+le test echoue desormais sur tout avertissement « shader » ou « pipeline » (sans `BATCHABLE`, le
+pipeline echouait silencieusement et le test passait quand meme).
+Mesure (scene de test minuscule, Debug, WARP) : aire d'encre 12,3 mm2 contre 20,0 pour les textures
+et 34,7 pour la reference CPU ; couleurs plus vives. Limites : pas d'anticrenelage analytique
+(fils fins a petite echelle plus minces et un peu pointilles), orientation quantifiee a 16
+directions (heritee de l'encodage u), pas de comparaison photo, pas de mesure Release.

@@ -411,6 +411,10 @@ void StudioRealisticTest::gpuPathBuildsOncePerRevisionAndMatchesCpuReference() {
         QSKIP("RHI test not requested (set OPENSTITCH_RHI_TEST=1 with QSG_RHI_BACKEND=d3d11 and "
               "QSG_RHI_PREFER_SOFTWARE_RENDERER=1)");
     }
+    // Un shader qui ne se charge pas ne dessine rien sans faire échouer la couverture : tout
+    // avertissement de pipeline ou de shader fait échouer le test.
+    QTest::failOnWarning(QRegularExpression(QStringLiteral("shader|pipeline"),
+                                            QRegularExpression::CaseInsensitiveOption));
     QQuickWindow window;
     window.resize(480, 320);
     Rig rig;
