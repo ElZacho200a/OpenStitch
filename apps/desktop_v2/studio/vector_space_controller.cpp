@@ -442,7 +442,8 @@ bool VectorSpaceController::selectOriginRegion() {
 }
 
 void VectorSpaceController::setPrecisionMm(double mm) {
-    const double clamped = std::clamp(mm, 0.02, 2.0);
+    const double clamped =
+        std::clamp(mm, project_ops::kPrecisionMinMm, project_ops::kPrecisionMaxMm);
     if (clamped != precisionMm_) {
         precisionMm_ = clamped;
         emit optionsChanged();
@@ -457,7 +458,8 @@ void VectorSpaceController::setCurves(bool on) {
 }
 
 void VectorSpaceController::setCurveTolerancePx(double px) {
-    const double clamped = std::clamp(px, 0.5, 10.0);
+    const double clamped =
+        std::clamp(px, project_ops::kCurveToleranceMinPx, project_ops::kCurveToleranceMaxPx);
     if (clamped != curveTolerancePx_) {
         curveTolerancePx_ = clamped;
         emit optionsChanged();
