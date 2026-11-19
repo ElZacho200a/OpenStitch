@@ -2227,7 +2227,7 @@ std::vector<double> row_thresholds(const std::vector<Traced>& traced, const Spac
         for (const P2 p : traced[li].pts) {
             sum = sum + p;
         }
-        const double n = std::max<std::size_t>(1, traced[li].pts.size());
+        const double n = static_cast<double>(std::max<std::size_t>(1, traced[li].pts.size()));
         keys.push_back({dot(sum * (1.0 / n), unit), li});
     }
     std::sort(keys.begin(), keys.end());

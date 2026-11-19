@@ -166,14 +166,15 @@ struct Rig {
     // Position (coordonnées fenêtre) du pixel (px, py) de l'image de travail.
     QPointF windowPos(int px, int py) const {
         auto* area = named("segmentationPickArea");
-        const auto view = canvas()->viewState();
+        const auto viewState = canvas()->viewState();
         const double mm = session.project().mm_per_px.value;
         const auto& seg = *session.project().segmentation;
         const double sx = (px + 0.5 - seg.width / 2.0) * mm;
         const double sy = (py + 0.5 - seg.height / 2.0) * mm;
-        const double zoom = view.value("zoom").toDouble();
-        const QPointF item(area->width() / 2.0 + (sx - view.value("centerX").toDouble()) * zoom,
-                           area->height() / 2.0 + (sy - view.value("centerY").toDouble()) * zoom);
+        const double zoom = viewState.value("zoom").toDouble();
+        const QPointF item(
+            area->width() / 2.0 + (sx - viewState.value("centerX").toDouble()) * zoom,
+            area->height() / 2.0 + (sy - viewState.value("centerY").toDouble()) * zoom);
         return area->mapToScene(item);
     }
 };
