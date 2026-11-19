@@ -4,6 +4,7 @@
 
 #include "arrange_batch.hpp"
 #include "document_session.hpp"
+#include "edit_batch.hpp"
 #include "openstitch/commands/placement_ops.hpp"
 #include "openstitch/project_ops/factory.hpp"
 #include "shape_batch.hpp"
@@ -142,4 +143,17 @@ TEST_CASE("numeric placement moves, resizes and rotates with limits", "[desktop_
     PlaceRequest tiny;
     tiny.widthMm = 0.0;
     CHECK(batchPlace({id}, tiny).empty());
+}
+
+TEST_CASE("decoupe au couteau ne touche pas la segmentation") {
+    auto s = threeRects();
+    const auto ids = idsOf(s);
+    REQUIRE_FALSE(ids.empty());
+    const std::vector<PointMm> path{{-27, -50}, {-27, 50}};
+    const auto batch = batchSplitPath({ids.front()}, path);
+    REQUIRE_FALSE(batch.empty());
+    const auto result = s.applyBatch(batch, "Decouper");
+    REQUIRE(result.committed);
+    CHECK(s.lastChangeAffectsEmbroidery());
+    CHECK_FALSE(s.lastChangeAffectsSegmentation());
 }

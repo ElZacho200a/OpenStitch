@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "segmentation_space_controller.hpp"
 
+#include "perf_log.hpp"
+
 #include <algorithm>
 
 #include "gpu_canvas.hpp"
@@ -175,6 +177,7 @@ void SegmentationSpaceController::computeStage() {
 }
 
 void SegmentationSpaceController::refresh() {
+    const PerfScope perf("segmentation.refresh");
     const auto& session = studio_.session();
     const auto& project = session.project();
     bool fillChanged = false;
