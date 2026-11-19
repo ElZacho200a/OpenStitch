@@ -30,6 +30,7 @@ class VectorSpaceController : public QObject {
     // courbes de Bézier avec un écart maximal en pixels. Appliquée à updateFromSegmentation().
     Q_PROPERTY(double precisionMm READ precisionMm WRITE setPrecisionMm NOTIFY optionsChanged)
     Q_PROPERTY(bool curves READ curves WRITE setCurves NOTIFY optionsChanged)
+    Q_PROPERTY(bool adaptive READ adaptive WRITE setAdaptive NOTIFY optionsChanged)
     Q_PROPERTY(double curveTolerancePx READ curveTolerancePx WRITE setCurveTolerancePx NOTIFY
                    optionsChanged)
     Q_PROPERTY(int layerBuildCount READ layerBuildCount NOTIFY layerChanged)
@@ -101,9 +102,11 @@ public:
 public:
     [[nodiscard]] double precisionMm() const { return precisionMm_; }
     [[nodiscard]] bool curves() const { return curves_; }
+    [[nodiscard]] bool adaptive() const { return adaptive_; }
     [[nodiscard]] double curveTolerancePx() const { return curveTolerancePx_; }
     void setPrecisionMm(double mm);
     void setCurves(bool on);
+    void setAdaptive(bool on);
     void setCurveTolerancePx(double px);
 
 signals:
@@ -121,6 +124,7 @@ private:
     void say(const QString& text);
     double precisionMm_{0.2};
     bool curves_{false};
+    bool adaptive_{false}; // VEC-ADAPT-01 lot B : jamais activé sans geste de l'utilisateur
     double curveTolerancePx_{1.5};
 
     StudioController& studio_;

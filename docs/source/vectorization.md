@@ -183,6 +183,34 @@ les valeurs maximales sont donc peu fiables quand le nombre de morceaux diffère
 Conséquence pour le lot B : une tolérance par région doit descendre vers ~0,5 px sur les petites
 formes, pas au-delà, et la reconstruction de pétales (lot D) reste la seule voie sous le pixel.
 
+## Précision intelligente (VEC-ADAPT-01, lot B)
+
+Case « Précision intelligente » du panneau Vecteurs, argument `adaptive` de
+`vectorize_segmentation`, `vectorization::AdaptiveTolerance` dans le moteur. **Désactivée par
+défaut** : sans geste de l'utilisateur, aucune forme ne change (testé octet pour octet).
+
+Par région : taille caractéristique = min(rayon équivalent √(aire/π), 2 × rayon inscrit), en
+pixels (le rayon inscrit vient de la transformée de distance du masque : une pointe fine compte
+comme petite même si son aire est grande). Facteur = clamp(taille / 30 px, 1/3, 1), combiné au
+facteur des zones de détail (minimum), appliqué aux tolérances polygone et courbes. Avec 1,5 px
+de base, une fleur de quelques millimètres descend à 0,5 px, le palier utile mesuré ci-dessus ;
+les grandes formes (taille ≥ 30 px) restent identiques. Le plancher de 0,1 mm du polygone reste
+en vigueur.
+
+Banc, MonetGasque (341 régions, Debug) :
+
+| Réglage | Nœuds | Nœuds petites | Écart moyen | Écart d'aire | Temps |
+|---|---:|---:|---:|---:|---:|
+| Bézier 1,5 px | 6 181 | 1 355 | 215 µm | 5,6 % | 0,6 s |
+| Bézier 0,5 px global | 18 610 | 3 268 | 175 µm | 2,7 % | 1,9 s |
+| **Bézier auto (base 1,5 px)** | **8 411** | 2 823 | **163 µm** | 2,8 % | 0,7 s |
+| Polygone 0,2 mm | 9 077 | 2 008 | — | 5,2 % | 76 ms |
+| **Polygone auto (base 0,2 mm)** | **12 112** | 3 826 | — | 1,2 % | 75 ms |
+
+Le mode auto atteint la fidélité du réglage global à 0,5 px avec 45 % de ses nœuds : les nœuds
+supplémentaires vont aux petites formes. Non fait : tolérance appliquée visible dans l'inspecteur,
+surcharge par région, adaptation par tronçon (lot C), effet sur les points et essai textile.
+
 ## Robustesse
 
 La correction de la tolérance de simplification (adaptative) évite un défaut

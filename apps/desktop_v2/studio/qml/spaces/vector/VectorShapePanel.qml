@@ -68,6 +68,15 @@ ColumnLayout {
             onEditingFinished: { const v = Number(text.replace(",", ".")); if (isFinite(v)) panel.stage.precisionMm = v; else text = panel.stage.precisionMm.toFixed(2) }
         }
     }
+    // Précision intelligente (VEC-ADAPT-01, lot B) : désactivée par défaut, jamais activée seule.
+    StudioCheckBox {
+        objectName: "vectorAdaptiveBox"
+        text: qsTr("Précision intelligente (petites formes plus fidèles)")
+        checked: panel.stage ? panel.stage.adaptive : false
+        onToggled: panel.stage.adaptive = checked
+        palette.windowText: Theme.foreground
+        Accessible.description: qsTr("Réduit la tolérance jusqu'au tiers sur les petites formes et les formes fines ; les grandes formes ne changent pas")
+    }
     StudioCheckBox {
         objectName: "vectorCurvesBox"
         text: qsTr("Courbes de Bézier (moins de nœuds)")

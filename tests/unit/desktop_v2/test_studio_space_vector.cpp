@@ -643,6 +643,15 @@ private slots:
         rig.stage.setPrecisionMm(0.0);
         QCOMPARE(rig.stage.precisionMm(), 0.01);
         rig.stage.setPrecisionMm(0.2);
+        // Précision intelligente : désactivée par défaut, case câblée sur le contrôleur.
+        QVERIFY(!rig.stage.adaptive());
+        auto* adaptiveBox =
+            deepItem(rig.window->contentItem(), QStringLiteral("vectorAdaptiveBox"));
+        QVERIFY(adaptiveBox);
+        QVERIFY(QMetaObject::invokeMethod(adaptiveBox, "click"));
+        QVERIFY(rig.stage.adaptive());
+        rig.stage.setAdaptive(false);
+        QVERIFY(!rig.stage.adaptive());
 
         auto* slider = deepItem(rig.window->contentItem(), QStringLiteral("vectorPrecisionSlider"));
         auto* box = deepItem(rig.window->contentItem(), QStringLiteral("vectorCurvesBox"));

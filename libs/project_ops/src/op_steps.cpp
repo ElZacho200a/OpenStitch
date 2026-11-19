@@ -48,7 +48,8 @@ RevectorizePlan revectorize(const document::Project& project, const RevectorizeO
             opt.curves ? Micrometers{static_cast<std::int32_t>(
                              std::lround(opt.curve_tolerance_px * source.mm_per_px.value * 1000.0))}
                        : Micrometers{0},
-        .detail_mask = &source.detail_mask};
+        .detail_mask = &source.detail_mask,
+        .adaptive = {.enabled = opt.adaptive}};
     const auto results = vectorization::vectorize_regions(*source.segmentation, ids, options);
     for (std::size_t i = 0; i < ids.size(); ++i) {
         if (!results[i]) {
@@ -304,6 +305,12 @@ OpStatus op_vectorize_segmentation(OpContext& ctx) {
         }
         options.curves = it->get<bool>();
     }
+    if (const auto it = ctx.args.find("adaptive"); it != ctx.args.end() && !it->is_null()) {
+        if (!it->is_boolean()) {
+            return OpStatus::failure(code::kUsage, "argument « adaptive » : booléen attendu");
+        }
+        options.adaptive = it->get<bool>();
+    }
     bool prune = false;
     if (const auto it = ctx.args.find("prune_orphans"); it != ctx.args.end() && !it->is_null()) {
         if (!it->is_boolean()) {
@@ -454,6 +461,10 @@ void register_step_ops(std::vector<OpSpec>& out) {
          {"curves", "boolean", "", "ajuster des courbes (défaut faux)", false, ""},
          {"curve_tolerance_px", "number", "px", "tolérance des courbes (défaut 1,5)", false,
           "[0.1 ; 10]"},
+         {"adaptive", "boolean", "",
+          "précision intelligente : tolérances réduites (jusqu'à /3) sur les petites formes et "
+          "les formes fines, inchangées sur les grandes (défaut faux)",
+          false, ""},
          {"prune_orphans", "boolean", "",
           "retire aussi les formes dont la région a disparu et leurs objets de broderie (après "
           "une nouvelle segmentation ; verrouillés gardés ; défaut faux)",

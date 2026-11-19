@@ -37,10 +37,11 @@ const document::EmbroideryObject* embroideryOf(const document::Project& project,
 
 // Revectorisation partagée avec l'opération `vectorize_segmentation` (project_ops).
 project_ops::RevectorizePlan revectorize(const document::Project& project, double simplifyMm,
-                                         bool curves, double curveTolerancePx) {
-    return project_ops::revectorize(
-        project,
-        {.precision_mm = simplifyMm, .curves = curves, .curve_tolerance_px = curveTolerancePx});
+                                         bool curves, double curveTolerancePx, bool adaptive) {
+    return project_ops::revectorize(project, {.precision_mm = simplifyMm,
+                                              .curves = curves,
+                                              .curve_tolerance_px = curveTolerancePx,
+                                              .adaptive = adaptive});
 }
 
 // One key per vector in painter order. semantic_geometry_fingerprint is translation
@@ -457,6 +458,13 @@ void VectorSpaceController::setCurves(bool on) {
     }
 }
 
+void VectorSpaceController::setAdaptive(bool on) {
+    if (on != adaptive_) {
+        adaptive_ = on;
+        emit optionsChanged();
+    }
+}
+
 void VectorSpaceController::setCurveTolerancePx(double px) {
     const double clamped =
         std::clamp(px, project_ops::kCurveToleranceMinPx, project_ops::kCurveToleranceMaxPx);
@@ -467,8 +475,8 @@ void VectorSpaceController::setCurveTolerancePx(double px) {
 }
 
 QVariantMap VectorSpaceController::updatePlan() const {
-    const auto fresh =
-        revectorize(studio_.session().project(), precisionMm_, curves_, curveTolerancePx_);
+    const auto fresh = revectorize(studio_.session().project(), precisionMm_, curves_,
+                                   curveTolerancePx_, adaptive_);
     return {{QStringLiteral("replace"), static_cast<int>(fresh.replace.size())},
             {QStringLiteral("add"), static_cast<int>(fresh.add.size())},
             {QStringLiteral("keep"), fresh.keep},
@@ -481,7 +489,8 @@ bool VectorSpaceController::updateFromSegmentation() {
         say(tr("Aucune segmentation : rien à vectoriser."));
         return false;
     }
-    auto fresh = revectorize(session.project(), precisionMm_, curves_, curveTolerancePx_);
+    auto fresh =
+        revectorize(session.project(), precisionMm_, curves_, curveTolerancePx_, adaptive_);
     if (fresh.replace.empty() && fresh.add.empty()) {
         say(tr("Les formes suivent déjà la segmentation."));
         return false;
@@ -538,6 +547,7 @@ bool VectorSpaceController::updateAllLayersFromSegmentation() {
             project_ops::revectorize(session.project(), {.precision_mm = precisionMm_,
                                                          .curves = curves_,
                                                          .curve_tolerance_px = curveTolerancePx_,
+                                                         .adaptive = adaptive_,
                                                          .image_source = source});
         replaced += fresh.replace.size();
         added += fresh.add.size();

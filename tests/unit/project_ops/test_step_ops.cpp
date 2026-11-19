@@ -112,6 +112,8 @@ TEST_CASE("step ops: vectorize_segmentation fine tolerance bounds", "[project_op
             .ok);
     CHECK(run(project, R"({"op":"vectorize_segmentation","precision_mm":0.01})").ok);
     CHECK_FALSE(run(project, R"({"op":"vectorize_segmentation","precision_mm":0.005})").ok);
+    CHECK(run(project, R"({"op":"vectorize_segmentation","curves":true,"adaptive":true})").ok);
+    CHECK_FALSE(run(project, R"({"op":"vectorize_segmentation","adaptive":"oui"})").ok);
     CHECK(project_ops::kCurveToleranceMinPx == 0.1);
     CHECK(project_ops::kPrecisionMinMm == 0.01);
 }

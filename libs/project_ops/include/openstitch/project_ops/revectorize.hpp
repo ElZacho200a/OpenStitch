@@ -25,6 +25,9 @@ struct RevectorizeOptions {
     double precision_mm{0.2};       // tolérance de simplification des contours
     bool curves{false};             // ajuster des courbes de Bézier
     double curve_tolerance_px{1.5}; // tolérance de l'ajustement, en pixels de l'image
+    // Précision intelligente (VEC-ADAPT-01, lot B) : tolérances réduites sur les petites formes et
+    // les formes fines (`vectorization::AdaptiveTolerance`). Désactivée : résultat inchangé.
+    bool adaptive{false};
     // Calque image à revectoriser ; absent = l'image active (identifiant invalide = l'original).
     std::optional<ObjectId> image_source{};
 };

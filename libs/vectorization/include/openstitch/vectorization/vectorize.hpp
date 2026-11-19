@@ -13,6 +13,23 @@
 
 namespace openstitch::vectorization {
 
+// Précision intelligente (VEC-ADAPT-01, lot B) : tolérances réduites sur les petites formes et
+// les formes fines, inchangées sur les grandes. Taille caractéristique (pixels) =
+// min(rayon équivalent sqrt(aire/pi), 2 x rayon inscrit) ; facteur =
+// clamp(taille / reference_px, min_factor, 1), combiné (minimum) avec celui des zones de détail.
+// Défauts calés sur le banc `[.vec_adapt_bench]` : avec 1,5 px de base, une fleur de quelques
+// millimètres descend à 0,5 px, palier au-delà duquel l'escalier des pixels n'apporte plus rien.
+struct AdaptiveTolerance {
+    bool enabled{false}; // désactivé : résultat strictement inchangé
+    double reference_px{30.0};
+    double min_factor{1.0 / 3.0};
+};
+
+// Facteur multiplicatif de tolérance pour une région (1 si désactivé ou entrée vide). Pur et
+// déterministe ; exposé pour les tests et le diagnostic.
+[[nodiscard]] double adaptive_tolerance_factor(double area_px, double inscribed_radius_px,
+                                               const AdaptiveTolerance& adaptive);
+
 struct VectorizeOptions {
     Millimeters mm_per_px{25.4 / 96.0};  // résolution de travail de l'image
     Micrometers simplify_tolerance{200}; // 0,2 mm : sous le pas machine (0,1 mm) x2
@@ -29,6 +46,7 @@ struct VectorizeOptions {
     // résultat inchangé.
     const segmentation::DetailMask* detail_mask{nullptr};
     double detail_tolerance_factor{0.5};
+    AdaptiveTolerance adaptive{};
 };
 
 // Index des pixels de chaque région, construit en UNE passe sur `labels` (tri par comptage ;

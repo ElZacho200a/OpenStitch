@@ -157,6 +157,10 @@ void report(const char* corpus, const document::Project& project) {
         settings.push_back({"bezier " + std::to_string(px).substr(0, 4) + " px",
                             {.precision_mm = 0.2, .curves = true, .curve_tolerance_px = px}});
     }
+    settings.push_back({"poly auto 0.2", {.precision_mm = 0.2, .curves = false, .adaptive = true}});
+    settings.push_back(
+        {"bezier auto 1.5",
+         {.precision_mm = 0.2, .curves = true, .curve_tolerance_px = 1.5, .adaptive = true}});
     const auto reference = run(project, {.precision_mm = 0.01, .curves = false});
 
     std::printf("\n== %s : %zu regions, %.4f mm/px ==\n", corpus, reference.by_region.size(),

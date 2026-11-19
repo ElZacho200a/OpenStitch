@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numbers>
 
 #include "openstitch/geometry/boolean.hpp"
 #include "openstitch/geometry/clean.hpp"
@@ -177,7 +178,16 @@ Result<std::vector<geometry::PathSet>> vectorize_impl(const segmentation::Segmen
     // Région « de détail » : tolérances réduites (le plancher de 0,1 mm = pas machine reste
     // respecté pour le polygone ; 1 µm pour les courbes).
     const bool isDetail = useDetail && regionPixels > 0 && detailSum >= 128ULL * regionPixels;
-    const double factor = isDetail ? std::clamp(options.detail_tolerance_factor, 0.05, 1.0) : 1.0;
+    double factor = isDetail ? std::clamp(options.detail_tolerance_factor, 0.05, 1.0) : 1.0;
+    if (options.adaptive.enabled) {
+        // Rayon inscrit : maximum de la transformée de distance (masque bordé de zéros).
+        cv::Mat dist;
+        cv::distanceTransform(mask, dist, cv::DIST_L2, cv::DIST_MASK_PRECISE);
+        double inscribed = 0.0;
+        cv::minMaxLoc(dist, nullptr, &inscribed);
+        const double area = static_cast<double>(cv::countNonZero(mask));
+        factor = std::min(factor, adaptive_tolerance_factor(area, inscribed, options.adaptive));
+    }
     const double simplifyTol =
         std::max(std::min(100.0, static_cast<double>(options.simplify_tolerance.value)),
                  static_cast<double>(options.simplify_tolerance.value) * factor);
@@ -268,6 +278,17 @@ Result<std::vector<geometry::PathSet>> vectorize_impl(const segmentation::Segmen
 }
 
 } // namespace
+
+double adaptive_tolerance_factor(double area_px, double inscribed_radius_px,
+                                 const AdaptiveTolerance& adaptive) {
+    if (!adaptive.enabled || area_px <= 0.0 || adaptive.reference_px <= 0.0) {
+        return 1.0;
+    }
+    const double equivalent = std::sqrt(area_px / std::numbers::pi);
+    const double size = std::min(equivalent, 2.0 * std::max(0.0, inscribed_radius_px));
+    const double floor = std::clamp(adaptive.min_factor, 0.05, 1.0);
+    return std::clamp(size / adaptive.reference_px, floor, 1.0);
+}
 
 RegionPixelIndex::RegionPixelIndex(const segmentation::Segmentation& seg)
     : width_(seg.width), height_(seg.height), labelCount_(seg.labels.size()) {

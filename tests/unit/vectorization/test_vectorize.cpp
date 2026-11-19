@@ -439,3 +439,50 @@ TEST_CASE("zones de detail : masque de mauvaise taille ignore") {
     REQUIRE((base.has_value() && ignored.has_value()));
     CHECK(node_count(*ignored) == node_count(*base));
 }
+
+// VEC-ADAPT-01 lot B : précision intelligente.
+TEST_CASE("precision intelligente : facteur selon la taille caracteristique") {
+    const AdaptiveTolerance on{.enabled = true};
+    const double pi = 3.14159265358979323846;
+    CHECK(adaptive_tolerance_factor(pi * 100.0 * 100.0, 100.0, {}) == 1.0); // désactivée
+    CHECK(adaptive_tolerance_factor(pi * 100.0 * 100.0, 100.0, on) == 1.0); // grande forme
+    CHECK(adaptive_tolerance_factor(pi * 15.0 * 15.0, 15.0, on) == Catch::Approx(0.5));
+    CHECK(adaptive_tolerance_factor(pi * 3.0 * 3.0, 3.0, on) ==
+          Catch::Approx(1.0 / 3.0)); // plancher
+    // Grande aire mais forme fine (rayon inscrit 4 px) : traitée comme petite.
+    CHECK(adaptive_tolerance_factor(20'000.0, 4.0, on) == Catch::Approx(1.0 / 3.0));
+    CHECK(adaptive_tolerance_factor(0.0, 0.0, on) == 1.0);
+}
+
+TEST_CASE("precision intelligente : petite forme plus fidele, grande forme inchangee") {
+    for (const bool curves : {false, true}) {
+        CAPTURE(curves);
+        VectorizeOptions options{.mm_per_px = Millimeters{0.25},
+                                 .simplify_tolerance = Micrometers{400},
+                                 .curve_tolerance = Micrometers{curves ? 375 : 0}};
+        VectorizeOptions adaptive = options;
+        adaptive.adaptive.enabled = true;
+
+        const auto small =
+            segmentation::segment(disc_image(100, 12, 0), {.max_colors = 2, .min_region_px = 1});
+        REQUIRE(small.has_value());
+        const auto red = segmentation::region_at(*small, 50, 50);
+        REQUIRE(red.has_value());
+        const auto base = vectorize_region(*small, *red, options);
+        const auto fine = vectorize_region(*small, *red, adaptive);
+        REQUIRE((base.has_value() && fine.has_value()));
+        CHECK(node_count(*fine) > node_count(*base));
+        // Déterminisme : même entrée, même sortie.
+        CHECK(*fine == *vectorize_region(*small, *red, adaptive));
+
+        const auto large =
+            segmentation::segment(disc_image(240, 100, 0), {.max_colors = 2, .min_region_px = 1});
+        REQUIRE(large.has_value());
+        const auto big = segmentation::region_at(*large, 120, 120);
+        REQUIRE(big.has_value());
+        const auto bigBase = vectorize_region(*large, *big, options);
+        const auto bigAdaptive = vectorize_region(*large, *big, adaptive);
+        REQUIRE((bigBase.has_value() && bigAdaptive.has_value()));
+        CHECK(*bigAdaptive == *bigBase);
+    }
+}
