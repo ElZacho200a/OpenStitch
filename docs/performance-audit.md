@@ -870,6 +870,7 @@ jointures lisent la fin de la séquence déjà assemblée, `sequence.commands.ba
 
 **Pistes restantes** (non faites) : plancher à chaud ~4 ms = copies de 60 000 commandes
 (assemblage, trois passes de finition) ; gain à mesurer avant de toucher.
+
 **Suite : satins routés et auto-satin (HP-PERF-002.b).** `generate_satin`, `generate_auto_satin`
 et `generate_satin_group` ne lisent de la séquence déjà émise que sa **dernière commande**
 (position, type) ; tout le reste est dans l'identifiant, les paramètres et, pour l'auto-satin, la
