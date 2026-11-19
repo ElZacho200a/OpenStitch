@@ -1,0 +1,13 @@
+{
+  "schema": "openstitch-theme",
+  "schemaVersion": 1,
+  "id": "marin",
+  "name": "Marin",
+  "description": "Thème nautique. « Nuit en mer » (sombre) : bleu marine, laiton doré et rouge de balise sur fond de vagues. « Grand large » (clair) : blanc voile, marine et rayures de marinière. Formes nettes, mouvements houleux.",
+  "author": "OpenStitch",
+  "version": "1.0.0",
+  "license": "Apache-2.0",
+  "compatibility": { "minEngine": 1 },
+  "variants": ["dark", "light"],
+  "defaultVariant": "dark"
+}

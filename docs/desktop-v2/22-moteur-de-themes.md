@@ -2,6 +2,8 @@
 
 > Statut : livré (format 1, moteur niveau 1). Studio Qt Quick (`apps/desktop_v2/studio`).
 > Thèmes livrés : **Neo Studio** (défaut, sombre et clair), **Neo Cobalt** (exemple d'héritage),
+> **Bubblegum** (thème expérimental, test de résistance), **Marin** (nautique, deux variantes :
+> palette dans `custom.*` par variante, `components.json` en simples renvois).
 > **Bubblegum** (thème expérimental, test de résistance), **Abysse** (sombre seulement : halo
 > bioluminescent obtenu par une ombre colorée sans décalage, `shadowOffset: 0`).
 

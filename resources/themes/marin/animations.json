@@ -1,0 +1,13 @@
+{
+  "$comment": "Mouvements « houle » : courbes sinusoïdales, un peu plus longues que Neo Studio. Tout tombe à 0 avec « Réduire les animations ».",
+  "motion": {
+    "durationMs": 180,
+    "fastMs": 110,
+    "slowMs": 260,
+    "easing": "InOutSine",
+    "easingEmphasis": "OutQuad",
+    "pressScale": 0.97,
+    "hoverLift": 1,
+    "popupScale": 0.96
+  }
+}
