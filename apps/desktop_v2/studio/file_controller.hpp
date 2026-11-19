@@ -102,7 +102,12 @@ public:
     Q_INVOKABLE [[nodiscard]] QVariantMap exportOptions() const;
     // Applique les réglages d'export au document (UNE commande annulable) ; "" ou refus lisible.
     Q_INVOKABLE QString setExportOptions(const QVariantMap& values);
-    Q_INVOKABLE [[nodiscard]] QString exportCheck(const QString& formatExtension) const;
+    // Vérification des limites (cadre, machine, format) : elle génère les points, donc elle tourne
+    // sur un worker. `requestExportCheck` la lance ; `exportCheckText` publie le résultat (vide
+    // tant qu'aucun calcul n'a abouti, « Vérification… » pendant le calcul).
+    Q_PROPERTY(QString exportCheckText READ exportCheckText NOTIFY exportCheckChanged)
+    Q_INVOKABLE void requestExportCheck(const QString& formatExtension);
+    [[nodiscard]] QString exportCheckText() const { return exportCheckText_; }
     Q_INVOKABLE void exportMachine(const QUrl& url, const QVariantMap& options = {});
     // Explicit acknowledgement is required when the design exceeds a hoop/machine limit.
     Q_INVOKABLE void confirmMachineExport(bool proceed);
@@ -144,6 +149,7 @@ signals:
     void recentChanged();
     void messageChanged();
     void busyChanged();
+    void exportCheckChanged();
     void guardChanged();
     void recoveryChanged();
     void exportChanged();
@@ -196,6 +202,8 @@ private:
     std::optional<std::filesystem::path> pendingExport_;
     std::uint64_t pendingExportRevision_{0};
     std::uint64_t loadGeneration_{0};
+    QString exportCheckText_;
+    std::uint64_t exportCheckGeneration_{0};
     TaskId currentTask_{0};
     // Détruit avant les membres ci-dessus : ses rappels les utilisent.
     TaskManager tasks_;

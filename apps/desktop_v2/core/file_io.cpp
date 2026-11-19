@@ -195,6 +195,13 @@ ServiceResult exportThreadListCsv(const document::Project& project,
     if (!sequence) {
         return {false, "Aucun point généré : " + sequence.error().message};
     }
+    return exportThreadListCsv(project, *sequence, file, rows);
+}
+
+ServiceResult exportThreadListCsv(const document::Project& project,
+                                  const stitch::StitchSequence& sequence_,
+                                  const std::filesystem::path& file, std::size_t* rows) {
+    const auto* sequence = &sequence_;
     if (sequence->commands.empty()) {
         return {false, "Aucun point généré : rien à exporter."};
     }
