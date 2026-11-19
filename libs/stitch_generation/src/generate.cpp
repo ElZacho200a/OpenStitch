@@ -9,6 +9,8 @@
 #include <deque>
 #include <memory>
 #include <numbers>
+#include <optional>
+#include <span>
 #include <variant>
 
 #include "chunk_cache.hpp"
@@ -1224,6 +1226,30 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
         }
         return chunks[index].commands;
     };
+    // HP-PERF-002 (suite) : unité satin / auto-satin routée. Le générateur ne lit de la séquence
+    // précédente que sa dernière commande (position et type) : le résultat est une fonction pure
+    // de (identifiants, paramètres effectifs, géométrie source, dernière commande), clés d'un
+    // cache exact (chunk_cache.hpp). On n'y met que les commandes AJOUTÉES par l'unité ; un hit
+    // les rejoue, un échec génère directement dans `sequence` puis mémorise la plage ajoutée.
+    const auto cachedRouted = [&](std::span<const RoutedMember> members,
+                                  const std::vector<geometry::PathSet>* paths,
+                                  const auto& generate) {
+        std::optional<RoutedTail> tail;
+        if (!sequence.commands.empty()) {
+            tail = RoutedTail{sequence.commands.back().pos, sequence.commands.back().type};
+        }
+        if (const auto hit = routed_cache_find(members, paths, tail)) {
+            sequence.commands.insert(sequence.commands.end(), hit->commands.begin(),
+                                     hit->commands.end());
+            return;
+        }
+        const std::size_t before = sequence.commands.size();
+        generate();
+        auto added = std::make_shared<stitch::StitchSequence>();
+        added->commands.assign(sequence.commands.begin() + static_cast<std::ptrdiff_t>(before),
+                               sequence.commands.end());
+        routed_cache_store(members, paths, tail, std::move(added));
+    };
     const document::EmbroideryObject* previous = nullptr;
     for (std::size_t u = 0; u < units.size(); ++u) {
         if (task.cancelled()) {
@@ -1247,7 +1273,12 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
                 group.push_back(&objects[j]);
             }
             if (group.size() >= 2) {
-                generate_satin_group(sequence, group);
+                std::vector<RoutedMember> members;
+                members.reserve(group.size());
+                for (const auto* member : group) {
+                    members.push_back({member->id, &member->params});
+                }
+                cachedRouted(members, nullptr, [&] { generate_satin_group(sequence, group); });
             } else {
                 document::SatinParams single = std::get<document::SatinParams>(object.params);
                 // Entrée automatique (HP-ENG-010) : même règle que pour les autres colonnes.
@@ -1255,7 +1286,11 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
                     !single.entry_point && !single.exit_point) {
                     single.entry_point = sequence.commands.back().pos;
                 }
-                generate_satin(sequence, object, single);
+                // Clé : paramètres EFFECTIFS (entrée automatique incluse).
+                const document::StitchParams effective{single};
+                const RoutedMember member{object.id, &effective};
+                cachedRouted(std::span<const RoutedMember>(&member, 1), nullptr,
+                             [&] { generate_satin(sequence, object, single); });
             }
             previous = group.back();
             continue;
@@ -1294,21 +1329,25 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
             [&](const auto& params) {
                 using T = std::decay_t<decltype(params)>;
                 if constexpr (std::is_same_v<T, document::SatinParams>) {
+                    T effectiveParams = params;
                     if (previousEnd && !params.entry_point && !params.exit_point) {
-                        document::SatinParams joined = params;
-                        joined.entry_point = previousEnd;
-                        generate_satin(sequence, object, joined);
-                    } else {
-                        generate_satin(sequence, object, params);
+                        effectiveParams.entry_point = previousEnd;
                     }
+                    const document::StitchParams effective{effectiveParams};
+                    const RoutedMember member{object.id, &effective};
+                    cachedRouted(std::span<const RoutedMember>(&member, 1), nullptr,
+                                 [&] { generate_satin(sequence, object, effectiveParams); });
                 } else if constexpr (std::is_same_v<T, document::AutoSatinParams>) {
+                    T effectiveParams = params;
                     if (previousEnd && !params.entry_point && !params.exit_point) {
-                        document::AutoSatinParams joined = params;
-                        joined.entry_point = previousEnd;
-                        generate_auto_satin(sequence, *unit.source, object, joined);
-                    } else {
-                        generate_auto_satin(sequence, *unit.source, object, params);
+                        effectiveParams.entry_point = previousEnd;
                     }
+                    const document::StitchParams effective{effectiveParams};
+                    const RoutedMember member{object.id, &effective};
+                    cachedRouted(
+                        std::span<const RoutedMember>(&member, 1), &unit.source->paths, [&] {
+                            generate_auto_satin(sequence, *unit.source, object, effectiveParams);
+                        });
                 }
             },
             object.params);

@@ -444,3 +444,21 @@ objet, pas par région. Les satins (colonnes routées, entrée dépendant de l'o
 l'auto-satin ne passent pas par ce cache ; leur squelette garde son propre cache (§8). Le banc
 désactive le cache pour ses étapes historiques afin de rester comparable aux relevés précédents et
 ajoute trois étapes « cache chaud », « objet médian modifié », « plus gros objet modifié ».
+
+**Suite : satins routés et auto-satin (HP-PERF-002.b).** `generate_satin`, `generate_auto_satin`
+et `generate_satin_group` ne lisent de la séquence déjà émise que sa **dernière commande**
+(position, type) ; tout le reste est dans l'identifiant, les paramètres et, pour l'auto-satin, la
+géométrie du vecteur source. Ces unités sont donc cachables sans heuristique avec la clé exacte
+(identifiants du groupe, paramètres **effectifs** -- point d'entrée automatique de HP-ENG-010 déjà
+injecté --, géométrie source, dernière commande ou absence). Le cache ne mémorise que les
+commandes **ajoutées** par l'unité ; même budget, même LRU, même mutex. Une modification en amont
+qui change la dernière commande change la clé : recalcul, jamais de résultat périmé.
+`tentabrode.png --satin-bands` (Release, 158 objets dont l'auto-satin, empreinte inchangée
+`fdb7f8dd8b19eb55`) : cache chaud 7,97 -> 5,86 ms ; objet médian modifié 9,5 -> 6,0 ms ; auto-satin
+médian modifié 5,8 ms. Sans `--satin-bands` (aucun satin) : inchangé (empreinte `8401f8b12a04839f`).
+**Non livré : cache par région du plus gros objet.** Modifier un paramètre du fond invalide toutes
+ses régions (même `row_spacing`, même `inset`) : un cache par région ne gagnerait rien dans ce
+scénario, et pour une retouche de géométrie il faudrait prouver que l'ordre d'enchaînement
+« plus proche voisin depuis la position courante » (`fill_regions_in_sewing_order`) et les liaisons
+cachées restent identiques, ce qu'une clé exacte par région ne garantit pas sans cacher aussi la
+position d'entrée de chaque région.

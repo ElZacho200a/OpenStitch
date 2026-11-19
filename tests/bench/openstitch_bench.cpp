@@ -385,6 +385,41 @@ int main(int argc, char** argv) {
                      bySize[bySize.size() / 2].second);
             touchOne("effective_sequence (le plus gros objet modifié)", bySize.back().second);
         }
+        // Satins et auto-satin : cache à clé (paramètres effectifs, dernière commande). On touche
+        // l'objet médian de chaque famille présente.
+        const auto touchFamily = [&](const char* label, auto isFamily, auto edit) {
+            std::vector<std::size_t> idx;
+            for (std::size_t i = 0; i < project.embroidery_objects.size(); ++i) {
+                if (isFamily(project.embroidery_objects[i])) {
+                    idx.push_back(i);
+                }
+            }
+            if (idx.empty()) {
+                return;
+            }
+            document::Project one = project;
+            auto& obj = one.embroidery_objects[idx[idx.size() / 2]];
+            bool flip = false;
+            measure(label, reps, [&] {
+                flip = !flip;
+                edit(obj, flip);
+                (void)stitch_generation::effective_sequence(one);
+            });
+        };
+        touchFamily(
+            "effective_sequence (1 satin médian modifié)",
+            [](const document::EmbroideryObject& o) { return o.is_satin(); },
+            [](document::EmbroideryObject& o, bool flip) {
+                std::get<document::SatinParams>(o.params).density =
+                    Micrometers{400 + (flip ? 20 : 0)};
+            });
+        touchFamily(
+            "effective_sequence (1 auto-satin médian modifié)",
+            [](const document::EmbroideryObject& o) { return o.is_auto_satin(); },
+            [](document::EmbroideryObject& o, bool flip) {
+                std::get<document::AutoSatinParams>(o.params).spacing =
+                    Micrometers{400 + (flip ? 20 : 0)};
+            });
         const auto cs = stitch_generation::chunk_cache_stats();
         std::printf("  cache : %zu objets, %.1f Mo | %zu succès, %zu échecs\n", cs.entries,
                     static_cast<double>(cs.bytes) / (1024.0 * 1024.0), cs.hits, cs.misses);
