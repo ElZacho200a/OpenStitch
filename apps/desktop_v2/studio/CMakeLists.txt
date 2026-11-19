@@ -102,5 +102,8 @@ if(TARGET openstitch-mcp)
         COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:openstitch_v2_studio>/mcp"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:openstitch-mcp>"
             "$<TARGET_FILE_DIR:openstitch_v2_studio>/mcp/$<TARGET_FILE_NAME:openstitch-mcp>"
-        COMMENT "Copie du serveur MCP (mcp/) à côté de Studio")
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_RUNTIME_DLLS:openstitch-mcp>
+            "$<TARGET_FILE_DIR:openstitch_v2_studio>/mcp"
+        COMMAND_EXPAND_LISTS
+        COMMENT "Copie du serveur MCP et de ses DLL (mcp/) à côté de Studio")
 endif()
