@@ -834,14 +834,17 @@ struct ColorBlendLink {
 // lien réciproque entre deux remplissages de formes DISTINCTES. Pure métadonnée : les points
 // sont toujours dérivés à la génération (`stitch_generation::boundary_blend_layer`). La courbe
 // est la même des deux côtés ; un lien non réciproque ou incohérent est sans effet
-// (`document::find_boundary_blend`).
+// (`document::find_boundary_blend`). Une zone peut porter plusieurs liens, un par voisine
+// (`EmbroideryObject::boundary_blends`).
 // Sens des rangées dans la bande d'un fondu à la frontière (docs/studio-fondu-frontiere-spec.md
 // §6.3) :
 // - PerZone : chaque zone garde son angle (deux trames croisées si les angles diffèrent) ;
 // - Shared : les deux zones cousent à un angle commun (moyenne) dans toute la bande ;
 // - Rotating : les rangées pivotent progressivement de l'angle de A à celui de B en travers de
-//   la bande (rangées courbes communes aux deux couleurs).
-enum class BoundaryBlendRows : std::uint8_t { PerZone, Shared, Rotating };
+//   la bande (rangées courbes communes aux deux couleurs) ;
+// - Interlaced : les rangées de la bande TRAVERSENT la frontière (perpendiculaires) et chacune
+//   passe d'une couleur à l'autre en un point qui varie d'une rangée à l'autre (passé empiétant).
+enum class BoundaryBlendRows : std::uint8_t { PerZone, Shared, Rotating, Interlaced };
 
 struct BoundaryBlendLink {
     ObjectId partner;
@@ -914,7 +917,9 @@ struct EmbroideryObject {
     std::optional<thread_palette::ThreadKey> thread;
     std::optional<ColorBlendLink> color_blend;
     std::optional<MultiBlendLink> multi_blend;
-    std::optional<BoundaryBlendLink> boundary_blend;
+    // Fondus à la frontière de cette zone, un par voisine : au plus un lien par partenaire, liste
+    // TRIÉE par `partner.value` croissant (déterminisme). Vide = aucun fondu.
+    std::vector<BoundaryBlendLink> boundary_blends;
     std::optional<SemanticAnnotation> semantic; // reconnaissance persistée et facultative
 
     [[nodiscard]] bool is_tatami() const { return std::holds_alternative<TatamiParams>(params); }

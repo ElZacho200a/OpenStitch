@@ -499,11 +499,12 @@ TEST_CASE("boundary blend actions link, edit and unlink two neighbouring zones",
             .committed);
     CHECK(s.undoNames().size() == depth + 1);
     const auto* zb = s.project().findEmbroidery(ObjectId{b});
-    REQUIRE(zb->boundary_blend.has_value());
-    CHECK(zb->boundary_blend->width_self == Micrometers{2'000}); // zone principale = dernière
-    CHECK(zb->boundary_blend->curve == document::DensityCurve::Smooth);
+    REQUIRE_FALSE(zb->boundary_blends.empty());
+    CHECK(zb->boundary_blends.front().width_self ==
+          Micrometers{2'000}); // zone principale = dernière
+    CHECK(zb->boundary_blends.front().curve == document::DensityCurve::Smooth);
 
     REQUIRE(run(s, "fade.boundary_remove", {}, {a}).committed);
-    CHECK_FALSE(s.project().findEmbroidery(ObjectId{a})->boundary_blend.has_value());
-    CHECK_FALSE(s.project().findEmbroidery(ObjectId{b})->boundary_blend.has_value());
+    CHECK(s.project().findEmbroidery(ObjectId{a})->boundary_blends.empty());
+    CHECK(s.project().findEmbroidery(ObjectId{b})->boundary_blends.empty());
 }
