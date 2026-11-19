@@ -5,6 +5,7 @@ add_executable(test_stitch_render
     test_presentation.cpp
     test_simulation.cpp
     test_view_display.cpp
+    test_thread_scene.cpp
 )
 target_link_libraries(test_stitch_render
     PRIVATE openstitch::stitch_render Catch2::Catch2WithMain openstitch::warnings)

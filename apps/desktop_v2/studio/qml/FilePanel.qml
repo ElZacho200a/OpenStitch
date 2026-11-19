@@ -105,6 +105,7 @@ Item {
         case "dxf": ctl.exportDxf(url); break
         case "svg": ctl.exportSvg(url); break
         case "image": ctl.exportImage(url, exportOptionsDialog.pxPerMm, exportOptionsDialog.quality); break
+        case "photo": ctl.exportPhotoRender(url); break
         case "sheet": ctl.exportProductionSheet(url); break
         case "template": ctl.exportPlacementTemplate(url, { paper: exportOptionsDialog.paper, landscape: exportOptionsDialog.landscape }); break
         }
@@ -403,6 +404,7 @@ Item {
                 onClicked: panel.ctl.exportAgain()
             }
             Entry { objectName: "exportImageEntry"; text: qsTr("Image (PNG, JPEG)…"); onClicked: panel.openExportOptions("image") }
+            Entry { objectName: "exportPhotoEntry"; text: qsTr("Rendu photo, lancer de rayons (PNG)…"); onClicked: panel.startExport("photo", qsTr("Rendu photo"), [qsTr("PNG (*.png)")], "png") }
             Entry { text: qsTr("Fiche de production (PDF)…"); onClicked: panel.startExport("sheet", qsTr("Fiche de production"), [qsTr("PDF (*.pdf)")], "pdf") }
             Entry { objectName: "exportTemplateEntry"; text: qsTr("Gabarit de placement 1:1 (PDF)…"); onClicked: panel.openExportOptions("template") }
             Entry { text: qsTr("Liste des fils (CSV)…"); onClicked: panel.startExport("threads", qsTr("Liste des fils"), [qsTr("CSV (*.csv)")], "csv") }

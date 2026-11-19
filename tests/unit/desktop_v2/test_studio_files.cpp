@@ -12,6 +12,7 @@
 #include <QQuickStyle>
 #include <QQuickWindow>
 #include <QSignalSpy>
+#include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QtTest/QtTest>
 #include <cmath>
@@ -163,6 +164,7 @@ struct Rig {
 class StudioFilesTest : public QObject {
     Q_OBJECT
 private slots:
+    void photoRenderRunsTheExternalEngineOnTheThreadScene();
     void initTestCase();
     void openDialogListsOpenRaster();
     void openingAnotherProjectClearsLayerAndObjectSelection();
@@ -1255,6 +1257,46 @@ void StudioFilesTest::exportsAreDeterministicAndRepeatable() {
     rig.files->exportMachine(url(dir, "sans"), {{QStringLiteral("format"), QStringLiteral("pes")}});
     QVERIFY(rig.waitIdle());
     QVERIFY(QFileInfo::exists(dir.filePath(QStringLiteral("sans.pes"))));
+}
+
+void StudioFilesTest::photoRenderRunsTheExternalEngineOnTheThreadScene() {
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    Rig rig;
+    rig.session.replaceProject(studioFixture(), true);
+    // Interpréteur absent : message d'erreur clair, aucun fichier.
+    qputenv("OPENSTITCH_PYTHON", "openstitch-python-absent-xyz");
+    rig.files->exportPhotoRender(url(dir, "absent.png"));
+    QVERIFY(rig.waitIdle());
+    QVERIFY(rig.files->messageIsError());
+    QVERIFY(rig.files->message().contains(QStringLiteral("Python")));
+    QVERIFY(!QFileInfo::exists(dir.filePath(QStringLiteral("absent.png"))));
+    qunsetenv("OPENSTITCH_PYTHON");
+    const QString python = QStandardPaths::findExecutable(QStringLiteral("python"));
+    if (python.isEmpty()) {
+        QSKIP("python absent : moteur factice non exécutable");
+    }
+    // Moteur factice : vérifie la scène reçue puis écrit un PNG 1 x 1 (pas de Mitsuba en test).
+    const QString fake = dir.filePath(QStringLiteral("fake_engine.py"));
+    {
+        QFile f(fake);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("import json, sys, base64\n"
+                "scene = json.load(open(sys.argv[1], encoding='utf-8'))\n"
+                "assert scene['format'] == 'openstitch-thread-scene' and scene['segments']\n"
+                "assert '--spp' in sys.argv and '--tilt' in sys.argv\n"
+                "open(sys.argv[2], 'wb').write(base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB"
+                "CAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg=='))\n"
+                "print('rendu factice', len(scene['segments']))\n");
+    }
+    qputenv("OPENSTITCH_RAYTRACE_SCRIPT", fake.toUtf8());
+    rig.files->exportPhotoRender(url(dir, "photo.png"), 0.0, 4);
+    QVERIFY(rig.waitIdle());
+    qunsetenv("OPENSTITCH_RAYTRACE_SCRIPT");
+    QVERIFY2(!rig.files->messageIsError(), qPrintable(rig.files->message()));
+    QVERIFY(rig.files->message().contains(QStringLiteral("Rendu photo écrit")));
+    QImage png(dir.filePath(QStringLiteral("photo.png")));
+    QCOMPARE(png.size(), QSize(1, 1));
 }
 
 void StudioFilesTest::documentExportsWriteRealFiles() {

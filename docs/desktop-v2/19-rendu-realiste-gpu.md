@@ -108,4 +108,11 @@ Mesure (motif bateau numerise depuis tests/fixtures/ai-benchmark/marine-synth-01
 Limites : pas de tissu tisse ni de relief de sous-couche (fils sur un plan), materiau « principled »
 generique (pas de BSDF de fibre), pas d'integration Studio (export a lancer en CLI), pas de
 comparaison photo reelle, variante CPU (llvm) non disponible ici (LLVM absent) donc non mesuree.
-Suite proposee : bouton « Rendu photo » du Studio qui lance l'outil si Mitsuba est present.
+Studio (ajoute ensuite) : Fichier > Exporter > « Rendu photo, lancer de rayons (PNG)… »
+(`FileController::exportPhotoRender`) : scene ecrite par `export_thread_scene` (desktop_v2/core,
+format commun `stitch_render::thread_scene_json`, partage avec la CLI), puis le script lance par
+QProcess dans la tache de fond (annulable), vue inclinee 35 degres, 64 spp ; l'image s'ouvre a la
+fin. Interpreteur : `OPENSTITCH_PYTHON` (defaut `python`) ; script : `OPENSTITCH_RAYTRACE_SCRIPT`,
+sinon `tools/raytrace/` a cote de l'executable, sinon les sources. Messages clairs si Python ou
+Mitsuba manquent. Test QTest `photoRenderRunsTheExternalEngineOnTheThreadScene` (moteur factice).
+Non fait : copie du script au deploiement (windeployqt), reglages (inclinaison, qualite) dans l'IHM.

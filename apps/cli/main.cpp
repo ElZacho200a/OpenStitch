@@ -64,6 +64,7 @@
 #include "openstitch/stitch_generation/tatami.hpp"
 #include "openstitch/stitch_render/presentation.hpp"
 #include "openstitch/stitch_render/segments.hpp"
+#include "openstitch/stitch_render/thread_scene.hpp"
 #include "openstitch/vectorization/vectorize.hpp"
 #include "project_cmd.hpp"
 
@@ -494,26 +495,12 @@ struct RenderArgs {
     std::string sceneJson; // RENDER-PBR-01 lot D : scène de brins pour un moteur de ray tracing
 };
 
-// Scène de brins (lot D, ray tracing hors écran) : brins de la séquence effective dans l'ordre de
-// couture, repère écran en mm (Y vers le bas), couleur et largeur de fil. Format neutre lu par
-// tools/raytrace/render_mitsuba.py ; aucun moteur n'est lié au dépôt.
+// Scène de brins (lot D, ray tracing hors écran) : voir stitch_render/thread_scene.hpp.
 bool write_thread_scene(const std::string& path,
                         const std::vector<openstitch::stitch_render::ThreadSegment>& segments,
                         double threadWidthMm) {
     std::ofstream out(std::filesystem::path(path), std::ios::binary);
-    if (!out) {
-        return false;
-    }
-    out << fmt::format("{{\"format\": \"openstitch-thread-scene\", \"version\": 1, "
-                       "\"units\": \"mm\", \"y_axis\": \"down\", \"thread_width_mm\": {},\n"
-                       "\"segments\": [",
-                       threadWidthMm);
-    for (std::size_t i = 0; i < segments.size(); ++i) {
-        const auto& g = segments[i];
-        out << fmt::format("{}\n[{:.4f}, {:.4f}, {:.4f}, {:.4f}, {}, {}, {}]", i == 0 ? "" : ",",
-                           g.ax, g.ay, g.bx, g.by, g.rgb[0], g.rgb[1], g.rgb[2]);
-    }
-    out << "\n]}\n";
+    out << openstitch::stitch_render::thread_scene_json(segments, threadWidthMm);
     out.close();
     return static_cast<bool>(out);
 }

@@ -54,7 +54,9 @@ add_library(openstitch_studio_ui STATIC
 add_library(openstitch::studio_ui ALIAS openstitch_studio_ui)
 # Thèmes livrés (resources/themes) : repli quand le Studio tourne depuis le dossier de build.
 target_compile_definitions(openstitch_studio_ui PRIVATE
-    OPENSTITCH_THEMES_SOURCE_DIR="${PROJECT_SOURCE_DIR}/resources/themes")
+    OPENSTITCH_THEMES_SOURCE_DIR="${PROJECT_SOURCE_DIR}/resources/themes"
+    # Rendu photo (RENDER-PBR-01 lot D) : script de ray tracing, repli depuis le dossier de build.
+    OPENSTITCH_RAYTRACE_SOURCE_SCRIPT="${PROJECT_SOURCE_DIR}/tools/raytrace/render_mitsuba.py")
 target_include_directories(openstitch_studio_ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(openstitch_studio_ui PUBLIC openstitch::desktop_v2_core
     openstitch::ai_segmentation openstitch::companion_backends
