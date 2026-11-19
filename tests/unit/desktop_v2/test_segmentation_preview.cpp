@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <catch2/catch_test_macros.hpp>
 
+#include "openstitch/document/project.hpp"
 #include "openstitch/image/image.hpp"
 #include "segmentation_preview.hpp"
 
@@ -101,4 +102,32 @@ TEST_CASE("an unreadable file is reported, not silently ignored", "[desktop_v2][
     const auto preview = previewSegmentation(std::filesystem::path("n'existe/pas.png"),
                                              segmentation::SegmentationOptions{}, task);
     CHECK_FALSE(preview.has_value());
+}
+
+TEST_CASE("painted detail zones keep a speck that the minimum region size would absorb",
+          "[desktop_v2][segment][detail]") {
+    TaskContext task;
+    document::ImageSource source;
+    source.original = bands();
+    segmentation::SegmentationOptions options;
+    options.max_colors = 4;
+    options.min_region_px = 30; // le point jaune (4 px) est absorbé par défaut
+
+    const auto plain = segmentImageSource(source, options, task);
+    REQUIRE(plain.has_value());
+
+    // Un mauvais format de masque (autre taille) est ignoré, pas une erreur : même résultat.
+    source.detail_mask.width = 3;
+    source.detail_mask.height = 3;
+    source.detail_mask.weights.assign(9, 255);
+    const auto ignored = segmentImageSource(source, options, task);
+    REQUIRE(ignored.has_value());
+    CHECK(ignored->region_count() == plain->region_count());
+
+    // Le même point, peint en zone de détail : il survit (région de plus).
+    source.detail_mask = {};
+    segmentation::paint_detail_disc(source.detail_mask, 60, 40, 9, 11, 5, 255, 1.0);
+    const auto kept = segmentImageSource(source, options, task);
+    REQUIRE(kept.has_value());
+    CHECK(kept->region_count() > plain->region_count());
 }

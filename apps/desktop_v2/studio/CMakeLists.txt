@@ -26,6 +26,7 @@ add_library(openstitch_studio_ui STATIC
     thread_controller.cpp thread_controller.hpp
     image_controller.cpp image_controller.hpp
     region_controller.cpp region_controller.hpp
+    detail_zone_controller.cpp detail_zone_controller.hpp
     satin_controller.cpp satin_controller.hpp
     fade_controller.cpp fade_controller.hpp
     boundary_blend_controller.cpp boundary_blend_controller.hpp

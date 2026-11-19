@@ -19,6 +19,7 @@
 #include "applique_controller.hpp"
 #include "boundary_blend_controller.hpp"
 #include "companion_controller.hpp"
+#include "detail_zone_controller.hpp"
 #include "digitize_gestures.hpp"
 #include "edit_controller.hpp"
 #include "fade_controller.hpp"
@@ -148,6 +149,7 @@ int main(int argc, char** argv) {
     AnalysisController analysis(controller, view, configDir);
     ImageController imageTools(controller);
     RegionController regionTools(controller, imageTools);
+    DetailZoneController detailZones(controller, imageTools);
     ImageSpaceController imageSpace(controller, imageTools);
     SegmentationSpaceController segmentationSpace(controller, imageTools, regionTools);
     SatinController satin(controller);
@@ -199,6 +201,7 @@ int main(int argc, char** argv) {
     engine.rootContext()->setContextProperty(QStringLiteral("imageTools"), &imageTools);
     engine.rootContext()->setContextProperty(QStringLiteral("imageSpace"), &imageSpace);
     engine.rootContext()->setContextProperty(QStringLiteral("regionTools"), &regionTools);
+    engine.rootContext()->setContextProperty(QStringLiteral("detailZones"), &detailZones);
     engine.rootContext()->setContextProperty(QStringLiteral("segmentationSpace"),
                                              &segmentationSpace);
     // Mode QML externe (opt-in, Studio Dev) : repli sur les ressources embarquées sinon.
