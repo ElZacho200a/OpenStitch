@@ -90,6 +90,9 @@ Noms vérifiés dans le dépôt ; chaque outil a sa page de détail.
 - **Cache d'objets sccache** (01.4) : preset `msvc-sccache`, POC optionnel, voir
   [build-sccache.md](build-sccache.md) (utile pour les rebuilds dans le même arbre, pas entre
   worktrees).
+- **Amorçage d'un worktree** : `scripts/worktree-seed-build.ps1` copie le `build/msvc` d'une autre
+  copie (dépôt principal par défaut), réécrit ses chemins absolus, réaligne les dates des sources
+  identiques et reconfigure : le build suivant ne recompile que ce qui diffère.
 - **Cache vcpkg et préparation CI** (01.5) : voir [build-vcpkg-audit.md](build-vcpkg-audit.md).
 - **Parallélisme, PCH, Unity** (01.6) : `scripts/build-jobs.ps1`, option `OPENSTITCH_PCH`
   (désactivée par défaut), `scripts/check-unity-safety.py`, `scripts/measure-build-ab.ps1` ;
