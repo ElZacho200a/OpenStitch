@@ -55,21 +55,47 @@
       "displayName": "Dev Ninja Debug (Studio, sans Widgets V1, tests actifs)",
       "inherits": "dev-base",
       "binaryDir": "${sourceDir}/build/dev-debug",
-      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
     },
     {
       "name": "dev-relwithdebinfo",
       "displayName": "Dev Ninja RelWithDebInfo (Studio, sans Widgets V1, tests actifs)",
       "inherits": "dev-base",
       "binaryDir": "${sourceDir}/build/dev-relwithdebinfo",
-      "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo" }
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+      }
     },
     {
       "name": "dev-notests",
       "displayName": "Dev Ninja Debug sans tests (Studio seul, configuration et lien plus rapides)",
       "inherits": "dev-debug",
       "binaryDir": "${sourceDir}/build/dev-notests",
-      "cacheVariables": { "OPENSTITCH_BUILD_TESTS": "OFF" }
+      "cacheVariables": {
+        "OPENSTITCH_BUILD_TESTS": "OFF"
+      }
+    },
+    {
+      "name": "msvc-sccache",
+      "displayName": "MSVC + Ninja + sccache (POC optionnel, voir docs/source/build-sccache.md)",
+      "description": "Lancer depuis un shell developpeur x64 (scripts/dev/sccache-env.ps1). Generateur Ninja Multi-Config : seul un generateur Makefile/Ninja honore CMAKE_CXX_COMPILER_LAUNCHER.",
+      "generator": "Ninja Multi-Config",
+      "binaryDir": "${sourceDir}/build/msvc-sccache",
+      "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+      "cacheVariables": {
+        "CMAKE_PREFIX_PATH": "$env{QT_ROOT}",
+        "OPENSTITCH_BUILD_LEGACY_V1": "ON",
+        "CMAKE_CXX_COMPILER": "cl",
+        "CMAKE_CXX_COMPILER_LAUNCHER": "sccache",
+        "CMAKE_MSVC_DEBUG_INFORMATION_FORMAT": "$<$<CONFIG:Debug,RelWithDebInfo>:Embedded>"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
     },
     {
       "name": "linux-core",
@@ -89,31 +115,80 @@
     }
   ],
   "buildPresets": [
-    { "name": "msvc-debug", "configurePreset": "msvc", "configuration": "Debug" },
-    { "name": "msvc-release", "configurePreset": "msvc", "configuration": "Release" },
-    { "name": "msvc-release-relwithdebinfo", "configurePreset": "msvc-relwithdebinfo", "configuration": "RelWithDebInfo" },
-    { "name": "dev-debug", "configurePreset": "dev-debug", "targets": ["openstitch_v2_studio"] },
-    { "name": "dev-relwithdebinfo", "configurePreset": "dev-relwithdebinfo", "targets": ["openstitch_v2_studio"] },
-    { "name": "dev-notests", "configurePreset": "dev-notests", "targets": ["openstitch_v2_studio"] },
-    { "name": "linux-core", "configurePreset": "linux-core" }
+    {
+      "name": "msvc-debug",
+      "configurePreset": "msvc",
+      "configuration": "Debug"
+    },
+    {
+      "name": "msvc-release",
+      "configurePreset": "msvc",
+      "configuration": "Release"
+    },
+    {
+      "name": "msvc-release-relwithdebinfo",
+      "configurePreset": "msvc-relwithdebinfo",
+      "configuration": "RelWithDebInfo"
+    },
+    {
+      "name": "dev-debug",
+      "configurePreset": "dev-debug",
+      "targets": [
+        "openstitch_v2_studio"
+      ]
+    },
+    {
+      "name": "dev-relwithdebinfo",
+      "configurePreset": "dev-relwithdebinfo",
+      "targets": [
+        "openstitch_v2_studio"
+      ]
+    },
+    {
+      "name": "dev-notests",
+      "configurePreset": "dev-notests",
+      "targets": [
+        "openstitch_v2_studio"
+      ]
+    },
+    {
+      "name": "msvc-sccache-debug",
+      "configurePreset": "msvc-sccache",
+      "configuration": "Debug"
+    },
+    {
+      "name": "msvc-sccache-release",
+      "configurePreset": "msvc-sccache",
+      "configuration": "Release"
+    },
+    {
+      "name": "linux-core",
+      "configurePreset": "linux-core"
+    }
   ],
   "testPresets": [
     {
       "name": "msvc-debug",
       "configurePreset": "msvc",
       "configuration": "Debug",
-      "output": { "outputOnFailure": true }
+      "output": {
+        "outputOnFailure": true
+      }
     },
     {
       "name": "msvc-release",
       "configurePreset": "msvc",
       "configuration": "Release",
-      "output": { "outputOnFailure": true }
+      "output": {
+        "outputOnFailure": true
+      }
     },
     {
       "name": "linux-core",
       "configurePreset": "linux-core",
-      "output": { "outputOnFailure": true }
+      "output": {
+        "outputOnFailure": true
+      }
     }
   ]
 }
