@@ -455,6 +455,19 @@ Path fit_curves(const Path& polygon, const CurveFitOptions& options) {
             t1 = unit(sec[last] - sec[0]);
             t2 = t1 * -1.0;
         }
+        // Tangentes imposées aux extrémités d'un chemin ouvert (t2 pointe vers l'intérieur).
+        if (!closed && s.a == 0 && options.start_tangent) {
+            const P forced = unit(to_p(*options.start_tangent));
+            if (forced.x != 0.0 || forced.y != 0.0) {
+                t1 = forced;
+            }
+        }
+        if (!closed && s.b == n - 1 && options.end_tangent) {
+            const P forced = unit(to_p(*options.end_tangent));
+            if (forced.x != 0.0 || forced.y != 0.0) {
+                t2 = forced * -1.0;
+            }
+        }
         fitter.fit(0, last, t1, t2, 0);
         results.push_back(std::move(r));
     }

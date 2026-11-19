@@ -241,3 +241,43 @@ TEST_CASE("fit_curves : les poignees ne depassent jamais le perimetre du contour
                                                      << ", pire rapport : " << worstRatio);
     CHECK(violations == 0);
 }
+
+// VEC-ADAPT-01 lot C : tangentes imposées aux extrémités d'un chemin ouvert.
+TEST_CASE("curve fit: forced end tangents on an open arc") {
+    Path arc;
+    arc.closed = false;
+    for (int i = 0; i <= 90; ++i) { // quart de cercle de rayon 10 mm, de (10,0) à (0,10)
+        const double a = std::numbers::pi / 2.0 * i / 90.0;
+        arc.nodes.push_back(node(10'000.0 * std::cos(a), 10'000.0 * std::sin(a)));
+    }
+    CurveFitOptions options{.tolerance = Micrometers{20}};
+    options.start_tangent = Vec2um{Micrometers{0}, Micrometers{1000}}; // vers +Y
+    options.end_tangent = Vec2um{Micrometers{-1000}, Micrometers{0}};  // vers -X
+    const Path fitted = fit_curves(arc, options);
+    REQUIRE(fitted.nodes.size() >= 2);
+    // Extrémités conservées.
+    CHECK(fitted.nodes.front().pos == arc.nodes.front().pos);
+    CHECK(fitted.nodes.back().pos == arc.nodes.back().pos);
+    // Directions imposées : tan_out du premier nœud vers +Y, tan_in du dernier vers +X.
+    REQUIRE(fitted.nodes.front().tan_out.has_value());
+    REQUIRE(fitted.nodes.back().tan_in.has_value());
+    const auto& t0 = *fitted.nodes.front().tan_out;
+    const auto& t1 = *fitted.nodes.back().tan_in;
+    CHECK(std::abs(t0.x.value) <= 1);
+    CHECK(t0.y.value > 0);
+    CHECK(std::abs(t1.y.value) <= 1);
+    CHECK(t1.x.value > 0);
+
+    // Tangente à contresens du tracé : le résultat reste un chemin valide aux mêmes extrémités.
+    options.start_tangent = Vec2um{Micrometers{0}, Micrometers{-1000}};
+    const Path against = fit_curves(arc, options);
+    CHECK(against.nodes.front().pos == arc.nodes.front().pos);
+    CHECK(against.nodes.back().pos == arc.nodes.back().pos);
+
+    // Chemin fermé : les tangentes imposées sont ignorées.
+    const Path circle = pixel_circle(5'000.0, 100.0);
+    CurveFitOptions closedOptions{.tolerance = Micrometers{150}};
+    const Path plain = fit_curves(circle, closedOptions);
+    closedOptions.start_tangent = Vec2um{Micrometers{1000}, Micrometers{0}};
+    CHECK(fit_curves(circle, closedOptions) == plain);
+}

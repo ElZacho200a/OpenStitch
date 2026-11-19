@@ -258,9 +258,23 @@ longueurs conservées, sauf vrai coin de plus de 55°). MonetGasque : écart moy
 écart max 1 180 → 2 414 µm, aire 2,83 → 3,33 % ; synthétique : aire meilleure (1,8 %) mais écart
 max 69 → 103 µm. Faire pivoter les tangentes sort les courbes de leur tolérance : un lissage
 correct demande que `geometry::fit_curves` accepte des tangentes imposées aux extrémités d'un
-chemin ouvert (évolution de l'API de `geometry`, non faite). Autres pistes : couper seulement aux
-coins déjà détectés, critère de largeur moins sensible aux escaliers, comparaison polygone /
-hybride.
+chemin ouvert.
+
+Tangentes imposées (2026-11-19) : `CurveFitOptions::start_tangent` / `end_tangent` (chemin
+ouvert seulement). Aux jonctions, la tangente du contour source (corde sur ±3 sommets) est imposée
+aux deux tronçons, sauf sur un vrai coin (> 55°) ; la jonction devient un nœud Lisse.
+
+| MonetGasque | Nœuds | Écart moyen | Écart max | Écart d'aire | Temps |
+|---|---:|---:|---:|---:|---:|
+| Auto par région | 8 411 | 163 µm | 579 µm | 2,77 % | 0,7 s |
+| Tronçons, jonctions en coin | 13 643 | 168 µm | 1 180 µm | 2,83 % | 1,8 s |
+| Tronçons, tangentes imposées | 13 699 | 166 µm | 474 µm | 2,83 % | 2,1 s |
+
+Synthétique : aire 3,31 → 2,16 %, écart max 73 → 69 µm, 60 → 116 nœuds. Les jonctions causaient
+bien le pire écart ; il passe désormais sous celui du mode par région. Mais l'écart moyen et
+l'aire ne s'améliorent pas, pour +63 % de nœuds et ×3 de temps : le mode reste **non déployé**.
+Pistes restantes : couper seulement aux coins déjà détectés, critère de largeur moins sensible
+aux escaliers, budget de nœuds, comparaison polygone / hybride.
 
 ## Robustesse
 

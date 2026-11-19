@@ -124,6 +124,25 @@ geometry::Path fit_local(const geometry::Path& path, double uniformTol, double r
         return geometry::fit_curves(path,
                                     {.tolerance = Micrometers{static_cast<std::int32_t>(tol)}});
     }
+    // Tangente du contour source en un sommet de jonction (corde sur ±3 sommets), imposée aux deux
+    // tronçons qui s'y raccordent : pas de cassure. Absente sur un vrai coin (> 55°), qui reste
+    // un coin comme dans l'ajustement uniforme.
+    const auto junctionTangent = [&](std::size_t v) -> std::optional<Vec2um> {
+        const Vec2um a = path.nodes[(v + n - 3) % n].pos;
+        const Vec2um c = path.nodes[v].pos;
+        const Vec2um b = path.nodes[(v + 3) % n].pos;
+        const double ix = static_cast<double>(c.x.value - a.x.value);
+        const double iy = static_cast<double>(c.y.value - a.y.value);
+        const double ox = static_cast<double>(b.x.value - c.x.value);
+        const double oy = static_cast<double>(b.y.value - c.y.value);
+        const double li = std::hypot(ix, iy);
+        const double lo = std::hypot(ox, oy);
+        if (li <= 0.0 || lo <= 0.0 ||
+            (ix * ox + iy * oy) / (li * lo) < std::cos(55.0 * std::numbers::pi / 180.0)) {
+            return std::nullopt;
+        }
+        return b - a;
+    };
     // Départ sur une frontière de tronçon, puis ajustement de chaque tronçon ouvert.
     const auto start = static_cast<std::size_t>(first - level.begin());
     geometry::Path out;
@@ -142,16 +161,20 @@ geometry::Path fit_local(const geometry::Path& path, double uniformTol, double r
         }
         const double f = level[a] == 0 ? minF : level[a] == 1 ? mid : 1.0;
         const double tol = std::max(1.0, uniformTol * std::min(1.0, f / regionFactor));
+        const auto startTangent = junctionTangent(a);
         auto fitted =
-            geometry::fit_curves(piece, {.tolerance = Micrometers{static_cast<std::int32_t>(tol)}});
+            geometry::fit_curves(piece, {.tolerance = Micrometers{static_cast<std::int32_t>(tol)},
+                                         .start_tangent = startTangent,
+                                         .end_tangent = junctionTangent((a + len) % n)});
         if (fitted.nodes.empty()) {
             return uniform();
         }
         // Jonction : le dernier nœud du tronçon précédent est le premier de celui-ci.
         if (!out.nodes.empty()) {
             auto& joint = out.nodes.back();
-            joint.type = geometry::NodeType::Corner;
             joint.tan_out = fitted.nodes.front().tan_out;
+            joint.type = startTangent && joint.tan_in && joint.tan_out ? geometry::NodeType::Smooth
+                                                                       : geometry::NodeType::Corner;
             fitted.nodes.erase(fitted.nodes.begin());
         }
         for (auto& node : fitted.nodes) {
@@ -164,8 +187,10 @@ geometry::Path fit_local(const geometry::Path& path, double uniformTol, double r
         auto last = out.nodes.back();
         out.nodes.pop_back();
         auto& head = out.nodes.front();
-        head.type = geometry::NodeType::Corner;
         head.tan_in = last.tan_in;
+        head.type = junctionTangent(start) && head.tan_in && head.tan_out
+                        ? geometry::NodeType::Smooth
+                        : geometry::NodeType::Corner;
     }
     // Repli conservateur : orientation inversée ou dégénérée.
     const double before = geometry::signed_area_um2(path);

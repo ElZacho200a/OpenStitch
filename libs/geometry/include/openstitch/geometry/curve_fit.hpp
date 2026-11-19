@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
+#include <optional>
+
 #include "openstitch/core/units.hpp"
 #include "openstitch/geometry/path.hpp"
 
@@ -22,6 +24,12 @@ struct CurveFitOptions {
     // coins et des tangentes ; la fenêtre est aussi bornée à périmètre/24 pour
     // qu'un petit cercle ne soit pas pris pour une suite de coins.
     double window_in_tolerances{5.0};
+    // Chemin OUVERT seulement : direction imposée de la courbe à son premier et à son dernier
+    // point, dans le sens de parcours (VEC-ADAPT-01, lot C : raccorder des tronçons ajustés à
+    // part sans cassure). Vecteur nul ou absent : tangente estimée comme d'habitude. Ignorée si
+    // l'extrémité est un segment droit. Sans effet sur un chemin fermé.
+    std::optional<Vec2um> start_tangent{};
+    std::optional<Vec2um> end_tangent{};
 };
 
 // Ajuste des courbes de Bézier cubiques sur un chemin FERMÉ ou OUVERT fait de
