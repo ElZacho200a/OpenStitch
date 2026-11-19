@@ -116,3 +116,13 @@ fin. Interpreteur : `OPENSTITCH_PYTHON` (defaut `python`) ; script : `OPENSTITCH
 sinon `tools/raytrace/` a cote de l'executable, sinon les sources. Messages clairs si Python ou
 Mitsuba manquent. Test QTest `photoRenderRunsTheExternalEngineOnTheThreadScene` (moteur factice).
 Non fait : copie du script au deploiement (windeployqt), reglages (inclinaison, qualite) dans l'IHM.
+
+### Rendu photo - reglages (19/11/2026)
+Fenetre Fichier > Exporter > Rendu photo : inclinaison (0-70 degres), qualite (1-4096
+echantillons/pixel), resolution (2-40 px/mm), largeur du fil (0,15-1 mm), type de tissu (uni,
+toile, serge, jersey, feutre, eponge : tuiles procedurales deterministes, couleur + relief par
+bump map), couleur du tissu (preglages ou selecteur libre), couleur du fond (tissu presente sur
+un fond, bordure 12 %). Options bornees par le controleur, liste fermee pour le type. Script :
+`--fabric-type`, `--background`, `--border`, `--width-px` (3840 = 4K).
+Mesure : Impossibke.osp, 131 829 brins, 3840 x 2676 px, 256 spp, vue de dessus, coton noir en
+6,2 s (cuda_ad_rgb).

@@ -1241,24 +1241,32 @@ void FileController::exportPhotoRender(const QUrl& url, const QVariantMap& optio
     const int spp = static_cast<int>(std::clamp(number("samples", 64.0), 1.0, 4096.0));
     const double pxPerMm = std::clamp(number("pxPerMm", 10.0), 2.0, 40.0);
     const double threadWidthMm = std::clamp(number("threadWidthMm", 0.35), 0.15, 1.0);
-    // Tissu « r,g,b » : trois entiers 0..255, sinon blanc cassé.
-    QString fabric = options.value(QStringLiteral("fabric")).toString();
-    {
-        const auto parts = fabric.split(QLatin1Char(','));
+    // Couleurs « r,g,b » : trois entiers 0..255, sinon la valeur par défaut.
+    const auto rgbOption = [&options](const char* key, const char* fallback) {
+        const QString text = options.value(QString::fromLatin1(key)).toString();
+        const auto parts = text.split(QLatin1Char(','));
         bool valid = parts.size() == 3;
         for (const auto& part : parts) {
             bool ok = false;
             const int v = part.trimmed().toInt(&ok);
             valid = valid && ok && v >= 0 && v <= 255;
         }
-        if (!valid) {
-            fabric = QStringLiteral("245,243,238");
-        }
+        return valid ? text : QString::fromLatin1(fallback);
+    };
+    const QString fabric = rgbOption("fabric", "245,243,238");
+    const QString background = rgbOption("background", "200,200,204");
+    // Armure du tissu : liste fermée du script (tools/raytrace/render_mitsuba.py).
+    static const QStringList kFabricTypes{QStringLiteral("uni"),    QStringLiteral("toile"),
+                                          QStringLiteral("serge"),  QStringLiteral("jersey"),
+                                          QStringLiteral("feutre"), QStringLiteral("eponge")};
+    QString fabricType = options.value(QStringLiteral("fabricType")).toString();
+    if (!kFabricTypes.contains(fabricType)) {
+        fabricType = QStringLiteral("toile");
     }
     runJob<PhotoRenderJob>(
         QStringLiteral("Rendu photo"),
-        [snapshot, scene, path, script, python, tilt, spp, pxPerMm, threadWidthMm,
-         fabric](const TaskContext& task) -> Result<PhotoRenderJob> {
+        [snapshot, scene, path, script, python, tilt, spp, pxPerMm, threadWidthMm, fabric,
+         background, fabricType](const TaskContext& task) -> Result<PhotoRenderJob> {
             PhotoRenderJob job;
             auto count = export_thread_scene(snapshot, scene, threadWidthMm, task);
             if (!count) {
@@ -1267,10 +1275,12 @@ void FileController::exportPhotoRender(const QUrl& url, const QVariantMap& optio
             job.segments = *count;
             QProcess process;
             process.setProcessChannelMode(QProcess::MergedChannels);
-            process.start(python, {script, fromPath(scene), fromPath(path), QStringLiteral("--spp"),
-                                   QString::number(spp), QStringLiteral("--tilt"),
-                                   QString::number(tilt), QStringLiteral("--px-per-mm"),
-                                   QString::number(pxPerMm), QStringLiteral("--fabric"), fabric});
+            process.start(python,
+                          {script, fromPath(scene), fromPath(path), QStringLiteral("--spp"),
+                           QString::number(spp), QStringLiteral("--tilt"), QString::number(tilt),
+                           QStringLiteral("--px-per-mm"), QString::number(pxPerMm),
+                           QStringLiteral("--fabric"), fabric, QStringLiteral("--fabric-type"),
+                           fabricType, QStringLiteral("--background"), background});
             if (!process.waitForStarted(15'000)) {
                 std::error_code ec;
                 std::filesystem::remove(scene, ec);

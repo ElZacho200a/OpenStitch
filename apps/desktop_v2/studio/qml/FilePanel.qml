@@ -494,20 +494,40 @@ Item {
         property int photoSamples: 64
         property int photoPxPerMm: 10
         property int photoThreadHundredths: 35
-        property int photoFabric: 0
+        // Couleurs en « r,g,b » (0..255) : préréglages ou couleur libre (sélecteur).
+        property string photoFabricRgb: "245,243,238"
+        property string photoBackgroundRgb: "200,200,204"
+        property int photoFabricType: 1
         readonly property var photoFabrics: [
             { name: qsTr("Blanc cassé"), rgb: "245,243,238" },
             { name: qsTr("Blanc"), rgb: "252,252,252" },
             { name: qsTr("Gris chiné"), rgb: "150,150,155" },
-            { name: qsTr("Noir"), rgb: "28,28,30" },
+            { name: qsTr("Noir"), rgb: "22,22,24" },
             { name: qsTr("Bleu marine"), rgb: "30,42,78" },
             { name: qsTr("Rouge"), rgb: "170,30,35" },
             { name: qsTr("Kaki"), rgb: "110,105,70" }
         ]
+        readonly property var photoFabricTypes: [
+            { name: qsTr("Uni (sans relief)"), id: "uni" },
+            { name: qsTr("Toile (coton, lin)"), id: "toile" },
+            { name: qsTr("Sergé (jean, gabardine)"), id: "serge" },
+            { name: qsTr("Jersey (t-shirt, maille)"), id: "jersey" },
+            { name: qsTr("Feutre"), id: "feutre" },
+            { name: qsTr("Éponge"), id: "eponge" }
+        ]
+        function rgbToColor(rgb) {
+            var p = rgb.split(",")
+            return Qt.rgba(p[0] / 255, p[1] / 255, p[2] / 255, 1)
+        }
+        function colorToRgb(c) {
+            return Math.round(c.r * 255) + "," + Math.round(c.g * 255) + "," + Math.round(c.b * 255)
+        }
         function photoOptions() {
             return { tiltDeg: photoTilt, samples: photoSamples, pxPerMm: photoPxPerMm,
                      threadWidthMm: photoThreadHundredths / 100.0,
-                     fabric: photoFabrics[photoFabric].rgb }
+                     fabric: photoFabricRgb,
+                     fabricType: photoFabricTypes[photoFabricType].id,
+                     background: photoBackgroundRgb }
         }
         heading: kind === "image" ? qsTr("Exporter l'image")
                  : kind === "photo" ? qsTr("Rendu photo") : qsTr("Gabarit de placement 1:1")
@@ -572,14 +592,69 @@ Item {
                 value: exportOptionsDialog.photoThreadHundredths
                 onValueModified: exportOptionsDialog.photoThreadHundredths = value
             }
-            Label { text: qsTr("Tissu") }
+            Label { text: qsTr("Type de tissu") }
             StudioComboBox {
-                objectName: "photoFabric"
+                objectName: "photoFabricType"
                 Layout.fillWidth: true
-                model: exportOptionsDialog.photoFabrics.map(function (f) { return f.name })
-                currentIndex: exportOptionsDialog.photoFabric
-                onActivated: exportOptionsDialog.photoFabric = currentIndex
+                model: exportOptionsDialog.photoFabricTypes.map(function (f) { return f.name })
+                currentIndex: exportOptionsDialog.photoFabricType
+                onActivated: exportOptionsDialog.photoFabricType = currentIndex
             }
+            Label { text: qsTr("Couleur du tissu") }
+            RowLayout {
+                spacing: 6
+                Rectangle {
+                    implicitWidth: 22; implicitHeight: 22; radius: 4
+                    color: exportOptionsDialog.rgbToColor(exportOptionsDialog.photoFabricRgb)
+                    border.width: 1; border.color: "#80808080"
+                }
+                StudioComboBox {
+                    objectName: "photoFabric"
+                    Layout.fillWidth: true
+                    // Préréglages puis « Personnalisée… » (sélecteur de couleur).
+                    model: exportOptionsDialog.photoFabrics.map(function (f) { return f.name })
+                           .concat([qsTr("Personnalisée…")])
+                    currentIndex: {
+                        var i = exportOptionsDialog.photoFabrics.findIndex(function (f) {
+                            return f.rgb === exportOptionsDialog.photoFabricRgb })
+                        return i >= 0 ? i : exportOptionsDialog.photoFabrics.length
+                    }
+                    onActivated: {
+                        if (currentIndex < exportOptionsDialog.photoFabrics.length)
+                            exportOptionsDialog.photoFabricRgb = exportOptionsDialog.photoFabrics[currentIndex].rgb
+                        else
+                            photoFabricColorDialog.open()
+                    }
+                }
+            }
+            Label { text: qsTr("Couleur du fond") }
+            RowLayout {
+                spacing: 6
+                Rectangle {
+                    implicitWidth: 22; implicitHeight: 22; radius: 4
+                    color: exportOptionsDialog.rgbToColor(exportOptionsDialog.photoBackgroundRgb)
+                    border.width: 1; border.color: "#80808080"
+                }
+                StudioButton {
+                    objectName: "photoBackground"
+                    text: qsTr("Choisir…")
+                    onClicked: photoBackgroundColorDialog.open()
+                }
+            }
+        }
+        ColorDialog {
+            id: photoFabricColorDialog
+            objectName: "photoFabricColorDialog"
+            title: qsTr("Couleur du tissu")
+            selectedColor: exportOptionsDialog.rgbToColor(exportOptionsDialog.photoFabricRgb)
+            onAccepted: exportOptionsDialog.photoFabricRgb = exportOptionsDialog.colorToRgb(selectedColor)
+        }
+        ColorDialog {
+            id: photoBackgroundColorDialog
+            objectName: "photoBackgroundColorDialog"
+            title: qsTr("Couleur du fond")
+            selectedColor: exportOptionsDialog.rgbToColor(exportOptionsDialog.photoBackgroundRgb)
+            onAccepted: exportOptionsDialog.photoBackgroundRgb = exportOptionsDialog.colorToRgb(selectedColor)
         }
         StudioComboBox {
             objectName: "exportTemplatePaper"
