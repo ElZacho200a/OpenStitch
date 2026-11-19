@@ -1,0 +1,48 @@
+{
+  "$comment": "Styles Marin : uniquement des renvois vers les jetons, pour servir aux deux variantes. Boutons vernis (léger reflet), action principale en laiton (sombre) ou marine (clair), liseré « cordage » au survol.",
+  "button": {
+    "normal": {
+      "fill": "{custom.btnTop}", "fillEnd": "{custom.btnBottom}",
+      "border": "{custom.btnBorder}", "borderWidth": 1, "radius": 6,
+      "gloss": "{custom.gloss}", "glossHeight": 0.45
+    },
+    "hover": { "fill": "{custom.hoverTop}", "fillEnd": "{custom.hoverBottom}", "border": "{custom.rope}" },
+    "pressed": { "fill": "{custom.hoverBottom}", "fillEnd": "{custom.hoverTop}", "gloss": 0 },
+    "selected": { "fill": "{custom.selTop}", "fillEnd": "{custom.selBottom}", "border": "{color.accent}", "text": "{color.accent}", "icon": "{color.accent}" },
+    "disabled": { "opacity": 0.5, "gloss": 0 },
+    "focus": { "border": "{color.focus}", "borderWidth": 2 },
+    "emphasized": {
+      "normal": { "fill": "{custom.emTop}", "fillEnd": "{custom.emBottom}", "border": "{custom.emBorder}", "text": "{custom.emInk}", "icon": "{custom.emInk}", "gloss": 0.35, "shadowLayers": 2, "shadowSpread": 2, "shadowOffset": 3, "shadowOpacity": 0.25 },
+      "hover": { "fill": "{custom.emTop}", "fillEnd": "{custom.emTop}", "border": "{custom.rope}" },
+      "pressed": { "fill": "{custom.emBottom}", "fillEnd": "{custom.emTop}", "gloss": 0.1 }
+    },
+    "quiet": {
+      "normal": { "fill": "transparent", "fillEnd": "transparent", "border": "transparent", "gloss": 0 },
+      "hover": { "fill": "{custom.hoverTop}", "fillEnd": "{custom.hoverBottom}", "border": "transparent" },
+      "selected": { "fill": "{custom.selTop}", "fillEnd": "{custom.selBottom}", "border": "transparent" }
+    }
+  },
+  "card": { "fill": "{custom.cardFill}", "border": "{custom.cardBorder}", "borderWidth": 1, "radius": 10 },
+  "header": { "fill": "{custom.headerTop}", "fillEnd": "{custom.headerBottom}", "border": "{custom.cardBorder}" },
+  "popup": { "fill": "{custom.cardFill}", "border": "{custom.rope}", "borderWidth": 1, "radius": 10, "shadowLayers": 4, "shadowSpread": 4, "shadowOffset": 8 },
+  "desk": { "fill": "{custom.deskTop}", "fillEnd": "{custom.deskBottom}" },
+  "input": {
+    "normal": { "radius": 5 },
+    "hover": { "border": "{custom.rope}" },
+    "focus": { "border": "{color.focus}", "borderWidth": 2 }
+  },
+  "checkbox": { "normal": { "radius": 3 } },
+  "switch.track": { "selected": { "fill": "{custom.fillStart}", "fillEnd": "{custom.fillStart}", "border": "{custom.fillStart}" } },
+  "slider.track": { "fill": "{custom.track}", "border": "transparent", "radius": 3, "height": 6 },
+  "slider.fill": { "fill": "{custom.fillStart}", "fillEnd": "{custom.fillEnd}", "gradient": "horizontal", "radius": 3 },
+  "slider.handle": { "normal": { "border": "{custom.rope}", "borderWidth": 2 } },
+  "tooltip": { "fill": "{custom.tipFill}", "text": "{custom.tipText}", "border": "{custom.rope}", "radius": 5 },
+  "tab": {
+    "normal": { "radius": 6 },
+    "selected": { "fill": "{custom.tabSelTop}", "fillEnd": "{custom.tabSelBottom}", "text": "{custom.tabSelText}", "gloss": 0.3 }
+  },
+  "listItem": {
+    "normal": { "radius": 5 },
+    "selected": { "fill": "{custom.selTop}", "fillEnd": "{custom.selBottom}" }
+  }
+}
