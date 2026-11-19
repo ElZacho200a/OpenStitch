@@ -88,6 +88,7 @@ private slots:
     void rowsPropertyReflectsDocument();
     void severalBlendsPerZone();
     void panelListSelectsAndRemoves();
+    void createAllBlendsTouchingPairs();
 };
 
 void StudioBoundaryBlendTest::initTestCase() {
@@ -411,6 +412,27 @@ void StudioBoundaryBlendTest::panelListSelectsAndRemoves() {
     QVERIFY(!rig.link(rig.a, rig.b));
     QVERIFY(rig.link(rig.a, rig.c));
     QCOMPARE(rig.blend.allFrontiers().size(), 1);
+}
+
+void StudioBoundaryBlendTest::createAllBlendsTouchingPairs() {
+    Rig rig;
+    rig.build();
+    rig.select({rig.left, rig.right});
+    QVERIFY(!rig.blend.canCreateAll());
+    rig.select({rig.left, rig.right, rig.far});
+    QVERIFY(rig.blend.canCreateAll());
+    QCOMPARE(rig.blend.zoneCount(), 3);
+    const auto before = rig.steps();
+    QVERIFY(rig.blend.createAll(2.0, 1));
+    QCOMPARE(rig.steps(), before + 1); // un seul pas d'annulation
+    rig.select({rig.left});
+    QCOMPARE(rig.blend.blends().size(), 1); // gauche-droite seulement, la lointaine ignorée
+    rig.select({rig.far});
+    QVERIFY(rig.blend.blends().isEmpty());
+    // Relancer : rien de nouveau, refus sans mutation.
+    rig.select({rig.left, rig.right, rig.far});
+    QVERIFY(!rig.blend.createAll(2.0, 1));
+    QCOMPARE(rig.steps(), before + 1);
 }
 
 QTEST_MAIN(StudioBoundaryBlendTest)
