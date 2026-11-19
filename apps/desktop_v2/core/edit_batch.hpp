@@ -32,6 +32,14 @@ enum class MirrorAxis { Horizontal, Vertical };
 // Découpe chaque objet le long de la droite (p0, p1) (mm modèle, deux points distincts, |coord| <=
 // 1000) : chaque morceau devient un objet.
 [[nodiscard]] std::string batchSplit(const std::vector<std::uint64_t>& ids, PointMm p0, PointMm p1);
+// Allège un tracé main levée (Douglas-Peucker, tolérance en mm) en gardant extrémités et forme.
+// Déterministe ; un tracé de moins de 3 points est rendu tel quel.
+[[nodiscard]] std::vector<PointMm> simplifyPath(const std::vector<PointMm>& path,
+                                                double toleranceMm);
+// Découpe le long d'un tracé libre (polyligne en mm modèle). Vide si le tracé est dégénéré ou
+// dépasse 2000 points.
+[[nodiscard]] std::string batchSplitPath(const std::vector<std::uint64_t>& ids,
+                                         const std::vector<PointMm>& path);
 
 // Identifiants créés par chaque opération du rapport (un par opération qui en crée un).
 [[nodiscard]] std::vector<std::uint64_t> createdObjectIds(const project_ops::BatchReport& report);

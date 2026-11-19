@@ -8,6 +8,7 @@
 
 #include "edit_batch.hpp"
 #include "export_settings.hpp"
+#include "lasso_select.hpp"
 #include "openstitch/geometry/polyline.hpp"
 #include "openstitch/stitch/sequence.hpp"
 #include "pen_shape.hpp"
@@ -25,11 +26,12 @@ struct ToolSpec {
 
 // Outils opérationnels dans Studio ; le libellé, le raccourci et le geste viennent du registre.
 constexpr ToolSpec kSpecs[] = {
-    {"draw.rectangle", "▭", "Formes"}, {"draw.ellipse", "◯", "Formes"},
-    {"draw.polygon", "⬠", "Formes"},   {"draw.polygon-regular", "⬡", "Formes"},
-    {"draw.bezier", "✒", "Tracés"},    {"draw.freeform", "✎", "Tracés"},
-    {"node.edit", "◇", "Édition"},     {"knife", "✂", "Édition"},
-    {"warp-brush", "≈", "Édition"},    {"bucket", "▣", "Édition"},
+    {"draw.rectangle", "▭", "Formes"},   {"draw.ellipse", "◯", "Formes"},
+    {"draw.polygon", "⬠", "Formes"},     {"draw.polygon-regular", "⬡", "Formes"},
+    {"draw.bezier", "✒", "Tracés"},      {"draw.freeform", "✎", "Tracés"},
+    {"node.edit", "◇", "Édition"},       {"knife", "✂", "Édition"},
+    {"warp-brush", "≈", "Édition"},      {"bucket", "▣", "Édition"},
+    {"select.lasso", "➰", "Sélection"},
 };
 
 constexpr const char* kNeedleTool = "needle.origin";
@@ -231,8 +233,15 @@ void ToolController::setHint() {
         text =
             QStringLiteral("Dessiner le contour à main levée ; relâcher pour ajuster les courbes.");
     } else if (tool_ == QStringLiteral("knife")) {
-        text = QStringLiteral(
-            "Glisser une ligne à travers la ou les formes sélectionnées pour les découper.");
+        text = knifeFree_
+                   ? QStringLiteral("Tracer à main levée un trait qui traverse la ou les formes "
+                                    "sélectionnées pour les découper. Échap : annuler.")
+                   : QStringLiteral("Glisser une ligne à travers la ou les formes sélectionnées "
+                                    "pour les découper.");
+    } else if (tool_ == QStringLiteral("select.lasso")) {
+        text = QStringLiteral("Contourner à main levée les objets à sélectionner (seuls ceux "
+                              "entièrement dedans). Alt : aussi les objets touchés. Maj ou Ctrl : "
+                              "ajouter à la sélection. Échap : annuler.");
     } else if (tool_ == QStringLiteral("node.edit")) {
         text = QStringLiteral("Sélectionner une forme, puis : clic nœud, Maj : ajouter, glisser ; "
                               "glisser un segment : le courber ; double-clic segment : insérer un "
@@ -289,6 +298,13 @@ void ToolController::setGridMm(double value) {
 void ToolController::setSnapVertices(bool value) {
     if (value != snapVertices_) {
         snapVertices_ = value;
+        emit optionsChanged();
+    }
+}
+void ToolController::setKnifeFree(bool value) {
+    if (value != knifeFree_) {
+        knifeFree_ = value;
+        setHint();
         emit optionsChanged();
     }
 }
@@ -491,6 +507,86 @@ bool ToolController::commitBox(PointMm a, PointMm b, Qt::KeyboardModifiers mods)
     return true;
 }
 
+void ToolController::commitLasso(Qt::KeyboardModifiers mods) {
+    auto polygon = std::move(stroke_);
+    stroke_.clear();
+    const bool additive = mods.testFlag(Qt::ShiftModifier) || mods.testFlag(Qt::ControlModifier);
+    auto& selection = studio_.session().selection();
+    const auto scene = studio_.scene();
+    if (polygon.size() < 3 || !scene) {
+        // Un simple clic dans le vide vide la sélection, comme le cadre.
+        if (!additive) {
+            selection.replace({});
+        }
+        return;
+    }
+    // Les boîtes de la scène sont en mm écran (Y vers le bas) : le contour passe dans ce repère.
+    for (auto& p : polygon) {
+        p.y = -p.y;
+    }
+    const auto& project = studio_.session().project();
+    const auto ids =
+        lassoSelect(polygon, scene->objectBounds,
+                    mods.testFlag(Qt::AltModifier) ? LassoMode::Touching : LassoMode::Enclosed,
+                    [&project](std::uint64_t id) {
+                        const auto* object = project.findEmbroidery(ObjectId{id});
+                        return object && object->visible && project.calqueVisible(*object);
+                    });
+    std::vector<Target> targets;
+    if (additive) {
+        targets = selection.targets();
+    }
+    for (const auto id : ids) {
+        const Target target{TargetKind::EmbroideryObject, id};
+        if (std::ranges::find(targets, target) == targets.end()) {
+            targets.push_back(target);
+        }
+    }
+    selection.replace(std::move(targets));
+    inform(ids.empty() ? QStringLiteral("Lasso : aucun objet entièrement dedans (Alt : aussi les "
+                                        "objets touchés)")
+                       : QStringLiteral("Lasso : %1 objet(s) sélectionné(s)").arg(ids.size()));
+}
+
+void ToolController::commitKnifePath() {
+    auto stroke = std::move(stroke_);
+    stroke_.clear();
+    double length = 0.0;
+    for (std::size_t i = 1; i < stroke.size(); ++i) {
+        length += dist(stroke[i - 1], stroke[i]);
+    }
+    if (length * scale_ < 3.0) {
+        return; // simple clic : pas une coupe
+    }
+    const auto ids = selectedIds();
+    if (ids.empty()) {
+        refuse(QStringLiteral("Couteau : sélectionnez d'abord la ou les formes à découper"));
+        return;
+    }
+    // Un pixel d'écran de tolérance : le tracé garde sa forme, sans les milliers de points bruts.
+    const auto path = simplifyPath(stroke, 1.0 / std::max(scale_, 1e-6));
+    const auto batch = batchSplitPath(ids, path);
+    if (batch.empty()) {
+        refuse(QStringLiteral("Couteau : tracé invalide ou trop long"));
+        return;
+    }
+    auto& session = studio_.session();
+    const auto result = session.applyBatch(batch, "Découper");
+    if (!result.committed) {
+        refuse(QStringLiteral("Découpe refusée : le tracé ne sépare aucune forme sélectionnée"));
+        return;
+    }
+    std::vector<Target> pieces;
+    for (const auto id : createdObjectIds(result.report)) {
+        pieces.push_back({TargetKind::EmbroideryObject, id});
+    }
+    const auto count = pieces.size();
+    if (!pieces.empty()) {
+        session.selection().replace(std::move(pieces));
+    }
+    inform(QStringLiteral("Forme découpée en %1 morceaux").arg(count));
+}
+
 bool ToolController::press(double x, double y, double pxPerMm, Qt::KeyboardModifiers mods) {
     scale_ = pxPerMm;
     // En Sélection, seul un clic sur un nœud de la forme unique sélectionnée est pris ici ; le
@@ -508,7 +604,10 @@ bool ToolController::press(double x, double y, double pxPerMm, Qt::KeyboardModif
     if (tool_ == QStringLiteral("bucket"))
         return bucket_.begin(raw);
     const bool nodeTool = tool_ == QStringLiteral("node.edit") || selectNodes;
-    const PointMm p = nodeTool ? raw : snapped(raw);
+    // Lasso et couteau libre : points bruts, un accrochage au sommet ferait sauter le tracé.
+    const bool rawPath =
+        tool_ == QStringLiteral("select.lasso") || (tool_ == QStringLiteral("knife") && knifeFree_);
+    const PointMm p = nodeTool || rawPath ? raw : snapped(raw);
     current_ = p;
     anchor_ = p;
     if (tool_ == QStringLiteral("draw.rectangle") || tool_ == QStringLiteral("draw.ellipse") ||
@@ -530,6 +629,12 @@ bool ToolController::press(double x, double y, double pxPerMm, Qt::KeyboardModif
         hover_ = true;
     } else if (tool_ == QStringLiteral("draw.freeform")) {
         drag_ = Drag::Freehand;
+        stroke_ = {p};
+    } else if (tool_ == QStringLiteral("select.lasso")) {
+        drag_ = Drag::Lasso;
+        stroke_ = {p};
+    } else if (tool_ == QStringLiteral("knife") && knifeFree_) {
+        drag_ = Drag::KnifePath;
         stroke_ = {p};
     } else if (tool_ == QStringLiteral("knife")) {
         drag_ = Drag::Line;
@@ -622,12 +727,20 @@ void ToolController::move(double x, double y, Qt::KeyboardModifiers mods) {
     if (tool_ == QStringLiteral("bucket"))
         return;
     const bool nodeTool = tool_ == QStringLiteral("node.edit");
+    const bool rawPath = drag_ == Drag::Lasso || drag_ == Drag::KnifePath;
     const PointMm raw = toModel(x, y);
-    current_ = nodeTool ? raw : snapped(raw);
+    current_ = nodeTool || rawPath ? raw : snapped(raw);
     mods_ = mods;
-    if (drag_ == Drag::Freehand) {
+    if (drag_ == Drag::Freehand || rawPath) {
         if (stroke_.empty() || dist(stroke_.back(), current_) > 1.5 / scale_) {
             stroke_.push_back(current_);
+        }
+        if (drag_ == Drag::KnifePath) {
+            double length = 0.0;
+            for (std::size_t i = 1; i < stroke_.size(); ++i) {
+                length += dist(stroke_[i - 1], stroke_[i]);
+            }
+            info_ = QStringLiteral("%1 mm").arg(length, 0, 'f', 1);
         }
     } else if (drag_ == Drag::PenNode && !penNodes_.empty()) {
         if (dist(penNodes_.back().pos, current_) > 3.0 / scale_) {
@@ -673,8 +786,9 @@ void ToolController::release(double x, double y, Qt::KeyboardModifiers mods) {
         return;
     }
     const bool nodeTool = tool_ == QStringLiteral("node.edit");
+    const bool rawPath = drag_ == Drag::Lasso || drag_ == Drag::KnifePath;
     const PointMm raw = toModel(x, y);
-    const PointMm p = nodeTool ? raw : snapped(raw);
+    const PointMm p = nodeTool || rawPath ? raw : snapped(raw);
     current_ = p;
     const Drag drag = drag_;
     const double moved = dist(anchor_, p) * scale_; // px
@@ -702,6 +816,18 @@ void ToolController::release(double x, double y, Qt::KeyboardModifiers mods) {
     }
     case Drag::PenNode:
         penDragging_ = false;
+        break;
+    case Drag::Lasso:
+        if (stroke_.empty() || dist(stroke_.back(), p) > 0.0) {
+            stroke_.push_back(p);
+        }
+        commitLasso(mods);
+        break;
+    case Drag::KnifePath:
+        if (stroke_.empty() || dist(stroke_.back(), p) > 0.0) {
+            stroke_.push_back(p);
+        }
+        commitKnifePath();
         break;
     case Drag::Line: {
         if (moved < 3.0) {
@@ -957,7 +1083,11 @@ void ToolController::rebuild() {
         line(ToolOverlayItem::Kind::Closed, boxPolygon(anchor_, current_, mods_));
     } else if (drag_ == Drag::Line) {
         line(ToolOverlayItem::Kind::Line, {anchor_, current_});
-    } else if (drag_ == Drag::Freehand || !stroke_.empty()) {
+    } else if (drag_ == Drag::Lasso) {
+        // Fermé visuellement (dernier point relié au premier), comme il sera interprété.
+        line(stroke_.size() >= 3 ? ToolOverlayItem::Kind::Closed : ToolOverlayItem::Kind::Line,
+             stroke_);
+    } else if (drag_ == Drag::Freehand || drag_ == Drag::KnifePath || !stroke_.empty()) {
         line(ToolOverlayItem::Kind::Line, stroke_);
     }
     if (!polyPoints_.empty()) {

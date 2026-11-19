@@ -48,6 +48,8 @@ class ToolController : public QObject {
     Q_PROPERTY(double gridMm READ gridMm WRITE setGridMm NOTIFY optionsChanged)
     Q_PROPERTY(bool snapVertices READ snapVertices WRITE setSnapVertices NOTIFY optionsChanged)
     Q_PROPERTY(int snapRadiusPx READ snapRadiusPx WRITE setSnapRadiusPx NOTIFY optionsChanged)
+    // Couteau : faux = ligne droite (défaut), vrai = tracé libre à main levée.
+    Q_PROPERTY(bool knifeFree READ knifeFree WRITE setKnifeFree NOTIFY optionsChanged)
     Q_PROPERTY(int selectedNodeCount READ selectedNodeCount NOTIFY overlayChanged)
     Q_PROPERTY(QObject* warp READ warp CONSTANT)
     Q_PROPERTY(bool needleOriginCustom READ needleOriginCustom NOTIFY needleOriginChanged)
@@ -81,6 +83,8 @@ public:
     void setSnapVertices(bool value);
     [[nodiscard]] int snapRadiusPx() const { return snapRadiusPx_; }
     void setSnapRadiusPx(int value);
+    [[nodiscard]] bool knifeFree() const { return knifeFree_; }
+    void setKnifeFree(bool value);
     [[nodiscard]] int selectedNodeCount() const { return static_cast<int>(nodeSel_.size()); }
     QObject* warp() { return &warp_; }
     // Point zéro de l'aiguille choisi par l'utilisateur (faux : par défaut, centre de la broderie).
@@ -131,7 +135,20 @@ signals:
     void objectCreated(const QString& id);
 
 private:
-    enum class Drag { None, Box, Freehand, PenNode, Line, Nodes, Tangent, Segment };
+    // KnifePath : couteau en tracé libre ; Lasso : sélection par contour main levée. Tous deux
+    // accumulent `stroke_` (points bruts, jamais accrochés) et n'agissent qu'au relâchement.
+    enum class Drag {
+        None,
+        Box,
+        Freehand,
+        PenNode,
+        Line,
+        Nodes,
+        Tangent,
+        Segment,
+        KnifePath,
+        Lasso
+    };
     [[nodiscard]] PointMm toModel(double x, double y) const { return screenToModel(x, y); }
     [[nodiscard]] PointMm snapped(PointMm p, bool allowGrid = true) const;
     void refuse(const QString& text);
@@ -150,6 +167,8 @@ private:
     [[nodiscard]] PointMm needleOriginMm() const;
     void syncNeedleOrigin();
     bool commitBox(PointMm a, PointMm b, Qt::KeyboardModifiers mods);
+    void commitLasso(Qt::KeyboardModifiers mods);
+    void commitKnifePath();
     [[nodiscard]] std::vector<PointMm> boxPolygon(PointMm a, PointMm b,
                                                   Qt::KeyboardModifiers mods) const;
     [[nodiscard]] std::vector<std::uint64_t> selectedIds() const;
@@ -170,6 +189,7 @@ private:
     double gridMm_{5.0};
     bool snapVertices_{true};
     int snapRadiusPx_{8};
+    bool knifeFree_{false};
     double scale_{1.0};
     Qt::KeyboardModifiers mods_{};
 

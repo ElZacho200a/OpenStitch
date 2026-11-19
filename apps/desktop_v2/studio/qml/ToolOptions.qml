@@ -71,6 +71,18 @@ ColumnLayout {
         }
     }
 
+    RowLayout {
+        visible: panel.toolCtl && panel.toolCtl.activeTool === "knife"
+        spacing: 6
+        StudioCheckBox {
+            objectName: "knifeFreeCheck"
+            text: qsTr("Tracé libre")
+            checked: panel.toolCtl ? panel.toolCtl.knifeFree : false
+            onToggled: panel.toolCtl.knifeFree = checked
+            StudioToolTip { text: qsTr("Couper selon un trait à main levée au lieu d'une ligne droite") }
+        }
+    }
+
     SectionLabel { text: qsTr("PINCEAU DE DÉFORMATION"); visible: panel.toolCtl && panel.toolCtl.activeTool === "warp-brush" }
     ColumnLayout {
         visible: panel.toolCtl && panel.toolCtl.activeTool === "warp-brush"

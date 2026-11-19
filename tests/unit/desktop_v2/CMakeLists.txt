@@ -18,6 +18,7 @@ add_executable(test_desktop_v2_core
     test_paint_bucket.cpp
     test_transform_batch.cpp
     test_edit_batch.cpp
+    test_lasso_select.cpp
     test_diagnostics.cpp
     test_fix_service.cpp
     test_export_formats.cpp
