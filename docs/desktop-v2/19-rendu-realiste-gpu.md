@@ -125,4 +125,5 @@ bump map), couleur du tissu (preglages ou selecteur libre), couleur du fond (tis
 un fond, bordure 12 %). Options bornees par le controleur, liste fermee pour le type. Script :
 `--fabric-type`, `--background`, `--border`, `--width-px` (3840 = 4K).
 Mesure : Impossibke.osp, 131 829 brins, 3840 x 2676 px, 256 spp, vue de dessus, coton noir en
-6,2 s (cuda_ad_rgb).
+6,2 s (cuda_ad_rgb) ; en 4K UHD 3840 x 2160 (`--height-px 2160`) en 5,0 s : capture
+`captures/raytrace-impossibke-4k-coton-noir.png`.
