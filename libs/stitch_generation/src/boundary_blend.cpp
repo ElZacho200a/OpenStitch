@@ -3,13 +3,18 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <deque>
+#include <future>
 #include <limits>
+#include <list>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <numbers>
 #include <set>
 #include <utility>
+#include <vector>
 
 #include "openstitch/document/boundary_blend.hpp"
 #include "openstitch/geometry/boolean.hpp"
@@ -19,6 +24,8 @@
 #include "openstitch/stitch_generation/directional_fill.hpp"
 #include "openstitch/stitch_generation/pull_auto.hpp"
 #include "openstitch/stitch_generation/row_mask.hpp"
+
+#include "chunk_cache.hpp"
 
 namespace openstitch::stitch_generation {
 
@@ -40,6 +47,409 @@ double seg_distance(Vec2um p, Vec2um a, Vec2um b) {
     const double qx = ax + t * dx - px;
     const double qy = ay + t * dy - py;
     return std::sqrt(qx * qx + qy * qy);
+}
+
+// --- Index spatial du champ (performance, résultats identiques au bit près) ----------------------
+
+// Test pair-impair (rayon horizontal vers +x) sur des contours fermés, accéléré par tranches
+// horizontales : une arête ne peut basculer la parité qu'à une ordonnée de [min(ay, by) ;
+// max(ay, by)) ; chaque tranche liste les arêtes dont l'intervalle la touche. La parité ne
+// dépend pas de l'ordre des arêtes et chaque arête est évaluée par la même expression que le
+// parcours complet : même verdict, au bit près.
+class EvenOddIndex {
+public:
+    void add_polygon(const std::vector<Vec2um>& poly) {
+        const std::size_t m = poly.size();
+        for (std::size_t i = 0, j = m - 1; i < m; j = i++) {
+            const Edge e{static_cast<double>(poly[i].x.value), static_cast<double>(poly[i].y.value),
+                         static_cast<double>(poly[j].x.value),
+                         static_cast<double>(poly[j].y.value)};
+            if (e.ay != e.by) { // horizontale : ne bascule jamais la parité
+                edges_.push_back(e);
+            }
+        }
+    }
+
+    // À appeler une fois tous les contours ajoutés.
+    void build() {
+        if (edges_.empty()) {
+            return;
+        }
+        double y0 = std::numeric_limits<double>::max();
+        double y1 = std::numeric_limits<double>::lowest();
+        for (const Edge& e : edges_) {
+            y0 = std::min({y0, e.ay, e.by});
+            y1 = std::max({y1, e.ay, e.by});
+        }
+        y0_ = y0;
+        // Environ deux arêtes par tranche en moyenne, au plus 1 << 16 tranches.
+        const std::size_t want = std::clamp<std::size_t>(edges_.size() / 2, 1, 1U << 16);
+        slab_ = std::max(1.0, (y1 - y0) / static_cast<double>(want));
+        slabs_ = static_cast<std::size_t>(std::floor((y1 - y0) / slab_)) + 1;
+        std::vector<std::uint32_t> counts(slabs_ + 1, 0);
+        for (const Edge& e : edges_) {
+            const std::size_t lo = slab_of(std::min(e.ay, e.by));
+            const std::size_t hi = slab_of(std::max(e.ay, e.by));
+            for (std::size_t s = lo; s <= hi; ++s) {
+                ++counts[s + 1];
+            }
+        }
+        for (std::size_t s = 0; s < slabs_; ++s) {
+            counts[s + 1] += counts[s];
+        }
+        start_ = counts;
+        members_.resize(start_.back());
+        for (std::uint32_t k = 0; k < edges_.size(); ++k) {
+            const Edge& e = edges_[k];
+            const std::size_t lo = slab_of(std::min(e.ay, e.by));
+            const std::size_t hi = slab_of(std::max(e.ay, e.by));
+            for (std::size_t s = lo; s <= hi; ++s) {
+                members_[counts[s]++] = k;
+            }
+        }
+    }
+
+    [[nodiscard]] bool contains(Vec2um p) const {
+        const double px = p.x.value;
+        const double py = p.y.value;
+        if (slabs_ == 0 || py < y0_) {
+            return false;
+        }
+        const double rel = std::floor((py - y0_) / slab_);
+        if (rel >= static_cast<double>(slabs_)) {
+            return false; // au-dessus de toutes les arêtes : aucune ne bascule la parité
+        }
+        const auto s = static_cast<std::size_t>(rel);
+        bool inside = false;
+        for (std::uint32_t k = start_[s]; k < start_[s + 1]; ++k) {
+            const Edge& e = edges_[members_[k]];
+            if ((e.ay > py) != (e.by > py) &&
+                px < (e.bx - e.ax) * (py - e.ay) / (e.by - e.ay) + e.ax) {
+                inside = !inside;
+            }
+        }
+        return inside;
+    }
+
+private:
+    struct Edge {
+        double ax, ay, bx, by; // a = sommet i, b = sommet j (même convention que le parcours)
+    };
+
+    [[nodiscard]] std::size_t slab_of(double y) const {
+        return std::min(slabs_ - 1, static_cast<std::size_t>(std::floor((y - y0_) / slab_)));
+    }
+
+    std::vector<Edge> edges_;
+    double y0_{0.0};
+    double slab_{1.0};
+    std::size_t slabs_{0};
+    std::vector<std::uint32_t> start_;
+    std::vector<std::uint32_t> members_;
+};
+
+// Segments de la frontière rangés dans une grille uniforme couvrant la boîte du champ (cases
+// d'environ un segment, chaque segment dans toutes les cases de sa boîte). Distance minimale par
+// anneaux de cases autour du point : un segment absent des anneaux 0..k n'a aucun point dans ces
+// cases, donc est à plus de k × case du point ; on s'arrête dès que le meilleur candidat est plus
+// proche (marge de 1 µm contre l'arrondi). Le minimum de valeurs calculées par la même fonction
+// ne dépend pas de l'ordre : même résultat que le parcours complet, au bit près.
+class SegmentGrid {
+public:
+    struct Segment {
+        Vec2um a;
+        Vec2um b;
+        // Précalculés pour `boundary_blend_cross_angle`, par les mêmes expressions : longueur,
+        // cos et sin du double de la direction.
+        double len{0.0};
+        double cos2{0.0};
+        double sin2{0.0};
+    };
+
+    // `margin` : élargissement de la grille autour de la boîte de la frontière (µm).
+    SegmentGrid(const std::vector<geometry::Polyline>& lines, double margin) {
+        double x0 = std::numeric_limits<double>::max();
+        double y0 = x0;
+        double x1 = std::numeric_limits<double>::lowest();
+        double y1 = x1;
+        double total = 0.0;
+        for (const auto& line : lines) {
+            for (std::size_t i = 1; i < line.points.size(); ++i) {
+                Segment s{line.points[i - 1], line.points[i]};
+                const double dx = static_cast<double>(s.b.x.value) - s.a.x.value;
+                const double dy = static_cast<double>(s.b.y.value) - s.a.y.value;
+                s.len = std::hypot(dx, dy);
+                const double theta = std::atan2(dy, dx);
+                s.cos2 = std::cos(2.0 * theta);
+                s.sin2 = std::sin(2.0 * theta);
+                segments_.push_back(s);
+                total += s.len;
+            }
+            for (const Vec2um p : line.points) {
+                x0 = std::min(x0, static_cast<double>(p.x.value));
+                y0 = std::min(y0, static_cast<double>(p.y.value));
+                x1 = std::max(x1, static_cast<double>(p.x.value));
+                y1 = std::max(y1, static_cast<double>(p.y.value));
+            }
+        }
+        if (segments_.empty()) {
+            return;
+        }
+        const double n = static_cast<double>(segments_.size());
+        const double fw = std::max(1.0, x1 - x0);
+        const double fh = std::max(1.0, y1 - y0);
+        // Case ≈ une par segment sur la boîte de la frontière, jamais plus fine qu'un segment
+        // moyen ni que 50 µm ; grille élargie de la marge bornée à ~4 cases par segment.
+        cell_ = std::max({50.0, std::sqrt(fw * fh / n), total / n});
+        x0_ = x0 - margin;
+        y0_ = y0 - margin;
+        const double w = fw + 2.0 * margin;
+        const double h = fh + 2.0 * margin;
+        while ((w / cell_ + 1.0) * (h / cell_ + 1.0) > 4.0 * n + 256.0) {
+            cell_ *= 1.25;
+        }
+        nx_ = static_cast<std::int64_t>(std::floor(w / cell_)) + 1;
+        ny_ = static_cast<std::int64_t>(std::floor(h / cell_)) + 1;
+        std::vector<std::uint32_t> counts(static_cast<std::size_t>(nx_ * ny_) + 1, 0);
+        const auto forCells = [&](const Segment& s, auto&& f) {
+            const std::int64_t cx0 = clamped(std::min(s.a.x.value, s.b.x.value), x0_, nx_);
+            const std::int64_t cx1 = clamped(std::max(s.a.x.value, s.b.x.value), x0_, nx_);
+            const std::int64_t cy0 = clamped(std::min(s.a.y.value, s.b.y.value), y0_, ny_);
+            const std::int64_t cy1 = clamped(std::max(s.a.y.value, s.b.y.value), y0_, ny_);
+            for (std::int64_t cy = cy0; cy <= cy1; ++cy) {
+                for (std::int64_t cx = cx0; cx <= cx1; ++cx) {
+                    f(static_cast<std::size_t>(cy * nx_ + cx));
+                }
+            }
+        };
+        for (const Segment& s : segments_) {
+            forCells(s, [&](std::size_t c) { ++counts[c + 1]; });
+        }
+        for (std::size_t c = 0; c + 1 < counts.size(); ++c) {
+            counts[c + 1] += counts[c];
+        }
+        start_ = counts;
+        members_.resize(start_.back());
+        for (std::uint32_t k = 0; k < segments_.size(); ++k) {
+            forCells(segments_[k], [&](std::size_t c) { members_[counts[c]++] = k; });
+        }
+    }
+
+    [[nodiscard]] const std::vector<Segment>& segments() const { return segments_; }
+
+    // Plus petite distance de p aux segments (max() si aucun) : même valeur que le parcours
+    // complet par `seg_distance`.
+    [[nodiscard]] double min_distance(Vec2um p) const {
+        double best = std::numeric_limits<double>::max();
+        const auto [cx, cy] = cell_of(p);
+        if (!in_grid(cx, cy)) {
+            for (const Segment& s : segments_) {
+                best = std::min(best, seg_distance(p, s.a, s.b));
+            }
+            return best;
+        }
+        const std::int64_t kmax = std::max({cx, cy, nx_ - 1 - cx, ny_ - 1 - cy});
+        for (std::int64_t k = 0; k <= kmax; ++k) {
+            ring(cx, cy, k, [&](std::uint32_t idx) {
+                const Segment& s = segments_[idx];
+                best = std::min(best, seg_distance(p, s.a, s.b));
+            });
+            if (best <= static_cast<double>(k) * cell_ - 1.0) {
+                break;
+            }
+        }
+        return best;
+    }
+
+    // Indices (croissants, sans doublon) d'un sur-ensemble des segments à distance <= r de p.
+    // Faux si p est hors de la grille : l'appelant parcourt alors tous les segments.
+    [[nodiscard]] bool near(Vec2um p, double r, std::vector<std::uint32_t>& out) const {
+        out.clear();
+        const auto [cx, cy] = cell_of(p);
+        if (!in_grid(cx, cy)) {
+            return false;
+        }
+        const auto reach = static_cast<std::int64_t>(std::floor((r + 1.0) / cell_)) + 1;
+        for (std::int64_t yy = std::max<std::int64_t>(0, cy - reach);
+             yy <= std::min(ny_ - 1, cy + reach); ++yy) {
+            for (std::int64_t xx = std::max<std::int64_t>(0, cx - reach);
+                 xx <= std::min(nx_ - 1, cx + reach); ++xx) {
+                const auto c = static_cast<std::size_t>(yy * nx_ + xx);
+                out.insert(out.end(), members_.begin() + start_[c],
+                           members_.begin() + start_[c + 1]);
+            }
+        }
+        std::ranges::sort(out);
+        out.erase(std::unique(out.begin(), out.end()), out.end());
+        return true;
+    }
+
+private:
+    [[nodiscard]] std::int64_t clamped(std::int32_t v, double origin, std::int64_t count) const {
+        return std::clamp<std::int64_t>(static_cast<std::int64_t>(std::floor((v - origin) / cell_)),
+                                        0, count - 1);
+    }
+    [[nodiscard]] bool in_grid(std::int64_t cx, std::int64_t cy) const {
+        return !segments_.empty() && cx >= 0 && cy >= 0 && cx < nx_ && cy < ny_;
+    }
+    // Case de p sans bornage (hors grille possible).
+    [[nodiscard]] std::pair<std::int64_t, std::int64_t> cell_of(Vec2um p) const {
+        constexpr double kLim = 1e12;
+        const double fx = std::clamp(std::floor((p.x.value - x0_) / cell_), -kLim, kLim);
+        const double fy = std::clamp(std::floor((p.y.value - y0_) / cell_), -kLim, kLim);
+        return {static_cast<std::int64_t>(fx), static_cast<std::int64_t>(fy)};
+    }
+
+    // Cases à distance de Tchebychev exactement k de (cx, cy), dans la grille.
+    template <class F> void ring(std::int64_t cx, std::int64_t cy, std::int64_t k, F&& f) const {
+        const auto visit = [&](std::int64_t xx, std::int64_t yy) {
+            if (xx < 0 || yy < 0 || xx >= nx_ || yy >= ny_) {
+                return;
+            }
+            const auto c = static_cast<std::size_t>(yy * nx_ + xx);
+            for (std::uint32_t m = start_[c]; m < start_[c + 1]; ++m) {
+                f(members_[m]);
+            }
+        };
+        if (k == 0) {
+            visit(cx, cy);
+            return;
+        }
+        for (std::int64_t xx = cx - k; xx <= cx + k; ++xx) {
+            visit(xx, cy - k);
+            visit(xx, cy + k);
+        }
+        for (std::int64_t yy = cy - k + 1; yy <= cy + k - 1; ++yy) {
+            visit(cx - k, yy);
+            visit(cx + k, yy);
+        }
+    }
+
+    std::vector<Segment> segments_;
+    double x0_{0.0};
+    double y0_{0.0};
+    double cell_{1.0};
+    std::int64_t nx_{0};
+    std::int64_t ny_{0};
+    std::vector<std::uint32_t> start_;
+    std::vector<std::uint32_t> members_;
+};
+
+// --- Cache des plans et des couches (performance) -----------------------------------------------
+//
+// Les deux zones d'un couple génèrent chacune leur couche à partir du MÊME calcul (plan et deux
+// couches, sens canonique) ; sans cache, chaque zone le refaisait entièrement et jetait la moitié
+// du résultat, et toute régénération du document recalculait tous les fondus. Le résultat est une
+// fonction pure de la clé (zones cousues, paramètres résolus, réglage du couple) : clé EXACTE,
+// comparée intégralement (operator== des types du document), jamais une empreinte. Une zone qui
+// demande un calcul déjà en cours dans un autre fil attend son résultat au lieu de le refaire.
+// Taille bornée (LRU) ; suit `chunk_cache_enabled()` et se vide avec `clear_chunk_cache()`.
+template <class Key, class Value, std::size_t Capacity> class ExactCache {
+public:
+    template <class Compute> std::shared_ptr<const Value> get(const Key& key, Compute&& compute) {
+        if (!chunk_cache_enabled()) {
+            return std::make_shared<const Value>(compute());
+        }
+        std::promise<std::shared_ptr<const Value>> promise;
+        std::shared_future<std::shared_ptr<const Value>> future;
+        bool owner = false;
+        {
+            const std::lock_guard<std::mutex> lock(mutex_);
+            const auto it =
+                std::ranges::find_if(entries_, [&key](const Entry& e) { return e.key == key; });
+            if (it != entries_.end()) {
+                entries_.splice(entries_.begin(), entries_, it);
+                future = it->value;
+            } else {
+                future = promise.get_future().share();
+                entries_.push_front(Entry{key, future});
+                if (entries_.size() > Capacity) {
+                    entries_.pop_back(); // une attente en cours garde sa propre copie du futur
+                }
+                owner = true;
+            }
+        }
+        if (owner) {
+            try {
+                promise.set_value(std::make_shared<const Value>(compute()));
+            } catch (...) {
+                promise.set_exception(std::current_exception());
+                const std::lock_guard<std::mutex> lock(mutex_);
+                std::erase_if(entries_, [&key](const Entry& e) { return e.key == key; });
+            }
+        }
+        return future.get();
+    }
+
+    void clear() {
+        const std::lock_guard<std::mutex> lock(mutex_);
+        entries_.clear();
+    }
+
+private:
+    struct Entry {
+        Key key;
+        std::shared_future<std::shared_ptr<const Value>> value;
+    };
+    std::mutex mutex_;
+    std::list<Entry> entries_; // front = plus récent
+};
+
+struct FillsKey {
+    std::vector<geometry::PathSet> zones_a;
+    BoundaryBlendFillParams params_a;
+    std::vector<geometry::PathSet> zones_b;
+    BoundaryBlendFillParams params_b;
+    BoundaryBlendSpec spec;
+
+    bool operator==(const FillsKey&) const = default;
+};
+
+struct PlanKey {
+    std::vector<geometry::PathSet> zones_a;
+    std::vector<geometry::PathSet> zones_b;
+    BoundaryBlendSpec spec;
+    Micrometers margin;
+
+    bool operator==(const PlanKey&) const = default;
+};
+
+ExactCache<FillsKey, Result<BoundaryBlendFills>, 32>& fills_cache() {
+    static ExactCache<FillsKey, Result<BoundaryBlendFills>, 32> instance;
+    return instance;
+}
+
+ExactCache<PlanKey, Result<BoundaryBlendPlan>, 64>& plan_cache() {
+    static ExactCache<PlanKey, Result<BoundaryBlendPlan>, 64> instance;
+    return instance;
+}
+
+// Bande autour de la frontière (`geometry::polyline_band`, coûteuse sur une longue frontière
+// ondulée : décalage arrondi puis réunion de ses recouvrements). Un fondu en demande plusieurs
+// fois la même (plan, découpe de la bande, sous-couche, chaque zone du couple) : mémorisée par
+// (frontière, demi-largeur), clé exacte.
+struct BandKey {
+    std::vector<geometry::Polyline> lines;
+    Micrometers width;
+
+    bool operator==(const BandKey& o) const {
+        return width == o.width &&
+               std::ranges::equal(lines, o.lines,
+                                  [](const geometry::Polyline& l, const geometry::Polyline& r) {
+                                      return l.closed == r.closed && l.points == r.points;
+                                  });
+    }
+};
+
+ExactCache<BandKey, Result<std::vector<geometry::PathSet>>, 64>& band_cache() {
+    static ExactCache<BandKey, Result<std::vector<geometry::PathSet>>, 64> instance;
+    return instance;
+}
+
+Result<std::vector<geometry::PathSet>> cached_band(const std::vector<geometry::Polyline>& lines,
+                                                   Micrometers half_width) {
+    return *band_cache().get(BandKey{lines, half_width},
+                             [&] { return geometry::polyline_band(lines, half_width); });
 }
 
 // Densité minimale d'une couche dans la bande : en dessous, la couche ne coud rien (au-dessus de
@@ -126,7 +536,7 @@ Result<std::vector<geometry::PathSet>> extended(const std::vector<geometry::Path
                                                 const std::vector<geometry::PathSet>& other,
                                                 const std::vector<geometry::Polyline>& frontier,
                                                 Micrometers otherWidth, Micrometers tolerance) {
-    auto band = geometry::polyline_band(frontier, otherWidth);
+    auto band = cached_band(frontier, otherWidth);
     if (!band) {
         return std::unexpected(band.error());
     }
@@ -187,10 +597,10 @@ Result<BandSplit> split_band(const std::vector<geometry::PathSet>& a,
                              const BoundaryBlendSpec& spec) {
     const std::int32_t wA = std::clamp(spec.width_a.value, kMinWidth, kMaxWidth);
     const std::int32_t wB = std::clamp(spec.width_b.value, kMinWidth, kMaxWidth);
-    auto bandA = geometry::polyline_band(frontier, Micrometers{wA});
-    auto bandB = geometry::polyline_band(frontier, Micrometers{wB});
-    auto growA = geometry::polyline_band(frontier, Micrometers{wA + kBoundaryBlendSeamOverlap});
-    auto growB = geometry::polyline_band(frontier, Micrometers{wB + kBoundaryBlendSeamOverlap});
+    auto bandA = cached_band(frontier, Micrometers{wA});
+    auto bandB = cached_band(frontier, Micrometers{wB});
+    auto growA = cached_band(frontier, Micrometers{wA + kBoundaryBlendSeamOverlap});
+    auto growB = cached_band(frontier, Micrometers{wB + kBoundaryBlendSeamOverlap});
     if (!bandA) {
         return std::unexpected(bandA.error());
     }
@@ -308,6 +718,20 @@ Micrometers blend_margin(const BoundaryBlendFillParams& a, const BoundaryBlendFi
 
 } // namespace
 
+void clear_boundary_blend_cache() {
+    fills_cache().clear();
+    plan_cache().clear();
+    band_cache().clear();
+}
+
+// Pair-impair sur A (extérieur et trous, aplatie à 20 µm) et grille des segments de la frontière.
+struct BoundaryBlendField::Index {
+    Index(const std::vector<geometry::Polyline>& lines, double margin) : frontier(lines, margin) {}
+
+    EvenOddIndex inside_a;
+    SegmentGrid frontier;
+};
+
 double boundary_blend_shared_angle(double angle_a, double angle_b) {
     return angle_a + 0.5 * wrap_half_turn(angle_b - angle_a);
 }
@@ -333,36 +757,31 @@ double boundary_blend_cross_angle(const BoundaryBlendField& field, Vec2um p) {
     // (rangées croisées en éventail, recette Studio) et suivait chaque cran d'une frontière
     // vectorisée ; ce champ est continu partout et exact le long d'une frontière droite.
     const double sigma = std::max(1.0, 0.5 * (field.width_a() + field.width_b()));
-    double dmin = std::numeric_limits<double>::max();
-    for (const auto& line : field.frontier()) {
-        for (std::size_t i = 1; i < line.points.size(); ++i) {
-            dmin = std::min(dmin, seg_distance(p, line.points[i - 1], line.points[i]));
-        }
-    }
+    const SegmentGrid& grid = field.index().frontier;
+    const double dmin = grid.min_distance(p);
     if (dmin == std::numeric_limits<double>::max()) {
         return 0.0;
     }
+    // Seuls les segments à au plus dmin + 4σ pèsent (au-delà : poids < 1e-7, ignorés) ; ils sont
+    // parcourus dans l'ordre de la frontière, comme le parcours complet : même somme au bit près.
+    thread_local std::vector<std::uint32_t> candidates;
+    const bool indexed = grid.near(p, dmin + 4.0 * sigma, candidates);
+    const auto& segments = grid.segments();
+    const std::size_t count = indexed ? candidates.size() : segments.size();
     double c2 = 0.0;
     double s2 = 0.0;
-    for (const auto& line : field.frontier()) {
-        for (std::size_t i = 1; i < line.points.size(); ++i) {
-            const Vec2um a = line.points[i - 1];
-            const Vec2um b = line.points[i];
-            const double dx = static_cast<double>(b.x.value) - a.x.value;
-            const double dy = static_cast<double>(b.y.value) - a.y.value;
-            const double len = std::hypot(dx, dy);
-            if (len <= 0.0) {
-                continue;
-            }
-            const double u = (seg_distance(p, a, b) - dmin) / sigma;
-            if (u > 4.0) {
-                continue; // poids < 1e-7
-            }
-            const double w = len * std::exp(-u * u);
-            const double theta = std::atan2(dy, dx);
-            c2 += w * std::cos(2.0 * theta);
-            s2 += w * std::sin(2.0 * theta);
+    for (std::size_t k = 0; k < count; ++k) {
+        const auto& seg = segments[indexed ? candidates[k] : k];
+        if (seg.len <= 0.0) {
+            continue;
         }
+        const double u = (seg_distance(p, seg.a, seg.b) - dmin) / sigma;
+        if (u > 4.0) {
+            continue; // poids < 1e-7
+        }
+        const double w = seg.len * std::exp(-u * u);
+        c2 += w * seg.cos2;
+        s2 += w * seg.sin2;
     }
     return 0.5 * std::atan2(s2, c2) + 0.5 * std::numbers::pi;
 }
@@ -374,6 +793,9 @@ BoundaryBlendField::BoundaryBlendField(const std::vector<geometry::PathSet>& a,
       widthA_(static_cast<double>(std::clamp(spec.width_a.value, kMinWidth, kMaxWidth))),
       widthB_(static_cast<double>(std::clamp(spec.width_b.value, kMinWidth, kMaxWidth))),
       curve_(spec.curve) {
+    auto index = std::make_shared<Index>(
+        frontier_, std::max(widthA_, widthB_) +
+                       static_cast<double>(std::max<std::int32_t>(0, reach_margin.value)) + 1.0);
     const auto addPoly = [&](const geometry::Path& path) {
         std::vector<Vec2um> pts;
         pts.reserve(path.nodes.size());
@@ -381,7 +803,7 @@ BoundaryBlendField::BoundaryBlendField(const std::vector<geometry::PathSet>& a,
             pts.push_back(node.pos);
         }
         if (pts.size() >= 3) {
-            polysA_.push_back(std::move(pts));
+            index->inside_a.add_polygon(pts);
         }
     };
     // Composantes disjointes : le test pair-impair sur la réunion de leurs contours reste juste.
@@ -392,6 +814,8 @@ BoundaryBlendField::BoundaryBlendField(const std::vector<geometry::PathSet>& a,
             addPoly(hole);
         }
     }
+    index->inside_a.build();
+    index_ = std::move(index);
     double x0 = std::numeric_limits<double>::max();
     double y0 = x0;
     double x1 = std::numeric_limits<double>::lowest();
@@ -422,32 +846,11 @@ bool BoundaryBlendField::near_frontier(Vec2um p) const {
 }
 
 bool BoundaryBlendField::inside_a(Vec2um p) const {
-    // Pair-impair sur extérieur et trous (rayon horizontal), entiers convertis en double.
-    bool inside = false;
-    const double px = p.x.value;
-    const double py = p.y.value;
-    for (const auto& poly : polysA_) {
-        const std::size_t m = poly.size();
-        for (std::size_t i = 0, j = m - 1; i < m; j = i++) {
-            const double ax = poly[i].x.value;
-            const double ay = poly[i].y.value;
-            const double bx = poly[j].x.value;
-            const double by = poly[j].y.value;
-            if ((ay > py) != (by > py) && px < (bx - ax) * (py - ay) / (by - ay) + ax) {
-                inside = !inside;
-            }
-        }
-    }
-    return inside;
+    return index_->inside_a.contains(p);
 }
 
 double BoundaryBlendField::signed_distance(Vec2um p) const {
-    double best = std::numeric_limits<double>::max();
-    for (const auto& line : frontier_) {
-        for (std::size_t i = 1; i < line.points.size(); ++i) {
-            best = std::min(best, seg_distance(p, line.points[i - 1], line.points[i]));
-        }
-    }
+    const double best = index_->frontier.min_distance(p);
     return inside_a(p) ? -best : best;
 }
 
@@ -512,7 +915,7 @@ Result<BoundaryBlendPlan> plan_boundary_blend(const std::vector<geometry::PathSe
         // Chaque zone doit être atteinte par sa demi-bande : sinon le fondu n'aurait aucun effet
         // de ce côté (frontière tracée loin d'une des zones).
         const auto reaches = [&](const std::vector<geometry::PathSet>& zones, Micrometers width) {
-            const auto band = geometry::polyline_band(frontier, width);
+            const auto band = cached_band(frontier, width);
             if (!band) {
                 return false;
             }
@@ -746,16 +1149,21 @@ std::optional<BoundaryBlendLayer> single_pair_layer(const document::Project& pro
     }
     const auto* linkSelf = document::boundary_blend_link(*self, partner->id);
     const BoundaryBlendSpec spec = couple_spec(first, second);
-    auto fills =
-        fill_boundary_blend(zonesFirst, resolved_fill_params(first, zonesFirst.front()),
-                            zonesSecond, resolved_fill_params(second, zonesSecond.front()), spec);
+    // Même calcul pour les deux zones du couple : mémorisé (cf. `ExactCache`), chaque zone en
+    // prend sa couche.
+    FillsKey key{zonesFirst, resolved_fill_params(first, zonesFirst.front()), zonesSecond,
+                 resolved_fill_params(second, zonesSecond.front()), spec};
+    const auto cached = fills_cache().get(key, [&key] {
+        return fill_boundary_blend(key.zones_a, key.params_a, key.zones_b, key.params_b, key.spec);
+    });
+    const Result<BoundaryBlendFills>& fills = *cached;
     if (!fills) {
         return std::nullopt;
     }
     BoundaryBlendLayer layer;
-    layer.stitches = selfFirst ? std::move(fills->a) : std::move(fills->b);
+    layer.stitches = selfFirst ? fills->a : fills->b;
     const auto& ownZones = selfFirst ? zonesFirst : zonesSecond;
-    const auto band = geometry::polyline_band(fills->frontier, linkSelf->width_self);
+    const auto band = cached_band(fills->frontier, linkSelf->width_self);
     if (band) {
         if (auto core = geometry::difference_polygons(ownZones, *band)) {
             layer.underlay_zones = std::move(*core);
@@ -844,7 +1252,7 @@ public:
                 box_.add(node.pos);
             }
             if (pts.size() >= 3) {
-                polys_.push_back(std::move(pts));
+                polys_.add_polygon(pts);
             }
         };
         for (const auto& component : regions) {
@@ -854,6 +1262,7 @@ public:
                 addPoly(hole);
             }
         }
+        polys_.build();
     }
 
     [[nodiscard]] bool contains(Vec2um p) const {
@@ -861,26 +1270,11 @@ public:
             p.y.value > box_.y1) {
             return false;
         }
-        bool inside = false;
-        const double px = p.x.value;
-        const double py = p.y.value;
-        for (const auto& poly : polys_) {
-            const std::size_t m = poly.size();
-            for (std::size_t i = 0, j = m - 1; i < m; j = i++) {
-                const double ax = poly[i].x.value;
-                const double ay = poly[i].y.value;
-                const double bx = poly[j].x.value;
-                const double by = poly[j].y.value;
-                if ((ay > py) != (by > py) && px < (bx - ax) * (py - ay) / (by - ay) + ax) {
-                    inside = !inside;
-                }
-            }
-        }
-        return inside;
+        return polys_.contains(p);
     }
 
 private:
-    std::vector<std::vector<Vec2um>> polys_;
+    EvenOddIndex polys_;
     Box box_;
 };
 
@@ -1103,7 +1497,11 @@ std::optional<BoundaryBlendLayer> group_layer(const document::Project& project,
         c.params_hi = resolved_fill_params(*hi, zHi.front());
         c.spec = couple_spec(*lo, *hi);
         const Micrometers margin = blend_margin(c.params_lo, c.params_hi);
-        auto plan = plan_boundary_blend(zLo, zHi, c.spec, margin);
+        // Chaque zone du groupe planifie les mêmes couples : plans mémorisés (cf. `ExactCache`).
+        const auto cachedPlan = plan_cache().get(PlanKey{zLo, zHi, c.spec, margin}, [&] {
+            return plan_boundary_blend(zLo, zHi, c.spec, margin);
+        });
+        auto plan = *cachedPlan;
         if (!plan) {
             continue; // frontière disparue : couple sans effet, pour toutes les couches
         }
@@ -1166,7 +1564,7 @@ std::optional<BoundaryBlendLayer> group_layer(const document::Project& project,
             continue;
         }
         const Micrometers width = c.lo == self ? c.spec.width_a : c.spec.width_b;
-        const auto halfBand = geometry::polyline_band(c.plan.frontier, width);
+        const auto halfBand = cached_band(c.plan.frontier, width);
         if (!halfBand) {
             return std::nullopt;
         }
@@ -1182,7 +1580,7 @@ std::optional<BoundaryBlendLayer> group_layer(const document::Project& project,
             continue;
         }
         const auto& ownRegion = c.lo == self ? c.plan.region_a : c.plan.region_b;
-        const auto reach = geometry::polyline_band(
+        const auto reach = cached_band(
             c.plan.frontier,
             Micrometers{static_cast<std::int32_t>(
                 std::max(c.plan.field->width_a(), c.plan.field->width_b()) + c.margin)});
@@ -1237,7 +1635,7 @@ std::optional<BoundaryBlendLayer> group_layer(const document::Project& project,
             continue;
         }
         const Micrometers width = c.lo == self ? c.spec.width_a : c.spec.width_b;
-        const auto halfBand = geometry::polyline_band(c.plan.frontier, width);
+        const auto halfBand = cached_band(c.plan.frontier, width);
         if (!halfBand) {
             continue;
         }
