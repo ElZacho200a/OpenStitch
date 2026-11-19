@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "openstitch/project_ops/boundary_blend.hpp"
 
+#include <algorithm>
 #include <string>
 #include <utility>
 
 #include "openstitch/commands/boundary_blend_commands.hpp"
+#include "openstitch/commands/composite_command.hpp"
 #include "openstitch/document/boundary_blend.hpp"
 #include "openstitch/stitch_generation/boundary_blend.hpp"
 
@@ -89,6 +91,47 @@ make_boundary_blend_command(const document::Project& project, ObjectId a, Object
         document::BoundaryBlendLink{a, options.width_b, options.curve, options.manual_frontier,
                                     options.rows},
         edit ? "Modifier le fondu à la frontière" : "Fondu à la frontière");
+}
+
+Result<MultiBoundaryBlend> make_multi_boundary_blend_command(const document::Project& project,
+                                                             std::vector<ObjectId> ids,
+                                                             const BoundaryBlendOptions& options) {
+    std::ranges::sort(ids, {}, [](ObjectId id) { return id.value; });
+    const auto [first, last] = std::ranges::unique(ids);
+    ids.erase(first, last);
+    if (ids.size() < 2) {
+        return std::unexpected(coded(ErrorCategory::UserInput, "E_BLEND_FEW_ZONES",
+                                     "Sélectionnez au moins deux zones remplies",
+                                     "select two or more fill objects"));
+    }
+    BoundaryBlendOptions pairOptions = options;
+    pairOptions.manual_frontier.clear();
+    MultiBoundaryBlend result;
+    auto composite = std::make_unique<commands::CompositeCommand>("Fondu entre plusieurs zones");
+    for (std::size_t i = 0; i < ids.size(); ++i) {
+        for (std::size_t j = i + 1; j < ids.size(); ++j) {
+            const auto* zone = project.findEmbroidery(ids[i]);
+            if (zone != nullptr && document::boundary_blend_link(*zone, ids[j]) != nullptr) {
+                ++result.kept;
+                continue;
+            }
+            auto cmd = make_boundary_blend_command(project, ids[i], ids[j], pairOptions);
+            if (!cmd) {
+                continue; // couple refusé (zones disjointes, même fil...) : ignoré
+            }
+            composite->add(std::move(*cmd));
+            result.created.emplace_back(ids[i], ids[j]);
+        }
+    }
+    if (result.created.empty()) {
+        return std::unexpected(coded(ErrorCategory::OperationImpossible, "E_BLEND_NO_PAIR",
+                                     result.kept > 0
+                                         ? "Toutes les zones voisines sont déjà fondues"
+                                         : "Aucune paire de zones voisines ne peut être fondue",
+                                     "zones must touch, use different threads and be tatami"));
+    }
+    result.command = std::move(composite);
+    return result;
 }
 
 Result<std::unique_ptr<commands::ICommand>>
