@@ -880,7 +880,8 @@ std::optional<std::filesystem::path> resolveInside(const std::filesystem::path& 
     if (ec) {
         return std::nullopt;
     }
-    const auto full = std::filesystem::weakly_canonical(base / std::filesystem::u8path(*clean), ec);
+    const auto full = std::filesystem::weakly_canonical(
+        base / std::filesystem::path(std::u8string(clean->begin(), clean->end())), ec);
     if (ec) {
         return std::nullopt;
     }

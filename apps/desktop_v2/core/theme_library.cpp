@@ -183,7 +183,8 @@ ThemeLibrary::ImportResult ThemeLibrary::importDirectory(const std::filesystem::
             return result;
         }
         total += size;
-        files.emplace_back(item.path(), std::filesystem::u8path(rel));
+        files.emplace_back(item.path(),
+                           std::filesystem::path(std::u8string(rel.begin(), rel.end())));
         if (files.size() > kMaxImportFiles || total > kMaxImportBytes) {
             fail(diagnostics, "import", "thème trop volumineux (fichiers ou octets)");
             return result;

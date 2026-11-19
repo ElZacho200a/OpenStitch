@@ -16,6 +16,7 @@
 #include <QtCore/private/qzipwriter_p.h>
 
 #include <algorithm>
+#include <string_view>
 
 #ifdef Q_OS_WIN
 #ifndef NOMINMAX
@@ -68,7 +69,7 @@ QVariant toVariant(const TokenValue& value, bool asset) {
     }
     const auto& text = std::get<std::string>(value);
     if (asset) {
-        return fileUrl(std::filesystem::u8path(text));
+        return fileUrl(std::filesystem::path(std::u8string(text.begin(), text.end())));
     }
     return fromUtf8(text);
 }
@@ -146,7 +147,8 @@ std::filesystem::path ThemeController::defaultBuiltinDir() {
     if (QFileInfo(deployed).isDir()) {
         return std::filesystem::path(deployed.toStdWString());
     }
-    return std::filesystem::u8path(OPENSTITCH_THEMES_SOURCE_DIR);
+    const std::string_view dir{OPENSTITCH_THEMES_SOURCE_DIR};
+    return std::filesystem::path(std::u8string(dir.begin(), dir.end()));
 }
 
 QString ThemeController::activeId() const {
