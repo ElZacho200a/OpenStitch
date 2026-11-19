@@ -46,6 +46,9 @@ class BoundaryBlendController : public QObject {
     // Frontières de TOUS les fondus de la zone principale pour le canevas : liste de {partnerId,
     // current (bool), polylines (liste de listes de {x, y} en mm modèle)}.
     Q_PROPERTY(QVariantList allFrontiers READ allFrontiers NOTIFY changed)
+    // Trois zones ou plus sélectionnées : « Fondre toutes les zones voisines » est proposé.
+    Q_PROPERTY(bool canCreateAll READ canCreateAll NOTIFY changed)
+    Q_PROPERTY(int zoneCount READ zoneCount NOTIFY changed)
     Q_PROPERTY(QString message READ message NOTIFY messageChanged)
     Q_PROPERTY(bool lastOk READ lastOk NOTIFY messageChanged)
 
@@ -70,6 +73,8 @@ public:
         return other_ == 0 ? QString() : QString::number(other_);
     }
     [[nodiscard]] QVariantList allFrontiers() const { return allFrontiers_; }
+    [[nodiscard]] bool canCreateAll() const { return zones_.size() >= 3; }
+    [[nodiscard]] int zoneCount() const { return static_cast<int>(zones_.size()); }
     [[nodiscard]] QString message() const { return message_; }
     [[nodiscard]] bool lastOk() const { return ok_; }
 
@@ -78,6 +83,9 @@ public:
     Q_INVOKABLE bool create(double widthMm, double partnerWidthMm, int curve);
     // Choisit le fondu édité parmi `blends` (voisine donnée par son identifiant). Aucune mutation
     // du document. Refus si la zone principale ne fond pas avec cette voisine.
+    // Fond chaque couple de zones sélectionnées qui partagent une frontière (couples déjà fondus
+    // intacts, couples non éligibles ignorés), mêmes largeurs des deux côtés. Un pas d'annulation.
+    Q_INVOKABLE bool createAll(double widthMm, int curve);
     Q_INVOKABLE bool selectBlend(const QString& partnerId);
     // Retire le fondu entre la zone principale et la voisine donnée (ligne de la liste). Un pas
     // d'annulation ; les autres fondus de la zone restent intacts.

@@ -121,3 +121,36 @@ avec plusieurs » dans `test_segmentation.cpp` et `test_autodigitize.cpp`).
    n'utilise que la bibliothèque standard).
 4. Mettre à jour `docs/performance-audit.md` (section datée : mesures,
    corrections, hypothèses écartées avec leurs chiffres).
+
+## 6. Lag d'interface Studio (QML) : méthode et pièges mesurés (2026-11-19)
+
+Symptôme « la sélection / le pinceau / le couteau lague » : **ne pas deviner, mesurer sur le vrai
+projet** avec le journal de Studio.
+
+```powershell
+$env:OPENSTITCH_PERF_LOG = "$PWD\build\perf-studio.jsonl"; $env:PATH = "$env:QT_ROOT\bin;$env:PATH"
+Start-Process build\msvc\apps\desktop_v2\studio\Release\openstitch.exe   # Release, pas Debug
+```
+
+- Poser `const PerfScope perf("nom");` (`apps/desktop_v2/studio/perf_log.hpp`, inactif sans la
+  variable) en tête des getters `Q_PROPERTY`, des slots de `sceneChanged` / `changed` et des
+  contrôleurs ; résumer le JSONL par événement (n, moyenne, max, somme).
+- **Vérifier la date de `openstitch.exe` après le build** : un exe périmé a déjà fait conclure à tort
+  qu'un correctif ne marchait pas.
+- Le moteur n'était pas en cause (calcul de scène ~20 ms hors fil UI, copie de projet 2 ms,
+  rafraîchissement de segmentation ~7 ms). Le coût était **sur le fil d'interface**.
+- **Piège n°1 : getter `Q_PROPERTY ... NOTIFY` qui reconstruit une grosse liste.** QML relit la
+  propriété une fois par binding (`EditController::tree` : 27 385 appels, 19 s ; `StudioController::objects`
+  : ~0,9 s par changement sur 570 objets). Correctif : `mutable std::optional<QVariantList>` rempli
+  au premier appel, invalidé par une connexion du contrôleur à son **propre** signal, déclarée en
+  premier dans le constructeur (avant les connexions QML). `QVariantList` est à copie partagée.
+- **Piège n°2 : `changed` est émis pour tout** (survol, message, progression). Tout récepteur de
+  `StudioController::changed` doit être filtré (`change_gate.hpp`) ou ne rien coûter.
+- **Piège n°3 : classification des opérations** dans `DocumentSession::applyBatch`
+  (`changesStitches` / `changesSegmentation`) : une opération absente des listes est traitée comme
+  « touche tout ». Toute nouvelle op de géométrie ou de métadonnées doit y être classée (le couteau
+  `split_path` reconstruisait la carte des régions).
+- Résultat après correctifs : `scene.apply(UI)` 3,5-6 s -> ~0,11 s par changement des points
+  (570 objets, 102 000 segments).
+- Reste à explorer : `scene.rebuild` mesure encore 224 ms en moyenne (max 945 ms) en temps réel
+  alors que le calcul dure ~20 ms : attente de la file d'événements, non élucidée.

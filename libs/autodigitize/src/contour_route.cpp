@@ -290,8 +290,8 @@ std::vector<RoutedTrail> route_single_path(const ContourComponent& comp,
                 const ContourSegment& s =
                     comp.segments[static_cast<std::size_t>(edges[top.edge].seg)];
                 // direction d'arrivée = opposée à la sortie par le bout d'arrivée
-                const Vec2um out = leave_direction(s, !top.forward);
-                incoming = Vec2um{Micrometers{-out.x.value}, Micrometers{-out.y.value}};
+                const Vec2um outDir = leave_direction(s, !top.forward);
+                incoming = Vec2um{Micrometers{-outDir.x.value}, Micrometers{-outDir.y.value}};
                 haveIncoming = true;
             }
             for (const std::size_t ei : adj[top.node]) {

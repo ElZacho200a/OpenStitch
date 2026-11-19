@@ -23,6 +23,9 @@ namespace openstitch::desktop_v2::studio {
 
 StudioController::StudioController(DocumentSession& session, QObject* parent)
     : QObject(parent), session_(session) {
+    // Connecté en premier : invalidé avant que QML ne relise `objects`.
+    connect(this, &StudioController::changed, this, [this] { objectsCache_.reset(); });
+    connect(this, &StudioController::selectionChanged, this, [this] { objectsCache_.reset(); });
     lastNotifiedRevision_ = session_.revision();
     documentToken_ = session_.subscribe([this](ChangeKind kind) {
         // markSaved only changes the dirty flag. A segmentation edit changes the document
@@ -271,13 +274,32 @@ void StudioController::rebuildScene() {
             }
             status_ =
                 QStringLiteral("%1 segments · coordonnées en mm").arg(scene_->segments.size());
-            emit sceneChanged();
-            emit changed();
-            emit loadFinished(true);
+            const PerfScope applyPerf("scene.apply(UI)");
+            {
+                const PerfScope p1("apply.sceneChanged");
+                emit sceneChanged();
+            }
+            {
+                const PerfScope p2("apply.changed");
+                emit changed();
+            }
+            {
+                const PerfScope p3("apply.loadFinished");
+                emit loadFinished(true);
+            }
         });
 }
 
 QVariantList StudioController::objects() const {
+    // Chaque binding QML relit `objects` à chaque `changed` : une seule construction par émission.
+    if (!objectsCache_) {
+        const PerfScope perf("get.objects");
+        objectsCache_ = buildObjects();
+    }
+    return *objectsCache_;
+}
+
+QVariantList StudioController::buildObjects() const {
     QVariantList list;
     for (const auto& object : session_.project().embroidery_objects) {
         if (object.multi_blend) {

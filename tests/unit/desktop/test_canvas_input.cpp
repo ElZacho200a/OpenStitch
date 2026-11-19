@@ -355,7 +355,7 @@ private slots:
     void pixelDeltaWheelPansNotZooms() {
 #ifdef Q_OS_WIN
         QSKIP("Windows ne livre pas pixelDelta pour le pavé tactile");
-#endif
+#else
         QGraphicsScene scene;
         CanvasView view(&scene);
         prepareView(view);
@@ -364,6 +364,7 @@ private slots:
         sendWheel(view, QPoint(200, 200), QPoint(0, 120), QPoint(-30, 20));
         QCOMPARE(view.pixelsPerMm(), zoom);
         QCOMPARE(scrollPos(view), before + QPoint(30, -20));
+#endif
     }
 
     // G9 : pincement natif (macOS / Wayland) = zoom ancré au curseur.

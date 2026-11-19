@@ -288,10 +288,13 @@ OpStatus op_vectorize_segmentation(OpContext& ctx) {
         return refused("aucune segmentation : rien à vectoriser", "lancer segment_image d'abord");
     }
     RevectorizeOptions options;
-    if (auto st = number_arg(ctx, "precision_mm", 0.01, 2.0, options.precision_mm); !st.ok) {
+    if (auto st =
+            number_arg(ctx, "precision_mm", kPrecisionMinMm, kPrecisionMaxMm, options.precision_mm);
+        !st.ok) {
         return st;
     }
-    if (auto st = number_arg(ctx, "curve_tolerance_px", 0.1, 10.0, options.curve_tolerance_px);
+    if (auto st = number_arg(ctx, "curve_tolerance_px", kCurveToleranceMinPx, kCurveToleranceMaxPx,
+                             options.curve_tolerance_px);
         !st.ok) {
         return st;
     }

@@ -20,6 +20,8 @@ add_library(openstitch_warnings INTERFACE)
 add_library(openstitch::warnings ALIAS openstitch_warnings)
 if(MSVC)
     target_compile_options(openstitch_warnings INTERFACE /W4 /permissive- /utf-8)
+    # CRT « non sûr » (sscanf, getenv, fopen) : code portable, sans variantes _s propres à MSVC.
+    target_compile_definitions(openstitch_warnings INTERFACE _CRT_SECURE_NO_WARNINGS)
 else()
     target_compile_options(openstitch_warnings INTERFACE -Wall -Wextra -Wconversion)
 endif()

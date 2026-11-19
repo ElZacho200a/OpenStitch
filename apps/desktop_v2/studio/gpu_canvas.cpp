@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "gpu_canvas.hpp"
+#include "perf_log.hpp"
 
 #include <QHoverEvent>
 #include <QKeyEvent>
@@ -426,6 +427,7 @@ QVariantList GpuCanvas::toolOverlay() const {
 }
 
 void GpuCanvas::setScene(std::shared_ptr<const StudioSceneSnapshot> scene) {
+    const PerfScope perf("canvas.setScene");
     if (scene_ == scene) {
         return;
     }

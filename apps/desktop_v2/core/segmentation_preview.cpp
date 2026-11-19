@@ -8,12 +8,13 @@
 #include "openstitch/image/image.hpp"
 #include "openstitch/segmentation/blend_zones.hpp"
 #include "openstitch/segmentation/color_merge.hpp"
+#include "source_image_tools.hpp"
 
 namespace openstitch::desktop_v2 {
 
 Result<segmentation::Segmentation>
 segmentImageSource(const document::ImageSource& source,
-                   const segmentation::SegmentationOptions& options, const TaskContext& task,
+                   const segmentation::SegmentationOptions& requested, const TaskContext& task,
                    bool blendZones) {
     if (task.cancelled()) {
         return cancelled_error();
@@ -22,6 +23,10 @@ segmentImageSource(const document::ImageSource& source,
     if (!working) {
         return std::unexpected(working.error());
     }
+    // Zones de détail peintes par l'utilisateur : lissage et nettoyage plus doux à ces endroits.
+    // `source` vit pendant tout l'appel, le pointeur aussi.
+    segmentation::SegmentationOptions options = requested;
+    options.detail_mask = usableDetailMask(source, working->width, working->height);
     auto segmented = blendZones ? segmentation::segment_blend_zones(*working, source.mm_per_px)
                                 : segmentation::segment(*working, options);
     if (!segmented) {

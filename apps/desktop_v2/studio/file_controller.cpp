@@ -911,9 +911,26 @@ QString FileController::setExportOptions(const QVariantMap& v) {
     return result.ok ? QString() : fromUtf8(result.message);
 }
 
-QString FileController::exportCheck(const QString& formatExtension) const {
-    return fromUtf8(
-        checkExport(studio_.session().project(), toUtf8(formatExtension.toLower())).summary());
+void FileController::requestExportCheck(const QString& formatExtension) {
+    const auto generation = ++exportCheckGeneration_;
+    const auto snapshot = studio_.session().snapshot();
+    const auto extension = toUtf8(formatExtension.toLower());
+    exportCheckText_ = QStringLiteral("Vérification…");
+    emit exportCheckChanged();
+    // Tâche indépendante de `runJob` : pas de voile « occupé », et une demande plus récente
+    // (autre format, autre document) rend la réponse précédente caduque.
+    tasks_.submit<ExportCheck>(
+        "studio.export-check",
+        [snapshot, extension](const TaskContext&) -> Result<ExportCheck> {
+            return checkExport(*snapshot, extension);
+        },
+        [this, generation](Result<ExportCheck>&& result) {
+            if (generation != exportCheckGeneration_) {
+                return;
+            }
+            exportCheckText_ = result ? fromUtf8(result->summary()) : errorText(result.error());
+            emit exportCheckChanged();
+        });
 }
 
 void FileController::exportMachine(const QUrl& url, const QVariantMap& options) {
@@ -1061,13 +1078,27 @@ void FileController::exportThreadList(const QUrl& url) {
         setMessage(QStringLiteral("Choisissez un fichier local."), true);
         return;
     }
-    std::size_t rows = 0;
-    const auto result = exportThreadListCsv(studio_.session().project(), path, &rows);
-    if (!result.ok) {
-        setMessage(fromUtf8(result.message), true);
-        return;
-    }
-    setMessage(QStringLiteral("Liste des fils exportée (%1 fils).").arg(rows));
+    // Génère les points effectifs : hors du fil d'interface, sur un instantané.
+    const auto snapshot = studio_.session().snapshot();
+    runJob<std::size_t>(
+        QStringLiteral("Export de la liste des fils"),
+        [snapshot, path](const TaskContext& task) -> Result<std::size_t> {
+            auto sequence = stitch_generation::effective_sequence(*snapshot, task);
+            if (!sequence) {
+                return fail(ErrorCategory::OperationImpossible,
+                            "Aucun point généré : " + sequence.error().message);
+            }
+            std::size_t rows = 0;
+            const auto result = exportThreadListCsv(*snapshot, *sequence, path, &rows);
+            if (!result.ok) {
+                return fail(ErrorCategory::OperationImpossible, result.message);
+            }
+            return rows;
+        },
+        [this](std::size_t&& rows) {
+            setMessage(QStringLiteral("Liste des fils exportée (%1 fils).").arg(rows));
+        },
+        QString());
 }
 
 void FileController::exportDxf(const QUrl& url) {

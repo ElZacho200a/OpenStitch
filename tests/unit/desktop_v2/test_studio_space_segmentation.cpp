@@ -22,6 +22,7 @@
 
 #include "action_controller.hpp"
 #include "analysis_controller.hpp"
+#include "detail_zone_controller.hpp"
 #include "digitize_pipeline.hpp"
 #include "edit_controller.hpp"
 #include "file_controller.hpp"
@@ -146,6 +147,7 @@ struct Rig {
     AnalysisController analysis{studio, view, cfg};
     ImageController images{studio};
     RegionController regions{studio, images};
+    DetailZoneController detail{studio, images};
     SegmentationSpaceController space{studio, images, regions};
     QQmlApplicationEngine engine;
     QStringList warnings;
@@ -166,14 +168,15 @@ struct Rig {
     // Position (coordonnées fenêtre) du pixel (px, py) de l'image de travail.
     QPointF windowPos(int px, int py) const {
         auto* area = named("segmentationPickArea");
-        const auto view = canvas()->viewState();
+        const auto viewState = canvas()->viewState();
         const double mm = session.project().mm_per_px.value;
         const auto& seg = *session.project().segmentation;
         const double sx = (px + 0.5 - seg.width / 2.0) * mm;
         const double sy = (py + 0.5 - seg.height / 2.0) * mm;
-        const double zoom = view.value("zoom").toDouble();
-        const QPointF item(area->width() / 2.0 + (sx - view.value("centerX").toDouble()) * zoom,
-                           area->height() / 2.0 + (sy - view.value("centerY").toDouble()) * zoom);
+        const double zoom = viewState.value("zoom").toDouble();
+        const QPointF item(
+            area->width() / 2.0 + (sx - viewState.value("centerX").toDouble()) * zoom,
+            area->height() / 2.0 + (sy - viewState.value("centerY").toDouble()) * zoom);
         return area->mapToScene(item);
     }
 };
@@ -202,6 +205,7 @@ private:
         ctx->setContextProperty(QStringLiteral("analysis"), &rig.analysis);
         ctx->setContextProperty(QStringLiteral("imageTools"), &rig.images);
         ctx->setContextProperty(QStringLiteral("regionTools"), &rig.regions);
+        ctx->setContextProperty(QStringLiteral("detailZones"), &rig.detail);
         ctx->setContextProperty(QStringLiteral("segmentationSpace"), &rig.space);
         rig.engine.load(QUrl(QStringLiteral("qrc:/studio/qml/Main.qml")));
         QVERIFY2(!rig.engine.rootObjects().isEmpty(), qPrintable(rig.warnings.join('\n')));
@@ -1090,6 +1094,66 @@ private slots:
         rig.session.undo();
         QCOMPARE(fades(), 0);
         QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+    }
+
+    // --- zones de détail --------------------------------------------------------------------
+    void detailBrushPaintsUndoablyAndOnlyOneToolIsActive() {
+        Rig rig;
+        open(rig);
+        QVERIFY(!rig.detail.hasDetail());
+        QVERIFY(rig.named("regionTool_detail") != nullptr);
+        QVERIFY(rig.named("regionTool_detailErase") != nullptr);
+        // Un seul outil modal à la fois : le pinceau de détail éteint celui des régions.
+        QVERIFY(rig.press("regionTool_brush"));
+        QCOMPARE(rig.regions.tool(), QStringLiteral("brush"));
+        QVERIFY(rig.press("regionTool_detail"));
+        QCOMPARE(rig.detail.tool(), QStringLiteral("paint"));
+        QCOMPARE(rig.regions.tool(), QStringLiteral("select"));
+        QVERIFY(rig.press("regionTool_brush"));
+        QCOMPARE(rig.detail.tool(), QString());
+        QVERIFY(rig.press("regionTool_detail"));
+
+        // Un trait de 6 mm de long, au centre de l'image : UNE étape d'annulation.
+        const auto depth = rig.session.undoNames().size();
+        rig.detail.setRadiusMm(2.0);
+        QVariantList stroke;
+        for (const double x : {-3.0, 0.0, 3.0}) {
+            stroke.push_back(QVariantMap{{QStringLiteral("x"), x}, {QStringLiteral("y"), 0.0}});
+        }
+        QCOMPARE(rig.detail.paintStroke(stroke), QString());
+        QCOMPARE(rig.session.undoNames().size(), depth + 1);
+        QTRY_VERIFY_WITH_TIMEOUT(rig.detail.hasDetail(), 5'000);
+        QVERIFY(rig.detail.coveragePercent() > 0.0);
+        QVERIFY(rig.detail.needsSegmentation());
+        const auto mask = rig.session.project().imageSource().detail_mask;
+        QVERIFY(mask.any_detail());
+        QVERIFY(mask.matches(rig.images.imageWidth(), rig.images.imageHeight()));
+        QVERIFY(!rig.images.images()->get(QStringLiteral("detail")).isNull());
+
+        // Gomme : le même trait retire la zone ; un rayon absurde est refusé sans étape.
+        rig.detail.setTool(QStringLiteral("erase"));
+        QCOMPARE(rig.detail.paintStroke(stroke), QString());
+        QTRY_VERIFY_WITH_TIMEOUT(!rig.detail.hasDetail(), 5'000);
+        rig.detail.setRadiusMm(1000.0); // borné, jamais refusé : la borne est celle du service
+        QCOMPARE(rig.detail.radiusMm(), 50.0);
+
+        // Annuler remet la zone peinte.
+        QVERIFY(rig.session.undo());
+        QTRY_VERIFY_WITH_TIMEOUT(rig.detail.hasDetail(), 5'000);
+        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+    }
+
+    void detailStrokeOutsideTheImageIsRefusedWithoutAnUndoStep() {
+        Rig rig;
+        open(rig);
+        const auto depth = rig.session.undoNames().size();
+        rig.detail.setTool(QStringLiteral("paint"));
+        const auto refusal = rig.detail.paintStroke(
+            {QVariantMap{{QStringLiteral("x"), 1e6}, {QStringLiteral("y"), 1e6}}});
+        QVERIFY(!refusal.isEmpty());
+        QVERIFY(rig.detail.messageIsError());
+        QCOMPARE(rig.session.undoNames().size(), depth);
+        QVERIFY(!rig.detail.hasDetail());
     }
 };
 

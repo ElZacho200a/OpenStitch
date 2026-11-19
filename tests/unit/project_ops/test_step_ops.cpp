@@ -101,6 +101,21 @@ TEST_CASE("step ops: image to stitches through every Studio step", "[project_ops
     CHECK(project.embroidery_objects.front().source_vector == project.vector_objects.front().id);
 }
 
+TEST_CASE("step ops: vectorize_segmentation fine tolerance bounds", "[project_ops][steps]") {
+    // VEC-ADAPT-01 lot A : bornes partagées avec Studio ; 0,1 px accepté, en dessous refusé.
+    auto project = two_color_project();
+    REQUIRE(run(project, R"({"op":"segment_image","max_colors":2,"min_region_px":4})").ok);
+    CHECK(run(project, R"({"op":"vectorize_segmentation","curves":true,"curve_tolerance_px":0.1})")
+              .ok);
+    CHECK_FALSE(
+        run(project, R"({"op":"vectorize_segmentation","curves":true,"curve_tolerance_px":0.05})")
+            .ok);
+    CHECK(run(project, R"({"op":"vectorize_segmentation","precision_mm":0.01})").ok);
+    CHECK_FALSE(run(project, R"({"op":"vectorize_segmentation","precision_mm":0.005})").ok);
+    CHECK(project_ops::kCurveToleranceMinPx == 0.1);
+    CHECK(project_ops::kPrecisionMinMm == 0.01);
+}
+
 TEST_CASE("step ops: image_prep crop and refusals", "[project_ops][steps]") {
     auto project = two_color_project();
     REQUIRE(run(project, R"({"op":"image_prep","kind":"crop","x":0,"y":0,"w":20,"h":20})").ok);

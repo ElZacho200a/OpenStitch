@@ -17,6 +17,7 @@
 #include "openstitch/commands/replace_project_command.hpp"
 #include "openstitch/segmentation/blend_zones.hpp"
 #include "openstitch/segmentation/segmentation.hpp"
+#include "source_image_tools.hpp"
 
 namespace openstitch::desktop_v2 {
 
@@ -740,8 +741,11 @@ Result<Regeneration> regenerateObjects(std::shared_ptr<const document::Project> 
     }
     copy->vector_objects.clear();
     copy->embroidery_objects.clear();
-    const project_ops::DigitizeSource source{&*copy->imageSource().segmentation, &working,
-                                             copy->imageSource().mm_per_px};
+    // Zones de détail : vectorisation plus fine (et petites formes cousues) à ces endroits.
+    const project_ops::DigitizeSource source{
+        &*copy->imageSource().segmentation, &working, copy->imageSource().mm_per_px,
+        usableDetailMask(copy->imageSource(), copy->imageSource().segmentation->width,
+                         copy->imageSource().segmentation->height)};
     auto produced = project_ops::digitize_objects(source, copy->object_ids, settings, skipLargest);
     if (!produced) {
         return std::unexpected(produced.error());
@@ -791,12 +795,12 @@ Result<Regeneration> regenerateObjects(std::shared_ptr<const document::Project> 
         }
     }
     for (auto& object : produced->objects.embroideries) {
-        const auto source = vectorIdRemap.find(object.source_vector.value);
-        if (source == vectorIdRemap.end()) {
+        const auto remapped = vectorIdRemap.find(object.source_vector.value);
+        if (remapped == vectorIdRemap.end()) {
             continue;
         }
-        object.source_vector = source->second;
-        const auto previous = oldThreadsByVector.find(source->second.value);
+        object.source_vector = remapped->second;
+        const auto previous = oldThreadsByVector.find(remapped->second.value);
         if (previous == oldThreadsByVector.end()) {
             continue;
         }
@@ -867,9 +871,12 @@ Result<Regeneration> resegmentObjects(std::shared_ptr<const document::Project> p
             ? segmentation::segment_blend_zones(working, project->imageSource().mm_per_px,
                                                 {.edge_threshold = settings.blend_edge,
                                                  .min_zone_mm2 = settings.blend_min_zone_mm2})
-            : segmentation::segment(working, {.max_colors = settings.max_colors,
-                                              .min_region_px = settings.min_region_px,
-                                              .smoothing_radius_px = settings.smoothing_px});
+            : segmentation::segment(
+                  working, {.max_colors = settings.max_colors,
+                            .min_region_px = settings.min_region_px,
+                            .smoothing_radius_px = settings.smoothing_px,
+                            .detail_mask = usableDetailMask(project->imageSource(), working.width,
+                                                            working.height)});
     if (!seg) {
         return fail(ErrorCategory::OperationImpossible,
                     "Segmentation impossible : " + seg.error().message,

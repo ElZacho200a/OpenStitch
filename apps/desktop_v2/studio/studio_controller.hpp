@@ -6,6 +6,7 @@
 #include <QUrl>
 #include <QVariantList>
 #include <memory>
+#include <optional>
 
 #include "document_session.hpp"
 #include "studio_scene.hpp"
@@ -94,6 +95,8 @@ signals:
     void loadFinished(bool success);
 
 private:
+    [[nodiscard]] QVariantList buildObjects() const;
+    mutable std::optional<QVariantList> objectsCache_;
     void rebuildScene();
     bool writeProject(const QString& path);
     [[nodiscard]] QVariantMap toolInfo(std::string_view id) const;

@@ -751,6 +751,22 @@ construction et faisait croire que le coût venait de la recherche de chemin.
 **GPU.** Le prototype D3D11 de R01, rejoué sur GPU de bureau, reste 3 à 5 fois plus lent que le
 CPU, transferts compris : pas de backend GPU dans le moteur.
 
+## 19. Audit du 2026-11-18 : lissage de segmentation rétabli (HP-PERF-015)
+
+Le commit `57c754af` (vote de lissage par bandes) avait été annulé dans `main` par `af61f094`,
+revert d'un merge d'intégration entier et non de ce lot : `segment` allouait de nouveau k cartes de
+densité `CV_32F` pleines (64 classes × 1600×1200 × 4 o ≈ 490 Mio, plus la version « détail »).
+
+**Correction** (`libs/segmentation/src/segmentation.cpp`, étiquettes identiques) : bandes de 32
+lignes en parallèle, classe après classe, filtre moyenneur sur la bande élargie du rayon (valeurs
+identiques à un filtrage de l'image entière : sommes de 0/1 exactes), seule la meilleure densité et
+sa classe sont gardées, classes absentes de la bande élargie ignorées. Même ordre de classes et `>`
+strict qu'avant : mêmes égalités départagées. Sonde de profilage `MaskSmoothing` conservée.
+
+**Résultats** (banc `[.perf015]`, Release, 1600×1200, rayon 3, médianes de 3, bruit ±15 %) :
+k=8 175 → 160 ms, k=32 265 → 220 ms, k=64 440 → 370 ms. Mémoire des cartes de densité : quelques
+cartes de la taille d'une bande par fil au lieu de k cartes pleines. Empreintes figées (11 cas,
+rayons 1 à 40, masque de détail), valables aussi sur l'ancien algorithme, identiques à 1 fil.
 ## 20. Audit du 2026-11-18 : recalculs inutiles de la génération de points
 
 Question : après une modification locale, que recalcule-t-on sans nécessité ? Chronomètres
@@ -888,3 +904,78 @@ scénario, et pour une retouche de géométrie il faudrait prouver que l'ordre d
 « plus proche voisin depuis la position courante » (`fill_regions_in_sewing_order`) et les liaisons
 cachées restent identiques, ce qu'une clé exacte par région ne garantit pas sans cacher aussi la
 position d'entrée de chaque région.
+
+## 2026-11-19 : lag d'interface de Studio (sélection, pinceau, couteau)
+
+Mesuré avec `OPENSTITCH_PERF_LOG` sur un projet réel (570 objets, 102 000 segments, Release).
+
+| Étape (fil d'interface) | Avant | Après |
+|---|---|---|
+| `EditController::tree` | 27 385 reconstructions (19 s) | 24 (15 ms) |
+| `scene.apply(UI)` par changement des points | 3,5 à 6,2 s | 0,11 s (max 0,19 s) |
+| `apply.changed` (dont `StudioController::objects`) | 893 ms | 73 ms |
+
+Causes : getters `Q_PROPERTY` reconstruits à chaque lecture QML (mis en cache, invalidés par leur
+signal) ; opérations de géométrie (couteau, fusion, séparation...) classées « modifie la
+segmentation » dans `DocumentSession::applyBatch`. Écartés avec chiffres : moteur de points
+(~20 ms), copie de projet (1,8 ms), rafraîchissement de segmentation (~7 ms), `GpuCanvas::setScene`
+(0,1 ms). Reste : écart entre `scene.rebuild` en temps réel et le calcul (attente de la file
+d'événements).
+## 21. Audit du 2026-11-19 : fondu à la frontière (génération des couches)
+
+Chemin `boundary_blend_layer` (couches des zones en fondu, couple seul et groupes §6.4), jamais
+mesuré jusque-là. Banc caché `test_stitch "[.perf_boundary_blend]"` (Release) : deux zones de
+120 × 30 mm séparées par une frontière ondulée de 1 200 segments, demi-bandes de 5 mm, couches
+des deux zones comme les génère `generate_sequence` ; groupes : troisième zone liée aux deux
+autres. « Froid » : caches vidés à chaque répétition (meilleure de 3) ; « chaud » : document
+inchangé.
+
+| Cas | Avant (ms) | Après froid (ms) | Après chaud (ms) | Empreinte (identique) |
+|---|---:|---:|---:|---|
+| PerZone, même grille | 399 | 107 | 0,9 | `61cfd44bdc1f9566` |
+| PerZone, superposition | 391 | 108 | 1,3 | `b33e3cc6a8ba2f7a` |
+| Shared | 801 | 156 | 0,9 | `4dff24623fe94bf8` |
+| Rotating | 1 838 | 239 | 0,9 | `f29afe72710e8e24` |
+| Interlaced | 7 078 | 1 718 | 0,9 | `ddd03bf17f633f0e` |
+| Groupe Rotating (3 zones) | 1 784 | 324 | 159 | `68c871d222e393e0` |
+| Groupe PerZone (3 zones) | 712 | 125 | 10 | `b8807ba18be98f70` |
+
+Avant, aucun cache : le résultat chaud égalait le froid (chaque régénération du document
+recalculait tous les fondus, exclus du cache de séquences).
+
+**Mesures qui ont guidé les corrections.** Sur le cas PerZone, le plan (`plan_boundary_blend`)
+coûtait 114 ms et les deux couches masquées 7 ms seulement : la quasi-totalité venait de
+`geometry::polyline_band` (57 ms par appel : décalage arrondi Clipper puis réunion des
+recouvrements d'une bande plus large que les ondulations), appelée 7 fois par zone (plan 2,
+découpe de la bande 4, sous-couche 1) pour 3 bandes distinctes, et chaque zone du couple refaisait
+tout le calcul (plan et deux couches) pour n'en garder que la moitié.
+
+**Corrections** (`libs/stitch_generation/src/boundary_blend.cpp`, sortie identique octet pour
+octet, vérifiée par les empreintes et par le test « indexed field matches the full scan bit for
+bit ») :
+
+1. *Index spatial du champ.* `signed_distance` parcourait tous les segments de la frontière et
+   tous les sommets de A pour chaque point décidé par un masque (et chaque échantillon des modes
+   Rotating et Interlaced, et chaque couple d'un groupe). Grille uniforme des segments (recherche
+   par anneaux, arrêt quand l'anneau suivant est plus loin que le meilleur candidat, marge de
+   1 µm) et tranches horizontales pour le test pair-impair (aussi dans `RegionTester` des
+   groupes). Le minimum et la parité ne dépendent pas de l'ordre, et chaque terme est évalué par
+   la même expression : même valeur au bit près. `boundary_blend_cross_angle` (Interlaced) ne
+   parcourt plus que les segments à moins de d_min + 4σ (les autres avaient un poids ignoré),
+   dans l'ordre de la frontière (même somme), avec longueur et cos/sin de l'angle précalculés par
+   segment. Seul, l'index faisait passer Rotating de 1 838 à 949 ms et Interlaced de 7 078 à
+   5 051 ms.
+2. *Cache exact des bandes* `(frontière, demi-largeur)` : 3 calculs au lieu de 14 par couple.
+3. *Cache exact des couches d'un couple* (clé : zones cousues, paramètres résolus, réglage) et des
+   *plans des couples d'un groupe* : la seconde zone reprend le calcul de la première ; une zone
+   qui demande un calcul en cours dans un autre fil attend son résultat (futur partagé) au lieu de
+   le refaire. LRU bornée (32 couches, 64 plans, 64 bandes), suit `chunk_cache_enabled()`, vidée
+   par `clear_chunk_cache()`. Test : avec ou sans cache, mêmes couches, y compris après
+   modification d'une zone.
+
+**Hypothèses écartées.** Tolérance d'arc plus grossière dans `polyline_band` (le coût réel) :
+changerait les polygones, donc les points ; c'est un changement de comportement à décider à
+part. Interlaced reste à 1,7 s à froid : environ 400 segments pèsent dans chaque évaluation de
+l'angle (rayon 4σ = 20 mm) ; réduire ce rayon ou échantillonner le champ sur une grille
+changerait la sortie. Parallélisme supplémentaire : les zones sont déjà réparties par le
+`parallel_for` des unités de génération.

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "view_controller.hpp"
+#include "perf_log.hpp"
 
 #include "change_gate.hpp"
 #include "task_pump.hpp"
@@ -505,6 +506,7 @@ void ViewController::centerOnModel(double xMm, double yMm) {
 // --- Simulation ----------------------------------------------------------------------------------
 
 void ViewController::onSceneChanged() {
+    const PerfScope perf("view.onSceneChanged");
     const auto& scene = studio_.scene();
     if (!scene) {
         sim_.reset();

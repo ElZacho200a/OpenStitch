@@ -1160,9 +1160,9 @@ void DocumentPanel::onObjectSelectionChanged() {
     }
     if (items.size() == 1) {
         const QTreeWidgetItem* item = items.front();
-        const QVariant data = item->data(0, Qt::UserRole);
-        if (data.isValid()) {
-            emit embroiderySelected(ObjectId{data.toULongLong()});
+        const QVariant idData = item->data(0, Qt::UserRole);
+        if (idData.isValid()) {
+            emit embroiderySelected(ObjectId{idData.toULongLong()});
         } else if (item->data(0, kVectorIdRole).isValid()) {
             emit vectorSelected(ObjectId{item->data(0, kVectorIdRole).toULongLong()});
         } else if (item->data(0, kGroupSourceRole).isValid()) {

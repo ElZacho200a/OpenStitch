@@ -402,6 +402,12 @@ void StudioFilesTest::openRasterThroughStudioPoints() {
     auto* convert = findVisualItem(window->contentItem(), QStringLiteral("vectorConvertButton"));
     QTRY_VERIFY_WITH_TIMEOUT(convert && convert->isVisible() && convert->isEnabled(), 5'000);
     QVERIFY(QMetaObject::invokeMethod(convert, "click"));
+    // Le clic ouvre les réglages de conversion ; la conversion part à la confirmation.
+    auto* confirm =
+        findVisualItem(window->contentItem(), QStringLiteral("vectorConvertConfirmButton"));
+    QVERIFY(confirm);
+    QTRY_VERIFY_WITH_TIMEOUT(confirm->isVisible() && confirm->isEnabled(), 5'000);
+    QVERIFY(QMetaObject::invokeMethod(confirm, "click"));
     QTRY_VERIFY_WITH_TIMEOUT(!project.embroidery_objects.empty(), 15'000);
 
     workspace->setCurrent(QStringLiteral("points"));
@@ -1258,6 +1264,7 @@ void StudioFilesTest::documentExportsWriteRealFiles() {
     Rig rig;
     rig.session.replaceProject(studioFixture(), true);
     rig.files->exportThreadList(url(dir, "fils.csv"));
+    QVERIFY(rig.waitIdle()); // la génération des points tourne sur un worker
     QVERIFY2(!rig.files->messageIsError(), qPrintable(rig.files->message()));
     const auto csv = bytes(dir.filePath(QStringLiteral("fils.csv")));
     QVERIFY(csv.contains("ordre;"));
@@ -1300,6 +1307,7 @@ void StudioFilesTest::documentExportsWriteRealFiles() {
     // Projet vide : les exports refusent avec un message, sans fichier.
     rig.files->requestNew();
     rig.files->exportThreadList(url(dir, "vide.csv"));
+    QVERIFY(rig.waitIdle());
     QVERIFY(rig.files->messageIsError());
     QVERIFY(!QFileInfo::exists(dir.filePath(QStringLiteral("vide.csv"))));
     QVERIFY(!rig.studio.dirty());
@@ -1330,7 +1338,11 @@ void StudioFilesTest::exportOptionsAreOneUndoStepAndRefusedWhenInvalid() {
     QVERIFY(rig.waitIdle());
     QVERIFY(rig.studio.canUndo());
     QCOMPARE(rig.files->exportOptions().value(QStringLiteral("trimThresholdMm")).toDouble(), 5.5);
-    QVERIFY(!rig.files->exportCheck(QStringLiteral("dst")).isEmpty());
+    // La vérification tourne sur un worker : le texte arrive après « Vérification… ».
+    rig.files->requestExportCheck(QStringLiteral("dst"));
+    QTRY_VERIFY_WITH_TIMEOUT(!rig.files->exportCheckText().isEmpty() &&
+                                 rig.files->exportCheckText() != QStringLiteral("Vérification…"),
+                             10'000);
 }
 
 void StudioFilesTest::imageAndVectorImports() {

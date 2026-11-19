@@ -20,7 +20,23 @@ Item {
     readonly property var canvas: spaceCanvas
     readonly property var seg: typeof segmentationSpace !== "undefined" ? segmentationSpace : null
     readonly property bool hasTools: typeof imageTools !== "undefined" && typeof regionTools !== "undefined"
+    // Zones de détail : outil modal (peindre / gommer) à côté du pinceau de frontière.
+    readonly property bool hasDetail: root.hasTools && typeof detailZones !== "undefined"
+    readonly property bool detailPainting: root.hasDetail && detailZones.tool !== ""
     property bool showSource: true
+
+    // Un seul outil modal à la fois : id de la barre -> état des deux contrôleurs.
+    function activateTool(id) {
+        if (!root.hasTools) return
+        regionTools.tool = (id === "" || id === "detail" || id === "detailErase") ? "select" : id
+        if (root.hasDetail)
+            detailZones.tool = id === "detail" ? "paint" : (id === "detailErase" ? "erase" : "")
+    }
+    readonly property string activeToolId: {
+        if (!root.hasTools) return ""
+        if (root.detailPainting) return detailZones.tool === "erase" ? "detailErase" : "detail"
+        return regionTools.tool !== "select" ? regionTools.tool : ""
+    }
 
     // Couches dessinées par CE canevas : image dessous (réalisée par l'espace Image), régions.
     // Pendant l'aperçu en direct, l'image prévisualisée remplace les régions du projet.
@@ -57,6 +73,7 @@ Item {
         // Annule aussi un aperçu encore en calcul (il réapparaîtrait au retour dans l'espace).
         if (root.hasTools)
             imageTools.cancelSegmentationPreview()
+        root.activateTool("")
         if (root.seg) root.seg.detach()
         if (root.workspace) {
             root.workspace.clearStageStatus(root.spaceId)
@@ -65,8 +82,8 @@ Item {
     }
     // Appelé par le Shortcut « Escape » de Main.qml : pinceau ou gomme -> sélection.
     function cancelTool() {
-        if (!root.active || !root.hasTools || regionTools.tool === "select") return false
-        regionTools.tool = "select"
+        if (!root.active || !root.hasTools || root.activeToolId === "") return false
+        root.activateTool("")
         return true
     }
     onActiveChanged: { if (active) activate(); else deactivate() }
@@ -107,10 +124,12 @@ Item {
             toolPrefix: "regionTool_"
             entries: [
                 { id: "brush", icon: "brush", label: qsTr("Pinceau de frontière : peindre la région choisie"), shortcut: "U", group: "regions" },
-                { id: "erase", icon: "eraser", label: qsTr("Gomme : retirer de la région choisie"), shortcut: "Maj+U", group: "regions" }
+                { id: "erase", icon: "eraser", label: qsTr("Gomme : retirer de la région choisie"), shortcut: "Maj+U", group: "regions" },
+                { id: "detail", icon: "detail", label: qsTr("Zones de détail : peindre où garder les petites formes"), shortcut: "Q", group: "detail", enabled: root.hasDetail },
+                { id: "detailErase", icon: "detail-erase", label: qsTr("Gomme de détail : retirer une zone de détail"), shortcut: "Maj+Q", group: "detail", enabled: root.hasDetail }
             ]
-            activeTool: root.hasTools && regionTools.tool !== "select" ? regionTools.tool : ""
-            onToolTriggered: id => { if (root.hasTools) regionTools.tool = id === "" ? "select" : id }
+            activeTool: root.activeToolId
+            onToolTriggered: id => root.activateTool(id)
             onFitRequested: spaceCanvas.fitDesign()
         }
     }
@@ -157,6 +176,118 @@ Item {
             Connections {
                 target: spaceCanvas
                 function onViewChanged() { livePreview.cameraTick++ }
+            }
+        }
+
+        // Zones de détail peintes : incrustation orange posée à l'échelle de la caméra, au pas de
+        // l'image de travail (comme l'aperçu ci-dessus). Visible tant qu'il y a un masque.
+        Image {
+            id: detailOverlay
+            objectName: "detailZonesOverlay"
+            readonly property double wMm: root.hasDetail ? imageTools.imageWidth * imageTools.mmPerPx : 0
+            readonly property double hMm: root.hasDetail ? imageTools.imageHeight * imageTools.mmPerPx : 0
+            visible: root.hasDetail && detailZones.hasDetail && wMm > 0
+            enabled: false
+            cache: false
+            smooth: false
+            fillMode: Image.Stretch
+            source: visible ? "image://prepare/detail?rev=" + detailZones.overlayRevision : ""
+            width: wMm * livePreview.cam.zoom
+            height: hMm * livePreview.cam.zoom
+            x: parent.width / 2 + (-wMm / 2 - livePreview.cam.centerX) * livePreview.cam.zoom
+            y: parent.height / 2 + (-hMm / 2 - livePreview.cam.centerY) * livePreview.cam.zoom
+        }
+
+        // Pastille du pinceau de détail : le disque exact qui sera peint (rayon en mm).
+        Rectangle {
+            id: detailCursor
+            objectName: "detailZonesCursor"
+            readonly property double diameter: root.hasDetail ? 2 * detailZones.radiusMm * livePreview.cam.zoom : 0
+            visible: root.detailPainting && pick.containsMouse
+            enabled: false
+            width: diameter
+            height: diameter
+            radius: diameter / 2
+            x: pick.mouseX - diameter / 2
+            y: pick.mouseY - diameter / 2
+            color: "transparent"
+            border.width: 2
+            border.color: root.hasDetail && detailZones.tool === "erase" ? Theme.foreground : "#ff8c00"
+        }
+
+        // Options du pinceau de détail : rayon en mm, part de l'image marquée, effacement total et
+        // application (relance la segmentation avec les réglages du panneau).
+        Rectangle {
+            objectName: "detailToolOptions"
+            visible: root.detailPainting
+            x: 8
+            y: 8
+            width: Math.min(parent.width - 16, detailRow.implicitWidth + 20)
+            height: Theme.controlHeight + 12
+            radius: Theme.cardRadius
+            color: Theme.panel
+            border.color: Theme.divider
+            RowLayout {
+                id: detailRow
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.left: parent.left
+                anchors.leftMargin: 10
+                spacing: 6
+                StudioLabel {
+                    text: root.hasDetail && detailZones.tool === "erase" ? qsTr("Gomme de détail") : qsTr("Détail")
+                    tone: "foreground"
+                    wrapMode: Text.NoWrap
+                }
+                StudioButton {
+                    objectName: "detailSmaller"
+                    text: "−"
+                    quiet: true
+                    tooltip: qsTr("Pinceau de détail : rayon plus petit")
+                    onClicked: detailZones.stepRadius(-1)
+                }
+                StudioLabel {
+                    objectName: "detailRadiusLabel"
+                    text: qsTr("%1 mm").arg(root.hasDetail ? detailZones.radiusMm.toFixed(1) : "")
+                    tone: "foreground"
+                    wrapMode: Text.NoWrap
+                    Accessible.name: qsTr("Rayon du pinceau de détail")
+                }
+                StudioButton {
+                    objectName: "detailLarger"
+                    text: "+"
+                    quiet: true
+                    tooltip: qsTr("Pinceau de détail : rayon plus grand")
+                    onClicked: detailZones.stepRadius(1)
+                }
+                StudioLabel {
+                    objectName: "detailCoverage"
+                    visible: root.hasDetail && detailZones.hasDetail
+                    text: root.hasDetail ? qsTr("%1 % de l'image").arg(detailZones.coveragePercent.toFixed(1)) : ""
+                    wrapMode: Text.NoWrap
+                }
+                StudioButton {
+                    objectName: "detailClear"
+                    visible: root.hasDetail && detailZones.hasDetail
+                    text: qsTr("Tout effacer")
+                    quiet: true
+                    tooltip: qsTr("Retire toutes les zones de détail (annulable)")
+                    onClicked: detailZones.clearAll()
+                }
+                StudioButton {
+                    objectName: "detailApply"
+                    visible: root.hasDetail && detailZones.needsSegmentation
+                    text: qsTr("Segmenter")
+                    tooltip: qsTr("Relance la segmentation : le détail peint est pris en compte")
+                    onClicked: root.segmentNow()
+                }
+                StudioLabel {
+                    objectName: "detailMessage"
+                    visible: text.length > 0
+                    text: root.hasDetail ? detailZones.message : ""
+                    wrapMode: Text.NoWrap
+                    elide: Text.ElideRight
+                    Layout.maximumWidth: 300
+                }
             }
         }
 
@@ -306,6 +437,7 @@ Item {
             anchors.fill: parent
             acceptedButtons: Qt.LeftButton | Qt.RightButton
             enabled: root.seg !== null
+            hoverEnabled: root.detailPainting
             property var stroke: []
             readonly property bool painting: root.hasTools && regionTools.tool !== "select"
             function scenePoint(mx, my) {
@@ -317,7 +449,7 @@ Item {
                 // Clic droit : sélectionne la région sous le curseur (sauf pinceau/gomme actifs,
                 // où il resterait sans effet visible) puis ouvre le menu contextuel pour elle.
                 if (mouse.button === Qt.RightButton) {
-                    if (pick.painting || !root.hasTools) return
+                    if (pick.painting || root.detailPainting || !root.hasTools) return
                     const rp = pick.scenePoint(mouse.x, mouse.y)
                     root.seg.pickAt(rp.x, rp.y, false)
                     if (regionTools.selectedCount === 1)
@@ -325,7 +457,11 @@ Item {
                     return
                 }
                 const p = pick.scenePoint(mouse.x, mouse.y)
-                if (pick.painting) {
+                if (root.detailPainting) {
+                    // Zones de détail : points en mm scène, le contrôleur les convertit en pixels
+                    // (le masque se peint même sans segmentation).
+                    pick.stroke = [{ x: p.x, y: p.y }]
+                } else if (pick.painting) {
                     const px = root.seg.pixelAt(p.x, p.y)
                     pick.stroke = px.valid ? [{ x: px.x, y: px.y }] : []
                 } else {
@@ -333,7 +469,12 @@ Item {
                 }
             }
             onPositionChanged: function(mouse) {
-                if (pick.painting && pick.pressed) {
+                if (root.detailPainting && pick.pressed) {
+                    const dp = pick.scenePoint(mouse.x, mouse.y)
+                    const dpts = pick.stroke
+                    dpts.push({ x: dp.x, y: dp.y })
+                    pick.stroke = dpts
+                } else if (pick.painting && pick.pressed) {
                     const p = pick.scenePoint(mouse.x, mouse.y)
                     const px = root.seg.pixelAt(p.x, p.y)
                     if (px.valid) {
@@ -344,7 +485,9 @@ Item {
                 }
             }
             onReleased: {
-                if (pick.painting && pick.stroke.length > 0) {
+                if (root.detailPainting && pick.stroke.length > 0) {
+                    detailZones.paintStroke(pick.stroke)
+                } else if (pick.painting && pick.stroke.length > 0) {
                     regionTools.paintStroke(pick.stroke, regionTools.tool === "erase")
                 }
                 pick.stroke = []

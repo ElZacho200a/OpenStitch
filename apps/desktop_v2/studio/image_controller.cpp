@@ -570,7 +570,11 @@ void ImageController::previewSegmentation(const QVariantMap& optionsMap) {
             if (!working) {
                 return std::unexpected(working.error());
             }
-            return desktop_v2::previewSegmentation(*working, options, task, blendAt);
+            // Même règle que l'application : l'aperçu montre ce que donnera le masque de détail.
+            auto withDetail = options;
+            withDetail.detail_mask =
+                usableDetailMask(snapshot->imageSource(), working->width, working->height);
+            return desktop_v2::previewSegmentation(*working, withDetail, task, blendAt);
         },
         [this](Result<SegmentationPreview>&& r) {
             segTask_ = 0;

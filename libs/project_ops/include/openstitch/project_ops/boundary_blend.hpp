@@ -3,6 +3,7 @@
 
 #include <memory>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include "openstitch/commands/command.hpp"
@@ -45,6 +46,21 @@ struct BoundaryBlendOptions {
 make_boundary_blend_command(const document::Project& project, ObjectId a, ObjectId b,
                             const BoundaryBlendOptions& options);
 
+// FONDU MULTI-ZONES : pose un fondu sur CHAQUE couple de zones de `ids` qui partagent une
+// frontière (couples éligibles selon `boundary_blend_refusal`, avec `options`). Les couples déjà
+// fondus gardent leurs réglages ; les couples refusés (zones qui ne se touchent pas, même fil,
+// remplissage non pris en charge…) sont ignorés. Une seule commande, un pas d'annulation. La
+// frontière tracée de `options` est ignorée (chaque couple utilise sa frontière calculée).
+// Erreurs : E_BLEND_FEW_ZONES (moins de deux zones distinctes), E_BLEND_NO_PAIR (aucun couple
+// éligible). Ordre déterministe : couples (a, b) par identifiants croissants.
+struct MultiBoundaryBlend {
+    std::unique_ptr<commands::ICommand> command;
+    std::vector<std::pair<ObjectId, ObjectId>> created; // couples fondus par la commande
+    std::size_t kept{0};                                // couples déjà fondus, laissés intacts
+};
+[[nodiscard]] Result<MultiBoundaryBlend>
+make_multi_boundary_blend_command(const document::Project& project, std::vector<ObjectId> ids,
+                                  const BoundaryBlendOptions& options);
 // Retire le fondu du couple (`id`, `partner`) : le lien de `id` vers `partner` et, s'il existe,
 // celui de `partner` vers `id`. Les autres fondus des deux zones restent intacts. Erreur
 // E_BLEND_NONE si `id` ne porte aucun lien vers `partner`.

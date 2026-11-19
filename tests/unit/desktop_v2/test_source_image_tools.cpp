@@ -135,3 +135,24 @@ TEST_CASE("detail strokes refuse bad radii and strokes outside the image", "[des
     CHECK_FALSE(paintDetail(d.session, image::Image{}, {{x, y}}, 2.0, false).ok);
     CHECK_FALSE(d.session.canUndo());
 }
+
+TEST_CASE("detail strokes in pixels need no processed image and clip to the image",
+          "[desktop_v2][source]") {
+    auto d = imageOnlyDoc();
+    const int w = d.processed.width;
+    const int h = d.processed.height;
+    const double mmpp = d.session.project().imageSource().mm_per_px.value;
+    CHECK(usableDetailMask(d.session.project().imageSource(), w, h) == nullptr); // pas de masque
+
+    // Un point hors image est écarté, celui du milieu peint.
+    REQUIRE(paintDetailPixels(d.session, w, h, mmpp, {{-50, -50}, {w / 2, h / 2}}, 2.0, false).ok);
+    const auto* mask = usableDetailMask(d.session.project().imageSource(), w, h);
+    REQUIRE(mask != nullptr);
+    CHECK(mask->weights[static_cast<std::size_t>(h / 2) * w + w / 2] > 200);
+    CHECK(usableDetailMask(d.session.project().imageSource(), w + 1, h) == nullptr); // autre taille
+
+    CHECK_FALSE(paintDetailPixels(d.session, w, h, mmpp, {{-5, -5}}, 2.0, false).ok); // rien dedans
+    CHECK_FALSE(paintDetailPixels(d.session, w, h, mmpp, {{w / 2, h / 2}}, 0.0, false).ok);
+    CHECK_FALSE(paintDetailPixels(d.session, 0, 0, mmpp, {{0, 0}}, 2.0, false).ok);
+    CHECK(d.session.undoNames().size() == 1); // les refus n'ajoutent aucune étape
+}
