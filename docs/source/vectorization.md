@@ -251,9 +251,16 @@ Banc (Debug) :
 Décision : **non déployé dans Studio**. Sur le cas réel, +62 % de nœuds et ×3 de temps sans gain
 de fidélité (l'écart maximal double, sans doute aux jonctions de tronçons ; non analysé) ; le gain
 n'apparaît que sur des formes synthétiques à pointe fine. La fiche du chantier demande de ne
-déployer ce mode que si le banc confirme sa valeur. Pistes avant de réessayer : jonctions lisses
-(tangentes continues) au lieu de coins, critère de largeur moins sensible aux escaliers, et
-comparaison polygone / hybride.
+déployer ce mode que si le banc confirme sa valeur.
+
+Essai écarté (2026-11-19) : rendre lisses les jonctions après coup (tangentes rendues colinéaires,
+longueurs conservées, sauf vrai coin de plus de 55°). MonetGasque : écart moyen 168 → 267 µm,
+écart max 1 180 → 2 414 µm, aire 2,83 → 3,33 % ; synthétique : aire meilleure (1,8 %) mais écart
+max 69 → 103 µm. Faire pivoter les tangentes sort les courbes de leur tolérance : un lissage
+correct demande que `geometry::fit_curves` accepte des tangentes imposées aux extrémités d'un
+chemin ouvert (évolution de l'API de `geometry`, non faite). Autres pistes : couper seulement aux
+coins déjà détectés, critère de largeur moins sensible aux escaliers, comparaison polygone /
+hybride.
 
 ## Robustesse
 
