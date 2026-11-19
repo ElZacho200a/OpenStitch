@@ -118,8 +118,9 @@ public:
     Q_INVOKABLE void exportImage(const QUrl& url, double pxPerMm = 6.0, int jpegQuality = 92);
     // Rendu photo par lancer de rayons (RENDER-PBR-01, lot D) : scène de brins puis
     // tools/raytrace/render_mitsuba.py (Mitsuba 3, outil externe) hors du fil d'interface ;
-    // l'image est ouverte à la fin. `tiltDeg` = 0 : vue de dessus.
-    Q_INVOKABLE void exportPhotoRender(const QUrl& url, double tiltDeg = 35.0, int samples = 64);
+    // l'image est ouverte à la fin. Options (facultatives, bornées) : tiltDeg [0 ; 70],
+    // samples [1 ; 4096], pxPerMm [2 ; 40], threadWidthMm [0,15 ; 1], fabric « r,g,b ».
+    Q_INVOKABLE void exportPhotoRender(const QUrl& url, const QVariantMap& options = {});
     Q_INVOKABLE void exportProductionSheet(const QUrl& url);
     Q_INVOKABLE void exportPlacementTemplate(const QUrl& url, const QVariantMap& options = {});
     // CX07 : ce que l'export « image » (pxPerMm) ou « template » (paper, landscape) produira,

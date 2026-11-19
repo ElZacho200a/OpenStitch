@@ -132,6 +132,12 @@ add_custom_command(TARGET openstitch_v2_studio POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/resources/themes"
         "$<TARGET_FILE_DIR:openstitch_v2_studio>/themes"
     COMMENT "Copy builtin Studio themes")
+# Rendu photo (RENDER-PBR-01 lot D) : script de lancer de rayons à côté de l'exécutable
+# (<exe>/tools/raytrace), lu par FileController::exportPhotoRender ; Mitsuba reste externe.
+add_custom_command(TARGET openstitch_v2_studio POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/tools/raytrace"
+        "$<TARGET_FILE_DIR:openstitch_v2_studio>/tools/raytrace"
+    COMMENT "Copy photo render script")
 
 if(WIN32 AND TARGET Qt6::windeployqt)
     add_custom_command(TARGET openstitch_v2_studio POST_BUILD

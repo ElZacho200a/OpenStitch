@@ -1216,7 +1216,7 @@ struct PhotoRenderJob {
 };
 } // namespace
 
-void FileController::exportPhotoRender(const QUrl& url, double tiltDeg, int samples) {
+void FileController::exportPhotoRender(const QUrl& url, const QVariantMap& options) {
     const auto path = pathOf(url, "png");
     if (path.empty()) {
         setMessage(QStringLiteral("Choisissez un fichier local."), true);
@@ -1232,23 +1232,45 @@ void FileController::exportPhotoRender(const QUrl& url, double tiltDeg, int samp
     const auto scene =
         std::filesystem::temp_directory_path() /
         ("openstitch_photo_" + std::to_string(studio_.session().revision()) + ".json");
-    const double tilt = std::clamp(tiltDeg, 0.0, 70.0);
-    const int spp = std::clamp(samples, 1, 4096);
+    const auto number = [&options](const char* key, double fallback) {
+        bool ok = false;
+        const double v = options.value(QString::fromLatin1(key)).toDouble(&ok);
+        return ok ? v : fallback;
+    };
+    const double tilt = std::clamp(number("tiltDeg", 35.0), 0.0, 70.0);
+    const int spp = static_cast<int>(std::clamp(number("samples", 64.0), 1.0, 4096.0));
+    const double pxPerMm = std::clamp(number("pxPerMm", 10.0), 2.0, 40.0);
+    const double threadWidthMm = std::clamp(number("threadWidthMm", 0.35), 0.15, 1.0);
+    // Tissu « r,g,b » : trois entiers 0..255, sinon blanc cassé.
+    QString fabric = options.value(QStringLiteral("fabric")).toString();
+    {
+        const auto parts = fabric.split(QLatin1Char(','));
+        bool valid = parts.size() == 3;
+        for (const auto& part : parts) {
+            bool ok = false;
+            const int v = part.trimmed().toInt(&ok);
+            valid = valid && ok && v >= 0 && v <= 255;
+        }
+        if (!valid) {
+            fabric = QStringLiteral("245,243,238");
+        }
+    }
     runJob<PhotoRenderJob>(
         QStringLiteral("Rendu photo"),
-        [snapshot, scene, path, script, python, tilt,
-         spp](const TaskContext& task) -> Result<PhotoRenderJob> {
+        [snapshot, scene, path, script, python, tilt, spp, pxPerMm, threadWidthMm,
+         fabric](const TaskContext& task) -> Result<PhotoRenderJob> {
             PhotoRenderJob job;
-            auto count = export_thread_scene(snapshot, scene, 0.35, task);
+            auto count = export_thread_scene(snapshot, scene, threadWidthMm, task);
             if (!count) {
                 return std::unexpected(count.error());
             }
             job.segments = *count;
             QProcess process;
             process.setProcessChannelMode(QProcess::MergedChannels);
-            process.start(python,
-                          {script, fromPath(scene), fromPath(path), QStringLiteral("--spp"),
-                           QString::number(spp), QStringLiteral("--tilt"), QString::number(tilt)});
+            process.start(python, {script, fromPath(scene), fromPath(path), QStringLiteral("--spp"),
+                                   QString::number(spp), QStringLiteral("--tilt"),
+                                   QString::number(tilt), QStringLiteral("--px-per-mm"),
+                                   QString::number(pxPerMm), QStringLiteral("--fabric"), fabric});
             if (!process.waitForStarted(15'000)) {
                 std::error_code ec;
                 std::filesystem::remove(scene, ec);

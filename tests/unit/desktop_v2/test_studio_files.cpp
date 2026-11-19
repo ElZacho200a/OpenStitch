@@ -1284,13 +1284,22 @@ void StudioFilesTest::photoRenderRunsTheExternalEngineOnTheThreadScene() {
         f.write("import json, sys, base64\n"
                 "scene = json.load(open(sys.argv[1], encoding='utf-8'))\n"
                 "assert scene['format'] == 'openstitch-thread-scene' and scene['segments']\n"
-                "assert '--spp' in sys.argv and '--tilt' in sys.argv\n"
+                "a = sys.argv\n"
+                "assert a[a.index('--spp') + 1] == '4' and a[a.index('--tilt') + 1] == '12'\n"
+                "assert a[a.index('--px-per-mm') + 1] == '40'\n"
+                "assert a[a.index('--fabric') + 1] == '10,20,30'\n"
+                "assert scene['thread_width_mm'] == 0.5\n"
                 "open(sys.argv[2], 'wb').write(base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB"
                 "CAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg=='))\n"
                 "print('rendu factice', len(scene['segments']))\n");
     }
     qputenv("OPENSTITCH_RAYTRACE_SCRIPT", fake.toUtf8());
-    rig.files->exportPhotoRender(url(dir, "photo.png"), 0.0, 4);
+    rig.files->exportPhotoRender(url(dir, "photo.png"),
+                                 {{QStringLiteral("tiltDeg"), 12},
+                                  {QStringLiteral("samples"), 4},
+                                  {QStringLiteral("pxPerMm"), 99}, // borné à 40
+                                  {QStringLiteral("threadWidthMm"), 0.5},
+                                  {QStringLiteral("fabric"), QStringLiteral("10,20,30")}});
     QVERIFY(rig.waitIdle());
     qunsetenv("OPENSTITCH_RAYTRACE_SCRIPT");
     QVERIFY2(!rig.files->messageIsError(), qPrintable(rig.files->message()));
