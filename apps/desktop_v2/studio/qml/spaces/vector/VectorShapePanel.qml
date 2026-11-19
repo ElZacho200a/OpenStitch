@@ -16,6 +16,8 @@ ColumnLayout {
     signal goToRegionRequested
     // Plan de mise à jour en attente de confirmation (retouches à écraser) ; null = pas de demande.
     property var pendingPlan: null
+    // Carte de réglages de la conversion en broderie, ouverte par « ② Convertir en broderie ».
+    property bool convertOptionsOpen: false
     spacing: 9
 
     function askUpdate() {
@@ -174,7 +176,92 @@ ColumnLayout {
         emphasized: enabled
         tooltip: qsTr("Crée les objets de broderie des formes qui n'en ont pas encore")
         enabled: panel.stage !== null && panel.stage.shapeCount > 0 && !panel.stage.converting
-        onClicked: panel.stage.convertToEmbroidery()
+        onClicked: panel.convertOptionsOpen = !panel.convertOptionsOpen
+    }
+    // Choix avant conversion : par défaut, aucune déformation des contours vectoriels.
+    Rectangle {
+        objectName: "vectorConvertOptions"
+        visible: panel.convertOptionsOpen
+        Layout.fillWidth: true
+        implicitHeight: convertColumn.implicitHeight + 2 * Theme.panelPadding
+        radius: Theme.radius
+        color: Theme.surface
+        border.color: Theme.divider
+        ColumnLayout {
+            id: convertColumn
+            anchors.fill: parent
+            anchors.margins: Theme.panelPadding
+            spacing: 6
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("Réglages de la conversion")
+                color: Theme.foreground; font.family: Theme.fontFamily; font.pixelSize: Theme.bodySize
+            }
+            StudioCheckBox {
+                id: pullBox
+                objectName: "vectorConvertPullBox"
+                text: qsTr("Compensation du tirage automatique (agrandit les formes de 0,1 à 0,4 mm)")
+                palette.windowText: Theme.foreground
+            }
+            StudioCheckBox {
+                id: overlapBox
+                objectName: "vectorConvertOverlapBox"
+                text: qsTr("Bloc uni : déborder de 0,5 mm sous les voisins")
+                palette.windowText: Theme.foreground
+            }
+            StudioCheckBox {
+                id: satinBox
+                objectName: "vectorConvertSatinBox"
+                text: qsTr("Bandes étroites en satin (sinon tout en remplissage)")
+                palette.windowText: Theme.foreground
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                Text {
+                    text: qsTr("Espacement des fils (mm)")
+                    color: Theme.foreground; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize
+                }
+                StudioSlider {
+                    id: spacingSlider
+                    objectName: "vectorConvertSpacingSlider"
+                    Layout.fillWidth: true
+                    from: 0.2; to: 0.8; stepSize: 0.05
+                    value: 0.4
+                    Accessible.name: qsTr("Espacement des rangées de fils en millimètres")
+                }
+                Text {
+                    text: spacingSlider.value.toFixed(2)
+                    color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize
+                }
+            }
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("Tout est décoché par défaut : les points suivent exactement les contours vectoriels. Les réglages restent modifiables ensuite objet par objet.")
+                color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize; wrapMode: Text.WordWrap
+            }
+            RowLayout {
+                spacing: 6
+                StudioButton {
+                    objectName: "vectorConvertConfirmButton"
+                    text: qsTr("Convertir")
+                    emphasized: true
+                    onClicked: {
+                        panel.convertOptionsOpen = false
+                        panel.stage.convertToEmbroidery({
+                            "pull": pullBox.checked ? "auto" : "none",
+                            "overlapMm": overlapBox.checked ? 0.5 : 0.0,
+                            "satin": satinBox.checked,
+                            "spacingMm": spacingSlider.value
+                        })
+                    }
+                }
+                StudioButton {
+                    objectName: "vectorConvertCancelButton"
+                    text: qsTr("Annuler")
+                    onClicked: panel.convertOptionsOpen = false
+                }
+            }
+        }
     }
     Text {
         objectName: "vectorConvertHelp"

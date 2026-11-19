@@ -575,8 +575,16 @@ bool ThreadController::exportThreadList(const QUrl& file) {
     if (!file.isLocalFile()) {
         return report({false, "Choisissez un fichier local"}, {});
     }
+    // Aucune génération de points ici (fil d'interface) : on réutilise la séquence effective de la
+    // scène, calculée hors du fil d'interface, tant qu'elle correspond au document courant.
+    const auto& scene = studio_.scene();
+    if (!scene || !scene->effectiveSequence || scene->revision != studio_.session().revision()) {
+        return report({false, "Les points sont en cours de calcul : réessayez dans un instant"},
+                      {});
+    }
     std::size_t rows = 0;
-    const auto result = exportThreadListCsv(studio_.session().project(), pathOf(file), &rows);
+    const auto result = exportThreadListCsv(studio_.session().project(), *scene->effectiveSequence,
+                                            pathOf(file), &rows);
     return report(result, QStringLiteral("%1 fil(s) exporté(s)").arg(rows));
 }
 

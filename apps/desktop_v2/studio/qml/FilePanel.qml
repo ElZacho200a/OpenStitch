@@ -27,7 +27,7 @@ Item {
     function openUrl(url) { if (ctl) ctl.openUrl(url); else studio.openProject(url) }
     function requestQuit() { return ctl ? ctl.requestQuit() : true }
     function openMenu() { menu.open() }
-    function openExportDialog() { if (ctl) { exportValues = ctl.exportOptions(); exportDialog.open() } }
+    function openExportDialog() { if (ctl) { exportValues = ctl.exportOptions(); exportDialog.open(); ctl.requestExportCheck(exportDialog.format) } }
     function openHoopDialog() { if (ctl) hoopDialog.open() }
     function importImageDialog() { imageDialog.open() }
     function importVectorDialog() { vectorDialog.open() }
@@ -563,7 +563,10 @@ Item {
             Layout.fillWidth: true
             model: exportDialog.formats
             textRole: "label"
-            onActivated: exportDialog.format = exportDialog.formats[currentIndex].extension
+            onActivated: {
+                exportDialog.format = exportDialog.formats[currentIndex].extension
+                if (panel.ctl) panel.ctl.requestExportCheck(exportDialog.format)
+            }
         }
         StudioCheckBox {
             text: qsTr("Écrire les coupes de fil")
@@ -590,7 +593,7 @@ Item {
             checked: panel.exportValues.autoJoin === true
             onToggled: panel.exportValues.autoJoin = checked
         }
-        Label { objectName: "exportCheckText"; text: panel.ctl ? panel.ctl.exportCheck(exportDialog.format) : "" }
+        Label { objectName: "exportCheckText"; text: panel.ctl ? panel.ctl.exportCheckText : "" }
         RowLayout {
             Layout.alignment: Qt.AlignRight
             spacing: 8
