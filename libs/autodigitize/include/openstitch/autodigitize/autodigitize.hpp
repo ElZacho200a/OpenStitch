@@ -62,6 +62,17 @@ struct AutoOptions {
     // (`AutoSatinParams::compact_axis`), sous les mêmes conditions de couverture.
     // 0 : les formes compactes restent en tatami.
     Micrometers satin_compact_max_width{12'000};
+    // HP-ENG-009 : avec `satin_bands`, une forme large ou à trou refusée par les deux voies
+    // ci-dessus (anneau > `satin_max_width`, disque ou ellipse > `satin_compact_max_width`) peut
+    // être cousue en « satin guidé » (`AutoSatinStrategy::Guided`, ligne centrale automatique)
+    // au lieu d'un tatami à angle fixe, SEULEMENT si la mesure `plan_wide_guided_satin` le donne
+    // meilleur que ce tatami (bords plus francs, aucun croisement, direction régulière,
+    // couverture >= `satin_min_coverage`). Sans effet si `satin_bands` est faux. Actif par défaut
+    // car mesuré meilleur sur les anneaux larges (voir `docs/source/auto-numerisation.md`) ; les
+    // disques et ellipses pleines gardent le tatami (la mesure ne donne aucun avantage).
+    bool satin_wide_guided{true};
+    // Largeur inscrite maximale d'une forme candidate au satin guidé large.
+    Micrometers satin_wide_max_width{40'000};
 
     // --- Remplissages tatami (Lot B, audit marine plein cadre 2026-09-22) ---
     // Réglages appliqués aux tatami CRÉÉS par l'auto-numérisation, jamais aux
