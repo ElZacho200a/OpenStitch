@@ -47,6 +47,64 @@ Le preset `linux-core` compile les libs cœur et la CLI **sans Qt** — c'est un
 garde-fou pour éviter toute dépendance Windows/Qt involontaire dans le cœur.
 L'interface graphique n'est pas construite sous Linux à ce stade.
 
+## Workflow de build rapide (BUILD-OPT-01)
+
+Principe : pendant l'itération, ne compiler que la cible touchée et son exécutable de
+test ; la suite complète n'est lancée qu'avant livraison. Seules les commandes de la
+section « Existant aujourd'hui » sont garanties ; le reste est la **méthode prévue**.
+
+### Existant aujourd'hui
+
+```powershell
+.\scripts\qrun.ps1 build-x cmake --build --preset msvc-debug --target openstitch_<lib> test_<lib>
+.\scripts\qrun.ps1 test-x  build\msvc\tests\unit\<lib>\Debug\test_<lib>.exe "sous-chaine du TEST_CASE"
+.\scripts\qrun.ps1 ctest-x ctest --preset msvc-debug -R <sous-chaine> --output-on-failure
+```
+
+- **Build ciblé** : `--target` d'une lib + son `test_<lib>`. Table lib → exécutable dans le
+  skill `openstitch-build-test` §1. Modif de `core`/`geometry`/`document`, de CMake ou d'un
+  en-tête très inclus : passer à la suite complète.
+- **Tests minimaux pertinents** : exécutable Catch2 de la lib avec filtre de nom ou `[tag]` ;
+  tests desktop via `ctest -R test_main_window` (fournit `QT_QPA_PLATFORM=offscreen`).
+  Les dépendants d'une lib se trouvent avec `analyze_impact("<lib>")`.
+- **Validation complète avant livraison** : `cmake --build --preset msvc-debug` puis
+  `ctest --preset msvc-debug --output-on-failure` ; Release en plus si flottants, optimisation
+  ou ordre d'évaluation sont touchés ; clang-format **18** sur les fichiers modifiés ;
+  garde `check_no_raw_sequence_bypass`. Jamais de reconstruction complète entre deux itérations.
+- **Presets existants** : `msvc`, `msvc-relwithdebinfo` (configure), `msvc-debug`,
+  `msvc-release`, `msvc-release-relwithdebinfo`, `linux-core`.
+- QML de Studio : `apps/desktop_v2/studio/qml/`. Aujourd'hui, toute modification QML passe
+  par une reconstruction de la cible Studio.
+
+### Prévu — à jour quand 01.x est fusionné
+
+> **À RÉCONCILIER** : les éléments ci-dessous dépendent des sous-tâches 01.2 à 01.7 de
+> BUILD-OPT-01, non fusionnées lors de la rédaction. Noms prévus, non vérifiés ; corriger ou
+> supprimer selon ce qui a réellement été livré.
+
+- **Script `scripts/build-dev.ps1` et presets de dev** (01.2) : build ciblé d'une cible Studio
+  ou d'une lib en une commande, sans reconstruire le reste.
+- **QML sans recompilation** (01.3) : mode « QML externe/dev » où Studio charge les `.qml`
+  depuis le disque ; une modification QML se vérifie en relançant l'exécutable, sans lien.
+  Les changements C++ (types exposés à QML, `qmldir`, ressources) imposent toujours un build.
+- **Cache de compilation (sccache)** (01.4), **cache vcpkg** (01.5), **en-têtes précompilés**
+  (01.6) : réduisent les temps à froid ; décrire ici l'activation et le diagnostic.
+- **CI** (01.7) : jobs et caches du workflow `.github/workflows/ci.yml`.
+
+### Protocole de mesure
+
+Tout gain annoncé doit être mesuré, avant/après, dans les mêmes conditions :
+
+1. Même machine, même configuration (Debug), autres builds arrêtés, antivirus inchangé.
+2. Trois scénarios : **à froid** (dossier de build neuf, `-Clean`), **incrémental trivial**
+   (aucune modification), **incrémental réaliste** (toucher un `.cpp` de lib, puis un en-tête
+   de `document`, puis un `.qml`).
+3. Mesurer avec `Measure-Command { cmake --build --preset msvc-debug --target <cible> }`
+   (secondes, mur) ; répéter 3 fois, retenir la médiane ; le premier passage seul pour le froid.
+4. Consigner : date, commit, cible, scénario, médiane, écart. Un gain sous l'écart observé
+   entre répétitions n'est pas un gain.
+5. Le cache (sccache/vcpkg) se mesure à froid avec cache vide **et** avec cache chaud.
+
 ## Erreurs fréquentes
 
 - « Qt6 introuvable » → vérifier `QT_ROOT`.
