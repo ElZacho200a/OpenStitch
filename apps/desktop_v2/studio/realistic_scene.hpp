@@ -85,6 +85,18 @@ std::size_t writeThreadQuads(std::span<const StudioSegment> segments, const Real
 std::size_t writeShadowQuads(std::span<const StudioSegment> segments, const RealisticStyle& style,
                              RealisticVertex* out);
 
+// Ombres entre fils (shader de fil, RENDER-PBR-01 lot C) : pour chaque segment, son ombre portée
+// PUIS son fil, dans l'ordre de couture et dans un même flux. L'ombre du segment i tombe ainsi sur
+// les segments 0..i-1 du même run (et sur le tissu), jamais sur le segment i. Les quads d'ombre
+// gardent l'encodage (cellule d'orientation, rangée) du fil, décalé de kShadowUOffset en u, ce
+// qui permet au shader de reconnaître le mode ombre. `out` : kInterleavedVerticesPerSegment par
+// segment. Déterministe.
+inline constexpr std::size_t kInterleavedVerticesPerSegment = 2 * kVerticesPerSegment;
+inline constexpr float kShadowUOffset = 2.0F;
+inline constexpr float kShadowWidthScale = 1.2F;
+std::size_t writeInterleavedShadowThreadQuads(std::span<const StudioSegment> segments,
+                                              const RealisticStyle& style, RealisticVertex* out);
+
 // Décalage de l'ombre portée (mm, repère écran) pour une largeur de fil donnée.
 struct ShadowOffset {
     float dx{0}, dy{0};

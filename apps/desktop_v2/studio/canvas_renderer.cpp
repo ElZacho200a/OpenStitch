@@ -411,6 +411,9 @@ public:
                                                       const RealisticStyle& style) const = 0;
     [[nodiscard]] virtual QSGMaterial* shadowMaterial(QSGTexture& shadow) const = 0;
     [[nodiscard]] virtual QSGMaterial* fabricMaterial(QSGTexture& tile) const = 0;
+    // Vrai : le matériau du fil dessine aussi les ombres portées, entrelacées segment par segment
+    // (writeInterleavedShadowThreadQuads) : ombres entre fils d'un même run.
+    [[nodiscard]] virtual bool interleavesShadows() const { return false; }
 };
 
 class StandardTextureMaterials : public ThreadMaterialProvider {
@@ -459,7 +462,8 @@ public:
     ThreadShaderMaterial(std::array<std::uint8_t, 3> rgb, const RealisticStyle& style)
         : color_{rgb[0] / 255.0F, rgb[1] / 255.0F, rgb[2] / 255.0F, 1.0F},
           params_{static_cast<float>(style.relief), static_cast<float>(style.sheen),
-                  static_cast<float>(style.twist), 0.0F},
+                  static_cast<float>(style.twist),
+                  0.65F * static_cast<float>(std::clamp(style.shadow, 0.0, 1.0))},
           widthMm_{static_cast<float>(style.threadWidthMm)} {
         setFlag(Blending);
     }
@@ -538,6 +542,7 @@ public:
                                 const RealisticStyle& style) const override {
         return new ThreadShaderMaterial(rgb, style);
     }
+    bool interleavesShadows() const override { return true; }
 };
 #endif
 
@@ -642,14 +647,23 @@ void buildRealistic(RealisticLayer& layer,
         const std::span<const StudioSegment> part(scene.segments.data() + chunk.first, chunk.count);
         scratch.resize(chunk.count * kVerticesPerSegment);
         auto* wrapper = new QSGOpacityNode;
+        const auto rgb = layer.runs[chunk.run].rgb;
+        auto& sprite = layer.spriteTexture(window, rgb);
+        if (style.shadow > 0.0 && materials.interleavesShadows()) {
+            scratch.resize(chunk.count * kInterleavedVerticesPerSegment);
+            writeInterleavedShadowThreadQuads(part, style, scratch.data());
+            wrapper->appendChildNode(texturedNode(scratch.data(), scratch.size(),
+                                                  materials.threadMaterial(sprite, rgb, style)));
+            layer.group->appendChildNode(wrapper);
+            layer.chunkNodes.push_back(wrapper);
+            continue;
+        }
         if (style.shadow > 0.0) {
             writeShadowQuads(part, style, scratch.data());
             wrapper->appendChildNode(texturedNode(scratch.data(), scratch.size(),
                                                   materials.shadowMaterial(*layer.shadowTexture)));
         }
         writeThreadQuads(part, style, scratch.data());
-        const auto rgb = layer.runs[chunk.run].rgb;
-        auto& sprite = layer.spriteTexture(window, rgb);
         wrapper->appendChildNode(texturedNode(scratch.data(), scratch.size(),
                                               materials.threadMaterial(sprite, rgb, style)));
         layer.group->appendChildNode(wrapper);
@@ -681,6 +695,15 @@ void applyRealisticSimulation(RealisticLayer& layer, const StudioSceneSnapshot& 
         if (!full && chunk.first < shown) {
             const std::size_t count = shown - chunk.first;
             const std::span<const StudioSegment> part(scene.segments.data() + chunk.first, count);
+            const auto rgb = layer.runs[chunk.run].rgb;
+            if (style.shadow > 0.0 && materials.interleavesShadows()) {
+                std::vector<RealisticVertex> both(count * kInterleavedVerticesPerSegment);
+                writeInterleavedShadowThreadQuads(part, style, both.data());
+                auto& sprite = layer.spriteTexture(window, rgb);
+                layer.tail->appendChildNode(texturedNode(
+                    both.data(), both.size(), materials.threadMaterial(sprite, rgb, style)));
+                continue;
+            }
             std::vector<RealisticVertex> scratch(count * kVerticesPerSegment);
             if (style.shadow > 0.0) {
                 writeShadowQuads(part, style, scratch.data());
@@ -689,7 +712,6 @@ void applyRealisticSimulation(RealisticLayer& layer, const StudioSceneSnapshot& 
                                  materials.shadowMaterial(*layer.shadowTexture)));
             }
             writeThreadQuads(part, style, scratch.data());
-            const auto rgb = layer.runs[chunk.run].rgb;
             auto& sprite = layer.spriteTexture(window, rgb);
             layer.tail->appendChildNode(texturedNode(scratch.data(), scratch.size(),
                                                      materials.threadMaterial(sprite, rgb, style)));

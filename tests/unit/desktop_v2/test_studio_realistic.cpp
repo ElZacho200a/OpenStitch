@@ -126,6 +126,7 @@ private slots:
     void chunksAreBoundedAndOrdered();
     void quadsAreDeterministicAndBinnedByOrientation();
     void twistKeepsAConstantPhysicalPitch();
+    void interleavedShadowsPrecedeEachThread();
     void spriteCacheIsPerColourAndInvalidatedByStyle();
     void spriteLightingFollowsReliefAndOrientation();
     void shadowSpriteAndFabricTile();
@@ -239,6 +240,39 @@ void StudioRealisticTest::twistKeepsAConstantPhysicalPitch() {
     QCOMPARE(rowOf(1), twistClass(3.3 + style.threadWidthMm, style.threadWidthMm));
     QVERIFY(rowOf(1) > rowOf(0));
     QVERIFY(insideRow);
+}
+
+void StudioRealisticTest::interleavedShadowsPrecedeEachThread() {
+    const RealisticStyle style;
+    const std::vector<StudioSegment> segments{segment({1, 2, 3}, 0, 0, 2, 0),
+                                              segment({1, 2, 3}, 0, 0.3F, 2, 0.3F),
+                                              segment({1, 2, 3}, 1, 1, 1, 1)}; // segment nul
+    std::vector<RealisticVertex> both(segments.size() * kInterleavedVerticesPerSegment);
+    QCOMPARE(writeInterleavedShadowThreadQuads(segments, style, both.data()), both.size());
+    std::vector<RealisticVertex> threads(segments.size() * kVerticesPerSegment);
+    writeThreadQuads(segments, style, threads.data());
+    const auto off = shadowOffset(style.threadWidthMm);
+    for (std::size_t s = 0; s < segments.size(); ++s) {
+        const RealisticVertex* shadow = both.data() + s * kInterleavedVerticesPerSegment;
+        const RealisticVertex* thread = shadow + kVerticesPerSegment;
+        // Le fil est identique à writeThreadQuads ; son ombre le précède immédiatement.
+        QCOMPARE(std::memcmp(thread, threads.data() + s * kVerticesPerSegment,
+                             kVerticesPerSegment * sizeof(RealisticVertex)),
+                 0);
+        float sx = 0, sy = 0, tx = 0, ty = 0;
+        for (std::size_t i = 0; i < kVerticesPerSegment; ++i) {
+            QVERIFY(shadow[i].u >= kShadowUOffset); // mode ombre reconnaissable
+            QVERIFY(std::abs((shadow[i].u - kShadowUOffset) - thread[i].u) < 1e-6F);
+            QCOMPARE(shadow[i].v, thread[i].v);
+            sx += shadow[i].x;
+            sy += shadow[i].y;
+            tx += thread[i].x;
+            ty += thread[i].y;
+        }
+        // Centre décalé exactement de shadowOffset (bas-droite, lumière haut-gauche).
+        QVERIFY(std::abs((sx - tx) / kVerticesPerSegment - off.dx) < 1e-5F);
+        QVERIFY(std::abs((sy - ty) / kVerticesPerSegment - off.dy) < 1e-5F);
+    }
 }
 
 void StudioRealisticTest::spriteCacheIsPerColourAndInvalidatedByStyle() {

@@ -9,6 +9,7 @@
 layout(location = 0) in vec2 vTex;
 layout(location = 1) in float vAcrossScale;
 layout(location = 2) in float vHalfPx;
+layout(location = 3) in float vShadow;
 layout(location = 0) out vec4 fragColor;
 layout(std140, binding = 0) uniform buf {
     mat4 qt_Matrix;
@@ -84,6 +85,16 @@ void main() {
     float edgePx = max(1.0, 0.18 * vHalfPx);
     float acrossAlpha = clamp((1.0 - abs(acrossRaw)) * vHalfPx / edgePx + 0.5 / edgePx, 0.0, 1.0);
     acrossAlpha *= min(1.0, 2.0 * vHalfPx);
+
+    // Ombre portée (lot C) : silhouette très estompée, noir translucide. Dessinée juste avant son
+    // fil, elle assombrit les fils cousus avant lui, pas lui-même.
+    if (vShadow > 0.5) {
+        float soft = clamp(1.0 - across * across, 0.0, 1.0);
+        float endFade = clamp(min(along, 1.0 - along) / 0.14, 0.0, 1.0);
+        float shadowAlpha = params.w * soft * (0.35 + 0.65 * endFade) * min(1.0, 2.0 * vHalfPx);
+        fragColor = vec4(0.0, 0.0, 0.0, shadowAlpha) * qt_Opacity;
+        return;
+    }
     float edge = min(along, 1.0 - along);
     float endAlpha = clamp(edge / 0.14, 0.0, 1.0);
     float alpha = acrossAlpha * (0.35 + 0.65 * endAlpha);

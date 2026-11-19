@@ -86,3 +86,12 @@ le zoom courant (vue en pixels + largeur du fil en uniformes ; u1 rentre de 0,1 
 le cote), le fragment fond le bord sur au moins un pixel et module la couverture des fils plus fins
 qu'un pixel : encre 12,3 -> 15,8 mm2. Limites : orientation quantifiee a 16
 directions (heritee de l'encodage u), pas de comparaison photo, pas de mesure Release.
+
+### Lot C - ombres entre fils (shader, 19/11/2026)
+Avec le shader de fil, `writeInterleavedShadowThreadQuads` ecrit pour chaque segment son ombre
+portee puis son fil dans un meme flux (12 sommets/segment, un seul noeud par tranche) : l'ombre du
+segment i assombrit les segments 0..i-1 du meme run, jamais le segment i. Les quads d'ombre gardent
+l'encodage (u, v) du fil decale de 2 en u ; le shader y reconnait le mode ombre (silhouette
+estompee, intensite 0,65 x reglage, comme le sprite CPU). Chemin par textures inchange (ombre du
+run entier avant ses fils). Test : `interleavedShadowsPrecedeEachThread`. Non fait : occlusion par
+passe de hauteur, tissu en normal map, mesures Release.

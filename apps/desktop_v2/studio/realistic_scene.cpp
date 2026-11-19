@@ -144,4 +144,23 @@ std::size_t writeShadowQuads(std::span<const StudioSegment> segments, const Real
     return segments.size() * kVerticesPerSegment;
 }
 
+std::size_t writeInterleavedShadowThreadQuads(std::span<const StudioSegment> segments,
+                                              const RealisticStyle& style, RealisticVertex* out) {
+    const auto off = shadowOffset(style.threadWidthMm);
+    const float halfW = static_cast<float>(style.threadWidthMm) * 0.5F;
+    const float shadowHalfW = halfW * kShadowWidthScale;
+    for (std::size_t i = 0; i < segments.size(); ++i) {
+        RealisticVertex* shadow = out + i * kInterleavedVerticesPerSegment;
+        RealisticVertex* thread = shadow + kVerticesPerSegment;
+        writeThreadQuads(segments.subspan(i, 1), style, thread);
+        // Ombre : mêmes (u, v) que le fil (orientation, rangée), décalée et élargie.
+        const auto& t = segments[i].thread;
+        const float u0 = thread[0].u + kShadowUOffset;
+        const float u1 = thread[1].u + kShadowUOffset;
+        quad(shadow, t.ax + off.dx, t.ay + off.dy, t.bx + off.dx, t.by + off.dy, shadowHalfW, halfW,
+             u0, u1, thread[0].v, thread[2].v);
+    }
+    return segments.size() * kInterleavedVerticesPerSegment;
+}
+
 } // namespace openstitch::desktop_v2::studio
