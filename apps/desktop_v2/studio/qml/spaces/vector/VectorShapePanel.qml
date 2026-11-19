@@ -53,15 +53,19 @@ ColumnLayout {
         StudioSlider {
             objectName: "vectorPrecisionSlider"
             Layout.fillWidth: true
-            from: 0.05; to: 1.0; stepSize: 0.05
+            from: 0.01; to: 2.0; stepSize: 0.01
             value: panel.stage ? panel.stage.precisionMm : 0.2
             Accessible.name: qsTr("Tolérance de simplification en millimètres")
             onMoved: panel.stage.precisionMm = value
         }
-        Text {
+        // Saisie fine (VEC-ADAPT-01) : mêmes bornes que le contrôleur, qui clampe.
+        StudioTextField {
             objectName: "vectorPrecisionValue"
+            implicitWidth: 56
             text: panel.stage ? panel.stage.precisionMm.toFixed(2) : ""
-            color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize
+            wheelStep: 0.01; wheelMin: 0.01; wheelMax: 2.0; wheelDecimals: 2
+            Accessible.name: qsTr("Tolérance de simplification, saisie en millimètres")
+            onEditingFinished: { const v = Number(text.replace(",", ".")); if (isFinite(v)) panel.stage.precisionMm = v; else text = panel.stage.precisionMm.toFixed(2) }
         }
     }
     StudioCheckBox {
@@ -81,21 +85,25 @@ ColumnLayout {
         StudioSlider {
             objectName: "vectorCurveToleranceSlider"
             Layout.fillWidth: true
-            from: 0.5; to: 5.0; stepSize: 0.5
+            from: 0.1; to: 10.0; stepSize: 0.1
             value: panel.stage ? panel.stage.curveTolerancePx : 1.5
             Accessible.name: qsTr("Écart maximal des courbes en pixels")
             onMoved: panel.stage.curveTolerancePx = value
         }
-        Text {
-            text: panel.stage ? panel.stage.curveTolerancePx.toFixed(1) : ""
-            color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize
+        StudioTextField {
+            objectName: "vectorCurveToleranceValue"
+            implicitWidth: 56
+            text: panel.stage ? panel.stage.curveTolerancePx.toFixed(2) : ""
+            wheelStep: 0.05; wheelMin: 0.1; wheelMax: 10.0; wheelDecimals: 2
+            Accessible.name: qsTr("Écart maximal des courbes, saisie en pixels")
+            onEditingFinished: { const v = Number(text.replace(",", ".")); if (isFinite(v)) panel.stage.curveTolerancePx = v; else text = panel.stage.curveTolerancePx.toFixed(2) }
         }
     }
     // Chaque réglage et chaque action dit ce qu'il produit, en une ligne, sans survol.
     Text {
         objectName: "vectorPrecisionHelp"
         Layout.fillWidth: true
-        text: qsTr("Tolérance haute : contours plus simples, moins de nœuds. Basse : plus fidèle à l'image. Pris en compte à l'étape ①.")
+        text: qsTr("Tolérance haute : contours plus simples, moins de nœuds. Basse : plus fidèle à l'image (sous 1 px, les courbes suivent les escaliers des pixels). Pris en compte à l'étape ①.")
         color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize; wrapMode: Text.WordWrap
     }
 
