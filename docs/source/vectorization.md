@@ -150,6 +150,39 @@ Limitation : l'**ajout/suppression de nœuds**, la **conversion anguleux/lisse**
 et l'édition de tangentes de Bézier ne sont **pas** exposés dans l'interface
 (le modèle les prévoit : `PathNode` porte `tan_in`/`tan_out` et un `NodeType`).
 
+## Banc des tolérances (VEC-ADAPT-01, lot A)
+
+Bornes communes à Studio et à `vectorize_segmentation` : courbes 0,1–10 px, simplification
+0,01–2 mm (`project_ops::kCurveToleranceMinPx`… dans `revectorize.hpp`) ; défauts 1,5 px et 0,2 mm.
+
+Banc caché `test_project_ops "[.vec_adapt_bench]"` (variable `OPENSTITCH_VEC_BENCH_OSP` pour un
+OSP réel, jamais versionné). Référence : polygone 0,01 mm (le contour des pixels). Mesures du
+2026-11-19, Debug, MonetGasque (341 régions, 0,16 mm/px ; « petites » = aire < 25 mm²) :
+
+| Réglage | Nœuds | Nœuds petites | Écart moyen (µm) | Écart d'aire | Temps |
+|---|---:|---:|---:|---:|---:|
+| polygone 0,05 mm | 33 410 | 5 969 | 128 | 0,00 % | 149 ms |
+| Bézier 1,5 px (défaut) | 6 181 | 1 355 | 215 | 5,6 % | 0,6 s |
+| Bézier 0,5 px | 18 610 | 3 268 | 175 | 2,7 % | 1,7 s |
+| Bézier 0,25 px | 24 945 | 4 276 | 204 | 3,3 % | 2,1 s |
+| Bézier 0,1 px | 25 265 | 4 383 | 195 | 3,3 % | 2,0 s |
+
+Lecture :
+- sous 0,5 px, les nœuds triplent ou quadruplent sans gain de fidélité (écart et aire stagnent,
+  voire se dégradent) et 0,25 → 0,1 px ne change presque rien : l'ajustement suit les escaliers
+  du raster, comme l'annonce `CurveFitOptions` (« au moins ~1,2 px ») ;
+- 0,5 px est le seul palier subpixel utile : l'écart d'aire est divisé par deux (5,6 → 2,7 %)
+  au prix de ×3 nœuds ;
+- sur le corpus synthétique (disque, fleur de 3 mm, pointe, trou de 0,4 mm), même tendance :
+  1,5 px → 0,5 px fait passer l'écart moyen de 61 à 42 µm, 0,25/0,1 px n'apportent rien ;
+  tous les trous sont conservés à tous les réglages.
+
+Limites : l'écart compare les morceaux par rang (pire Hausdorff approché des contours appariés),
+les valeurs maximales sont donc peu fiables quand le nombre de morceaux diffère (le polygone
+0,2 mm perd des régions) ; temps en Debug ; aucun effet sur les points ni essai textile mesuré.
+Conséquence pour le lot B : une tolérance par région doit descendre vers ~0,5 px sur les petites
+formes, pas au-delà, et la reconstruction de pétales (lot D) reste la seule voie sous le pixel.
+
 ## Robustesse
 
 La correction de la tolérance de simplification (adaptative) évite un défaut

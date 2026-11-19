@@ -21,6 +21,7 @@ add_executable(test_project_ops
     test_live_bridge.cpp
     test_settings_profile.cpp
     test_fuzz_batches.cpp
+    test_vec_adapt_bench.cpp
 )
 target_link_libraries(test_project_ops
     PRIVATE openstitch::project_ops openstitch::project_io openstitch::commands openstitch::stitch_generation
@@ -31,7 +32,7 @@ target_compile_definitions(test_project_ops
             OPENSTITCH_FONTS_DIR="${PROJECT_SOURCE_DIR}/resources/fonts")
 catch_discover_tests(test_project_ops)
 
-# Import / remplacement sémantiques : exécutable séparé (petit lien, itération rapide).
+# Import / remplacement sÃ©mantiques : exÃ©cutable sÃ©parÃ© (petit lien, itÃ©ration rapide).
 add_executable(test_project_ops_semantic test_semantic.cpp)
 target_link_libraries(test_project_ops_semantic
     PRIVATE openstitch::project_ops openstitch::project_io openstitch::stitch_generation
