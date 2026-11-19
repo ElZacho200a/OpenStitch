@@ -192,6 +192,7 @@ private slots:
     void autosaveRecoveryAndDiscard();
     void hoopMachineAndUserHoops();
     void hoopQuickSettingsAreOneUndoStepEach();
+    void lastChosenHoopSeedsNewProjects();
 };
 
 void StudioFilesTest::imagesStayIndependentThroughStitchesAndSave() {
@@ -1484,6 +1485,40 @@ void StudioFilesTest::hoopMachineAndUserHoops() {
 
 // Réglage rapide du cadre (en-tête, clic droit des canevas) : forme, dimensions, rayon, marge en
 // une commande annulable ; « Mes cadres » garde la forme ; le cadre courant est relu après annuler.
+void StudioFilesTest::lastChosenHoopSeedsNewProjects() {
+    QTemporaryDir state;
+    QVERIFY(state.isValid());
+    {
+        Rig rig(state.path());
+        rig.session.replaceProject(studioFixture(), true);
+        QVERIFY(
+            rig.files->applyHoopSpec(QStringLiteral("ellipse"), 160.0, 130.0, 0.0, 3.0).isEmpty());
+        rig.session.replaceProject(studioFixture(), true); // rien à enregistrer avant « Nouveau »
+        // « Nouveau » repart du dernier cadre choisi, sans étape d'annulation ni document modifié.
+        rig.files->requestNew();
+        QTRY_VERIFY(!rig.studio.hasPath() && rig.session.project().embroidery_objects.empty());
+        const auto& canvas = rig.session.project().canvas;
+        QCOMPARE(canvas.shape, document::HoopShape::Ellipse);
+        QCOMPARE(canvas.width.value, 160'000);
+        QCOMPARE(canvas.height.value, 130'000);
+        QCOMPARE(canvas.margin.value, 3'000);
+        QVERIFY(!rig.session.dirty());
+        QVERIFY(!rig.session.canUndo());
+    }
+    {
+        // Session suivante : le projet vide de démarrage a déjà ce cadre.
+        Rig rig(state.path());
+        QCOMPARE(rig.session.project().canvas.shape, document::HoopShape::Ellipse);
+        QCOMPARE(rig.session.project().canvas.width.value, 160'000);
+        QVERIFY(!rig.session.dirty());
+    }
+    {
+        // Sans mémoire (aucun dossier d'état) : le cadre par défaut du moteur.
+        Rig rig;
+        QCOMPARE(rig.session.project().canvas, document::Canvas{});
+    }
+}
+
 void StudioFilesTest::hoopQuickSettingsAreOneUndoStepEach() {
     QTemporaryDir state;
     QVERIFY(state.isValid());

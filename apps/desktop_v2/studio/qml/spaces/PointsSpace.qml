@@ -187,6 +187,15 @@ Item {
                     gpu: spaceCanvas
                 }
 
+                // Tracé du lasso (outil de sélection partagé avec Vecteurs). Masqué en Sélection :
+                // les nœuds de contour restent une affaire de l'espace Vecteurs.
+                ToolOverlay {
+                    objectName: "pointsToolOverlay"
+                    anchors.fill: parent
+                    gpu: spaceCanvas
+                    visible: root.toolController !== null && root.toolController.activeTool !== "select"
+                }
+
                 // Frontières des fondus de la zone principale (le fondu édité mis en évidence).
                 BoundaryBlendFrontiers {
                     objectName: "boundaryBlendFrontiers"

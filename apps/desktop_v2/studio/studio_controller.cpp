@@ -108,13 +108,17 @@ void StudioController::openProject(const QUrl& url) {
 }
 
 void StudioController::newProject() {
+    newProject(document::Project{});
+}
+
+void StudioController::newProject(document::Project seed) {
     tasks_.cancelAll();
     ++request_;
     busy_ = false;
     path_.clear();
     title_ = QStringLiteral("Sans projet");
     status_ = QStringLiteral("Nouveau projet");
-    session_.replaceProject(document::Project{}, true);
+    session_.replaceProject(std::move(seed), true);
     emit changed();
 }
 

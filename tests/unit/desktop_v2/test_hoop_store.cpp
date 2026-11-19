@@ -164,3 +164,31 @@ TEST_CASE("a user hoop is applied to the project in one undo step and can be cap
     REQUIRE(s.undo());
     CHECK(s.project().canvas.width.value == 100'000);
 }
+
+TEST_CASE("the last chosen hoop is remembered and seeds a fresh project", "[desktop_v2][hoops]") {
+    const auto dir = tempDir("last");
+    const auto file = dir / "last-hoop.txt";
+    CHECK_FALSE(loadLastHoop(file).has_value());
+
+    document::Project chosen;
+    auto spec = hoop("x", 160.0, 130.0);
+    spec.shape = UserHoopShape::RoundedRectangle;
+    spec.cornerRadiusMm = 12.0;
+    REQUIRE(seedUserHoop(chosen, spec));
+    REQUIRE(saveLastHoop(file, chosen));
+
+    const auto back = loadLastHoop(file);
+    REQUIRE(back.has_value());
+    document::Project fresh;
+    REQUIRE(seedUserHoop(fresh, *back));
+    CHECK(fresh.canvas == chosen.canvas);
+    CHECK(fresh.canvas.shape == document::HoopShape::RoundedRectangle);
+    CHECK(fresh.canvas.corner_radius.value == 12'000);
+    CHECK(fresh.canvas.margin.value == 4'000);
+
+    // Un cadre invalide ne touche pas au projet.
+    document::Project untouched;
+    CHECK_FALSE(seedUserHoop(untouched, hoop("x", 5.0, 5.0)));
+    CHECK(untouched.canvas == document::Canvas{});
+    fs::remove_all(dir);
+}
