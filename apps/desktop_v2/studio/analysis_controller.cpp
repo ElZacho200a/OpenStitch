@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "analysis_controller.hpp"
+#include "perf_log.hpp"
 
 #include "task_pump.hpp"
 
@@ -396,6 +397,7 @@ QString AnalysisController::riskLevel() const {
 // --- Statistiques et fidélité (V1) ---------------------------------------------------------------
 
 QVariantMap AnalysisController::statistics() const {
+    const PerfScope perf("get.statistics");
     const auto& scene = studio_.scene();
     if (!scene || !scene->effectiveSequence || scene->effectiveSequence->commands.empty()) {
         return {{QStringLiteral("ready"), false},

@@ -66,6 +66,8 @@ case "plus": return "M4 10 L16 10 M10 4 L10 16";
         case "knife": return "M3 17 L14 6 L17 3 L16 8 L6 18 Z M11 9 L13 11";
         case "warp": return "M3 7 C6 4 8 10 11 7 C14 4 16 10 17 7 M3 13 C6 10 8 16 11 13 C14 10 16 16 17 13";
         case "bucket": return "M4 9 L10 3 L16 9 L10 15 Z M4 9 L16 9 M17 12 C17 14 18 15 18 16 A1 1 0 1 1 16 16 C16 15 17 14 17 12";
+        case "detail": return "M8.5 3 A5.5 5.5 0 1 1 8.49 3 M12.5 12.5 L17 17 M6 8.5 L11 8.5 M8.5 6 L8.5 11";
+        case "detail-erase": return "M8.5 3 A5.5 5.5 0 1 1 8.49 3 M12.5 12.5 L17 17 M6 8.5 L11 8.5";
         case "brush": return "M17 3 L9 11 M9 11 C6 11 5 13 5 14 C5 16 3 17 3 17 C6 17 9 16 9 13 Z";
         // Calques : visibilité et verrou (traits seulement, couleur héritée du thème).
         case "eye": return "M2 10 C5 5 15 5 18 10 C15 15 5 15 2 10 Z M10 7.5 C11.5 7.5 12.5 8.5 12.5 10 C12.5 11.5 11.5 12.5 10 12.5 C8.5 12.5 7.5 11.5 7.5 10 C7.5 8.5 8.5 7.5 10 7.5 Z";

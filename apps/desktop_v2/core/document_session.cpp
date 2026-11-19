@@ -253,6 +253,13 @@ DocumentSession::BatchResult DocumentSession::applyBatch(std::string_view batchJ
         if (op == "remove_object" || op == "directional_guides") {
             return false;
         }
+        // Découpe (couteau), fusion, séparation, trous, géométrie : ne touchent que les formes
+        // vectorielles et les objets, jamais la carte de segmentation de l'image. Sans cela,
+        // chaque coup de couteau reconstruisait la carte des régions et ses vignettes.
+        if (op == "split" || op == "split_path" || op == "merge" || op == "break_apart" ||
+            op == "remove_holes" || op == "set_geometry") {
+            return false;
+        }
         return true;
     };
     bool affectsSegmentation = false;

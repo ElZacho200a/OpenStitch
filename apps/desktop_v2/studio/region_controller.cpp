@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "region_controller.hpp"
 
+#include "perf_log.hpp"
 #include "segmentation_settings.hpp"
 #include "task_pump.hpp"
 
@@ -160,6 +161,7 @@ void RegionController::scheduleRefresh() {
 }
 
 void RegionController::refresh() {
+    const PerfScope perf("region.refresh");
     const auto& project = studio_.session().project();
     regions_.clear();
     for (const auto& info : listRegions(project)) {
@@ -272,6 +274,7 @@ void RegionController::toggleLockRegion(double id) {
 // --- Sélection ----------------------------------------------------------------------------
 
 void RegionController::selectRegion(double id, const QString& mode) {
+    const PerfScope perf("region.select");
     const auto region = idOf(id);
     const auto& seg = studio_.session().project().imageSource().segmentation;
     if (!seg || region == 0 || !seg->find(RegionId{region})) {
@@ -304,6 +307,7 @@ void RegionController::selectRegion(double id, const QString& mode) {
 }
 
 void RegionController::selectAtPixel(int x, int y, bool additive) {
+    const PerfScope perf("region.selectAtPixel");
     const auto id = regionAtPixel(studio_.session().project(), x, y);
     if (mergeTargetMode_) {
         // Le clic désigne la cible : il ne doit jamais remplacer la région source.
@@ -602,6 +606,7 @@ QString RegionController::reducePalette(int maxColors, double maxDistance, bool 
 }
 
 QString RegionController::paintStroke(const QVariantList& pointsPx, bool erase) {
+    const PerfScope perf("region.paintStroke");
     if (selected_.size() != 1) {
         const auto text = QStringLiteral("Pinceau : choisissez d'abord UNE région.");
         setMessage(text, true);
