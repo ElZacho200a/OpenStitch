@@ -180,21 +180,44 @@ bool PullController::writeTestPiece(const QString& path) {
     return static_cast<bool>(result);
 }
 
+// La génération des points (`effective_sequence`) et la simulation du tissu tournent sur un
+// worker, sur un instantané du document ; le résultat est publié au retour (fil d'interface).
+// Renvoie vrai si le calcul a démarré.
 bool PullController::compare() {
-    const auto c = compareProjectPull(studio_.session().project(), calibration_.fabric());
-    comparison_ = {{QStringLiteral("ok"), c.ok},
-                   {QStringLiteral("summary"), q(c.summary())},
-                   {QStringLiteral("points"), static_cast<int>(c.points)},
-                   {QStringLiteral("maxShiftMm"), c.maxShiftMm},
-                   {QStringLiteral("meanShiftMm"), c.meanShiftMm},
-                   {QStringLiteral("nominalWidthMm"), c.nominalWidthMm},
-                   {QStringLiteral("nominalHeightMm"), c.nominalHeightMm},
-                   {QStringLiteral("predictedWidthMm"), c.predictedWidthMm},
-                   {QStringLiteral("predictedHeightMm"), c.predictedHeightMm},
-                   {QStringLiteral("calibrated"), c.calibrated}};
-    say(c.ok, c.ok ? q(c.summary()) : q(c.message));
+    if (busy_) {
+        return false;
+    }
+    const auto snapshot = studio_.session().snapshot();
+    const auto fabric = calibration_.fabric();
+    busy_ = true;
     emit changed();
-    return c.ok;
+    tasks_.submit<PullComparison>(
+        "studio.pull_compare",
+        [snapshot, fabric](const TaskContext&) -> Result<PullComparison> {
+            return compareProjectPull(*snapshot, fabric);
+        },
+        [this](Result<PullComparison>&& result) {
+            busy_ = false;
+            if (!result) {
+                say(false, q(result.error().message));
+                emit changed();
+                return;
+            }
+            const auto& c = *result;
+            comparison_ = {{QStringLiteral("ok"), c.ok},
+                           {QStringLiteral("summary"), q(c.summary())},
+                           {QStringLiteral("points"), static_cast<int>(c.points)},
+                           {QStringLiteral("maxShiftMm"), c.maxShiftMm},
+                           {QStringLiteral("meanShiftMm"), c.meanShiftMm},
+                           {QStringLiteral("nominalWidthMm"), c.nominalWidthMm},
+                           {QStringLiteral("nominalHeightMm"), c.nominalHeightMm},
+                           {QStringLiteral("predictedWidthMm"), c.predictedWidthMm},
+                           {QStringLiteral("predictedHeightMm"), c.predictedHeightMm},
+                           {QStringLiteral("calibrated"), c.calibrated}};
+            say(c.ok, c.ok ? q(c.summary()) : q(c.message));
+            emit changed();
+        });
+    return true;
 }
 
 bool PullController::registrationStale() const {

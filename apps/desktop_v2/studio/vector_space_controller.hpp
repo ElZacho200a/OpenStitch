@@ -89,7 +89,13 @@ public:
     // Nombre de calques image qui portent une segmentation.
     Q_INVOKABLE int segmentedLayerCount() const;
     // Numérise en objets de broderie les formes sans objet (UNE étape d'annulation).
-    Q_INVOKABLE bool convertToEmbroidery();
+    // `options` (tous facultatifs ; sans eux : comportement historique) :
+    //   pull      "none" | "auto"  compensation du tirage (défaut "auto")
+    //   overlapMm double ≥ 0       débord sous les voisins (défaut 0,5 ; 0 = contours inchangés)
+    //   insetMm   double ≥ 0       retrait du bord des tatamis (défaut 0,2)
+    //   satin     bool             bandes étroites en auto-satin (défaut faux)
+    //   spacingMm double 0,1–2     espacement des rangées (tatami) / cordes (satin) ; 0 = défaut
+    Q_INVOKABLE bool convertToEmbroidery(const QVariantMap& options = {});
     [[nodiscard]] bool converting() const { return converting_; }
 
 public:

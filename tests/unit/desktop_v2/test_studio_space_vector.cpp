@@ -641,7 +641,7 @@ private slots:
         rig.stage.setPrecisionMm(99.0);
         QCOMPARE(rig.stage.precisionMm(), 2.0);
         rig.stage.setPrecisionMm(0.0);
-        QCOMPARE(rig.stage.precisionMm(), 0.02);
+        QCOMPARE(rig.stage.precisionMm(), 0.01);
         rig.stage.setPrecisionMm(0.2);
 
         auto* slider = deepItem(rig.window->contentItem(), QStringLiteral("vectorPrecisionSlider"));
@@ -658,7 +658,9 @@ private slots:
         rig.stage.setCurveTolerancePx(100.0);
         QCOMPARE(rig.stage.curveTolerancePx(), 10.0);
         rig.stage.setCurveTolerancePx(0.0);
-        QCOMPARE(rig.stage.curveTolerancePx(), 0.5);
+        QCOMPARE(rig.stage.curveTolerancePx(), 0.1);
+        rig.stage.setCurveTolerancePx(0.25); // subpixel : accepte tel quel
+        QCOMPARE(rig.stage.curveTolerancePx(), 0.25);
         // Le plan de mise à jour utilise les réglages : le document n'est pas modifié.
         const auto depth = steps(rig);
         (void)rig.stage.updatePlan();

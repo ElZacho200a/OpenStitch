@@ -442,7 +442,8 @@ bool VectorSpaceController::selectOriginRegion() {
 }
 
 void VectorSpaceController::setPrecisionMm(double mm) {
-    const double clamped = std::clamp(mm, 0.02, 2.0);
+    const double clamped =
+        std::clamp(mm, project_ops::kPrecisionMinMm, project_ops::kPrecisionMaxMm);
     if (clamped != precisionMm_) {
         precisionMm_ = clamped;
         emit optionsChanged();
@@ -457,7 +458,8 @@ void VectorSpaceController::setCurves(bool on) {
 }
 
 void VectorSpaceController::setCurveTolerancePx(double px) {
-    const double clamped = std::clamp(px, 0.5, 10.0);
+    const double clamped =
+        std::clamp(px, project_ops::kCurveToleranceMinPx, project_ops::kCurveToleranceMaxPx);
     if (clamped != curveTolerancePx_) {
         curveTolerancePx_ = clamped;
         emit optionsChanged();
@@ -560,10 +562,16 @@ bool VectorSpaceController::updateAllLayersFromSegmentation() {
     return true;
 }
 
-bool VectorSpaceController::convertToEmbroidery() {
+bool VectorSpaceController::convertToEmbroidery(const QVariantMap& conversion) {
     if (converting_) {
         return false;
     }
+    const bool autoPull = conversion.value("pull", "auto").toString() != "none";
+    const double overlapMm = std::clamp(conversion.value("overlapMm", 0.5).toDouble(), 0.0, 2.0);
+    const double insetMm = std::clamp(conversion.value("insetMm", 0.2).toDouble(), 0.0, 2.0);
+    const bool satin = conversion.value("satin", false).toBool();
+    // 0 : on garde l'espacement par défaut des paramètres créés.
+    const double spacingMm = std::clamp(conversion.value("spacingMm", 0.0).toDouble(), 0.0, 2.0);
     // La classification de chaque forme (tatami, contour…) est longue sur un gros motif : elle
     // tourne sur un instantané, hors du fil d'interface ; seul l'ajout du lot (une commande
     // annulable) se fait ici, et seulement si le document n'a pas changé entre-temps.
@@ -574,16 +582,20 @@ bool VectorSpaceController::convertToEmbroidery() {
     say(tr("Conversion en broderie…"));
     convertTasks_.submit<autodigitize::VectorConversion>(
         "studio.convert-vectors",
-        [snapshot](const TaskContext& task) -> Result<autodigitize::VectorConversion> {
+        [snapshot, autoPull, insetMm,
+         satin](const TaskContext& task) -> Result<autodigitize::VectorConversion> {
             if (task.cancelled()) {
                 return cancelled_error();
             }
             autodigitize::AutoOptions options;
             options.mm_per_px = snapshot->imageSource().mm_per_px;
+            options.auto_pull_compensation = autoPull;
+            options.fill_inset = to_micrometers(Millimeters{insetMm});
+            options.satin_bands = satin;
             auto ids = snapshot->object_ids; // copie : les vrais identifiants sont pris au retour
             return autodigitize::convert_vectors_to_embroidery(*snapshot, ids, options);
         },
-        [this, revision](Result<autodigitize::VectorConversion>&& result) {
+        [this, revision, overlapMm, spacingMm](Result<autodigitize::VectorConversion>&& result) {
             converting_ = false;
             emit convertingChanged();
             if (!result) {
@@ -600,8 +612,17 @@ bool VectorSpaceController::convertToEmbroidery() {
                 say(tr("Conversion refusée : aucun objet de broderie produit"));
                 return;
             }
+            const auto spacing = to_micrometers(Millimeters{spacingMm});
             for (auto& embroidery : result->embroideries) {
                 embroidery.id = session.allocateObjectId();
+                if (spacingMm > 0.0) {
+                    if (auto* tatami = std::get_if<document::TatamiParams>(&embroidery.params)) {
+                        tatami->row_spacing = spacing;
+                    } else if (auto* satin =
+                                   std::get_if<document::AutoSatinParams>(&embroidery.params)) {
+                        satin->spacing = spacing;
+                    }
+                }
             }
             const auto count = result->embroideries.size();
             // Un seul pas d'annulation pour tout le lot : l'ajout des broderies et le débord sous
@@ -612,15 +633,23 @@ bool VectorSpaceController::convertToEmbroidery() {
             auto addCmd = std::make_unique<commands::AddObjectBatchCommand>(
                 std::vector<document::VectorObject>{}, std::move(result->embroideries),
                 "Numériser les formes vectorielles");
+            // Sans débord demandé, inutile de copier le projet ni de planifier (travail sur le
+            // fil d'interface) : on ajoute simplement le lot.
+            if (overlapMm <= 0.0) {
+                batch->add(std::move(addCmd));
+                session.execute(std::move(batch));
+                say(tr("%1 forme(s) converties en objets de broderie.").arg(count));
+                return;
+            }
             document::Project scratch = session.project();
             addCmd->apply(scratch);
             batch->add(std::move(addCmd));
             // Sans débord, contours tracés par les centres des pixels + retrait du tatami
             // laissent un liseré de tissu nu à chaque frontière (même règle que l'op
             // `overlap_fills` : op_convert.cpp, project_ops).
-            constexpr double kOverlapMm = 0.5;
+            // `overlapMm` = 0 : aucune modification des contours (plan vide).
             auto overlapChanges =
-                autodigitize::plan_fill_overlap(scratch, to_micrometers(Millimeters{kOverlapMm}));
+                autodigitize::plan_fill_overlap(scratch, to_micrometers(Millimeters{overlapMm}));
             for (auto& change : overlapChanges) {
                 const auto* emb = scratch.findEmbroidery(change.embroidery);
                 auto params = emb->params;
