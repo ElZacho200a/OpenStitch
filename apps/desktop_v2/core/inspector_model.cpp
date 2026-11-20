@@ -71,6 +71,10 @@ const std::vector<SettableType>& settableStitchTypes() {
     return kTypes;
 }
 
+bool settableTypeFollowsPath(std::string_view id) {
+    return id == "running" || id == "motif_run" || id == "blanket";
+}
+
 std::string settableIdOf(std::string_view objectTypeId) {
     // `stitchTypeId` (étiquettes de l'objet) et les identifiants de `set_stitch_type` diffèrent
     // pour trois remplissages : la liste déroulante doit retrouver le bon type courant.

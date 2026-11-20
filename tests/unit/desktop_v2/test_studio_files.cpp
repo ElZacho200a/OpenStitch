@@ -1291,6 +1291,10 @@ void StudioFilesTest::photoRenderRunsTheExternalEngineOnTheThreadScene() {
                 "assert a[a.index('--px-per-mm') + 1] == '40'\n"
                 "assert a[a.index('--fabric') + 1] == '10,20,30'\n"
                 "assert a[a.index('--fabric-type') + 1] == 'jersey'\n"
+                "assert a[a.index('--thread-type') + 1] == 'coton'\n"
+                "assert a[a.index('--thread-plies') + 1] == '4'\n" // 9 borne a 4
+                "assert a[a.index('--relief') + 1] == '0'\n"
+                "assert a[a.index('--light') + 1] == '3.5'\n"
                 "assert a[a.index('--background') + 1] == '200,200,204'\n" // 999 refusé
                 "assert scene['thread_width_mm'] == 0.5\n"
                 "open(sys.argv[2], 'wb').write(base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB"
@@ -1305,6 +1309,10 @@ void StudioFilesTest::photoRenderRunsTheExternalEngineOnTheThreadScene() {
                                   {QStringLiteral("threadWidthMm"), 0.5},
                                   {QStringLiteral("fabric"), QStringLiteral("10,20,30")},
                                   {QStringLiteral("fabricType"), QStringLiteral("jersey")},
+                                  {QStringLiteral("threadType"), QStringLiteral("coton")},
+                                  {QStringLiteral("threadPlies"), 9},
+                                  {QStringLiteral("relief"), 0.0},
+                                  {QStringLiteral("light"), 3.5},
                                   {QStringLiteral("background"), QStringLiteral("1,2,999")}});
     QVERIFY(rig.waitIdle());
     qunsetenv("OPENSTITCH_RAYTRACE_SCRIPT");
