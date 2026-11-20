@@ -606,7 +606,7 @@ Item {
                 Rectangle {
                     implicitWidth: 22; implicitHeight: 22; radius: 4
                     color: exportOptionsDialog.rgbToColor(exportOptionsDialog.photoFabricRgb)
-                    border.width: 1; border.color: "#80808080"
+                    border.width: 1; border.color: Theme.outline
                 }
                 StudioComboBox {
                     objectName: "photoFabric"
@@ -633,7 +633,7 @@ Item {
                 Rectangle {
                     implicitWidth: 22; implicitHeight: 22; radius: 4
                     color: exportOptionsDialog.rgbToColor(exportOptionsDialog.photoBackgroundRgb)
-                    border.width: 1; border.color: "#80808080"
+                    border.width: 1; border.color: Theme.outline
                 }
                 StudioButton {
                     objectName: "photoBackground"
