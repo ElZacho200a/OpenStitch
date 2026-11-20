@@ -169,6 +169,7 @@ private slots:
     void mouseMoveWithSnapGuidesAndUndo();
     void handlesResizeAndRotate();
     void layersTreeAndObjectEditing();
+    void layerDeleteRequiresConfirmationWhenNotEmpty();
     void layerWorkflowIsSharedLockedAndScoped();
     void contextMenuAndEyedropper();
     void shortcutsReachTheEditor();
@@ -902,6 +903,53 @@ void StudioEditTest::layersTreeAndObjectEditing() {
     rig.session.undo();
     QCOMPARE(rig.session.project().findEmbroidery(ObjectId{kGreen})->name,
              std::string("Ligne 102"));
+    QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+}
+
+// Supprimer un calque qui porte encore des objets demande confirmation (le menu contextuel pose
+// l'attente dans ObjectTree.qml, pas un Dialog modal) ; un calque vide se supprime directement.
+void StudioEditTest::layerDeleteRequiresConfirmationWhenNotEmpty() {
+    Rig rig;
+    open(rig);
+    const auto before = rig.editor.layers().size();
+    QVERIFY(rig.editor.addLayer(QStringLiteral("Second")));
+    const auto layerId = rig.editor.layers().front().toMap().value(QStringLiteral("id")).toString();
+    select(rig, {kBlue});
+    QVERIFY(rig.editor.moveSelectionToLayer(layerId));
+    QCOMPARE(rig.editor.layers().front().toMap().value(QStringLiteral("objects")).toInt(), 1);
+
+    auto* tree = rig.window->findChild<QObject*>(QStringLiteral("objectTree"));
+    QVERIFY(tree);
+    // Le menu contextuel (Controls.Menu) n'instancie ses éléments qu'à l'ouverture réelle
+    // (popup() est une surcharge JS non invocable depuis C++) : on pose directement l'attente de
+    // confirmation que son "Supprimer" poserait, pour tester le mécanisme réel (ObjectTree.qml),
+    // pas la plomberie d'ouverture du menu (déjà couverte ailleurs par contextMenuAndEyedropper).
+    tree->setProperty("pendingDeleteLayer",
+                      QVariantMap{{QStringLiteral("id"), layerId},
+                                  {QStringLiteral("name"), QStringLiteral("Second")},
+                                  {QStringLiteral("objects"), 1}});
+    QCOMPARE(rig.editor.layers().size(),
+             before + 1); // pas encore supprimé : confirmation en attente
+    auto* yes = rig.window->findChild<QObject*>(QStringLiteral("layerDeleteConfirmYes"));
+    QVERIFY(yes);
+    QVERIFY(QMetaObject::invokeMethod(yes, "clicked"));
+    QCOMPARE(rig.editor.layers().size(), before);
+    QVERIFY(tree->property("pendingDeleteLayer").isNull());
+    QCOMPARE(
+        shapeOf(rig.session.project(), kBlue).calque.value,
+        rig.editor.layers().front().toMap().value(QStringLiteral("id")).toString().toULongLong());
+
+    // Annuler laisse le calque intact (peu importe lequel ici, seul le mécanisme est testé).
+    const auto remainingId =
+        rig.editor.layers().front().toMap().value(QStringLiteral("id")).toString();
+    tree->setProperty("pendingDeleteLayer", QVariantMap{{QStringLiteral("id"), remainingId},
+                                                        {QStringLiteral("objects"), 1}});
+    auto* no = rig.window->findChild<QObject*>(QStringLiteral("layerDeleteConfirmNo"));
+    QVERIFY(no);
+    QVERIFY(QMetaObject::invokeMethod(no, "clicked"));
+    QCOMPARE(rig.editor.layers().size(), before);
+    QVERIFY(tree->property("pendingDeleteLayer").isNull());
+
     QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
 }
 
