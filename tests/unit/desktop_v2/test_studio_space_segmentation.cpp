@@ -1035,6 +1035,27 @@ private slots:
 
     // L'apercu de segmentation ne masque pas les regions hors de son onglet ni apres avoir quitte
     // l'espace.
+    // AUTO-LINEWORK-01 : case « Preserver les traits fins », OFF par defaut, une etape
+    // d'annulation, aucune forme recalculee au basculement.
+    void preserveLineworkBoxIsUndoableAndRecomputesNothing() {
+        Rig rig;
+        open(rig);
+        auto* box = rig.named("segPreserveLinework");
+        QVERIFY(box);
+        QVERIFY(!box->property("checked").toBool());
+        QVERIFY(!rig.session.project().imageSource().preserve_linework);
+        const auto shapes = rig.session.project().vector_objects.size();
+        const auto depth = rig.session.undoNames().size();
+        rig.images.setPreserveLinework(true);
+        QVERIFY(rig.session.project().imageSource().preserve_linework);
+        QTRY_VERIFY(box->property("checked").toBool());
+        QCOMPARE(rig.session.undoNames().size(), depth + 1);
+        QCOMPARE(rig.session.project().vector_objects.size(), shapes);
+        QVERIFY(rig.session.undo());
+        QVERIFY(!rig.session.project().imageSource().preserve_linework);
+        QTRY_VERIFY(!box->property("checked").toBool());
+    }
+
     void previewIsDroppedOutsideTheSegmentationTab() {
         Rig rig;
         open(rig);

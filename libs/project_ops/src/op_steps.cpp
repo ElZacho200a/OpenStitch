@@ -14,6 +14,8 @@
 
 #include "op_registry.hpp"
 #include "openstitch/autodigitize/autodigitize.hpp"
+#include "openstitch/autodigitize/contour_objects.hpp"
+#include "openstitch/autodigitize/line_layer.hpp"
 #include "openstitch/commands/composite_command.hpp"
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/image/ops.hpp"
@@ -35,8 +37,24 @@ RevectorizePlan revectorize(const document::Project& project, const RevectorizeO
     const auto fromSource = [&](const document::VectorObject& shape) {
         return shape.source_region && shape.source_image == sourceId;
     };
+    // « Préserver les traits fins » (AUTO-LINEWORK-01) : les surfaces suivent les aplats
+    // COMPLÉTÉS sous les traits (vue de génération dérivée ; la segmentation du document reste
+    // intacte) et les traits deviennent des chemins ouverts indépendants.
+    const segmentation::Segmentation* fills = &*source.segmentation;
+    std::optional<autodigitize::LineworkPlan> linework;
+    if (source.preserve_linework) {
+        const auto working = image::apply_pipeline(source.original, source.ops);
+        if (working && working->width == fills->width && working->height == fills->height) {
+            autodigitize::LineLayerOptions lines;
+            lines.enabled = true;
+            linework = autodigitize::prepare_linework(*fills, *working, source.mm_per_px, lines);
+            if (linework->has_linework) {
+                fills = &linework->completed_fills;
+            }
+        }
+    }
     std::vector<RegionId> ids;
-    for (const auto& slot : source.segmentation->region_slots) {
+    for (const auto& slot : fills->region_slots) {
         if (slot) {
             ids.push_back(slot->id);
         }
@@ -49,7 +67,7 @@ RevectorizePlan revectorize(const document::Project& project, const RevectorizeO
                              std::lround(opt.curve_tolerance_px * source.mm_per_px.value * 1000.0))}
                        : Micrometers{0},
         .detail_mask = &source.detail_mask};
-    const auto results = vectorization::vectorize_regions(*source.segmentation, ids, options);
+    const auto results = vectorization::vectorize_regions(*fills, ids, options);
     for (std::size_t i = 0; i < ids.size(); ++i) {
         if (!results[i]) {
             continue;
@@ -75,15 +93,56 @@ RevectorizePlan revectorize(const document::Project& project, const RevectorizeO
             shape.calque = !shape.source_image.valid() && !project.image_sources.empty()
                                ? project.calques.front().id
                                : shape.source_image;
-            shape.rgb = source.segmentation->find(ids[i])->rgb;
+            shape.rgb = fills->find(ids[i])->rgb;
             shape.paths = *results[i];
             out.add.push_back(std::move(shape));
         }
     }
     for (const auto& shape : project.vector_objects) {
-        if (fromSource(shape) && source.segmentation->find(*shape.source_region) == nullptr) {
+        if (fromSource(shape) && fills->find(*shape.source_region) == nullptr) {
             ++out.orphan;
         }
+    }
+    // Traits : lignes médianes de la même analyse que l'auto-numérisation (mode contours), dans
+    // l'ordre déterministe de l'analyse. Les traits déjà présents de ce calque sont mis à jour
+    // rang par rang ; les surnuméraires sont laissés tels quels (comptés orphelins).
+    std::vector<const document::VectorObject*> previous;
+    for (const auto& shape : project.vector_objects) {
+        if (shape.linework && shape.source_image == sourceId) {
+            previous.push_back(&shape);
+        }
+    }
+    std::vector<document::VectorObject> strokes;
+    if (linework && linework->has_linework && !linework->strokes.labels.empty()) {
+        IdGenerator<ObjectId> scratch; // identifiants provisoires, réservés à l'exécution
+        autodigitize::ContourOptions contour;
+        contour.mm_per_px = source.mm_per_px;
+        if (auto made = autodigitize::auto_digitize_contours(linework->strokes, scratch, contour)) {
+            strokes = std::move(made->vectors);
+        }
+    }
+    for (std::size_t i = 0; i < strokes.size(); ++i) {
+        if (i < previous.size()) {
+            if (previous[i]->paths == strokes[i].paths) {
+                ++out.keep;
+            } else {
+                out.replace.emplace_back(previous[i]->id, std::move(strokes[i].paths));
+            }
+            continue;
+        }
+        document::VectorObject shape;
+        shape.name = "Trait " + std::to_string(i + 1);
+        shape.linework = true;
+        shape.source_image = sourceId;
+        shape.calque = !shape.source_image.valid() && !project.image_sources.empty()
+                           ? project.calques.front().id
+                           : shape.source_image;
+        shape.rgb = linework->line_rgb;
+        shape.paths = std::move(strokes[i].paths);
+        out.add.push_back(std::move(shape));
+    }
+    if (previous.size() > strokes.size()) {
+        out.orphan += static_cast<int>(previous.size() - strokes.size());
     }
     return out;
 }

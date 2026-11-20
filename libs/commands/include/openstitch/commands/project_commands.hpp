@@ -153,6 +153,28 @@ private:
     segmentation::DetailMask previous_;
 };
 
+// Active ou désactive « Préserver les traits fins » sur l'image active (AUTO-LINEWORK-01).
+// Réglage seul : aucune forme ni aucun point n'est recalculé ici.
+class SetPreserveLineworkCommand final : public ICommand {
+public:
+    explicit SetPreserveLineworkCommand(bool enabled) : enabled_(enabled) {}
+    void apply(document::Project& project) override {
+        previous_ = project.imageSource().preserve_linework;
+        project.imageSource().preserve_linework = enabled_;
+    }
+    void revert(document::Project& project) override {
+        project.imageSource().preserve_linework = previous_;
+    }
+    [[nodiscard]] std::string name() const override {
+        return enabled_ ? "Préserver les traits fins" : "Ne plus préserver les traits fins";
+    }
+    [[nodiscard]] bool affectsEmbroidery() const override { return false; }
+
+private:
+    bool enabled_;
+    bool previous_{false};
+};
+
 // Fusionne une région dans une autre. L'annulation restaure les pixels
 // réétiquetés (stockés par indices, pas par copie de la carte entière).
 class MergeRegionsCommand final : public ICommand {
