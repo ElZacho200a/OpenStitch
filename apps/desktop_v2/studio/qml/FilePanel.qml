@@ -506,7 +506,7 @@ Item {
         property int photoSaturation: 35
         property int photoPlies: 2
         property int photoTwistPitch: 0
-        property int photoRelief: 75
+        property int photoRelief: 40
         property int photoLight: 24
         function applyThreadPreset(i) {
             var t = photoThreadTypes[i]

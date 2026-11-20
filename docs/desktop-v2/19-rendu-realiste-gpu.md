@@ -169,7 +169,7 @@ est un prereglage qui remplit brillance, largeur du reflet, part mate et brins :
 | Saturation des couleurs | `--thread-saturation` | 0,35 | 0-2 |
 | Brins torsades | `--thread-plies` | selon matiere | 1-4 |
 | Pas de torsion | `--twist-pitch-mm` | 0 = 5 rayons | 0-5 mm |
-| Relief des superpositions | `--relief` | 0,75 diametre | 0-2 |
+| Relief des superpositions | `--relief` | 0,40 diametre (0,75 jusqu au 20/11, juge trop fort) | 0-2 |
 | Lumiere | `--light` | 2,4 | 0,1-10 |
 Bornes appliquees par le controleur et par le script. Test QTest : bornage de `--thread-plies`,
 `--relief`, `--light` transmis au moteur factice.

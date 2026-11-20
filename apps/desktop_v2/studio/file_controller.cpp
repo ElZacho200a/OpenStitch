@@ -1298,7 +1298,7 @@ void FileController::exportPhotoRender(const QUrl& url, const QVariantMap& optio
         QStringLiteral("--twist-pitch-mm"),
         QString::number(std::clamp(number("twistPitchMm", 0.0), 0.0, 5.0)),
         QStringLiteral("--relief"),
-        QString::number(std::clamp(number("relief", 0.75), 0.0, 2.0)),
+        QString::number(std::clamp(number("relief", 0.40), 0.0, 2.0)),
         QStringLiteral("--light"),
         QString::number(std::clamp(number("light", 2.4), 0.1, 10.0))};
     runJob<PhotoRenderJob>(

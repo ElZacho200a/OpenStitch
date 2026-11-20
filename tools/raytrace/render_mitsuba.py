@@ -153,7 +153,7 @@ def thread_bsdf(rgb: tuple[int, int, int], t: dict) -> dict:
 
 def write_curves(segments, radius: float, folder: Path,
                  plies: int = 1, pitch_mm: float = 0.0,
-                 relief: float = 0.75) -> dict[tuple[int, int, int], Path]:
+                 relief: float = 0.40) -> dict[tuple[int, int, int], Path]:
     """Un fichier de courbes linéaires par couleur (format Mitsuba : x y z rayon ; ligne vide =
     nouvelle courbe). Repère Mitsuba : X droite, Y haut, Z vers la caméra (tissu en z = 0)."""
     import numpy as np
@@ -253,7 +253,7 @@ def main() -> int:
     ap.add_argument("--thread-plies", type=int, default=None, help="nombre de brins torsadés 1-4")
     ap.add_argument("--twist-pitch-mm", type=float, default=0.0,
                     help="pas de torsion des brins en mm (0 = 5 rayons de fil)")
-    ap.add_argument("--relief", type=float, default=0.75,
+    ap.add_argument("--relief", type=float, default=0.40,
                     help="épaisseur ajoutée par couche de fil, en diamètres (0 = à plat)")
     ap.add_argument("--light", type=float, default=2.4, help="intensité de la lumière principale")
     ap.add_argument("--background", default="200,200,204", help="couleur du fond r,g,b")
