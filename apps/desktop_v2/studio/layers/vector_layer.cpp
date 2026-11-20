@@ -286,6 +286,24 @@ std::optional<std::uint64_t> VectorLayer::pick(double x, double y, double tolera
                 return it->id;
             }
         }
+        // Distance au tracé des seuls sous-chemins ouverts : un trait n'a pas
+        // d'intérieur, on doit pouvoir le saisir entre deux nœuds (AUTO-LINEWORK-01).
+        for (const QPolygonF& poly : it->path.toSubpathPolygons()) {
+            if (poly.isClosed()) {
+                continue; // surface fermée : l'intérieur suffit, comportement inchangé
+            }
+            for (qsizetype i = 1; i < poly.size(); ++i) {
+                const QPointF a = poly[i - 1];
+                const QPointF d = poly[i] - a;
+                const double len2 = d.x() * d.x() + d.y() * d.y();
+                double t = len2 > 0.0 ? QPointF::dotProduct(p - a, d) / len2 : 0.0;
+                t = std::clamp(t, 0.0, 1.0);
+                const QPointF q = a + d * t;
+                if (std::hypot(q.x() - x, q.y() - y) <= toleranceMm) {
+                    return it->id;
+                }
+            }
+        }
     }
     return std::nullopt;
 }

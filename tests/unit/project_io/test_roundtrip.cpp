@@ -862,3 +862,23 @@ TEST_CASE("fondu multicolore : groupe multiBlend sans ancre valide est refuse ex
     const auto loaded = project_io::detail::project_from_json(json);
     REQUIRE_FALSE(loaded.has_value());
 }
+
+TEST_CASE("open stroke without source region keeps its source image layer") {
+    document::Project project;
+    document::VectorObject stroke;
+    stroke.id = project.object_ids.next();
+    stroke.name = "trait";
+    stroke.source_image = ObjectId{42};
+    geometry::Path p = square_path();
+    p.closed = false;
+    stroke.paths.push_back(geometry::PathSet{p, {}});
+    project.vector_objects.push_back(stroke);
+
+    const auto json = project_io::detail::project_to_json(project);
+    const auto loaded = project_io::detail::project_from_json(json);
+    REQUIRE(loaded);
+    REQUIRE(loaded->vector_objects.size() == 1);
+    CHECK_FALSE(loaded->vector_objects[0].source_region.has_value());
+    CHECK(loaded->vector_objects[0].source_image == ObjectId{42});
+    CHECK(project_io::detail::project_to_json(*loaded) == json);
+}
