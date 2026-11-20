@@ -498,6 +498,7 @@ Item {
         property string photoFabricRgb: "245,243,238"
         property string photoBackgroundRgb: "200,200,204"
         property int photoFabricType: 1
+        property int photoThreadType: 0
         readonly property var photoFabrics: [
             { name: qsTr("Blanc cassé"), rgb: "245,243,238" },
             { name: qsTr("Blanc"), rgb: "252,252,252" },
@@ -515,6 +516,11 @@ Item {
             { name: qsTr("Feutre"), id: "feutre" },
             { name: qsTr("Éponge"), id: "eponge" }
         ]
+        readonly property var photoThreadTypes: [
+            { name: qsTr("Rayonne (brillante)"), id: "rayonne" },
+            { name: qsTr("Polyester (satiné)"), id: "polyester" },
+            { name: qsTr("Coton (mat)"), id: "coton" }
+        ]
         function rgbToColor(rgb) {
             var p = rgb.split(",")
             return Qt.rgba(p[0] / 255, p[1] / 255, p[2] / 255, 1)
@@ -527,6 +533,7 @@ Item {
                      threadWidthMm: photoThreadHundredths / 100.0,
                      fabric: photoFabricRgb,
                      fabricType: photoFabricTypes[photoFabricType].id,
+                     threadType: photoThreadTypes[photoThreadType].id,
                      background: photoBackgroundRgb }
         }
         heading: kind === "image" ? qsTr("Exporter l'image")
@@ -591,6 +598,14 @@ Item {
                 from: 15; to: 100; editable: true
                 value: exportOptionsDialog.photoThreadHundredths
                 onValueModified: exportOptionsDialog.photoThreadHundredths = value
+            }
+            Label { text: qsTr("Matière du fil") }
+            StudioComboBox {
+                objectName: "photoThreadType"
+                Layout.fillWidth: true
+                model: exportOptionsDialog.photoThreadTypes.map(function (t) { return t.name })
+                currentIndex: exportOptionsDialog.photoThreadType
+                onActivated: exportOptionsDialog.photoThreadType = currentIndex
             }
             Label { text: qsTr("Type de tissu") }
             StudioComboBox {
