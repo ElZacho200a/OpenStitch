@@ -54,7 +54,14 @@ void PreferencesController::load() {
 }
 
 void PreferencesController::save() const {
-    (void)savePreferences(prefsFile_, prefs_);
+    // Le fichier est partagé : les réglages du rendu réaliste y sont écrits par l'analyse. On
+    // relit donc le fichier et on n'y remplace que les champs de ce contrôleur ; écrire la copie
+    // chargée au démarrage effaçait à la fermeture les réglages de rendu de la session.
+    auto onDisk = loadPreferences(prefsFile_);
+    onDisk.theme = prefs_.theme;
+    onDisk.themeId = prefs_.themeId;
+    onDisk.density = prefs_.density;
+    (void)savePreferences(prefsFile_, onDisk);
     std::error_code ec;
     std::filesystem::create_directories(extraFile_.parent_path(), ec);
     std::ofstream out(extraFile_, std::ios::trunc);

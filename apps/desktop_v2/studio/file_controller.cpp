@@ -253,6 +253,16 @@ FileController::FileController(StudioController& studio, ActionController* actio
         userHoops_ = loadUserHoops(stateDir_ / "hoops.txt");
         autosave_ = std::make_unique<AutosaveStore>(stateDir_ / "autosave");
         recoveryPending_ = autosave_->exists();
+        // Le projet vide du démarrage part lui aussi du dernier cadre choisi.
+        const auto& start = studio_.session().project();
+        if (!studio_.hasPath() && !studio_.dirty() && !start.hasImage() &&
+            start.vector_objects.empty() && start.embroidery_objects.empty()) {
+            document::Project seed;
+            seedHoop(seed);
+            if (!(seed.canvas == start.canvas)) {
+                studio_.newProject(std::move(seed));
+            }
+        }
     }
     wasDirty_ = studio_.dirty();
     connect(&studio_, &StudioController::changed, this, [this] {
@@ -408,7 +418,9 @@ void FileController::requestNew() {
 }
 
 void FileController::doNew() {
-    studio_.newProject();
+    document::Project seed;
+    seedHoop(seed);
+    studio_.newProject(std::move(seed));
     setMessage(QStringLiteral("Nouveau projet."));
 }
 
@@ -757,6 +769,7 @@ void FileController::importImage(const QString& path, const QVariantMap& options
                 const auto width = project.original.width;
                 const auto height = project.original.height;
                 studio_.session().selection().clear();
+                seedHoop(project);
                 studio_.adoptProject(std::move(project), {}, name, false);
                 // Route to Image only after a successful adoption, not on selection
                 // of a file or after a cancelled/failed import.
@@ -1544,9 +1557,27 @@ QString refusalOf(const ServiceResult& result) {
 }
 } // namespace
 
+void FileController::rememberHoop() {
+    if (!stateDir_.empty()) {
+        (void)saveLastHoop(stateDir_ / "last-hoop.txt", studio_.session().project());
+    }
+}
+
+void FileController::seedHoop(document::Project& project) const {
+    if (stateDir_.empty()) {
+        return;
+    }
+    if (const auto hoop = loadLastHoop(stateDir_ / "last-hoop.txt")) {
+        (void)seedUserHoop(project, *hoop);
+    }
+}
+
 QString FileController::applyHoop(const QString& hoopId, double marginMm) {
     const auto refusal =
         refusalOf(desktop_v2::applyHoop(studio_.session(), toUtf8(hoopId), marginMm));
+    if (refusal.isEmpty()) {
+        rememberHoop();
+    }
     setMessage(refusal.isEmpty() ? QStringLiteral("Cadre appliqué.") : refusal, !refusal.isEmpty());
     return refusal;
 }
@@ -1554,6 +1585,9 @@ QString FileController::applyHoop(const QString& hoopId, double marginMm) {
 QString FileController::applyCustomHoop(double widthMm, double heightMm, double marginMm) {
     const auto refusal =
         refusalOf(desktop_v2::applyCustomHoop(studio_.session(), widthMm, heightMm, marginMm));
+    if (refusal.isEmpty()) {
+        rememberHoop();
+    }
     setMessage(refusal.isEmpty() ? QStringLiteral("Cadre personnalisé appliqué.") : refusal,
                !refusal.isEmpty());
     return refusal;
@@ -1573,6 +1607,7 @@ QString FileController::applyHoopSpec(const QString& shape, double widthMm, doub
     const auto refusal = refusalOf(desktop_v2::applyUserHoop(studio_.session(), hoop));
     // « Déjà celui-là » n'est pas une erreur pour un réglage en direct.
     if (refusal.isEmpty()) {
+        rememberHoop();
         setMessage(QStringLiteral("Cadre %1 × %2 mm appliqué.")
                        .arg(QString::number(widthMm, 'f', 0), QString::number(heightMm, 'f', 0)));
     } else if (!refusal.startsWith(QStringLiteral("Le cadre est déjà"))) {
@@ -1614,6 +1649,9 @@ QString FileController::applyUserHoop(const QString& name) {
         return QStringLiteral("Cadre inconnu");
     }
     const auto refusal = refusalOf(desktop_v2::applyUserHoop(studio_.session(), *hoop));
+    if (refusal.isEmpty()) {
+        rememberHoop();
+    }
     setMessage(refusal.isEmpty() ? QStringLiteral("Cadre « %1 » appliqué.").arg(name) : refusal,
                !refusal.isEmpty());
     return refusal;

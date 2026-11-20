@@ -16,6 +16,8 @@
 
 #include "analysis_controller.hpp"
 #include "gpu_canvas.hpp"
+#include "preferences.hpp"
+#include "preferences_controller.hpp"
 #include "preview_service.hpp"
 #include "realistic_scene.hpp"
 #include "studio_controller.hpp"
@@ -133,7 +135,36 @@ private slots:
     void sceneRunsMatchTheEffectiveSequence();
     void toggleKeepsDocumentUntouchedAndFallsBackToCpuInSoftware();
     void gpuPathBuildsOncePerRevisionAndMatchesCpuReference();
+    void renderSettingsSurviveOtherPreferenceWrites();
 };
+
+// Les réglages du rendu réaliste et ceux de l'apparence partagent preferences.txt. Les préférences
+// chargées au démarrage ne doivent pas écraser, en s'enregistrant (thème, fermeture), un réglage
+// de rendu fait pendant la session : il était perdu à chaque redémarrage.
+void StudioRealisticTest::renderSettingsSurviveOtherPreferenceWrites() {
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const std::filesystem::path config(dir.path().toStdWString());
+    DocumentSession session;
+    StudioController studio{session};
+    ViewController view{studio, config};
+    PreferencesController prefs(config); // chargé au démarrage, avant le réglage
+    {
+        AnalysisController analysis{studio, view, config};
+        QVERIFY(analysis.setRenderSetting(QStringLiteral("sheen"), QStringLiteral("0.9")));
+        QVERIFY(analysis.setRenderSetting(QStringLiteral("weave"), QStringLiteral("1")));
+    }
+    prefs.setTheme(QStringLiteral("dark"));
+    prefs.rememberSession({{QStringLiteral("workspace"), QStringLiteral("points")}});
+
+    const auto onDisk = loadPreferences(config / "preferences.txt");
+    QCOMPARE(onDisk.theme, std::string("dark"));
+    QCOMPARE(onDisk.render.sheen, 0.9);
+    QVERIFY(onDisk.render.fabricWeave);
+    AnalysisController next{studio, view, config}; // session suivante
+    QCOMPARE(next.renderSettings().value(QStringLiteral("sheen")).toDouble(), 0.9);
+    QVERIFY(next.renderSettings().value(QStringLiteral("fabricWeave")).toBool());
+}
 
 void StudioRealisticTest::runsKeepSewingOrderAndCoverEverySegment() {
     const std::array<std::uint8_t, 3> a{200, 0, 0};

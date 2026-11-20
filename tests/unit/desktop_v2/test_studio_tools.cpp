@@ -208,6 +208,7 @@ private slots:
     void perfDenseNodeSelectionOverlay();
     void perfDenseNodeSelectionNative();
     void knifeAndBooleans();
+    void knifeCutsAShapeNotYetEmbroidered();
     void lassoSelectsByFreehandContour();
     void freehandKnifeCutsAlongTheDrawnPath();
     void offsetShapesCreatesAGrownOrShrunkCopyInOneStep();
@@ -1183,6 +1184,30 @@ void StudioToolsTest::outlineAroundTheSelectionIsARingInOneStep() {
     rig.session.selection().clear();
     QVERIFY(!rig.vectors.outlineShapes(2.0));
     QCOMPARE(steps(rig), baseSteps);
+}
+
+// Espace Vecteurs : une forme pas encore convertie en broderie se découpe aussi (la découpe
+// exigeait un objet de broderie et refusait la forme brute).
+void StudioToolsTest::knifeCutsAShapeNotYetEmbroidered() {
+    Rig rig;
+    open(rig);
+    const auto a = draw(rig, "draw.rectangle", {-15, -10}, {5, 10});
+    QVERIFY(a != 0);
+    auto raw = rig.session.project();
+    const auto vector = raw.findEmbroidery(ObjectId{a})->source_vector;
+    raw.embroidery_objects.clear();
+    rig.session.replaceProject(std::move(raw), true);
+    QTRY_VERIFY(!rig.controller.busy() && rig.controller.scene());
+    const auto shapes = rig.session.project().vector_objects.size();
+    const auto baseSteps = steps(rig);
+
+    rig.session.selection().replace({Target{TargetKind::VectorObject, vector.value}});
+    rig.tools.setActiveTool(QStringLiteral("knife"));
+    drag(rig, at(rig, -5, -18), at(rig, -5, 18));
+    QCOMPARE(steps(rig), baseSteps + 1);
+    QCOMPARE(rig.session.project().vector_objects.size(), shapes + 1);
+    QVERIFY(rig.session.project().embroidery_objects.empty()); // aucun point créé en douce
+    QVERIFY(rig.tools.message().contains(QStringLiteral("découpée")));
 }
 
 void StudioToolsTest::knifeAndBooleans() {

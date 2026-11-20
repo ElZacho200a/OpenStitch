@@ -235,10 +235,7 @@ UserHoop userHoopFromProject(const document::Project& project, const std::string
     return h;
 }
 
-ServiceResult applyUserHoop(DocumentSession& session, const UserHoop& hoop) {
-    if (const auto why = validateUserHoop(hoop); !why.empty()) {
-        return {false, why};
-    }
+document::Canvas canvasOfUserHoop(const UserHoop& hoop) {
     document::Canvas c;
     c.width = um(hoop.widthMm);
     c.height = um(hoop.heightMm);
@@ -246,6 +243,34 @@ ServiceResult applyUserHoop(DocumentSession& session, const UserHoop& hoop) {
     c.shape = engineShape(hoop.shape);
     c.corner_radius =
         hoop.shape == UserHoopShape::RoundedRectangle ? um(hoop.cornerRadiusMm) : Micrometers{0};
+    return c;
+}
+
+bool seedUserHoop(document::Project& project, const UserHoop& hoop) {
+    if (!validateUserHoop(hoop).empty()) {
+        return false;
+    }
+    project.canvas = canvasOfUserHoop(hoop);
+    return true;
+}
+
+bool saveLastHoop(const std::filesystem::path& file, const document::Project& project) {
+    return saveUserHoops(file, {userHoopFromProject(project, kLastHoopName)});
+}
+
+std::optional<UserHoop> loadLastHoop(const std::filesystem::path& file) {
+    const auto list = loadUserHoops(file);
+    if (list.empty()) {
+        return std::nullopt;
+    }
+    return list.front();
+}
+
+ServiceResult applyUserHoop(DocumentSession& session, const UserHoop& hoop) {
+    if (const auto why = validateUserHoop(hoop); !why.empty()) {
+        return {false, why};
+    }
+    const auto c = canvasOfUserHoop(hoop);
     const auto& cur = session.project().canvas;
     if (cur.width == c.width && cur.height == c.height && cur.margin == c.margin &&
         cur.shape == c.shape && cur.corner_radius == c.corner_radius) {

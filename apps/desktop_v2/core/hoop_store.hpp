@@ -7,6 +7,7 @@
 // est ignorée sans faire échouer les autres. Sans Qt, déterministe.
 
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -51,6 +52,20 @@ bool removeUserHoop(std::vector<UserHoop>& list, const std::string& name);
 // Cadre actuel du projet, sous ce nom (forme, dimensions, marge relues du document).
 [[nodiscard]] UserHoop userHoopFromProject(const document::Project& project,
                                            const std::string& name);
+// Cadre du moteur correspondant (le rayon n'est gardé que pour un rectangle arrondi).
+[[nodiscard]] document::Canvas canvasOfUserHoop(const UserHoop& hoop);
+// Pose ce cadre sur un projet NEUF, avant qu'il ne rejoigne la session (pas de commande : rien à
+// annuler) ; faux, projet inchangé, si le cadre est invalide.
+bool seedUserHoop(document::Project& project, const UserHoop& hoop);
+
+// Dernier cadre choisi : retenu hors document (même format que « Mes cadres », une ligne) pour
+// que chaque nouveau projet parte du cadre utilisé en dernier.
+inline constexpr const char* kLastHoopName = "dernier";
+[[nodiscard]] bool saveLastHoop(const std::filesystem::path& file,
+                                const document::Project& project);
+// Absent ou illisible : aucun cadre retenu.
+[[nodiscard]] std::optional<UserHoop> loadLastHoop(const std::filesystem::path& file);
+
 // Applique ce cadre au projet en UNE commande annulable ; refus si invalide ou inchangé.
 ServiceResult applyUserHoop(DocumentSession& session, const UserHoop& hoop);
 
