@@ -590,8 +590,13 @@ Result<Segmentation> segment(const image::Image& img, const SegmentationOptions&
                 order.push_back(s);
             }
         }
+        // Ordre TOTAL (taille puis numéro de case) : `std::sort` ne garantit pas l'ordre des
+        // égalités et MSVC et libstdc++ le rendent différemment ; les petites régions de même
+        // taille étaient fusionnées dans un autre ordre sous Linux (étiquettes divergentes).
         std::sort(order.begin(), order.end(), [&](std::size_t a, std::size_t b) {
-            return seg.region_slots[a]->pixel_count < seg.region_slots[b]->pixel_count;
+            const auto ca = seg.region_slots[a]->pixel_count;
+            const auto cb = seg.region_slots[b]->pixel_count;
+            return ca != cb ? ca < cb : a < b;
         });
         // Performance (audit 2026-09, docs/performance-audit.md) : l'ancienne
         // boucle balayait l'image ENTIÈRE deux fois par petite région
