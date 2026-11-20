@@ -15,6 +15,7 @@
 #include <nlohmann/json.hpp>
 
 #include "openstitch/document/project.hpp"
+#include "openstitch/document/shape_kind.hpp"
 #include "openstitch/document/stitch_recipes.hpp"
 #include "openstitch/project_io/project_io.hpp"
 #include "openstitch/project_ops/errors.hpp"
@@ -548,4 +549,42 @@ TEST_CASE("ops each example of this family really applies on the test project",
         CHECK(r.ok);
         CHECK(r.applied);
     }
+}
+
+TEST_CASE("open line: set_geometry closed false makes a line and fills are refused",
+          "[project_ops][open_line]") {
+    auto project = make_project(); // 4 = contour rouge (point droit), 2 = tatami
+    const auto line = project_ops::apply_batch(
+        project,
+        batch(R"({"op":"set_geometry","object":4,"closed":false,"points_mm":[[0,0],[10,5]]})"));
+    REQUIRE(line.ok);
+    const auto* shape = project.findObject(project.findEmbroidery(ObjectId{4})->source_vector);
+    REQUIRE(shape != nullptr);
+    CHECK(document::is_open_line(*shape));
+
+    // Remplissage, recette de remplissage, auto-satin : refusés, document intact.
+    const auto before = serialize(project);
+    for (const char* op : {R"({"op":"set_stitch_type","object":4,"type":"tatami"})",
+                           R"({"op":"set_stitch_type","object":4,"type":"contour_fill"})",
+                           R"({"op":"auto_satin","object":4})"}) {
+        const auto refused = project_ops::apply_batch(project, batch(op));
+        CHECK_FALSE(refused.ok);
+        CHECK_THAT(refused.to_json(), ContainsSubstring("ligne ouverte"));
+    }
+    CHECK(serialize(project) == before);
+
+    // Les types qui suivent un chemin restent permis.
+    for (const char* type : {"blanket", "motif_run", "running"}) {
+        const auto ok = project_ops::apply_batch(
+            project,
+            batch(std::string(R"({"op":"set_stitch_type","object":4,"type":")") + type + R"("})"));
+        CHECK(ok.ok);
+    }
+
+    // Un tatami ne devient pas une ligne ouverte.
+    const auto tatami = project_ops::apply_batch(
+        project,
+        batch(R"({"op":"set_geometry","object":2,"closed":false,"points_mm":[[0,0],[10,5]]})"));
+    CHECK_FALSE(tatami.ok);
+    CHECK(project.findEmbroidery(ObjectId{2})->is_tatami());
 }

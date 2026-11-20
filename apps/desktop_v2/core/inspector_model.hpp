@@ -41,6 +41,9 @@ struct SettableType {
     std::string_view label;
 };
 [[nodiscard]] const std::vector<SettableType>& settableStitchTypes();
+// Vrai si ce type de la liste suit un chemin et convient donc à une ligne ouverte
+// (`document::is_open_line`) : contour, motif le long du contour, boutonnière.
+[[nodiscard]] bool settableTypeFollowsPath(std::string_view id);
 // Identifiant de la liste déroulante pour le type courant d'un objet (`stitchTypeId`).
 [[nodiscard]] std::string settableIdOf(std::string_view objectTypeId);
 
