@@ -277,6 +277,20 @@ void VectorSpaceController::refresh() {
         }
     }
     builtRevision_ = session.revision();
+    // Atténuation des formes hors du calque actif (lavis du canevas) : indépendante de la
+    // triangulation, recalculée seulement quand la révision a bougé (changer de calque actif en
+    // fait partie, comme toute mutation du document).
+    if (canvas_ && newRevision) {
+        std::vector<std::uint64_t> dimmed;
+        const auto& project = session.project();
+        for (const auto& object : project.vector_objects) {
+            const auto* calque = project.calqueOfShape(object.id);
+            if (calque != nullptr && calque->id != project.active_calque) {
+                dimmed.push_back(object.id.value);
+            }
+        }
+        canvas_->setDimmedShapeIds(std::move(dimmed));
+    }
     // Le statut du workflow dépend du document et de l'état de segmentation,
     // jamais d'un clic de sélection ni de la fin d'un calcul de scène.
     if (statusRevision_ != session.revision()) {
