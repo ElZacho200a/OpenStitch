@@ -283,10 +283,17 @@ void VectorSpaceController::refresh() {
     if (canvas_ && newRevision) {
         std::vector<std::uint64_t> dimmed;
         const auto& project = session.project();
-        for (const auto& object : project.vector_objects) {
-            const auto* calque = project.calqueOfShape(object.id);
-            if (calque != nullptr && calque->id != project.active_calque) {
-                dimmed.push_back(object.id.value);
+        if (!project.calques.empty()) {
+            // Même résolution que EditController::activeLayer() : active_calque non défini ou
+            // périmé retombe sur le calque du fond, jamais sur une comparaison brute invalide.
+            const auto* resolvedActive = project.findCalque(project.active_calque);
+            const ObjectId activeId =
+                (resolvedActive != nullptr ? resolvedActive : &project.calques.front())->id;
+            for (const auto& object : project.vector_objects) {
+                const auto* calque = project.calqueOfShape(object.id);
+                if (calque != nullptr && calque->id != activeId) {
+                    dimmed.push_back(object.id.value);
+                }
             }
         }
         canvas_->setDimmedShapeIds(std::move(dimmed));

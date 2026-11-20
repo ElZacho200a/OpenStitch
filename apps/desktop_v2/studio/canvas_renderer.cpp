@@ -46,21 +46,6 @@ void rectangle(Vertices& out, double x0, double y0, double x1, double y1, QColor
                            vertex(x1, y0), vertex(x1, y1)});
 }
 
-// Comme rectangle(), mais respecte l'alpha de `color` (le lavis d'atténuation des calques hors
-// du calque actif doit rester translucide ; `rectangle()` force 255 pour les autres usages).
-void translucentRectangle(Vertices& out, double x0, double y0, double x1, double y1, QColor color) {
-    const auto vertex = [color](double x, double y) {
-        return StudioVertex{static_cast<float>(x),
-                            static_cast<float>(y),
-                            static_cast<std::uint8_t>(color.red()),
-                            static_cast<std::uint8_t>(color.green()),
-                            static_cast<std::uint8_t>(color.blue()),
-                            static_cast<std::uint8_t>(color.alpha())};
-    };
-    out.insert(out.end(), {vertex(x0, y0), vertex(x1, y0), vertex(x0, y1), vertex(x0, y1),
-                           vertex(x1, y0), vertex(x1, y1)});
-}
-
 void border(Vertices& out, const stitch_render::RectMm& r, double width, QColor color) {
     rectangle(out, r.x0, r.y0, r.x1, r.y0 + width, color);
     rectangle(out, r.x0, r.y1 - width, r.x1, r.y1, color);
@@ -868,7 +853,7 @@ public:
             // avant le bandeau de sélection pour qu'une forme sélectionnée reste bien visible même
             // si son calque n'est pas le calque actif.
             if (!state.dimmedIds.empty() && (state.scene || state.vectorLayer)) {
-                const QColor wash(246, 247, 250, 150);
+                const QColor wash(246, 247, 250);
                 for (const auto id : state.dimmedIds) {
                     std::optional<stitch_render::RectMm> bounds;
                     if (state.scene) {
@@ -887,8 +872,11 @@ public:
                     if (bounds) {
                         const auto a = state.camera.worldToScreen({bounds->x0, bounds->y0});
                         const auto b = state.camera.worldToScreen({bounds->x1, bounds->y1});
+                        // translucentRectangle(QColor, int) attend une couleur premultipliée par
+                        // alpha : passer alpha=150 direct dans un QColor (comme le reste de ce
+                        // fichier) blanchirait le lavis au lieu de l'atténuer.
                         translucentRectangle(screen, std::min(a.x, b.x), std::min(a.y, b.y),
-                                             std::max(a.x, b.x), std::max(a.y, b.y), wash);
+                                             std::max(a.x, b.x), std::max(a.y, b.y), wash, 110);
                     }
                 }
             }
