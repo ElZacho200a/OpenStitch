@@ -875,10 +875,20 @@ vectoriel, « Créer le satin de bordure » (un seul pas d'annulation).
 
 `finish_sequence` est la **dernière** passe d'`effective_sequence` : après la
 génération, les retouches manuelles, les points courts et longs. Quand
-`SequenceFinishing::hidden_travel.enabled` est vrai (défaut : faux, donc aucun
-projet existant ne change), elle remplace une coupe entre deux tracés par un
-saut ou un trajet cousu **prouvé caché** (`hidden_travel.cpp`). Aucun objet n'est
+`SequenceFinishing::hidden_travel.enabled` est vrai, elle remplace une coupe entre deux tracés
+par un saut ou un trajet cousu **prouvé caché** (`hidden_travel.cpp`). Aucun objet n'est
 réordonné ni régénéré : le gain dépend de l'ordre amont.
+
+**Défaut (2026-11-20)** : activé pour tout **nouveau** projet (`Project{}`,
+`create_empty_project`, auto-numérisation : `DigitizeSettings::hidden_travel`). Un projet déjà
+enregistré produit toujours le même fichier machine : sa valeur est relue telle quelle
+(`enabled: false` compris, valeur écrite par tous les projets enregistrés avant ce changement), et
+un projet antérieur au 2026-10-13, sans la clé `hiddenTravel`, reste sans ponts
+(`SequenceFinishing::legacy()` aussi). Studio : case « Réduire les coupes : passer sous les points
+cousus ensuite » de *Exporter pour la machine*, qui écrit ce réglage dans le projet en une étape
+annulable (l'aperçu et le fichier restent la même séquence), et action « Finitions (coupes,
+arrêts, ponts cachés)… ». CLI : `digitize` et `project digitize` l'activent, `--no-hidden-travel`
+le coupe.
 
 - **Écart éligible** : un écart qui recevrait une coupe (déplacement au-delà de
   `trim_threshold`, ou entre deux objets), fait uniquement de sauts. Un
@@ -942,8 +952,16 @@ réordonné ni régénéré : le gain dépend de l'ordre amont.
 - **Bilan** (`TrimReport`, `effective_sequence_report`) : écarts candidats, sauts
   recouverts, ponts, refus par raison (trop long, extrémité non recouverte,
   aucun chemin), coupes conservées (changement de fil, coupe posée), points et
-  longueur de fil ajoutés. CLI : `digitize --hidden-travel
+  longueur de fil ajoutés. CLI : `digitize [--no-hidden-travel]
   [--hidden-travel-same-colour] [--hidden-travel-max MM]`.
+- **Mesure sur 13 projets réels** (2026-11-20, `main` `ab7a8fa1`, `osp2dst` puis `stats`,
+  détail dans `docs/veille-reduction-coupes-2026-10.md` §8) : 5 271 coupes sans ponts, 3 764 avec
+  les trois niveaux (−29 %, +0,05 à 0,1 s par génération, fil inchangé, moins de points d'arrêt),
+  3 072 avec en plus la surface de même fil (−42 %, +1 s, relief possible : reste une option).
+  Sur une auto-numérisation neuve, −2 % seulement (liaisons internes du tatami déjà actives) : le
+  gain vient des projets retravaillés (auto-satins, remplissages directionnels, superpositions).
+  Sans ponts, 68 % des coupes sont internes à un objet (îlots, sous-couche → dessus des
+  auto-satins) et 3 % seulement viennent de `objectGap` (≤ `trim_threshold` entre objets).
 - **Mesure réelle** (fixture `tests/fixtures/tentabrode.png`, mode formes, 442
   coupes) : `--hidden-travel` supprime 6 coupes (434 écarts candidats : 269 trop
   longs, 132 à extrémité non recouverte, 27 sans chemin) ; avec la surface de même

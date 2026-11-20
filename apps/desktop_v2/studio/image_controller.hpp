@@ -70,6 +70,9 @@ class ImageController : public QObject {
     Q_PROPERTY(bool segPreviewActive READ segPreviewActive NOTIFY previewChanged)
     Q_PROPERTY(QString segPreviewInfo READ segPreviewInfo NOTIFY previewChanged)
     Q_PROPERTY(bool hasSegmentation READ hasSegmentation NOTIFY changed)
+    // « Préserver les traits fins » de l'image active (AUTO-LINEWORK-01), enregistré dans le
+    // projet.
+    Q_PROPERTY(bool preserveLinework READ preserveLinework WRITE setPreserveLinework NOTIFY changed)
     Q_PROPERTY(int regionCount READ regionCount NOTIFY changed)
     // Nombre de couleurs DISTINCTES de la segmentation du projet (<= « couleurs maximum »).
     Q_PROPERTY(int colorCount READ colorCount NOTIFY changed)
@@ -89,6 +92,9 @@ public:
     }
 
     [[nodiscard]] bool hasImage() const;
+    [[nodiscard]] bool preserveLinework() const;
+    // Une commande annulable ; ne recalcule rien (« Mettre à jour les formes » applique).
+    void setPreserveLinework(bool enabled);
     [[nodiscard]] QStringList imageLayers() const;
     [[nodiscard]] QVariantList imageLayerIds() const;
     [[nodiscard]] int imageLayerIndex() const;

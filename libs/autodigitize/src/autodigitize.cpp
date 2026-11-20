@@ -2,6 +2,7 @@
 #include "openstitch/autodigitize/autodigitize.hpp"
 #include "openstitch/autodigitize/quality_metrics.hpp"
 #include "openstitch/core/parallel.hpp"
+#include "openstitch/document/shape_kind.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -755,10 +756,21 @@ void apply_solid_block(AutoOptions& options, double overlap_mm) {
     options.min_region_area_mm2 = std::max(options.min_region_area_mm2, options.min_fill_area_mm2);
 }
 
-Result<AutoResult> auto_digitize_vectors(const std::vector<document::VectorObject>& vectors,
+Result<AutoResult> auto_digitize_vectors(const std::vector<document::VectorObject>& input,
                                          IdGenerator<ObjectId>& ids, const AutoOptions& options) {
-    if (vectors.empty()) {
+    if (input.empty()) {
         return fail(ErrorCategory::UserInput, "Aucun objet vectoriel à numériser");
+    }
+    // Lignes ouvertes (document/shape_kind.hpp) : pas d'intérieur, donc ni satin ni tatami. Point
+    // droit simple le long du chemin, ajouté APRÈS les surfaces du lot (cousu par-dessus).
+    std::vector<document::VectorObject> vectors;
+    std::vector<const document::VectorObject*> lines;
+    for (const auto& vec : input) {
+        if (document::is_open_line(vec)) {
+            lines.push_back(&vec);
+        } else {
+            vectors.push_back(vec);
+        }
     }
 
     AutoResult result;
@@ -783,12 +795,23 @@ Result<AutoResult> auto_digitize_vectors(const std::vector<document::VectorObjec
                                       result);
     }
 
-    if (result.embroideries.empty()) {
+    if (result.embroideries.empty() && lines.empty()) {
         return fail(ErrorCategory::OperationImpossible,
                     "Aucun objet vectoriel exploitable pour la numérisation automatique");
     }
-    configure_tatami_fills(result, vectors, nullptr, options);
-    order_in_layers(result, vectors, options);
+    if (!result.embroideries.empty()) {
+        configure_tatami_fills(result, vectors, nullptr, options);
+        order_in_layers(result, vectors, options);
+    }
+    for (const auto* line : lines) {
+        document::EmbroideryObject e;
+        e.id = ids.next();
+        e.name = "Point droit " + line->name;
+        e.source_vector = line->id;
+        e.rgb = line->rgb;
+        e.params = document::RunningStitchParams{};
+        result.embroideries.push_back(std::move(e));
+    }
     return result;
 }
 

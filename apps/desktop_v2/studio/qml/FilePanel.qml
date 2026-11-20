@@ -498,6 +498,21 @@ Item {
         property string photoFabricRgb: "245,243,238"
         property string photoBackgroundRgb: "200,200,204"
         property int photoFabricType: 1
+        property int photoThreadType: 0
+        // Réglages fins du fil (centièmes), préremplis par la matière choisie.
+        property int photoGloss: 12
+        property int photoSpread: 30
+        property int photoMatte: 20
+        property int photoSaturation: 35
+        property int photoPlies: 2
+        property int photoTwistPitch: 0
+        property int photoRelief: 40
+        property int photoLight: 24
+        function applyThreadPreset(i) {
+            var t = photoThreadTypes[i]
+            photoThreadType = i
+            photoGloss = t.gloss; photoSpread = t.spread; photoMatte = t.matte; photoPlies = t.plies
+        }
         readonly property var photoFabrics: [
             { name: qsTr("Blanc cassé"), rgb: "245,243,238" },
             { name: qsTr("Blanc"), rgb: "252,252,252" },
@@ -515,6 +530,12 @@ Item {
             { name: qsTr("Feutre"), id: "feutre" },
             { name: qsTr("Éponge"), id: "eponge" }
         ]
+        readonly property var photoThreadTypes: [
+            // Mêmes valeurs que THREAD_TYPES dans tools/raytrace/render_mitsuba.py.
+            { name: qsTr("Rayonne (brillante)"), id: "rayonne", gloss: 12, spread: 30, matte: 20, plies: 2 },
+            { name: qsTr("Polyester (satiné)"), id: "polyester", gloss: 22, spread: 40, matte: 35, plies: 2 },
+            { name: qsTr("Coton (mat)"), id: "coton", gloss: 45, spread: 70, matte: 50, plies: 3 }
+        ]
         function rgbToColor(rgb) {
             var p = rgb.split(",")
             return Qt.rgba(p[0] / 255, p[1] / 255, p[2] / 255, 1)
@@ -527,6 +548,11 @@ Item {
                      threadWidthMm: photoThreadHundredths / 100.0,
                      fabric: photoFabricRgb,
                      fabricType: photoFabricTypes[photoFabricType].id,
+                     threadType: photoThreadTypes[photoThreadType].id,
+                     threadGloss: photoGloss / 100.0, threadSpread: photoSpread / 100.0,
+                     threadMatte: photoMatte / 100.0, threadSaturation: photoSaturation / 100.0,
+                     threadPlies: photoPlies, twistPitchMm: photoTwistPitch / 100.0,
+                     relief: photoRelief / 100.0, light: photoLight / 10.0,
                      background: photoBackgroundRgb }
         }
         heading: kind === "image" ? qsTr("Exporter l'image")
@@ -592,6 +618,70 @@ Item {
                 value: exportOptionsDialog.photoThreadHundredths
                 onValueModified: exportOptionsDialog.photoThreadHundredths = value
             }
+            Label { text: qsTr("Matière du fil") }
+            StudioComboBox {
+                objectName: "photoThreadType"
+                Layout.fillWidth: true
+                model: exportOptionsDialog.photoThreadTypes.map(function (t) { return t.name })
+                currentIndex: exportOptionsDialog.photoThreadType
+                onActivated: exportOptionsDialog.applyThreadPreset(currentIndex)
+            }
+            Label { text: qsTr("Brillance du fil (rugosité, 1/100)") }
+            StudioSpinBox {
+                objectName: "photoGloss"
+                from: 2; to: 100; editable: true
+                value: exportOptionsDialog.photoGloss
+                onValueModified: exportOptionsDialog.photoGloss = value
+            }
+            Label { text: qsTr("Largeur du reflet (1/100)") }
+            StudioSpinBox {
+                objectName: "photoSpread"
+                from: 5; to: 100; editable: true
+                value: exportOptionsDialog.photoSpread
+                onValueModified: exportOptionsDialog.photoSpread = value
+            }
+            Label { text: qsTr("Part mate (%)") }
+            StudioSpinBox {
+                objectName: "photoMatte"
+                from: 0; to: 100; editable: true
+                value: exportOptionsDialog.photoMatte
+                onValueModified: exportOptionsDialog.photoMatte = value
+            }
+            Label { text: qsTr("Saturation des couleurs (1/100)") }
+            StudioSpinBox {
+                objectName: "photoSaturation"
+                from: 0; to: 200; editable: true
+                value: exportOptionsDialog.photoSaturation
+                onValueModified: exportOptionsDialog.photoSaturation = value
+            }
+            Label { text: qsTr("Brins torsadés") }
+            StudioSpinBox {
+                objectName: "photoPlies"
+                from: 1; to: 4; editable: true
+                value: exportOptionsDialog.photoPlies
+                onValueModified: exportOptionsDialog.photoPlies = value
+            }
+            Label { text: qsTr("Pas de torsion (1/100 mm, 0 = auto)") }
+            StudioSpinBox {
+                objectName: "photoTwistPitch"
+                from: 0; to: 500; editable: true
+                value: exportOptionsDialog.photoTwistPitch
+                onValueModified: exportOptionsDialog.photoTwistPitch = value
+            }
+            Label { text: qsTr("Relief des superpositions (%)") }
+            StudioSpinBox {
+                objectName: "photoRelief"
+                from: 0; to: 200; editable: true
+                value: exportOptionsDialog.photoRelief
+                onValueModified: exportOptionsDialog.photoRelief = value
+            }
+            Label { text: qsTr("Lumière (1/10)") }
+            StudioSpinBox {
+                objectName: "photoLight"
+                from: 1; to: 100; editable: true
+                value: exportOptionsDialog.photoLight
+                onValueModified: exportOptionsDialog.photoLight = value
+            }
             Label { text: qsTr("Type de tissu") }
             StudioComboBox {
                 objectName: "photoFabricType"
@@ -606,7 +696,7 @@ Item {
                 Rectangle {
                     implicitWidth: 22; implicitHeight: 22; radius: 4
                     color: exportOptionsDialog.rgbToColor(exportOptionsDialog.photoFabricRgb)
-                    border.width: 1; border.color: "#80808080"
+                    border.width: 1; border.color: Theme.outline
                 }
                 StudioComboBox {
                     objectName: "photoFabric"
@@ -633,7 +723,7 @@ Item {
                 Rectangle {
                     implicitWidth: 22; implicitHeight: 22; radius: 4
                     color: exportOptionsDialog.rgbToColor(exportOptionsDialog.photoBackgroundRgb)
-                    border.width: 1; border.color: "#80808080"
+                    border.width: 1; border.color: Theme.outline
                 }
                 StudioButton {
                     objectName: "photoBackground"
@@ -736,7 +826,14 @@ Item {
             onToggled: panel.exportValues.splitLongStitches = checked
         }
         StudioCheckBox {
-            text: qsTr("Relier sans couper quand le trajet sera recouvert")
+            objectName: "exportHiddenTravel"
+            text: qsTr("Réduire les coupes : passer sous les points cousus ensuite")
+            checked: panel.exportValues.hiddenTravel === true
+            onToggled: panel.exportValues.hiddenTravel = checked
+        }
+        StudioCheckBox {
+            objectName: "exportAutoJoin"
+            text: qsTr("Entrée et sortie de chaque objet au plus court")
             checked: panel.exportValues.autoJoin === true
             onToggled: panel.exportValues.autoJoin = checked
         }

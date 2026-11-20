@@ -4,6 +4,7 @@
 #include <set>
 #include <utility>
 #include <variant>
+#include <vector>
 
 namespace openstitch::autodigitize {
 
@@ -28,6 +29,8 @@ Result<VectorConversion> convert_vectors_to_embroidery(const document::Project& 
         return std::unexpected(Error{
             ErrorCategory::UserInput, "aucune forme vectorielle sans broderie à convertir", {}});
     }
+    // Les lignes ouvertes (document/shape_kind.hpp) sont routées en point droit par
+    // `auto_digitize_vectors`, après les surfaces du lot.
     auto built = auto_digitize_vectors(todo, ids, options);
     if (!built) {
         return std::unexpected(built.error());

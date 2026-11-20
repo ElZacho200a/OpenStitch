@@ -95,6 +95,18 @@ Changements minimaux, localisés (autre session sur `ci.yml` : 01.7) :
 Rien n'a été supprimé côté artefacts, tests ou compilation ; aucune CI rouge n'est contournée.
 **Non validé** : je n'ai pas poussé, donc ce changement n'a pas tourné en CI (§6).
 
+### Correctifs amont conservés dans le dépôt (2026-11-20)
+
+GitHub répond par intermittence 503 aux URL `github.com/<dépôt>/commit/<sha>.patch?full_index=1` que
+téléchargent les ports opencv4 et spdlog hors cache binaire. Le 2026-11-20, `linux-core` a raté ses trois
+configurations de suite, chaque fois sur un correctif différent. L'entrée de cache `vcpkg-linux-…` de
+`main`, vide (206 o) depuis le 2026-11-19, aggravait la panne : chaque job reconstruisait les 28 paquets
+(clé corrigée par la PR #440). L'étape « Seed vcpkg downloads with mirrored upstream patches » dépose les
+copies de `.github/vcpkg-downloads/` dans `downloads/`. vcpkg les reprend (« Using cached ») après avoir
+vérifié leur SHA512. Une copie que le vcpkg épinglé n'attend plus est ignorée avec un avertissement. Le
+README du dossier décrit la mise à jour. L'API REST ne peut pas remplacer ces fichiers : ses correctifs
+ont des index abrégés, donc une autre empreinte.
+
 ## 5. Pistes non implémentées
 
 | Piste | Gain attendu | Pourquoi pas ici |

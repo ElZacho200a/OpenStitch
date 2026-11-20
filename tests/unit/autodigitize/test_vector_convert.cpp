@@ -2,6 +2,8 @@
 // HP-AUTO-012 : conversion des formes vectorielles sans broderie.
 #include <catch2/catch_test_macros.hpp>
 
+#include <variant>
+
 #include "openstitch/autodigitize/vector_convert.hpp"
 
 namespace {
@@ -58,4 +60,84 @@ TEST_CASE("vector_convert : rien a convertir -> erreur propre") {
     document::Project p;
     auto ids = p.object_ids;
     CHECK_FALSE(convert_vectors_to_embroidery(p, ids, options()).has_value());
+}
+
+TEST_CASE("vector_convert : linework stroke becomes a plain running stitch after fills") {
+    document::Project p;
+    document::VectorObject stroke;
+    stroke.id = p.object_ids.next();
+    stroke.name = "Trait 1";
+    stroke.linework = true;
+    stroke.rgb = {10, 10, 20};
+    geometry::Path line;
+    line.closed = false;
+    for (const int x : {0, 10'000, 20'000}) {
+        line.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{x}, Micrometers{x / 4}},
+                                                geometry::NodeType::Corner, std::nullopt,
+                                                std::nullopt});
+    }
+    stroke.paths.push_back(geometry::PathSet{std::move(line), {}});
+    p.vector_objects.push_back(stroke); // AVANT l'aplat dans la liste
+    p.vector_objects.push_back(rect(p.object_ids.next(), 0, 0, 30'000, 30'000));
+
+    auto ids = p.object_ids;
+    const auto r = convert_vectors_to_embroidery(p, ids, options());
+    REQUIRE(r.has_value());
+    REQUIRE(r->embroideries.size() == 2);
+    CHECK(r->embroideries[0].source_vector == p.vector_objects[1].id); // aplat d'abord
+    CHECK(r->embroideries[0].is_tatami());
+    const auto& run = r->embroideries[1];
+    CHECK(run.source_vector == stroke.id);
+    CHECK(run.rgb == stroke.rgb);
+    const auto* params = std::get_if<document::RunningStitchParams>(&run.params);
+    REQUIRE(params != nullptr);
+    CHECK(*params == document::RunningStitchParams{});
+    CHECK(r->contour == 1);
+    CHECK(r->tatami == 1);
+}
+
+TEST_CASE("vector_convert : only linework strokes still converts") {
+    document::Project p;
+    document::VectorObject stroke;
+    stroke.id = p.object_ids.next();
+    stroke.linework = true;
+    geometry::Path line;
+    line.closed = false;
+    line.nodes = {geometry::PathNode{Vec2um{Micrometers{0}, Micrometers{0}},
+                                     geometry::NodeType::Corner, std::nullopt, std::nullopt},
+                  geometry::PathNode{Vec2um{Micrometers{15'000}, Micrometers{0}},
+                                     geometry::NodeType::Corner, std::nullopt, std::nullopt}};
+    stroke.paths.push_back(geometry::PathSet{std::move(line), {}});
+    p.vector_objects.push_back(stroke);
+    auto ids = p.object_ids;
+    const auto r = convert_vectors_to_embroidery(p, ids, options());
+    REQUIRE(r.has_value());
+    REQUIRE(r->embroideries.size() == 1);
+    CHECK(std::holds_alternative<document::RunningStitchParams>(r->embroideries[0].params));
+}
+
+TEST_CASE("auto_digitize_vectors : any open line is sewn as a running stitch after areas") {
+    // Ligne ouverte ordinaire (import SVG, tracé) : aucun drapeau, la géométrie suffit.
+    document::VectorObject line;
+    line.id = ObjectId{1};
+    line.name = "Chemin";
+    line.rgb = {1, 2, 3};
+    geometry::Path path;
+    path.closed = false;
+    path.nodes = {geometry::PathNode{Vec2um{Micrometers{0}, Micrometers{0}},
+                                     geometry::NodeType::Corner, std::nullopt, std::nullopt},
+                  geometry::PathNode{Vec2um{Micrometers{20'000}, Micrometers{8'000}},
+                                     geometry::NodeType::Corner, std::nullopt, std::nullopt}};
+    line.paths.push_back(geometry::PathSet{std::move(path), {}});
+    const std::vector<document::VectorObject> input{line, rect(ObjectId{2}, 0, 0, 30'000, 30'000)};
+    IdGenerator<ObjectId> ids;
+    ids.reset(2);
+    const auto r = auto_digitize_vectors(input, ids, options());
+    REQUIRE(r.has_value());
+    REQUIRE(r->embroideries.size() == 2);
+    CHECK(r->embroideries[0].source_vector == ObjectId{2});
+    CHECK(r->embroideries[0].is_tatami());
+    CHECK(r->embroideries[1].source_vector == ObjectId{1});
+    CHECK(r->embroideries[1].rgb == line.rgb);
+    CHECK(std::holds_alternative<document::RunningStitchParams>(r->embroideries[1].params));
 }

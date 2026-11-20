@@ -222,6 +222,17 @@ elseif(CASE STREQUAL "digitize_json")
     if(NOT stitches EQUAL stitches2)
         message(FATAL_ERROR "points digitize=${stitches} stats=${stitches2}")
     endif()
+    # Ponts cachés activés par défaut (2026-11-20) ; --no-hidden-travel les désactive et ne
+    # produit jamais moins de coupes.
+    string(JSON trimsOn GET "${OUT}" trims)
+    run(digitize "${LOGO}" "${WORK}/logo_sans_ponts.dst" --no-hidden-travel)
+    expect_rc(0)
+    run(stats "${WORK}/logo_sans_ponts.dst" --json)
+    expect_rc(0)
+    string(JSON trimsOff GET "${OUT}" trims)
+    if(trimsOn GREATER trimsOff)
+        message(FATAL_ERROR "coupes avec ponts=${trimsOn} > sans ponts=${trimsOff}")
+    endif()
     # --no-clobber refuse d'écraser ; --force (défaut) écrase.
     run(digitize "${LOGO}" "${WORK}/logo.dst" --no-clobber)
     expect_rc(1)

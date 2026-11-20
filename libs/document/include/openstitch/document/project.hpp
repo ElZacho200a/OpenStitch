@@ -41,6 +41,11 @@ struct ImageSource {
     // Elles pilotent le lissage et le nettoyage de la segmentation (`SegmentationOptions::
     // detail_mask`) ; modifiées par `PaintDetailMaskCommand`, enregistrées dans le projet.
     segmentation::DetailMask detail_mask;
+
+    // « Préserver les traits fins » (AUTO-LINEWORK-01) : la mise à jour des formes depuis la
+    // segmentation détecte les traits fins sombres, coud les aplats complétés sous eux et produit
+    // des traits ouverts indépendants. Faux par défaut : comportement historique inchangé.
+    bool preserve_linework{false};
 };
 
 struct ImageSourceLayer {

@@ -20,6 +20,7 @@
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/commands/transform_ops.hpp"
 #include "openstitch/commands/vector_ops.hpp"
+#include "openstitch/document/shape_kind.hpp"
 #include "openstitch/geometry/path.hpp"
 #include "openstitch/geometry/polyline.hpp"
 #include "openstitch/geometry/primitives.hpp"
@@ -614,12 +615,30 @@ OpStatus op_set_geometry(OpContext& ctx) {
     if (auto st = resolve_shape_target(ctx, "object", target); !st.ok) {
         return st;
     }
+    bool closed = true;
+    if (const auto it = ctx.args.find("closed"); it != ctx.args.end() && !it->is_null()) {
+        if (!it->is_boolean()) {
+            return usage("argument « closed » : booléen attendu");
+        }
+        closed = it->get<bool>();
+    }
     std::vector<Vec2um> pts;
-    if (auto st = read_points(ctx, "points_mm", 3, kMaxPolygonPoints, pts); !st.ok) {
+    if (auto st = read_points(ctx, "points_mm", closed ? 3 : 2, kMaxPolygonPoints, pts); !st.ok) {
         return st;
     }
-    if (auto st = validate_polygon(pts); !st.ok) {
-        return st;
+    if (closed) {
+        if (auto st = validate_polygon(pts); !st.ok) {
+            return st;
+        }
+    } else {
+        // Ligne ouverte (document/shape_kind.hpp) : aucun objet de broderie qui la suit ne doit
+        // demander une surface.
+        for (const auto& emb : ctx.project.embroidery_objects) {
+            if (emb.source_vector == target.vector && document::stitch_needs_area(emb.params)) {
+                return refused("une ligne ouverte ne peut pas porter un remplissage",
+                               "changez d'abord le type de points (running, blanket ou motif_run)");
+            }
+        }
     }
     const auto* source = ctx.project.findObject(target.vector);
     std::size_t dropped_pieces = source->paths.empty() ? 0 : source->paths.size() - 1;
@@ -628,7 +647,17 @@ OpStatus op_set_geometry(OpContext& ctx) {
         dropped_holes += set.holes.size();
     }
     std::vector<geometry::PathSet> paths;
-    paths.push_back(geometry::PathSet{geometry::polygon_path(pts), {}});
+    geometry::Path outline;
+    if (closed) {
+        outline = geometry::polygon_path(pts);
+    } else {
+        outline.closed = false;
+        for (const Vec2um& p : pts) {
+            outline.nodes.push_back(
+                geometry::PathNode{p, geometry::NodeType::Corner, std::nullopt, std::nullopt});
+        }
+    }
+    paths.push_back(geometry::PathSet{std::move(outline), {}});
     ctx.stack.execute(std::make_unique<commands::SetVectorPathsCommand>(
                           target.vector, std::move(paths), "Remplacer le contour"),
                       ctx.project);
@@ -1024,6 +1053,11 @@ OpStatus op_auto_satin(OpContext& ctx) {
     if (auto st = resolve_target(ctx, "object", target); !st.ok) {
         return st;
     }
+    if (const auto* shape = ctx.project.findObject(target.vector);
+        shape != nullptr && document::is_open_line(*shape)) {
+        return refused("la forme est une ligne ouverte : l'auto-satin demande une surface fermée",
+                       "types possibles sur une ligne ouverte : running, blanket ou motif_run");
+    }
     AutoSatinPlanRequest request;
     double spacing_mm = 0.0;
     bool present = false;
@@ -1240,15 +1274,19 @@ void register_geometry_ops(std::vector<OpSpec>& out) {
         R"({"op":"fill_block_holes","objects":[1,2,3],"closing_gap_mm":1.0})",
         op_fill_block_holes});
 
-    out.push_back(
-        OpSpec{"set_geometry",
-               "Remplace TOUTE la géométrie de l'objet (morceaux et trous) par un polygone simple.",
-               {object_arg(),
-                {"points_mm", "array", "mm",
-                 "sommets [[x,y],...] du nouveau contour, sans auto-intersection", true,
-                 "3 à 2000 points, |coord| <= 1000"}},
-               R"({"op":"set_geometry","object":1,"points_mm":[[-10,-5],[10,-5],[10,5],[-10,5]]})",
-               op_set_geometry});
+    out.push_back(OpSpec{
+        "set_geometry",
+        "Remplace TOUTE la géométrie de l'objet (morceaux et trous) par un polygone simple, ou "
+        "par une ligne ouverte (closed=false).",
+        {object_arg(),
+         {"points_mm", "array", "mm",
+          "sommets [[x,y],...] du nouveau contour, sans auto-intersection", true,
+          "3 à 2000 points (2 pour une ligne ouverte), |coord| <= 1000"},
+         {"closed", "boolean", "",
+          "false = ligne ouverte (point droit, boutonnière ou motif seulement ; défaut true)",
+          false, ""}},
+        R"({"op":"set_geometry","object":1,"points_mm":[[-10,-5],[10,-5],[10,5],[-10,5]]})",
+        op_set_geometry});
 
     out.push_back(OpSpec{
         "auto_satin",

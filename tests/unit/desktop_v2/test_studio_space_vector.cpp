@@ -179,6 +179,11 @@ private:
         QTRY_VERIFY_WITH_TIMEOUT(rig.canvas->width() > 0 && rig.canvas->height() > 0, 5'000);
         rig.canvas->zoomToScale(40.0);
         rig.canvas->centerOnScene(0.0, 0.0);
+        // Changer d'espace remet les outils à la Sélection en différé (Qt.callLater, SpaceHost) :
+        // vider la file d'événements avant de choisir un outil, sinon la remise à zéro tombe au
+        // milieu du geste suivant.
+        QCoreApplication::sendPostedEvents();
+        QCoreApplication::processEvents();
     }
     // Pixel fenêtre d'un point de scène (mm, Y vers le bas).
     QPoint at(Rig& rig, double xMm, double yMm) {
@@ -359,6 +364,24 @@ private slots:
         QTRY_COMPARE(tabs->property("currentIndex").toInt(), 1);
         QVERIFY(scroll->isVisible());
         QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+    }
+
+    void pickHitsOpenPathBetweenNodes() {
+        // AUTO-LINEWORK-01 : un trait ouvert se saisit au milieu d'un segment.
+        document::VectorObject line;
+        line.id = ObjectId{9001};
+        line.name = "trait";
+        geometry::Path path;
+        path.closed = false;
+        path.nodes = {
+            {Vec2um{Micrometers{0}, Micrometers{0}}, geometry::NodeType::Corner, {}, {}},
+            {Vec2um{Micrometers{20'000}, Micrometers{0}}, geometry::NodeType::Corner, {}, {}}};
+        line.paths.push_back(geometry::PathSet{path, {}});
+        const auto layer = VectorLayer::build(std::vector<document::VectorObject>{line});
+        const auto hit = layer->pick(10.0, 0.2, 0.5);
+        QVERIFY(hit.has_value());
+        QCOMPARE(*hit, std::uint64_t{9001});
+        QVERIFY(!layer->pick(10.0, 3.0, 0.5).has_value());
     }
 
     void incrementalLayerBuildMatchesFullBuild() {
