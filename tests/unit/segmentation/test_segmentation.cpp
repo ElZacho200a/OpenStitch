@@ -1081,34 +1081,18 @@ std::uint64_t hash_labels(const Segmentation& seg) {
     return (h ^ seg.region_count()) * 1099511628211ull;
 }
 
-constexpr std::uint64_t platform_hash(std::uint64_t windows, std::uint64_t linux_gcc) {
-#ifdef _WIN32
-    (void)linux_gcc;
-    return windows;
-#else
-    (void)windows;
-    return linux_gcc;
-#endif
-}
-
 } // namespace
 
 TEST_CASE("lissage : etiquettes figees pour plusieurs tailles, classes et rayons") {
-    // Empreintes figées PAR PLATEFORME : la quantification (OpenCV, flottants) donne des
-    // étiquettes stables sur une même chaîne de compilation, pas d'une chaîne à l'autre
-    // (MSVC/Windows contre GCC/Linux). Chaque colonne a été relevée deux fois sur sa plateforme.
     struct Case {
         int w, h, colors, radius;
-        std::uint64_t windows, linux_gcc;
+        std::uint64_t expected;
     };
     const Case cases[] = {
-        {37, 29, 2, 1, 336150776388476608ull, 336150776388476608ull},
-        {64, 64, 4, 2, 7643034171746542482ull, 7643034171746542482ull},
-        {130, 97, 8, 3, 14369772621646602743ull, 10137992731562282742ull},
-        {200, 150, 16, 2, 3434570449995195540ull, 9673607606727078947ull},
-        {90, 300, 32, 5, 17257860780381707588ull, 6035609357016492846ull},
-        {150, 150, 64, 4, 6362908915432989295ull, 11021190624606358575ull},
-        {20, 20, 5, 30, 13644600062404334311ull, 13644600062404334311ull},
+        {37, 29, 2, 1, 336150776388476608ull},     {64, 64, 4, 2, 7643034171746542482ull},
+        {130, 97, 8, 3, 14369772621646602743ull},  {200, 150, 16, 2, 3434570449995195540ull},
+        {90, 300, 32, 5, 17257860780381707588ull}, {150, 150, 64, 4, 6362908915432989295ull},
+        {20, 20, 5, 30, 13644600062404334311ull},
     };
     for (const auto& c : cases) {
         const auto seg =
@@ -1116,20 +1100,20 @@ TEST_CASE("lissage : etiquettes figees pour plusieurs tailles, classes et rayons
                     {.max_colors = c.colors, .min_region_px = 3, .smoothing_radius_px = c.radius});
         REQUIRE(seg.has_value());
         INFO("w=" << c.w << " h=" << c.h << " k=" << c.colors << " r=" << c.radius);
-        CHECK(hash_labels(*seg) == platform_hash(c.windows, c.linux_gcc));
+        CHECK(hash_labels(*seg) == c.expected);
     }
 }
 
 TEST_CASE("lissage avec masque de detail : etiquettes figees") {
     struct Case {
         int w, h, colors, radius, detailRadius;
-        std::uint64_t windows, linux_gcc;
+        std::uint64_t expected;
     };
     const Case cases[] = {
-        {64, 64, 4, 3, 0, 17718315555885610853ull, 17718315555885610853ull},
-        {130, 97, 8, 4, 1, 15489268793340984824ull, 13817777815679436223ull},
-        {150, 120, 24, 5, 2, 3041036354334152056ull, 3717836908075716754ull},
-        {40, 33, 6, 40, 3, 8976410360852191656ull, 8976410360852191656ull},
+        {64, 64, 4, 3, 0, 17718315555885610853ull},
+        {130, 97, 8, 4, 1, 15489268793340984824ull},
+        {150, 120, 24, 5, 2, 3041036354334152056ull},
+        {40, 33, 6, 40, 3, 8976410360852191656ull},
     };
     for (const auto& c : cases) {
         DetailMask mask;
@@ -1152,7 +1136,7 @@ TEST_CASE("lissage avec masque de detail : etiquettes figees") {
                                   .detail_smoothing_radius_px = c.detailRadius});
         REQUIRE(seg.has_value());
         INFO("w=" << c.w << " h=" << c.h << " k=" << c.colors << " r=" << c.radius);
-        CHECK(hash_labels(*seg) == platform_hash(c.windows, c.linux_gcc));
+        CHECK(hash_labels(*seg) == c.expected);
     }
 }
 
