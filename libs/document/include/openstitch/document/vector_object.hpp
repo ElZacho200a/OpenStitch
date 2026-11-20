@@ -19,6 +19,9 @@ struct VectorObject {
     ObjectId id;
     std::string name;
     std::optional<RegionId> source_region; // lien conservé vers la région d'origine
+    // Trait superposé (AUTO-LINEWORK-01) issu de la détection des traits fins de `source_image` :
+    // chemin ouvert, sans région ; régénéré par la mise à jour des formes depuis la segmentation.
+    bool linework{false};
     ObjectId source_image; // calque de la source, invalide pour la source historique
     std::array<std::uint8_t, 3> rgb{};
     std::vector<geometry::PathSet> paths; // plusieurs morceaux possibles

@@ -1901,6 +1901,9 @@ namespace {
 
 void write_image_source(json& j, const document::ImageSource& source) {
     j["mmPerPx"] = source.mm_per_px.value;
+    if (source.preserve_linework) { // clé absente par défaut : fichiers existants identiques
+        j["preserveLinework"] = true;
+    }
     j["ops"] = json::array();
     for (const auto& op : source.ops) {
         j["ops"].push_back(op_to_json(op));
@@ -1927,6 +1930,7 @@ void write_image_source(json& j, const document::ImageSource& source) {
 
 Result<void> read_image_source(const json& j, document::ImageSource& source) {
     source.mm_per_px = Millimeters{j.at("mmPerPx").get<double>()};
+    source.preserve_linework = j.value("preserveLinework", false);
     for (const auto& op : j.at("ops")) {
         auto parsed = op_from_json(op);
         if (!parsed) {
@@ -2156,6 +2160,9 @@ json project_to_json(const document::Project& project) {
         // Découplé de sourceRegion : un trait ouvert (sans région) garde son calque image.
         if (v.source_image.valid()) {
             vo["sourceImage"] = v.source_image.value;
+        }
+        if (v.linework) {
+            vo["linework"] = true;
         }
         if (v.text_owner) {
             vo["textOwner"] = v.text_owner->value;
@@ -2464,6 +2471,7 @@ Result<document::Project> project_from_json(const json& j) {
                 v.source_region = RegionId{vo.at("sourceRegion").get<std::uint64_t>()};
             }
             v.source_image = ObjectId{vo.value("sourceImage", std::uint64_t{0})};
+            v.linework = vo.value("linework", false);
             if (vo.contains("textOwner")) {
                 v.text_owner = ObjectId{vo.at("textOwner").get<std::uint64_t>()};
             }

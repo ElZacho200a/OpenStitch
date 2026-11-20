@@ -300,6 +300,19 @@ void ImageController::selectImageLayer(int index) {
     }
 }
 
+bool ImageController::preserveLinework() const {
+    return studio_.session().project().imageSource().preserve_linework;
+}
+
+void ImageController::setPreserveLinework(bool enabled) {
+    auto& session = studio_.session();
+    if (session.project().imageSource().preserve_linework == enabled) {
+        return;
+    }
+    session.execute(std::make_unique<commands::SetPreserveLineworkCommand>(enabled));
+    emit changed();
+}
+
 bool ImageController::hasSegmentation() const {
     return studio_.session().project().imageSource().segmentation.has_value();
 }

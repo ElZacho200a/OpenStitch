@@ -882,3 +882,27 @@ TEST_CASE("open stroke without source region keeps its source image layer") {
     CHECK(loaded->vector_objects[0].source_image == ObjectId{42});
     CHECK(project_io::detail::project_to_json(*loaded) == json);
 }
+
+TEST_CASE("preserve linework flag and linework strokes survive a roundtrip") {
+    document::Project project;
+    project.imageSource().preserve_linework = true;
+    document::VectorObject stroke;
+    stroke.id = project.object_ids.next();
+    stroke.name = "Trait 1";
+    stroke.linework = true;
+    geometry::Path p = square_path();
+    p.closed = false;
+    stroke.paths.push_back(geometry::PathSet{p, {}});
+    project.vector_objects.push_back(stroke);
+    const auto json = project_io::detail::project_to_json(project);
+    const auto loaded = project_io::detail::project_from_json(json);
+    REQUIRE(loaded);
+    CHECK(loaded->imageSource().preserve_linework);
+    REQUIRE(loaded->vector_objects.size() == 1);
+    CHECK(loaded->vector_objects[0].linework);
+    CHECK(project_io::detail::project_to_json(*loaded) == json);
+    // Défaut : aucune clé écrite (fichiers existants identiques).
+    const auto plain = project_io::detail::project_to_json(document::Project{});
+    CHECK(plain.dump().find("preserveLinework") == std::string::npos);
+    CHECK(plain.dump().find("linework") == std::string::npos);
+}
