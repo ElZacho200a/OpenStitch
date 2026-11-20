@@ -52,6 +52,9 @@ class ImageController : public QObject {
     Q_OBJECT
     Q_PROPERTY(bool hasImage READ hasImage NOTIFY changed)
     Q_PROPERTY(QStringList imageLayers READ imageLayers NOTIFY changed)
+    // Identifiants parallèles à `imageLayers` (qulonglong ; 0 = image source sans calque), pour la
+    // sélection explicite de calques à segmenter et les badges d'état du sélecteur.
+    Q_PROPERTY(QVariantList imageLayerIds READ imageLayerIds NOTIFY changed)
     Q_PROPERTY(int imageLayerIndex READ imageLayerIndex NOTIFY changed)
     Q_PROPERTY(int imageWidth READ imageWidth NOTIFY changed)
     // Taille physique d'un pixel de travail (mm) : place l'aperçu de segmentation sur le canevas.
@@ -93,8 +96,13 @@ public:
     // Une commande annulable ; ne recalcule rien (« Mettre à jour les formes » applique).
     void setPreserveLinework(bool enabled);
     [[nodiscard]] QStringList imageLayers() const;
+    [[nodiscard]] QVariantList imageLayerIds() const;
     [[nodiscard]] int imageLayerIndex() const;
     Q_INVOKABLE void selectImageLayer(int index);
+    // État d'une entrée du sélecteur « Calque à segmenter » pour son badge : segmentation propre à
+    // CE calque (pas forcément le calque actif), indépendamment de la sélection courante.
+    Q_INVOKABLE [[nodiscard]] bool isLayerSegmented(qulonglong sourceId) const;
+    Q_INVOKABLE [[nodiscard]] bool isLayerLocked(qulonglong sourceId) const;
     [[nodiscard]] int imageWidth() const { return width_; }
     [[nodiscard]] double mmPerPx() const;
     [[nodiscard]] int imageHeight() const { return height_; }
@@ -135,6 +143,9 @@ public:
     // existants ne sont pas régénérés : `segmentationApplied()` le signale à « Régions ».
     Q_INVOKABLE void applySegmentation(const QVariantMap& options);
     Q_INVOKABLE void applySegmentationToAllLayers(const QVariantMap& options);
+    // Sous-ensemble explicite de calques (ids de `imageLayerIds`) : même mécanisme qu'« tous les
+    // calques » (une seule étape d'annulation), sans forcer la totalité de la liste.
+    Q_INVOKABLE void applySegmentationToLayers(const QVariantMap& options, const QVariantList& ids);
     Q_INVOKABLE void cancelTask();
 
     // --- Segmentation IA (backends déclarés dans les réglages IA) ---------------------------
@@ -158,7 +169,10 @@ private:
     void scheduleRefresh();
     void refreshNow();
     void trackOps();
-    void startSegmentation(const QVariantMap& options, bool allLayers);
+    // `explicitSources` non vide : segmente exactement ces sources (ignorant `allLayers` pour le
+    // choix des sources, gardé pour le libellé/le message et le CompositeCommand).
+    void startSegmentation(const QVariantMap& options, bool allLayers,
+                           std::vector<ObjectId> explicitSources = {});
     [[nodiscard]] segmentation::SegmentationOptions optionsFrom(const QVariantMap& map) const;
 
     StudioController& studio_;

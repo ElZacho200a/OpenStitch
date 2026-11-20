@@ -13,6 +13,7 @@
 #include "gpu_canvas.hpp"
 #include "image_controller.hpp"
 #include "image_prep.hpp"
+#include "openstitch/commands/calque_commands.hpp"
 #include "openstitch/commands/command.hpp"
 #include "openstitch/document/project.hpp"
 #include "openstitch/image/ops.hpp"
@@ -66,6 +67,40 @@ std::vector<ObjectId> imageSourceIds(const document::Project& project) {
 
 document::ImageSource& sourceOf(document::Project& project, ObjectId id) {
     return *const_cast<document::ImageSource*>(project.findImageSource(id));
+}
+
+// Calque porteur de la source image `sourceId` : son entrée propre (`ImageSourceLayer::calque`),
+// ou le calque du fond pour la source racine / une source sans calque connu -- même repli que
+// `Project::calqueOfShape` pour les formes. `nullptr` si le document n'a aucun calque (verrou
+// toujours faux dans ce cas, un seul calque implicite).
+const document::Calque* calqueForImageSource(const document::Project& project, ObjectId sourceId) {
+    if (project.calques.empty()) {
+        return nullptr;
+    }
+    const auto* own = project.findCalque(sourceId);
+    return own != nullptr ? own : &project.calques.front();
+}
+
+bool activeImageLayerLocked(const document::Project& project) {
+    const auto* calque = calqueForImageSource(project, project.imageSourceId());
+    return calque != nullptr && calque->locked;
+}
+
+// Calques porteurs d'une image, dans L'ORDRE de `ImageController::imageLayers()` (source racine
+// d'abord si présente, puis les calques ayant une source, dans l'ordre de `project.calques`) :
+// les indices doivent correspondre à `imageTools.imageLayers` pour que le sélecteur et les icônes
+// de visibilité / verrou désignent le même calque.
+std::vector<ObjectId> imageLayerCalqueIdsInSelectorOrder(const document::Project& project) {
+    std::vector<ObjectId> ids;
+    if (!project.original.empty()) {
+        ids.push_back(ObjectId{});
+    }
+    for (const auto& calque : project.calques) {
+        if (project.findImageSource(calque.id) != nullptr) {
+            ids.push_back(calque.id);
+        }
+    }
+    return ids;
 }
 
 // Change l'échelle physique (mm par pixel) de TOUTES les sources image d'un même facteur, pour
@@ -233,6 +268,9 @@ QString ImageSpaceController::scaleImage(double percent) {
         const auto text = tr("Importez d'abord une image.");
         setMessage(text);
         return text;
+    }
+    if (const auto refusal = lockedLayerRefusal(); !refusal.isEmpty()) {
+        return refusal;
     }
     if (!canResize()) {
         const auto text = tr("Des objets existent déjà : redimensionnez-les par la sélection.");
@@ -466,7 +504,64 @@ void ImageSpaceController::setMessage(const QString& text) {
     emit messageChanged();
 }
 
+QString ImageSpaceController::lockedLayerRefusal() {
+    if (!activeImageLayerLocked(studio_.session().project())) {
+        return {};
+    }
+    const auto text = tr("Calque verrouillé : déverrouillez-le pour modifier l'image.");
+    setMessage(text);
+    return text;
+}
+
+bool ImageSpaceController::activeLayerLocked() const {
+    return activeImageLayerLocked(studio_.session().project());
+}
+
+QVariantList ImageSpaceController::imageLayerStates() const {
+    QVariantList list;
+    const auto& project = studio_.session().project();
+    for (const auto id : imageLayerCalqueIdsInSelectorOrder(project)) {
+        const auto* calque = calqueForImageSource(project, id);
+        list.push_back(QVariantMap{
+            {QStringLiteral("visible"), calque == nullptr || calque->visible},
+            {QStringLiteral("locked"), calque != nullptr && calque->locked},
+        });
+    }
+    return list;
+}
+
+void ImageSpaceController::toggleLayerVisible(int index) {
+    const auto& project = studio_.session().project();
+    const auto ids = imageLayerCalqueIdsInSelectorOrder(project);
+    if (index < 0 || static_cast<std::size_t>(index) >= ids.size()) {
+        return;
+    }
+    const auto* calque = calqueForImageSource(project, ids[static_cast<std::size_t>(index)]);
+    if (calque == nullptr) {
+        return; // document à un seul calque implicite : rien à basculer
+    }
+    studio_.session().execute(
+        std::make_unique<commands::SetCalqueVisibleCommand>(calque->id, !calque->visible));
+}
+
+void ImageSpaceController::toggleLayerLocked(int index) {
+    const auto& project = studio_.session().project();
+    const auto ids = imageLayerCalqueIdsInSelectorOrder(project);
+    if (index < 0 || static_cast<std::size_t>(index) >= ids.size()) {
+        return;
+    }
+    const auto* calque = calqueForImageSource(project, ids[static_cast<std::size_t>(index)]);
+    if (calque == nullptr) {
+        return;
+    }
+    studio_.session().execute(
+        std::make_unique<commands::SetCalqueLockedCommand>(calque->id, !calque->locked));
+}
+
 QString ImageSpaceController::removeOp(int index) {
+    if (const auto refusal = lockedLayerRefusal(); !refusal.isEmpty()) {
+        return refusal;
+    }
     auto& session = studio_.session();
     const auto& ops = session.project().imageSource().ops;
     if (index < 0 || static_cast<std::size_t>(index) >= ops.size()) {
@@ -488,6 +583,9 @@ QString ImageSpaceController::removeOp(int index) {
 }
 
 QString ImageSpaceController::moveOp(int index, int delta) {
+    if (const auto refusal = lockedLayerRefusal(); !refusal.isEmpty()) {
+        return refusal;
+    }
     auto& session = studio_.session();
     const auto& ops = session.project().imageSource().ops;
     const int other = index + delta;
@@ -514,6 +612,9 @@ QString ImageSpaceController::moveOp(int index, int delta) {
 
 void ImageSpaceController::beginCrop() {
     if (!hasImage() || images_.imageWidth() <= 0) {
+        return;
+    }
+    if (!lockedLayerRefusal().isEmpty()) {
         return;
     }
     const double w = images_.imageWidth();
@@ -554,6 +655,11 @@ void ImageSpaceController::setCrop(double x, double y, double w, double h) {
 }
 
 QString ImageSpaceController::applyCrop() {
+    // Vérifié en premier : un appel direct (sans passer par beginCrop(), qui refuse déjà) doit
+    // recevoir le même refus lisible plutôt que « Aucun cadre de recadrage. ».
+    if (const auto refusal = lockedLayerRefusal(); !refusal.isEmpty()) {
+        return refusal;
+    }
     if (!cropActive_) {
         return tr("Aucun cadre de recadrage.");
     }
@@ -658,6 +764,9 @@ QString ImageSpaceController::makeTransparentAt(double sx, double sy) {
         const auto text = tr("Importez d'abord une image.");
         setMessage(text);
         return text;
+    }
+    if (const auto refusal = lockedLayerRefusal(); !refusal.isEmpty()) {
+        return refusal;
     }
     const auto hex = colorAt(sx, sy);
     if (hex.isEmpty()) {

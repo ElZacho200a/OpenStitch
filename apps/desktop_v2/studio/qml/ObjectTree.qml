@@ -17,6 +17,9 @@ Item {
     // Ancre de la sélection par plage (Maj+clic), dernier objet cliqué sans Maj.
     property string anchorId: ""
     property bool dragLayer: false
+    // Confirmation avant de supprimer un calque non vide (fusionne ses objets dans le voisin,
+    // change l'ordre de couture) : {id, name, objects}, ou null hors confirmation en attente.
+    property var pendingDeleteLayer: null
     property string dropId: "" // calque survolé pendant un glisser-déposer
     function layerDisplayIndex(id) {
         const list = editor.layers
@@ -362,9 +365,69 @@ Item {
         Controls.MenuItem { text: qsTr("Dupliquer"); onTriggered: editor.duplicateLayer(layerMenu.layerId) }
         Controls.MenuSeparator { }
         Controls.MenuItem {
+            objectName: "layerContextDelete"
             text: qsTr("Supprimer (objets gardés dans le calque voisin)")
             enabled: editor.layers.length > 1
-            onTriggered: editor.removeLayer(layerMenu.layerId)
+            onTriggered: {
+                const objects = layerMenu.layer ? (layerMenu.layer.objects || 0) : 0
+                if (objects > 0) {
+                    root.pendingDeleteLayer = { id: layerMenu.layerId,
+                                                 name: layerMenu.layer.name || "",
+                                                 objects: objects }
+                } else {
+                    editor.removeLayer(layerMenu.layerId)
+                }
+            }
+        }
+    }
+
+    // Banner de confirmation (patron de RegionTools.qml : une question en attente plutôt qu'une
+    // boîte de dialogue modale) : un calque supprimé fusionne silencieusement ses objets dans le
+    // voisin et change l'ordre de couture, sans qu'aucun autre geste ne prévienne.
+    Rectangle {
+        objectName: "layerDeleteConfirm"
+        visible: root.pendingDeleteLayer !== null
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.margins: Theme.gap
+        z: 10
+        implicitHeight: confirmColumn.implicitHeight + 16
+        color: Theme.accentSoft
+        border.color: Theme.accent
+        radius: Theme.radius
+        ColumnLayout {
+            id: confirmColumn
+            anchors.fill: parent
+            anchors.margins: 8
+            spacing: 6
+            Text {
+                Layout.fillWidth: true
+                text: root.pendingDeleteLayer
+                      ? qsTr("Supprimer « %1 » : %2 objet(s) rejoindront le calque voisin, l'ordre de couture change.")
+                            .arg(root.pendingDeleteLayer.name).arg(root.pendingDeleteLayer.objects)
+                      : ""
+                wrapMode: Text.WordWrap
+                color: Theme.foreground
+                font.pixelSize: Theme.smallSize
+                font.family: Theme.fontFamily
+            }
+            RowLayout {
+                StudioButton {
+                    objectName: "layerDeleteConfirmYes"
+                    text: qsTr("Supprimer tout de même")
+                    emphasized: true
+                    onClicked: {
+                        editor.removeLayer(root.pendingDeleteLayer.id)
+                        root.pendingDeleteLayer = null
+                    }
+                }
+                StudioButton {
+                    objectName: "layerDeleteConfirmNo"
+                    text: qsTr("Annuler")
+                    onClicked: root.pendingDeleteLayer = null
+                }
+            }
         }
     }
 

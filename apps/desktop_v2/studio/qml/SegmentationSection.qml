@@ -25,6 +25,31 @@ ColumnLayout {
     // Aperçu en direct (comme en V1) : un changement de réglage relance l'aperçu après 350 ms, sans
     // toucher au document. Désactivable pour les grosses images.
     property bool liveEnabled: true
+
+    // Sélection EXPLICITE des calques à segmenter (remplace le bouton binaire « tous les
+    // calques ») : map id(string) -> cochée ; absent = cochée par défaut (audit multicalque
+    // segmentation, P1). `imageTools.applySegmentationToLayers` fait le travail, même
+    // CompositeCommand (une étape d'annulation) que l'ancien « tous les calques ».
+    property var layerSelection: ({})
+    function isLayerChecked(id) {
+        const key = String(id)
+        return section.layerSelection[key] !== undefined ? section.layerSelection[key] : true
+    }
+    function setLayerChecked(id, value) {
+        const key = String(id)
+        const next = Object.assign({}, section.layerSelection)
+        next[key] = value
+        section.layerSelection = next
+    }
+    readonly property var selectedLayerIds: {
+        const ids = imageTools.imageLayerIds
+        const out = []
+        for (let i = 0; i < ids.length; i++) {
+            if (section.isLayerChecked(ids[i]))
+                out.push(ids[i])
+        }
+        return out
+    }
     function invalidatePreview() {
         if (imageTools.segPreviewActive || imageTools.busy)
             imageTools.cancelSegmentationPreview()
@@ -154,16 +179,37 @@ ColumnLayout {
             onClicked: imageTools.busy ? imageTools.cancelTask() : imageTools.cancelSegmentationPreview()
         }
     }
+    ColumnLayout {
+        id: layerPicker
+        objectName: "segmentLayersPicker"
+        Layout.fillWidth: true
+        spacing: 2
+        visible: imageTools.imageLayers.length > 1
+        SectionLabel { text: qsTr("CALQUES À SEGMENTER") }
+        Repeater {
+            model: imageTools.imageLayers
+            delegate: StudioCheckBox {
+                required property string modelData
+                required property int index
+                objectName: "segLayerCheck_" + index
+                Layout.fillWidth: true
+                text: modelData
+                checked: section.isLayerChecked(imageTools.imageLayerIds[index])
+                onToggled: section.setLayerChecked(imageTools.imageLayerIds[index], checked)
+                palette.windowText: Theme.foreground
+            }
+        }
+    }
     StudioButton {
-        objectName: "segmentAllLayersButton"
+        objectName: "segmentSelectedLayersButton"
         Layout.fillWidth: true
         visible: imageTools.imageLayers.length > 1
-        enabled: !imageTools.busy && !studio.busy
-        text: qsTr("Segmenter tous les calques")
-        tooltip: qsTr("Recalcule les régions de chaque image avec ces réglages. L’ensemble est annulable.")
+        enabled: !imageTools.busy && !studio.busy && section.selectedLayerIds.length > 0
+        text: qsTr("Segmenter la sélection (%1/%2)").arg(section.selectedLayerIds.length).arg(imageTools.imageLayers.length)
+        tooltip: qsTr("Recalcule les régions des calques cochés avec ces réglages. L'ensemble est annulable.")
         onClicked: {
             livePreview.stop()
-            imageTools.applySegmentationToAllLayers(section.options)
+            imageTools.applySegmentationToLayers(section.options, section.selectedLayerIds)
         }
     }
     Text {
