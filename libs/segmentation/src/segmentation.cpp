@@ -8,7 +8,9 @@
 #include <opencv2/imgproc.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstdint>
 #include <functional>
 #include <limits>
 #include <map>
@@ -22,28 +24,135 @@ namespace {
 
 constexpr std::uint8_t kAlphaOpaque = 128; // seuil : en dessous, pixel de fond
 
-// HP-QA-011/012 : `cv::kmeans` n'accepte pas de generateur : il lit `cv::theRNG()`, qui est un
-// etat PAR FIL (TLS de OpenCV >= 4, verifie dans core/src/rand.cpp et system.cpp : 4.12). Deux
-// `segment()` sur des fils distincts ne partagent donc rien. Cette garde fixe la graine pour la
-// duree de l'appel (determinisme) puis restaure l'etat du fil : le service appelant ne voit
-// pas son generateur modifie.
-class ScopedThreadRng {
-public:
-    explicit ScopedThreadRng(int seed) : saved_(cv::theRNG()) { cv::setRNGSeed(seed); }
-    ~ScopedThreadRng() { cv::theRNG() = saved_; }
-    ScopedThreadRng(const ScopedThreadRng&) = delete;
-    ScopedThreadRng& operator=(const ScopedThreadRng&) = delete;
-
-private:
-    cv::RNG saved_;
-};
-
 std::size_t slot_of(RegionId id) {
     return static_cast<std::size_t>(id.value - 1);
 }
 
 RegionId id_of_slot(std::size_t slot) {
     return RegionId{slot + 1};
+}
+
+// k-means en ARITHMÉTIQUE ENTIÈRE (centres en virgule fixe Q8), déterministe octet pour octet
+// sur toutes les plateformes. `cv::kmeans` calcule en float avec des noyaux SIMD choisis à
+// l'exécution (SSE/AVX2/AVX-512) : l'ordre des sommes, donc les égalités départagées, diffère
+// entre machines, et les étiquettes changeaient entre Windows et Linux (empreintes figées du
+// lissage, HP-PERF-015). Ici : k-means++ avec un générateur splitmix64 à graine fixe, distances
+// et moyennes entières, égalités départagées par l'indice le plus bas, 3 essais, 20 itérations
+// au plus, arrêt quand aucun centre ne bouge de plus d'une unité Lab.
+using LabQ8 = std::array<std::int64_t, 3>;
+constexpr std::int64_t kQ8 = 256;
+
+std::uint64_t splitmix64(std::uint64_t& state) {
+    std::uint64_t z = (state += 0x9E3779B97F4A7C15ull);
+    z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ull;
+    z = (z ^ (z >> 27)) * 0x94D049BB133111EBull;
+    return z ^ (z >> 31);
+}
+
+std::int64_t dist_q8(const LabQ8& a, const LabQ8& b) {
+    const std::int64_t d0 = a[0] - b[0];
+    const std::int64_t d1 = a[1] - b[1];
+    const std::int64_t d2 = a[2] - b[2];
+    return d0 * d0 + d1 * d1 + d2 * d2;
+}
+
+int nearest_center(const LabQ8& p, const std::vector<LabQ8>& centers, std::int64_t* outDist) {
+    int best = 0;
+    std::int64_t bestDist = std::numeric_limits<std::int64_t>::max();
+    for (std::size_t c = 0; c < centers.size(); ++c) {
+        const std::int64_t d = dist_q8(p, centers[c]);
+        if (d < bestDist) {
+            bestDist = d;
+            best = static_cast<int>(c);
+        }
+    }
+    if (outDist != nullptr) {
+        *outDist = bestDist;
+    }
+    return best;
+}
+
+std::vector<LabQ8> deterministic_kmeans(const std::vector<LabQ8>& samples, int k) {
+    constexpr int kAttempts = 3;
+    constexpr int kMaxIter = 20;
+    const std::size_t n = samples.size();
+    std::uint64_t rng = 12345;
+    std::vector<LabQ8> bestCenters;
+    std::int64_t bestCompactness = std::numeric_limits<std::int64_t>::max();
+    std::vector<int> labels(n, 0);
+    std::vector<std::int64_t> minDist(n, 0);
+    for (int attempt = 0; attempt < kAttempts; ++attempt) {
+        // k-means++ : premier centre uniforme, suivants tirés proportionnellement à D².
+        std::vector<LabQ8> centers;
+        centers.reserve(static_cast<std::size_t>(k));
+        centers.push_back(samples[splitmix64(rng) % n]);
+        for (std::size_t i = 0; i < n; ++i) {
+            minDist[i] = dist_q8(samples[i], centers[0]);
+        }
+        while (static_cast<int>(centers.size()) < k) {
+            std::uint64_t total = 0;
+            for (const auto d : minDist) {
+                total += static_cast<std::uint64_t>(d);
+            }
+            std::size_t pick = 0;
+            if (total == 0) {
+                pick = splitmix64(rng) % n;
+            } else {
+                std::uint64_t r = splitmix64(rng) % total;
+                while (pick + 1 < n && r >= static_cast<std::uint64_t>(minDist[pick])) {
+                    r -= static_cast<std::uint64_t>(minDist[pick]);
+                    ++pick;
+                }
+            }
+            centers.push_back(samples[pick]);
+            for (std::size_t i = 0; i < n; ++i) {
+                minDist[i] = std::min(minDist[i], dist_q8(samples[i], centers.back()));
+            }
+        }
+        // Lloyd. Affectation parallèle (chaque échantillon écrit sa case), sommes séquentielles.
+        std::int64_t compactness = 0;
+        for (int iter = 0; iter < kMaxIter; ++iter) {
+            parallel_for(n, [&](std::size_t i) {
+                labels[i] = nearest_center(samples[i], centers, &minDist[i]);
+            });
+            std::vector<LabQ8> sums(static_cast<std::size_t>(k), LabQ8{0, 0, 0});
+            std::vector<std::int64_t> counts(static_cast<std::size_t>(k), 0);
+            for (std::size_t i = 0; i < n; ++i) {
+                const auto c = static_cast<std::size_t>(labels[i]);
+                for (int ch = 0; ch < 3; ++ch) {
+                    sums[c][static_cast<std::size_t>(ch)] +=
+                        samples[i][static_cast<std::size_t>(ch)];
+                }
+                ++counts[c];
+            }
+            std::int64_t maxShift = 0;
+            for (std::size_t c = 0; c < centers.size(); ++c) {
+                if (counts[c] == 0) {
+                    continue; // centre vide : conservé tel quel
+                }
+                LabQ8 next{};
+                for (std::size_t ch = 0; ch < 3; ++ch) {
+                    // Moyenne arrondie au plus proche (valeurs positives : Lab 8 bits en Q8).
+                    next[ch] = (sums[c][ch] + counts[c] / 2) / counts[c];
+                }
+                maxShift = std::max(maxShift, dist_q8(next, centers[c]));
+                centers[c] = next;
+            }
+            if (maxShift <= kQ8 * kQ8) {
+                break;
+            }
+        }
+        for (std::size_t i = 0; i < n; ++i) {
+            std::int64_t d = 0;
+            nearest_center(samples[i], centers, &d);
+            compactness += d;
+        }
+        if (compactness < bestCompactness) {
+            bestCompactness = compactness;
+            bestCenters = centers;
+        }
+    }
+    return bestCenters;
 }
 
 // Composantes connexes (4-connexité) des pixels de `id` : `components` prend la valeur du numéro
@@ -203,7 +312,7 @@ Result<Segmentation> segment(const image::Image& img, const SegmentationOptions&
     // k-means déterministe sur un échantillon de pixels opaques.
     constexpr std::size_t kMaxSamples = 20'000;
     const std::size_t stride = std::max<std::size_t>(1, opaqueCount / kMaxSamples);
-    std::vector<cv::Vec3f> samplesVec;
+    std::vector<LabQ8> samplesVec;
     std::size_t seen = 0;
     for (std::size_t i = 0; i < pixelCount; ++i) {
         if (!opaque[i]) {
@@ -213,27 +322,20 @@ Result<Segmentation> segment(const image::Image& img, const SegmentationOptions&
             const auto* px =
                 lab.ptr<std::uint8_t>(static_cast<int>(i / static_cast<std::size_t>(img.width)),
                                       static_cast<int>(i % static_cast<std::size_t>(img.width)));
-            samplesVec.emplace_back(px[0], px[1], px[2]);
+            samplesVec.push_back(LabQ8{px[0] * kQ8, px[1] * kQ8, px[2] * kQ8});
         }
     }
     const int k = std::min<int>(options.max_colors, static_cast<int>(samplesVec.size()));
-    cv::Mat samples(static_cast<int>(samplesVec.size()), 3, CV_32F, samplesVec.data());
-    cv::Mat kmLabels;
-    cv::Mat centers;
-    {
-        const ScopedThreadRng rng(12345);
-        cv::kmeans(samples, k, kmLabels,
-                   cv::TermCriteria(cv::TermCriteria::EPS + cv::TermCriteria::MAX_ITER, 20, 1.0), 3,
-                   cv::KMEANS_PP_CENTERS, centers);
-    }
+    const std::vector<LabQ8> centers = deterministic_kmeans(samplesVec, k);
 
-    // Couleur RGB représentative de chaque centre Lab.
+    // Couleur RGB représentative de chaque centre Lab (arrondi entier au plus proche).
     cv::Mat centersLab8(1, k, CV_8UC3);
     for (int c = 0; c < k; ++c) {
         auto* px = centersLab8.ptr<std::uint8_t>(0, c);
-        px[0] = static_cast<std::uint8_t>(std::lround(centers.at<float>(c, 0)));
-        px[1] = static_cast<std::uint8_t>(std::lround(centers.at<float>(c, 1)));
-        px[2] = static_cast<std::uint8_t>(std::lround(centers.at<float>(c, 2)));
+        for (std::size_t ch = 0; ch < 3; ++ch) {
+            px[ch] = static_cast<std::uint8_t>(
+                (centers[static_cast<std::size_t>(c)][ch] + kQ8 / 2) / kQ8);
+        }
     }
     cv::Mat centersRgb;
     cv::cvtColor(centersLab8, centersRgb, cv::COLOR_Lab2RGB);
@@ -253,19 +355,8 @@ Result<Segmentation> segment(const image::Image& img, const SegmentationOptions&
                 continue;
             }
             const std::uint8_t* px = labRow + col * 3;
-            int best = 0;
-            float bestDist = std::numeric_limits<float>::max();
-            for (int c = 0; c < k; ++c) {
-                const float dl = centers.at<float>(c, 0) - static_cast<float>(px[0]);
-                const float da = centers.at<float>(c, 1) - static_cast<float>(px[1]);
-                const float db = centers.at<float>(c, 2) - static_cast<float>(px[2]);
-                const float d = dl * dl + da * da + db * db;
-                if (d < bestDist) {
-                    bestDist = d;
-                    best = c;
-                }
-            }
-            out[col] = best;
+            out[col] =
+                nearest_center(LabQ8{px[0] * kQ8, px[1] * kQ8, px[2] * kQ8}, centers, nullptr);
         }
     });
 
