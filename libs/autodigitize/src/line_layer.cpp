@@ -180,17 +180,15 @@ std::vector<char> close_within(const std::vector<char>& m, const std::vector<cha
 
 } // namespace
 
-Result<AutoResult> auto_digitize_with_lines(const segmentation::Segmentation& seg,
-                                            const image::Image& source, IdGenerator<ObjectId>& ids,
-                                            const AutoOptions& options,
-                                            const LineLayerOptions& lines,
-                                            const ContourOptions& contour_options,
-                                            LineLayerMetrics* metrics) {
+LineworkPlan prepare_linework(const segmentation::Segmentation& seg, const image::Image& source,
+                              Millimeters mm_per_px, const LineLayerOptions& lines) {
+    LineworkPlan plan;
     if (!lines.enabled) {
-        return auto_digitize(seg, ids, options);
+        plan.completed_fills = seg;
+        return plan;
     }
     // Largeur d'ouverture en pixels : une partie plus étroite que ce diamètre est un trait.
-    const double px_mm = std::max(1e-6, options.mm_per_px.value);
+    const double px_mm = std::max(1e-6, mm_per_px.value);
     const int diameter =
         std::max(2, static_cast<int>(std::lround(lines.max_line_width_mm / px_mm)));
     std::array<std::uint8_t, 3> lineRgb{10, 10, 20};
@@ -242,7 +240,8 @@ Result<AutoResult> auto_digitize_with_lines(const segmentation::Segmentation& se
         }
     }
     if (mask.size() != seg.labels.size() || (linePixels == 0 && barsPixels == 0)) {
-        return auto_digitize(seg, ids, options); // aucun trait sombre : rien à séparer
+        plan.completed_fills = seg; // aucun trait sombre : rien à séparer
+        return plan;
     }
     // Pixels à rendre aux zones voisines : traits ET barres.
     std::vector<char> fillMask = mask;
@@ -410,6 +409,63 @@ Result<AutoResult> auto_digitize_with_lines(const segmentation::Segmentation& se
         }
     }
 
+    // Barres : une région d'une seule couleur.
+    if (barsPixels > 0) {
+        segmentation::Segmentation& barSeg = plan.bars;
+        barSeg.width = seg.width;
+        barSeg.height = seg.height;
+        barSeg.labels.assign(seg.labels.size(), 0);
+        segmentation::Region barRegion;
+        barRegion.id = RegionId{1};
+        barRegion.rgb = lineRgb;
+        barRegion.pixel_count = barsPixels;
+        barSeg.region_slots.push_back(barRegion);
+        for (std::size_t i = 0; i < barsMask.size(); ++i) {
+            if (barsMask[i] != 0) {
+                barSeg.labels[i] = 1;
+            }
+        }
+    }
+    if (stitchPixels > 0) {
+        plan.strokes = std::move(lineSeg);
+    }
+    for (const auto& ring : rings) {
+        plan.rings.push_back(
+            LineworkRing{ring.cx, ring.cy, ring.a, ring.b, ring.angle, ring.width});
+    }
+    plan.has_linework = true;
+    plan.completed_fills = std::move(fills);
+    plan.line_rgb = lineRgb;
+    plan.line_lightness = lineLightness;
+    plan.stroke_pixels = stitchPixels;
+    plan.bar_pixels = barsPixels;
+    plan.reassigned_pixels = reassigned;
+    plan.separation_pixels = separationPixels;
+    plan.short_fragment_pixels = shortPixels;
+    return plan;
+}
+
+Result<AutoResult> auto_digitize_with_lines(const segmentation::Segmentation& seg,
+                                            const image::Image& source, IdGenerator<ObjectId>& ids,
+                                            const AutoOptions& options,
+                                            const LineLayerOptions& lines,
+                                            const ContourOptions& contour_options,
+                                            LineLayerMetrics* metrics) {
+    if (!lines.enabled) {
+        return auto_digitize(seg, ids, options);
+    }
+    const LineworkPlan plan = prepare_linework(seg, source, options.mm_per_px, lines);
+    if (!plan.has_linework) {
+        return auto_digitize(seg, ids, options);
+    }
+    const double px_mm = std::max(1e-6, options.mm_per_px.value);
+    const std::array<std::uint8_t, 3> lineRgb = plan.line_rgb;
+    const std::size_t barsPixels = plan.bar_pixels;
+    const std::size_t stitchPixels = plan.stroke_pixels;
+    const segmentation::Segmentation& fills = plan.completed_fills;
+    const segmentation::Segmentation& lineSeg = plan.strokes;
+    const std::vector<LineworkRing>& rings = plan.rings;
+
     auto fillResult = auto_digitize(fills, ids, options);
     if (!fillResult) {
         return fillResult;
@@ -434,20 +490,7 @@ Result<AutoResult> auto_digitize_with_lines(const segmentation::Segmentation& se
 
     // Barres : une région d'une seule couleur, cousue en bandes (satin si la couverture le permet).
     if (barsPixels > 0) {
-        segmentation::Segmentation barSeg;
-        barSeg.width = seg.width;
-        barSeg.height = seg.height;
-        barSeg.labels.assign(seg.labels.size(), 0);
-        segmentation::Region barRegion;
-        barRegion.id = RegionId{1};
-        barRegion.rgb = lineRgb;
-        barRegion.pixel_count = barsPixels;
-        barSeg.region_slots.push_back(barRegion);
-        for (std::size_t i = 0; i < barsMask.size(); ++i) {
-            if (barsMask[i] != 0) {
-                barSeg.labels[i] = 1;
-            }
-        }
+        const segmentation::Segmentation& barSeg = plan.bars;
         AutoOptions bo = options;
         bo.satin_bands = true;
         bo.skip_largest_region = false;
@@ -540,13 +583,13 @@ Result<AutoResult> auto_digitize_with_lines(const segmentation::Segmentation& se
     if (metrics != nullptr) {
         metrics->ring_objects = out.embroideries.size() - beforeRings;
         metrics->line_pixels = stitchPixels;
-        metrics->line_lightness = lineLightness;
+        metrics->line_lightness = plan.line_lightness;
         metrics->line_rgb = lineRgb;
-        metrics->separation_pixels = separationPixels;
+        metrics->separation_pixels = plan.separation_pixels;
         metrics->bar_pixels = barsPixels;
-        metrics->short_fragment_pixels = shortPixels;
+        metrics->short_fragment_pixels = plan.short_fragment_pixels;
         metrics->bar_objects = barObjectsEnd - fillObjects;
-        metrics->reassigned_pixels = reassigned;
+        metrics->reassigned_pixels = plan.reassigned_pixels;
         metrics->contours = cm;
         metrics->line_objects = beforeRings - barObjectsEnd;
     }
