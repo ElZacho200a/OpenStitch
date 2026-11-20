@@ -179,6 +179,11 @@ private:
         QTRY_VERIFY_WITH_TIMEOUT(rig.canvas->width() > 0 && rig.canvas->height() > 0, 5'000);
         rig.canvas->zoomToScale(40.0);
         rig.canvas->centerOnScene(0.0, 0.0);
+        // Changer d'espace remet les outils à la Sélection en différé (Qt.callLater, SpaceHost) :
+        // vider la file d'événements avant de choisir un outil, sinon la remise à zéro tombe au
+        // milieu du geste suivant.
+        QCoreApplication::sendPostedEvents();
+        QCoreApplication::processEvents();
     }
     // Pixel fenêtre d'un point de scène (mm, Y vers le bas).
     QPoint at(Rig& rig, double xMm, double yMm) {
