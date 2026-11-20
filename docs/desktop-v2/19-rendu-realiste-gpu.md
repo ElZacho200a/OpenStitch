@@ -152,4 +152,25 @@ sortait gris : un fil seul diffuse moins qu'une chevelure). Brins torsades : hel
 Mesure Nyphea (95 072 brins, 3840 x 2160, 128 spp, inclinaison 35) : rayonne 16,5 s,
 polyester 15,9 s, coton 22,6 s (avant : 6,3 s, tube lisse principled). Capture
 `captures/raytrace-nyphea-4k-fil-rayonne.png`.
+Eclaircissement (20/11/2026) : ce premier reglage sortait ~15 % plus sombre que l'ancien shader
+(moyenne RVB d'une zone de Nyphea : 105-111 contre 125-131). Causes mesurees : les creux entre
+brins (~10 niveaux) et la perte d'energie du modele « cheveu » (~10 niveaux) ; augmenter la part
+diffuse assombrissait encore. Correctifs : brins plus gros et plus serres (rayon 0,72, decalage
+0,30), part mate 20 / 35 / 50 %, lumiere 2,2 -> 2,4. Resultat 113-130 selon la matiere, couleurs
+saturees (absorption x0,35 gardee : x0,05 eclaircit mais delave).
+
+Tous les reglages sont modifiables (script et fenetre Rendu photo du Studio) ; la matiere du fil
+est un prereglage qui remplit brillance, largeur du reflet, part mate et brins :
+| Studio | Script | Defaut | Bornes |
+|---|---|---|---|
+| Brillance du fil (rugosite) | `--thread-gloss` | selon matiere | 0,02-1 |
+| Largeur du reflet | `--thread-spread` | selon matiere | 0,05-1 |
+| Part mate | `--thread-matte` | selon matiere | 0-1 |
+| Saturation des couleurs | `--thread-saturation` | 0,35 | 0-2 |
+| Brins torsades | `--thread-plies` | selon matiere | 1-4 |
+| Pas de torsion | `--twist-pitch-mm` | 0 = 5 rayons | 0-5 mm |
+| Relief des superpositions | `--relief` | 0,75 diametre | 0-2 |
+| Lumiere | `--light` | 2,4 | 0,1-10 |
+Bornes appliquees par le controleur et par le script. Test QTest : bornage de `--thread-plies`,
+`--relief`, `--light` transmis au moteur factice.
 Non fait : duvet (fibres libres) et variation de teinte entre brins ; reglages a l'oeil.

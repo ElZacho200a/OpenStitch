@@ -122,26 +122,26 @@ def fabric_bsdf(mi, kind: str, rgb: list[float], fw: float, fh: float) -> dict:
 # Types de fil : rugosités du modèle « cheveu » de Mitsuba (reflet allongé dans le sens du
 # fil), nombre de brins torsadés, et part diffuse (fibres mates, duvet).
 THREAD_TYPES = {
-    "rayonne": {"beta_m": 0.12, "beta_n": 0.30, "plies": 2, "matte": 0.35},
-    "polyester": {"beta_m": 0.22, "beta_n": 0.40, "plies": 2, "matte": 0.5},
-    "coton": {"beta_m": 0.45, "beta_n": 0.70, "plies": 3, "matte": 0.75},
+    "rayonne": {"beta_m": 0.12, "beta_n": 0.30, "plies": 2, "matte": 0.2},
+    "polyester": {"beta_m": 0.22, "beta_n": 0.40, "plies": 2, "matte": 0.35},
+    "coton": {"beta_m": 0.45, "beta_n": 0.70, "plies": 3, "matte": 0.5},
 }
 
 
-def hair_sigma_a(rgb_linear: list[float], beta_n: float) -> list[float]:
+def hair_sigma_a(rgb_linear: list[float], beta_n: float, saturation: float = 0.35) -> list[float]:
     """Absorption donnant à peu près la couleur voulue après diffusion multiple dans la fibre
     (inversion de Chiang et al. 2016, utilisée par PBRT pour les cheveux colorés)."""
     d = (5.969 - 0.215 * beta_n + 2.532 * beta_n ** 2 - 10.73 * beta_n ** 3
          + 5.574 * beta_n ** 4 + 0.245 * beta_n ** 5)
     # Un fil posé seul diffuse moins qu'une chevelure épaisse : absorption réduite (mesuré à
     # l'œil sur Nyphéa : le blanc restait gris sans ce facteur).
-    return [0.35 * (math.log(max(c, 1e-4)) / d) ** 2 for c in rgb_linear]
+    return [saturation * (math.log(max(c, 1e-4)) / d) ** 2 for c in rgb_linear]
 
 
-def thread_bsdf(rgb: tuple[int, int, int], kind: str) -> dict:
-    t = THREAD_TYPES[kind]
+def thread_bsdf(rgb: tuple[int, int, int], t: dict) -> dict:
+    """t : beta_m, beta_n, matte, saturation (voir thread_settings)."""
     lin = [srgb_to_linear(c) for c in rgb]
-    hair = {"type": "hair", "sigma_a": {"type": "rgb", "value": hair_sigma_a(lin, t["beta_n"])},
+    hair = {"type": "hair", "sigma_a": {"type": "rgb", "value": hair_sigma_a(lin, t["beta_n"], t["saturation"])},
             "longitudinal_roughness": t["beta_m"], "azimuthal_roughness": t["beta_n"],
             "scale_tilt": 2.0}
     if t["matte"] <= 0.0:
@@ -152,7 +152,8 @@ def thread_bsdf(rgb: tuple[int, int, int], kind: str) -> dict:
 
 
 def write_curves(segments, radius: float, folder: Path,
-                 plies: int = 1) -> dict[tuple[int, int, int], Path]:
+                 plies: int = 1, pitch_mm: float = 0.0,
+                 relief: float = 0.75) -> dict[tuple[int, int, int], Path]:
     """Un fichier de courbes linéaires par couleur (format Mitsuba : x y z rayon ; ligne vide =
     nouvelle courbe). Repère Mitsuba : X droite, Y haut, Z vers la caméra (tissu en z = 0)."""
     import numpy as np
@@ -163,7 +164,7 @@ def write_curves(segments, radius: float, folder: Path,
     # s'empilent pas l'une sur l'autre : seul un vrai recouvrement fait monter le relief.
     cell = radius / 2.0
     stamp_half = radius * 0.4
-    pack = 0.75 * 2.0 * radius  # épaisseur ajoutée par couche (le fil s'écrase)
+    pack = relief * 2.0 * radius  # épaisseur ajoutée par couche (le fil s'écrase)
     sink = radius * 0.35        # le fil entre dans le tissu au point d'aiguille
     xs = [v for s in segments for v in (s[0], s[2])] or [0.0]
     ys = [v for s in segments for v in (s[1], s[3])] or [0.0]
@@ -197,9 +198,9 @@ def write_curves(segments, radius: float, folder: Path,
         else:
             # Brins torsadés : chaque brin suit une hélice autour de l'axe du fil (pas fixe en
             # mm, phase continue le long du fil), ce qui donne les rayures en diagonale.
-            pitch = radius * 5.0
-            ply_r = radius * 0.62
-            off = radius * 0.40
+            pitch = pitch_mm if pitch_mm > 0 else radius * 5.0
+            ply_r = radius * 0.72
+            off = radius * 0.30
             m = max(4, int(length / (pitch / 8.0)) + 1)
             u = np.linspace(0.0, 1.0, m)
             zc = np.interp(u, ts, z)
@@ -241,10 +242,36 @@ def main() -> int:
                     help="armure du tissu (relief et grain simulés)")
     ap.add_argument("--thread-type", default="rayonne", choices=sorted(THREAD_TYPES),
                     help="matière du fil : rayonne (brillante), polyester, coton (mat)")
+    # Réglages fins du fil : par défaut ceux de --thread-type, chacun remplaçable.
+    ap.add_argument("--thread-gloss", type=float, default=None,
+                    help="rugosité le long du fil (0,02 = très brillant, 1 = mat)")
+    ap.add_argument("--thread-spread", type=float, default=None,
+                    help="rugosité autour du fil (largeur du reflet, 0,05-1)")
+    ap.add_argument("--thread-matte", type=float, default=None, help="part diffuse 0-1")
+    ap.add_argument("--thread-saturation", type=float, default=0.35,
+                    help="absorption de la fibre : plus haut = couleurs plus saturées et sombres")
+    ap.add_argument("--thread-plies", type=int, default=None, help="nombre de brins torsadés 1-4")
+    ap.add_argument("--twist-pitch-mm", type=float, default=0.0,
+                    help="pas de torsion des brins en mm (0 = 5 rayons de fil)")
+    ap.add_argument("--relief", type=float, default=0.75,
+                    help="épaisseur ajoutée par couche de fil, en diamètres (0 = à plat)")
+    ap.add_argument("--light", type=float, default=2.4, help="intensité de la lumière principale")
     ap.add_argument("--background", default="200,200,204", help="couleur du fond r,g,b")
     ap.add_argument("--border", type=float, default=0.12,
                     help="fond visible autour du tissu, en fraction de sa taille (défaut 0,12)")
     args = ap.parse_args()
+
+    preset = THREAD_TYPES[args.thread_type]
+    pick = lambda v, d: d if v is None else v  # noqa: E731
+    thread = {
+        "beta_m": min(1.0, max(0.02, pick(args.thread_gloss, preset["beta_m"]))),
+        "beta_n": min(1.0, max(0.05, pick(args.thread_spread, preset["beta_n"]))),
+        "matte": min(1.0, max(0.0, pick(args.thread_matte, preset["matte"]))),
+        "saturation": min(2.0, max(0.0, args.thread_saturation)),
+        "plies": min(4, max(1, pick(args.thread_plies, preset["plies"]))),
+    }
+    args.relief = min(2.0, max(0.0, args.relief))
+    args.light = min(10.0, max(0.1, args.light))
 
     import mitsuba as mi  # importé ici : --help sans Mitsuba installé
 
@@ -281,7 +308,8 @@ def main() -> int:
 
     t0 = time.perf_counter()
     with tempfile.TemporaryDirectory() as tmp:
-        files = write_curves(segments, radius, Path(tmp), THREAD_TYPES[args.thread_type]["plies"])
+        files = write_curves(segments, radius, Path(tmp), thread["plies"], args.twist_pitch_mm,
+                             args.relief)
         T = mi.ScalarTransform4f
         distance = max(w, h) * 4.0
         tilt = math.radians(args.tilt)
@@ -312,7 +340,7 @@ def main() -> int:
             "sensor": sensor,
             # Lumière haut-gauche (comme libs/stitch_render/src/raster.cpp) + ciel doux.
             "sun": {"type": "directional", "direction": [0.64, -0.77, -0.9],
-                    "irradiance": {"type": "rgb", "value": 2.2}},
+                    "irradiance": {"type": "rgb", "value": args.light}},
             "sky": {"type": "constant", "radiance": {"type": "rgb", "value": 0.45}},
             # Tissu (rectangle [-1, 1]² mis à l'échelle de la demi-taille), puis fond plus bas.
             "fabric": {
@@ -330,7 +358,7 @@ def main() -> int:
             scene[f"fil_{k}"] = {
                 "type": "linearcurve",
                 "filename": str(path),
-                "bsdf": thread_bsdf(colour, args.thread_type),
+                "bsdf": thread_bsdf(colour, thread),
             }
         loaded = mi.load_dict(scene)
         # Mitsuba lance au plus ~2^32 échantillons par appel : au-delà (8K, beaucoup de spp), on
