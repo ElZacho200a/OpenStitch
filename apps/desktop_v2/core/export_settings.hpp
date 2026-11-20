@@ -30,6 +30,9 @@ struct ExportOptions {
     bool splitLongStitches{false};
     double maxStitchMm{7.0};
     bool autoJoin{false};
+    // Ponts cachés (HP-SEQ-006.a) : une coupe devient un saut ou un trajet cousu PROUVÉ recouvert
+    // par des points cousus ensuite ; la couche visible n'est jamais modifiée.
+    bool hiddenTravel{true};
     std::optional<PointMm> designStart;
     std::optional<PointMm> designEnd;
 };

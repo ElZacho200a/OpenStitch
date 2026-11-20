@@ -118,10 +118,10 @@ Mêmes valeurs par défaut que le dialogue **Numérisation automatique** du bure
 | `--skip-background` | `auto` | `auto`, `yes` ou `no` : ignorer la plus grande région (le fond). `auto` : seulement si c'est un fond quasi blanc qui encadre le motif. Les anciennes valeurs `-1`, `0`, `1` restent acceptées. |
 | `--trim-threshold MM` | 3 | Coupe au-delà de ce déplacement |
 | `--lock` | `backforth` | Point d'arrêt : `none`, `backforth`, `triangle` ou `zigzag` |
-| `--hidden-travel` | désactivé | Remplace les coupes par des sauts ou des ponts cousus prouvés cachés sous des points cousus plus tard (passe finale, voir *Moteur de points*) ; affiche un bilan |
+| `--hidden-travel` / `--no-hidden-travel` | activé (depuis le 2026-11-20) | Remplace les coupes par des sauts ou des ponts cousus prouvés cachés sous des points cousus plus tard (passe finale, voir *Moteur de points*) ; affiche un bilan. `--no-hidden-travel` garde toutes les coupes |
 | `--hidden-travel-levels LISTE` | `all` | Avec `--hidden-travel` : niveaux parmi `between` (ponts entre objets), `within` (liens dans un objet), `underlay` (ordre de la sous-couche), séparés par des virgules ; `regions` (mode avancé, plus invasif : ordre des régions d'une même couleur) n'est jamais inclus dans `all` |
 | `--hidden-travel-same-colour` | désactivé | Avec `--hidden-travel` : une surface déjà cousue du même fil compte aussi comme cachée |
-| `--hidden-travel-max MM` | 15 | Avec `--hidden-travel` : longueur maximale d'un pont |
+| `--hidden-travel-max MM` | 50 | Avec `--hidden-travel` : longueur maximale d'un pont (0 à 100) |
 | `--mode` | `shapes` | `shapes` : formes pleines ; `contours` : dessin au trait (lignes médianes en point droit) ; `stipple` : semis de points relié en un trait ; `blend` (expérimental) : zones de fondu, chaque zone cousue en fondu de fils mélangés (voir [Auto-numérisation](auto-numerisation.md), « Zones de fondu ») |
 | `--blend-threads N` | 12 | Mode blend : fils de la palette globale de mélange (2..16) |
 | `--blend-per-zone N` | 3 | Mode blend : fils mélangés au plus par zone (1..4) |

@@ -160,8 +160,8 @@ Statut : **banc posé, résultats non discriminants**. Aucune conclusion « meil
 - OpenStitch (`libs/stitch_generation/src/hidden_travel.cpp`) : grille rastérisant les segments
   `TopStitch` ; un écart après la commande `g` ne s'appuie que sur les cellules recouvertes plus tard
   (indice > g) ; refus motivés (`TooLong`, `NoCoverAtEnd`, `NoPath`) ; option
-  `allow_same_color_surface` (surface déjà cousue de même fil). Désactivé par défaut
-  (`finishing.hidden_travel.enabled = false`). Les deux extrémités de l'écart doivent reposer sur un
+  `allow_same_color_surface` (surface déjà cousue de même fil). Activé par défaut pour un nouveau
+  projet depuis le 2026-11-20 (désactivé auparavant). Les deux extrémités de l'écart doivent reposer sur un
   recouvrement ultérieur.
 
 ### Protocole

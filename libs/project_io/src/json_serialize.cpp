@@ -2715,7 +2715,9 @@ Result<document::Project> project_from_json(const json& j) {
             f.max_stitch_length = Micrometers{
                 std::clamp(fj.value("maxStitchLength", d.max_stitch_length.value), 1'000, 12'100)};
             f.auto_join = fj.value("autoJoin", d.auto_join);
-            // HP-SEQ-006.a : absent d'un projet antérieur -> désactivé (défauts du modèle). Bornes
+            // HP-SEQ-006.a : une valeur enregistrée, `enabled: false` compris, est conservée ;
+            // absent d'un projet antérieur -> ponts désactivés (même fichier machine qu'avant),
+            // bien que le défaut d'un NOUVEAU projet soit activé depuis le 2026-11-20. Bornes
             // cohérentes avec la grille de preuve (largeur de fil >= 100 µm, longueurs positives).
             if (fj.contains("hiddenTravel")) {
                 const auto& hj = fj.at("hiddenTravel");
@@ -2740,6 +2742,8 @@ Result<document::Project> project_from_json(const json& j) {
                 h.reorder_regions = hj.value("reorderRegions", hd.reorder_regions);
                 h.underlap =
                     Micrometers{std::clamp(hj.value("underlap", hd.underlap.value), 0, 3'000)};
+            } else {
+                f.hidden_travel.enabled = false;
             }
             if (fj.contains("designStart")) {
                 f.design_start = vec_from_json(fj.at("designStart"));

@@ -66,6 +66,7 @@ associée** listant les fichiers, classes, fonctions et tests réels.
 - [Traitement d'image](image-processing.md)
 - [Segmentation](segmentation.md)
 - [Vectorisation](vectorization.md)
+- [Lignes ouvertes](lignes-ouvertes.md)
 - [Objets de broderie](embroidery-objects.md)
 - [Numérisation automatique](auto-numerisation.md)
 - [Génération de points](stitch-generation.md) et
