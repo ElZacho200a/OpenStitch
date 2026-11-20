@@ -123,10 +123,6 @@ public:
     [[nodiscard]] const std::shared_ptr<const VectorLayer>& vectorLayer() const {
         return vectorLayer_;
     }
-    // Identifiants des formes/broderies hors du calque actif (espaces Vecteurs / Points) : un
-    // lavis translucide les atténue au rendu, sans toucher la sélection ni retrianguler. Appelé
-    // par le contrôleur d'espace, jamais par QML (pas de logique métier dans l'IHM).
-    void setDimmedShapeIds(std::vector<std::uint64_t> ids);
     // État de vue transmissible entre espaces : {centerX, centerY} en mm de SCÈNE (Y vers le
     // bas) et {zoom} en px/mm. restoreViewState() est différé jusqu'à ce que le canevas ait une
     // taille et supprime l'ajustement automatique initial.
@@ -198,8 +194,6 @@ private:
     // Pure presentation hover; never mutates DocumentSession or the stitch model.
     std::optional<std::uint64_t> hoveredObjectId_;
     std::uint64_t selectionRevision_{0};
-    std::vector<std::uint64_t> dimmedShapeIds_;
-    std::uint64_t dimmedRevision_{0};
     std::shared_ptr<const CanvasOverlays> overlays_;
     std::uint64_t overlayRevision_{0};
     SourceImageView sourceImage_;

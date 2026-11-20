@@ -760,8 +760,8 @@ public:
     CanvasRenderResult synchronize(QSGNode* previous, const CanvasRenderState& state,
                                    QQuickWindow& window) const override {
         auto* root = previous ? static_cast<GeometryRoot*>(previous) : new GeometryRoot;
-        const auto dirty = root->resources.observe(state.scene, state.selectionRevision,
-                                                   state.camera.revision(), state.dimmedRevision);
+        const auto dirty =
+            root->resources.observe(state.scene, state.selectionRevision, state.camera.revision());
         const bool overlayDirty = root->overlayRevision != state.overlayRevision;
         const bool layersChanged = root->displayedLayers != state.layers;
         const bool vectorChanged = root->displayedVector != state.vectorLayer;
@@ -844,42 +844,10 @@ public:
             root->world->setMatrix(matrix);
             root->layers->setMatrix(matrix);
         }
-        if (dirty.selection || dirty.dimmed || dirty.camera || dirty.geometry || overlayDirty ||
-            layersChanged) {
+        if (dirty.selection || dirty.camera || dirty.geometry || overlayDirty || layersChanged) {
             clearChildren(*root->overlay);
             Vertices screen;
             appendScreenOverlays(screen, overlays, state);
-            // Atténuation des formes hors du calque actif : un lavis clair translucide, posé
-            // avant le bandeau de sélection pour qu'une forme sélectionnée reste bien visible même
-            // si son calque n'est pas le calque actif.
-            if (!state.dimmedIds.empty() && (state.scene || state.vectorLayer)) {
-                const QColor wash(246, 247, 250);
-                for (const auto id : state.dimmedIds) {
-                    std::optional<stitch_render::RectMm> bounds;
-                    if (state.scene) {
-                        bounds = state.scene->boundsOf(id);
-                    }
-                    if (!bounds && state.vectorLayer) {
-                        for (const auto& shape : state.vectorLayer->shapes()) {
-                            if (shape.id == id) {
-                                bounds = stitch_render::RectMm{
-                                    shape.bounds.left(), shape.bounds.top(), shape.bounds.right(),
-                                    shape.bounds.bottom()};
-                                break;
-                            }
-                        }
-                    }
-                    if (bounds) {
-                        const auto a = state.camera.worldToScreen({bounds->x0, bounds->y0});
-                        const auto b = state.camera.worldToScreen({bounds->x1, bounds->y1});
-                        // translucentRectangle(QColor, int) attend une couleur premultipliée par
-                        // alpha : passer alpha=150 direct dans un QColor (comme le reste de ce
-                        // fichier) blanchirait le lavis au lieu de l'atténuer.
-                        translucentRectangle(screen, std::min(a.x, b.x), std::min(a.y, b.y),
-                                             std::max(a.x, b.x), std::max(a.y, b.y), wash, 110);
-                    }
-                }
-            }
             if (state.scene && !state.selection.empty()) {
                 for (const auto& target : state.selection) {
                     if (target.kind != TargetKind::EmbroideryObject) {
@@ -967,9 +935,9 @@ public:
     CanvasRenderResult synchronize(QSGNode* previous, const CanvasRenderState& state,
                                    QQuickWindow& window) const override {
         auto* root = previous ? static_cast<SoftwareRoot*>(previous) : new SoftwareRoot;
-        const auto dirty = root->resources.observe(state.scene, state.selectionRevision,
-                                                   state.camera.revision(), state.dimmedRevision);
-        if (!dirty.geometry && !dirty.camera && !dirty.selection && !dirty.dimmed &&
+        const auto dirty =
+            root->resources.observe(state.scene, state.selectionRevision, state.camera.revision());
+        if (!dirty.geometry && !dirty.camera && !dirty.selection &&
             root->regions == (state.layers.regions ? state.regions : nullptr) &&
             root->displayedLayers == state.layers && root->displayedVector == state.vectorLayer &&
             root->overlayRevision == state.overlayRevision && root->viewport == state.viewport &&
@@ -1099,32 +1067,6 @@ public:
                 const auto p = state.camera.worldToScreen({marker.x, marker.y});
                 painter.setPen(QPen(marker.color, 2.0));
                 painter.drawRect(QRectF(p.x - 9, p.y - 9, 18, 18));
-            }
-            if (!state.dimmedIds.empty() && (state.scene || state.vectorLayer)) {
-                painter.setPen(Qt::NoPen);
-                painter.setBrush(QColor(246, 247, 250, 150));
-                for (const auto id : state.dimmedIds) {
-                    std::optional<stitch_render::RectMm> bounds;
-                    if (state.scene) {
-                        bounds = state.scene->boundsOf(id);
-                    }
-                    if (!bounds && state.vectorLayer) {
-                        for (const auto& shape : state.vectorLayer->shapes()) {
-                            if (shape.id == id) {
-                                bounds = stitch_render::RectMm{
-                                    shape.bounds.left(), shape.bounds.top(), shape.bounds.right(),
-                                    shape.bounds.bottom()};
-                                break;
-                            }
-                        }
-                    }
-                    if (bounds) {
-                        const auto a = state.camera.worldToScreen({bounds->x0, bounds->y0});
-                        const auto b = state.camera.worldToScreen({bounds->x1, bounds->y1});
-                        painter.drawRect(QRectF(QPointF(a.x, a.y), QPointF(b.x, b.y)));
-                    }
-                }
-                painter.setBrush(Qt::NoBrush);
             }
             painter.setPen(QPen(QColor(229, 99, 137), 1.5));
             for (const auto& target : state.selection) {

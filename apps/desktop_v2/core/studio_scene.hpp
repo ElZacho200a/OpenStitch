@@ -103,24 +103,19 @@ struct StudioInvalidation {
     bool geometry{false};
     bool selection{false};
     bool camera{false};
-    // Calque actif (atténuation visuelle des formes hors du calque courant) : indépendant de la
-    // sélection, pour ne pas rejouer le bandeau de sélection à chaque changement de calque actif.
-    bool dimmed{false};
 };
 
 class StudioResourceState {
 public:
     [[nodiscard]] StudioInvalidation
     observe(const std::shared_ptr<const StudioSceneSnapshot>& scene,
-            std::uint64_t selectionRevision, std::uint64_t cameraRevision,
-            std::uint64_t dimmedRevision = 0);
+            std::uint64_t selectionRevision, std::uint64_t cameraRevision);
     void reset();
 
 private:
     std::shared_ptr<const StudioSceneSnapshot> scene_;
     std::uint64_t selectionRevision_{0};
     std::uint64_t cameraRevision_{0};
-    std::uint64_t dimmedRevision_{0};
     bool initialized_{false};
 };
 
