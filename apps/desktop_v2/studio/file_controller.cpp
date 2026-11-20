@@ -1276,10 +1276,36 @@ void FileController::exportPhotoRender(const QUrl& url, const QVariantMap& optio
     if (!kFabricTypes.contains(fabricType)) {
         fabricType = QStringLiteral("toile");
     }
+    // Matière du fil : liste fermée du script (THREAD_TYPES).
+    static const QStringList kThreadTypes{QStringLiteral("rayonne"), QStringLiteral("polyester"),
+                                          QStringLiteral("coton")};
+    QString threadType = options.value(QStringLiteral("threadType")).toString();
+    if (!kThreadTypes.contains(threadType)) {
+        threadType = QStringLiteral("rayonne");
+    }
+    // Réglages fins du fil, bornés ici et repassés au script (qui borne aussi).
+    const QStringList threadTuning{
+        QStringLiteral("--thread-gloss"),
+        QString::number(std::clamp(number("threadGloss", 0.12), 0.02, 1.0)),
+        QStringLiteral("--thread-spread"),
+        QString::number(std::clamp(number("threadSpread", 0.30), 0.05, 1.0)),
+        QStringLiteral("--thread-matte"),
+        QString::number(std::clamp(number("threadMatte", 0.20), 0.0, 1.0)),
+        QStringLiteral("--thread-saturation"),
+        QString::number(std::clamp(number("threadSaturation", 0.35), 0.0, 2.0)),
+        QStringLiteral("--thread-plies"),
+        QString::number(std::clamp(static_cast<int>(number("threadPlies", 2.0)), 1, 4)),
+        QStringLiteral("--twist-pitch-mm"),
+        QString::number(std::clamp(number("twistPitchMm", 0.0), 0.0, 5.0)),
+        QStringLiteral("--relief"),
+        QString::number(std::clamp(number("relief", 0.40), 0.0, 2.0)),
+        QStringLiteral("--light"),
+        QString::number(std::clamp(number("light", 2.4), 0.1, 10.0))};
     runJob<PhotoRenderJob>(
         QStringLiteral("Rendu photo"),
         [snapshot, scene, path, script, python, tilt, spp, pxPerMm, threadWidthMm, fabric,
-         background, fabricType](const TaskContext& task) -> Result<PhotoRenderJob> {
+         background, fabricType, threadType,
+         threadTuning](const TaskContext& task) -> Result<PhotoRenderJob> {
             PhotoRenderJob job;
             auto count = export_thread_scene(snapshot, scene, threadWidthMm, task);
             if (!count) {
@@ -1288,12 +1314,25 @@ void FileController::exportPhotoRender(const QUrl& url, const QVariantMap& optio
             job.segments = *count;
             QProcess process;
             process.setProcessChannelMode(QProcess::MergedChannels);
-            process.start(python,
-                          {script, fromPath(scene), fromPath(path), QStringLiteral("--spp"),
-                           QString::number(spp), QStringLiteral("--tilt"), QString::number(tilt),
-                           QStringLiteral("--px-per-mm"), QString::number(pxPerMm),
-                           QStringLiteral("--fabric"), fabric, QStringLiteral("--fabric-type"),
-                           fabricType, QStringLiteral("--background"), background});
+            QStringList arguments{script,
+                                  fromPath(scene),
+                                  fromPath(path),
+                                  QStringLiteral("--spp"),
+                                  QString::number(spp),
+                                  QStringLiteral("--tilt"),
+                                  QString::number(tilt),
+                                  QStringLiteral("--px-per-mm"),
+                                  QString::number(pxPerMm),
+                                  QStringLiteral("--fabric"),
+                                  fabric,
+                                  QStringLiteral("--fabric-type"),
+                                  fabricType,
+                                  QStringLiteral("--thread-type"),
+                                  threadType,
+                                  QStringLiteral("--background"),
+                                  background};
+            arguments += threadTuning;
+            process.start(python, arguments);
             if (!process.waitForStarted(15'000)) {
                 std::error_code ec;
                 std::filesystem::remove(scene, ec);
