@@ -81,9 +81,51 @@ struct LineLayerMetrics {
     std::size_t short_fragment_pixels{0};   // pixels de fragments trop courts non cousus
 };
 
+// Anneau sombre reconnu (`rings_satin`) : ellipse INTÉRIEURE et épaisseur, en pixels, repère
+// image (centre du pixel (x, y) en (x + 0,5 ; y + 0,5), Y vers le bas).
+struct LineworkRing {
+    double cx{0}, cy{0};
+    double a{0}, b{0}; // demi-axes intérieurs (a >= b)
+    double angle{0};   // direction du grand axe (rad)
+    double width{0};   // épaisseur de la bande sombre
+};
+
+// Plan de traits superposés (AUTO-LINEWORK-01, lot A) : résultat PUR de la détection, sans aucun
+// objet de broderie ni mutation de document. La segmentation source n'est jamais modifiée :
+// `completed_fills` en est une copie dont les pixels masqués par un trait ont été rendus aux
+// aplats voisins (aplat continu sous un trait, frontière prolongée derrière lui entre deux
+// couleurs, morceaux de même couleur recousus). C'est une VUE DE GÉNÉRATION, pas une nouvelle
+// source de vérité. Déterministe.
+struct LineworkPlan {
+    // Faux : aucun trait détecté (ou option désactivée) ; `completed_fills` est alors une copie
+    // exacte de la source et `strokes` / `bars` sont vides.
+    bool has_linework{false};
+    segmentation::Segmentation completed_fills;
+    // Pixels de trait à coudre en lignes médianes : une seule région (id 1, couleur des traits).
+    // Vide (labels vides) si aucun pixel à coudre.
+    segmentation::Segmentation strokes;
+    // Barres épaisses (`bars_max_width_mm`) : une seule région (id 1). Vide si aucune.
+    segmentation::Segmentation bars;
+    std::vector<LineworkRing> rings;
+    std::array<std::uint8_t, 3> line_rgb{10, 10, 20}; // après calage sur la palette
+    double line_lightness{0.0};
+    std::size_t stroke_pixels{0};
+    std::size_t bar_pixels{0};
+    std::size_t reassigned_pixels{0};
+    std::size_t separation_pixels{0};
+    std::size_t short_fragment_pixels{0};
+};
+
+// Détection des traits et complétion des aplats, sans fabrication d'objets. `mm_per_px` : échelle
+// de l'image. `lines.enabled` faux : plan vide (`has_linework` faux, copie de la source).
+[[nodiscard]] LineworkPlan prepare_linework(const segmentation::Segmentation& seg,
+                                            const image::Image& source, Millimeters mm_per_px,
+                                            const LineLayerOptions& lines);
+
 // Segmentation -> objets : remplissages (`auto_digitize`) PUIS traits. Les objets de traits sont
 // ajoutés à la suite : ils sont cousus après tous les remplissages. `options.enabled` faux :
-// strictement `auto_digitize`. Déterministe.
+// strictement `auto_digitize`. Déterministe. Adaptateur historique (HP-AUTO-005) : appelle
+// `prepare_linework` puis fabrique les objets.
 [[nodiscard]] Result<AutoResult>
 auto_digitize_with_lines(const segmentation::Segmentation& seg, const image::Image& source,
                          IdGenerator<ObjectId>& ids, const AutoOptions& options,
