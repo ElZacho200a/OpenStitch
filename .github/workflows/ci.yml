@@ -154,7 +154,8 @@ jobs:
       # Sauvegarde meme si la compilation echoue (les paquets vcpkg deja construits restent utiles) ;
       # uniquement sur main pour ne pas saturer le quota de 10 Go du depot.
       - name: Save vcpkg binary cache
-        if: ${{ !cancelled() && github.ref == 'refs/heads/main' && steps.vcpkg-cache.outputs.cache-hit != 'true' }}
+        # success() : jamais d'enregistrement après une configuration ratée (cache vide figé).
+        if: ${{ success() && github.ref == 'refs/heads/main' && steps.vcpkg-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v4
         with:
           path: ${{ runner.temp }}/vcpkg-bincache
@@ -303,8 +304,14 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ runner.temp }}/vcpkg-bincache
-          key: vcpkg-linux-${{ hashFiles('vcpkg.json') }}-${{ env.VCPKG_COMMIT }}
-          restore-keys: vcpkg-linux-
+          # v2 : l'entrée v1 avait été enregistrée VIDE (206 o) après une configuration ratée ; sa
+          # clé exacte empêchait toute réécriture, si bien que chaque job recompilait et
+          # retéléchargeait toutes les dépendances (pannes 503/429 de GitHub). Repli sur le cache
+          # du workflow de release (même preset) : vcpkg ne reprend que les paquets d'ABI identique.
+          key: vcpkg-linux-v2-${{ hashFiles('vcpkg.json') }}-${{ env.VCPKG_COMMIT }}
+          restore-keys: |
+            vcpkg-linux-v2-
+            vcpkg-release-linux-
 
       - name: Set up vcpkg
         run: |
@@ -351,11 +358,12 @@ jobs:
           done
 
       - name: Save vcpkg binary cache
-        if: ${{ !cancelled() && github.ref == 'refs/heads/main' && steps.vcpkg-cache.outputs.cache-hit != 'true' }}
+        # success() : jamais d'enregistrement après une configuration ratée (cache vide figé).
+        if: ${{ success() && github.ref == 'refs/heads/main' && steps.vcpkg-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v4
         with:
           path: ${{ runner.temp }}/vcpkg-bincache
-          key: vcpkg-linux-${{ hashFiles('vcpkg.json') }}-${{ env.VCPKG_COMMIT }}
+          key: vcpkg-linux-v2-${{ hashFiles('vcpkg.json') }}-${{ env.VCPKG_COMMIT }}
 
       - name: Build
         run: cmake --build --preset linux-core -j "$(nproc)"
