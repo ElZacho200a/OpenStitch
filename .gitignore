@@ -13,6 +13,7 @@ vcpkg_installed/
 
 # Documentation : environnement Python local et caches (générés)
 docs/.venv/
+docs/build/_pass1.pdf
 __pycache__/
 *.pyc
 

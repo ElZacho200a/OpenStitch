@@ -215,7 +215,7 @@ de la couleur du remplissage qui traversent la zone : c'est l'aspect « brouillo
 remplissages propres, au prix de coupes. Mesuré sur le navire (`--island-cleanup 0 --min-region-mm2 1
 --dark-lines-bars 4 --dark-lines-min-length 6 --curve-tolerance 0.4`) :
 
-| | points | sauts | coupes |
+| Réglage | points | sauts | coupes |
 |---|---|---|---|
 | liaisons (défaut) | 117 553 | 5 681 | 1 906 |
 | `--no-underpath` | 116 574 | 10 687 | 3 222 |
@@ -504,8 +504,8 @@ Mesure (`test_quality_metrics.cpp`, polygones de 360 côtés, tatami à l'angle 
 | anneau 40/20 mm | 0,006 / 0,50 | 2,2° | 0,21-0,59 | guidé |
 | anneau 24/10 mm | 0,005 / 0,51 | 3,1° | 0,21-0,59 | guidé |
 | anneau excentré 30/12 | 0,13 / 0,50 | 2,8° | 0,08-0,62 | tatami (densité) |
-| disque 15 et 30 mm | 0,50 / 0,49-0,50 | 0° | | tatami (aucun gain : axe droit = cordes parallèles) |
-| ellipse 30x16, 36x14 | 0,35 / 0,65 ; 0,28 / 0,72 | 0° | | tatami (fils de 14-16 mm) |
+| disque 15 et 30 mm | 0,50 / 0,49-0,50 | 0° | — | tatami (aucun gain : axe droit = cordes parallèles) |
+| ellipse 30x16, 36x14 | 0,35 / 0,65 ; 0,28 / 0,72 | 0° | — | tatami (fils de 14-16 mm) |
 
 Anneau vectorisé de 8 mm (32 mm de diamètre) : 1 colonne, couverture 0,99, 1110 points contre 913
 en tatami. Actif par défaut mais sans effet tant que `satin_bands` est faux. Reste : les disques et
