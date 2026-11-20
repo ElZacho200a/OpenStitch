@@ -713,8 +713,11 @@ void reference_small_region_cleanup(Segmentation& seg, int min_region_px) {
             order.push_back(s);
         }
     }
+    // Meme ordre total que la bibliotheque (taille puis numero de case).
     std::sort(order.begin(), order.end(), [&](std::size_t a, std::size_t b) {
-        return seg.region_slots[a]->pixel_count < seg.region_slots[b]->pixel_count;
+        const auto ca = seg.region_slots[a]->pixel_count;
+        const auto cb = seg.region_slots[b]->pixel_count;
+        return ca != cb ? ca < cb : a < b;
     });
     for (const std::size_t s : order) {
         if (!seg.region_slots[s]) {
@@ -1089,10 +1092,10 @@ TEST_CASE("lissage : etiquettes figees pour plusieurs tailles, classes et rayons
         std::uint64_t expected;
     };
     const Case cases[] = {
-        {37, 29, 2, 1, 336150776388476608ull},     {64, 64, 4, 2, 7643034171746542482ull},
-        {130, 97, 8, 3, 14369772621646602743ull},  {200, 150, 16, 2, 3434570449995195540ull},
-        {90, 300, 32, 5, 17257860780381707588ull}, {150, 150, 64, 4, 6362908915432989295ull},
-        {20, 20, 5, 30, 13644600062404334311ull},
+        {37, 29, 2, 1, 336150776388476608ull},    {64, 64, 4, 2, 9661757063606485860ull},
+        {130, 97, 8, 3, 6313982951411960975ull},  {200, 150, 16, 2, 10026549507422417291ull},
+        {90, 300, 32, 5, 8609751813040286023ull}, {150, 150, 64, 4, 5196777942793537293ull},
+        {20, 20, 5, 30, 11363166327020647530ull},
     };
     for (const auto& c : cases) {
         const auto seg =
@@ -1110,10 +1113,10 @@ TEST_CASE("lissage avec masque de detail : etiquettes figees") {
         std::uint64_t expected;
     };
     const Case cases[] = {
-        {64, 64, 4, 3, 0, 17718315555885610853ull},
-        {130, 97, 8, 4, 1, 15489268793340984824ull},
-        {150, 120, 24, 5, 2, 3041036354334152056ull},
-        {40, 33, 6, 40, 3, 8976410360852191656ull},
+        {64, 64, 4, 3, 0, 8706625994645500669ull},
+        {130, 97, 8, 4, 1, 13870857222222995130ull},
+        {150, 120, 24, 5, 2, 11309285867951999097ull},
+        {40, 33, 6, 40, 3, 15224886991072862152ull},
     };
     for (const auto& c : cases) {
         DetailMask mask;

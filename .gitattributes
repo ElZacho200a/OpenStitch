@@ -14,3 +14,6 @@
 # SVG : traité comme texte mais fins de ligne LF pour un rendu stable
 *.svg text eol=lf
 *.sh text eol=lf
+# Correctifs vcpkg conservés pour la CI : octets exacts (SHA512 vérifiés par seed.sh puis vcpkg)
+.github/vcpkg-downloads/*.patch -text
+.github/vcpkg-downloads/SHA512SUMS text eol=lf

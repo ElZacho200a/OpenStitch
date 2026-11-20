@@ -225,7 +225,7 @@ Item {
             y: pick.mouseY - diameter / 2
             color: "transparent"
             border.width: 2
-            border.color: root.hasDetail && detailZones.tool === "erase" ? Theme.foreground : "#ff8c00"
+            border.color: root.hasDetail && detailZones.tool === "erase" ? Theme.foreground : Theme.warning
         }
 
         // Options du pinceau de détail : rayon en mm, part de l'image marquée, effacement total et

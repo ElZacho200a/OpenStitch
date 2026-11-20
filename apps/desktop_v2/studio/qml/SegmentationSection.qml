@@ -132,6 +132,22 @@ ColumnLayout {
         color: Theme.muted; font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily
     }
     StudioCheckBox {
+        objectName: "segPreserveLinework"
+        text: qsTr("Préserver les traits fins")
+        checked: imageTools.preserveLinework
+        enabled: imageTools.hasImage
+        onToggled: imageTools.preserveLinework = checked
+        palette.windowText: Theme.foreground
+    }
+    Text {
+        objectName: "segLineworkHint"
+        Layout.fillWidth: true
+        visible: imageTools.preserveLinework
+        text: qsTr("« Mettre à jour les formes » coud les aplats en continu sous les traits sombres fins (cordages, nervures) et crée chaque trait comme une ligne ouverte, cousue par-dessus.")
+        wrapMode: Text.WordWrap
+        color: Theme.muted; font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily
+    }
+    StudioCheckBox {
         objectName: "segLiveBox"
         text: qsTr("Aperçu en direct")
         checked: section.liveEnabled

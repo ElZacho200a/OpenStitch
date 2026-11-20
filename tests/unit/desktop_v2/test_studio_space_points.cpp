@@ -371,6 +371,37 @@ private slots:
         QTRY_VERIFY(rig.session.undoNames().size() > depth);
     }
 
+    // Ligne ouverte : seuls les types qui suivent un chemin sont proposés (un remplissage serait
+    // refusé par le moteur).
+    void openLineOffersOnlyPathTypes() {
+        Rig rig;
+        open(rig);
+        const auto id = rig.session.project().embroidery_objects.front().id.value;
+        const std::string sid = std::to_string(id);
+        const auto made = rig.session.applyBatch(
+            R"({"schema":"openstitch.batch/1","operations":[)"
+            R"({"op":"set_stitch_type","object":)" +
+                sid +
+                R"(,"type":"running"},)"
+                R"({"op":"set_geometry","object":)" +
+                sid + R"(,"closed":false,"points_mm":[[0,0],[12,4],[20,0]]}]})",
+            "Ligne ouverte");
+        QVERIFY(made.committed);
+        rig.studio.selectObject(QString::number(id));
+        QTRY_VERIFY(rig.inspector.count() > 0);
+        QStringList ids;
+        for (const auto& t : rig.inspector.types()) {
+            ids << t.toMap().value(QStringLiteral("id")).toString();
+        }
+        ids.sort();
+        QCOMPARE(ids, (QStringList{QStringLiteral("blanket"), QStringLiteral("motif_run"),
+                                   QStringLiteral("running")}));
+        auto* box = named(rig.window, "typeBox");
+        QVERIFY(box);
+        QTRY_COMPARE(box->property("count").toInt(), 3);
+        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+    }
+
     void railHoldsPointToolsOnly() {
         Rig rig;
         open(rig);

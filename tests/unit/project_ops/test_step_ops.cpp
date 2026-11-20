@@ -4,9 +4,11 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "openstitch/document/project.hpp"
@@ -15,6 +17,7 @@
 #include "openstitch/project_ops/errors.hpp"
 #include "openstitch/project_ops/operations.hpp"
 #include "openstitch/project_ops/revectorize.hpp"
+#include "openstitch/stitch_generation/overrides.hpp"
 
 using namespace openstitch;
 using Catch::Matchers::WithinAbs;
@@ -182,4 +185,112 @@ TEST_CASE("step ops: overlap_fills closes the gap between neighbouring tatamis",
     for (const auto& e : direct.embroidery_objects) {
         CHECK(std::get<document::TatamiParams>(e.params).inset.value == 0);
     }
+}
+
+namespace {
+
+// 120 x 80 px à 0,25 mm/px : fond clair, ciel bleu, cordage noir fin en diagonale douce.
+document::Project rope_on_sky_project() {
+    document::Project project;
+    image::Image img;
+    img.width = 120;
+    img.height = 80;
+    img.rgba.assign(static_cast<std::size_t>(img.width * img.height * 4), 255);
+    const auto paint = [&](int x0, int y0, int x1, int y1, std::uint8_t r, std::uint8_t g,
+                           std::uint8_t b) {
+        for (int y = y0; y < y1; ++y) {
+            for (int x = x0; x < x1; ++x) {
+                const auto i = static_cast<std::size_t>((y * img.width + x) * 4);
+                img.rgba[i] = r;
+                img.rgba[i + 1] = g;
+                img.rgba[i + 2] = b;
+            }
+        }
+    };
+    paint(0, 0, 120, 80, 230, 220, 200);
+    paint(10, 10, 110, 70, 90, 150, 220);
+    for (int x = 12; x < 108; ++x) {
+        const int y = 20 + (x - 12) * 40 / 96;
+        paint(x, y, x + 1, y + 3, 5, 5, 15);
+    }
+    project.imageSource().original = std::move(img);
+    project.imageSource().mm_per_px = Millimeters{0.25};
+    return project;
+}
+
+std::size_t count_linework(const std::vector<document::VectorObject>& shapes) {
+    std::size_t n = 0;
+    for (const auto& s : shapes) {
+        n += s.linework ? 1 : 0;
+    }
+    return n;
+}
+
+} // namespace
+
+TEST_CASE("revectorize: preserve linework off keeps the historical plan",
+          "[project_ops][steps][linework]") {
+    auto project = rope_on_sky_project();
+    REQUIRE(run(project, R"({"op":"segment_image","max_colors":3,"min_region_px":4})").ok);
+    const auto plan = project_ops::revectorize(project, {});
+    CHECK(count_linework(plan.add) == 0);
+}
+
+TEST_CASE("revectorize: preserve linework adds open strokes over completed fills",
+          "[project_ops][steps][linework]") {
+    auto project = rope_on_sky_project();
+    REQUIRE(run(project, R"({"op":"segment_image","max_colors":3,"min_region_px":4})").ok);
+    const auto off = project_ops::revectorize(project, {});
+    const auto sourceLabels = project.imageSource().segmentation->labels;
+    project.imageSource().preserve_linework = true;
+    const auto on = project_ops::revectorize(project, {});
+    CHECK(project.imageSource().segmentation->labels == sourceLabels); // source intacte
+    REQUIRE(count_linework(on.add) >= 1);
+    for (const auto& shape : on.add) {
+        if (!shape.linework) {
+            continue;
+        }
+        CHECK_FALSE(shape.source_region.has_value());
+        REQUIRE_FALSE(shape.paths.empty());
+        CHECK_FALSE(shape.paths.front().outer.closed);
+    }
+    // Les surfaces ne contiennent plus la région du cordage : moins de surfaces qu'avec OFF.
+    CHECK(on.add.size() - count_linework(on.add) < off.add.size());
+    // Deuxième passage sur le projet mis à jour : tout est déjà à jour.
+    REQUIRE(run(project, R"({"op":"vectorize_segmentation"})").ok);
+    const auto again = project_ops::revectorize(project, {});
+    CHECK(again.add.empty());
+    CHECK(again.replace.empty());
+}
+
+TEST_CASE("linework end to end: strokes sewn as running stitch after the fills",
+          "[project_ops][steps][linework]") {
+    auto project = rope_on_sky_project();
+    REQUIRE(run(project, R"({"op":"segment_image","max_colors":3,"min_region_px":4})").ok);
+    project.imageSource().preserve_linework = true;
+    REQUIRE(run(project, R"({"op":"vectorize_segmentation"})").ok);
+    REQUIRE(run(project, R"({"op":"convert_vectors"})").ok);
+    std::vector<ObjectId> strokeIds;
+    for (const auto& v : project.vector_objects) {
+        if (v.linework) {
+            strokeIds.push_back(v.id);
+        }
+    }
+    REQUIRE_FALSE(strokeIds.empty());
+    std::size_t lastFill = 0;
+    std::size_t firstStroke = project.embroidery_objects.size();
+    for (std::size_t i = 0; i < project.embroidery_objects.size(); ++i) {
+        const auto& e = project.embroidery_objects[i];
+        const bool stroke =
+            std::find(strokeIds.begin(), strokeIds.end(), e.source_vector) != strokeIds.end();
+        if (stroke) {
+            CHECK(std::holds_alternative<document::RunningStitchParams>(e.params));
+            firstStroke = std::min(firstStroke, i);
+        } else {
+            lastFill = i;
+        }
+    }
+    CHECK(firstStroke > lastFill); // traits cousus par-dessus les aplats
+    const auto sequence = stitch_generation::effective_sequence(project);
+    REQUIRE(sequence.has_value());
 }
