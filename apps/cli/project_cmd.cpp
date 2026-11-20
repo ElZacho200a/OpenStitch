@@ -424,9 +424,10 @@ void add_digitize_options(CLI::App* cmd, DigitizeOptionValues& v) {
            "--dark-lines-lightness", s.dark_lines_lightness,
            "Avec --dark-lines : clarté CIELAB L* maximale d'un pixel de trait (défaut : 25)")
         ->check(CLI::Range(5.0, 70.0));
-    cmd->add_flag("--hidden-travel", s.hidden_travel,
+    cmd->add_flag("--hidden-travel,!--no-hidden-travel", s.hidden_travel,
                   "Remplace les coupes par des sauts ou des ponts cousus cachés sous les points "
-                  "cousus plus tard (passe finale, désactivé par défaut)");
+                  "cousus plus tard (passe finale, activé par défaut ; --no-hidden-travel le "
+                  "désactive)");
     cmd->add_option("--hidden-travel-levels", s.hidden_levels,
                     "Avec --hidden-travel : niveaux de l'optimisation, parmi between (ponts entre "
                     "objets), within (liens dans un objet), underlay (ordre de la sous-couche) ; "

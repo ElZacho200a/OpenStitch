@@ -13,10 +13,13 @@ enum class LockStitch { None, BackAndForth, Triangle, MicroZigzag };
 // HP-SEQ-006.a -- ponts cachés : une coupe entre deux tracés est remplacée par un saut sans
 // coupe ou par un trajet cousu quand ce trajet est PROUVÉ recouvert par des points de couche
 // supérieure cousus plus tard (preuve calculée sur la séquence, jamais sur les objets). Passe
-// finale de `finish_sequence` : aucun objet n'est réordonné. Désactivé par défaut -- un projet
-// existant produit le même fichier machine.
+// finale de `finish_sequence` : aucun objet n'est réordonné. Activé par défaut depuis le
+// 2026-11-20 (−29 % de coupes sur un corpus de 13 projets réels, voir
+// `docs/veille-reduction-coupes-2026-10.md` §8) pour un NOUVEAU projet. Un projet déjà
+// enregistré produit toujours le même fichier machine : sa valeur est relue telle quelle, et un
+// projet antérieur au 2026-10-13 (sans la clé) reste sans ponts.
 struct HiddenTravel {
-    bool enabled{false};
+    bool enabled{true};
     // Écart (distance directe) jusqu'auquel un saut recouvert reste un simple saut, sans coupe
     // ni point d'arrêt. 0 : jamais de saut sans coupe.
     Micrometers max_hidden_jump{2'000};
@@ -100,7 +103,7 @@ struct SequenceFinishing {
     // peut forcer (`JoinMode::Auto`) ou refuser (`JoinMode::Off`) ce réglage.
     bool auto_join{false};
 
-    // HP-SEQ-006.a -- ponts cachés (désactivés par défaut).
+    // HP-SEQ-006.a -- ponts cachés (activés par défaut depuis le 2026-11-20).
     HiddenTravel hidden_travel{};
 
     // HP-SEQ-008 -- points de départ et d'arrivée du design (µm, repère document). Absents :
@@ -123,6 +126,7 @@ struct SequenceFinishing {
     [[nodiscard]] static SequenceFinishing legacy() {
         SequenceFinishing f;
         f.enabled = false;
+        f.hidden_travel.enabled = false; // projet antérieur : même fichier machine qu'avant
         return f;
     }
 };

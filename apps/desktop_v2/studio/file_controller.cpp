@@ -884,7 +884,8 @@ QVariantMap FileController::exportOptions() const {
             {QStringLiteral("minStitchMm"), o.minStitchMm},
             {QStringLiteral("splitLongStitches"), o.splitLongStitches},
             {QStringLiteral("maxStitchMm"), o.maxStitchMm},
-            {QStringLiteral("autoJoin"), o.autoJoin}};
+            {QStringLiteral("autoJoin"), o.autoJoin},
+            {QStringLiteral("hiddenTravel"), o.hiddenTravel}};
 }
 
 QString FileController::setExportOptions(const QVariantMap& v) {
@@ -899,6 +900,7 @@ QString FileController::setExportOptions(const QVariantMap& v) {
     flag("filterShortStitches", o.filterShortStitches);
     flag("splitLongStitches", o.splitLongStitches);
     flag("autoJoin", o.autoJoin);
+    flag("hiddenTravel", o.hiddenTravel);
     o.trimThresholdMm = numberOr(v, "trimThresholdMm", o.trimThresholdMm);
     o.lockLengthMm = numberOr(v, "lockLengthMm", o.lockLengthMm);
     o.lockPasses = static_cast<int>(numberOr(v, "lockPasses", o.lockPasses));
