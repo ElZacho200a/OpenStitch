@@ -1276,10 +1276,17 @@ void FileController::exportPhotoRender(const QUrl& url, const QVariantMap& optio
     if (!kFabricTypes.contains(fabricType)) {
         fabricType = QStringLiteral("toile");
     }
+    // Matière du fil : liste fermée du script (THREAD_TYPES).
+    static const QStringList kThreadTypes{QStringLiteral("rayonne"), QStringLiteral("polyester"),
+                                          QStringLiteral("coton")};
+    QString threadType = options.value(QStringLiteral("threadType")).toString();
+    if (!kThreadTypes.contains(threadType)) {
+        threadType = QStringLiteral("rayonne");
+    }
     runJob<PhotoRenderJob>(
         QStringLiteral("Rendu photo"),
         [snapshot, scene, path, script, python, tilt, spp, pxPerMm, threadWidthMm, fabric,
-         background, fabricType](const TaskContext& task) -> Result<PhotoRenderJob> {
+         background, fabricType, threadType](const TaskContext& task) -> Result<PhotoRenderJob> {
             PhotoRenderJob job;
             auto count = export_thread_scene(snapshot, scene, threadWidthMm, task);
             if (!count) {
@@ -1293,7 +1300,8 @@ void FileController::exportPhotoRender(const QUrl& url, const QVariantMap& optio
                            QString::number(spp), QStringLiteral("--tilt"), QString::number(tilt),
                            QStringLiteral("--px-per-mm"), QString::number(pxPerMm),
                            QStringLiteral("--fabric"), fabric, QStringLiteral("--fabric-type"),
-                           fabricType, QStringLiteral("--background"), background});
+                           fabricType, QStringLiteral("--thread-type"), threadType,
+                           QStringLiteral("--background"), background});
             if (!process.waitForStarted(15'000)) {
                 std::error_code ec;
                 std::filesystem::remove(scene, ec);

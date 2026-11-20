@@ -131,3 +131,25 @@ Mesure : Impossibke.osp, 131 829 brins, 3840 x 2676 px, 256 spp, vue de dessus, 
 8K (7680 x 4320, 256 spp) : le script decoupe en passes de graines fixes au-dela de ~2^30
 echantillons par appel (limite Mitsuba) ; Impossibke sur toile kaki en 19,2 s :
 `captures/raytrace-impossibke-8k-coton-kaki.png` (52 Mo).
+
+### Rendu photo - relief et matiere du fil (20/11/2026)
+Relief : carte de hauteur cumulee dans l'ordre de couture (cellule = rayon/2). Chaque fil se pose
+sur le maximum deja brode sous son axe, puis rehausse la carte de 0,75 x son diametre (fil
+ecrase) sur un tampon de 0,8 rayon : deux rangees voisines d'un meme remplissage restent au meme
+niveau, seul un vrai recouvrement fait monter le relief. Remplace l'empilement lineaire global.
+Le 0,75 est une estimation, non comparee a une piece reelle.
+
+Matiere du fil (`--thread-type`, Studio : « Matiere du fil ») :
+| Type | BSDF | Brins |
+|---|---|---|
+| rayonne (defaut) | `hair` beta_m 0,12 / beta_n 0,30, 35 % diffus | 2 |
+| polyester | `hair` 0,22 / 0,40, 50 % diffus | 2 |
+| coton | `hair` 0,45 / 0,70, 75 % diffus | 3 |
+Le BSDF `hair` de Mitsuba 3.9 donne le reflet allonge dans le sens du fil ; absorption tiree de
+la couleur par l'inversion de Chiang et al. 2016, attenuee x0,35 (sans ce facteur le blanc
+sortait gris : un fil seul diffuse moins qu'une chevelure). Brins torsades : helices de pas
+5 rayons, rayon de brin 0,62, decalage 0,40, reunis aux points d'aiguille.
+Mesure Nyphea (95 072 brins, 3840 x 2160, 128 spp, inclinaison 35) : rayonne 16,5 s,
+polyester 15,9 s, coton 22,6 s (avant : 6,3 s, tube lisse principled). Capture
+`captures/raytrace-nyphea-4k-fil-rayonne.png`.
+Non fait : duvet (fibres libres) et variation de teinte entre brins ; reglages a l'oeil.

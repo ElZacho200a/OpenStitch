@@ -119,7 +119,40 @@ def fabric_bsdf(mi, kind: str, rgb: list[float], fw: float, fh: float) -> dict:
     }
 
 
-def write_curves(segments, radius: float, folder: Path) -> dict[tuple[int, int, int], Path]:
+# Types de fil : rugosités du modèle « cheveu » de Mitsuba (reflet allongé dans le sens du
+# fil), nombre de brins torsadés, et part diffuse (fibres mates, duvet).
+THREAD_TYPES = {
+    "rayonne": {"beta_m": 0.12, "beta_n": 0.30, "plies": 2, "matte": 0.35},
+    "polyester": {"beta_m": 0.22, "beta_n": 0.40, "plies": 2, "matte": 0.5},
+    "coton": {"beta_m": 0.45, "beta_n": 0.70, "plies": 3, "matte": 0.75},
+}
+
+
+def hair_sigma_a(rgb_linear: list[float], beta_n: float) -> list[float]:
+    """Absorption donnant à peu près la couleur voulue après diffusion multiple dans la fibre
+    (inversion de Chiang et al. 2016, utilisée par PBRT pour les cheveux colorés)."""
+    d = (5.969 - 0.215 * beta_n + 2.532 * beta_n ** 2 - 10.73 * beta_n ** 3
+         + 5.574 * beta_n ** 4 + 0.245 * beta_n ** 5)
+    # Un fil posé seul diffuse moins qu'une chevelure épaisse : absorption réduite (mesuré à
+    # l'œil sur Nyphéa : le blanc restait gris sans ce facteur).
+    return [0.35 * (math.log(max(c, 1e-4)) / d) ** 2 for c in rgb_linear]
+
+
+def thread_bsdf(rgb: tuple[int, int, int], kind: str) -> dict:
+    t = THREAD_TYPES[kind]
+    lin = [srgb_to_linear(c) for c in rgb]
+    hair = {"type": "hair", "sigma_a": {"type": "rgb", "value": hair_sigma_a(lin, t["beta_n"])},
+            "longitudinal_roughness": t["beta_m"], "azimuthal_roughness": t["beta_n"],
+            "scale_tilt": 2.0}
+    if t["matte"] <= 0.0:
+        return hair
+    return {"type": "blendbsdf", "weight": {"type": "rgb", "value": [t["matte"]] * 3},
+            "bsdf_0": hair,
+            "bsdf_1": {"type": "diffuse", "reflectance": {"type": "rgb", "value": lin}}}
+
+
+def write_curves(segments, radius: float, folder: Path,
+                 plies: int = 1) -> dict[tuple[int, int, int], Path]:
     """Un fichier de courbes linéaires par couleur (format Mitsuba : x y z rayon ; ligne vide =
     nouvelle courbe). Repère Mitsuba : X droite, Y haut, Z vers la caméra (tissu en z = 0)."""
     import numpy as np
@@ -156,10 +189,29 @@ def write_curves(segments, radius: float, folder: Path) -> dict[tuple[int, int, 
         base = hmap[ri, ci].max(axis=1)
         z = base + radius
         z[0], z[-1] = base[0] + sink, base[-1] + sink
-        lines = [
-            f"{ax + dx * t:.5f} {-(ay + dy * t):.5f} {zz:.5f} {radius:.5f}" for t, zz in zip(ts, z)
-        ]
-        by_colour.setdefault((r, g, b), []).append("\n".join(lines))
+        curves = by_colour.setdefault((r, g, b), [])
+        if plies <= 1:
+            curves.append("\n".join(
+                f"{ax + dx * t:.5f} {-(ay + dy * t):.5f} {zz:.5f} {radius:.5f}"
+                for t, zz in zip(ts, z)))
+        else:
+            # Brins torsadés : chaque brin suit une hélice autour de l'axe du fil (pas fixe en
+            # mm, phase continue le long du fil), ce qui donne les rayures en diagonale.
+            pitch = radius * 5.0
+            ply_r = radius * 0.62
+            off = radius * 0.40
+            m = max(4, int(length / (pitch / 8.0)) + 1)
+            u = np.linspace(0.0, 1.0, m)
+            zc = np.interp(u, ts, z)
+            env = np.clip(np.minimum(u, 1.0 - u) / max(ramp, 1e-6), 0.0, 1.0)  # brins réunis à l'aiguille
+            cx, cy = ax + dx * u, ay + dy * u
+            for p in range(plies):
+                phi = 2.0 * math.pi * (u * length / pitch + p / plies)
+                lx = off * env * np.cos(phi)
+                lz = off * env * np.sin(phi)
+                curves.append("\n".join(
+                    f"{x:.5f} {-y:.5f} {zz:.5f} {ply_r:.5f}"
+                    for x, y, zz in zip(cx + nx * lx, cy + ny * lx, zc + lz)))
         inner = slice(1, -1)
         np.maximum.at(hmap, (ri[inner].ravel(), ci[inner].ravel()),
                       np.repeat(base[inner] + pack, lat.size).astype(np.float32))
@@ -187,6 +239,8 @@ def main() -> int:
     ap.add_argument("--fabric", default="245,243,238", help="couleur du tissu r,g,b")
     ap.add_argument("--fabric-type", default="toile", choices=sorted(FABRIC_TYPES),
                     help="armure du tissu (relief et grain simulés)")
+    ap.add_argument("--thread-type", default="rayonne", choices=sorted(THREAD_TYPES),
+                    help="matière du fil : rayonne (brillante), polyester, coton (mat)")
     ap.add_argument("--background", default="200,200,204", help="couleur du fond r,g,b")
     ap.add_argument("--border", type=float, default=0.12,
                     help="fond visible autour du tissu, en fraction de sa taille (défaut 0,12)")
@@ -227,7 +281,7 @@ def main() -> int:
 
     t0 = time.perf_counter()
     with tempfile.TemporaryDirectory() as tmp:
-        files = write_curves(segments, radius, Path(tmp))
+        files = write_curves(segments, radius, Path(tmp), THREAD_TYPES[args.thread_type]["plies"])
         T = mi.ScalarTransform4f
         distance = max(w, h) * 4.0
         tilt = math.radians(args.tilt)
@@ -276,13 +330,7 @@ def main() -> int:
             scene[f"fil_{k}"] = {
                 "type": "linearcurve",
                 "filename": str(path),
-                "bsdf": {
-                    "type": "principled",
-                    "base_color": {"type": "rgb", "value": [srgb_to_linear(c) for c in colour]},
-                    "roughness": 0.35,
-                    "specular": 0.6,
-                    "sheen": 0.4,
-                },
+                "bsdf": thread_bsdf(colour, args.thread_type),
             }
         loaded = mi.load_dict(scene)
         # Mitsuba lance au plus ~2^32 échantillons par appel : au-delà (8K, beaucoup de spp), on
@@ -299,7 +347,7 @@ def main() -> int:
         mi.util.write_bitmap(args.output, image)
     elapsed = time.perf_counter() - t0
     print(f"Rendu Mitsuba ({variant}) : {args.output} ({width} x {height} px, {args.spp} spp, "
-          f"{len(segments)} brins, {len(files)} couleurs, tissu {args.fabric_type}) "
+          f"{len(segments)} brins, {len(files)} couleurs, tissu {args.fabric_type}, fil {args.thread_type}) "
           f"en {elapsed:.1f} s")
     return 0
 
