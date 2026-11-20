@@ -783,6 +783,108 @@ private slots:
         QCOMPARE(imageSpace.tool(), QString());
         QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join('\n')));
     }
+
+    // Sûreté (audit multicalque) : aucun outil de mutation de l'espace Image ne doit s'exécuter
+    // quand le calque de la source image active est verrouillé. Un seul calque, matérialisé
+    // verrouillé : la racine historique en hérite par repli (même convention que
+    // `Project::calqueOfShape`).
+    void lockedActiveLayerRefusesEveryMutatingTool() {
+        DocumentSession session;
+        StudioController studio(session);
+        ImageController images(studio);
+        ImageSpaceController imageSpace(studio, images);
+        QTemporaryDir dir;
+        auto project = digitizedProject(writeImage(dir.path()));
+        project.embroidery_objects.clear(); // l'échelle n'est libre que sans objets brodés
+        project.calques.push_back(document::Calque{ObjectId{4242}, "Calque 1", true, true});
+        session.replaceProject(std::move(project), true);
+        QTRY_VERIFY_WITH_TIMEOUT(images.imageWidth() > 0, 20'000);
+        QVERIFY(imageSpace.activeLayerLocked());
+
+        const auto depth = session.undoNames().size();
+        const auto opsBefore = session.project().ops;
+        const double scaleBefore = session.project().mm_per_px.value;
+
+        QVERIFY(!imageSpace.scaleImage(150.0).isEmpty());
+        QVERIFY(!imageSpace.setImageWidthMm(999.0).isEmpty());
+        QVERIFY(!imageSpace.setImageHeightMm(999.0).isEmpty());
+        QVERIFY(!imageSpace.scaleFromMeasure(10.0, 50.0).isEmpty());
+        QVERIFY(!imageSpace.removeOp(0).isEmpty());
+        QVERIFY(!imageSpace.moveOp(0, 1).isEmpty());
+        imageSpace.beginCrop();
+        QVERIFY(!imageSpace.cropActive()); // ne s'active même pas : refus immédiat
+        QVERIFY(!imageSpace.applyCrop().isEmpty());
+        QVERIFY(!imageSpace.makeTransparentAt(5, 5).isEmpty());
+
+        // Rien n'a mutÉ le document : aucune étape d'annulation, pile et échelle identiques.
+        QCOMPARE(session.undoNames().size(), depth);
+        QCOMPARE(session.project().ops == opsBefore, true);
+        QCOMPARE(session.project().mm_per_px.value, scaleBefore);
+        QVERIFY(imageSpace.message().contains(QStringLiteral("verrouill")));
+    }
+
+    // Sélecteur de calque image (HP-OBJ-024) : état visible/verrouillé par entrée
+    // (`imageLayerStates`, même ordre que `imageTools.imageLayers`), basculé en UNE étape
+    // d'annulation chacun, qui bloque ensuite les outils de mutation sur ce calque.
+    void imageLayerStatesReflectAndToggleVisibilityAndLock() {
+        DocumentSession session;
+        StudioController studio(session);
+        ImageController images(studio);
+        ImageSpaceController imageSpace(studio, images);
+        QTemporaryDir dir;
+        auto project = digitizedProject(writeImage(dir.path()));
+        project.embroidery_objects.clear();
+        // Calque du fond (porte la racine historique par repli) + un second calque image, bien
+        // distincts, comme un document importé en calques (`.ora`).
+        project.calques.push_back(document::Calque{ObjectId{9101}, "Calque 1", true, false});
+        project.calques.push_back(document::Calque{ObjectId{9102}, "Calque 2", true, false});
+        document::ImageSourceLayer second;
+        second.calque = ObjectId{9102};
+        second.source.original = project.original;
+        second.source.mm_per_px = project.mm_per_px;
+        project.image_sources.push_back(std::move(second));
+        session.replaceProject(std::move(project), true);
+        QTRY_VERIFY_WITH_TIMEOUT(images.imageWidth() > 0, 10'000);
+        QCOMPARE(imageSpace.imageLayerCount(), 2);
+
+        auto states = imageSpace.imageLayerStates();
+        QCOMPARE(states.size(), 2);
+        QVERIFY(states.at(0).toMap().value(QStringLiteral("visible")).toBool());
+        QVERIFY(!states.at(0).toMap().value(QStringLiteral("locked")).toBool());
+        QVERIFY(!imageSpace.activeLayerLocked()); // racine : calque du fond, déverrouillé
+
+        // Verrouiller le second calque (sans toucher à l'autre), une étape d'annulation.
+        const auto depth = session.undoNames().size();
+        imageSpace.toggleLayerLocked(1);
+        QCOMPARE(session.undoNames().size(), depth + 1);
+        states = imageSpace.imageLayerStates();
+        QVERIFY(!states.at(0).toMap().value(QStringLiteral("locked")).toBool());
+        QVERIFY(states.at(1).toMap().value(QStringLiteral("locked")).toBool());
+
+        // Une fois ce calque sélectionné, les outils de mutation se refusent.
+        QVERIFY(session.selectImageSource(ObjectId{9102}));
+        QVERIFY(imageSpace.activeLayerLocked());
+        QVERIFY(!imageSpace.makeTransparentAt(5, 5).isEmpty());
+        QVERIFY(session.selectImageSource(ObjectId{})); // retour à la racine : déverrouillée
+
+        // Visibilité : même mécanisme, sur le calque du fond cette fois.
+        imageSpace.toggleLayerVisible(0);
+        states = imageSpace.imageLayerStates();
+        QVERIFY(!states.at(0).toMap().value(QStringLiteral("visible")).toBool());
+        QCOMPARE(session.undoNames().size(), depth + 2);
+
+        QVERIFY(session.undo()); // visibilité
+        QVERIFY(session.undo()); // verrou
+        states = imageSpace.imageLayerStates();
+        QVERIFY(states.at(0).toMap().value(QStringLiteral("visible")).toBool());
+        QVERIFY(!states.at(1).toMap().value(QStringLiteral("locked")).toBool());
+
+        // Index hors bornes : aucun effet, aucune étape.
+        const auto depthAfter = session.undoNames().size();
+        imageSpace.toggleLayerLocked(5);
+        imageSpace.toggleLayerVisible(-1);
+        QCOMPARE(session.undoNames().size(), depthAfter);
+    }
 };
 
 QTEST_MAIN(StudioSpaceImageTest)
