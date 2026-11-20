@@ -425,6 +425,85 @@ private slots:
         QCOMPARE(rig.stage.layerBuildCount(), buildsBefore);
     }
 
+    // HP-OBJ-024 : la forme sélectionnée publie le nom de son calque, et ce nom permet de rendre
+    // le calque actif via le même appel que ObjectTree/LayerPanel (EditController::setActiveLayer).
+    void selectedShapeExposesItsLayerAndCanActivateIt() {
+        Rig rig;
+        open(rig);
+        enterSpace(rig);
+        auto project = rig.session.project();
+        document::Calque base;
+        base.id = project.object_ids.next();
+        base.name = "Base";
+        document::Calque other;
+        other.id = project.object_ids.next();
+        other.name = "Détails";
+        project.calques.push_back(base);
+        project.calques.push_back(other);
+        project.vector_objects[0].calque = base.id;  // la forme de gauche (région 1)
+        project.vector_objects[1].calque = other.id; // la forme de droite (région 2)
+        rig.session.replaceProject(std::move(project), false);
+        QTRY_VERIFY_WITH_TIMEOUT(!rig.controller.busy(), 15'000);
+
+        QTest::mouseClick(rig.window, Qt::LeftButton, {}, at(rig, -2.5, 0.0)); // forme de gauche
+        QTRY_VERIFY_WITH_TIMEOUT(rig.session.selection().primary().has_value(), 3'000);
+        auto shape = rig.stage.selectedShape();
+        QCOMPARE(shape.value("layerName").toString(), QStringLiteral("Base"));
+        QCOMPARE(shape.value("layerId").toString(), QString::number(base.id.value));
+
+        QTest::mouseClick(rig.window, Qt::LeftButton, {}, at(rig, 2.5, 0.0)); // forme de droite
+        QTRY_VERIFY_WITH_TIMEOUT(rig.session.selection().primary().has_value(), 3'000);
+        shape = rig.stage.selectedShape();
+        QCOMPARE(shape.value("layerName").toString(), QStringLiteral("Détails"));
+        QCOMPARE(shape.value("layerId").toString(), QString::number(other.id.value));
+
+        // Le même appel que ObjectTree/LayerPanel ("Rendre actif") avec l'id publié active le
+        // calque de la forme sélectionnée.
+        QVERIFY(rig.editor.setActiveLayer(shape.value("layerId").toString()));
+        QCOMPARE(rig.editor.activeLayer(), shape.value("layerId").toString());
+    }
+
+    // HP-OBJ-024 (sécurité) : verrouiller le calque d'une sélection ne la vide pas (EditController
+    // le revérifie à chaque appel), donc VectorController doit filtrer lui-même les objets
+    // verrouillés plutôt que de les laisser muter via une opération de forme.
+    void lockedLayerObjectsAreFilteredOutOfShapeOperations() {
+        Rig rig;
+        open(rig);
+        enterSpace(rig);
+        auto project = rig.session.project();
+        document::Calque locked;
+        locked.id = project.object_ids.next();
+        locked.name = "Verrouillé";
+        project.calques.push_back(locked);
+        for (auto& shape : project.vector_objects) {
+            shape.calque = locked.id;
+        }
+        rig.session.replaceProject(std::move(project), false);
+        QTRY_VERIFY_WITH_TIMEOUT(!rig.controller.busy(), 15'000);
+
+        const auto leftId = rig.session.project().vector_objects[0].id.value;
+        const auto rightId = rig.session.project().vector_objects[1].id.value;
+        rig.session.selection().replace(
+            {Target{TargetKind::VectorObject, leftId}, Target{TargetKind::VectorObject, rightId}});
+        QCOMPARE(rig.session.selection().targets().size(), std::size_t{2});
+        QCOMPARE(rig.vectors.selectedCount(), 2);
+
+        QVERIFY(rig.editor.setLayerLocked(QString::number(locked.id.value), true));
+        // Le verrou ne vide pas la sélection : elle reste peuplée, VectorController doit la
+        // filtrer lui-même à chaque appel.
+        QCOMPARE(rig.session.selection().targets().size(), std::size_t{2});
+        QCOMPARE(rig.vectors.selectedCount(), 0);
+
+        const auto before = steps(rig);
+        QVERIFY(!rig.vectors.booleanOp(QStringLiteral("union")));
+        QCOMPARE(steps(rig), before);
+        QVERIFY(!rig.vectors.breakApart());
+        QCOMPARE(steps(rig), before);
+        // Jamais de mutation d'un calque verrouillé : les formes et leur calque sont inchangés.
+        QCOMPARE(rig.session.project().vector_objects.size(), std::size_t{2});
+        QVERIFY(rig.session.project().findCalque(locked.id)->locked);
+    }
+
     void visualPropertiesInvalidateVectorRasterButNamesDoNot() {
         Rig rig;
         open(rig);

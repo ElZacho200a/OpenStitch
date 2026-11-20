@@ -407,6 +407,9 @@ QVariantMap VectorSpaceController::selectedShape() const {
     const bool regionExists = hasSource && source != nullptr && source->segmentation &&
                               source->segmentation->find(*shape->source_region) != nullptr;
     const auto* object = embroideryOf(project, ids.back());
+    // Calque effectif de la forme (le sien, ou celui du fond si invalide/inconnu) : affiché dans
+    // le panneau pour que le calque de la forme sélectionnée ne soit jamais à deviner.
+    const auto* calque = project.calqueOfShape(shape->id);
     return {{QStringLiteral("id"), QString::number(shape->id.value)},
             {QStringLiteral("name"), QString::fromStdString(shape->name)},
             {QStringLiteral("hasSource"), hasSource},
@@ -415,7 +418,11 @@ QVariantMap VectorSpaceController::selectedShape() const {
             {QStringLiteral("nodes"), static_cast<int>(nodes)},
             {QStringLiteral("pieces"), static_cast<int>(shape->paths.size())},
             {QStringLiteral("embroidered"), object != nullptr},
-            {QStringLiteral("count"), static_cast<int>(ids.size())}};
+            {QStringLiteral("count"), static_cast<int>(ids.size())},
+            {QStringLiteral("layerId"),
+             calque != nullptr ? QString::number(calque->id.value) : QString()},
+            {QStringLiteral("layerName"),
+             calque != nullptr ? QString::fromStdString(calque->name) : QString()}};
 }
 
 bool VectorSpaceController::selectOriginRegion() {
