@@ -7,6 +7,8 @@
 #include <QPainterPath>
 #include <QQuickWindow>
 #include <QSGGeometryNode>
+#include <QSGMaterial>
+#include <QSGMaterialShader>
 #include <QSGOpacityNode>
 #include <QSGOpaqueTextureMaterial>
 #include <QSGSimpleTextureNode>
@@ -16,6 +18,7 @@
 #include <QSGVertexColorMaterial>
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <limits>
 #include <map>
 #include <memory>
@@ -398,19 +401,27 @@ void applySimulation(GeometryRoot& root, const Vertices& vertices, std::size_t v
 }
 
 // --- Rendu réaliste GPU --------------------------------------------------------------------
-// Couture pour brancher plus tard des shaders (module qtshadertools) sans toucher au reste :
-// aujourd'hui, uniquement les matériaux de texture standard de Qt Quick.
+// Couture des matériaux : textures standard de Qt Quick par défaut ; shader de fil
+// (RENDER-PBR-01) en opt-in quand le module qtshadertools est présent.
 class ThreadMaterialProvider {
 public:
     virtual ~ThreadMaterialProvider() = default;
-    [[nodiscard]] virtual QSGMaterial* threadMaterial(QSGTexture& sprite) const = 0;
+    [[nodiscard]] virtual QSGMaterial* threadMaterial(QSGTexture& sprite,
+                                                      std::array<std::uint8_t, 3> rgb,
+                                                      const RealisticStyle& style) const = 0;
     [[nodiscard]] virtual QSGMaterial* shadowMaterial(QSGTexture& shadow) const = 0;
     [[nodiscard]] virtual QSGMaterial* fabricMaterial(QSGTexture& tile) const = 0;
+    // Vrai : le matériau du fil dessine aussi les ombres portées, entrelacées segment par segment
+    // (writeInterleavedShadowThreadQuads) : ombres entre fils d'un même run.
+    [[nodiscard]] virtual bool interleavesShadows() const { return false; }
 };
 
-class StandardTextureMaterials final : public ThreadMaterialProvider {
+class StandardTextureMaterials : public ThreadMaterialProvider {
 public:
-    QSGMaterial* threadMaterial(QSGTexture& sprite) const override { return blended(sprite); }
+    QSGMaterial* threadMaterial(QSGTexture& sprite, std::array<std::uint8_t, 3> /*rgb*/,
+                                const RealisticStyle& /*style*/) const override {
+        return blended(sprite);
+    }
     QSGMaterial* shadowMaterial(QSGTexture& shadow) const override { return blended(shadow); }
     QSGMaterial* fabricMaterial(QSGTexture& tile) const override {
         tile.setFiltering(QSGTexture::Linear);
@@ -439,6 +450,101 @@ private:
         return material;
     }
 };
+
+#ifdef OPENSTITCH_HAS_THREAD_SHADER
+// Shader de fil : éclairage analytique (cylindre, spéculaire anisotrope à deux lobes, torsion à
+// pas constant, variation de brin) calculé depuis les mêmes (u, v) que l'atlas de sprite : la
+// géométrie et l'ordre de couture sont inchangés. Disposition std140 du bloc : matrice (0),
+// couleur (64), paramètres (80), vue et largeur du fil (96), opacité (112) ;
+// voir shaders/thread.{vert,frag}.
+class ThreadShaderMaterial final : public QSGMaterial {
+public:
+    ThreadShaderMaterial(std::array<std::uint8_t, 3> rgb, const RealisticStyle& style)
+        : color_{rgb[0] / 255.0F, rgb[1] / 255.0F, rgb[2] / 255.0F, 1.0F},
+          params_{static_cast<float>(style.relief), static_cast<float>(style.sheen),
+                  static_cast<float>(style.twist),
+                  0.65F * static_cast<float>(std::clamp(style.shadow, 0.0, 1.0))},
+          widthMm_{static_cast<float>(style.threadWidthMm)} {
+        setFlag(Blending);
+    }
+    [[nodiscard]] QSGMaterialType* type() const override {
+        static QSGMaterialType kType;
+        return &kType;
+    }
+    [[nodiscard]] QSGMaterialShader*
+        createShader(QSGRendererInterface::RenderMode /*mode*/) const override;
+    [[nodiscard]] int compare(const QSGMaterial* other) const override {
+        const auto* o = static_cast<const ThreadShaderMaterial*>(other);
+        if (const int c = std::memcmp(color_.data(), o->color_.data(), sizeof(color_)); c != 0) {
+            return c;
+        }
+        if (const int c = std::memcmp(params_.data(), o->params_.data(), sizeof(params_)); c != 0) {
+            return c;
+        }
+        return widthMm_ < o->widthMm_ ? -1 : (widthMm_ > o->widthMm_ ? 1 : 0);
+    }
+    [[nodiscard]] const std::array<float, 4>& color() const { return color_; }
+    [[nodiscard]] const std::array<float, 4>& params() const { return params_; }
+    [[nodiscard]] float widthMm() const { return widthMm_; }
+
+private:
+    std::array<float, 4> color_;
+    std::array<float, 4> params_;
+    float widthMm_;
+};
+
+class ThreadShader final : public QSGMaterialShader {
+public:
+    ThreadShader() {
+        setShaderFileName(VertexStage, QStringLiteral(":/studio/shaders/thread.vert.qsb"));
+        setShaderFileName(FragmentStage, QStringLiteral(":/studio/shaders/thread.frag.qsb"));
+    }
+    bool updateUniformData(RenderState& state, QSGMaterial* newMaterial,
+                           QSGMaterial* oldMaterial) override {
+        QByteArray* buffer = state.uniformData();
+        Q_ASSERT(buffer->size() >= 116);
+        bool changed = false;
+        if (state.isMatrixDirty()) {
+            std::memcpy(buffer->data(), state.combinedMatrix().constData(), 64);
+            changed = true;
+        }
+        const auto* m = static_cast<const ThreadShaderMaterial*>(newMaterial);
+        if (oldMaterial == nullptr || oldMaterial->compare(m) != 0) {
+            std::memcpy(buffer->data() + 64, m->color().data(), 16);
+            std::memcpy(buffer->data() + 80, m->params().data(), 16);
+            changed = true;
+        }
+        // Vue en pixels et largeur du fil : marge d'anticrénelage d'un pixel quel que soit le zoom.
+        const QRect viewport = state.viewportRect();
+        const std::array<float, 4> extra{static_cast<float>(viewport.width()),
+                                         static_cast<float>(viewport.height()), m->widthMm(), 0.0F};
+        if (std::memcmp(buffer->data() + 96, extra.data(), sizeof(extra)) != 0) {
+            std::memcpy(buffer->data() + 96, extra.data(), sizeof(extra));
+            changed = true;
+        }
+        if (state.isOpacityDirty()) {
+            const float opacity = state.opacity();
+            std::memcpy(buffer->data() + 112, &opacity, 4);
+            changed = true;
+        }
+        return changed;
+    }
+};
+
+QSGMaterialShader* ThreadShaderMaterial::createShader(QSGRendererInterface::RenderMode) const {
+    return new ThreadShader;
+}
+
+// Ombre et tissu : matériaux standard ; fil : shader.
+class ShaderThreadMaterials final : public StandardTextureMaterials {
+public:
+    QSGMaterial* threadMaterial(QSGTexture& /*sprite*/, std::array<std::uint8_t, 3> rgb,
+                                const RealisticStyle& style) const override {
+        return new ThreadShaderMaterial(rgb, style);
+    }
+    bool interleavesShadows() const override { return true; }
+};
+#endif
 
 QImage toImage(const PixelImage& pixels) {
     return QImage(pixels.rgba.data(), pixels.width, pixels.height, pixels.width * 4,
@@ -541,15 +647,25 @@ void buildRealistic(RealisticLayer& layer,
         const std::span<const StudioSegment> part(scene.segments.data() + chunk.first, chunk.count);
         scratch.resize(chunk.count * kVerticesPerSegment);
         auto* wrapper = new QSGOpacityNode;
+        const auto rgb = layer.runs[chunk.run].rgb;
+        auto& sprite = layer.spriteTexture(window, rgb);
+        if (style.shadow > 0.0 && materials.interleavesShadows()) {
+            scratch.resize(chunk.count * kInterleavedVerticesPerSegment);
+            writeInterleavedShadowThreadQuads(part, style, scratch.data());
+            wrapper->appendChildNode(texturedNode(scratch.data(), scratch.size(),
+                                                  materials.threadMaterial(sprite, rgb, style)));
+            layer.group->appendChildNode(wrapper);
+            layer.chunkNodes.push_back(wrapper);
+            continue;
+        }
         if (style.shadow > 0.0) {
             writeShadowQuads(part, style, scratch.data());
             wrapper->appendChildNode(texturedNode(scratch.data(), scratch.size(),
                                                   materials.shadowMaterial(*layer.shadowTexture)));
         }
         writeThreadQuads(part, style, scratch.data());
-        auto& sprite = layer.spriteTexture(window, layer.runs[chunk.run].rgb);
-        wrapper->appendChildNode(
-            texturedNode(scratch.data(), scratch.size(), materials.threadMaterial(sprite)));
+        wrapper->appendChildNode(texturedNode(scratch.data(), scratch.size(),
+                                              materials.threadMaterial(sprite, rgb, style)));
         layer.group->appendChildNode(wrapper);
         layer.chunkNodes.push_back(wrapper);
     }
@@ -579,6 +695,15 @@ void applyRealisticSimulation(RealisticLayer& layer, const StudioSceneSnapshot& 
         if (!full && chunk.first < shown) {
             const std::size_t count = shown - chunk.first;
             const std::span<const StudioSegment> part(scene.segments.data() + chunk.first, count);
+            const auto rgb = layer.runs[chunk.run].rgb;
+            if (style.shadow > 0.0 && materials.interleavesShadows()) {
+                std::vector<RealisticVertex> both(count * kInterleavedVerticesPerSegment);
+                writeInterleavedShadowThreadQuads(part, style, both.data());
+                auto& sprite = layer.spriteTexture(window, rgb);
+                layer.tail->appendChildNode(texturedNode(
+                    both.data(), both.size(), materials.threadMaterial(sprite, rgb, style)));
+                continue;
+            }
             std::vector<RealisticVertex> scratch(count * kVerticesPerSegment);
             if (style.shadow > 0.0) {
                 writeShadowQuads(part, style, scratch.data());
@@ -587,16 +712,32 @@ void applyRealisticSimulation(RealisticLayer& layer, const StudioSceneSnapshot& 
                                  materials.shadowMaterial(*layer.shadowTexture)));
             }
             writeThreadQuads(part, style, scratch.data());
-            auto& sprite = layer.spriteTexture(window, layer.runs[chunk.run].rgb);
-            layer.tail->appendChildNode(
-                texturedNode(scratch.data(), scratch.size(), materials.threadMaterial(sprite)));
+            auto& sprite = layer.spriteTexture(window, rgb);
+            layer.tail->appendChildNode(texturedNode(scratch.data(), scratch.size(),
+                                                     materials.threadMaterial(sprite, rgb, style)));
         }
     }
 }
 
+// Shader de fil en opt-in (OPENSTITCH_THREAD_SHADER=1) tant que la recette visuelle (photos
+// réelles, RENDER-PBR-01 lot A) n'a pas tranché ; sinon matériaux standard.
+bool threadShaderRequested() {
+#ifdef OPENSTITCH_HAS_THREAD_SHADER
+    return qEnvironmentVariableIntValue("OPENSTITCH_THREAD_SHADER") == 1;
+#else
+    return false;
+#endif
+}
+
 const ThreadMaterialProvider& materialProvider() {
-    static const StandardTextureMaterials provider;
-    return provider;
+    static const StandardTextureMaterials standard;
+#ifdef OPENSTITCH_HAS_THREAD_SHADER
+    static const ShaderThreadMaterials shader;
+    if (threadShaderRequested()) {
+        return shader;
+    }
+#endif
+    return standard;
 }
 
 // Crochet de la couche « regions » : une mise à jour par synchronisation, textures recréées

@@ -9,7 +9,7 @@ namespace openstitch::desktop_v2::studio {
 namespace {
 // Texcoords : u dans la cellule d'orientation, v le long du fil (0..1 sur toute la longueur).
 void quad(RealisticVertex* out, float ax, float ay, float bx, float by, float halfW, float ext,
-          float u0, float u1) {
+          float u0, float u1, float v0 = 0.0F, float v1 = 1.0F) {
     float dx = bx - ax;
     float dy = by - ay;
     const float len = std::hypot(dx, dy);
@@ -26,10 +26,10 @@ void quad(RealisticVertex* out, float ax, float ay, float bx, float by, float ha
     const float sy = ay - dy * ext;
     const float ex = bx + dx * ext;
     const float ey = by + dy * ext;
-    const RealisticVertex a{sx - px, sy - py, u0, 0.0F}; // départ, côté -perp
-    const RealisticVertex b{sx + px, sy + py, u1, 0.0F}; // départ, côté +perp
-    const RealisticVertex c{ex - px, ey - py, u0, 1.0F};
-    const RealisticVertex d{ex + px, ey + py, u1, 1.0F};
+    const RealisticVertex a{sx - px, sy - py, u0, v0}; // départ, côté -perp
+    const RealisticVertex b{sx + px, sy + py, u1, v0}; // départ, côté +perp
+    const RealisticVertex c{ex - px, ey - py, u0, v1};
+    const RealisticVertex d{ex + px, ey + py, u1, v1};
     out[0] = a;
     out[1] = b;
     out[2] = c;
@@ -88,10 +88,19 @@ int orientationBin(float dx, float dy) {
     return std::min(kOrientationBins - 1, static_cast<int>(turns * kOrientationBins));
 }
 
+int twistClass(double quadLengthMm, double threadWidthMm) {
+    const double pitch = std::max(1e-3, threadWidthMm * kTwistPitchWidths);
+    const auto periods = static_cast<long long>(std::llround(quadLengthMm / pitch));
+    return static_cast<int>(std::clamp<long long>(periods, 1, kTwistClasses) - 1);
+}
+
 std::size_t writeThreadQuads(std::span<const StudioSegment> segments, const RealisticStyle& style,
                              RealisticVertex* out) {
     const float halfW = static_cast<float>(style.threadWidthMm) * 0.5F;
     const float step = 1.0F / static_cast<float>(kOrientationBins);
+    const float rowStep = 1.0F / static_cast<float>(kTwistClasses);
+    constexpr float kRowInset = 0.5F / 32.0F; // demi-texel d'une rangée de 32 pixels
+    constexpr float kSideInset = 0.999F;
     for (std::size_t i = 0; i < segments.size(); ++i) {
         const auto& t = segments[i].thread;
         float dx = t.bx - t.ax;
@@ -105,7 +114,13 @@ std::size_t writeThreadQuads(std::span<const StudioSegment> segments, const Real
             dy = 0.0F;
         }
         const float u0 = static_cast<float>(orientationBin(dx, dy)) * step;
-        quad(out + i * kVerticesPerSegment, t.ax, t.ay, t.bx, t.by, halfW, halfW, u0, u0 + step);
+        // Rangée de torsion (demi-texel d'écart pour ne pas déborder sur la rangée voisine).
+        const int row = twistClass(len + 2.0F * halfW, style.threadWidthMm);
+        const float v0 = (static_cast<float>(row) + kRowInset) * rowStep;
+        const float v1 = (static_cast<float>(row + 1) - kRowInset) * rowStep;
+        // u1 légèrement rentré dans la cellule : le shader de fil distingue ainsi les deux côtés.
+        quad(out + i * kVerticesPerSegment, t.ax, t.ay, t.bx, t.by, halfW, halfW, u0,
+             u0 + step * kSideInset, v0, v1);
     }
     return segments.size() * kVerticesPerSegment;
 }
@@ -127,6 +142,25 @@ std::size_t writeShadowQuads(std::span<const StudioSegment> segments, const Real
              t.by + off.dy, halfW, halfW, 0.0F, 1.0F);
     }
     return segments.size() * kVerticesPerSegment;
+}
+
+std::size_t writeInterleavedShadowThreadQuads(std::span<const StudioSegment> segments,
+                                              const RealisticStyle& style, RealisticVertex* out) {
+    const auto off = shadowOffset(style.threadWidthMm);
+    const float halfW = static_cast<float>(style.threadWidthMm) * 0.5F;
+    const float shadowHalfW = halfW * kShadowWidthScale;
+    for (std::size_t i = 0; i < segments.size(); ++i) {
+        RealisticVertex* shadow = out + i * kInterleavedVerticesPerSegment;
+        RealisticVertex* thread = shadow + kVerticesPerSegment;
+        writeThreadQuads(segments.subspan(i, 1), style, thread);
+        // Ombre : mêmes (u, v) que le fil (orientation, rangée), décalée et élargie.
+        const auto& t = segments[i].thread;
+        const float u0 = thread[0].u + kShadowUOffset;
+        const float u1 = thread[1].u + kShadowUOffset;
+        quad(shadow, t.ax + off.dx, t.ay + off.dy, t.bx + off.dx, t.by + off.dy, shadowHalfW, halfW,
+             u0, u1, thread[0].v, thread[2].v);
+    }
+    return segments.size() * kInterleavedVerticesPerSegment;
 }
 
 } // namespace openstitch::desktop_v2::studio

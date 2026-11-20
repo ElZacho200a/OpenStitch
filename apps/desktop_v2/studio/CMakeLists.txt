@@ -54,7 +54,9 @@ add_library(openstitch_studio_ui STATIC
 add_library(openstitch::studio_ui ALIAS openstitch_studio_ui)
 # Thèmes livrés (resources/themes) : repli quand le Studio tourne depuis le dossier de build.
 target_compile_definitions(openstitch_studio_ui PRIVATE
-    OPENSTITCH_THEMES_SOURCE_DIR="${PROJECT_SOURCE_DIR}/resources/themes")
+    OPENSTITCH_THEMES_SOURCE_DIR="${PROJECT_SOURCE_DIR}/resources/themes"
+    # Rendu photo (RENDER-PBR-01 lot D) : script de ray tracing, repli depuis le dossier de build.
+    OPENSTITCH_RAYTRACE_SOURCE_SCRIPT="${PROJECT_SOURCE_DIR}/tools/raytrace/render_mitsuba.py")
 target_include_directories(openstitch_studio_ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(openstitch_studio_ui PUBLIC openstitch::desktop_v2_core
     openstitch::ai_segmentation openstitch::companion_backends
@@ -64,6 +66,17 @@ target_link_libraries(openstitch_studio_ui PUBLIC openstitch::desktop_v2_core
     Qt6::GuiPrivate
     # QZipReader / QZipWriter (theme_controller.cpp) : import et export des archives de thèmes.
     Qt6::CorePrivate)
+
+# RENDER-PBR-01 : shader de fil du rendu réaliste (opt-in OPENSTITCH_THREAD_SHADER=1). Sans le
+# module qtshadertools, le Studio garde les matériaux de texture standard (aucun chemin perdu).
+find_package(Qt6 6.8 COMPONENTS ShaderTools QUIET)
+if(TARGET Qt6::ShaderTools)
+    qt_add_shaders(openstitch_studio_ui "studio_thread_shaders"
+        PREFIX "/studio"
+        BATCHABLE
+        FILES shaders/thread.vert shaders/thread.frag)
+    target_compile_definitions(openstitch_studio_ui PRIVATE OPENSTITCH_HAS_THREAD_SHADER=1)
+endif()
 
 # BUILD-OPT-01.3 : QML externe + rechargement a chaud (Studio Dev). Opt-in, OFF par defaut ; meme
 # active, jamais compile pour une config Release (garde-fou aussi dans qml_dev_loader.cpp) et
@@ -119,6 +132,12 @@ add_custom_command(TARGET openstitch_v2_studio POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/resources/themes"
         "$<TARGET_FILE_DIR:openstitch_v2_studio>/themes"
     COMMENT "Copy builtin Studio themes")
+# Rendu photo (RENDER-PBR-01 lot D) : script de lancer de rayons à côté de l'exécutable
+# (<exe>/tools/raytrace), lu par FileController::exportPhotoRender ; Mitsuba reste externe.
+add_custom_command(TARGET openstitch_v2_studio POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/tools/raytrace"
+        "$<TARGET_FILE_DIR:openstitch_v2_studio>/tools/raytrace"
+    COMMENT "Copy photo render script")
 
 if(WIN32 AND TARGET Qt6::windeployqt)
     add_custom_command(TARGET openstitch_v2_studio POST_BUILD

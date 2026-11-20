@@ -52,7 +52,7 @@ float silhouetteAlpha(float u, float t) {
 PixelImage generateThreadSprite(std::array<std::uint8_t, 3> rgb, const RealisticStyle& style) {
     PixelImage img;
     img.width = kSpriteCellWidth * kOrientationBins;
-    img.height = kSpriteHeight;
+    img.height = kSpriteHeight * kTwistClasses;
     img.rgba.assign(static_cast<std::size_t>(img.width) * static_cast<std::size_t>(img.height) * 4,
                     0);
     const auto relief = static_cast<float>(style.relief);
@@ -82,12 +82,14 @@ PixelImage generateThreadSprite(std::array<std::uint8_t, 3> rgb, const Realistic
             const float rim = 0.55F + 0.45F * std::sqrt(nz);
             const float lit = (1.0F - relief) + relief * raw * rim;
             const float spec = pow28(std::max(0.0F, u * hx + nz * hz)) * sheen * 0.75F * 255.0F;
-            for (int cy = 0; cy < kSpriteHeight; ++cy) {
-                const float t = (static_cast<float>(cy) + 0.5F) / kSpriteHeight;
-                // Torsion : léger éclaircissement périodique en diagonale (étirée avec le segment).
-                const float ply =
-                    1.0F + 0.30F * twist *
-                               std::sin(2.0F * std::numbers::pi_v<float> * (2.0F * t + 0.5F * u));
+            for (int cy = 0; cy < img.height; ++cy) {
+                const int row = cy / kSpriteHeight; // rangée de torsion : row + 1 périodes
+                const float t = (static_cast<float>(cy % kSpriteHeight) + 0.5F) / kSpriteHeight;
+                const auto periods = static_cast<float>(row + 1);
+                // Torsion : éclaircissement périodique en diagonale, pas physique constant.
+                const float ply = 1.0F + 0.30F * twist *
+                                             std::sin(2.0F * std::numbers::pi_v<float> *
+                                                      (periods * t + 0.5F * u));
                 const float k = lit * ply;
                 const float r = std::min(255.0F, static_cast<float>(rgb[0]) * k + spec);
                 const float g = std::min(255.0F, static_cast<float>(rgb[1]) * k + spec);

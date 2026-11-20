@@ -127,6 +127,8 @@ private slots:
     void runsKeepSewingOrderAndCoverEverySegment();
     void chunksAreBoundedAndOrdered();
     void quadsAreDeterministicAndBinnedByOrientation();
+    void twistKeepsAConstantPhysicalPitch();
+    void interleavedShadowsPrecedeEachThread();
     void spriteCacheIsPerColourAndInvalidatedByStyle();
     void spriteLightingFollowsReliefAndOrientation();
     void shadowSpriteAndFabricTile();
@@ -241,6 +243,69 @@ void StudioRealisticTest::quadsAreDeterministicAndBinnedByOrientation() {
     QVERIFY(shadowOffset(style.threadWidthMm).dx > 0 && shadowOffset(style.threadWidthMm).dy > 0);
 }
 
+void StudioRealisticTest::twistKeepsAConstantPhysicalPitch() {
+    // Pas = 2 largeurs : 0,35 mm -> 0,7 mm. Rangée = périodes - 1, bornée à [0, kTwistClasses).
+    QCOMPARE(twistClass(0.1, 0.35), 0);
+    QCOMPARE(twistClass(0.7, 0.35), 0);
+    QCOMPARE(twistClass(2.1, 0.35), 2);
+    QCOMPARE(twistClass(100.0, 0.35), kTwistClasses - 1);
+    // Un segment court et un long ne lisent pas la même rangée de l'atlas.
+    const RealisticStyle style;
+    const std::vector<StudioSegment> segments{segment({1, 2, 3}, 0, 0, 0.5F, 0),
+                                              segment({1, 2, 3}, 0, 0, 3.3F, 0)};
+    std::vector<RealisticVertex> quads(segments.size() * kVerticesPerSegment);
+    writeThreadQuads(segments, style, quads.data());
+    const float rowStep = 1.0F / kTwistClasses;
+    bool insideRow = true;
+    auto rowOf = [&](std::size_t seg) -> int {
+        float lo = 1.0F, hi = 0.0F;
+        for (std::size_t i = 0; i < kVerticesPerSegment; ++i) {
+            lo = std::min(lo, quads[seg * kVerticesPerSegment + i].v);
+            hi = std::max(hi, quads[seg * kVerticesPerSegment + i].v);
+        }
+        const int row = static_cast<int>(lo / rowStep);
+        insideRow = insideRow && hi <= (row + 1) * rowStep + 1e-6F; // reste dans sa rangée
+        return row;
+    };
+    QCOMPARE(rowOf(0), twistClass(0.5 + style.threadWidthMm, style.threadWidthMm));
+    QCOMPARE(rowOf(1), twistClass(3.3 + style.threadWidthMm, style.threadWidthMm));
+    QVERIFY(rowOf(1) > rowOf(0));
+    QVERIFY(insideRow);
+}
+
+void StudioRealisticTest::interleavedShadowsPrecedeEachThread() {
+    const RealisticStyle style;
+    const std::vector<StudioSegment> segments{segment({1, 2, 3}, 0, 0, 2, 0),
+                                              segment({1, 2, 3}, 0, 0.3F, 2, 0.3F),
+                                              segment({1, 2, 3}, 1, 1, 1, 1)}; // segment nul
+    std::vector<RealisticVertex> both(segments.size() * kInterleavedVerticesPerSegment);
+    QCOMPARE(writeInterleavedShadowThreadQuads(segments, style, both.data()), both.size());
+    std::vector<RealisticVertex> threads(segments.size() * kVerticesPerSegment);
+    writeThreadQuads(segments, style, threads.data());
+    const auto off = shadowOffset(style.threadWidthMm);
+    for (std::size_t s = 0; s < segments.size(); ++s) {
+        const RealisticVertex* shadow = both.data() + s * kInterleavedVerticesPerSegment;
+        const RealisticVertex* thread = shadow + kVerticesPerSegment;
+        // Le fil est identique à writeThreadQuads ; son ombre le précède immédiatement.
+        QCOMPARE(std::memcmp(thread, threads.data() + s * kVerticesPerSegment,
+                             kVerticesPerSegment * sizeof(RealisticVertex)),
+                 0);
+        float sx = 0, sy = 0, tx = 0, ty = 0;
+        for (std::size_t i = 0; i < kVerticesPerSegment; ++i) {
+            QVERIFY(shadow[i].u >= kShadowUOffset); // mode ombre reconnaissable
+            QVERIFY(std::abs((shadow[i].u - kShadowUOffset) - thread[i].u) < 1e-6F);
+            QCOMPARE(shadow[i].v, thread[i].v);
+            sx += shadow[i].x;
+            sy += shadow[i].y;
+            tx += thread[i].x;
+            ty += thread[i].y;
+        }
+        // Centre décalé exactement de shadowOffset (bas-droite, lumière haut-gauche).
+        QVERIFY(std::abs((sx - tx) / kVerticesPerSegment - off.dx) < 1e-5F);
+        QVERIFY(std::abs((sy - ty) / kVerticesPerSegment - off.dy) < 1e-5F);
+    }
+}
+
 void StudioRealisticTest::spriteCacheIsPerColourAndInvalidatedByStyle() {
     ThreadSpriteCache cache;
     RealisticStyle style;
@@ -269,7 +334,7 @@ void StudioRealisticTest::spriteCacheIsPerColourAndInvalidatedByStyle() {
     (void)cache.sprite(red);
     QCOMPARE(cache.generatedCount(), std::size_t{3});
     QCOMPARE(cache.sprite(red).width, kSpriteCellWidth * kOrientationBins);
-    QCOMPARE(cache.sprite(red).height, kSpriteHeight);
+    QCOMPARE(cache.sprite(red).height, kSpriteHeight * kTwistClasses);
 }
 
 void StudioRealisticTest::spriteLightingFollowsReliefAndOrientation() {
@@ -411,6 +476,10 @@ void StudioRealisticTest::gpuPathBuildsOncePerRevisionAndMatchesCpuReference() {
         QSKIP("RHI test not requested (set OPENSTITCH_RHI_TEST=1 with QSG_RHI_BACKEND=d3d11 and "
               "QSG_RHI_PREFER_SOFTWARE_RENDERER=1)");
     }
+    // Un shader qui ne se charge pas ne dessine rien sans faire échouer la couverture : tout
+    // avertissement de pipeline ou de shader fait échouer le test.
+    QTest::failOnWarning(QRegularExpression(QStringLiteral("shader|pipeline"),
+                                            QRegularExpression::CaseInsensitiveOption));
     QQuickWindow window;
     window.resize(480, 320);
     Rig rig;

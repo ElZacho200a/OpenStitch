@@ -47,6 +47,14 @@ struct GridLines {
                                               const std::filesystem::path& path, double pxPerMm,
                                               const TaskContext& task);
 
+// Rendu photo par lancer de rayons (RENDER-PBR-01, lot D) : écrit la scène de brins des objets
+// visibles (séquence effective, ordre de couture ; stitch_render/thread_scene.hpp), écriture
+// atomique. Renvoie le nombre de brins. Instantané immuable, annulable.
+[[nodiscard]] Result<std::size_t>
+export_thread_scene(std::shared_ptr<const document::Project> project,
+                    const std::filesystem::path& path, double threadWidthMm,
+                    const TaskContext& task);
+
 // --- Plans d'export (CX07) : ce que l'export produira, calculé AVANT d'écrire ------------------
 // Image : taille réelle en pixels (même fenêtre et même plafond de pixels que le rendu exporté).
 // `reduced` : la résolution a été abaissée pour rester sous le plafond.

@@ -4,13 +4,17 @@
 #include "task_pump.hpp"
 
 #include <QColor>
+#include <QCoreApplication>
 #include <QDesktopServices>
 #include <QDir>
 #include <QFileInfo>
+#include <QGuiApplication>
 #include <QImage>
 #include <QPageSize>
 #include <QPainter>
 #include <QPdfWriter>
+#include <QProcess>
+#include <QProcessEnvironment>
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -1197,6 +1201,145 @@ void FileController::exportImage(const QUrl& url, double pxPerMm, int jpegQualit
             setMessage(QStringLiteral("Image écrite : %1").arg(fromPath(path.filename())));
         },
         QStringLiteral("Export impossible : "));
+}
+
+namespace {
+#ifndef OPENSTITCH_RAYTRACE_SOURCE_SCRIPT
+#define OPENSTITCH_RAYTRACE_SOURCE_SCRIPT ""
+#endif
+
+// Script de rendu photo : variable OPENSTITCH_RAYTRACE_SCRIPT, sinon à côté de l'exécutable
+// (déploiement), sinon dans les sources (Studio lancé depuis le build).
+QString raytraceScript() {
+    const QString forced = qEnvironmentVariable("OPENSTITCH_RAYTRACE_SCRIPT");
+    if (!forced.isEmpty()) {
+        return forced;
+    }
+    const QString deployed = QCoreApplication::applicationDirPath() +
+                             QStringLiteral("/tools/raytrace/render_mitsuba.py");
+    if (QFileInfo::exists(deployed)) {
+        return deployed;
+    }
+    return QString::fromUtf8(OPENSTITCH_RAYTRACE_SOURCE_SCRIPT);
+}
+
+struct PhotoRenderJob {
+    std::size_t segments{0};
+    QString engineLine;
+};
+} // namespace
+
+void FileController::exportPhotoRender(const QUrl& url, const QVariantMap& options) {
+    const auto path = pathOf(url, "png");
+    if (path.empty()) {
+        setMessage(QStringLiteral("Choisissez un fichier local."), true);
+        return;
+    }
+    const QString script = raytraceScript();
+    if (script.isEmpty() || !QFileInfo::exists(script)) {
+        setMessage(QStringLiteral("Script de rendu photo introuvable (tools/raytrace)."), true);
+        return;
+    }
+    const QString python = qEnvironmentVariable("OPENSTITCH_PYTHON", QStringLiteral("python"));
+    const auto snapshot = studio_.session().snapshot();
+    const auto scene =
+        std::filesystem::temp_directory_path() /
+        ("openstitch_photo_" + std::to_string(studio_.session().revision()) + ".json");
+    const auto number = [&options](const char* key, double fallback) {
+        bool ok = false;
+        const double v = options.value(QString::fromLatin1(key)).toDouble(&ok);
+        return ok ? v : fallback;
+    };
+    const double tilt = std::clamp(number("tiltDeg", 35.0), 0.0, 70.0);
+    const int spp = static_cast<int>(std::clamp(number("samples", 64.0), 1.0, 4096.0));
+    const double pxPerMm = std::clamp(number("pxPerMm", 10.0), 2.0, 40.0);
+    const double threadWidthMm = std::clamp(number("threadWidthMm", 0.35), 0.15, 1.0);
+    // Couleurs « r,g,b » : trois entiers 0..255, sinon la valeur par défaut.
+    const auto rgbOption = [&options](const char* key, const char* fallback) {
+        const QString text = options.value(QString::fromLatin1(key)).toString();
+        const auto parts = text.split(QLatin1Char(','));
+        bool valid = parts.size() == 3;
+        for (const auto& part : parts) {
+            bool ok = false;
+            const int v = part.trimmed().toInt(&ok);
+            valid = valid && ok && v >= 0 && v <= 255;
+        }
+        return valid ? text : QString::fromLatin1(fallback);
+    };
+    const QString fabric = rgbOption("fabric", "245,243,238");
+    const QString background = rgbOption("background", "200,200,204");
+    // Armure du tissu : liste fermée du script (tools/raytrace/render_mitsuba.py).
+    static const QStringList kFabricTypes{QStringLiteral("uni"),    QStringLiteral("toile"),
+                                          QStringLiteral("serge"),  QStringLiteral("jersey"),
+                                          QStringLiteral("feutre"), QStringLiteral("eponge")};
+    QString fabricType = options.value(QStringLiteral("fabricType")).toString();
+    if (!kFabricTypes.contains(fabricType)) {
+        fabricType = QStringLiteral("toile");
+    }
+    runJob<PhotoRenderJob>(
+        QStringLiteral("Rendu photo"),
+        [snapshot, scene, path, script, python, tilt, spp, pxPerMm, threadWidthMm, fabric,
+         background, fabricType](const TaskContext& task) -> Result<PhotoRenderJob> {
+            PhotoRenderJob job;
+            auto count = export_thread_scene(snapshot, scene, threadWidthMm, task);
+            if (!count) {
+                return std::unexpected(count.error());
+            }
+            job.segments = *count;
+            QProcess process;
+            process.setProcessChannelMode(QProcess::MergedChannels);
+            process.start(python,
+                          {script, fromPath(scene), fromPath(path), QStringLiteral("--spp"),
+                           QString::number(spp), QStringLiteral("--tilt"), QString::number(tilt),
+                           QStringLiteral("--px-per-mm"), QString::number(pxPerMm),
+                           QStringLiteral("--fabric"), fabric, QStringLiteral("--fabric-type"),
+                           fabricType, QStringLiteral("--background"), background});
+            if (!process.waitForStarted(15'000)) {
+                std::error_code ec;
+                std::filesystem::remove(scene, ec);
+                return fail(ErrorCategory::OperationImpossible,
+                            "Python introuvable pour le rendu photo",
+                            "Installez Python puis « python -m pip install --user mitsuba », ou "
+                            "indiquez l'interpréteur dans OPENSTITCH_PYTHON.");
+            }
+            // Attente par tranches : l'annulation tue le moteur.
+            while (!process.waitForFinished(200)) {
+                if (task.cancelled()) {
+                    process.kill();
+                    process.waitForFinished(5'000);
+                    std::error_code ec;
+                    std::filesystem::remove(scene, ec);
+                    return cancelled_error();
+                }
+                if (process.state() == QProcess::NotRunning) {
+                    break;
+                }
+            }
+            const QString output = QString::fromUtf8(process.readAll()).trimmed();
+            std::error_code ec;
+            std::filesystem::remove(scene, ec);
+            if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
+                const QString last = output.section(QLatin1Char('\n'), -1).left(300);
+                const bool noMitsuba = output.contains(QStringLiteral("No module named 'mitsuba'"));
+                return fail(ErrorCategory::OperationImpossible,
+                            noMitsuba ? "Mitsuba n'est pas installé"
+                                      : "Le moteur de rendu photo a échoué",
+                            noMitsuba ? std::string("python -m pip install --user mitsuba")
+                                      : last.toStdString());
+            }
+            job.engineLine = output.section(QLatin1Char('\n'), -1);
+            return job;
+        },
+        [this, path](PhotoRenderJob&& job) {
+            setMessage(QStringLiteral("Rendu photo écrit : %1 (%2 brins)")
+                           .arg(fromPath(path.filename()))
+                           .arg(static_cast<qulonglong>(job.segments)));
+            // Pas de visionneuse en mode sans écran (tests QTest headless).
+            if (QGuiApplication::platformName() != QLatin1String("offscreen")) {
+                QDesktopServices::openUrl(QUrl::fromLocalFile(fromPath(path)));
+            }
+        },
+        QStringLiteral("Rendu photo impossible : "));
 }
 
 void FileController::exportProductionSheet(const QUrl& url) {

@@ -42,6 +42,7 @@ jobs:
         with:
           version: "6.8.3"
           arch: win64_msvc2022_64
+          modules: qtshadertools
 
       - name: Set up vcpkg
         shell: pwsh

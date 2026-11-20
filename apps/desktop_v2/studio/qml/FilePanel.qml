@@ -79,6 +79,8 @@ Item {
         exportOptionsDialog.refresh()
     }
     function exportPlanText(kind, p) {
+        if (kind === "photo")
+            return qsTr("Lancer de rayons (Mitsuba, hors écran). Plus d'échantillons : moins de grain, rendu plus long. 0° = vue de dessus.")
         if (!p || p.ok === undefined)
             return qsTr("Calcul de l'aperçu…")
         if (!p.ok)
@@ -105,6 +107,7 @@ Item {
         case "dxf": ctl.exportDxf(url); break
         case "svg": ctl.exportSvg(url); break
         case "image": ctl.exportImage(url, exportOptionsDialog.pxPerMm, exportOptionsDialog.quality); break
+        case "photo": ctl.exportPhotoRender(url, exportOptionsDialog.photoOptions()); break
         case "sheet": ctl.exportProductionSheet(url); break
         case "template": ctl.exportPlacementTemplate(url, { paper: exportOptionsDialog.paper, landscape: exportOptionsDialog.landscape }); break
         }
@@ -403,6 +406,7 @@ Item {
                 onClicked: panel.ctl.exportAgain()
             }
             Entry { objectName: "exportImageEntry"; text: qsTr("Image (PNG, JPEG)…"); onClicked: panel.openExportOptions("image") }
+            Entry { objectName: "exportPhotoEntry"; text: qsTr("Rendu photo, lancer de rayons (PNG)…"); onClicked: panel.openExportOptions("photo") }
             Entry { text: qsTr("Fiche de production (PDF)…"); onClicked: panel.startExport("sheet", qsTr("Fiche de production"), [qsTr("PDF (*.pdf)")], "pdf") }
             Entry { objectName: "exportTemplateEntry"; text: qsTr("Gabarit de placement 1:1 (PDF)…"); onClicked: panel.openExportOptions("template") }
             Entry { text: qsTr("Liste des fils (CSV)…"); onClicked: panel.startExport("threads", qsTr("Liste des fils"), [qsTr("CSV (*.csv)")], "csv") }
@@ -485,9 +489,52 @@ Item {
         property string paper: "A4"
         property bool landscape: false
         readonly property var papers: ["A4", "A3", "Letter"]
-        heading: kind === "image" ? qsTr("Exporter l'image") : qsTr("Gabarit de placement 1:1")
+        // Rendu photo (RENDER-PBR-01 lot D) : réglages transmis au moteur de lancer de rayons.
+        property int photoTilt: 35
+        property int photoSamples: 64
+        property int photoPxPerMm: 10
+        property int photoThreadHundredths: 35
+        // Couleurs en « r,g,b » (0..255) : préréglages ou couleur libre (sélecteur).
+        property string photoFabricRgb: "245,243,238"
+        property string photoBackgroundRgb: "200,200,204"
+        property int photoFabricType: 1
+        readonly property var photoFabrics: [
+            { name: qsTr("Blanc cassé"), rgb: "245,243,238" },
+            { name: qsTr("Blanc"), rgb: "252,252,252" },
+            { name: qsTr("Gris chiné"), rgb: "150,150,155" },
+            { name: qsTr("Noir"), rgb: "22,22,24" },
+            { name: qsTr("Bleu marine"), rgb: "30,42,78" },
+            { name: qsTr("Rouge"), rgb: "170,30,35" },
+            { name: qsTr("Kaki"), rgb: "110,105,70" }
+        ]
+        readonly property var photoFabricTypes: [
+            { name: qsTr("Uni (sans relief)"), id: "uni" },
+            { name: qsTr("Toile (coton, lin)"), id: "toile" },
+            { name: qsTr("Sergé (jean, gabardine)"), id: "serge" },
+            { name: qsTr("Jersey (t-shirt, maille)"), id: "jersey" },
+            { name: qsTr("Feutre"), id: "feutre" },
+            { name: qsTr("Éponge"), id: "eponge" }
+        ]
+        function rgbToColor(rgb) {
+            var p = rgb.split(",")
+            return Qt.rgba(p[0] / 255, p[1] / 255, p[2] / 255, 1)
+        }
+        function colorToRgb(c) {
+            return Math.round(c.r * 255) + "," + Math.round(c.g * 255) + "," + Math.round(c.b * 255)
+        }
+        function photoOptions() {
+            return { tiltDeg: photoTilt, samples: photoSamples, pxPerMm: photoPxPerMm,
+                     threadWidthMm: photoThreadHundredths / 100.0,
+                     fabric: photoFabricRgb,
+                     fabricType: photoFabricTypes[photoFabricType].id,
+                     background: photoBackgroundRgb }
+        }
+        heading: kind === "image" ? qsTr("Exporter l'image")
+                 : kind === "photo" ? qsTr("Rendu photo") : qsTr("Gabarit de placement 1:1")
         function refresh() {
             plan = ({})
+            if (kind === "photo")
+                return // rien à prévoir : le moteur externe calcule l'image
             panel.ctl.requestExportPlan(kind, { pxPerMm: pxPerMm, paper: paper, landscape: landscape })
         }
         RowLayout {
@@ -511,6 +558,103 @@ Item {
                 value: exportOptionsDialog.quality
                 onValueModified: exportOptionsDialog.quality = value
             }
+        }
+        GridLayout {
+            visible: exportOptionsDialog.kind === "photo"
+            columns: 2
+            columnSpacing: 8
+            rowSpacing: 6
+            Label { text: qsTr("Inclinaison (°)") }
+            StudioSpinBox {
+                objectName: "photoTilt"
+                from: 0; to: 70; editable: true
+                value: exportOptionsDialog.photoTilt
+                onValueModified: exportOptionsDialog.photoTilt = value
+            }
+            Label { text: qsTr("Qualité (échantillons/pixel)") }
+            StudioSpinBox {
+                objectName: "photoSamples"
+                from: 1; to: 4096; stepSize: 16; editable: true
+                value: exportOptionsDialog.photoSamples
+                onValueModified: exportOptionsDialog.photoSamples = value
+            }
+            Label { text: qsTr("Résolution (px/mm)") }
+            StudioSpinBox {
+                objectName: "photoPxPerMm"
+                from: 2; to: 40; editable: true
+                value: exportOptionsDialog.photoPxPerMm
+                onValueModified: exportOptionsDialog.photoPxPerMm = value
+            }
+            Label { text: qsTr("Largeur du fil (1/100 mm)") }
+            StudioSpinBox {
+                objectName: "photoThreadWidth"
+                from: 15; to: 100; editable: true
+                value: exportOptionsDialog.photoThreadHundredths
+                onValueModified: exportOptionsDialog.photoThreadHundredths = value
+            }
+            Label { text: qsTr("Type de tissu") }
+            StudioComboBox {
+                objectName: "photoFabricType"
+                Layout.fillWidth: true
+                model: exportOptionsDialog.photoFabricTypes.map(function (f) { return f.name })
+                currentIndex: exportOptionsDialog.photoFabricType
+                onActivated: exportOptionsDialog.photoFabricType = currentIndex
+            }
+            Label { text: qsTr("Couleur du tissu") }
+            RowLayout {
+                spacing: 6
+                Rectangle {
+                    implicitWidth: 22; implicitHeight: 22; radius: 4
+                    color: exportOptionsDialog.rgbToColor(exportOptionsDialog.photoFabricRgb)
+                    border.width: 1; border.color: "#80808080"
+                }
+                StudioComboBox {
+                    objectName: "photoFabric"
+                    Layout.fillWidth: true
+                    // Préréglages puis « Personnalisée… » (sélecteur de couleur).
+                    model: exportOptionsDialog.photoFabrics.map(function (f) { return f.name })
+                           .concat([qsTr("Personnalisée…")])
+                    currentIndex: {
+                        var i = exportOptionsDialog.photoFabrics.findIndex(function (f) {
+                            return f.rgb === exportOptionsDialog.photoFabricRgb })
+                        return i >= 0 ? i : exportOptionsDialog.photoFabrics.length
+                    }
+                    onActivated: {
+                        if (currentIndex < exportOptionsDialog.photoFabrics.length)
+                            exportOptionsDialog.photoFabricRgb = exportOptionsDialog.photoFabrics[currentIndex].rgb
+                        else
+                            photoFabricColorDialog.open()
+                    }
+                }
+            }
+            Label { text: qsTr("Couleur du fond") }
+            RowLayout {
+                spacing: 6
+                Rectangle {
+                    implicitWidth: 22; implicitHeight: 22; radius: 4
+                    color: exportOptionsDialog.rgbToColor(exportOptionsDialog.photoBackgroundRgb)
+                    border.width: 1; border.color: "#80808080"
+                }
+                StudioButton {
+                    objectName: "photoBackground"
+                    text: qsTr("Choisir…")
+                    onClicked: photoBackgroundColorDialog.open()
+                }
+            }
+        }
+        ColorDialog {
+            id: photoFabricColorDialog
+            objectName: "photoFabricColorDialog"
+            title: qsTr("Couleur du tissu")
+            selectedColor: exportOptionsDialog.rgbToColor(exportOptionsDialog.photoFabricRgb)
+            onAccepted: exportOptionsDialog.photoFabricRgb = exportOptionsDialog.colorToRgb(selectedColor)
+        }
+        ColorDialog {
+            id: photoBackgroundColorDialog
+            objectName: "photoBackgroundColorDialog"
+            title: qsTr("Couleur du fond")
+            selectedColor: exportOptionsDialog.rgbToColor(exportOptionsDialog.photoBackgroundRgb)
+            onAccepted: exportOptionsDialog.photoBackgroundRgb = exportOptionsDialog.colorToRgb(selectedColor)
         }
         StudioComboBox {
             objectName: "exportTemplatePaper"
@@ -539,11 +683,14 @@ Item {
                 objectName: "confirmExportOptions"
                 text: qsTr("Enregistrer…")
                 emphasized: true
-                enabled: exportOptionsDialog.plan && exportOptionsDialog.plan.ok === true
+                enabled: exportOptionsDialog.kind === "photo"
+                         || (exportOptionsDialog.plan && exportOptionsDialog.plan.ok === true)
                 onClicked: {
                     exportOptionsDialog.close()
                     if (exportOptionsDialog.kind === "image")
                         panel.startExport("image", qsTr("Exporter l'image"), [qsTr("Image (*.png *.jpg)")], "png")
+                    else if (exportOptionsDialog.kind === "photo")
+                        panel.startExport("photo", qsTr("Rendu photo"), [qsTr("PNG (*.png)")], "png")
                     else
                         panel.startExport("template", qsTr("Gabarit de placement"), [qsTr("PDF (*.pdf)")], "pdf")
                 }

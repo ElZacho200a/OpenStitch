@@ -6,6 +6,8 @@
 
 #include "openstitch/core/atomic_file.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
+#include "openstitch/stitch_render/segments.hpp"
+#include "openstitch/stitch_render/thread_scene.hpp"
 #include "render_settings.hpp"
 
 namespace openstitch::desktop_v2 {
@@ -59,6 +61,50 @@ Result<void> export_preview_png(std::shared_ptr<const document::Project> project
         return cancelled_error();
     }
     return write_file_atomic(path, std::span<const std::uint8_t>(preview->png));
+}
+
+Result<std::size_t> export_thread_scene(std::shared_ptr<const document::Project> project,
+                                        const std::filesystem::path& path, double threadWidthMm,
+                                        const TaskContext& task) {
+    if (!project) {
+        return fail(ErrorCategory::Internal, "Rendu photo demandé sans projet");
+    }
+    std::map<std::uint64_t, std::array<std::uint8_t, 3>> colours;
+    for (const auto& e : project->embroidery_objects) {
+        if (e.visible && project->calqueVisible(e)) {
+            colours[e.id.value] = e.rgb;
+        }
+    }
+    if (colours.empty()) {
+        return fail(ErrorCategory::OperationImpossible, "Aucun objet visible à rendre");
+    }
+    const auto sequence = stitch_generation::effective_sequence(*project, task);
+    if (!sequence) {
+        return std::unexpected(sequence.error());
+    }
+    if (task.cancelled()) {
+        return cancelled_error();
+    }
+    const auto colourOf = [&colours](ObjectId id) -> std::optional<std::array<std::uint8_t, 3>> {
+        const auto it = colours.find(id.value);
+        if (it == colours.end()) {
+            return std::nullopt;
+        }
+        return it->second;
+    };
+    const auto segments =
+        stitch_render::build_thread_segments(*sequence, sequence->commands.size(), colourOf);
+    if (segments.empty()) {
+        return fail(ErrorCategory::OperationImpossible, "Aucun point cousu à rendre");
+    }
+    const std::string json = stitch_render::thread_scene_json(segments, threadWidthMm);
+    if (auto written = write_file_atomic(
+            path, std::span<const std::uint8_t>(reinterpret_cast<const std::uint8_t*>(json.data()),
+                                                json.size()));
+        !written) {
+        return std::unexpected(written.error());
+    }
+    return segments.size();
 }
 
 Result<ImageExportPlan> plan_image_export(std::shared_ptr<const document::Project> project,
