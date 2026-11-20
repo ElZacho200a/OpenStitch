@@ -544,3 +544,107 @@ TEST_CASE("couche de traits : meme resultat avec un seul fil et avec plusieurs (
         CHECK(one->embroideries[i].params.index() == many->embroideries[i].params.index());
     }
 }
+
+// ---- AUTO-LINEWORK-01, lot A : service pur prepare_linework ----
+
+namespace {
+
+std::uint32_t label_at(const segmentation::Segmentation& s, int x, int y) {
+    return s.labels[static_cast<std::size_t>(y) * s.width + x];
+}
+
+std::array<std::uint8_t, 3> rgb_at(const segmentation::Segmentation& s, int x, int y) {
+    const segmentation::Region* r = s.find(RegionId{label_at(s, x, y)});
+    return r != nullptr ? r->rgb : std::array<std::uint8_t, 3>{0, 0, 0};
+}
+
+LineLayerOptions lines_on() {
+    LineLayerOptions o;
+    o.enabled = true;
+    return o;
+}
+
+} // namespace
+
+TEST_CASE("linework plan : disabled option returns an untouched copy") {
+    const auto img = scene();
+    const auto seg = segmentation::segment(img, {.max_colors = 4, .min_region_px = 4});
+    REQUIRE(seg.has_value());
+    const LineworkPlan plan = prepare_linework(*seg, img, Millimeters{0.25}, LineLayerOptions{});
+    CHECK_FALSE(plan.has_linework);
+    CHECK(plan.completed_fills.labels == seg->labels);
+    CHECK(plan.strokes.labels.empty());
+    CHECK(plan.bars.labels.empty());
+}
+
+TEST_CASE("linework plan : no dark line gives no linework") {
+    image::Image img;
+    img.width = 80;
+    img.height = 60;
+    img.rgba.assign(static_cast<std::size_t>(img.width) * img.height * 4, 0);
+    fill_rect(img, 0, 0, 80, 60, 230, 220, 200);
+    fill_rect(img, 10, 10, 70, 50, 40, 110, 200);
+    const auto seg = segmentation::segment(img, {.max_colors = 3, .min_region_px = 4});
+    REQUIRE(seg.has_value());
+    const LineworkPlan plan = prepare_linework(*seg, img, Millimeters{0.25}, lines_on());
+    CHECK_FALSE(plan.has_linework);
+    CHECK(plan.completed_fills.labels == seg->labels);
+}
+
+TEST_CASE("linework plan : rope over a single sky keeps the sky continuous under it") {
+    // Ciel bleu uni traversé par un cordage noir fin en diagonale douce.
+    image::Image img;
+    img.width = 120;
+    img.height = 80;
+    img.rgba.assign(static_cast<std::size_t>(img.width) * img.height * 4, 0);
+    fill_rect(img, 0, 0, 120, 80, 230, 220, 200);
+    fill_rect(img, 10, 10, 110, 70, 90, 150, 220);
+    for (int x = 12; x < 108; ++x) {
+        const int y = 20 + (x - 12) * 40 / 96;
+        fill_rect(img, x, y, x + 1, y + 3, 5, 5, 15);
+    }
+    const auto seg = segmentation::segment(img, {.max_colors = 4, .min_region_px = 4});
+    REQUIRE(seg.has_value());
+    const auto sourceLabels = seg->labels;
+    const LineworkPlan plan = prepare_linework(*seg, img, Millimeters{0.25}, lines_on());
+    REQUIRE(plan.has_linework);
+    CHECK(seg->labels == sourceLabels); // la source n'est jamais réécrite
+    CHECK(plan.stroke_pixels > 0);
+    REQUIRE(plan.strokes.labels.size() == seg->labels.size());
+    // Sous le cordage : le ciel, pas le noir ; le cordage est dans `strokes`.
+    const int x = 60;
+    const int y = 20 + (x - 12) * 40 / 96 + 1;
+    CHECK(label_at(plan.strokes, x, y) == 1);
+    CHECK(near_rgb(rgb_at(plan.completed_fills, x, y), {90, 150, 220}));
+    // Le ciel est d'un seul tenant : une seule région de couleur ciel.
+    std::size_t skyRegions = 0;
+    for (const auto& slot : plan.completed_fills.region_slots) {
+        if (slot && slot->pixel_count > 0 && near_rgb(slot->rgb, {90, 150, 220})) {
+            ++skyRegions;
+        }
+    }
+    CHECK(skyRegions == 1);
+}
+
+TEST_CASE("linework plan : line across two colours extends their border behind it") {
+    const auto img = scene(); // rouge | bleu, trait noir horizontal y = 38..40
+    const auto seg = segmentation::segment(img, {.max_colors = 4, .min_region_px = 4});
+    REQUIRE(seg.has_value());
+    const LineworkPlan plan = prepare_linework(*seg, img, Millimeters{0.25}, lines_on());
+    REQUIRE(plan.has_linework);
+    CHECK(near_rgb(rgb_at(plan.completed_fills, 30, 39), {200, 60, 40}));
+    CHECK(near_rgb(rgb_at(plan.completed_fills, 90, 39), {30, 80, 170}));
+    CHECK(label_at(plan.strokes, 30, 39) == 1);
+    CHECK(plan.reassigned_pixels > 0);
+}
+
+TEST_CASE("linework plan : deterministic across calls") {
+    const auto img = scene();
+    const auto seg = segmentation::segment(img, {.max_colors = 4, .min_region_px = 4});
+    REQUIRE(seg.has_value());
+    const LineworkPlan a = prepare_linework(*seg, img, Millimeters{0.25}, lines_on());
+    const LineworkPlan b = prepare_linework(*seg, img, Millimeters{0.25}, lines_on());
+    CHECK(a.completed_fills.labels == b.completed_fills.labels);
+    CHECK(a.strokes.labels == b.strokes.labels);
+    CHECK(a.line_rgb == b.line_rgb);
+}
