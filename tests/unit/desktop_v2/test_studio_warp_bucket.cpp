@@ -104,6 +104,9 @@ struct Rig {
         if (!canvas || !settle())
             return false;
         canvas->fitDesign();
+        // Changer d'espace remet l'outil à « select » au tour de boucle suivant (Qt.callLater dans
+        // SpaceHost.switchTo) : laisser passer cette remise à zéro avant de choisir un outil.
+        QCoreApplication::processEvents();
         return warnings.isEmpty();
     }
     bool settle() {

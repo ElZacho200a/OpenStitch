@@ -316,8 +316,11 @@ void StudioViewTest::threadPlanColorwaysAndSewingOrder() {
     QVERIFY(!rig.threads.assignChartThread(0, chart, QStringLiteral("no-such-code")));
     QVERIFY(!rig.threads.removeChart(chart)); // built-in charts cannot be removed
     QTemporaryDir out;
-    QVERIFY(rig.threads.exportThreadList(
-        QUrl::fromLocalFile(out.filePath(QStringLiteral("threads.csv")))));
+    // L'export réutilise la séquence effective de la scène, calculée hors du fil d'interface :
+    // il est refusé tant que la scène ne correspond pas à la révision courante.
+    QTRY_VERIFY_WITH_TIMEOUT(rig.threads.exportThreadList(
+                                 QUrl::fromLocalFile(out.filePath(QStringLiteral("threads.csv")))),
+                             30'000);
     QVERIFY(QFileInfo::exists(out.filePath(QStringLiteral("threads.csv"))));
 }
 
