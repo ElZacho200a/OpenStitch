@@ -122,21 +122,47 @@ def fabric_bsdf(mi, kind: str, rgb: list[float], fw: float, fh: float) -> dict:
 def write_curves(segments, radius: float, folder: Path) -> dict[tuple[int, int, int], Path]:
     """Un fichier de courbes linéaires par couleur (format Mitsuba : x y z rayon ; ligne vide =
     nouvelle courbe). Repère Mitsuba : X droite, Y haut, Z vers la caméra (tissu en z = 0)."""
-    n = max(1, len(segments))
+    import numpy as np
+
+    # Carte de hauteur cumulée : chaque fil se pose sur ce qui a déjà été brodé sous lui
+    # (ordre de couture), puis rehausse la carte de sa propre épaisseur (tassée). Le tampon est
+    # plus étroit que le fil pour que deux rangées voisines d'un même remplissage ne
+    # s'empilent pas l'une sur l'autre : seul un vrai recouvrement fait monter le relief.
+    cell = radius / 2.0
+    stamp_half = radius * 0.4
+    pack = 0.75 * 2.0 * radius  # épaisseur ajoutée par couche (le fil s'écrase)
+    sink = radius * 0.35        # le fil entre dans le tissu au point d'aiguille
+    xs = [v for s in segments for v in (s[0], s[2])] or [0.0]
+    ys = [v for s in segments for v in (s[1], s[3])] or [0.0]
+    x0, y0 = min(xs) - 1.0, min(ys) - 1.0
+    hmap = np.zeros((int((max(ys) - y0 + 1.0) / cell) + 2,
+                     int((max(xs) - x0 + 1.0) / cell) + 2), dtype=np.float32)
+    lat = np.linspace(-stamp_half, stamp_half, 3)
+
     by_colour: dict[tuple[int, int, int], list[str]] = {}
-    for i, (ax, ay, bx, by, r, g, b) in enumerate(segments):
+    for ax, ay, bx, by, r, g, b in segments:
         dx, dy = bx - ax, by - ay
         length = math.hypot(dx, dy)
         if length < 1e-3:
             continue
-        top = radius * (1.0 + 0.6 * i / n)  # empilement dans l'ordre de couture
-        sink = radius * 0.35                # le fil entre dans le tissu au point d'aiguille
         ramp = min(0.5, max(0.08, radius * 1.5 / length))
-        pts = [(0.0, sink), (ramp, top), (1.0 - ramp, top), (1.0, sink)]
+        k = max(2, int(length / (radius * 1.5)) + 1)
+        ts = np.concatenate(([0.0], np.linspace(ramp, 1.0 - ramp, k), [1.0]))
+        nx, ny = -dy / length, dx / length
+        px = ax + dx * ts[:, None] + nx * lat[None, :]
+        py = ay + dy * ts[:, None] + ny * lat[None, :]
+        ci = ((px - x0) / cell).astype(int)
+        ri = ((py - y0) / cell).astype(int)
+        base = hmap[ri, ci].max(axis=1)
+        z = base + radius
+        z[0], z[-1] = base[0] + sink, base[-1] + sink
         lines = [
-            f"{ax + dx * t:.5f} {-(ay + dy * t):.5f} {z:.5f} {radius:.5f}" for t, z in pts
+            f"{ax + dx * t:.5f} {-(ay + dy * t):.5f} {zz:.5f} {radius:.5f}" for t, zz in zip(ts, z)
         ]
         by_colour.setdefault((r, g, b), []).append("\n".join(lines))
+        inner = slice(1, -1)
+        np.maximum.at(hmap, (ri[inner].ravel(), ci[inner].ravel()),
+                      np.repeat(base[inner] + pack, lat.size).astype(np.float32))
     files = {}
     for k, (colour, curves) in enumerate(sorted(by_colour.items())):
         path = folder / f"fil_{k:03d}.txt"
