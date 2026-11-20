@@ -101,6 +101,30 @@ Item {
             item.canvas.forceActiveFocus()
     }
 
+    // Les contrôleurs d'outils (`tools`, `digitizer`) sont partagés entre les canevas : sans remise
+    // à zéro, l'outil choisi dans un espace restait armé dans le suivant. Changer d'espace annule le
+    // geste en cours et revient à la Sélection (la Main de l'espace quitté se relâche aussi).
+    // Différé (`Qt.callLater`) : les signaux des contrôleurs ne doivent pas être émis pendant que
+    // `switchTo` instancie l'espace suivant (assertion du moteur JS de Qt en Debug sinon).
+    function resetControllerTools() {
+        if (typeof tools !== "undefined" && tools !== null) {
+            tools.cancel()
+            tools.activeTool = "select"
+        }
+        if (typeof digitizer !== "undefined" && digitizer !== null)
+            digitizer.mode = ""
+        // Outils propres aux espaces Image et Segmentation : même règle au retour dans l'espace.
+        if (typeof regionTools !== "undefined" && regionTools !== null)
+            regionTools.tool = "select"
+        if (typeof imageSpace !== "undefined" && imageSpace !== null)
+            imageSpace.tool = ""
+    }
+    function resetModalTools(outgoing) {
+        if (outgoing && outgoing.canvas && outgoing.canvas.panMode !== undefined)
+            outgoing.canvas.panMode = false
+        Qt.callLater(host.resetControllerTools)
+    }
+
     function switchTo(id) {
         if (!sources[id] || id === internal.loadedId)
             return
@@ -109,6 +133,7 @@ Item {
             workspace.saveView(outgoing.canvas.viewState())
         if (outgoing)
             outgoing.active = false
+        host.resetModalTools(outgoing)
         internal.loadedId = id
         switch (id) {
         case "image": internal.visitedImage = true; break

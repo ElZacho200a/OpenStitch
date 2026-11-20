@@ -514,6 +514,45 @@ TEST_CASE("shape ops accept raw vector shapes", "[project_ops][geometry]") {
               .error.code == "E_UNKNOWN_OBJECT");
 }
 
+TEST_CASE("knife and transforms accept raw vector shapes", "[project_ops][geometry]") {
+    Env env;
+    // Forme vectorielle pas encore convertie en broderie : couteau, déplacement, miroir,
+    // duplication n'exigent pas qu'elle soit déjà brodée.
+    const ObjectId v = env.project.findEmbroidery(add_rect(env, 0, 0, 20, 10))->source_vector;
+    env.project.embroidery_objects.clear();
+    const std::string original = signature(env.project);
+
+    const auto cut = env.run("split", json{{"object", v.value}, {"line_mm", {{0, -20}, {0, 20}}}});
+    REQUIRE(cut.ok);
+    CHECK(env.project.embroidery_objects.empty());
+    CHECK(env.project.vector_objects.size() == 2);
+    CHECK(cut.result["original"] == v.value);
+    REQUIRE(env.stack.undo(env.project));
+    CHECK(signature(env.project) == original);
+
+    const auto path =
+        env.run("split_path", json{{"object", v.value}, {"path_mm", {{0, -20}, {1, 0}, {0, 20}}}});
+    REQUIRE(path.ok);
+    CHECK(env.project.vector_objects.size() == 2);
+    REQUIRE(env.stack.undo(env.project));
+
+    const auto moved =
+        env.run("translate", json{{"object", v.value}, {"dx_mm", 5.0}, {"dy_mm", 0.0}});
+    REQUIRE(moved.ok);
+    CHECK(moved.result["id"] == v.value);
+    CHECK(env.run("mirror", json{{"object", v.value}, {"axis", "horizontal"}}).ok);
+
+    const auto dup = env.run("duplicate_object", json{{"object", v.value}, {"offset_mm", {30, 0}}});
+    REQUIRE(dup.ok);
+    CHECK(dup.result["created"].empty());
+    CHECK(dup.result["id"] == dup.result["vector_id"]);
+    CHECK(env.project.embroidery_objects.empty());
+    CHECK(env.project.vector_objects.size() == 2);
+
+    // Les opérations de points (auto-satin) exigent toujours un objet de broderie.
+    CHECK(env.run("auto_satin", json{{"object", v.value}}).error.code == "E_UNKNOWN_OBJECT");
+}
+
 TEST_CASE("set_geometry remplace le contour et refuse les polygones invalides",
           "[project_ops][geometry]") {
     Env env;

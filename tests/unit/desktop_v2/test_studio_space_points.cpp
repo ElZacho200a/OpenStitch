@@ -390,6 +390,39 @@ private slots:
         QCOMPARE(rig.tools.activeTool(), QStringLiteral("select"));
     }
 
+    // Le lasso de l'espace Vecteurs sert aussi ici : il coupe le geste de numérisation en cours,
+    // et un second clic revient à la Sélection.
+    void railOffersTheSelectionLasso() {
+        Rig rig;
+        open(rig);
+        QVERIFY(named(rig.window, "gesture_lasso"));
+        QVERIFY(press(rig.window, "gesture_satin"));
+        QCOMPARE(rig.digitizer.mode(), QStringLiteral("satin"));
+        QVERIFY(press(rig.window, "gesture_lasso"));
+        QCOMPARE(rig.tools.activeTool(), QStringLiteral("select.lasso"));
+        QCOMPARE(rig.digitizer.mode(), QString());
+        QTRY_VERIFY(named(rig.window, "gesture_lasso")->property("checked").toBool());
+        QVERIFY(named(rig.window, "pointsToolOverlay")->property("visible").toBool());
+        QVERIFY(press(rig.window, "gesture_lasso"));
+        QCOMPARE(rig.tools.activeTool(), QStringLiteral("select"));
+    }
+
+    // Les contrôleurs d'outils sont partagés entre les canevas : changer d'espace revient à la
+    // Sélection au lieu de laisser l'outil de l'espace quitté armé dans le suivant.
+    void switchingSpaceDisarmsTools() {
+        Rig rig;
+        open(rig);
+        QVERIFY(press(rig.window, "gesture_guide"));
+        QCOMPARE(rig.digitizer.mode(), QStringLiteral("guide"));
+        rig.workspace->setCurrent(QStringLiteral("image"));
+        QTRY_COMPARE(rig.digitizer.mode(), QString());
+        rig.workspace->setCurrent(QStringLiteral("points"));
+        QVERIFY(press(rig.window, "gesture_needle"));
+        QCOMPARE(rig.tools.activeTool(), QStringLiteral("needle.origin"));
+        rig.workspace->setCurrent(QStringLiteral("image"));
+        QTRY_COMPARE(rig.tools.activeTool(), QStringLiteral("select"));
+    }
+
     void gesturesLiveInTheOptionsBar() {
         Rig rig;
         open(rig);

@@ -263,6 +263,32 @@ OpStatus resolve_target(const OpContext& ctx, const char* key, Target& out) {
     return OpStatus::success();
 }
 
+// Comme `resolve_target`, mais accepte aussi une forme vectorielle pas encore convertie en
+// broderie (`embroidery` reste alors invalide) : les opérations purement géométriques (couper,
+// déplacer, retourner…) ne doivent pas exiger que la forme soit déjà brodée.
+OpStatus resolve_shape_target(const OpContext& ctx, const char* key, Target& out) {
+    const auto it = ctx.args.find(key);
+    if (it == ctx.args.end() || !it->is_number_unsigned() ||
+        ctx.project.findEmbroidery(ObjectId{it->get<std::uint64_t>()}) != nullptr ||
+        ctx.project.findObject(ObjectId{it->get<std::uint64_t>()}) == nullptr) {
+        return resolve_target(ctx, key, out);
+    }
+    const ObjectId vector{it->get<std::uint64_t>()};
+    const auto bounds = commands::objects_bounds(ctx.project, {vector});
+    if (!bounds) {
+        return refused("la forme " + std::to_string(vector.value) + " n'a aucune géométrie");
+    }
+    out.embroidery = {};
+    out.vector = vector;
+    out.bounds = *bounds;
+    return OpStatus::success();
+}
+
+// Identifiant rendu dans « id » : l'objet de broderie, sinon la forme vectorielle elle-même.
+std::uint64_t shape_id(const Target& target) {
+    return target.embroidery.valid() ? target.embroidery.value : target.vector.value;
+}
+
 json point_json(Vec2um p) {
     return json::array({to_millimeters(p.x).value, to_millimeters(p.y).value});
 }
@@ -331,7 +357,7 @@ OpStatus run_transform(OpContext& ctx, const Target& target, const commands::Aff
     }
     ctx.stack.execute(std::move(command), ctx.project);
     const auto bounds = commands::objects_bounds(ctx.project, {target.vector});
-    json result{{"id", target.embroidery.value}, {"vector_id", target.vector.value}};
+    json result{{"id", shape_id(target)}, {"vector_id", target.vector.value}};
     if (bounds) {
         result["bounds_mm"] = bounds_json(*bounds);
     }
@@ -352,7 +378,7 @@ OpStatus read_pivot(const OpContext& ctx, const Target& target, Vec2um& pivot) {
 
 OpStatus op_translate(OpContext& ctx) {
     Target target;
-    if (auto st = resolve_target(ctx, "object", target); !st.ok) {
+    if (auto st = resolve_shape_target(ctx, "object", target); !st.ok) {
         return st;
     }
     double dx = 0.0;
@@ -374,7 +400,7 @@ OpStatus op_translate(OpContext& ctx) {
 
 OpStatus op_rotate(OpContext& ctx) {
     Target target;
-    if (auto st = resolve_target(ctx, "object", target); !st.ok) {
+    if (auto st = resolve_shape_target(ctx, "object", target); !st.ok) {
         return st;
     }
     double angle_deg = 0.0;
@@ -392,7 +418,7 @@ OpStatus op_rotate(OpContext& ctx) {
 
 OpStatus op_scale(OpContext& ctx) {
     Target target;
-    if (auto st = resolve_target(ctx, "object", target); !st.ok) {
+    if (auto st = resolve_shape_target(ctx, "object", target); !st.ok) {
         return st;
     }
     double factor = 1.0;
@@ -410,7 +436,7 @@ OpStatus op_scale(OpContext& ctx) {
 
 OpStatus op_mirror(OpContext& ctx) {
     Target target;
-    if (auto st = resolve_target(ctx, "object", target); !st.ok) {
+    if (auto st = resolve_shape_target(ctx, "object", target); !st.ok) {
         return st;
     }
     std::string axis;
@@ -585,7 +611,7 @@ OpStatus op_add_shape(OpContext& ctx) {
 
 OpStatus op_set_geometry(OpContext& ctx) {
     Target target;
-    if (auto st = resolve_target(ctx, "object", target); !st.ok) {
+    if (auto st = resolve_shape_target(ctx, "object", target); !st.ok) {
         return st;
     }
     std::vector<Vec2um> pts;
@@ -606,7 +632,7 @@ OpStatus op_set_geometry(OpContext& ctx) {
     ctx.stack.execute(std::make_unique<commands::SetVectorPathsCommand>(
                           target.vector, std::move(paths), "Remplacer le contour"),
                       ctx.project);
-    json result{{"id", target.embroidery.value},
+    json result{{"id", shape_id(target)},
                 {"vector_id", target.vector.value},
                 {"dropped_pieces", dropped_pieces},
                 {"dropped_holes", dropped_holes}};
@@ -620,7 +646,7 @@ OpStatus op_set_geometry(OpContext& ctx) {
 
 OpStatus op_duplicate(OpContext& ctx) {
     Target target;
-    if (auto st = resolve_target(ctx, "object", target); !st.ok) {
+    if (auto st = resolve_shape_target(ctx, "object", target); !st.ok) {
         return st;
     }
     Vec2um offset{};
@@ -655,10 +681,12 @@ OpStatus op_duplicate(OpContext& ctx) {
             created.push_back(e.id.value);
         }
     }
-    if (created.empty()) {
+    // Une forme pas encore convertie se duplique en forme seule, sans objet de broderie.
+    if (created.empty() && target.embroidery.valid()) {
         return OpStatus::failure(code::kInternal, "duplication sans objet de broderie résultant");
     }
-    const std::uint64_t main_id = created[std::min(rank, created.size() - 1)];
+    const std::uint64_t main_id =
+        created.empty() ? new_vector.value : created[std::min(rank, created.size() - 1)];
     json result{{"id", main_id}, {"vector_id", new_vector.value}, {"created", created}};
     if (const auto b = commands::objects_bounds(ctx.project, {new_vector})) {
         result["bounds_mm"] = bounds_json(*b);
@@ -762,10 +790,7 @@ OpStatus pieces_result(const OpContext& ctx, const Target& target,
                        const std::vector<std::uint64_t>& before_vec) {
     const auto created = new_ids(before_emb, embroidery_ids(ctx.project));
     const auto created_vec = new_ids(before_vec, vector_ids(ctx.project));
-    json result{
-        {"original", target.embroidery.valid() ? target.embroidery.value : target.vector.value},
-        {"created", created},
-        {"vector_ids", created_vec}};
+    json result{{"original", shape_id(target)}, {"created", created}, {"vector_ids", created_vec}};
     if (!created.empty()) {
         result["id"] = created.front();
     } else if (!created_vec.empty()) {
@@ -776,7 +801,7 @@ OpStatus pieces_result(const OpContext& ctx, const Target& target,
 
 OpStatus op_split(OpContext& ctx) {
     Target target;
-    if (auto st = resolve_target(ctx, "object", target); !st.ok) {
+    if (auto st = resolve_shape_target(ctx, "object", target); !st.ok) {
         return st;
     }
     std::vector<Vec2um> line;
@@ -799,7 +824,7 @@ OpStatus op_split(OpContext& ctx) {
 // Coupe en tracé libre : même résultat que `split`, le long d'une polyligne (couteau main levée).
 OpStatus op_split_path(OpContext& ctx) {
     Target target;
-    if (auto st = resolve_target(ctx, "object", target); !st.ok) {
+    if (auto st = resolve_shape_target(ctx, "object", target); !st.ok) {
         return st;
     }
     std::vector<Vec2um> path;
@@ -825,13 +850,7 @@ OpStatus op_split_path(OpContext& ctx) {
 
 OpStatus op_break_apart(OpContext& ctx) {
     Target target;
-    // Forme vectorielle pas encore convertie : séparée directement, sans objet de broderie.
-    if (const auto it = ctx.args.find("object");
-        it != ctx.args.end() && it->is_number_unsigned() &&
-        ctx.project.findEmbroidery(ObjectId{it->get<std::uint64_t>()}) == nullptr &&
-        ctx.project.findObject(ObjectId{it->get<std::uint64_t>()}) != nullptr) {
-        target.vector = ObjectId{it->get<std::uint64_t>()};
-    } else if (auto st = resolve_target(ctx, "object", target); !st.ok) {
+    if (auto st = resolve_shape_target(ctx, "object", target); !st.ok) {
         return st;
     }
     const auto before_emb = embroidery_ids(ctx.project);
@@ -846,7 +865,7 @@ OpStatus op_break_apart(OpContext& ctx) {
 
 OpStatus op_remove_holes(OpContext& ctx) {
     Target target;
-    if (auto st = resolve_target(ctx, "object", target); !st.ok) {
+    if (auto st = resolve_shape_target(ctx, "object", target); !st.ok) {
         return st;
     }
     double max_area_mm2 = 0.0;
@@ -862,9 +881,8 @@ OpStatus op_remove_holes(OpContext& ctx) {
     }
     const std::size_t removed = made.resulting_objects;
     ctx.stack.execute(std::move(made.command), ctx.project);
-    return OpStatus::success(json{{"id", target.embroidery.value},
-                                  {"vector_id", target.vector.value},
-                                  {"holes_removed", removed}});
+    return OpStatus::success(json{
+        {"id", shape_id(target)}, {"vector_id", target.vector.value}, {"holes_removed", removed}});
 }
 
 OpStatus op_fill_block_holes(OpContext& ctx) {
@@ -1071,7 +1089,7 @@ OpStatus op_auto_satin(OpContext& ctx) {
         ctx.stack.execute(std::move(convert), ctx.project);
     }
 
-    json result{{"id", target.embroidery.value},
+    json result{{"id", shape_id(target)},
                 {"vector_id", target.vector.value},
                 {"columns", plan->columns},
                 {"satinability", plan->satinability_status},
@@ -1117,7 +1135,7 @@ void register_geometry_ops(std::vector<OpSpec>& out) {
     out.push_back(
         OpSpec{"duplicate_object",
                "Duplique un objet (forme et broderies) avec un décalage.",
-               {object_arg("objet de broderie à dupliquer"),
+               {object_arg("objet de broderie ou forme vectorielle à dupliquer"),
                 {"offset_mm", "array", "mm", "décalage [dx,dy] de la copie (Y vers le haut)", true,
                  "|coord| <= 1000"}},
                R"({"op":"duplicate_object","object":1,"offset_mm":[15,0]})",

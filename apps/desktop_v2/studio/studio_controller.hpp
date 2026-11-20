@@ -67,6 +67,8 @@ public:
                    : QString{};
     }
     Q_INVOKABLE void newProject();
+    // Variante C++ : part d'un projet neuf déjà préparé (p. ex. le dernier cadre choisi).
+    void newProject(document::Project seed);
     // Both return true when the project was written; the status line carries the reason otherwise.
     Q_INVOKABLE bool saveProject();
     Q_INVOKABLE bool saveProjectAs(const QUrl& url);

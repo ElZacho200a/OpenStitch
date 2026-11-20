@@ -170,6 +170,10 @@ private:
     void doOpenOsp(const QString& path);
     void doOpenMachine(const QString& path);
     void doNew();
+    // Dernier cadre choisi (hors document) : retenu après chaque choix, posé sur chaque projet
+    // neuf (nouveau, image importée).
+    void rememberHoop();
+    void seedHoop(document::Project& project) const;
     void noteRecentFromStudio();
     void persistRecent();
     void clearAutosaveFile();

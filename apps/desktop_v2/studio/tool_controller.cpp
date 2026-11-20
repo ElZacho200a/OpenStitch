@@ -36,6 +36,14 @@ constexpr ToolSpec kSpecs[] = {
 
 constexpr const char* kNeedleTool = "needle.origin";
 
+// Morceau issu d'une découpe : objet de broderie, ou forme vectorielle si la forme coupée n'était
+// pas encore convertie en broderie.
+Target pieceTarget(const document::Project& project, std::uint64_t id) {
+    return {project.findEmbroidery(ObjectId{id}) != nullptr ? TargetKind::EmbroideryObject
+                                                            : TargetKind::VectorObject,
+            id};
+}
+
 constexpr double kTwoPi = 2.0 * std::numbers::pi;
 
 double dist(PointMm a, PointMm b) {
@@ -578,7 +586,7 @@ void ToolController::commitKnifePath() {
     }
     std::vector<Target> pieces;
     for (const auto id : createdObjectIds(result.report)) {
-        pieces.push_back({TargetKind::EmbroideryObject, id});
+        pieces.push_back(pieceTarget(session.project(), id));
     }
     const auto count = pieces.size();
     if (!pieces.empty()) {
@@ -851,7 +859,7 @@ void ToolController::release(double x, double y, Qt::KeyboardModifiers mods) {
         }
         std::vector<Target> pieces;
         for (const auto id : createdObjectIds(result.report)) {
-            pieces.push_back({TargetKind::EmbroideryObject, id});
+            pieces.push_back(pieceTarget(session.project(), id));
         }
         if (!pieces.empty()) {
             session.selection().replace(std::move(pieces));
