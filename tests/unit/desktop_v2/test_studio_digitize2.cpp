@@ -446,7 +446,8 @@ void StudioDigitize2Test::pullAndCalibration() {
     open(rig);
     QCOMPARE(rig.pull.modes().size(), 4);
     QVERIFY(rig.pull.compare());
-    QVERIFY(!rig.pull.comparison().value("summary").toString().isEmpty());
+    // La comparaison tourne sur un worker : le résumé arrive au retour de la tâche.
+    QTRY_VERIFY_WITH_TIMEOUT(!rig.pull.comparison().value("summary").toString().isEmpty(), 30'000);
     QVERIFY(!rig.pull.limits().isEmpty());
     // compensation mode through the inspector: one undoable step
     const auto depth = rig.steps();
