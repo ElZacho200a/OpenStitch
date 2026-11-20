@@ -115,3 +115,29 @@ TEST_CASE("vector_convert : only linework strokes still converts") {
     REQUIRE(r->embroideries.size() == 1);
     CHECK(std::holds_alternative<document::RunningStitchParams>(r->embroideries[0].params));
 }
+
+TEST_CASE("auto_digitize_vectors : any open line is sewn as a running stitch after areas") {
+    // Ligne ouverte ordinaire (import SVG, tracé) : aucun drapeau, la géométrie suffit.
+    document::VectorObject line;
+    line.id = ObjectId{1};
+    line.name = "Chemin";
+    line.rgb = {1, 2, 3};
+    geometry::Path path;
+    path.closed = false;
+    path.nodes = {geometry::PathNode{Vec2um{Micrometers{0}, Micrometers{0}},
+                                     geometry::NodeType::Corner, std::nullopt, std::nullopt},
+                  geometry::PathNode{Vec2um{Micrometers{20'000}, Micrometers{8'000}},
+                                     geometry::NodeType::Corner, std::nullopt, std::nullopt}};
+    line.paths.push_back(geometry::PathSet{std::move(path), {}});
+    const std::vector<document::VectorObject> input{line, rect(ObjectId{2}, 0, 0, 30'000, 30'000)};
+    IdGenerator<ObjectId> ids;
+    ids.reset(2);
+    const auto r = auto_digitize_vectors(input, ids, options());
+    REQUIRE(r.has_value());
+    REQUIRE(r->embroideries.size() == 2);
+    CHECK(r->embroideries[0].source_vector == ObjectId{2});
+    CHECK(r->embroideries[0].is_tatami());
+    CHECK(r->embroideries[1].source_vector == ObjectId{1});
+    CHECK(r->embroideries[1].rgb == line.rgb);
+    CHECK(std::holds_alternative<document::RunningStitchParams>(r->embroideries[1].params));
+}
