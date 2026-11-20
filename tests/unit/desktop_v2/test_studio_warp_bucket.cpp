@@ -99,6 +99,11 @@ struct Rig {
             return false;
         if (auto* workspace = window->findChild<WorkspaceController*>())
             workspace->setCurrent(QStringLiteral("vector")); // le rail d'outils vit dans cet espace
+        // Changer d'espace remet les outils à la Sélection en différé (Qt.callLater, SpaceHost) :
+        // vider la file d'événements avant de choisir un outil, sinon la remise à zéro tombe au
+        // milieu du geste suivant.
+        QCoreApplication::sendPostedEvents();
+        QCoreApplication::processEvents();
         canvas = window->findChild<GpuCanvas*>("studioCanvas");
         tools.setSnapVertices(false);
         if (!canvas || !settle())
