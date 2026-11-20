@@ -594,18 +594,16 @@ private slots:
         open(rig);
         const auto beforeCount = rig.regions.regions().size();
         QVERIFY(beforeCount >= 2);
-        QVariantList allRegions = rig.regions.regions();
-        double sourceId = 0, targetId = 0;
-        for (const auto& r : allRegions) {
-            const QVariantMap m = r.toMap();
-            double id = m.value("id").toDouble();
-            if (sourceId == 0) {
-                sourceId = id;
-            } else if (targetId == 0) {
-                targetId = id;
-            }
-        }
-        QVERIFY(sourceId > 0 && targetId > 0);
+        // Deux aplats VOISINS (haut gauche et haut droit) designes par pixel : la numerotation
+        // des regions suit l'ordre des classes du k-means, qui ne garantit pas que les deux
+        // premiers identifiants soient adjacents (sinon la fusion recolore sans fusionner).
+        rig.regions.selectAtPixel(20, 20);
+        QCOMPARE(rig.regions.selectedCount(), 1);
+        const double sourceId = rig.regions.selected().front().toDouble();
+        rig.regions.selectAtPixel(100, 20);
+        QCOMPARE(rig.regions.selectedCount(), 1);
+        const double targetId = rig.regions.selected().front().toDouble();
+        QVERIFY(sourceId > 0 && targetId > 0 && sourceId != targetId);
         QCOMPARE(rig.regions.mergeColorInto(sourceId, targetId), QString());
         QTRY_COMPARE(rig.regions.regions().size(), beforeCount - 1);
         QVERIFY(rig.session.undo());
