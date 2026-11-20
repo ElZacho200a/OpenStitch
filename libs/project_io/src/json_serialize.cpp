@@ -2152,9 +2152,10 @@ json project_to_json(const document::Project& project) {
         }
         if (v.source_region) {
             vo["sourceRegion"] = v.source_region->value;
-            if (v.source_image.valid()) {
-                vo["sourceImage"] = v.source_image.value;
-            }
+        }
+        // Découplé de sourceRegion : un trait ouvert (sans région) garde son calque image.
+        if (v.source_image.valid()) {
+            vo["sourceImage"] = v.source_image.value;
         }
         if (v.text_owner) {
             vo["textOwner"] = v.text_owner->value;
@@ -2461,8 +2462,8 @@ Result<document::Project> project_from_json(const json& j) {
             v.locked = vo.value("locked", false);
             if (vo.contains("sourceRegion")) {
                 v.source_region = RegionId{vo.at("sourceRegion").get<std::uint64_t>()};
-                v.source_image = ObjectId{vo.value("sourceImage", std::uint64_t{0})};
             }
+            v.source_image = ObjectId{vo.value("sourceImage", std::uint64_t{0})};
             if (vo.contains("textOwner")) {
                 v.text_owner = ObjectId{vo.at("textOwner").get<std::uint64_t>()};
             }
