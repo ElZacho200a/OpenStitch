@@ -736,7 +736,14 @@ Item {
             onToggled: panel.exportValues.splitLongStitches = checked
         }
         StudioCheckBox {
-            text: qsTr("Relier sans couper quand le trajet sera recouvert")
+            objectName: "exportHiddenTravel"
+            text: qsTr("Réduire les coupes : passer sous les points cousus ensuite")
+            checked: panel.exportValues.hiddenTravel === true
+            onToggled: panel.exportValues.hiddenTravel = checked
+        }
+        StudioCheckBox {
+            objectName: "exportAutoJoin"
+            text: qsTr("Entrée et sortie de chaque objet au plus court")
             checked: panel.exportValues.autoJoin === true
             onToggled: panel.exportValues.autoJoin = checked
         }

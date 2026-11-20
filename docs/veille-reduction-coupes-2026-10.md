@@ -238,3 +238,48 @@ routage sûr (pas de lien visible supprimé sans preuve de recouvrement). Cette
 branche n'implémente pas le branching multi-objets ni un modèle physique de
 vitesse de coupe. Les statistiques historiques de la §5 ne doivent pas être
 présentées comme des gains de cette modification.
+
+## 8. Mesure sur 13 projets réels et ponts activés par défaut (2026-11-20)
+
+Question posée : la réduction des coupes est-elle au maximum ? Mesure sur `main` `ab7a8fa1`,
+13 projets `.osp` réels de l'utilisateur (Possible, PhareExam, Volcan, meduse, CerfKhalo…),
+`osp2dst` puis `stats`. Les 13 projets avaient `hiddenTravel.enabled: false` (l'ancien défaut,
+écrit dans chaque fichier).
+
+| Scénario `osp2dst` | Coupes | Écart |
+|---|---|---|
+| Export tel quel (ponts désactivés) | 5 271 | — |
+| `--reduce-trims` (trois niveaux, = l'option de Studio) | 3 764 | −29 % |
+| + `--reduce-trims-same-colour` | 3 072 | −42 % |
+| + `--reduce-trims-margin 0` | 2 841 | −46 % |
+| + `regions` ou `--reduce-trims-max 100` | ≈ 0 de plus | — |
+| `--reduce-trims-underlap 0.5` sur tout le motif | variable | nuisible sur meddd (+139) et Volcan (+76) |
+
+Coût mesuré (médiane de 3 exports) : +0,05 à 0,1 s par génération avec les trois niveaux,
++1 s avec la surface de même fil ; fil total inchangé, un peu moins de points (points d'arrêt).
+
+Ventilation des coupes sans ponts (journal par écart dans `finish_sequence`, instrumentation
+jetable non commitée) : 68 % internes à un objet au-delà du seuil (îlots de remplissage
+directionnel ou tatami, passage sous-couche → dessus des auto-satins), 27 % entre objets au-delà
+du seuil, 3 % `objectGap` (≤ 3 mm entre deux objets), 1,4 % changements de fil. Avec ponts et
+surface de même fil, il reste surtout des refus « aucun chemin caché » (2 248 sur 4 282
+candidats) : ce sont de vraies coupes dans l'ordre de couture actuel ; une marge nulle n'en retire
+que 7,5 % de plus.
+
+Sur une auto-numérisation **neuve** (mode formes, réglages par défaut), le gain est faible :
+`tentabrode.png` 242 → 237 coupes, l'image de `sample/` 229 → 225 (−2 %). Les liaisons cachées
+internes du tatami (PR #343) y font déjà l'essentiel ; les −29 % viennent des projets retravaillés
+(auto-satins, remplissages directionnels, objets superposés). Export déterministe (deux exports
+identiques octet pour octet) ; les 13 projets existants donnent un DST identique octet pour octet
+avant et après le changement de défaut.
+
+**Décision (utilisateur, 2026-11-20)** : ponts cachés (trois niveaux) **activés par défaut** pour
+tout nouveau projet, case « Réduire les coupes » dans l'export de Studio. Un projet déjà
+enregistré garde son réglage, donc son fichier machine. La case d'export de Studio liée à
+`auto_join` s'intitulait « Relier sans couper quand le trajet sera recouvert », ce qui décrivait
+les ponts cachés : elle devient « Entrée et sortie de chaque objet au plus court », et les ponts
+ont leur propre case.
+
+Reste : validation sur machine (HP-PHYS-001) ; surface de même fil limitée aux remplissages et
+exposée dans Studio (essai brodé pour juger le relief) ; au-delà, un ordre des îlots et des régions
+qui privilégie les trajets cachés (recherche, gain inconnu).

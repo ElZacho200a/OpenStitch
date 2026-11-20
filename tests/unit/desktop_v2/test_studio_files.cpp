@@ -186,6 +186,7 @@ private slots:
     void exportsAreDeterministicAndRepeatable();
     void documentExportsWriteRealFiles();
     void exportOptionsAreOneUndoStepAndRefusedWhenInvalid();
+    void machineExportDialogTurnsHiddenTravelOn();
     void imageAndVectorImports();
     void imagesStayIndependentThroughStitchesAndSave();
     void openRasterThroughStudioPoints();
@@ -1398,6 +1399,44 @@ void StudioFilesTest::exportOptionsAreOneUndoStepAndRefusedWhenInvalid() {
     QTRY_VERIFY_WITH_TIMEOUT(!rig.files->exportCheckText().isEmpty() &&
                                  rig.files->exportCheckText() != QStringLiteral("Vérification…"),
                              10'000);
+}
+
+// HP-SEQ-006.a : la fenêtre « Exporter pour la machine » montre l'interrupteur des ponts cachés,
+// séparé de « entrée et sortie au plus court » (auto_join), et l'export l'applique au projet en
+// une étape annulable -- l'aperçu et le fichier écrit restent la même séquence.
+void StudioFilesTest::machineExportDialogTurnsHiddenTravelOn() {
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    Rig rig({}, true);
+    QVERIFY(rig.window);
+    QTRY_VERIFY_WITH_TIMEOUT(rig.window->isExposed(), 5'000);
+    rig.session.replaceProject(studioFixture(), true); // finitions d'un projet antérieur
+    QVERIFY(!rig.files->exportOptions().value(QStringLiteral("hiddenTravel")).toBool());
+    auto* panel = rig.window->findChild<QObject*>(QStringLiteral("filePanel"));
+    auto* dialog = rig.window->findChild<QObject*>(QStringLiteral("exportDialog"));
+    auto* hidden = rig.window->findChild<QQuickItem*>(QStringLiteral("exportHiddenTravel"));
+    auto* join = rig.window->findChild<QQuickItem*>(QStringLiteral("exportAutoJoin"));
+    QVERIFY(panel && dialog && hidden && join);
+
+    QVERIFY(QMetaObject::invokeMethod(panel, "openExportDialog"));
+    QTRY_VERIFY_WITH_TIMEOUT(dialog->property("visible").toBool(), 3'000);
+    QVERIFY(!hidden->property("checked").toBool());
+    QVERIFY(!join->property("checked").toBool());
+    QVERIFY(QMetaObject::invokeMethod(hidden, "click"));
+    QTRY_VERIFY_WITH_TIMEOUT(hidden->property("checked").toBool(), 3'000);
+    const auto values = panel->property("exportValues").toMap();
+    QVERIFY(values.value(QStringLiteral("hiddenTravel")).toBool());
+    QVERIFY(!values.value(QStringLiteral("autoJoin")).toBool()); // l'autre case n'a pas bougé
+
+    // Même appel que le choix du fichier dans FilePanel.qml (`ctl.exportMachine(url, ...)`).
+    QVERIFY(!rig.studio.canUndo());
+    rig.files->exportMachine(url(dir, "ponts.dst"), values);
+    QVERIFY(rig.waitIdle());
+    QVERIFY(rig.session.project().finishing.hidden_travel.enabled);
+    QVERIFY(!rig.session.project().finishing.auto_join);
+    QVERIFY(rig.studio.canUndo());
+    rig.studio.undo();
+    QVERIFY(!rig.session.project().finishing.hidden_travel.enabled);
 }
 
 void StudioFilesTest::imageAndVectorImports() {

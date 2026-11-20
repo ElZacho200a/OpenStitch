@@ -385,7 +385,7 @@ std::vector<ActionDef> makeCatalog() {
                                  {"triangle", "Triangle"},
                                  {"zigzag", "Zigzag"},
                                  {"none", "Aucun"}}),
-                    boolField("hidden_travel", "Ponts cachés (au lieu de sauts)", false)};
+                    boolField("hidden_travel", "Ponts cachés (au lieu de sauts)", true)};
         a.build = [](const Values& v, const ActionContext&, std::string&) {
             return wrap(R"({"op":"set_finishing","enabled":)" +
                         std::string(flag(v, "enabled") ? "true" : "false") +

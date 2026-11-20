@@ -104,6 +104,7 @@ ExportOptions exportOptionsOf(const document::Project& project) {
     o.splitLongStitches = f.split_long_stitches;
     o.maxStitchMm = toMm(f.max_stitch_length);
     o.autoJoin = f.auto_join;
+    o.hiddenTravel = f.hidden_travel.enabled;
     if (f.design_start) {
         o.designStart = toPointMm(*f.design_start);
     }
@@ -157,6 +158,7 @@ ServiceResult setExportOptions(DocumentSession& session, const ExportOptions& op
     f.split_long_stitches = options.splitLongStitches;
     f.max_stitch_length = toUmM(options.maxStitchMm);
     f.auto_join = options.autoJoin;
+    f.hidden_travel.enabled = options.hiddenTravel; // niveaux et longueurs : réglages du projet
     f.design_start =
         options.designStart ? std::optional<Vec2um>{toVec(*options.designStart)} : std::nullopt;
     f.design_end =

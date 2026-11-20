@@ -2295,6 +2295,13 @@ couches ; objets verrouillables ; coût estimé ; routage satin multi-colonnes.
   `libs/project_io`, `apps/desktop/properties_panel`.
 
 ### HP-SEQ-006 — Minimiser les coupes [P1] — ◐ Partiel (2026-10-13, en PR)
+- Mesure (2026-11-20, 13 projets réels, `docs/veille-reduction-coupes-2026-10.md` §8) : 5 271
+  coupes sans ponts ; 3 764 avec les ponts (désormais par défaut, voir .a) ; 3 072 avec la surface
+  de même fil ; 2 841 avec une marge nulle. Sans ponts, 68 % des coupes sont internes à un objet,
+  3 % seulement viennent de `objectGap`. **Nouveaux manques** : surface de même fil limitée aux
+  remplissages et exposée dans Studio ; ordre des îlots d'un objet et des régions d'une couleur
+  qui privilégie les trajets cachés (il reste surtout des refus « aucun chemin caché ») ;
+  enchaînement des parties d'un auto-satin (sous-couche → dessus).
 - Livré (2026-11-14) : liaisons cachées INTERNES du remplissage. `HiddenRouter` tolère
   0,3 mm au bord pour ses seuls tronçons d'extrémité (les fins de rangée dépassent la région
   par compensation de tirage et étaient rejetées) et retient 96 points de passage au lieu de
@@ -2320,6 +2327,16 @@ couches ; objets verrouillables ; coût estimé ; routage satin multi-colonnes.
   coupes avec les réglages les plus larges sur ce projet). Détail : `docs/source/tatami.md`.
 
 ### HP-SEQ-006.a — Pont caché entre objets en passe finale [P1] — ◐ Partiel (2026-10-13, en PR)
+- Activé par défaut (2026-11-20, décision de l'utilisateur après mesure) : `HiddenTravel::enabled`
+  et `DigitizeSettings::hidden_travel` valent vrai pour tout nouveau projet (trois niveaux, sans
+  surface de même fil ni réordonnancement des régions). Un projet enregistré garde son réglage et
+  son fichier machine (projet sans la clé : ponts désactivés). Studio : case « Réduire les
+  coupes : passer sous les points cousus ensuite » de *Exporter pour la machine* (écrit le réglage
+  du projet, une étape annulable) ; la case liée à `auto_join`, intitulée à tort « Relier sans
+  couper quand le trajet sera recouvert », devient « Entrée et sortie de chaque objet au plus
+  court ». CLI : `--no-hidden-travel`. Mesure sur 13 projets réels : 5 271 → 3 764 coupes (−29 %) ;
+  auto-numérisation neuve : −2 % (liaisons internes du tatami déjà actives) ; voir
+  `docs/veille-reduction-coupes-2026-10.md` §8. **Reste** : validation machine HP-PHYS-001.
 - Livré (cœur, en PR, non fusionné) : `HiddenTravel` dans `SequenceFinishing`
   (désactivé par défaut, persisté dans le `.osp`), `hidden_travel.{hpp,cpp}`
   (grille « dernier recouvrement », érosion, saut recouvert, A* déterministe)
@@ -4664,6 +4681,7 @@ ouvrant le lot (§0.1).
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-11-20 | Claude (ponts cachés par défaut) | **HP-SEQ-006.a ◐** (précisé), **HP-SEQ-006 ◐** (mesure et nouveaux manques). Mesure sur 13 projets réels : 5 271 coupes sans ponts, 3 764 avec (−29 %), 3 072 avec la surface de même fil ; auto-numérisation neuve : −2 %. Ponts cachés activés par défaut pour tout nouveau projet (`HiddenTravel::enabled`, `DigitizeSettings::hidden_travel`) ; un projet enregistré garde son réglage et son fichier machine. Studio : case « Réduire les coupes » de l'export machine, case `auto_join` rebaptisée (son ancien libellé décrivait les ponts). CLI `--no-hidden-travel`. Tests Catch2 (persistance, usine, options d'export), QTest (fenêtre d'export), contrat CLI. Validation machine HP-PHYS-001 à faire. |
 | 2026-11-19 | Claude (fondu à la frontière : plusieurs zones) | Roadmap : HP-STI-011 inchangé (ergonomie). `project_ops::make_multi_boundary_blend_command` pose un fondu sur chaque couple de zones sélectionnées qui partagent une frontière (couples déjà fondus conservés, couples refusés ignorés, codes `E_BLEND_FEW_ZONES` / `E_BLEND_NO_PAIR`), en une composite et un pas d'annulation. Studio : bouton « Fondre les N zones » du panneau Fondu à la frontière dès trois zones sélectionnées (`BoundaryBlendController::createAll`). Tests Catch2 et QTest. |
 | 2026-11-19 | Claude (vectorisation adaptative VEC-ADAPT-01, lot A) | Roadmap : aucune entrée de parité modifiée. Bornes uniques des réglages de vectorisation (`project_ops::kPrecisionMinMm`… dans `revectorize.hpp`) partagées par Studio et `vectorize_segmentation` : courbes 0,1–10 px (Studio bornait à 0,5, curseur à 0,5–5), simplification 0,01–2 mm (Studio : 0,02, curseur 0,05–1). Champs de saisie fine dans le panneau Vecteurs ; défauts inchangés (0,2 mm, 1,5 px). Benchmark subpixel sur MonetGasque et mode Auto par région (lot B) non faits. |
 | 2026-11-19 | Claude (Studio : pinceau de détail) | Roadmap : aucune entrée de parité Hatch concernée (retour d'une fonction du bureau V1 dans le Studio). **Zones de détail** dans l'espace Segmentation : outils `Q` (peindre) et `Maj+Q` (gommer) de la barre latérale, rayon en mm, pastille du disque exact, incrustation orange du masque, « Tout effacer » et « Segmenter » ; `DetailZoneController` (un trait = une commande annulable, masque aussi peignable avant la segmentation). Le masque est enfin utilisé par la segmentation Studio (aperçu, application, re-segmentation) et par la régénération des objets (vectorisation plus fine, petites formes en tatami) ; ignoré s'il n'a plus la taille de l'image. `paintDetailPixels`, `usableDetailMask` ; tests Catch2 (`[source]`, `[segment]`) et QTest (espace Segmentation). Manque : réglage de la finesse par zone (une seule valeur de détail pour l'instant), densité/angle par zone. |
