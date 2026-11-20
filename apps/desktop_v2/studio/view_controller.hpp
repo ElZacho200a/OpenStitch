@@ -111,6 +111,10 @@ public:
     Q_INVOKABLE void previousObject();
     Q_INVOKABLE void nextColour();
     Q_INVOKABLE void previousColour();
+    // Navigation par RANG de calque (pas par objet) : saute au premier point du calque suivant
+    // / précédent dans l'ordre de couture.
+    Q_INVOKABLE void nextLayer();
+    Q_INVOKABLE void previousLayer();
     Q_INVOKABLE void toEnd();
     Q_INVOKABLE void toStart();
     // Advances the playback by `milliseconds` of wall time (the timer calls it; tests drive it).

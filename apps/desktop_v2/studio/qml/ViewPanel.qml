@@ -202,6 +202,43 @@ Item {
                             font.pixelSize: Theme.smallSize
                             wrapMode: Text.WordWrap
                         }
+                        Text {
+                            objectName: "filterLayersLabel"
+                            visible: editor.layers.length > 1
+                            text: qsTr("Calques")
+                            color: Theme.muted
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.smallSize
+                        }
+                        // Visibilité des calques du document pendant la simulation : une case par
+                        // calque, qui réutilise la mutation de calque existante (editor.setLayerVisible,
+                        // un pas d'annulation) au lieu d'un filtre d'affichage parallèle.
+                        Flow {
+                            objectName: "filterLayersFlow"
+                            visible: editor.layers.length > 1
+                            Layout.fillWidth: true
+                            spacing: 2
+                            Repeater {
+                                // Modèle = un COMPTE stable, pas le tableau `editor.layers` lui-même :
+                                // celui-ci est reconstruit à chaque `treeChanged` (y compris sur un
+                                // simple `sceneChanged`, bien plus fréquent qu'un vrai changement de
+                                // calque), ce qui détruirait et recréerait tous les délégués à chaque
+                                // émission — y compris entre l'appui et le relâchement d'un clic sur
+                                // une case, perdant le geste. Le compte, lui, ne change presque jamais.
+                                model: editor.layers.length
+                                delegate: StudioCheckBox {
+                                    required property int index
+                                    readonly property var layerData: editor.layers[index] || {}
+                                    objectName: "filterLayer_" + (layerData.id || "")
+                                    text: layerData.name || ""
+                                    checked: layerData.visible === true
+                                    tristate: false
+                                    onToggled: editor.setLayerVisible(layerData.id, checked)
+                                    palette.windowText: Theme.foreground
+                                    Accessible.name: qsTr("Calque %1").arg(layerData.name || "")
+                                }
+                            }
+                        }
                         Text { text: qsTr("Types de points"); color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize }
                         Flow {
                             objectName: "filterTypesFlow"
@@ -286,7 +323,7 @@ Item {
                         Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Theme.divider }
                         SectionLabel { text: qsTr("RENDU RÉALISTE") }
                         RealisticToggle { objectName: "realisticPanelToggle"; Layout.fillWidth: true }
-                        SectionLabel { text: qsTr("CALQUES D'AFFICHAGE") }
+                        SectionLabel { text: qsTr("COUCHES DE RENDU") }
                         Flow {
                             Layout.fillWidth: true
                             spacing: 2
