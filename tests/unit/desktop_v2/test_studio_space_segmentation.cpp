@@ -148,6 +148,7 @@ struct Rig {
     ImageController images{studio};
     RegionController regions{studio, images};
     DetailZoneController detail{studio, images};
+    DetailZoneController linework{studio, images, document::MaskKind::Linework};
     SegmentationSpaceController space{studio, images, regions};
     QQmlApplicationEngine engine;
     QStringList warnings;
@@ -206,6 +207,7 @@ private:
         ctx->setContextProperty(QStringLiteral("imageTools"), &rig.images);
         ctx->setContextProperty(QStringLiteral("regionTools"), &rig.regions);
         ctx->setContextProperty(QStringLiteral("detailZones"), &rig.detail);
+        ctx->setContextProperty(QStringLiteral("lineworkZones"), &rig.linework);
         ctx->setContextProperty(QStringLiteral("segmentationSpace"), &rig.space);
         rig.engine.load(QUrl(QStringLiteral("qrc:/studio/qml/Main.qml")));
         QVERIFY2(!rig.engine.rootObjects().isEmpty(), qPrintable(rig.warnings.join('\n')));
@@ -1159,6 +1161,101 @@ private slots:
         // Annuler remet la zone peinte.
         QVERIFY(rig.session.undo());
         QTRY_VERIFY_WITH_TIMEOUT(rig.detail.hasDetail(), 5'000);
+        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+    }
+
+    void lineworkBrushPaintsItsOwnMaskUndoably() {
+        Rig rig;
+        open(rig);
+        QVERIFY(rig.named("regionTool_linework") != nullptr);
+        QVERIFY(rig.named("regionTool_lineworkErase") != nullptr);
+        // Outil exclusif : le pinceau de traits fins éteint celui de détail, et inversement.
+        QVERIFY(rig.press("regionTool_detail"));
+        QVERIFY(rig.press("regionTool_linework"));
+        QCOMPARE(rig.linework.tool(), QStringLiteral("paint"));
+        QCOMPARE(rig.detail.tool(), QString());
+        QCOMPARE(rig.regions.tool(), QStringLiteral("select"));
+
+        const auto depth = rig.session.undoNames().size();
+        rig.linework.setRadiusMm(2.0);
+        QVariantList stroke;
+        for (const double x : {-3.0, 0.0, 3.0}) {
+            stroke.push_back(QVariantMap{{QStringLiteral("x"), x}, {QStringLiteral("y"), 0.0}});
+        }
+        QCOMPARE(rig.linework.paintStroke(stroke), QString());
+        QCOMPARE(rig.session.undoNames().size(), depth + 1);
+        QTRY_VERIFY_WITH_TIMEOUT(rig.linework.hasDetail(), 5'000);
+        // Masque distinct, pas de segmentation à relancer, incrustation propre.
+        const auto& source = rig.session.project().imageSource();
+        QVERIFY(source.linework_mask.matches(rig.images.imageWidth(), rig.images.imageHeight()));
+        QVERIFY(source.detail_mask.empty());
+        QVERIFY(!rig.linework.needsSegmentation());
+        QVERIFY(!rig.images.images()->get(QStringLiteral("linework")).isNull());
+
+        QCOMPARE(rig.linework.clearAll(), QString());
+        QTRY_VERIFY_WITH_TIMEOUT(!rig.linework.hasDetail(), 5'000);
+        QVERIFY(rig.session.undo());
+        QTRY_VERIFY_WITH_TIMEOUT(rig.linework.hasDetail(), 5'000);
+        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+    }
+
+    void zoneMapsToggleIndependentlyAndPaintingForcesVisibility() {
+        Rig rig;
+        open(rig);
+        QCOMPARE(rig.linework.kindName(), QStringLiteral("linework"));
+        QCOMPARE(rig.detail.kindName(), QStringLiteral("detail"));
+        QVERIFY(rig.detail.overlayVisible());
+        QVERIFY(rig.linework.overlayVisible());
+        // Les deux cartes se masquent independamment.
+        rig.linework.setOverlayVisible(false);
+        QVERIFY(!rig.linework.overlayVisible());
+        QVERIFY(rig.detail.overlayVisible());
+        // Peindre une carte masquee la rend visible (jamais de pinceau aveugle).
+        QVERIFY(rig.press("regionTool_linework"));
+        QVERIFY(rig.linework.overlayVisible());
+        QVERIFY(rig.detail.overlayVisible());
+        // Bouton oeil du panneau d'options : bascule la carte du pinceau actif seulement.
+        QVERIFY(rig.named("zoneOverlayToggle") != nullptr);
+        QVERIFY(rig.press("zoneOverlayToggle"));
+        QVERIFY(!rig.linework.overlayVisible());
+        QVERIFY(rig.detail.overlayVisible());
+        // Legende : chaque carte a son oeil.
+        QVERIFY(rig.press("legendLinework"));
+        QVERIFY(rig.linework.overlayVisible());
+        QVERIFY(rig.press("legendDetail"));
+        QVERIFY(!rig.detail.overlayVisible());
+        // Exclusivite des outils : le pinceau de detail remplace celui des traits fins.
+        QVERIFY(rig.press("regionTool_detail"));
+        QCOMPARE(rig.linework.tool(), QString());
+        QCOMPARE(rig.detail.tool(), QStringLiteral("paint"));
+        QVERIFY(rig.detail.overlayVisible());
+        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+    }
+
+    void lineworkUpdateButtonAppliesAndClearsThePendingState() {
+        Rig rig;
+        open(rig);
+        QVERIFY(rig.press("regionTool_linework"));
+        QVERIFY(!rig.linework.needsShapesUpdate());
+        QVERIFY(rig.named("lineworkApply") == nullptr || !rig.named("lineworkApply")->isVisible());
+        rig.linework.setRadiusMm(2.0);
+        QVariantList stroke;
+        for (const double x : {-3.0, 0.0, 3.0}) {
+            stroke.push_back(QVariantMap{{QStringLiteral("x"), x}, {QStringLiteral("y"), 0.0}});
+        }
+        QCOMPARE(rig.linework.paintStroke(stroke), QString());
+        // Retour immediat : message et bouton d'application des formes.
+        QVERIFY(rig.linework.message().contains(QStringLiteral("Mettez à jour les formes")));
+        QVERIFY(rig.linework.needsShapesUpdate());
+        QTRY_VERIFY_WITH_TIMEOUT(rig.named("lineworkApply") != nullptr, 5'000);
+        // Jamais de « Segmenter » pour les traits fins.
+        QVERIFY(!rig.linework.needsSegmentation());
+
+        QSignalSpy regenerated(&rig.regions, &RegionController::regenerated);
+        QVERIFY(rig.press("lineworkApply"));
+        QTRY_COMPARE_WITH_TIMEOUT(regenerated.count(), 1, 60'000);
+        QTRY_VERIFY_WITH_TIMEOUT(!rig.linework.needsShapesUpdate(), 5'000);
+        QVERIFY(rig.linework.message().contains(QStringLiteral("Formes mises à jour")));
         QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
     }
 

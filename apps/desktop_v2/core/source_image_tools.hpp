@@ -58,8 +58,9 @@ ServiceResult paintDetail(DocumentSession& session, const image::Image& processe
 // résolution).
 ServiceResult paintDetailPixels(DocumentSession& session, int width, int height, double mmPerPx,
                                 const std::vector<std::pair<int, int>>& pixels, double radiusMm,
-                                bool erase);
-ServiceResult clearDetail(DocumentSession& session);
+                                bool erase, document::MaskKind kind = document::MaskKind::Detail);
+ServiceResult clearDetail(DocumentSession& session,
+                          document::MaskKind kind = document::MaskKind::Detail);
 
 // Bornes du rayon du pinceau de détail (mm).
 inline constexpr double kMinDetailRadiusMm = 0.2;

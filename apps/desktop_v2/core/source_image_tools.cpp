@@ -105,7 +105,7 @@ ServiceResult paintDetail(DocumentSession& session, const image::Image& processe
 
 ServiceResult paintDetailPixels(DocumentSession& session, int width, int height, double mmPerPx,
                                 const std::vector<std::pair<int, int>>& pixels, double radiusMm,
-                                bool erase) {
+                                bool erase, document::MaskKind kind) {
     if (width <= 0 || height <= 0 || !(mmPerPx > 0.0)) {
         return refuse("Ce projet n'a pas d'image source.");
     }
@@ -124,7 +124,7 @@ ServiceResult paintDetailPixels(DocumentSession& session, int width, int height,
     }
     const int radiusPx = std::max(1, static_cast<int>(std::lround(radiusMm / mmPerPx)));
     session.execute(std::make_unique<commands::PaintDetailMaskCommand>(
-        width, height, std::move(inside), radiusPx, erase, 0.5));
+        width, height, std::move(inside), radiusPx, erase, 0.5, kind));
     return {true, {}};
 }
 
@@ -134,11 +134,12 @@ const segmentation::DetailMask* usableDetailMask(const document::ImageSource& so
     return mask.any_detail() && mask.matches(width, height) ? &mask : nullptr;
 }
 
-ServiceResult clearDetail(DocumentSession& session) {
-    if (session.project().imageSource().detail_mask.empty()) {
-        return refuse("Aucune zone de détail à effacer.");
+ServiceResult clearDetail(DocumentSession& session, document::MaskKind kind) {
+    if (session.project().imageSource().mask(kind).empty()) {
+        return refuse(kind == document::MaskKind::Linework ? "Aucune zone de traits fins à effacer."
+                                                           : "Aucune zone de détail à effacer.");
     }
-    session.execute(std::make_unique<commands::ClearDetailMaskCommand>());
+    session.execute(std::make_unique<commands::ClearDetailMaskCommand>(kind));
     return {true, {}};
 }
 
