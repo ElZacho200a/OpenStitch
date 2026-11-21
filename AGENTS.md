@@ -10,6 +10,17 @@ Ce fichier s'applique à Codex et à tout agent qui sait lire le dépôt. Pour C
 4. Les demandes ciblées restent prioritaires ; ne pas commencer un nouveau chantier autonome si Notion est inaccessible ou si la réservation ne peut pas être vérifiée.
 5. Avant de modifier le code, vérifier le code de tâche existant, la PR/branche liée, les dépendances, le propriétaire, l'expiration du bail et les fichiers réservés.
 
+## Compilation et worktrees (tous agents)
+
+Sur Windows, avant d'éditer un worktree neuf, vérifier `build/msvc/CMakeCache.txt`.
+Si absent mais présent dans le dépôt principal déjà compilé, exécuter
+`pwsh scripts/worktree-seed-build.ps1 -IfNeeded -Preset msvc` depuis le worktree.
+Ce seed fonctionne pour MSBuild/`msvc`, pas pour Ninja/`dev-*`.
+Ne pas démarrer un build global à froid lorsque le cache de main est réutilisable.
+Grouper les changements de code ; compiler/tester les cibles modifiées après la
+passe de code, puis effectuer une validation complète avant livraison. En
+multi-agents, l'intégrateur est le seul responsable du build global.
+
 ## Règles non négociables
 
 - Notion : source produit (priorités, décisions, ownership, statut de recette). GitHub : source technique (HEAD, code, CI, PR, traces). Toute divergence est signalée, jamais gommée silencieusement.

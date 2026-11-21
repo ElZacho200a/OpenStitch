@@ -60,16 +60,31 @@ Il n'a pas la conversation. Donner, et seulement cela :
 - les **points d'entrée** : symboles, fichiers, plages de doc (`fichier.md:début-fin`) — pas de
   document en pièce jointe, pas de « lis tout le dépôt » ;
 - ce qui est déjà établi (ne pas le lui faire re-découvrir) ;
-- **validation limitée à ses cibles** : `scripts/qrun.ps1`, pas de suite complète ni de
-  rebuild global (le chef de lot valide l'ensemble) ;
+- **seed + validation différée** : inspecter `build/msvc` et amorcer le worktree à partir
+  du build existant avant édition ; ensuite écrire le lot entier, puis construire et
+  tester ses seules cibles avec `scripts/qrun.ps1` (pas de build à chaque fichier,
+  pas de suite complète : le chef de lot valide l'ensemble) ;
 - contraintes d'environnement : clang-format 18.1.8
   (`%APPDATA%\Python\Python314\Scripts\clang-format.exe`), `QT_QPA_PLATFORM=offscreen`,
   `TEST_CASE` en ASCII, ne pas pousser ;
 - le format du rapport : ≤ 20 lignes (fichiers, tests lancés + résultat, écarts), puis **s'arrêter**.
 
 Commiter d'abord la base commune : un worktree part du dernier commit de `main`, jamais de
-l'arbre non committé ni de la branche du chef de lot. Chaque worktree reconfigure son `build/`
-(première compilation longue : le dire).
+l'arbre non committé ni de la branche du chef de lot. **Avant toute édition ou compilation**,
+réutiliser le build MSBuild du dépôt principal dès qu'il existe :
+
+```powershell
+# Dans le nouveau worktree, seulement si le dépôt principal a build/msvc/CMakeCache.txt :
+pwsh scripts/worktree-seed-build.ps1 -IfNeeded -Preset msvc
+# Source par défaut : premier worktree (dépôt principal).
+# Si le premier worktree n'est pas la source compilée : -Source "C:\chemin\OpenStitch"
+```
+
+Ce mécanisme copie les objets et réécrit les chemins CMake/MSBuild ; il est idempotent
+avec `-IfNeeded` et n'efface jamais le cache cible. Le script ne sait **pas** réutiliser
+un preset Ninja `dev-*`. Si aucun build compatible n'est disponible, le signaler et
+configurer les seules cibles nécessaires, sans lancer automatiquement une compilation
+à froid de tout le projet. Noter l'état du seed dans le rapport de chaque agent.
 
 ## 4. Pendant et après
 
@@ -77,8 +92,8 @@ Le chef de lot traite les fichiers de convergence ; il ne relit pas les journaux
 agents et n'attend que la notification de fin. Intégration **séquentielle**, pour chaque agent :
 1. rapport + `git diff <base>..<branche> --stat` : rien hors périmètre ;
 2. `git merge --no-ff <branche>` ; un conflit n'est jamais résolu en silence ;
-3. recompiler et relancer **soi-même** les cibles de l'agent et celles qu'il peut casser (la
-   sortie de l'agent n'est pas une preuve) ;
+3. après intégration des agents, recompiler et relancer **une seule fois** les cibles
+   impactées et celles qu'elles peuvent casser (la sortie d'un agent n'est pas une preuve) ;
 4. agent en échec ou en débordement : `SendMessage` avec un prompt plus précis, pas de rustine.
 
 Une fois tout intégré : une seule validation complète proportionnée à l'impact

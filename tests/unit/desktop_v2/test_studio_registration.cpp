@@ -158,6 +158,19 @@ private slots:
         auto* pathField = findVisual(panel, QStringLiteral("pullCompensatedPath"));
         QVERIFY(compensate && exportButton && pathField);
         QVERIFY(!exportButton->isEnabled()); // rien à exporter avant la prédiction
+        QVERIFY(!exportButton->property("disabledReason").toString().isEmpty());
+        QVERIFY(exportButton->property("disabledReason")
+                    .toString()
+                    .contains(QStringLiteral("Prédire et compenser")));
+        auto* reason = findVisual(panel, QStringLiteral("pullExportReason"));
+        QVERIFY(reason && reason->isVisible()); // raison affichée en texte permanent
+        auto* strength = findVisual(panel, QStringLiteral("pullCompensationStrength"));
+        QVERIFY(strength);
+        strength->setProperty("value", 0);
+        QTRY_VERIFY(!compensate->isEnabled());
+        QVERIFY(!compensate->property("disabledReason").toString().isEmpty());
+        strength->setProperty("value", 100);
+        QTRY_VERIFY(compensate->isEnabled());
         QVERIFY(QMetaObject::invokeMethod(compensate, "click"));
         QTRY_VERIFY_WITH_TIMEOUT(rig.pull.canExportCompensated(), 60000);
         const auto path = rig.dir.filePath(QStringLiteral("panneau.dst"));
