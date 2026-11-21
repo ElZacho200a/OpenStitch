@@ -342,17 +342,30 @@ bool InspectorController::typeMixed() const {
     return selection().typeMixed;
 }
 
+bool InspectorController::selectionHasOpenLine() const {
+    const auto s = selection();
+    const auto& project = session_.project();
+    return std::ranges::any_of(s.ids, [&](std::uint64_t id) {
+        const auto* object = findObject(project, id);
+        const auto* shape = object ? project.findObject(object->source_vector) : nullptr;
+        return shape != nullptr && document::is_open_line(*shape);
+    });
+}
+
+QString InspectorController::typesNote() const {
+    return selectionHasOpenLine()
+               ? QStringLiteral("Ligne ouverte : seuls les types de points qui suivent le tracé "
+                                "sont proposés (pas de remplissage, une ligne n'a pas "
+                                "d'intérieur).")
+               : QString();
+}
+
 QVariantList InspectorController::types() const {
     const auto s = selection();
     const std::string current = settableIdOf(s.typeId);
     // Une ligne ouverte n'a pas d'intérieur : seuls les types qui suivent un chemin sont proposés
     // (les autres seraient refusés par `set_stitch_type`).
-    const auto& project = session_.project();
-    const bool anyOpenLine = std::ranges::any_of(s.ids, [&](std::uint64_t id) {
-        const auto* object = findObject(project, id);
-        const auto* shape = object ? project.findObject(object->source_vector) : nullptr;
-        return shape != nullptr && document::is_open_line(*shape);
-    });
+    const bool anyOpenLine = selectionHasOpenLine();
     QVariantList out;
     for (const auto& t : settableStitchTypes()) {
         if (anyOpenLine && !settableTypeFollowsPath(t.id)) {

@@ -160,6 +160,7 @@ private slots:
     void colourOfTheSelectionIncludingMixedTypes();
     void resetToDefaults();
     void stitchTypeConversion();
+    void openLineExplainsTheReducedTypeList();
     void multicolorGradientType();
     void searchAndLevels();
     void machineOutputIsByteIdentical();
@@ -523,6 +524,39 @@ void StudioInspectorTest::resetToDefaults() {
     QVERIFY(inspector.resetAll().isEmpty());
     const auto& tatami = std::get<document::TatamiParams>(object(session, id).params);
     QVERIFY(tatami == defaults);
+}
+
+// Une ligne ouverte n'a pas d'intérieur : la liste de types est réduite ET une phrase explique
+// pourquoi ; une forme fermée garde la liste complète et aucune note.
+void StudioInspectorTest::openLineExplainsTheReducedTypeList() {
+    DocumentSession session;
+    auto created = project_ops::create_empty_project({});
+    session.replaceProject(std::move(*created), true);
+    const auto closedId = addRect(session);
+    select(session, {closedId});
+    StudioController studio(session);
+    InspectorController inspector(studio);
+    QVERIFY(inspector.typesNote().isEmpty());
+    const auto fullCount = inspector.types().size();
+
+    auto project = session.project();
+    document::VectorObject vector;
+    vector.id = ObjectId{9001};
+    geometry::Path path;
+    path.closed = false;
+    path.nodes = {{{Micrometers{0}, Micrometers{0}}}, {{Micrometers{10'000}, Micrometers{0}}}};
+    vector.paths.push_back({path, {}});
+    project.vector_objects.push_back(vector);
+    document::EmbroideryObject line;
+    line.id = ObjectId{9002};
+    line.source_vector = vector.id;
+    line.name = "Ligne";
+    line.params = document::RunningStitchParams{Micrometers{2'000}};
+    project.embroidery_objects.push_back(line);
+    session.replaceProject(std::move(project), true);
+    select(session, {9002});
+    QVERIFY(!inspector.typesNote().isEmpty());
+    QVERIFY(inspector.types().size() < fullCount);
 }
 
 void StudioInspectorTest::stitchTypeConversion() {

@@ -127,7 +127,7 @@ ColumnLayout {
         objectName: "segBlendHint"
         Layout.fillWidth: true
         visible: section.blendZones
-        text: qsTr("Découpe l'image aux seuls bords nets ; « Mettre à jour les formes » coud ensuite chaque zone en fondu de 1 à 3 fils lus dans l'image. Expérimental : selon l'image, plus de coupes ou des couleurs moins fidèles qu'une segmentation classique.")
+        text: qsTr("Découpe l'image aux seuls bords nets ; « Mettre à jour les formes » coud ensuite chaque zone avec un fondu de 1 à 3 fils choisis parmi les fils de la palette ci-dessus (2 à 16 au total). Expérimental : selon l'image, plus de coupes ou des couleurs moins fidèles qu'une segmentation classique.")
         wrapMode: Text.WordWrap
         color: Theme.muted; font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily
     }

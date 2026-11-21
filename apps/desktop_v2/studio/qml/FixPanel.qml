@@ -103,7 +103,7 @@ Rectangle {
                 objectName: "fixApplyReduction"
                 text: qsTr("Appliquer la réduction")
                 enabled: panel.ready && panel.controller.reductionReady && !panel.controller.reductionStale && panel.controller.objectsRecoloured > 0
-                onClicked: panel.controller.applyReduction()
+                onClicked: reductionConfirm.open()
             }
 
             Text {
@@ -114,6 +114,51 @@ Rectangle {
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.smallSize
                 text: panel.ready ? panel.controller.message : ""
+            }
+        }
+    }
+
+    Controls.Popup {
+        id: reductionConfirm
+        objectName: "fixReductionConfirm"
+        parent: Controls.Overlay.overlay
+        anchors.centerIn: parent
+        modal: true
+        width: Math.min(360, parent ? parent.width - 32 : 360)
+        padding: 16
+        background: StudioPopupBackground { }
+        enter: StudioPopupEnter { }
+        exit: StudioPopupExit { }
+        contentItem: ColumnLayout {
+            spacing: 12
+            Text {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                color: Theme.foreground
+                font.pixelSize: Theme.bodySize
+                text: panel.ready ? qsTr("Réduire de %1 à %2 fils (%3 objets modifiés) ?")
+                                      .arg(panel.controller.threadsBefore).arg(panel.controller.threadsAfter)
+                                      .arg(panel.controller.objectsRecoloured) : ""
+            }
+            Text {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                color: Theme.warning
+                font.pixelSize: Theme.smallSize
+                text: qsTr("Les couleurs et les références seront remplacées. Ctrl+Z annulera cette opération.")
+            }
+            RowLayout {
+                Layout.alignment: Qt.AlignRight
+                StudioButton { objectName: "fixReductionCancel"; text: qsTr("Annuler"); onClicked: reductionConfirm.close() }
+                StudioButton {
+                    objectName: "fixReductionConfirmApply"
+                    text: qsTr("Appliquer")
+                    emphasized: true
+                    onClicked: {
+                        panel.controller.applyReduction()
+                        reductionConfirm.close()
+                    }
+                }
             }
         }
     }
