@@ -20,6 +20,7 @@ Rectangle {
         anchors.margins: 10
         contentHeight: column.implicitHeight
         clip: true
+        Controls.ScrollIndicator.vertical: Controls.ScrollIndicator {}
         ColumnLayout {
             id: column
             width: parent.width - 12
@@ -50,18 +51,29 @@ Rectangle {
             Text {
                 objectName: "pullSummary"
                 Layout.fillWidth: true
+                visible: text.length > 0
                 wrapMode: Text.Wrap
                 color: Theme.foreground
                 font.family: Theme.fontFamily
                 text: panel.ready && panel.controller.comparison.summary ? panel.controller.comparison.summary : ""
             }
-            StudioButton { objectName: "pullRegistration"; text: qsTr("Prédire le décalage entre couleurs"); enabled: panel.ready && !panel.controller.busy; onClicked: panel.controller.predictRegistration(0) }
+            StudioButton { objectName: "pullRegistration"; text: qsTr("Prédire le décalage entre couleurs"); enabled: panel.ready && !panel.controller.busy; disabledReason: panel.ready ? qsTr("Calcul en cours : patientez.") : qsTr("Ouvrez un projet pour utiliser cette fonction."); onClicked: panel.controller.predictRegistration(0) }
             RowLayout {
                 Layout.fillWidth: true
                 Text { text: qsTr("Contre-compensation (%)"); color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize }
                 StudioSpinBox { id: compensationStrength; objectName: "pullCompensationStrength"; from: 0; to: 100; value: 100 }
             }
-            StudioButton { objectName: "pullRegistrationCompensate"; text: qsTr("Prédire et compenser"); enabled: panel.ready && !panel.controller.busy && compensationStrength.value > 0; onClicked: panel.controller.predictRegistration(compensationStrength.value / 100) }
+            StudioButton { objectName: "pullRegistrationCompensate"; text: qsTr("Prédire et compenser"); enabled: panel.ready && !panel.controller.busy && compensationStrength.value > 0; disabledReason: !panel.ready ? qsTr("Ouvrez un projet pour utiliser cette fonction.") : panel.controller.busy ? qsTr("Calcul en cours : patientez.") : qsTr("Mettez la contre-compensation au-dessus de 0 %, ou utilisez « Prédire le décalage » pour une simple estimation."); onClicked: panel.controller.predictRegistration(compensationStrength.value / 100) }
+            Text {
+                objectName: "pullExportReason"
+                Layout.fillWidth: true
+                visible: !exportCompensatedButton.enabled
+                wrapMode: Text.Wrap
+                color: Theme.muted
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.smallSize
+                text: exportCompensatedButton.disabledReason
+            }
             Text {
                 objectName: "pullRegistrationStale"
                 Layout.fillWidth: true
@@ -73,7 +85,12 @@ Rectangle {
                 text: qsTr("Le motif a changé depuis la prédiction : relancez-la avant d'exporter.")
             }
             StudioTextField { id: compensatedPath; objectName: "pullCompensatedPath"; Layout.fillWidth: true; placeholderText: qsTr("motif-compensé.dst") }
-            StudioButton { objectName: "pullExportCompensated"; text: qsTr("Exporter le DST compensé"); enabled: panel.ready && panel.controller.canExportCompensated && compensatedPath.text.length > 0; onClicked: panel.controller.exportCompensatedDst(compensatedPath.text) }
+            StudioButton { id: exportCompensatedButton; objectName: "pullExportCompensated"; text: qsTr("Exporter le DST compensé"); enabled: panel.ready && panel.controller.canExportCompensated && compensatedPath.text.length > 0
+                disabledReason: !panel.ready ? qsTr("Ouvrez un projet pour utiliser cette fonction.")
+                              : panel.controller.registrationStale ? qsTr("Le motif a changé depuis la prédiction : relancez « Prédire et compenser ».")
+                              : !panel.controller.canExportCompensated ? qsTr("Lancez d'abord « Prédire et compenser » : aucune séquence compensée n'est disponible.")
+                              : qsTr("Saisissez le nom du fichier DST à écrire.")
+                onClicked: panel.controller.exportCompensatedDst(compensatedPath.text) }
             Text {
                 objectName: "pullRegistrationText"
                 Layout.fillWidth: true

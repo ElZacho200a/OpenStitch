@@ -6,6 +6,7 @@
 #include <QQmlEngine>
 #include <QQuickItem>
 #include <QQuickStyle>
+#include <QQuickWindow>
 #include <QtTest/QtTest>
 
 #include <filesystem>
@@ -139,6 +140,14 @@ private slots:
         auto* analyse = findVisual(panel, QStringLiteral("fixAnalyze"));
         auto* preview = findVisual(panel, QStringLiteral("fixPreviewReduction"));
         QVERIFY(analyse && preview);
+        auto* applyEarly = findVisual(panel, QStringLiteral("fixApplyReduction"));
+        auto* reasonEarly = findVisual(panel, QStringLiteral("fixApplyReductionReason"));
+        QVERIFY(applyEarly && reasonEarly);
+        QVERIFY(
+            !applyEarly->isEnabled()); // aucun aperçu : raison visible, pas seulement en infobulle
+        QVERIFY(reasonEarly->isVisible());
+        QVERIFY(reasonEarly->property("text").toString().contains(
+            QStringLiteral("Aperçu de la réduction")));
         QVERIFY(QMetaObject::invokeMethod(analyse, "click"));
         QTRY_VERIFY_WITH_TIMEOUT(rig.fix.planReady(), 30000);
         auto* target = findVisual(panel, QStringLiteral("fixTargetThreads"));
@@ -152,6 +161,55 @@ private slots:
         auto* apply = findVisual(panel, QStringLiteral("fixApplyReduction"));
         QVERIFY(apply);
         QTRY_VERIFY(apply->isEnabled());
+    }
+    // « Appliquer la réduction » passe par une confirmation : rien ne change avant le clic sur
+    // « Appliquer », et l'annulation du dialogue laisse le document intact.
+    void applyReductionAsksForConfirmationFirst() {
+        Rig rig;
+        rig.load();
+        QQuickStyle::setStyle(QStringLiteral("Basic"));
+        QQmlEngine engine;
+        QQmlComponent component(&engine, QUrl(QStringLiteral("qrc:/studio/qml/FixPanel.qml")));
+        QVERIFY2(component.status() == QQmlComponent::Ready, qPrintable(component.errorString()));
+        std::unique_ptr<QObject> object(component.createWithInitialProperties(
+            {{QStringLiteral("controller"), QVariant::fromValue(&rig.fix)}}));
+        auto* panel = qobject_cast<QQuickItem*>(object.get());
+        QVERIFY(panel);
+        QQuickWindow window;
+        window.resize(500, 800);
+        panel->setParentItem(window.contentItem());
+        panel->setSize({420, 700});
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        rig.fix.previewReduction(2);
+        QTRY_VERIFY_WITH_TIMEOUT(rig.fix.reductionReady(), 30000);
+        auto* apply = findVisual(panel, QStringLiteral("fixApplyReduction"));
+        QVERIFY(apply);
+        QTRY_VERIFY(apply->isEnabled());
+        const auto original = colours(rig.session);
+        const auto steps = rig.session.historySize();
+        auto* dialog = panel->findChild<QObject*>(QStringLiteral("fixReductionConfirm"));
+        QVERIFY(dialog);
+        QVERIFY(QMetaObject::invokeMethod(apply, "click"));
+        QTRY_VERIFY(dialog->property("opened").toBool());
+        QCOMPARE(colours(rig.session), original); // le simple clic ne recolore rien
+        QCOMPARE(rig.session.historySize(), steps);
+        // Annuler referme sans toucher au document.
+        QVERIFY(QMetaObject::invokeMethod(dialog, "close"));
+        QTRY_VERIFY(!dialog->property("opened").toBool());
+        QCOMPARE(rig.session.historySize(), steps);
+        QVERIFY(rig.fix.reductionReady());
+        // Confirmer applique en une étape annulable.
+        QVERIFY(QMetaObject::invokeMethod(apply, "click"));
+        QTRY_VERIFY(dialog->property("opened").toBool());
+        auto* content = dialog->property("contentItem").value<QQuickItem*>();
+        QVERIFY(content);
+        auto* go = findVisual(content, QStringLiteral("fixReductionConfirmApply"));
+        QVERIFY(go);
+        QVERIFY(go->property("text").toString().startsWith(QStringLiteral("Réduire à ")));
+        QVERIFY(QMetaObject::invokeMethod(go, "click"));
+        QTRY_COMPARE(rig.session.historySize(), steps + 1);
+        QVERIFY(colours(rig.session) != original);
     }
     // Rejeter un plan de corrections ou un aperçu de réduction : l'état publié repasse à « non
     // prêt » sans toucher au document.

@@ -43,6 +43,13 @@ ColumnLayout {
 
     // Précision de la vectorisation (V1) : appliquée à la prochaine mise à jour des formes.
     SectionLabel { text: qsTr("PRÉCISION") }
+    Text {
+        objectName: "vectorPrecisionHint"
+        Layout.fillWidth: true
+        text: qsTr("Ces réglages ne s'appliquent qu'au prochain « Recalculer les formes » (étape ①).")
+        color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize
+        wrapMode: Text.WordWrap
+    }
     RowLayout {
         Layout.fillWidth: true
         visible: panel.stage && !panel.stage.curves

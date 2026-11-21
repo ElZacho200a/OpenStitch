@@ -109,6 +109,17 @@ Item {
                 }
             }
 
+            Text {
+                objectName: "inspectorTypesNote"
+                Layout.fillWidth: true
+                visible: root.ctl && root.ctl.typesNote.length > 0
+                text: root.ctl ? root.ctl.typesNote : ""
+                wrapMode: Text.WordWrap
+                color: Theme.muted
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.smallSize
+            }
+
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 8

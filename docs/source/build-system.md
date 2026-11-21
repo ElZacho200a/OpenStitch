@@ -49,8 +49,10 @@ L'interface graphique n'est pas construite sous Linux à ce stade.
 
 ## Workflow de build rapide (BUILD-OPT-01)
 
-Principe : pendant l'itération, ne compiler que la cible touchée et son exécutable de
-test ; la suite complète n'est lancée qu'avant livraison. Seules les commandes de la
+Principe : pendant l'édition d'un lot cohérent, ne pas compiler après chaque fichier ;
+à la fin de ce lot, construire seulement les cibles touchées et leurs tests ; la suite
+complète n'est lancée qu'avant livraison. Un worktree neuf réutilise d'abord le build
+du dépôt principal via `worktree-seed-build.ps1` lorsque c'est possible. Seules les commandes de la
 section « Existant aujourd'hui » sont garanties ; le reste est la **méthode prévue**.
 
 ### Existant aujourd'hui
@@ -92,7 +94,12 @@ Noms vérifiés dans le dépôt ; chaque outil a sa page de détail.
   worktrees).
 - **Amorçage d'un worktree** : `scripts/worktree-seed-build.ps1` copie le `build/msvc` d'une autre
   copie (dépôt principal par défaut), réécrit ses chemins absolus, réaligne les dates des sources
-  identiques et reconfigure : le build suivant ne recompile que ce qui diffère.
+  identiques non modifiées et reconfigure : le build suivant ne recompile que ce qui diffère.
+  **À lancer avant toute édition, en priorité sur un nouveau build à froid** :
+  `pwsh scripts/worktree-seed-build.ps1 -IfNeeded -Preset msvc`. L'option `-IfNeeded`
+  saute proprement une cible déjà configurée. Ne couvre que MSBuild/`msvc` : ne pas
+  l'utiliser pour les presets Ninja `dev-*` ; sans build source compatible, configuration
+  et build ciblé restent le repli.
 - **Cache vcpkg et préparation CI** (01.5) : voir [build-vcpkg-audit.md](build-vcpkg-audit.md).
 - **Parallélisme, PCH, Unity** (01.6) : `scripts/build-jobs.ps1`, option `OPENSTITCH_PCH`
   (désactivée par défaut), `scripts/check-unity-safety.py`, `scripts/measure-build-ab.ps1` ;
