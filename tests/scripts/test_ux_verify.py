@@ -71,6 +71,31 @@ class UXContractTests(unittest.TestCase):
         body = GOOD_PR.replace("8 -> 4", "beaucoup")
         self.assertTrue(ux.validate_pr(body, ["apps/desktop_v2/studio/qml/Main.qml"]))
 
+    def test_report_requires_traceable_independent_review(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            shot = root / "ux-image-1000x640.png"
+            shot.write_bytes(make_png())
+            w, h, digest = ux.read_png(shot)
+            report = {"schema": 1, "head_sha": "abc",
+                      "workspace_fingerprint": "fingerprint",
+                      "screenshots": [{"filename": shot.name,
+                                       "width": w, "height": h, "sha256": digest}],
+                      "visual_review": {"reviewer": "independent agent", "verdict": "PASS",
+                                        "notes": "Reviewed UI screenshot and novice flow.",
+                                        "reference": ""}}
+            report_path = root / "report.json"
+            report_path.write_text(json.dumps(report))
+            with (mock.patch.object(ux, "git_head", return_value="abc"),
+                  mock.patch.object(ux, "workspace_fingerprint",
+                                    return_value="fingerprint")):
+                with self.assertRaisesRegex(ValueError, "Lien du rapport"):
+                    ux.check_report(report_path, require_review=True)
+                report["visual_review"]["reference"] = (
+                    "https://github.com/ElZacho200a/OpenStitch/issues/278#issuecomment-123")
+                report_path.write_text(json.dumps(report))
+                self.assertEqual(ux.check_report(report_path, require_review=True), report)
+
     def test_png_valid_and_corrupt_rejected(self):
         with tempfile.TemporaryDirectory() as d:
             path = Path(d) / "test.png"
