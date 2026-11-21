@@ -519,6 +519,36 @@ géométrique, pas validée sur machine ; pas de satin en éventail ou concentri
 
 ## Couche de traits sombres (`--dark-lines`, HP-AUTO-005)
 
+### Détection par contraste local (`--dark-lines-contrast`, lignes ouvertes lot 2)
+
+Le seuil de clarté absolu rate les traits qui ne sont pas noirs : barreaux marine d'une rambarde
+sur fond crème, treillis brun sur beige. Mesuré sur un phare (0,26 mm/px) : la rambarde n'était
+pas détectée du tout, le seuil effectif tombant à L* 8 à cause du noir du cadre ovale. Avec
+`local_contrast > 0` (`--dark-lines-contrast`, Studio : `kLineworkContrast` = 12) :
+
+1. `segmentation::contrast_thin_mask` : chapeau haut-de-forme noir (fermeture moins image, sur
+   L*) ; un pixel est un trait s'il est plus sombre d'au moins le seuil que son voisinage clair, sur
+   une largeur sous `max_line_width_mm` (Studio : 1 mm, un mât plus large reste un aplat).
+2. **Test des deux côtés** : dans une des quatre directions, les deux pixels à mi-largeur + 1 de
+   part et d'autre sont plus clairs. Le bord d'un aplat sombre (nuage dentelé, crête de vague)
+   n'est clair que d'un côté : écarté.
+3. **Allongement** : une composante dont diagonale² / pixels < 6 (pointe effilée d'un nuage ou
+   d'un reflet) reste un aplat ; un réseau (rambarde, gréement) est une seule composante allongée.
+4. **Une couleur par trait** : moyenne de la moitié la plus sombre de chaque composante, calée sur
+   la couleur de palette la plus proche ; une région de traits par couleur.
+
+Le tracé des traits de Studio utilise `kLineworkDetail` (0,85 : petites boucles d'un treillis
+gardées) et le parcours d'un bloc (`SinglePath`), comme le CLI. Mesures (rendu avant/après) :
+navire LigneNoir, gréement continu et plus de trous de tissu autour des mâts ; phare, lanterne et
+rambarde cousues, motif du treillis en partie reproduit (limite : cellules de 1 à 2 mm à
+0,26 mm/px). Sans contraste (`0`, défaut du CLI) : comportement historique inchangé.
+
+La mise à jour des formes (`revectorize`) retire désormais les formes dont la région a été
+entièrement absorbée par les aplats complétés (`RevectorizePlan::absorbed`, objets de broderie
+compris, jamais une forme verrouillée) : avant, ces morceaux de trait restaient comme petites
+formes isolées.
+
+
 Sur une illustration à contours noirs (mâts, haubans, bords de nuages), le mode formes seul traite
 un trait comme n'importe quelle région : il fusionne avec les aplats sombres voisins et devient un
 amas de blocs. `auto_digitize_with_lines` (`line_layer.cpp`) sépare les traits :

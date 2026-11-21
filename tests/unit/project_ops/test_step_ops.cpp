@@ -294,3 +294,25 @@ TEST_CASE("linework end to end: strokes sewn as running stitch after the fills",
     const auto sequence = stitch_generation::effective_sequence(project);
     REQUIRE(sequence.has_value());
 }
+
+TEST_CASE("revectorize: preserve linework removes shapes absorbed by completed fills",
+          "[project_ops][steps][linework]") {
+    auto project = rope_on_sky_project();
+    REQUIRE(run(project, R"({"op":"segment_image","max_colors":3,"min_region_px":4})").ok);
+    REQUIRE(run(project, R"({"op":"vectorize_segmentation"})").ok); // OFF : formes du cordage
+    project.imageSource().preserve_linework = true;
+    const auto plan = project_ops::revectorize(project, {});
+    REQUIRE_FALSE(plan.absorbed.empty());
+    for (const ObjectId id : plan.absorbed) {
+        const auto* shape = project.findObject(id);
+        REQUIRE(shape != nullptr);
+        CHECK(shape->source_region.has_value()); // un morceau de région, jamais un trait
+    }
+    REQUIRE(run(project, R"({"op":"vectorize_segmentation"})").ok);
+    for (const ObjectId id : plan.absorbed) {
+        CHECK(project.findObject(id) == nullptr);
+    }
+    CHECK(count_linework(project.vector_objects) >= 1);
+    // Une seconde mise à jour n'a plus rien à retirer.
+    CHECK(project_ops::revectorize(project, {}).absorbed.empty());
+}

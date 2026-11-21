@@ -41,9 +41,13 @@ La génération des points (`stitch_generation`) traitait déjà les chemins ouv
 (point droit, boutonnière, motif, satin de bordure). Les fichiers existants ne changent pas :
 un remplissage déjà posé sur une ligne ouverte dans un ancien projet reste généré comme avant.
 
+## Traits de l'image (lot 2)
+
+« Préserver les traits fins » détecte maintenant les traits par contraste local, quelle que soit
+leur couleur, cousus chacun dans sa couleur ; la mise à jour des formes retire les morceaux de
+trait absorbés par les aplats. Détail : `auto-numerisation.md`, « Détection par contraste local ».
+
 ## Suite prévue
 
-La détection des traits fins de l'image (traits superposés, `AUTO-LINEWORK-01`) produira
-directement des lignes ouvertes à identifiant stable depuis la segmentation (lot 2), ce qui
-retirera le drapeau historique `VectorObject::linework` et le cas particulier de
-`project_ops::revectorize`. Dessin et édition d'une ligne ouverte dans Studio : lot 3.
+Identifiant stable par trait (au lieu de l'appariement rang par rang) et retrait du drapeau
+historique `VectorObject::linework` ; fidélité du tracé des treillis très fins. Dessin et édition d'une ligne ouverte dans Studio : lot 3.

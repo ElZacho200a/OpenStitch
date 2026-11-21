@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <limits>
 #include <numbers>
 
 #include "openstitch/core/parallel.hpp"
@@ -178,6 +179,161 @@ std::vector<char> close_within(const std::vector<char>& m, const std::vector<cha
     return closed;
 }
 
+// Un trait est LONG devant sa largeur. La pointe effilée d'un aplat (bout de nuage, reflet en
+// fuseau) est étroite et claire des deux côtés, mais trapue : diagonale² / pixels (≈ longueur /
+// largeur d'une bande) faible. Un réseau (rambarde, gréement) forme une seule composante très
+// allongée. Retire de `m` les composantes 8-connexes sous `min_elongation`.
+constexpr double kMinElongation = 6.0;
+
+void drop_stubby_components(std::vector<char>& m, int w, int h, double min_elongation) {
+    std::vector<char> seen(m.size(), 0);
+    std::vector<std::size_t> stack;
+    std::vector<std::size_t> comp;
+    for (std::size_t start = 0; start < m.size(); ++start) {
+        if (m[start] == 0 || seen[start] != 0) {
+            continue;
+        }
+        comp.clear();
+        stack.assign(1, start);
+        seen[start] = 1;
+        int minX = w, maxX = -1, minY = h, maxY = -1;
+        while (!stack.empty()) {
+            const std::size_t cur = stack.back();
+            stack.pop_back();
+            comp.push_back(cur);
+            const int cx = static_cast<int>(cur % static_cast<std::size_t>(w));
+            const int cy = static_cast<int>(cur / static_cast<std::size_t>(w));
+            minX = std::min(minX, cx);
+            maxX = std::max(maxX, cx);
+            minY = std::min(minY, cy);
+            maxY = std::max(maxY, cy);
+            for (int dy = -1; dy <= 1; ++dy) {
+                for (int dx = -1; dx <= 1; ++dx) {
+                    const int nx = cx + dx;
+                    const int ny = cy + dy;
+                    if (nx < 0 || nx >= w || ny < 0 || ny >= h) {
+                        continue;
+                    }
+                    const std::size_t ni = static_cast<std::size_t>(ny) * w + nx;
+                    if (m[ni] != 0 && seen[ni] == 0) {
+                        seen[ni] = 1;
+                        stack.push_back(ni);
+                    }
+                }
+            }
+        }
+        const double dx = maxX - minX + 1;
+        const double dy = maxY - minY + 1;
+        if ((dx * dx + dy * dy) / static_cast<double>(comp.size()) < min_elongation) {
+            for (const std::size_t i : comp) {
+                m[i] = 0;
+            }
+        }
+    }
+}
+
+// Traits par contraste local : chaque trait garde SA couleur (barreaux marine, treillis brun,
+// haubans noirs). Composantes 8-connexes en ordre de lecture ; couleur = moyenne de la moitié la
+// plus sombre de ses pixels (le cœur du trait, pas son anti-crénelage), calée sur la couleur de
+// région la plus proche de la palette (aucun fil nouveau). Une région par couleur, numérotée dans
+// l'ordre de première apparition. Déterministe.
+segmentation::Segmentation colour_strokes(const std::vector<char>& stitch,
+                                          const image::Image& source,
+                                          const segmentation::Segmentation& seg) {
+    const int w = seg.width;
+    const int h = seg.height;
+    segmentation::Segmentation out;
+    out.width = w;
+    out.height = h;
+    out.labels.assign(stitch.size(), 0);
+    std::vector<char> seen(stitch.size(), 0);
+    std::vector<std::size_t> stack;
+    std::vector<std::size_t> comp;
+    std::vector<std::pair<double, std::size_t>> byLight;
+    for (std::size_t start = 0; start < stitch.size(); ++start) {
+        if (stitch[start] == 0 || seen[start] != 0) {
+            continue;
+        }
+        comp.clear();
+        stack.assign(1, start);
+        seen[start] = 1;
+        while (!stack.empty()) {
+            const std::size_t cur = stack.back();
+            stack.pop_back();
+            comp.push_back(cur);
+            const int cx = static_cast<int>(cur % static_cast<std::size_t>(w));
+            const int cy = static_cast<int>(cur / static_cast<std::size_t>(w));
+            for (int dy = -1; dy <= 1; ++dy) {
+                for (int dx = -1; dx <= 1; ++dx) {
+                    const int nx = cx + dx;
+                    const int ny = cy + dy;
+                    if (nx < 0 || nx >= w || ny < 0 || ny >= h) {
+                        continue;
+                    }
+                    const std::size_t ni = static_cast<std::size_t>(ny) * w + nx;
+                    if (stitch[ni] != 0 && seen[ni] == 0) {
+                        seen[ni] = 1;
+                        stack.push_back(ni);
+                    }
+                }
+            }
+        }
+        byLight.clear();
+        for (const std::size_t i : comp) {
+            const std::uint8_t* px = &source.rgba[i * 4];
+            byLight.emplace_back(cielab_lightness({px[0], px[1], px[2]}), i);
+        }
+        std::sort(byLight.begin(), byLight.end());
+        const std::size_t core = std::max<std::size_t>(1, byLight.size() / 2);
+        std::uint64_t sum[3] = {0, 0, 0};
+        for (std::size_t k = 0; k < core; ++k) {
+            const std::uint8_t* px = &source.rgba[byLight[k].second * 4];
+            sum[0] += px[0];
+            sum[1] += px[1];
+            sum[2] += px[2];
+        }
+        std::array<std::uint8_t, 3> rgb{static_cast<std::uint8_t>(sum[0] / core),
+                                        static_cast<std::uint8_t>(sum[1] / core),
+                                        static_cast<std::uint8_t>(sum[2] / core)};
+        int best = std::numeric_limits<int>::max();
+        std::array<std::uint8_t, 3> snapped = rgb;
+        for (const auto& slot : seg.region_slots) {
+            if (!slot) {
+                continue;
+            }
+            int d = 0;
+            for (std::size_t c = 0; c < 3; ++c) {
+                const int diff = int{slot->rgb[c]} - int{rgb[c]};
+                d += diff * diff;
+            }
+            if (d < best) {
+                best = d;
+                snapped = slot->rgb;
+            }
+        }
+        std::uint32_t label = 0;
+        for (const auto& slot : out.region_slots) {
+            if (slot && slot->rgb == snapped) {
+                label = static_cast<std::uint32_t>(slot->id.value);
+                break;
+            }
+        }
+        if (label == 0) {
+            segmentation::Region r;
+            label = static_cast<std::uint32_t>(out.region_slots.size() + 1);
+            r.id = RegionId{label};
+            r.rgb = snapped;
+            out.region_slots.push_back(r);
+        }
+        auto& region = *out.region_slots[label - 1];
+        region.pixel_count += comp.size();
+        for (const std::size_t i : comp) {
+            out.labels[i] = label;
+        }
+    }
+    return out;
+}
+
 } // namespace
 
 LineworkPlan prepare_linework(const segmentation::Segmentation& seg, const image::Image& source,
@@ -212,8 +368,29 @@ LineworkPlan prepare_linework(const segmentation::Segmentation& seg, const image
         }
         lineLightness = std::min(lines.dark_max_lightness, darkest + 8.0);
     }
-    const std::vector<char> mask =
-        segmentation::dark_thin_mask(source, lineLightness, diameter, &lineRgb);
+    std::vector<char> mask;
+    if (lines.local_contrast > 0.0) {
+        mask = segmentation::contrast_thin_mask(source, diameter, lines.local_contrast);
+        drop_stubby_components(mask, seg.width, seg.height, kMinElongation);
+        std::uint64_t sum[3] = {0, 0, 0};
+        std::uint64_t count = 0;
+        for (std::size_t i = 0; i < mask.size(); ++i) {
+            if (mask[i] != 0) {
+                for (int c = 0; c < 3; ++c) {
+                    sum[c] += source.rgba[i * 4 + static_cast<std::size_t>(c)];
+                }
+                ++count;
+            }
+        }
+        if (count > 0) {
+            lineRgb = {static_cast<std::uint8_t>(sum[0] / count),
+                       static_cast<std::uint8_t>(sum[1] / count),
+                       static_cast<std::uint8_t>(sum[2] / count)};
+            lineLightness = cielab_lightness(lineRgb);
+        }
+    } else {
+        mask = segmentation::dark_thin_mask(source, lineLightness, diameter, &lineRgb);
+    }
     const std::size_t linePixels =
         static_cast<std::size_t>(std::count(mask.begin(), mask.end(), char{1}));
     // Barres : parties sombres plus larges qu'un trait mais plus étroites que `bars_max_width_mm`
@@ -358,6 +535,9 @@ LineworkPlan prepare_linework(const segmentation::Segmentation& seg, const image
         if (stitchMask[i] != 0) {
             lineSeg.labels[i] = 1;
         }
+    }
+    if (lines.local_contrast > 0.0 && stitchPixels > 0) {
+        lineSeg = colour_strokes(stitchMask, source, seg);
     }
 
     // Segmentation des remplissages : les pixels de trait sont rendus aux régions voisines (les

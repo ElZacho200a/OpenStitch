@@ -648,3 +648,75 @@ TEST_CASE("linework plan : deterministic across calls") {
     CHECK(a.strokes.labels == b.strokes.labels);
     CHECK(a.line_rgb == b.line_rgb);
 }
+
+namespace {
+
+// 160 x 100 : fond crème ; une rambarde marine (deux montants verticaux et une lisse de 2 px) ; un
+// treillis brun de 2 px ; un grand aplat marine (nuage) ; une pointe effilée bleu clair.
+image::Image railing_scene() {
+    image::Image img;
+    img.width = 160;
+    img.height = 100;
+    img.rgba.assign(static_cast<std::size_t>(img.width) * img.height * 4, 0);
+    fill_rect(img, 0, 0, 160, 100, 235, 222, 196); // crème
+    fill_rect(img, 10, 20, 70, 22, 23, 43, 75);    // lisse marine
+    fill_rect(img, 10, 20, 12, 60, 23, 43, 75);    // montant gauche
+    fill_rect(img, 68, 20, 70, 60, 23, 43, 75);    // montant droit
+    fill_rect(img, 20, 40, 60, 42, 110, 80, 50);   // traverse brune
+    fill_rect(img, 100, 10, 150, 60, 23, 43, 75);  // aplat marine épais
+    for (int x = 100; x < 120; ++x) {              // pointe trapue (fuseau court)
+        const int half = (x - 100) / 4;
+        fill_rect(img, x, 80 - half, x + 1, 81 + half, 140, 160, 190);
+    }
+    return img;
+}
+
+} // namespace
+
+TEST_CASE("contrast_thin_mask : thin lines of any colour, never wide areas or edges") {
+    const auto img = railing_scene();
+    const auto mask = segmentation::contrast_thin_mask(img, 5, 12.0);
+    REQUIRE(mask.size() == static_cast<std::size_t>(img.width) * img.height);
+    const auto at = [&](int x, int y) { return mask[static_cast<std::size_t>(y) * img.width + x]; };
+    CHECK(at(40, 21) == 1);  // lisse marine
+    CHECK(at(11, 45) == 1);  // montant
+    CHECK(at(40, 41) == 1);  // traverse brune (pas noire)
+    CHECK(at(125, 35) == 0); // cœur de l'aplat marine
+    CHECK(at(100, 35) == 0); // bord de l'aplat (clair d'un seul côté)
+    CHECK(at(40, 30) == 0);  // fond crème
+    // Déterminisme et garde-fous.
+    CHECK(segmentation::contrast_thin_mask(img, 5, 12.0) == mask);
+    CHECK(segmentation::contrast_thin_mask(img, 1, 12.0).empty());
+    CHECK(segmentation::contrast_thin_mask(img, 5, 0.0).empty());
+}
+
+TEST_CASE("couche de traits : contraste local, chaque trait garde sa couleur") {
+    const auto img = railing_scene();
+    const auto seg = segmentation::segment(img, {.max_colors = 6, .min_region_px = 4});
+    REQUIRE(seg.has_value());
+    LineLayerOptions lines;
+    lines.enabled = true;
+    lines.local_contrast = kLineworkContrast;
+    lines.max_line_width_mm = kLineworkWidthMm;
+    const auto plan = prepare_linework(*seg, img, Millimeters{0.25}, lines);
+    REQUIRE(plan.has_linework);
+    REQUIRE_FALSE(plan.strokes.labels.empty());
+    const auto label = [&](int x, int y) {
+        return plan.strokes.labels[static_cast<std::size_t>(y) * img.width + x];
+    };
+    CHECK(label(40, 21) != 0);
+    CHECK(label(40, 41) != 0);
+    CHECK(label(125, 35) == 0);
+    CHECK(label(110, 80) == 0); // pointe trapue : reste un aplat
+    // Rambarde marine et traverse brune : deux fils distincts, pris dans la palette.
+    const auto* navy = plan.strokes.find(RegionId{label(40, 21)});
+    const auto* brown = plan.strokes.find(RegionId{label(40, 41)});
+    REQUIRE(navy != nullptr);
+    REQUIRE(brown != nullptr);
+    CHECK(navy->id != brown->id);
+    CHECK(near_rgb(navy->rgb, {23, 43, 75}));
+    CHECK(near_rgb(brown->rgb, {110, 80, 50}));
+    // Même entrée, même plan.
+    const auto again = prepare_linework(*seg, img, Millimeters{0.25}, lines);
+    CHECK(again.strokes.labels == plan.strokes.labels);
+}
