@@ -194,6 +194,18 @@ def capture(args: argparse.Namespace) -> int:
         group = [r for r in rows if r["requested_size"] == size]
         if len(group) > 1 and len({r["sha256"] for r in group}) == 1:
             raise ValueError(f"Meme capture pour tous les espaces {size}: navigation probablement cassee")
+    # A narrow-window audit is meaningless if Qt silently ignores --window-size.
+    # Compare sizes relatively so high-DPI physical pixels remain supported.
+    for space in {r["space"] for r in rows}:
+        variants = [r for r in rows if r["space"] == space]
+        if len(variants) < 2:
+            continue
+        variants.sort(key=lambda r: int(r["requested_size"].split("x")[0]))
+        small, large = variants[0], variants[-1]
+        small_requested = int(small["requested_size"].split("x")[0])
+        large_requested = int(large["requested_size"].split("x")[0])
+        if large_requested >= small_requested * 1.25 and large["width"] <= small["width"] * 1.10:
+            raise ValueError(f"--window-size ignore pour {space}: les deux captures ont la meme largeur")
     report = {"schema": 1, "head_sha": git_head(),
               "workspace_fingerprint": workspace_fingerprint(), "backend": args.backend,
               "source": "real Qt Studio window grab (software may be offscreen)",
