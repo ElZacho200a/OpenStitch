@@ -130,7 +130,14 @@ bool VectorController::breakApart() {
         ops += std::string(i == 0 ? "" : ",") + R"({"op":"break_apart","object":)" +
                std::to_string(selected[i]) + "}";
     }
-    return apply(wrap(ops), QStringLiteral("Séparer en formes indépendantes"), true);
+    if (!apply(wrap(ops), QStringLiteral("Séparer en formes indépendantes"), true)) {
+        return false;
+    }
+    // Retour explicite : le débutant voit ce que l'action a produit (sélection = formes créées).
+    const auto count = studio_.session().selection().targets().size();
+    say(count > 1 ? QStringLiteral("Séparé en %1 formes indépendantes").arg(count)
+                  : QStringLiteral("Rien à séparer : la forme n'a qu'une seule partie"));
+    return true;
 }
 
 bool VectorController::offsetShapes(double offsetMm) {

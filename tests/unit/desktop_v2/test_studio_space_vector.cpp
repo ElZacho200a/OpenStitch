@@ -433,6 +433,23 @@ private slots:
         QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
     }
 
+    // Lot 2 : séparer une forme d'un seul tenant dit ce qui s'est passé au lieu de répéter
+    // le nom de l'action.
+    void breakApartReportsItsOutcome() {
+        Rig rig;
+        open(rig);
+        enterSpace(rig);
+        QTest::mouseClick(rig.window, Qt::LeftButton, {}, at(rig, 2.5, 0.0));
+        QTRY_COMPARE_WITH_TIMEOUT(rig.vectors.selectedCount(), 1, 3'000);
+        rig.vectors.breakApart();
+        const QString message = rig.vectors.property("message").toString();
+        QVERIFY2(message != QStringLiteral("Séparer en formes indépendantes"), qPrintable(message));
+        QVERIFY2(message.contains(QStringLiteral("Rien à séparer")) ||
+                     message.contains(QStringLiteral("Séparé en")) ||
+                     message.contains(QStringLiteral("refusé")),
+                 qPrintable(message));
+    }
+
     // Lot 2 vocabulaire : « Ctrl+Maj+K » n'a qu'une seule action (séparer en formes
     // indépendantes) et le même libellé dans la barre, les options d'outil et le catalogue.
     void breakApartShortcutHasOneMeaning() {
