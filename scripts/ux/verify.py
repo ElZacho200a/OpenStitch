@@ -238,10 +238,11 @@ def validate_pr(body: str, paths: list[str]) -> list[str]:
             "https://" in value or "openstitch-studio-screenshots-windows" in value
         ):
             errors.append("Donner une URL de captures ou l'artefact CI Studio")
-        if name == "Revue independante" and not re.search(
-            r"\b(pass|friction|bloquant|fail|blocked)\b", value, re.I
-        ):
-            errors.append("Indiquer relecteur distinct et verdict PASS/FRICTION/BLOQUANT")
+        if name == "Revue independante":
+            if not re.search(r"\bPASS\b", value, re.I):
+                errors.append("Un verdict UX independant PASS est requis avant livraison")
+            if "https://" not in value:
+                errors.append("Lier le rapport ou commentaire du relecteur UX")
     if not re.search(r"(?im)^[-*]?\s*Revue ind[eé]pendante\s*:\s*.+(?:agent|relecteur|reviewer|@)", body):
         errors.append("Identifier explicitement l'agent/relecteur UX independant")
     return errors
