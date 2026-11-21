@@ -367,8 +367,13 @@ Item {
 
         // Légende des deux cartes : couleur, part de l'image, œil pour afficher / masquer chacune.
         Rectangle {
+            id: legend
             objectName: "zonesLegend"
-            visible: root.hasLinework && (root.detailPainting || detailZones.hasDetail || lineworkZones.hasDetail)
+            // Repli : l'espace s'ouvre aussi sans les contrôleurs de zones (aucune référence indéfinie).
+            readonly property var fallback: ({ hasDetail: false, coveragePercent: 0, overlayVisible: false })
+            readonly property var dz: root.hasLinework ? detailZones : legend.fallback
+            readonly property var lz: root.hasLinework ? lineworkZones : legend.fallback
+            visible: root.hasLinework && (root.detailPainting || legend.dz.hasDetail || legend.lz.hasDetail)
             x: 8
             y: 8 + Theme.controlHeight + 12 + 6
             width: Math.min(parent.width - 16, legendRow.implicitWidth + 20)
@@ -385,22 +390,22 @@ Item {
                 Rectangle { Layout.preferredWidth: 10; Layout.preferredHeight: 10; radius: 5; color: root.detailColor }
                 StudioButton {
                     objectName: "legendDetail"
-                    text: detailZones.hasDetail ? qsTr("Détail %1 %").arg(detailZones.coveragePercent.toFixed(1)) : qsTr("Détail")
-                    iconName: detailZones.overlayVisible ? "eye" : "eye-off"
+                    text: legend.dz.hasDetail ? qsTr("Détail %1 %").arg(legend.dz.coveragePercent.toFixed(1)) : qsTr("Détail")
+                    iconName: legend.dz.overlayVisible ? "eye" : "eye-off"
                     quiet: true
-                    tooltip: detailZones.overlayVisible ? qsTr("Masquer la carte des zones de détail (orange)")
+                    tooltip: legend.dz.overlayVisible ? qsTr("Masquer la carte des zones de détail (orange)")
                                                         : qsTr("Afficher la carte des zones de détail (orange)")
-                    onClicked: detailZones.overlayVisible = !detailZones.overlayVisible
+                    onClicked: legend.dz.overlayVisible = !legend.dz.overlayVisible
                 }
                 Rectangle { Layout.preferredWidth: 10; Layout.preferredHeight: 10; radius: 5; color: root.lineworkColor }
                 StudioButton {
                     objectName: "legendLinework"
-                    text: lineworkZones.hasDetail ? qsTr("Traits fins %1 %").arg(lineworkZones.coveragePercent.toFixed(1)) : qsTr("Traits fins")
-                    iconName: lineworkZones.overlayVisible ? "eye" : "eye-off"
+                    text: legend.lz.hasDetail ? qsTr("Traits fins %1 %").arg(legend.lz.coveragePercent.toFixed(1)) : qsTr("Traits fins")
+                    iconName: legend.lz.overlayVisible ? "eye" : "eye-off"
                     quiet: true
-                    tooltip: lineworkZones.overlayVisible ? qsTr("Masquer la carte des zones de traits fins (cyan)")
+                    tooltip: legend.lz.overlayVisible ? qsTr("Masquer la carte des zones de traits fins (cyan)")
                                                           : qsTr("Afficher la carte des zones de traits fins (cyan)")
-                    onClicked: lineworkZones.overlayVisible = !lineworkZones.overlayVisible
+                    onClicked: legend.lz.overlayVisible = !legend.lz.overlayVisible
                 }
             }
         }
