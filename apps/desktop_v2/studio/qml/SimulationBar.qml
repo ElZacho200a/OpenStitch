@@ -35,7 +35,8 @@ Rectangle {
                 id: transportRow
                 width: Math.max(transportScroll.width, implicitWidth)
                 spacing: 2
-                StudioButton { objectName: "simPrevColour"; enabled: bar.controller.simPosition > 0; text: qsTr("⏮ Couleur"); quiet: true; tooltip: qsTr("Début de la couleur précédente"); onClicked: bar.controller.previousColour() }
+                StudioButton { objectName: "simPrevLayer"; enabled: bar.controller.simPosition > 0; text: qsTr("⏮ Calque"); quiet: true; tooltip: qsTr("Début du calque précédent"); onClicked: bar.controller.previousLayer() }
+            StudioButton { objectName: "simPrevColour"; enabled: bar.controller.simPosition > 0; text: qsTr("⏮ Couleur"); quiet: true; tooltip: qsTr("Début de la couleur précédente"); onClicked: bar.controller.previousColour() }
             StudioButton { objectName: "simPrevObject"; enabled: bar.controller.simPosition > 0; text: qsTr("◀ Objet"); quiet: true; tooltip: qsTr("Début de l'objet précédent"); onClicked: bar.controller.previousObject() }
             StudioButton { objectName: "simPrevStitch"; enabled: bar.controller.simPosition > 0; text: qsTr("◀ Point"); quiet: true; tooltip: qsTr("Reculer d'un point"); onClicked: bar.controller.step(-1) }
             StudioButton {
@@ -48,6 +49,7 @@ Rectangle {
             StudioButton { objectName: "simNextStitch"; enabled: bar.controller.simPosition < bar.controller.simTotal; text: qsTr("Point ▶"); quiet: true; tooltip: qsTr("Avancer d'un point"); onClicked: bar.controller.step(1) }
             StudioButton { objectName: "simNextObject"; enabled: bar.controller.simPosition < bar.controller.simTotal; text: qsTr("Objet ▶"); quiet: true; tooltip: qsTr("Début de l'objet suivant"); onClicked: bar.controller.nextObject() }
             StudioButton { objectName: "simNextColour"; enabled: bar.controller.simPosition < bar.controller.simTotal; text: qsTr("Couleur ⏭"); quiet: true; tooltip: qsTr("Début de la couleur suivante"); onClicked: bar.controller.nextColour() }
+            StudioButton { objectName: "simNextLayer"; enabled: bar.controller.simPosition < bar.controller.simTotal; text: qsTr("Calque ⏭"); quiet: true; tooltip: qsTr("Début du calque suivant"); onClicked: bar.controller.nextLayer() }
             StudioButton { objectName: "simToEnd"; enabled: bar.controller.simPosition < bar.controller.simTotal; text: qsTr("⏹ Fin"); quiet: true; tooltip: qsTr("Aller à la fin"); onClicked: bar.controller.toEnd() }
             Item { Layout.fillWidth: true }
             Text { text: qsTr("Vitesse"); color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize }

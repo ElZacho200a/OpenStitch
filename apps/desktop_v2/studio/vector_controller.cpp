@@ -39,11 +39,22 @@ VectorController::VectorController(StudioController& studio, QObject* parent)
 
 std::vector<std::uint64_t> VectorController::ids() const {
     std::vector<std::uint64_t> out;
+    const auto& project = studio_.session().project();
     for (const auto& t : studio_.session().selection().targets()) {
         // Formes vectorielles pas encore converties comprises : les opérations de forme
         // agissent sur la géométrie, avec ou sans objet de broderie.
-        if (t.kind == TargetKind::EmbroideryObject || t.kind == TargetKind::VectorObject) {
-            out.push_back(t.id);
+        if (t.kind == TargetKind::EmbroideryObject) {
+            // Un objet dont le calque est verrouillé reste intouchable, même patron que
+            // EditController::selectedIds : le verrou ne vide pas la sélection, il la filtre à
+            // chaque appel.
+            const auto* object = project.findEmbroidery(ObjectId{t.id});
+            if (object != nullptr && !project.shapeLockedByCalque(object->source_vector)) {
+                out.push_back(t.id);
+            }
+        } else if (t.kind == TargetKind::VectorObject) {
+            if (!project.shapeLockedByCalque(ObjectId{t.id})) {
+                out.push_back(t.id);
+            }
         }
     }
     return out; // ordre de sélection conservé : le dernier est l'objet principal
