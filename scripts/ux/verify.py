@@ -81,6 +81,60 @@ def git_head() -> str:
         return "unknown"
 
 
+def workspace_fingerprint() -> str:
+    """Bind evidence to the exact HEAD and the local working tree."""
+    h = hashlib.sha256(git_head().encode("ascii", errors="replace"))
+    try:
+        for cmd in (["git", "diff", "--binary", "HEAD"],
+                    ["git", "diff", "--cached", "--binary"],
+                    ["git", "status", "--porcelain", "--untracked-files=normal"]):
+            h.update(subprocess.check_output(cmd, stderr=subprocess.DEVNULL))
+    except (OSError, subprocess.CalledProcessError):
+        h.update(b"git-state-unavailable")
+    return h.hexdigest()
+
+
+def check_report(path: Path, require_review: bool = False) -> dict:
+    report = json.loads(path.read_text(encoding="utf-8"))
+    if report.get("schema") != 1 or report.get("head_sha") != git_head():
+        raise ValueError("Capture perimee: recommencer apres le dernier commit")
+    if report.get("workspace_fingerprint") != workspace_fingerprint():
+        raise ValueError("Capture perimee: le code ou l'arbre de travail a change")
+    rows = report.get("screenshots", [])
+    if not rows:
+        raise ValueError("Aucune capture native verifiable")
+    for row in rows:
+        shot = path.parent / Path(row["filename"]).name
+        width, height, digest = read_png(shot)
+        if (width, height, digest) != (row["width"], row["height"], row["sha256"]):
+            raise ValueError(f"Capture differente du manifeste: {shot}")
+    if require_review:
+        review = report.get("visual_review")
+        if not isinstance(review, dict) or review.get("verdict") != "PASS":
+            raise ValueError("Relecture UX independante PASS non fournie")
+        if len(review.get("reviewer", "").strip()) < 3:
+            raise ValueError("Relecteur UX independant non identifie")
+        if len(review.get("notes", "").strip()) < 20:
+            raise ValueError("Notes de revue UX insuffisantes")
+    return report
+
+
+def record_review(args: argparse.Namespace) -> int:
+    path = Path(args.report).resolve()
+    report = check_report(path)
+    report["visual_review"] = {
+        "reviewer": args.reviewer.strip(),
+        "verdict": args.verdict,
+        "notes": args.notes.strip(),
+        "reference": args.reference.strip(),
+    }
+    if not report["visual_review"]["reviewer"] or not report["visual_review"]["notes"]:
+        raise ValueError("La revue necessite un auteur et des observations reelles")
+    path.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    print("Revue UX enregistree dans le manifeste local (pas une certification independante)")
+    return 0
+
+
 def capture(args: argparse.Namespace) -> int:
     studio = Path(args.studio).resolve()
     project = Path(args.project).resolve()
@@ -128,7 +182,8 @@ def capture(args: argparse.Namespace) -> int:
         group = [r for r in rows if r["requested_size"] == size]
         if len(group) > 1 and len({r["sha256"] for r in group}) == 1:
             raise ValueError(f"Meme capture pour tous les espaces {size}: navigation probablement cassee")
-    report = {"schema": 1, "head_sha": git_head(), "backend": args.backend,
+    report = {"schema": 1, "head_sha": git_head(),
+              "workspace_fingerprint": workspace_fingerprint(), "backend": args.backend,
               "source": "real Qt Studio window grab (software may be offscreen)",
               "project": project.name, "screenshots": rows,
               "visual_review": "NOT_REVIEWED", "note": "Dimensions/PNG verifies, UX non jugee"}
@@ -200,10 +255,27 @@ def main(argv: list[str] | None = None) -> int:
     source = review.add_mutually_exclusive_group(required=True)
     source.add_argument("--body-file")
     source.add_argument("--body-env")
+    reviewed = sub.add_parser("review", help="consigner les observations du second agent")
+    reviewed.add_argument("--report", required=True)
+    reviewed.add_argument("--reviewer", required=True)
+    reviewed.add_argument("--verdict", choices=("PASS", "FRICTION", "BLOQUANT"), required=True)
+    reviewed.add_argument("--notes", required=True)
+    reviewed.add_argument("--reference", default="")
+    checked = sub.add_parser("check-report", help="reverifier les captures et leur revue")
+    checked.add_argument("--report", required=True)
+    checked.add_argument("--require-review", action="store_true")
     args = parser.parse_args(argv)
     try:
-        return capture(args) if args.action == "capture" else check_pr(args)
-    except (OSError, ValueError) as exc:
+        if args.action == "capture":
+            return capture(args)
+        if args.action == "check-pr":
+            return check_pr(args)
+        if args.action == "review":
+            return record_review(args)
+        check_report(Path(args.report), require_review=args.require_review)
+        print("UX Gate: preuves locales a jour")
+        return 0
+    except (OSError, ValueError, KeyError, json.JSONDecodeError) as exc:
         print(f"UX Gate: {exc}", file=sys.stderr)
         return 1
 
