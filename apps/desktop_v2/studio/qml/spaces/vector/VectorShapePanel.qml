@@ -193,7 +193,7 @@ ColumnLayout {
         text: panel.crumbCount > 0
               ? qsTr("Nettoyer (facultatif) : %1 miette(s) de moins de 3 mm²").arg(panel.crumbCount)
               : qsTr("Nettoyer (facultatif) : aucune miette de moins de 3 mm²")
-        color: panel.crumbCount > 0 ? Theme.warning : Theme.muted
+        color: panel.crumbCount > 0 ? Theme.foreground : Theme.muted
         font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize; wrapMode: Text.WordWrap
     }
     RowLayout {

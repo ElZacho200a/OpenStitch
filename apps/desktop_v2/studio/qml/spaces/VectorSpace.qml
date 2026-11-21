@@ -250,6 +250,10 @@ Item {
                     contentWidth: availableWidth
                     contentHeight: shapePanel.implicitHeight + 2 * Theme.panelPadding
                     Controls.ScrollBar.horizontal.policy: Controls.ScrollBar.AlwaysOff
+                    // Défilement signalé : barre toujours visible dès que le contenu déborde.
+                    Controls.ScrollBar.vertical.policy: contentHeight > height
+                                                        ? Controls.ScrollBar.AlwaysOn
+                                                        : Controls.ScrollBar.AsNeeded
                     VectorShapePanel {
                         id: shapePanel
                         x: Theme.panelPadding
