@@ -100,10 +100,25 @@ Rectangle {
                 font.pixelSize: Theme.smallSize
             }
             StudioButton {
+                id: applyReductionButton
                 objectName: "fixApplyReduction"
                 text: qsTr("Appliquer la réduction")
                 enabled: panel.ready && panel.controller.reductionReady && !panel.controller.reductionStale && panel.controller.objectsRecoloured > 0
+                disabledReason: !panel.ready ? qsTr("Ouvrez un projet pour utiliser cette fonction.")
+                              : panel.controller.reductionStale ? qsTr("Le document a changé : cliquez de nouveau sur « Aperçu de la réduction ».")
+                              : panel.controller.reductionReady ? qsTr("Rien à réduire : le design utilise déjà ce nombre de fils ou moins.")
+                              : qsTr("Cliquez d'abord sur « Aperçu de la réduction ».")
                 onClicked: reductionConfirm.open()
+            }
+            Text {
+                objectName: "fixApplyReductionReason"
+                Layout.fillWidth: true
+                visible: !applyReductionButton.enabled
+                wrapMode: Text.Wrap
+                color: Theme.muted
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.smallSize
+                text: applyReductionButton.disabledReason
             }
 
             Text {

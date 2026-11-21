@@ -140,6 +140,14 @@ private slots:
         auto* analyse = findVisual(panel, QStringLiteral("fixAnalyze"));
         auto* preview = findVisual(panel, QStringLiteral("fixPreviewReduction"));
         QVERIFY(analyse && preview);
+        auto* applyEarly = findVisual(panel, QStringLiteral("fixApplyReduction"));
+        auto* reasonEarly = findVisual(panel, QStringLiteral("fixApplyReductionReason"));
+        QVERIFY(applyEarly && reasonEarly);
+        QVERIFY(
+            !applyEarly->isEnabled()); // aucun aperçu : raison visible, pas seulement en infobulle
+        QVERIFY(reasonEarly->isVisible());
+        QVERIFY(reasonEarly->property("text").toString().contains(
+            QStringLiteral("Aperçu de la réduction")));
         QVERIFY(QMetaObject::invokeMethod(analyse, "click"));
         QTRY_VERIFY_WITH_TIMEOUT(rig.fix.planReady(), 30000);
         auto* target = findVisual(panel, QStringLiteral("fixTargetThreads"));

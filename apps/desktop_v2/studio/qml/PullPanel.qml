@@ -20,6 +20,7 @@ Rectangle {
         anchors.margins: 10
         contentHeight: column.implicitHeight
         clip: true
+        Controls.ScrollIndicator.vertical: Controls.ScrollIndicator {}
         ColumnLayout {
             id: column
             width: parent.width - 12
@@ -63,6 +64,16 @@ Rectangle {
             }
             StudioButton { objectName: "pullRegistrationCompensate"; text: qsTr("Prédire et compenser"); enabled: panel.ready && !panel.controller.busy && compensationStrength.value > 0; disabledReason: !panel.ready ? qsTr("Ouvrez un projet pour utiliser cette fonction.") : panel.controller.busy ? qsTr("Calcul en cours : patientez.") : qsTr("Mettez la contre-compensation au-dessus de 0 %, ou utilisez « Prédire le décalage » pour une simple estimation."); onClicked: panel.controller.predictRegistration(compensationStrength.value / 100) }
             Text {
+                objectName: "pullExportReason"
+                Layout.fillWidth: true
+                visible: !exportCompensatedButton.enabled
+                wrapMode: Text.Wrap
+                color: Theme.muted
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.smallSize
+                text: exportCompensatedButton.disabledReason
+            }
+            Text {
                 objectName: "pullRegistrationStale"
                 Layout.fillWidth: true
                 visible: panel.ready && panel.controller.registrationStale
@@ -79,16 +90,6 @@ Rectangle {
                               : !panel.controller.canExportCompensated ? qsTr("Lancez d'abord « Prédire et compenser » : aucune séquence compensée n'est disponible.")
                               : qsTr("Saisissez le nom du fichier DST à écrire.")
                 onClicked: panel.controller.exportCompensatedDst(compensatedPath.text) }
-            Text {
-                objectName: "pullExportReason"
-                Layout.fillWidth: true
-                visible: !exportCompensatedButton.enabled
-                wrapMode: Text.Wrap
-                color: Theme.muted
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.smallSize
-                text: exportCompensatedButton.disabledReason
-            }
             Text {
                 objectName: "pullRegistrationText"
                 Layout.fillWidth: true
