@@ -389,16 +389,13 @@ build_studio_scene(std::shared_ptr<const document::Project> project, std::uint64
 
 StudioInvalidation
 StudioResourceState::observe(const std::shared_ptr<const StudioSceneSnapshot>& scene,
-                             std::uint64_t selectionRevision, std::uint64_t cameraRevision,
-                             std::uint64_t dimmedRevision) {
+                             std::uint64_t selectionRevision, std::uint64_t cameraRevision) {
     const bool geometry = !initialized_ || scene != scene_;
     const StudioInvalidation result{geometry, geometry || selectionRevision != selectionRevision_,
-                                    !initialized_ || cameraRevision != cameraRevision_,
-                                    geometry || dimmedRevision != dimmedRevision_};
+                                    !initialized_ || cameraRevision != cameraRevision_};
     scene_ = scene;
     selectionRevision_ = selectionRevision;
     cameraRevision_ = cameraRevision;
-    dimmedRevision_ = dimmedRevision;
     initialized_ = true;
     return result;
 }
