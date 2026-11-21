@@ -640,6 +640,18 @@ private slots:
             deepItem(rig.window->contentItem(), QStringLiteral("vectorGoToRegionButton"));
         QVERIFY(button);
         QTRY_VERIFY_WITH_TIMEOUT(button->isEnabled(), 3'000);
+        // Le panneau Vectorisation défile (plafonné pour garder les onglets visibles) : comme un
+        // utilisateur, on le fait défiler jusqu'en bas, où se trouve le bouton.
+        if (auto* scroll =
+                deepItem(rig.window->contentItem(), QStringLiteral("vectorShapePanelScroll"))) {
+            if (auto* flick = scroll->property("contentItem").value<QQuickItem*>()) {
+                const qreal maxY = flick->property("contentHeight").toReal() - flick->height();
+                flick->setProperty("contentY", std::max<qreal>(0, maxY));
+            }
+        }
+        QTRY_VERIFY(
+            button->mapToItem(rig.window->contentItem(), QPointF(0, button->height())).y() <=
+            rig.window->height());
         const auto center = button->mapToScene(QPointF(button->width() / 2, button->height() / 2));
         QTest::mouseClick(rig.window, Qt::LeftButton, {}, center.toPoint());
         QTRY_COMPARE_WITH_TIMEOUT(rig.workspace->current(), QStringLiteral("segmentation"), 3'000);

@@ -222,6 +222,7 @@ Item {
             Layout.preferredWidth: 320
             Layout.fillHeight: true
             ColumnLayout {
+                id: vectorSideColumn
                 anchors.fill: parent
                 anchors.margins: 2
                 spacing: 0
@@ -237,16 +238,30 @@ Item {
                     Accessible.name: qsTr("Calque à vectoriser")
                     onActivated: index => imageTools.selectImageLayer(index)
                 }
-                VectorShapePanel {
-                    id: shapePanel
+                // Défilant et plafonné : sur une petite fenêtre, les étapes de vectorisation ne
+                // poussent plus les onglets Calques / Édition hors de l'écran.
+                Controls.ScrollView {
+                    id: shapePanelScroll
+                    objectName: "vectorShapePanelScroll"
                     Layout.fillWidth: true
-                    Layout.margins: Theme.panelPadding
-                    stage: root.stage
-                    workspace: root.workspace
-                    onGoToRegionRequested: {
-                        // Sélection partagée : la région d'origine, puis bascule d'espace.
-                        if (root.stage.selectOriginRegion())
-                            root.workspace.setCurrent("segmentation")
+                    Layout.preferredHeight: Math.min(shapePanel.implicitHeight + 2 * Theme.panelPadding,
+                                                     Math.max(160, vectorSideColumn.height * 0.55))
+                    clip: true
+                    contentWidth: availableWidth
+                    contentHeight: shapePanel.implicitHeight + 2 * Theme.panelPadding
+                    Controls.ScrollBar.horizontal.policy: Controls.ScrollBar.AlwaysOff
+                    VectorShapePanel {
+                        id: shapePanel
+                        x: Theme.panelPadding
+                        y: Theme.panelPadding
+                        width: shapePanelScroll.availableWidth - 2 * Theme.panelPadding
+                        stage: root.stage
+                        workspace: root.workspace
+                        onGoToRegionRequested: {
+                            // Sélection partagée : la région d'origine, puis bascule d'espace.
+                            if (root.stage.selectOriginRegion())
+                                root.workspace.setCurrent("segmentation")
+                        }
                     }
                 }
                 Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }
