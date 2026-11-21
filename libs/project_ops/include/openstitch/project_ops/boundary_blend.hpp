@@ -53,19 +53,31 @@ make_boundary_blend_command(const document::Project& project, ObjectId a, Object
 // frontière tracée de `options` est ignorée (chaque couple utilise sa frontière calculée).
 // Erreurs : E_BLEND_FEW_ZONES (moins de deux zones distinctes), E_BLEND_NO_PAIR (aucun couple
 // éligible). Ordre déterministe : couples (a, b) par identifiants croissants.
+// `update_existing` vrai : RÉÉDITION du groupe — les couples déjà fondus reçoivent aussi `options`
+// (largeurs, transition, rangées), chacun gardant sa frontière tracée éventuelle ; comptés dans
+// `updated` au lieu de `kept`.
 struct MultiBoundaryBlend {
     std::unique_ptr<commands::ICommand> command;
     std::vector<std::pair<ObjectId, ObjectId>> created; // couples fondus par la commande
     std::size_t kept{0};                                // couples déjà fondus, laissés intacts
+    std::size_t updated{0};                             // couples déjà fondus, réédités
 };
 [[nodiscard]] Result<MultiBoundaryBlend>
 make_multi_boundary_blend_command(const document::Project& project, std::vector<ObjectId> ids,
-                                  const BoundaryBlendOptions& options);
+                                  const BoundaryBlendOptions& options,
+                                  bool update_existing = false);
 // Retire le fondu du couple (`id`, `partner`) : le lien de `id` vers `partner` et, s'il existe,
 // celui de `partner` vers `id`. Les autres fondus des deux zones restent intacts. Erreur
 // E_BLEND_NONE si `id` ne porte aucun lien vers `partner`.
 [[nodiscard]] Result<std::unique_ptr<commands::ICommand>>
 make_remove_boundary_blend_command(const document::Project& project, ObjectId id, ObjectId partner);
+
+// Retire TOUS les fondus entre zones de `ids` (couples par identifiants croissants), les fondus
+// vers des zones hors de `ids` intacts. Une commande, un pas d'annulation. Erreurs
+// E_BLEND_FEW_ZONES, E_BLEND_NONE (aucun fondu entre ces zones).
+[[nodiscard]] Result<std::unique_ptr<commands::ICommand>>
+make_multi_remove_boundary_blend_command(const document::Project& project,
+                                         std::vector<ObjectId> ids);
 
 // Retire l'UNIQUE fondu porté par `id`. Erreurs E_BLEND_NONE (aucun lien) et E_BLEND_AMBIGUOUS
 // (plusieurs fondus : préciser le partenaire avec la surcharge ci-dessus).

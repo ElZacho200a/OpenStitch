@@ -433,6 +433,23 @@ void StudioBoundaryBlendTest::createAllBlendsTouchingPairs() {
     rig.select({rig.left, rig.right, rig.far});
     QVERIFY(!rig.blend.createAll(2.0, 1));
     QCOMPARE(rig.steps(), before + 1);
+    // Réédition du groupe : le fondu existant suit les nouveaux réglages, un pas d'annulation.
+    QCOMPARE(rig.blend.groupBlendCount(), 1);
+    QVERIFY(rig.blend.editAll(3.5, 2));
+    QCOMPARE(rig.steps(), before + 2);
+    rig.select({rig.left});
+    QCOMPARE(rig.blend.widthMm(), 3.5);
+    QCOMPARE(rig.blend.partnerWidthMm(), 3.5);
+    QCOMPARE(rig.blend.curve(), 2);
+    // Retrait du groupe : un pas d'annulation, plus aucun fondu.
+    rig.select({rig.left, rig.right, rig.far});
+    QVERIFY(rig.blend.removeAll());
+    QCOMPARE(rig.steps(), before + 3);
+    QCOMPARE(rig.blend.groupBlendCount(), 0);
+    rig.select({rig.left});
+    QVERIFY(rig.blend.blends().isEmpty());
+    rig.select({rig.left, rig.right, rig.far});
+    QVERIFY(!rig.blend.removeAll());
 }
 
 QTEST_MAIN(StudioBoundaryBlendTest)
