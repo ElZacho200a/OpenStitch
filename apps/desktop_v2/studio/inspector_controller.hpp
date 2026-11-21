@@ -33,6 +33,7 @@ class InspectorController : public QObject {
     Q_PROPERTY(QString typeLabel READ typeLabel NOTIFY changed)
     Q_PROPERTY(bool typeMixed READ typeMixed NOTIFY changed)
     Q_PROPERTY(QVariantList types READ types NOTIFY changed)
+    Q_PROPERTY(QString typesNote READ typesNote NOTIFY changed)
     Q_PROPERTY(QVariantList fields READ fields NOTIFY changed)
     Q_PROPERTY(QVariantList sections READ sections NOTIFY changed)
     Q_PROPERTY(int totalFieldCount READ totalFieldCount NOTIFY changed)
@@ -64,6 +65,10 @@ public:
     [[nodiscard]] bool typeMixed() const;
     // [{id, label, current}] : stitch types a selection can be converted to.
     [[nodiscard]] QVariantList types() const;
+    // Explication courte quand la liste de types est réduite (sélection contenant une ligne
+    // ouverte) ; vide sinon.
+    [[nodiscard]] QString typesNote() const;
+    [[nodiscard]] bool selectionHasOpenLine() const;
     // Flat list of the fields currently shown (level / search applied):
     // [{key, label, kind(number|integer|bool|choice), min, max, step, unit, level(essential|
     //   advanced), section, value, text, mixed, isDefault, defaultValue, choices:[{value,label}]}]

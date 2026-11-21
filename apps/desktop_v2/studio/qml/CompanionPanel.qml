@@ -71,7 +71,7 @@ Controls.Popup {
                   ? (companion.claudeCodeActive
                      ? qsTr("Claude Code est branché : écrivez votre demande ci-dessous. Il travaille sur le document ouvert, et chaque étape reste annulable (Ctrl+Z).")
                      : qsTr("Pont actif : un agent externe peut lire et modifier le document ouvert. Chaque étape reste annulable (Ctrl+Z)."))
-                  : qsTr("Pont coupé : aucun agent externe n'est relié au document.")
+                  : qsTr("Pont coupé. Pour l'activer, Claude Code doit être installé sur cet ordinateur.")
             Accessible.role: Accessible.StaticText
             Accessible.name: text
         }
