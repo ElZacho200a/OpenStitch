@@ -51,6 +51,7 @@ Rectangle {
             Text {
                 objectName: "pullSummary"
                 Layout.fillWidth: true
+                visible: text.length > 0
                 wrapMode: Text.Wrap
                 color: Theme.foreground
                 font.family: Theme.fontFamily
