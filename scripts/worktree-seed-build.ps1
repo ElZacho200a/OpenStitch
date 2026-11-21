@@ -27,7 +27,8 @@ param(
     [string]$Source = "",
     [string]$Target = (Get-Location).Path,
     [string]$Preset = "msvc",
-    [switch]$SkipConfigure
+    [switch]$SkipConfigure,
+    [switch]$IfNeeded
 )
 $ErrorActionPreference = "Stop"
 
@@ -48,8 +49,15 @@ if ($Source -ieq $Target) { throw "Source et cible identiques : $Source" }
 
 $srcBuild = Join-Path $Source "build\$Preset"
 $dstBuild = Join-Path $Target "build\$Preset"
+if ($IfNeeded -and (Test-Path (Join-Path $dstBuild "CMakeCache.txt"))) {
+    Write-Host "[seed] build deja configure dans $dstBuild : reutilisation, aucune copie"
+    exit 0
+}
 if (-not (Test-Path (Join-Path $srcBuild "CMakeCache.txt"))) { throw "Aucun build configuré dans $srcBuild" }
 if (Test-Path (Join-Path $dstBuild "CMakeCache.txt")) { throw "La cible a déjà un build : $dstBuild (supprimer d'abord)" }
+if ($Preset -ne "msvc") {
+    throw "Ce script reutilise les traces MSBuild du preset msvc uniquement ; ne pas copier un build Ninja/dev-* avec ce mecanisme."
+}
 
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
 Write-Host "[seed] copie $srcBuild -> $dstBuild"
@@ -106,10 +114,13 @@ Get-ChildItem $dstBuild -Recurse -File -Include $patterns -ErrorAction SilentlyC
     }
 Write-Host "[seed] chemins réécrits dans $rewritten fichiers"
 
-# 3. Dates des sources identiques : celles de la source (sinon tout serait plus récent que les .obj).
+# 3. Dates des sources identiques : ne JAMAIS antidater un fichier modifie dans
+#    la source OU la cible : sinon MSBuild pourrait ne pas recompiler le code edite.
 $modified = @{}
-foreach ($p in (& git -C $Source diff --name-only HEAD)) { $modified[$p] = $true }
-foreach ($p in (& git -C $Source ls-files --others --exclude-standard)) { $modified[$p] = $true }
+foreach ($root in @($Source, $Target)) {
+    foreach ($p in (& git -C $root diff --name-only HEAD)) { $modified[$p] = $true }
+    foreach ($p in (& git -C $root ls-files --others --exclude-standard)) { $modified[$p] = $true }
+}
 $srcBlobs = @{}
 foreach ($line in (& git -C $Source ls-files -s)) {
     $parts = $line -split "\s+", 4
