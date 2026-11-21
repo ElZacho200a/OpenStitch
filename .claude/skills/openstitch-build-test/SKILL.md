@@ -1,14 +1,35 @@
 ---
 name: openstitch-build-test
-description: Compiler et tester OpenStitch efficacement (build ciblé par lib, exécutables Catch2/QTest, filtres, format, garde structurelle). À utiliser après toute modification de code C++ ou CMake, avant d'annoncer qu'une tâche est terminée, quand un test échoue, ou quand l'utilisateur demande de « builder », « lancer les tests » ou « vérifier que ça passe ».
+description: Amorcer et réutiliser un build OpenStitch en worktree, puis compiler et tester efficacement (compilation différée, cibles, Catch2/QTest). À utiliser pour préparer ou valider un lot de code C++/CMake, avant de le livrer, ou sur demande de build/test.
 ---
 
 # Build & tests OpenStitch
 
-Principe : **boucle courte pendant l'itération (cible + exécutable de test),
-boucle complète avant de conclure.** Ne jamais annoncer « c'est fait » sans
-avoir compilé et lancé au moins les tests des libs touchées ; rapporter les
-échecs tels quels (sortie à l'appui).
+Principe : **préparer le build depuis main si worktree neuf ; écrire le lot cohérent
+sans compiler à chaque édition ; compiler les cibles touchées et exécuter leurs tests
+après la passe de code ; boucle complète une seule fois avant de conclure.**
+Ne jamais annoncer « c'est fait » sans avoir compilé et lancé au moins les tests
+des libs touchées ; rapporter les échecs tels quels (sortie à l'appui).
+
+### 0 bis. Amorçage obligatoire d'un worktree Windows (avant toute édition)
+
+- Vérifier si `build/msvc/CMakeCache.txt` est déjà présent dans le worktree.
+  Si oui, conserver ce build ; pas de seed ni de reconfiguration forcée.
+- Sinon, si le dépôt principal a un `build/msvc/CMakeCache.txt` compatible et
+  compilé, lancer dans le worktree `pwsh scripts/worktree-seed-build.ps1 -IfNeeded -Preset msvc`.
+  La source est le premier worktree, ou `-Source "C:\chemin\repo"` explicitement.
+- `worktree-seed-build.ps1` ne couvre que `msvc` (MSBuild). Ne jamais l'employer
+  comme seed d'un preset Ninja `dev-debug`, `dev-notests` ou `dev-relwithdebinfo`.
+  Sans build source compatible, le signaler ; ne pas lancer le build global à froid
+  de sa propre initiative.
+- Effectuer le seed **avant les changements de fichiers** : les dates de fichiers
+  identiques sont réalignées pour préserver l'incrémentalité ; les fichiers modifiés
+  dans la source ou la cible ne sont jamais antidatés.
+
+**Pendant l'implémentation :** édition, inspection, formatage et tests écrits sans
+build systématique. **Après une passe cohérente :** compilation ciblée et tests ;
+si échec, corriger et relancer seulement les cibles concernées. Une modification
+QML en mode développement externe peut être vérifiée sans recompiler le C++.
 
 Toutes les commandes se lancent depuis la racine du dépôt, via l'outil
 **PowerShell** (MSVC/CMake Windows). `VCPKG_ROOT` et `QT_ROOT` doivent être
@@ -33,9 +54,10 @@ l'affichage est réduit.
 Les exemples ci-dessous omettent le préfixe pour la lisibilité ; l'utiliser par défaut. Ne pas
 relancer une commande pour « revoir » sa sortie : lire le journal.
 
-## 1. Boucle courte (itération)
+## 1. Boucle courte (validation d'un lot, pas de chaque édition)
 
-Compiler uniquement la lib modifiée et son exécutable de test :
+Compiler uniquement la lib modifiée et son exécutable de test **après avoir fini
+la passe de code** :
 
 ```powershell
 cmake --build --preset msvc-debug --target openstitch_<lib> test_<lib>
@@ -161,8 +183,9 @@ d'apt (OpenCV 4.6, fmt 9, CLI11 2.4) différentes de vcpkg : les mesures sont id
 ## 7. Build rapide : méthode et protocole de mesure
 
 Détail et protocole complets : `docs/source/build-system.md` § « Workflow de build rapide ».
-Rappel agents : itérer avec `--target openstitch_<lib> test_<lib>` + filtre de test, jamais de
-build complet entre deux essais ; suite complète (`msvc-debug` + `ctest`) une fois avant livraison ;
+Rappel agents : grouper les éditions sans build ; à la fin d'une passe cohérente,
+utiliser `--target openstitch_<lib> test_<lib>` + filtre de test ; jamais de build
+complet entre deux essais ; suite complète (`msvc-debug` + `ctest`) une fois avant livraison ;
 mesurer (`Measure-Command`, médiane de 3, froid / incrémental trivial / incrémental réaliste)
 avant d'annoncer un gain.
 
