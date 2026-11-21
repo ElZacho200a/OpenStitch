@@ -18,6 +18,9 @@ Controls.Menu {
     // `menu.region.selectedCount` directement dans un binding.
     readonly property int selectedCount: region !== null ? region.selectedCount : 0
 
+    // Largeur = entrée la plus large : le style Basic tronque sinon les libellés longs.
+    width: { var w = 0; for (var i = 0; i < count; ++i) w = Math.max(w, itemAt(i).implicitWidth); return Math.max(w, implicitWidth) }
+
     function openFor(id, x, y) {
         menu.regionId = id
         popup(x, y)

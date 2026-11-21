@@ -16,6 +16,9 @@ Controls.Menu {
     // Réglage du cadre, commun à tous les canevas (ouvert par SpaceHost).
     signal hoopRequested(real x, real y)
     function openAt(x, y) { atX = x; atY = y; popup(x, y) }
+    // Largeur = entrée la plus large : sans cela le style Basic tronque les libellés longs
+    // (« Séparer en formes indépendantes », raccourcis) au lieu d'élargir le menu.
+    width: { var w = 0; for (var i = 0; i < count; ++i) w = Math.max(w, itemAt(i).implicitWidth); return Math.max(w, implicitWidth) }
 
     Controls.Menu {
         title: qsTr("Sélection")
@@ -57,6 +60,9 @@ Controls.Menu {
         readonly property bool two: vec !== null && vec.selectedCount > 1
         readonly property bool some: vec !== null && vec.selectedCount > 0
         title: qsTr("Formes")
+        // Largeur = entrée la plus large : sans cela le style Basic tronque les libellés longs
+        // (« Séparer en formes indépendantes », raccourcis) au lieu d'élargir le menu.
+        width: { var w = 0; for (var i = 0; i < count; ++i) w = Math.max(w, itemAt(i).implicitWidth); return Math.max(w, implicitWidth) }
         enabled: some
         Controls.MenuItem { objectName: "contextUnion"; text: qsTr("Union\tCtrl++"); enabled: shapesMenu.two; onTriggered: shapesMenu.vec.booleanOp("union") }
         Controls.MenuItem { objectName: "contextSubtract"; text: qsTr("Soustraire\tCtrl+-"); enabled: shapesMenu.two; onTriggered: shapesMenu.vec.booleanOp("subtract") }

@@ -8,6 +8,7 @@
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQmlError>
+#include <QQmlExpression>
 #include <QQuickStyle>
 #include <QQuickWindow>
 #include <QtTest/QtTest>
@@ -454,6 +455,36 @@ private slots:
         auto* split = deepItem(rig.window->contentItem(), QStringLiteral("quickBreak"));
         QVERIFY(split != nullptr);
         QCOMPARE(split->property("text").toString(), expected);
+    }
+
+    // Lot 2 : le libellé long reste lisible à 1000 px (barre rapide dans la fenêtre, menu des
+    // formes assez large pour son entrée la plus longue).
+    void breakApartLabelFitsAt1000px() {
+        Rig rig;
+        open(rig);
+        rig.window->resize(1000, 640);
+        enterSpace(rig);
+        QTest::mouseClick(rig.window, Qt::LeftButton, {}, at(rig, 2.5, 0.0));
+        auto* bar = deepItem(rig.window->contentItem(), QStringLiteral("vectorQuickBar"));
+        QVERIFY(bar != nullptr);
+        QTRY_VERIFY_WITH_TIMEOUT(bar->isVisible(), 3'000);
+        const auto topLeft = bar->mapToScene(QPointF(0, 0));
+        QVERIFY(topLeft.x() >= 0.0);
+        QVERIFY2(topLeft.x() + bar->width() <= rig.window->width(),
+                 qPrintable(QStringLiteral("barre %1 + %2 > fenetre %3")
+                                .arg(topLeft.x())
+                                .arg(bar->width())
+                                .arg(rig.window->width())));
+        auto* menu = rig.window->findChild<QObject*>(QStringLiteral("canvasContextMenu"));
+        QVERIFY(menu != nullptr);
+        auto* shapes = menu->findChild<QObject*>(QStringLiteral("contextShapesMenu"));
+        QVERIFY(shapes != nullptr);
+        QQmlExpression open(qmlContext(shapes), shapes, QStringLiteral("popup(300, 200)"));
+        open.evaluate();
+        auto* item = shapes->findChild<QQuickItem*>(QStringLiteral("contextBreakApart"));
+        QVERIFY(item != nullptr);
+        QTRY_VERIFY_WITH_TIMEOUT(shapes->property("width").toReal() >= item->implicitWidth(),
+                                 3'000);
     }
 
     void clickSelectsAShapeAndShowsItsOrigin() {
