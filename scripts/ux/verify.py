@@ -28,7 +28,7 @@ REVIEW_FIELDS = {
     "Tests": r"(?im)^\s*[-*]?\s*Tests UX\s*:\s*(.+)$",
 }
 PLACEHOLDERS = ("todo", "tbd", "a faire", "à faire", "pending", "non teste",
-                "non testé", "non verifie", "non vérifié", "n/a", "aucun", "...")
+                "non testé", "non verifie", "non vérifié", "n/a", "...")
 PNG_HEADER = b"\x89PNG\r\n\x1a\n"
 
 
