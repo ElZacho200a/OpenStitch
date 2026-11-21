@@ -42,11 +42,13 @@ inline constexpr double kLineworkWidthMm = 1.0;
 // Niveau de détail du tracé des traits (`ContourOptions::detail`) : petites boucles et branches
 // courtes gardées (cellules d'un treillis de 1 à 2 mm), simplification serrée.
 inline constexpr double kLineworkDetail = 0.85;
-// Zones « traits fins » peintes par l'utilisateur : détection renforcée (contraste moitié moindre,
-// traits un peu plus larges, fragments trapus admis). Hors zone : réglages ci-dessus.
-inline constexpr double kLineworkZoneContrast = 6.0;
-inline constexpr double kLineworkZoneWidthMm = 1.4;
-inline constexpr double kLineworkZoneElongation = 2.5;
+// Zones « traits fins » peintes par l'utilisateur : détection renforcée par un contraste plus
+// faible (8 au lieu de 12). Largeur et allongement restent ceux de la détection ordinaire :
+// mesuré sur le phare (0,26 mm/px), les élargir ou admettre des fragments trapus fait passer les
+// ombres du dôme et de la galerie pour des traits (aplats bruns pâteux, trous).
+inline constexpr double kLineworkZoneContrast = 8.0;
+inline constexpr double kLineworkZoneWidthMm = kLineworkWidthMm;
+inline constexpr double kLineworkZoneElongation = 6.0;
 
 struct LineLayerOptions {
     bool enabled{false};

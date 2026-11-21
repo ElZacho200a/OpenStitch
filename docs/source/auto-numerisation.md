@@ -553,12 +553,20 @@ traits fins » et sa gomme, incrustation cyan) : `ImageSource::linework_mask`, m
 `PaintDetailMaskCommand` / `ClearDetailMaskCommand` avec la cible `MaskKind::Linework`.
 
 Dans les pixels peints (poids >= 128), `prepare_linework` lance une seconde détection renforcée
-(`LineLayerOptions::zone_mask`) et la réunit aux traits ordinaires : contraste 6 au lieu de 12
-(`kLineworkZoneContrast`), largeur 1,4 mm au lieu de 1 (`kLineworkZoneWidthMm`), allongement
-minimal 2,5 au lieu de 6 (`kLineworkZoneElongation`). Hors zone, rien ne change. Peindre une zone
-active la préservation des traits à la prochaine mise à jour des formes (aucune segmentation à
-relancer). Test : `couche de traits : zone de traits fins…` (un trait de contraste 9 pris dans la
-zone, ignoré hors zone).
+(`LineLayerOptions::zone_mask`) et la réunit aux traits ordinaires : contraste 8 au lieu de 12
+(`kLineworkZoneContrast`), même largeur et même allongement minimal. Mesuré sur le phare : élargir
+(1,4 mm) ou admettre des fragments trapus (allongement 2,5) fait passer les ombres du dôme et de la
+galerie pour des traits (aplats bruns pâteux) ; seul le contraste aide. Hors zone, rien ne change.
+Peindre une zone active la préservation des traits à la prochaine mise à jour des formes (aucune
+segmentation à relancer). Test : `couche de traits : zone de traits fins…` (un trait de contraste 9
+pris dans la zone, ignoré hors zone).
+
+**Couleur locale des traits** : la couleur était choisie par composante connexe, or la rambarde
+marine, la lanterne brune et le mât forment un seul réseau, cousu tout en brun. `colour_strokes`
+choisit désormais la couleur pixel par pixel (moitié la plus sombre des pixels de trait d'une
+fenêtre 7 × 7, calée sur la palette), puis un vote majoritaire dans la même fenêtre efface les
+confettis. Sur le phare, le quadrillage de la lanterne ressort ; les petites cellules du treillis de
+la galerie restent trouées (cellules de 1 à 2 mm), avec ou sans zone.
 
 La mise à jour des formes (`revectorize`) retire désormais les formes dont la région a été
 entièrement absorbée par les aplats complétés (`RevectorizePlan::absorbed`, objets de broderie
