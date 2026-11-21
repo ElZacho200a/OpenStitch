@@ -98,7 +98,7 @@ Code pour charger les nouveaux hooks.
 - .github/workflows/ux-gate.yml : exécute les tests unitaires Python puis exige
   la section "## UX Gate" dans la description des PR touchant une UI.
 - Les cinq champs sont : Parcours novice, Clics avant/après (nombres),
-  Captures inspectées, Revue indépendante (agent + verdict), Tests UX.
+  Captures inspectées, Revue indépendante (agent distinct + PASS + lien de preuve), Tests UX.
   La CI vérifie leur présence et rejette les placeholders, mais **elle ne
   prouve pas l'honnêteté de la revue**.
 - Pour rendre ce contrôle bloquant au merge au niveau de GitHub, activer le
