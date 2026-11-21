@@ -37,7 +37,8 @@ struct VectorOpResult {
 // l'union et l'intersection, la forme la plus basse du document pour la soustraction. Les autres
 // objets, et leurs broderies, sont supprimés. Résultat vide : refusé.
 // `union_gap` (Union seulement) : écart maximal soudé entre deux formes juxtaposées ; 0 = union
-// stricte. Les trous plus étroits que cet écart sont comblés.
+// stricte. Les trous plus étroits que cet écart sont comblés ; la matière d'origine est toujours
+// conservée (la soudure ne fait qu'ajouter des ponts).
 [[nodiscard]] VectorOpResult make_boolean_command(document::Project& project, BooleanOp op,
                                                   const std::vector<ObjectId>& ids,
                                                   Micrometers union_gap = Micrometers{50});

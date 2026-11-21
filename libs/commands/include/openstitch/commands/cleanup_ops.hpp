@@ -31,4 +31,34 @@ enum class ReshapeKind {
                                                               const std::vector<ObjectId>& ids,
                                                               double min_area_um2);
 
+// --- Nettoyage de scene : miettes et interstices (sans creer de trou) ---------------------------
+
+// Voisin qui recoit une miette, parmi les formes de surface qui la touchent (a `reach` pres).
+enum class AbsorbPriority {
+    SameThread,    // meme couleur de fil d'abord (plus longue frontiere), sinon `LongestBorder`
+    LongestBorder, // la forme qui partage la plus longue frontiere avec la miette
+    Largest,       // la plus grande forme voisine
+};
+
+// Fusionne chaque forme `crumbs` (formes vectorielles) dans une forme voisine au lieu de la
+// supprimer : la miette, dilatee de `reach` pour combler la fente qui l'en separe (sans mordre sur
+// les autres formes), est ajoutee au voisin choisi, puis la miette et ses broderies sont
+// supprimees. Une miette sans surface (contour ouvert) est seulement supprimee ; une miette sans
+// voisin a portee, verrouillee ou de lettrage reste telle quelle. Voisins : formes de surface
+// visibles, non verrouillees, hors lettrage, hors trait et hors miettes. Une seule commande ;
+// refusee si rien ne change. `resulting_objects` = nombre de miettes traitees.
+[[nodiscard]] VectorOpResult
+make_absorb_small_objects_command(const document::Project& project,
+                                  const std::vector<ObjectId>& crumbs, AbsorbPriority priority,
+                                  Micrometers reach = Micrometers{200});
+
+// Rebouche les interstices ENTRE formes : vides fermes de l'union des formes de surface visibles,
+// d'aire < `max_area_um2`, qui touchent (a `reach` pres) au moins DEUX formes. Un trou borde par
+// une seule forme (l'interieur d'un « O ») est voulu : il reste. Chaque interstice rejoint la
+// forme voisine editable qui en partage la plus longue frontiere. Une seule commande ; refusee si
+// aucun interstice. `resulting_objects` = nombre d'interstices rebouches.
+[[nodiscard]] VectorOpResult make_fill_gaps_between_command(const document::Project& project,
+                                                            double max_area_um2,
+                                                            Micrometers reach = Micrometers{200});
+
 } // namespace openstitch::commands

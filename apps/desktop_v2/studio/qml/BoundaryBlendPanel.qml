@@ -17,6 +17,11 @@ ColumnLayout {
     readonly property bool refused: ready && !hasBlend && controller.refusal !== ""
     readonly property var blends: ready ? controller.blends : []
     readonly property bool canCreateAll: ready && controller.canCreateAll
+    // Trois zones ou plus dont certaines sont déjà fondues : les réglages valent pour TOUT le
+    // groupe (sinon seul le dernier couple serait réédité).
+    readonly property bool groupMode: canCreateAll && controller.groupBlendCount > 0
+    // Les réglages modifient-ils immédiatement des fondus existants ?
+    readonly property bool live: groupMode || hasBlend
     // Transition simplifiée : mêmes profils que le fondu de fils (linéaire, lissée, nette).
     readonly property var softnessCurves: [0, 1, 2]
     readonly property var rowsKeys: ["per_zone", "shared", "rotating", "interlaced"]
@@ -46,7 +51,9 @@ ColumnLayout {
         const here = widthHere.value / 10.0
         const there = widthThere.value / 10.0
         const curve = softnessCurves[softness.currentIndex]
-        if (root.hasBlend)
+        if (root.groupMode)
+            root.controller.editAll(here, curve)
+        else if (root.hasBlend)
             root.controller.edit(here, there, curve)
         else
             root.controller.create(here, there, curve)
@@ -65,10 +72,11 @@ ColumnLayout {
         Layout.fillWidth: true
         wrapMode: Text.WordWrap
         visible: text !== ""
-        text: root.hasBlend ? root.controller.summary
+        text: root.groupMode ? qsTr("Fondu de groupe : %1 limites fondues entre les %2 zones. Les réglages s'appliquent à toutes.").arg(root.controller.groupBlendCount).arg(root.controller.zoneCount)
+              : root.hasBlend ? root.controller.summary
               : root.refused ? root.controller.refusal
               : qsTr("Les deux fils s'entremêlent sur une bande de part et d'autre de la limite commune.")
-        color: root.refused || (root.hasBlend && !root.controller.active) ? Theme.warning : Theme.faint
+        color: !root.groupMode && (root.refused || (root.hasBlend && !root.controller.active)) ? Theme.warning : Theme.faint
         font.family: Theme.fontFamily
         font.pixelSize: Theme.captionSize
     }
@@ -77,7 +85,7 @@ ColumnLayout {
         objectName: "boundaryBlendList"
         Layout.fillWidth: true
         spacing: 2
-        visible: root.blends.length > 1 || (root.blends.length === 1 && !root.hasBlend)
+        visible: !root.groupMode && (root.blends.length > 1 || (root.blends.length === 1 && !root.hasBlend))
         Accessible.role: Accessible.List
         Accessible.name: qsTr("Fondus de la zone sélectionnée")
         Repeater {
@@ -160,7 +168,7 @@ ColumnLayout {
         columnSpacing: 8
         rowSpacing: 4
         Text {
-            text: qsTr("Bande dans cette zone (mm)")
+            text: root.canCreateAll ? qsTr("Largeur de chaque côté (mm)") : qsTr("Bande dans cette zone (mm)")
             color: Theme.muted
             font.family: Theme.fontFamily
             font.pixelSize: Theme.captionSize
@@ -168,15 +176,19 @@ ColumnLayout {
         StudioSpinBox {
             id: widthHere
             objectName: "boundaryBlendWidthHere"
+            editable: true
+            stepSize: 1
+            validator: RegularExpressionValidator { regularExpression: /^\d{0,2}([.,]\d?)?$/ }
             from: 5
             to: 150
             value: root.ready ? Math.round(root.controller.widthMm * 10) : 25
             textFromValue: function(v) { return (v / 10).toFixed(1) }
             valueFromText: function(t) { return Math.round(parseFloat(t.replace(",", ".")) * 10) }
             Accessible.name: qsTr("Demi-bande du fondu dans la zone sélectionnée, en millimètres")
-            onValueModified: if (root.hasBlend) root.commit()
+            onValueModified: if (root.live) root.commit()
         }
         Text {
+            visible: !root.canCreateAll
             text: qsTr("Bande chez la voisine (mm)")
             color: Theme.muted
             font.family: Theme.fontFamily
@@ -185,13 +197,17 @@ ColumnLayout {
         StudioSpinBox {
             id: widthThere
             objectName: "boundaryBlendWidthThere"
+            visible: !root.canCreateAll
+            editable: true
+            stepSize: 1
+            validator: RegularExpressionValidator { regularExpression: /^\d{0,2}([.,]\d?)?$/ }
             from: 5
             to: 150
             value: root.ready ? Math.round(root.controller.partnerWidthMm * 10) : 25
             textFromValue: function(v) { return (v / 10).toFixed(1) }
             valueFromText: function(t) { return Math.round(parseFloat(t.replace(",", ".")) * 10) }
             Accessible.name: qsTr("Demi-bande du fondu dans la zone voisine, en millimètres")
-            onValueModified: if (root.hasBlend) root.commit()
+            onValueModified: if (root.live) root.commit()
         }
         Text {
             text: qsTr("Transition")
@@ -205,7 +221,7 @@ ColumnLayout {
             model: [qsTr("Douce"), qsTr("Moyenne"), qsTr("Nette")]
             currentIndex: root.ready ? root.curveIndex(root.controller.curve) : 0
             Accessible.name: qsTr("Profil de transition du fondu")
-            onActivated: if (root.hasBlend) root.commit()
+            onActivated: if (root.live) root.commit()
         }
         Text {
             text: qsTr("Sens des rangées")
@@ -236,19 +252,52 @@ ColumnLayout {
         }
         StudioButton {
             objectName: "boundaryBlendCreateAll"
-            visible: root.canCreateAll
+            visible: root.canCreateAll && !root.groupMode
             text: qsTr("Fondre les %1 zones").arg(root.ready ? root.controller.zoneCount : 0)
             tooltip: qsTr("Poser un fondu sur chaque limite commune entre les zones sélectionnées (les fondus existants sont conservés)")
             emphasized: true
             onClicked: root.controller.createAll(widthHere.value / 10.0, root.softnessCurves[softness.currentIndex])
         }
         StudioButton {
+            objectName: "boundaryBlendRemoveAll"
+            visible: root.groupMode
+            text: qsTr("Retirer les %1 fondus").arg(root.ready ? root.controller.groupBlendCount : 0)
+            tooltip: qsTr("Retirer tous les fondus entre les zones sélectionnées (les fondus avec d'autres zones restent)")
+            onClicked: root.controller.removeAll()
+        }
+        StudioButton {
             objectName: "boundaryBlendRemove"
-            visible: root.hasBlend
+            visible: root.hasBlend && !root.groupMode
             text: qsTr("Retirer le fondu")
             tooltip: qsTr("Revenir à deux aplats nets")
             onClicked: root.controller.remove()
         }
+    }
+    // Aide : ce qu'est un fondu et ce que veut dire chaque réglage.
+    StudioButton {
+        id: helpToggle
+        objectName: "boundaryBlendHelpToggle"
+        property bool open: false
+        text: open ? qsTr("Masquer l'aide") : qsTr("Comment ça marche ?")
+        quiet: true
+        onClicked: open = !open
+    }
+    Text {
+        objectName: "boundaryBlendHelp"
+        Layout.fillWidth: true
+        visible: helpToggle.open
+        wrapMode: Text.WordWrap
+        textFormat: Text.StyledText
+        color: Theme.muted
+        font.family: Theme.fontFamily
+        font.pixelSize: Theme.captionSize
+        text: qsTr("<b>Le principe</b> : au lieu d'une limite nette, les deux fils se mélangent sur une bande de part et d'autre de la limite commune ; chaque zone s'éclaircit progressivement en s'approchant de sa voisine.<br>"
+              + "<b>Deux zones</b> : sélectionnez-les (la dernière cliquée est « cette zone »), réglez, puis « Créer le fondu ». « Bande dans cette zone » et « chez la voisine » sont les profondeurs du mélange de chaque côté de la limite.<br>"
+              + "<b>Plusieurs zones</b> : sélectionnez-les toutes puis « Fondre les N zones » : chaque limite commune reçoit un fondu, même largeur des deux côtés. Pour le retoucher ou le retirer, resélectionnez le même groupe : les réglages et « Retirer les N fondus » s'appliquent alors à tout le groupe.<br>"
+              + "<b>Une seule zone</b> : la liste montre ses fondus avec chaque voisine ; cliquez une ligne pour régler ce fondu-là.<br>"
+              + "<b>Transition</b> : douce = dégradé long et régulier, nette = mélange resserré près de la limite.<br>"
+              + "<b>Sens des rangées</b> : chaque zone garde son angle ; angle commun (une cassure au bord de la bande) ; rangées qui tournent (passage continu d'un angle à l'autre) ; entrelacé (chaque rangée traverse la limite et alterne les deux couleurs).<br>"
+              + "<b>Frontière</b> : calculée là où les zones se touchent, ou tracée à la main avec l'outil frontière.")
     }
     Text {
         objectName: "boundaryBlendMessage"

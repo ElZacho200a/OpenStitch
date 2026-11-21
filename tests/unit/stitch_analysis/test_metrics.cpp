@@ -209,3 +209,44 @@ TEST_CASE("sequence_metrics : deplacements repartis entre objets / dans un objet
     CHECK(m.moves_between_objects == 1);
     CHECK(m.travel_between_objects_um == 20'000.0);
 }
+
+namespace {
+
+document::Project crumbFixture() {
+    document::Project project;
+    const auto addShape = [&](std::uint64_t id, std::vector<Vec2um> pts, bool closed) {
+        document::VectorObject vector;
+        vector.id = ObjectId{id};
+        geometry::Path path;
+        path.closed = closed;
+        for (const auto p : pts) {
+            path.nodes.push_back({p});
+        }
+        vector.paths.push_back({path, {}});
+        project.vector_objects.push_back(vector);
+        document::EmbroideryObject object;
+        object.id = ObjectId{id + 100};
+        object.source_vector = vector.id;
+        project.embroidery_objects.push_back(object);
+    };
+    const auto square = [](std::int32_t x, std::int32_t side) {
+        return std::vector<Vec2um>{um(x, 0), um(x + side, 0), um(x + side, side), um(x, side)};
+    };
+    addShape(1, square(0, 1'000), true);                     // 1 mm² : miette
+    addShape(2, square(10'000, 10'000), true);               // 100 mm²
+    addShape(3, {um(0, 50'000), um(800, 50'400)}, false);    // trait de 0,8 mm : miette
+    addShape(4, {um(0, 60'000), um(30'000, 60'000)}, false); // long trait : pas une miette
+    addShape(5, square(40'000, 1'500), true);                // 2,25 mm²
+    return project;
+}
+
+} // namespace
+
+TEST_CASE("small_object_ids lists crumbs in stitch order", "[metrics][crumbs]") {
+    auto project = crumbFixture();
+    CHECK(small_object_ids(project, 3.0) ==
+          std::vector<ObjectId>{ObjectId{101}, ObjectId{103}, ObjectId{105}});
+    CHECK(small_object_ids(project, 2.0) == std::vector<ObjectId>{ObjectId{101}, ObjectId{103}});
+    project.embroidery_objects.front().visible = false; // un objet masqué n'est pas proposé
+    CHECK(small_object_ids(project, 3.0) == std::vector<ObjectId>{ObjectId{103}, ObjectId{105}});
+}

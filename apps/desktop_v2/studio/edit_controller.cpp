@@ -6,6 +6,7 @@
 #include <QColor>
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <limits>
 #include <map>
 #include <set>
@@ -17,6 +18,7 @@
 #include "inspector_model.hpp"
 #include "object_labels.hpp"
 #include "openstitch/commands/project_commands.hpp"
+#include "openstitch/stitch_analysis/project_metrics.hpp"
 #include "shape_resolver.hpp"
 #include "transform_batch.hpp"
 
@@ -338,6 +340,56 @@ int EditController::selectByType(const QString& typeId) {
     (void)selectIds(ids);
     say(QStringLiteral("%1 objet(s) de type %2").arg(ids.size()).arg(typeId));
     return static_cast<int>(ids.size());
+}
+
+std::vector<std::uint64_t> EditController::smallObjects(double maxAreaMm2) const {
+    std::vector<std::uint64_t> ids;
+    if (!(maxAreaMm2 > 0.0)) {
+        return ids;
+    }
+    for (const auto id :
+         stitch_analysis::small_object_ids(studio_.session().project(), maxAreaMm2)) {
+        if (selectableObject(id.value)) {
+            ids.push_back(id.value);
+        }
+    }
+    return ids;
+}
+
+int EditController::smallObjectCount(double maxAreaMm2) const {
+    return static_cast<int>(smallObjects(maxAreaMm2).size());
+}
+
+int EditController::selectSmallObjects(double maxAreaMm2) {
+    const auto ids = smallObjects(maxAreaMm2);
+    if (ids.empty()) {
+        return refuse(QStringLiteral("Aucune miette sous %1 mm²").arg(maxAreaMm2)), 0;
+    }
+    (void)selectIds(ids);
+    say(QStringLiteral("%1 miette(s) sous %2 mm²").arg(ids.size()).arg(maxAreaMm2));
+    return static_cast<int>(ids.size());
+}
+
+bool EditController::selectNextSmallObject(double maxAreaMm2, bool forward) {
+    const auto ids = smallObjects(maxAreaMm2);
+    if (ids.empty()) {
+        return refuse(QStringLiteral("Aucune miette sous %1 mm²").arg(maxAreaMm2)), false;
+    }
+    // Repère : la miette sélectionnée la plus avancée dans le sens du parcours.
+    const auto& selection = studio_.session().selection();
+    const auto n = static_cast<std::ptrdiff_t>(ids.size());
+    std::ptrdiff_t current = -1;
+    for (std::ptrdiff_t i = 0; i < n; ++i) {
+        const auto k = forward ? i : n - 1 - i;
+        if (selection.contains(Target{TargetKind::EmbroideryObject, ids[k]})) {
+            current = k;
+        }
+    }
+    const auto next =
+        current < 0 ? (forward ? 0 : n - 1) : ((current + (forward ? 1 : -1)) + n) % n;
+    (void)selectIds({ids[next]});
+    say(QStringLiteral("Miette %1 / %2").arg(next + 1).arg(n));
+    return true;
 }
 
 int EditController::selectByLayer(const QString& calqueId) {

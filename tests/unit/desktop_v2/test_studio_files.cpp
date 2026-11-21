@@ -367,8 +367,8 @@ void StudioFilesTest::openRasterThroughStudioPoints() {
     // Le bouton se désactive dès que le clic démarre la tâche (imageTools.busy) : attendre qu'il
     // soit cliquable puis cliquer une seule fois, sans réévaluer l'action elle-même (un aperçu en
     // direct automatique peut aussi occuper imageTools.busy quelques secondes au premier accès).
-    QTRY_VERIFY_WITH_TIMEOUT(ready(QStringLiteral("segmentAllLayersButton")), 15'000);
-    QVERIFY(click(QStringLiteral("segmentAllLayersButton")));
+    QTRY_VERIFY_WITH_TIMEOUT(ready(QStringLiteral("segmentSelectedLayersButton")), 15'000);
+    QVERIFY(click(QStringLiteral("segmentSelectedLayersButton")));
     QTRY_VERIFY_WITH_TIMEOUT(!images.busy() && project.findImageSource(leaves)->segmentation &&
                                  project.findImageSource(flower)->segmentation,
                              15'000);
