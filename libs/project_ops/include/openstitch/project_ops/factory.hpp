@@ -92,6 +92,7 @@ struct DigitizeSettings {
     bool dark_lines{false};
     double dark_lines_width_mm{1.6};
     double dark_lines_lightness{25.0};
+    double dark_lines_contrast{0.0}; // > 0 : traits par contraste local (L*), lot 2
     double dark_lines_bars_mm{
         0.0}; // barres sombres jusqu'à cette largeur : bandes (satin), 0 = non
     double dark_lines_min_length_mm{0.0}; // fragments de trait isolés plus courts : non cousus

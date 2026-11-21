@@ -100,10 +100,25 @@ Rectangle {
                 font.pixelSize: Theme.smallSize
             }
             StudioButton {
+                id: applyReductionButton
                 objectName: "fixApplyReduction"
                 text: qsTr("Appliquer la réduction")
                 enabled: panel.ready && panel.controller.reductionReady && !panel.controller.reductionStale && panel.controller.objectsRecoloured > 0
-                onClicked: panel.controller.applyReduction()
+                disabledReason: !panel.ready ? qsTr("Ouvrez un projet pour utiliser cette fonction.")
+                              : panel.controller.reductionStale ? qsTr("Le document a changé : cliquez de nouveau sur « Aperçu de la réduction ».")
+                              : panel.controller.reductionReady ? qsTr("Rien à réduire : le design utilise déjà ce nombre de fils ou moins.")
+                              : qsTr("Cliquez d'abord sur « Aperçu de la réduction ».")
+                onClicked: reductionConfirm.open()
+            }
+            Text {
+                objectName: "fixApplyReductionReason"
+                Layout.fillWidth: true
+                visible: !applyReductionButton.enabled
+                wrapMode: Text.Wrap
+                color: Theme.muted
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.smallSize
+                text: applyReductionButton.disabledReason
             }
 
             Text {
@@ -114,6 +129,51 @@ Rectangle {
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.smallSize
                 text: panel.ready ? panel.controller.message : ""
+            }
+        }
+    }
+
+    Controls.Popup {
+        id: reductionConfirm
+        objectName: "fixReductionConfirm"
+        parent: Controls.Overlay.overlay
+        anchors.centerIn: parent
+        modal: true
+        width: Math.min(360, parent ? parent.width - 32 : 360)
+        padding: 16
+        background: StudioPopupBackground { }
+        enter: StudioPopupEnter { }
+        exit: StudioPopupExit { }
+        contentItem: ColumnLayout {
+            spacing: 12
+            Text {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                color: Theme.foreground
+                font.pixelSize: Theme.bodySize
+                text: panel.ready ? qsTr("Réduire de %1 à %2 fils ?")
+                                      .arg(panel.controller.threadsBefore).arg(panel.controller.threadsAfter) : ""
+            }
+            Text {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                color: Theme.warning
+                font.pixelSize: Theme.smallSize
+                text: panel.ready ? qsTr("%1 objets changeront de couleur : les fils retirés sont remplacés par les plus proches. Ctrl+Z annule.")
+                                      .arg(panel.controller.objectsRecoloured) : ""
+            }
+            RowLayout {
+                Layout.alignment: Qt.AlignRight
+                StudioButton { objectName: "fixReductionCancel"; text: qsTr("Annuler"); onClicked: reductionConfirm.close() }
+                StudioButton {
+                    objectName: "fixReductionConfirmApply"
+                    text: panel.ready ? qsTr("Réduire à %1 fils").arg(panel.controller.threadsAfter) : qsTr("Réduire")
+                    emphasized: true
+                    onClicked: {
+                        panel.controller.applyReduction()
+                        reductionConfirm.close()
+                    }
+                }
             }
         }
     }

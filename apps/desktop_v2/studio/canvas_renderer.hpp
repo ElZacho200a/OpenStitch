@@ -92,10 +92,6 @@ struct CanvasRenderState {
     // Couche « vectors » : formes (mm scène) dessinées sous les points (espace Vecto) ; triangles
     // pour le backend GPU, image rastérisée à la demande pour le backend logiciel.
     std::shared_ptr<const VectorLayer> vectorLayer;
-    // Formes hors du calque actif (espaces Vecteurs / Points) : atténuées par un lavis
-    // translucide, sans retrianguler ni changer la sélection. Vide si l'atténuation est coupée.
-    std::vector<std::uint64_t> dimmedIds;
-    std::uint64_t dimmedRevision{0};
 };
 
 struct CanvasRenderResult {

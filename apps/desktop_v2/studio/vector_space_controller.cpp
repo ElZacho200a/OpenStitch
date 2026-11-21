@@ -277,20 +277,6 @@ void VectorSpaceController::refresh() {
         }
     }
     builtRevision_ = session.revision();
-    // Atténuation des formes hors du calque actif (lavis du canevas) : indépendante de la
-    // triangulation, recalculée seulement quand la révision a bougé (changer de calque actif en
-    // fait partie, comme toute mutation du document).
-    if (canvas_ && newRevision) {
-        std::vector<std::uint64_t> dimmed;
-        const auto& project = session.project();
-        for (const auto& object : project.vector_objects) {
-            const auto* calque = project.calqueOfShape(object.id);
-            if (calque != nullptr && calque->id != project.active_calque) {
-                dimmed.push_back(object.id.value);
-            }
-        }
-        canvas_->setDimmedShapeIds(std::move(dimmed));
-    }
     // Le statut du workflow dépend du document et de l'état de segmentation,
     // jamais d'un clic de sélection ni de la fin d'un calcul de scène.
     if (statusRevision_ != session.revision()) {
@@ -503,7 +489,7 @@ bool VectorSpaceController::updateFromSegmentation() {
         return false;
     }
     auto fresh = revectorize(session.project(), precisionMm_, curves_, curveTolerancePx_);
-    if (fresh.replace.empty() && fresh.add.empty()) {
+    if (fresh.replace.empty() && fresh.add.empty() && fresh.absorbed.empty()) {
         say(tr("Les formes suivent déjà la segmentation."));
         return false;
     }
@@ -513,6 +499,7 @@ bool VectorSpaceController::updateFromSegmentation() {
         group->add(std::make_unique<commands::SetVectorPathsCommand>(id, std::move(paths),
                                                                      "Mettre à jour une forme"));
     }
+    project_ops::append_absorbed_removals(session.project(), fresh, *group);
     for (auto& shape : fresh.add) {
         shape.id = session.allocateObjectId();
         group->add(std::make_unique<commands::AddVectorObjectCommand>(std::move(shape)));
@@ -560,8 +547,9 @@ bool VectorSpaceController::updateAllLayersFromSegmentation() {
                                                          .curves = curves_,
                                                          .curve_tolerance_px = curveTolerancePx_,
                                                          .image_source = source});
-        replaced += fresh.replace.size();
+        replaced += fresh.replace.size() + fresh.absorbed.size();
         added += fresh.add.size();
+        project_ops::append_absorbed_removals(session.project(), fresh, *group);
         for (auto& [id, paths] : fresh.replace) {
             group->add(std::make_unique<commands::SetVectorPathsCommand>(
                 id, std::move(paths), "Mettre à jour une forme"));

@@ -585,6 +585,15 @@ Item {
                 onValueModified: exportOptionsDialog.quality = value
             }
         }
+        Label {
+            objectName: "photoPrerequisite"
+            visible: exportOptionsDialog.kind === "photo"
+            font.pixelSize: Theme.smallSize
+            wrapMode: Text.WordWrap
+            Layout.fillWidth: true
+            Layout.preferredWidth: 320
+            text: qsTr("Rendu photo : nécessite l'extension Mitsuba (voir l'aide). Peut durer plusieurs minutes.")
+        }
         GridLayout {
             visible: exportOptionsDialog.kind === "photo"
             columns: 2
@@ -828,6 +837,11 @@ Item {
         StudioCheckBox {
             objectName: "exportHiddenTravel"
             text: qsTr("Réduire les coupes : passer sous les points cousus ensuite")
+            readonly property string help: qsTr("Cache les sauts de fil sous des points cousus plus tard, quand c'est possible.")
+            Accessible.description: help
+            Controls.ToolTip.visible: hovered
+            Controls.ToolTip.delay: 500
+            Controls.ToolTip.text: help
             checked: panel.exportValues.hiddenTravel === true
             onToggled: panel.exportValues.hiddenTravel = checked
         }
