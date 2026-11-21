@@ -446,7 +446,10 @@ private slots:
         const QString expected = QString::fromStdString(action->label);
         QCOMPARE(expected, QStringLiteral("Séparer en formes indépendantes"));
         for (auto* item : std::as_const(carriers)) {
-            QCOMPARE(item->property("text").toString(), expected);
+            QVERIFY2(item->property("text").toString() == expected,
+                     qPrintable(item->objectName() + QStringLiteral(" / ") +
+                                item->metaObject()->className() + QStringLiteral(" : ") +
+                                item->property("text").toString()));
         }
         auto* split = deepItem(rig.window->contentItem(), QStringLiteral("quickBreak"));
         QVERIFY(split != nullptr);

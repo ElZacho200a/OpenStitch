@@ -581,7 +581,8 @@ std::vector<ActionDef> makeCatalog() {
         out.push_back(std::move(a));
     }
 
-    // --- Fondu multicolore (ICommand : `run`, pas de lot JSON) ; même moteur que l'inspecteur ------
+    // --- Fondu multicolore (ICommand : `run`, pas de lot JSON) ; même moteur que l'inspecteur
+    // ------
     {
         ActionDef a;
         a.id = "fade.create";

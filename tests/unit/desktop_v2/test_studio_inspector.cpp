@@ -569,8 +569,8 @@ void StudioInspectorTest::fadeVocabularyIsUnified() {
     QVERIFY(!createLabel.contains(QStringLiteral("fils")));
     const auto* boundary = findAction("fade.boundary");
     QVERIFY(boundary != nullptr);
-    QVERIFY(QString::fromStdString(boundary->label)
-                .startsWith(QStringLiteral("Fondu à la frontière")));
+    QVERIFY(
+        QString::fromStdString(boundary->label).startsWith(QStringLiteral("Fondu à la frontière")));
 }
 
 // Mission 2026-11-14 : « Fondu multicolore » est un véritable type de points dans le sélecteur,
