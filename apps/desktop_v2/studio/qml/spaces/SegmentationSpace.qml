@@ -32,8 +32,8 @@ Item {
     property bool showSource: true
     // Couleurs des deux cartes (incrustation, pastille du pinceau, légende) : orange = détail,
     // cyan = traits fins. Identiques à celles de `DetailZoneController` (buildOverlay).
-    readonly property color detailColor: "#ff8c00"
-    readonly property color lineworkColor: "#00beff"
+    readonly property color detailColor: Theme.zoneDetail
+    readonly property color lineworkColor: Theme.zoneLinework
     readonly property color zoneColor: root.lineworkPainting ? root.lineworkColor : root.detailColor
     // La carte qu'on ne peint pas est atténuée pour ne pas se confondre avec celle qu'on peint.
     readonly property real dimmedOpacity: 0.3
