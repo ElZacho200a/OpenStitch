@@ -186,6 +186,7 @@ private slots:
     void exportsAreDeterministicAndRepeatable();
     void documentExportsWriteRealFiles();
     void exportOptionsAreOneUndoStepAndRefusedWhenInvalid();
+    void machineExportDialogTurnsHiddenTravelOn();
     void imageAndVectorImports();
     void imagesStayIndependentThroughStitchesAndSave();
     void openRasterThroughStudioPoints();
@@ -366,8 +367,8 @@ void StudioFilesTest::openRasterThroughStudioPoints() {
     // Le bouton se désactive dès que le clic démarre la tâche (imageTools.busy) : attendre qu'il
     // soit cliquable puis cliquer une seule fois, sans réévaluer l'action elle-même (un aperçu en
     // direct automatique peut aussi occuper imageTools.busy quelques secondes au premier accès).
-    QTRY_VERIFY_WITH_TIMEOUT(ready(QStringLiteral("segmentAllLayersButton")), 15'000);
-    QVERIFY(click(QStringLiteral("segmentAllLayersButton")));
+    QTRY_VERIFY_WITH_TIMEOUT(ready(QStringLiteral("segmentSelectedLayersButton")), 15'000);
+    QVERIFY(click(QStringLiteral("segmentSelectedLayersButton")));
     QTRY_VERIFY_WITH_TIMEOUT(!images.busy() && project.findImageSource(leaves)->segmentation &&
                                  project.findImageSource(flower)->segmentation,
                              15'000);
@@ -1290,6 +1291,10 @@ void StudioFilesTest::photoRenderRunsTheExternalEngineOnTheThreadScene() {
                 "assert a[a.index('--px-per-mm') + 1] == '40'\n"
                 "assert a[a.index('--fabric') + 1] == '10,20,30'\n"
                 "assert a[a.index('--fabric-type') + 1] == 'jersey'\n"
+                "assert a[a.index('--thread-type') + 1] == 'coton'\n"
+                "assert a[a.index('--thread-plies') + 1] == '4'\n" // 9 borne a 4
+                "assert a[a.index('--relief') + 1] == '0'\n"
+                "assert a[a.index('--light') + 1] == '3.5'\n"
                 "assert a[a.index('--background') + 1] == '200,200,204'\n" // 999 refusé
                 "assert scene['thread_width_mm'] == 0.5\n"
                 "open(sys.argv[2], 'wb').write(base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB"
@@ -1304,6 +1309,10 @@ void StudioFilesTest::photoRenderRunsTheExternalEngineOnTheThreadScene() {
                                   {QStringLiteral("threadWidthMm"), 0.5},
                                   {QStringLiteral("fabric"), QStringLiteral("10,20,30")},
                                   {QStringLiteral("fabricType"), QStringLiteral("jersey")},
+                                  {QStringLiteral("threadType"), QStringLiteral("coton")},
+                                  {QStringLiteral("threadPlies"), 9},
+                                  {QStringLiteral("relief"), 0.0},
+                                  {QStringLiteral("light"), 3.5},
                                   {QStringLiteral("background"), QStringLiteral("1,2,999")}});
     QVERIFY(rig.waitIdle());
     qunsetenv("OPENSTITCH_RAYTRACE_SCRIPT");
@@ -1398,6 +1407,44 @@ void StudioFilesTest::exportOptionsAreOneUndoStepAndRefusedWhenInvalid() {
     QTRY_VERIFY_WITH_TIMEOUT(!rig.files->exportCheckText().isEmpty() &&
                                  rig.files->exportCheckText() != QStringLiteral("Vérification…"),
                              10'000);
+}
+
+// HP-SEQ-006.a : la fenêtre « Exporter pour la machine » montre l'interrupteur des ponts cachés,
+// séparé de « entrée et sortie au plus court » (auto_join), et l'export l'applique au projet en
+// une étape annulable -- l'aperçu et le fichier écrit restent la même séquence.
+void StudioFilesTest::machineExportDialogTurnsHiddenTravelOn() {
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    Rig rig({}, true);
+    QVERIFY(rig.window);
+    QTRY_VERIFY_WITH_TIMEOUT(rig.window->isExposed(), 5'000);
+    rig.session.replaceProject(studioFixture(), true); // finitions d'un projet antérieur
+    QVERIFY(!rig.files->exportOptions().value(QStringLiteral("hiddenTravel")).toBool());
+    auto* panel = rig.window->findChild<QObject*>(QStringLiteral("filePanel"));
+    auto* dialog = rig.window->findChild<QObject*>(QStringLiteral("exportDialog"));
+    auto* hidden = rig.window->findChild<QQuickItem*>(QStringLiteral("exportHiddenTravel"));
+    auto* join = rig.window->findChild<QQuickItem*>(QStringLiteral("exportAutoJoin"));
+    QVERIFY(panel && dialog && hidden && join);
+
+    QVERIFY(QMetaObject::invokeMethod(panel, "openExportDialog"));
+    QTRY_VERIFY_WITH_TIMEOUT(dialog->property("visible").toBool(), 3'000);
+    QVERIFY(!hidden->property("checked").toBool());
+    QVERIFY(!join->property("checked").toBool());
+    QVERIFY(QMetaObject::invokeMethod(hidden, "click"));
+    QTRY_VERIFY_WITH_TIMEOUT(hidden->property("checked").toBool(), 3'000);
+    const auto values = panel->property("exportValues").toMap();
+    QVERIFY(values.value(QStringLiteral("hiddenTravel")).toBool());
+    QVERIFY(!values.value(QStringLiteral("autoJoin")).toBool()); // l'autre case n'a pas bougé
+
+    // Même appel que le choix du fichier dans FilePanel.qml (`ctl.exportMachine(url, ...)`).
+    QVERIFY(!rig.studio.canUndo());
+    rig.files->exportMachine(url(dir, "ponts.dst"), values);
+    QVERIFY(rig.waitIdle());
+    QVERIFY(rig.session.project().finishing.hidden_travel.enabled);
+    QVERIFY(!rig.session.project().finishing.auto_join);
+    QVERIFY(rig.studio.canUndo());
+    rig.studio.undo();
+    QVERIFY(!rig.session.project().finishing.hidden_travel.enabled);
 }
 
 void StudioFilesTest::imageAndVectorImports() {

@@ -246,7 +246,10 @@ std::size_t trims_of(const stitch::StitchSequence& s) {
 } // namespace
 
 TEST_CASE("export_machine_file : optimisation des coupes a la demande, projet intact") {
-    const auto project = overlapping_tatamis();
+    auto project = overlapping_tatamis();
+    // Projet enregistré sans ponts (le défaut d'avant le 2026-11-20, relu tel quel) : l'export
+    // les ajoute à la demande sans modifier le projet.
+    project.finishing.hidden_travel.enabled = false;
     const auto before = project.finishing;
 
     // Sans demande : exactement la séquence effective historique.

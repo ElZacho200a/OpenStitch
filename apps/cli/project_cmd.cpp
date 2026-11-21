@@ -429,9 +429,10 @@ void add_digitize_options(CLI::App* cmd, DigitizeOptionValues& v) {
                     "L* minimal avec le voisinage, essayer 15) quelle que soit leur couleur ; 0 = "
                     "seuil de clarté absolu (défaut)")
         ->check(CLI::Range(0.0, 80.0));
-    cmd->add_flag("--hidden-travel", s.hidden_travel,
+    cmd->add_flag("--hidden-travel,!--no-hidden-travel", s.hidden_travel,
                   "Remplace les coupes par des sauts ou des ponts cousus cachés sous les points "
-                  "cousus plus tard (passe finale, désactivé par défaut)");
+                  "cousus plus tard (passe finale, activé par défaut ; --no-hidden-travel le "
+                  "désactive)");
     cmd->add_option("--hidden-travel-levels", s.hidden_levels,
                     "Avec --hidden-travel : niveaux de l'optimisation, parmi between (ponts entre "
                     "objets), within (liens dans un objet), underlay (ordre de la sous-couche) ; "

@@ -61,7 +61,8 @@ struct DigitizeSettings {
     std::optional<double> min_region_mm2;
     double trim_threshold_mm{3.0};
     std::string lock{"backforth"};
-    bool hidden_travel{false};
+    // Ponts cachés (HP-SEQ-006.a), activés par défaut depuis le 2026-11-20.
+    bool hidden_travel{true};
     bool hidden_same_color{false};
     std::string hidden_levels{"all"};
     double hidden_max_mm{50.0};

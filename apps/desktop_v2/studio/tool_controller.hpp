@@ -12,7 +12,10 @@
 #include <QObject>
 #include <QString>
 #include <QVariantList>
+#include <cstdint>
+#include <functional>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "bucket_tool.hpp"
@@ -169,6 +172,13 @@ private:
     bool commitBox(PointMm a, PointMm b, Qt::KeyboardModifiers mods);
     void commitLasso(Qt::KeyboardModifiers mods);
     void commitKnifePath();
+    // Garde, parmi `ids`, ceux dont `buildSingle({id})` donne un lot à la fois valide et
+    // appliquable (aperçu seul, projet inchangé) : un couteau sur plusieurs formes découpe celles
+    // que le tracé traverse réellement sans faire échouer les autres (le lot final reste
+    // transactionnel).
+    [[nodiscard]] std::vector<std::uint64_t> splittableIds(
+        const std::vector<std::uint64_t>& ids,
+        const std::function<std::string(const std::vector<std::uint64_t>&)>& buildSingle) const;
     [[nodiscard]] std::vector<PointMm> boxPolygon(PointMm a, PointMm b,
                                                   Qt::KeyboardModifiers mods) const;
     [[nodiscard]] std::vector<std::uint64_t> selectedIds() const;

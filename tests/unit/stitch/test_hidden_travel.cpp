@@ -92,19 +92,24 @@ bool inside(const Vec2um& p, std::int32_t x0, std::int32_t x1, std::int32_t y0, 
 
 } // namespace
 
-TEST_CASE("hidden travel : desactive par defaut, la sequence est inchangee") {
+TEST_CASE("hidden travel : actif par defaut pour un nouveau projet, desactive rien ne change") {
     const auto scene = overlap_scene();
+    // Nouveau projet : ponts activés (2026-11-20) ; finitions d'un projet antérieur : sans ponts,
+    // donc le même fichier machine qu'avant.
     const document::Project defaults;
-    CHECK_FALSE(defaults.finishing.hidden_travel.enabled);
+    CHECK(defaults.finishing.hidden_travel.enabled);
+    CHECK_FALSE(document::SequenceFinishing::legacy().hidden_travel.enabled);
     document::Project
         untouched; // réglages par défaut, filtre des points courts coupé comme project_with
     untouched.finishing.filter_short_stitches = false;
-    const auto off = finish_sequence(scene, untouched);
-    const auto offExplicit = finish_sequence(scene, project_with(false));
-    CHECK(off.commands == offExplicit.commands);
-    // Une coupe entre les deux objets plus la coupe finale.
+    const auto byDefault = finish_sequence(scene, untouched);
+    CHECK(byDefault.commands == finish_sequence(scene, project_with(true)).commands);
+    // Désactivé : la séquence d'avant les ponts, une coupe entre les deux objets plus la coupe
+    // finale, avec leurs points d'arrêt.
+    const auto off = finish_sequence(scene, project_with(false));
     CHECK(count_type(off, CmdType::Trim) == 2);
     CHECK(count_pass(off, Pass::Lock) > 0);
+    CHECK(count_type(byDefault, CmdType::Trim) < count_type(off, CmdType::Trim));
 }
 
 TEST_CASE("hidden travel : un pont cousu remplace la coupe quand B recouvre la fin de A") {

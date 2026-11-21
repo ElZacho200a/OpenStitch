@@ -740,6 +740,12 @@ OpStatus op_merge(OpContext& ctx) {
         !st.ok) {
         return st;
     }
+    // Écart maximal soudé par l'union entre formes juxtaposées (vectorisation : fentes de
+    // quelques dixièmes de millimètre entre régions voisines).
+    double weld_mm = 0.3;
+    if (auto st = read_number(ctx, "weld_mm", 0.0, 5.0, false, weld_mm, present); !st.ok) {
+        return st;
+    }
     std::vector<ObjectId> vectors;
     std::vector<std::uint64_t> seen;
     for (std::size_t i = 0; i < it->size(); ++i) {
@@ -774,7 +780,9 @@ OpStatus op_merge(OpContext& ctx) {
     }
 
     const auto before_emb = embroidery_ids(ctx.project);
-    auto made = commands::make_boolean_command(ctx.project, op, vectors);
+    auto made = commands::make_boolean_command(
+        ctx.project, op, vectors,
+        Micrometers{static_cast<std::int32_t>(std::lround(weld_mm * 1000.0))});
     if (!made.command) {
         return refused(made.error.empty() ? "fusion impossible" : made.error);
     }
@@ -1216,16 +1224,19 @@ void register_geometry_ops(std::vector<OpSpec>& out) {
                          R"({"op":"mirror","object":1,"axis":"horizontal"})",
                          op_mirror});
 
-    out.push_back(OpSpec{"merge",
-                         "Fusionne des formes (union, soustraction, intersection, exclusion) ; le "
-                         "dernier de la liste est l'objet principal.",
-                         {{"objects", "array", "",
-                           "identifiants d'objets de broderie (au moins 2, contours distincts)",
-                           true, "2 à 1000 objets"},
-                          {"mode", "string", "", "opération booléenne (défaut union)", false,
-                           "union|subtract|intersect|exclude"}},
-                         R"({"op":"merge","objects":[1,2],"mode":"union"})",
-                         op_merge});
+    out.push_back(OpSpec{
+        "merge",
+        "Fusionne des formes (union, soustraction, intersection, exclusion) ; le "
+        "dernier de la liste est l'objet principal.",
+        {{"objects", "array", "",
+          "identifiants d'objets de broderie (au moins 2, contours distincts)", true,
+          "2 à 1000 objets"},
+         {"mode", "string", "", "opération booléenne (défaut union)", false,
+          "union|subtract|intersect|exclude"},
+         {"weld_mm", "number", "mm",
+          "union : écart maximal soudé entre formes juxtaposées (défaut 0,3)", false, "0 à 5"}},
+        R"({"op":"merge","objects":[1,2],"mode":"union"})",
+        op_merge});
 
     out.push_back(OpSpec{"split",
                          "Découpe un objet le long d'une droite ; chaque morceau devient un objet.",

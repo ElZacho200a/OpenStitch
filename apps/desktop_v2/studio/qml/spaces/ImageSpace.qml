@@ -229,16 +229,15 @@ Item {
             clip: true
             ColumnLayout {
                 width: Math.max(0, sidePanel.width - 28)
-                StudioComboBox {
-                    objectName: "imageLayerSelector"
+                ImageLayerSelector {
+                    id: imageLayerSelector
                     enabled: !studio.busy
                     Layout.fillWidth: true
-                    // Un seul calque : rien à choisir (même règle que les autres espaces).
                     visible: root.prepReady && imageTools.imageLayers.length > 1
-                    model: root.prepReady ? imageTools.imageLayers : []
+                    space: root.space
+                    layerNames: root.prepReady ? imageTools.imageLayers : []
                     currentIndex: root.prepReady ? imageTools.imageLayerIndex : -1
-                    Accessible.name: qsTr("Calque image actif")
-                    onActivated: index => imageTools.selectImageLayer(index)
+                    onLayerActivated: index => imageTools.selectImageLayer(index)
                 }
                 spacing: 10
                 ImageSizeSection {

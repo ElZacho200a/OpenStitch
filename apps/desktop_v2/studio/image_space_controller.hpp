@@ -53,6 +53,12 @@ class ImageSpaceController : public QObject {
     Q_PROPERTY(bool pickContiguous READ pickContiguous WRITE setPickContiguous NOTIFY toolChanged)
     // Nombre de calques image du document (> 1 : document multi-calques, `.ora` par exemple).
     Q_PROPERTY(int imageLayerCount READ imageLayerCount NOTIFY changed)
+    // Calque de la source image ACTIVE verrouillé : tous les outils de mutation de cet espace
+    // (recadrage, pipette, échelle, pile de traitements) se refusent tant qu'il l'est.
+    Q_PROPERTY(bool activeLayerLocked READ activeLayerLocked NOTIFY changed)
+    // Visibilité / verrou de chaque entrée de `imageTools.imageLayers`, DANS LE MÊME ORDRE : une
+    // liste de {visible, locked}, pour les icônes du sélecteur de calque image.
+    Q_PROPERTY(QVariantList imageLayerStates READ imageLayerStates NOTIFY changed)
 public:
     ImageSpaceController(StudioController& studio, ImageController& images,
                          QObject* parent = nullptr);
@@ -91,6 +97,13 @@ public:
     [[nodiscard]] bool pickContiguous() const { return pickContiguous_; }
     void setPickContiguous(bool contiguous);
     [[nodiscard]] int imageLayerCount() const;
+    [[nodiscard]] bool activeLayerLocked() const;
+    [[nodiscard]] QVariantList imageLayerStates() const;
+    // Bascule la visibilité / le verrou du calque de l'entrée `index` de `imageTools.imageLayers`
+    // (sans effet hors bornes ou sur un document à un seul calque implicite). Une étape
+    // d'annulation.
+    Q_INVOKABLE void toggleLayerVisible(int index);
+    Q_INVOKABLE void toggleLayerLocked(int index);
 
     // Branche le GpuCanvas de l'espace (appelé par la QML) ; la couche est publiée aussitôt.
     Q_INVOKABLE void attachCanvas(QObject* canvas);
@@ -139,6 +152,9 @@ private:
     void publishLayer();
     void trackSegmentation();
     void setMessage(const QString& text);
+    // Message de refus commun aux outils de mutation d'image quand le calque de la source image
+    // active est verrouillé ; vide (et aucun message publié) si l'opération peut continuer.
+    QString lockedLayerRefusal();
 
     StudioController& studio_;
     ImageController& images_;

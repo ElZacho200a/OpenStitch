@@ -556,6 +556,20 @@ void ToolController::commitLasso(Qt::KeyboardModifiers mods) {
                        : QStringLiteral("Lasso : %1 objet(s) sélectionné(s)").arg(ids.size()));
 }
 
+std::vector<std::uint64_t> ToolController::splittableIds(
+    const std::vector<std::uint64_t>& ids,
+    const std::function<std::string(const std::vector<std::uint64_t>&)>& buildSingle) const {
+    std::vector<std::uint64_t> kept;
+    const auto& session = studio_.session();
+    for (const auto id : ids) {
+        const auto single = buildSingle({id});
+        if (!single.empty() && session.previewBatch(single).report.ok) {
+            kept.push_back(id);
+        }
+    }
+    return kept;
+}
+
 void ToolController::commitKnifePath() {
     auto stroke = std::move(stroke_);
     stroke_.clear();
@@ -573,11 +587,21 @@ void ToolController::commitKnifePath() {
     }
     // Un pixel d'écran de tolérance : le tracé garde sa forme, sans les milliers de points bruts.
     const auto path = simplifyPath(stroke, 1.0 / std::max(scale_, 1e-6));
-    const auto batch = batchSplitPath(ids, path);
-    if (batch.empty()) {
+    const auto buildSingle = [&](const std::vector<std::uint64_t>& one) {
+        return batchSplitPath(one, path);
+    };
+    if (buildSingle(ids).empty()) {
         refuse(QStringLiteral("Couteau : tracé invalide ou trop long"));
         return;
     }
+    // Plusieurs formes sélectionnées : seules celles que le tracé traverse vraiment sont coupées,
+    // les autres restent intactes (sinon une seule forme manquée ferait échouer tout le geste).
+    const auto cutIds = splittableIds(ids, buildSingle);
+    if (cutIds.empty()) {
+        refuse(QStringLiteral("Découpe refusée : le tracé ne sépare aucune forme sélectionnée"));
+        return;
+    }
+    const auto batch = batchSplitPath(cutIds, path);
     auto& session = studio_.session();
     const auto result = session.applyBatch(batch, "Découper");
     if (!result.committed) {
@@ -846,11 +870,23 @@ void ToolController::release(double x, double y, Qt::KeyboardModifiers mods) {
             refuse(QStringLiteral("Couteau : sélectionnez d'abord la ou les formes à découper"));
             break;
         }
-        const auto batch = batchSplit(ids, anchor_, p);
-        if (batch.empty()) {
+        const auto buildSingle = [&](const std::vector<std::uint64_t>& one) {
+            return batchSplit(one, anchor_, p);
+        };
+        if (buildSingle(ids).empty()) {
             refuse(QStringLiteral("Couteau : ligne invalide"));
             break;
         }
+        // Plusieurs formes sélectionnées : seules celles que la ligne traverse vraiment sont
+        // coupées, les autres restent intactes (sinon une seule forme manquée ferait échouer tout
+        // le geste).
+        const auto cutIds = splittableIds(ids, buildSingle);
+        if (cutIds.empty()) {
+            refuse(
+                QStringLiteral("Découpe refusée : la ligne ne traverse aucune forme sélectionnée"));
+            break;
+        }
+        const auto batch = batchSplit(cutIds, anchor_, p);
         const auto result = session.applyBatch(batch, "Découper");
         if (!result.committed) {
             refuse(

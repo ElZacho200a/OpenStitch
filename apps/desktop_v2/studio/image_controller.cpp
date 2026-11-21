@@ -264,6 +264,39 @@ QStringList ImageController::imageLayers() const {
     return layers;
 }
 
+QVariantList ImageController::imageLayerIds() const {
+    const auto& project = studio_.session().project();
+    QVariantList ids;
+    if (!project.original.empty()) {
+        ids.append(QVariant::fromValue<qulonglong>(0));
+    }
+    for (const auto& calque : project.calques) {
+        if (project.findImageSource(calque.id) != nullptr) {
+            ids.append(QVariant::fromValue<qulonglong>(calque.id.value));
+        }
+    }
+    return ids;
+}
+
+bool ImageController::isLayerSegmented(qulonglong sourceId) const {
+    const auto& project = studio_.session().project();
+    const auto* source = project.findImageSource(ObjectId{sourceId});
+    return source != nullptr && source->segmentation.has_value();
+}
+
+bool ImageController::isLayerLocked(qulonglong sourceId) const {
+    if (sourceId == 0) {
+        return false; // l'image source sans calque ne se verrouille pas.
+    }
+    const auto& project = studio_.session().project();
+    for (const auto& calque : project.calques) {
+        if (calque.id.value == sourceId) {
+            return calque.locked;
+        }
+    }
+    return false;
+}
+
 int ImageController::imageLayerIndex() const {
     const auto& project = studio_.session().project();
     const auto selected = project.imageSourceId();
@@ -646,7 +679,22 @@ void ImageController::applySegmentationToAllLayers(const QVariantMap& options) {
     startSegmentation(options, true);
 }
 
-void ImageController::startSegmentation(const QVariantMap& optionsMap, bool allLayers) {
+void ImageController::applySegmentationToLayers(const QVariantMap& options,
+                                                const QVariantList& ids) {
+    std::vector<ObjectId> sources;
+    sources.reserve(static_cast<std::size_t>(ids.size()));
+    for (const auto& id : ids) {
+        sources.emplace_back(ObjectId{id.value<qulonglong>()});
+    }
+    if (sources.empty()) {
+        setMessage(tr("Aucun calque choisi : rien à segmenter."), true);
+        return;
+    }
+    startSegmentation(options, true, std::move(sources));
+}
+
+void ImageController::startSegmentation(const QVariantMap& optionsMap, bool allLayers,
+                                        std::vector<ObjectId> explicitSources) {
     if (!hasImage()) {
         setMessage(tr("Le projet n'a pas d'image source."), true);
         return;
@@ -665,7 +713,9 @@ void ImageController::startSegmentation(const QVariantMap& optionsMap, bool allL
     const auto revision = session.revision();
 
     std::vector<ObjectId> sources;
-    if (allLayers) {
+    if (!explicitSources.empty()) {
+        sources = std::move(explicitSources);
+    } else if (allLayers) {
         if (snapshot->hasImage()) {
             sources.emplace_back();
         }
@@ -724,7 +774,7 @@ void ImageController::startSegmentation(const QVariantMap& optionsMap, bool allL
             }
             if (allLayers) {
                 auto command =
-                    std::make_unique<commands::CompositeCommand>("Segmenter tous les calques");
+                    std::make_unique<commands::CompositeCommand>("Segmenter les calques");
                 for (auto& [source, seg] : result->layers) {
                     command->add(
                         std::make_unique<commands::SetSegmentationCommand>(std::move(seg), source));

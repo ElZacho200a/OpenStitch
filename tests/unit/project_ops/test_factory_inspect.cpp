@@ -58,6 +58,7 @@ TEST_CASE("factory creates an empty project and rejects an invalid frame", "[pro
     CHECK(project->canvas.height.value == 80'000);
     CHECK(project->canvas.margin.value == 5'000);
     CHECK(project->embroidery_objects.empty());
+    CHECK(project->finishing.hidden_travel.enabled); // ponts cachés par défaut (2026-11-20)
 
     options.width_mm = 0.0;
     CHECK_FALSE(po::create_empty_project(options));
@@ -74,6 +75,7 @@ TEST_CASE("digitize builds real editable objects from a repository image", "[pro
     CHECK(project.hasImage());
     CHECK(project.segmentation.has_value());
     CHECK(project.vector_objects.size() >= project.embroidery_objects.size());
+    CHECK(project.finishing.hidden_travel.enabled); // ponts cachés par défaut (2026-11-20)
     const auto seq = stitch_generation::effective_sequence(project);
     REQUIRE(seq);
     CHECK(stitch::compute_stats(*seq).stitches > 0);

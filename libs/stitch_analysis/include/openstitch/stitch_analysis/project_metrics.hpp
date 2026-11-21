@@ -7,6 +7,7 @@
 #include <map>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "openstitch/core/units.hpp"
 #include "openstitch/document/project.hpp"
@@ -48,5 +49,18 @@ struct ProjectMetrics {
 [[nodiscard]] ProjectMetrics project_metrics(const document::Project& project,
                                              const stitch::StitchSequence& sequence,
                                              const ProjectMetricsOptions& options = {});
+
+// Miettes : objets brodés visibles dont la forme source est « petite ». Une forme fermée se
+// mesure à son aire nette (trous déduits) ; une forme sans surface (contour ouvert, artefact de
+// trait) au carré du plus grand côté de sa boîte englobante (un long trait n'est pas une miette).
+// Une forme est petite si cette mesure est strictement inférieure à `max_area_mm2`. Rendu dans
+// l'ordre de couture ; déterministe.
+[[nodiscard]] std::vector<ObjectId> small_object_ids(const document::Project& project,
+                                                     double max_area_mm2);
+
+// Même critère sur les FORMES vectorielles visibles (calque compris), brodées ou non : rend leurs
+// identifiants dans l'ordre du document.
+[[nodiscard]] std::vector<ObjectId> small_shape_ids(const document::Project& project,
+                                                    double max_area_mm2);
 
 } // namespace openstitch::stitch_analysis

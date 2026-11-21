@@ -452,6 +452,15 @@ void GpuCanvas::setSelection(std::vector<Target> selection) {
     update();
 }
 
+void GpuCanvas::setDimmedShapeIds(std::vector<std::uint64_t> ids) {
+    if (ids == dimmedShapeIds_) {
+        return;
+    }
+    dimmedShapeIds_ = std::move(ids);
+    ++dimmedRevision_;
+    update();
+}
+
 void GpuCanvas::setPanMode(bool value) {
     if (value == panMode_) {
         return;
@@ -769,7 +778,9 @@ QSGNode* GpuCanvas::updatePaintNode(QSGNode* oldNode, UpdatePaintNodeData*) {
                             layers_,
                             layers_.sourceImage ? sourceImage_ : SourceImageView{},
                             regionLayer_,
-                            layers_.vectors ? vectorLayer_ : nullptr};
+                            layers_.vectors ? vectorLayer_ : nullptr,
+                            dimmedShapeIds_,
+                            dimmedRevision_};
     const auto result = backend.synchronize(oldNode, state, *window());
     // Render thread must never write QObject properties or read the live document. Queue
     // diagnostics.

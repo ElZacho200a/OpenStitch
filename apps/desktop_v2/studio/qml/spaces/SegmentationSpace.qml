@@ -126,6 +126,19 @@ Item {
             }
         }
     }
+    // Parcours séquentiel des régions, région suivante / précédente (audit multicalque
+    // segmentation, P2) : `RegionController::selectNextRegion`/`selectPreviousRegion` portent déjà
+    // la logique, actif seulement quand l'espace l'est (comme les autres raccourcis de l'appli).
+    Shortcut {
+        sequence: "Tab"
+        enabled: root.active && root.hasTools
+        onActivated: regionTools.selectNextRegion()
+    }
+    Shortcut {
+        sequence: "Shift+Tab"
+        enabled: root.active && root.hasTools
+        onActivated: regionTools.selectPreviousRegion()
+    }
 
     // Barre latérale commune : outils modaux du canevas (pinceau et gomme de frontière). Les actions
     // ponctuelles (fusionner, nettoyer, recolorer…) restent dans le panneau.
