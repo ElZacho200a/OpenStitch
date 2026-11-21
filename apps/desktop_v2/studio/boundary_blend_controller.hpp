@@ -49,6 +49,9 @@ class BoundaryBlendController : public QObject {
     // Trois zones ou plus sélectionnées : « Fondre toutes les zones voisines » est proposé.
     Q_PROPERTY(bool canCreateAll READ canCreateAll NOTIFY changed)
     Q_PROPERTY(int zoneCount READ zoneCount NOTIFY changed)
+    // Trois zones ou plus : nombre de couples DÉJÀ fondus entre zones sélectionnées. Non nul, les
+    // réglages s'appliquent à tout le groupe (`editAll`), pas seulement au dernier couple.
+    Q_PROPERTY(int groupBlendCount READ groupBlendCount NOTIFY changed)
     Q_PROPERTY(QString message READ message NOTIFY messageChanged)
     Q_PROPERTY(bool lastOk READ lastOk NOTIFY messageChanged)
 
@@ -75,6 +78,7 @@ public:
     [[nodiscard]] QVariantList allFrontiers() const { return allFrontiers_; }
     [[nodiscard]] bool canCreateAll() const { return zones_.size() >= 3; }
     [[nodiscard]] int zoneCount() const { return static_cast<int>(zones_.size()); }
+    [[nodiscard]] int groupBlendCount() const { return groupBlendCount_; }
     [[nodiscard]] QString message() const { return message_; }
     [[nodiscard]] bool lastOk() const { return ok_; }
 
@@ -86,6 +90,11 @@ public:
     // Fond chaque couple de zones sélectionnées qui partagent une frontière (couples déjà fondus
     // intacts, couples non éligibles ignorés), mêmes largeurs des deux côtés. Un pas d'annulation.
     Q_INVOKABLE bool createAll(double widthMm, int curve);
+    // Réédite TOUS les fondus entre zones sélectionnées (et pose ceux qui manquent) avec ces
+    // réglages ; chaque couple garde sa frontière tracée. Un pas d'annulation.
+    Q_INVOKABLE bool editAll(double widthMm, int curve);
+    // Retire tous les fondus entre zones sélectionnées. Un pas d'annulation.
+    Q_INVOKABLE bool removeAll();
     Q_INVOKABLE bool selectBlend(const QString& partnerId);
     // Retire le fondu entre la zone principale et la voisine donnée (ligne de la liste). Un pas
     // d'annulation ; les autres fondus de la zone restent intacts.
@@ -114,6 +123,7 @@ private:
     void refresh();
     void rebuild();
     void say(bool ok, const QString& text);
+    bool applyAll(double widthMm, int curve, bool update);
     bool apply(std::uint64_t a, std::uint64_t b, double widthA, double widthB, int curve,
                const std::vector<Vec2um>& frontier);
     [[nodiscard]] std::uint64_t secondSelected() const;
@@ -142,6 +152,7 @@ private:
     document::BoundaryBlendRows rows_{document::BoundaryBlendRows::PerZone};
     QString message_;
     bool ok_{true};
+    int groupBlendCount_{0};
 };
 
 } // namespace openstitch::desktop_v2::studio
