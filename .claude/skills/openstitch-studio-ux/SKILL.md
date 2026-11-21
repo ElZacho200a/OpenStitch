@@ -153,3 +153,11 @@ Ne jamais marquer `PASS`/`Valide` sans execution reelle du test.
 - [qt-qml-review](https://github.com/TheQtCompanyRnD/agent-skills/tree/main/skills/qt-qml-review) — `references/qt-qml-review-checklist.md` (regles deterministes IMP/ORD/BND/LAY/LDR/DEL/STA/IMG/PRF/STY/SIG/ERR/JS) et `references/agent-rules.md` (regles semantiques A1-A7).
 - [qt-qml](https://github.com/TheQtCompanyRnD/agent-skills/tree/main/skills/qt-qml), [qt-qml-test](https://github.com/TheQtCompanyRnD/agent-skills/tree/main/skills/qt-qml-test), [qt-qml-test-run](https://github.com/TheQtCompanyRnD/agent-skills/tree/main/skills/qt-qml-test-run), [qt-qml-profiler](https://github.com/TheQtCompanyRnD/agent-skills/tree/main/skills/qt-qml-profiler) — non consultes en detail dans cette version (couverts par l'outillage deja existant du depot, §4-5).
 - Commit de reference au moment de l'ecriture de ce skill : `TheQtCompanyRnD/agent-skills` HEAD au 2026-11-14 (non epingle — relire si le comportement decrit ici semble perime).
+
+## 8. UX Gate obligatoire avant livraison d'une interface
+
+Ce skill est **préventif**, pas seulement utile après un signalement utilisateur. Avant de créer un contrôle QML : décrire comment un novice découvre l'action, son premier résultat sans jargon, l'Undo/Redo et le nombre de gestes attendu. Réutiliser les composants Studio existants et vérifier à la fois la taille standard et une fenêtre basse.
+
+Après code : lancer les QTest ciblés, puis la **capture réelle** du Studio dans les 4 espaces et à 2 tailles via scripts/ux/verify.py. Les PNG contrôlés mécaniquement sont à inspecter en personne ; le rendu software/offscreen ne prouve pas le comportement GPU matériel. Confier au **sous-agent os-ux-reviewer** une revue indépendante, en lecture seule, avec un parcours novice sans lui donner d'abord les conclusions de l'auteur. Corriger ses frictions P0/P1/P2 avant de déclarer PASS, en ajoutant des tests de non-régression.
+
+Conserver le manifeste local build/ux-gate/latest/report.json, ensuite lancer la commande review avec le vrai nom/verdict du second agent, et check-report --require-review. La PR reprend les cinq lignes de la section ## UX Gate du template, et la CI les vérifie. Voir docs/agents/ux-gate.md pour les commandes, limites et preuves. Ne pas promettre une revue autonome si aucun agent n'a réellement inspecté les captures.
