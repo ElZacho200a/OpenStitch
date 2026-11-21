@@ -319,6 +319,7 @@ Item {
                             }
                             EditBar {
                                 shapeScope: true
+                                canvas: spaceCanvas
                                 Layout.fillWidth: true
                                 Layout.leftMargin: 12
                                 Layout.rightMargin: 12

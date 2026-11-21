@@ -22,6 +22,7 @@
 #include "openstitch/image/ops.hpp"
 #include "openstitch/segmentation/color_merge.hpp"
 #include "openstitch/segmentation/segmentation.hpp"
+#include "openstitch/stitch_analysis/project_metrics.hpp"
 
 namespace openstitch::project_ops::detail {
 
@@ -485,6 +486,61 @@ OpStatus op_remove_small_pieces(OpContext& ctx) {
         "pieces_removed");
 }
 
+Micrometers mm_to_um(double mm) {
+    return Micrometers{static_cast<std::int32_t>(std::lround(mm * 1000.0))};
+}
+
+OpStatus op_absorb_small_objects(OpContext& ctx) {
+    double area_mm2 = 3.0;
+    double reach_mm = 0.2;
+    bool present = false;
+    if (auto st = read_number(ctx, "max_area_mm2", 0.0001, 1.0e6, false, area_mm2, present);
+        !st.ok) {
+        return st;
+    }
+    if (auto st = read_number(ctx, "reach_mm", 0.0, 5.0, false, reach_mm, present); !st.ok) {
+        return st;
+    }
+    std::string mode = "same_thread";
+    if (const auto it = ctx.args.find("priority"); it != ctx.args.end() && !it->is_null()) {
+        if (!it->is_string()) {
+            return usage("argument « priority » : same_thread, longest_border ou largest");
+        }
+        mode = it->get<std::string>();
+        if (mode != "same_thread" && mode != "longest_border" && mode != "largest") {
+            return usage("argument « priority » : same_thread, longest_border ou largest");
+        }
+    }
+    const auto priority = mode == "largest"          ? commands::AbsorbPriority::Largest
+                          : mode == "longest_border" ? commands::AbsorbPriority::LongestBorder
+                                                     : commands::AbsorbPriority::SameThread;
+    const auto crumbs = stitch_analysis::small_shape_ids(ctx.project, area_mm2);
+    if (crumbs.empty()) {
+        return refused("aucune miette sous ce seuil");
+    }
+    return run_vector_cleanup(ctx,
+                              commands::make_absorb_small_objects_command(
+                                  ctx.project, crumbs, priority, mm_to_um(reach_mm)),
+                              "crumbs_absorbed");
+}
+
+OpStatus op_fill_gaps_between(OpContext& ctx) {
+    double area_mm2 = 4.0;
+    double reach_mm = 0.2;
+    bool present = false;
+    if (auto st = read_number(ctx, "max_area_mm2", 0.0001, 1.0e6, false, area_mm2, present);
+        !st.ok) {
+        return st;
+    }
+    if (auto st = read_number(ctx, "reach_mm", 0.0, 5.0, false, reach_mm, present); !st.ok) {
+        return st;
+    }
+    return run_vector_cleanup(
+        ctx,
+        commands::make_fill_gaps_between_command(ctx.project, area_mm2 * 1.0e6, mm_to_um(reach_mm)),
+        "gaps_filled");
+}
+
 OpStatus op_fill_small_holes(OpContext& ctx) {
     std::vector<ObjectId> ids;
     if (auto st = read_shape_targets(ctx, ids); !st.ok) {
@@ -634,6 +690,31 @@ void register_cleanup_ops(std::vector<OpSpec>& out) {
                  false, "[0.0001 ; 1000000]"}},
                R"({"op":"fill_small_holes","max_area_mm2":1.0})",
                op_fill_small_holes});
+
+    out.push_back(OpSpec{
+        "absorb_small_objects",
+        "Scène : fond chaque miette (forme visible sous le seuil) dans une forme voisine au lieu "
+        "de la supprimer, sans laisser de trou ; un contour ouvert minuscule est supprimé.",
+        {{"max_area_mm2", "number", "mm2", "seuil des miettes (défaut 3)", false,
+          "[0.0001 ; 1000000]"},
+         {"priority", "string", "", "voisin choisi (défaut same_thread)", false,
+          "same_thread|longest_border|largest"},
+         {"reach_mm", "number", "mm", "fente comblée vers le voisin (défaut 0.2)", false,
+          "[0 ; 5]"}},
+        R"({"op":"absorb_small_objects","max_area_mm2":2,"priority":"same_thread"})",
+        op_absorb_small_objects});
+
+    out.push_back(OpSpec{
+        "fill_gaps_between",
+        "Scène : rebouche les vides fermés ENTRE formes (bordés par au moins deux formes) sous "
+        "le seuil ; chaque vide rejoint la voisine de plus longue frontière. Les trous internes "
+        "d'une forme restent.",
+        {{"max_area_mm2", "number", "mm2", "aire maximale d'un interstice (défaut 4)", false,
+          "[0.0001 ; 1000000]"},
+         {"reach_mm", "number", "mm", "distance de contact avec les bords (défaut 0.2)", false,
+          "[0 ; 5]"}},
+        R"({"op":"fill_gaps_between","max_area_mm2":4})",
+        op_fill_gaps_between});
 }
 
 } // namespace openstitch::project_ops::detail
