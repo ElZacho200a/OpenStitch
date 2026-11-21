@@ -208,6 +208,7 @@ private slots:
     void perfDenseNodeSelectionOverlay();
     void perfDenseNodeSelectionNative();
     void knifeAndBooleans();
+    void knifeCutsOnlySelectedShapesTheLineCrosses();
     void knifeCutsAShapeNotYetEmbroidered();
     void lassoSelectsByFreehandContour();
     void freehandKnifeCutsAlongTheDrawnPath();
@@ -1286,6 +1287,50 @@ void StudioToolsTest::knifeAndBooleans() {
     QVERIFY(reopened.has_value());
     QCOMPARE(reopened->embroidery_objects.size(), objects(rig));
     QTest::keyClick(rig.window, Qt::Key_Z, Qt::ControlModifier);
+    QCOMPARE(steps(rig), baseSteps);
+    QCOMPARE(objects(rig), baseObjects);
+    QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+}
+
+// Deux formes sélectionnées, une seule traversée par le trait : elle seule est découpée (l'autre
+// ne doit pas faire échouer tout le geste), en une seule étape d'annulation ; la sélection après
+// la coupe redevient les morceaux produits, sans la forme intacte.
+void StudioToolsTest::knifeCutsOnlySelectedShapesTheLineCrosses() {
+    Rig rig;
+    open(rig);
+    const auto a = draw(rig, "draw.rectangle", {-15, -10}, {5, 10});
+    const auto b = draw(rig, "draw.rectangle", {10, -10}, {25, 10});
+    QVERIFY(a != 0 && b != 0);
+    const auto baseSteps = steps(rig);
+    const auto baseObjects = objects(rig);
+    const auto bBefore = boundsOf(rig.session.project(), b);
+
+    rig.session.selection().replace(
+        {Target{TargetKind::EmbroideryObject, a}, Target{TargetKind::EmbroideryObject, b}});
+    rig.tools.setActiveTool(QStringLiteral("knife"));
+    drag(rig, at(rig, -5, -18), at(rig, -5, 18)); // ne traverse que `a`
+    QCOMPARE(steps(rig), baseSteps + 1);
+    QVERIFY(objects(rig) > baseObjects);
+
+    const auto bAfter = boundsOf(rig.session.project(), b);
+    QCOMPARE(bAfter.x0, bBefore.x0);
+    QCOMPARE(bAfter.x1, bBefore.x1);
+
+    // La sélection après la coupe redevient TOUS les morceaux produits (sélection multiple), pas
+    // une seule pièce représentative, et jamais `b` qui n'a pas été touchée. Un seul morceau
+    // garde l'identité de `a` (le premier conservé par `add_piece_commands`) ; les autres sont de
+    // nouveaux objets : la sélection compte donc un de plus que les objets vraiment nouveaux.
+    const auto selection = rig.session.selection().targets();
+    QCOMPARE(selection.size(), (objects(rig) - baseObjects) + 1);
+    QVERIFY(selection.size() >= 2); // une ligne qui traverse un rectangle le coupe en au moins 2
+    bool keepsOriginal = false;
+    for (const auto& t : selection) {
+        QVERIFY(t.id != b);
+        keepsOriginal = keepsOriginal || t.id == a;
+    }
+    QVERIFY(keepsOriginal);
+
+    QTest::keyClick(rig.window, Qt::Key_Z, Qt::ControlModifier); // une seule étape à défaire
     QCOMPARE(steps(rig), baseSteps);
     QCOMPARE(objects(rig), baseObjects);
     QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));

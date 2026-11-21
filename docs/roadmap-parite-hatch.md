@@ -1776,6 +1776,23 @@ libre, colonne satin manuelle, ligne de coupe satin ; édition de nœuds
 - État OpenStitch : ligne de coupe **satin** uniquement (`DrawSatinCutLine`).
 - À faire : couteau général sur toute forme vectorielle (`geometry/cut.hpp`
   existe), les deux morceaux gardent le type de broderie.
+- Correctif (2026-11-21) : le couteau Studio refusait tout le geste dès qu'une seule forme de la
+  sélection multiple n'était pas traversée par le trait (lot `project_ops` transactionnel : un seul
+  `split`/`split_path` refusé annulait aussi les coupes déjà réussies sur les autres formes
+  sélectionnées). `ToolController` filtre désormais, par forme, celles que le trait traverse
+  vraiment (`previewBatch`, aperçu sans mutation) avant de construire le lot final : plusieurs
+  zones vectorielles se découpent en une seule étape d'annulation, celles non traversées restent
+  intactes.
+- Correctif (2026-11-21) : la sélection après une coupe ne redevenait qu'**une seule pièce par
+  forme coupée** (le champ JSON `"id"`, priorisé à tort sur `"created"`/`"vector_ids"` dans
+  `createdObjectIds`), jamais tous les morceaux produits — pas de vraie sélection multiple, et
+  « Forme découpée en N morceaux » comptait aussi faux. `createdObjectIds` (`edit_batch.cpp`)
+  regroupe désormais, par opération, tous les morceaux brodés (`created`) ou, à défaut, tous les
+  morceaux pas encore convertis (`vector_ids`), plus celui qui garde l'identité d'origine
+  (`original`) ; même correction pour « Séparer les morceaux » (`break_apart`, même schéma de
+  résultat). Non-régression : `StudioToolsTest::knifeCutsOnlySelectedShapesTheLineCrosses`
+  (vérifie le nombre exact de pièces sélectionnées, confirmée en échec sur l'ancien code pour les
+  deux correctifs ci-dessus) ; suite `test_desktop_v2_core` (duplication, 365 cas) non régressée.
 
 ### HP-VEC-005 — Supprimer / remplir les trous [P1] — ◐ Partiel (2026-10-13, en PR)
 - Livré (2026-10-25) : Alt + double-clic dans un trou (`RemoveHoleCommand`). Reste : menu, `interaction_map`.
