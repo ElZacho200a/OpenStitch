@@ -122,7 +122,7 @@ bool VectorController::booleanOp(const QString& mode) {
 bool VectorController::breakApart() {
     const auto selected = ids();
     if (selected.empty()) {
-        say(QStringLiteral("Séparer : sélectionnez une forme"));
+        say(QStringLiteral("Séparer en formes indépendantes : sélectionnez une forme"));
         return false;
     }
     std::string ops;
@@ -130,7 +130,7 @@ bool VectorController::breakApart() {
         ops += std::string(i == 0 ? "" : ",") + R"({"op":"break_apart","object":)" +
                std::to_string(selected[i]) + "}";
     }
-    return apply(wrap(ops), QStringLiteral("Séparer les morceaux"), true);
+    return apply(wrap(ops), QStringLiteral("Séparer en formes indépendantes"), true);
 }
 
 bool VectorController::offsetShapes(double offsetMm) {

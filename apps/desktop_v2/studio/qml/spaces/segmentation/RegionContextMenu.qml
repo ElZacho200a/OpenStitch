@@ -37,7 +37,7 @@ Controls.Menu {
     }
     Controls.MenuItem {
         objectName: "regionContextSplit"
-        text: qsTr("Séparer en morceaux")
+        text: qsTr("Séparer les zones non reliées")
         enabled: !menu.locked && menu.selectedCount === 1
         onTriggered: menu.region.splitSelected()
     }

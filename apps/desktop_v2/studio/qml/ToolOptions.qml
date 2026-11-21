@@ -150,7 +150,7 @@ ColumnLayout {
         Mini { objectName: "subtractButton"; disabledReason: panel.needTwo; tooltip: qsTr("Découpe les formes du dessus dans la plus basse de la pile"); shortcutLabel: "Ctrl+-"; text: qsTr("Soustraire"); enabled: panel.two; onClicked: panel.vec.booleanOp("subtract") }
         Mini { objectName: "intersectButton"; disabledReason: panel.needTwo; tooltip: qsTr("Garde seulement la partie commune"); shortcutLabel: "Ctrl+*"; text: qsTr("Intersection"); enabled: panel.two; onClicked: panel.vec.booleanOp("intersect") }
         Mini { objectName: "excludeButton"; disabledReason: panel.needTwo; tooltip: qsTr("Garde tout sauf la partie commune"); shortcutLabel: "Ctrl+^"; text: qsTr("Exclusion"); enabled: panel.two; onClicked: panel.vec.booleanOp("exclude") }
-        Mini { objectName: "breakApartButton"; Layout.columnSpan: 2; disabledReason: panel.needOne; tooltip: qsTr("Fait de chaque morceau disjoint une forme indépendante"); shortcutLabel: "Ctrl+Maj+K"; text: qsTr("Séparer les morceaux"); enabled: panel.some; onClicked: panel.vec.breakApart() }
+        Mini { objectName: "breakApartButton"; Layout.columnSpan: 2; disabledReason: panel.needOne; tooltip: qsTr("Fait de chaque partie non reliée une forme indépendante"); shortcutLabel: "Ctrl+Maj+K"; text: qsTr("Séparer en formes indépendantes"); enabled: panel.some; onClicked: panel.vec.breakApart() }
     }
 
     SectionLabel { text: qsTr("NETTOYER LE CONTOUR"); Layout.topMargin: 4 }

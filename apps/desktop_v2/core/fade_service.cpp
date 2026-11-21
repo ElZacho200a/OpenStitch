@@ -419,7 +419,7 @@ ServiceResult editMultiFade(DocumentSession& session, std::uint64_t objectId,
         // Conversion contrôlée et annulable de la relation binaire historique.
         const auto old = project_ops::describe_gradient_fill(session.project(), ObjectId{objectId});
         if (!old) {
-            return refuse("Sélectionnez un fondu de fils existant.");
+            return refuse("Sélectionnez un fondu multicolore existant.");
         }
         spec.emplace();
         spec->transition = old->gradient;

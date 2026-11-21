@@ -18,6 +18,7 @@
 #include <memory>
 #include <vector>
 
+#include "action_catalog.hpp"
 #include "action_controller.hpp"
 #include "edit_controller.hpp"
 #include "gpu_canvas.hpp"
@@ -120,6 +121,15 @@ QQuickItem* deepItem(QQuickItem* root, const QString& name) {
         }
     }
     return nullptr;
+}
+
+void collectByShortcutLabel(QQuickItem* root, const QString& label, QList<QQuickItem*>& out) {
+    if (root->property("shortcutLabel").toString() == label) {
+        out.push_back(root);
+    }
+    for (auto* child : root->childItems()) {
+        collectByShortcutLabel(child, label, out);
+    }
 }
 
 struct Rig {
@@ -420,6 +430,27 @@ private slots:
         QVERIFY(!unite->isEnabled());
         QVERIFY(split->isEnabled());
         QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+    }
+
+    // Lot 2 vocabulaire : « Ctrl+Maj+K » n'a qu'une seule action (séparer en formes
+    // indépendantes) et le même libellé dans la barre, les options d'outil et le catalogue.
+    void breakApartShortcutHasOneMeaning() {
+        Rig rig;
+        open(rig);
+        enterSpace(rig);
+        QList<QQuickItem*> carriers;
+        collectByShortcutLabel(rig.window->contentItem(), QStringLiteral("Ctrl+Maj+K"), carriers);
+        QVERIFY(!carriers.isEmpty());
+        const auto* action = findAction("shape.break_apart");
+        QVERIFY(action != nullptr);
+        const QString expected = QString::fromStdString(action->label);
+        QCOMPARE(expected, QStringLiteral("Séparer en formes indépendantes"));
+        for (auto* item : std::as_const(carriers)) {
+            QCOMPARE(item->property("text").toString(), expected);
+        }
+        auto* split = deepItem(rig.window->contentItem(), QStringLiteral("quickBreak"));
+        QVERIFY(split != nullptr);
+        QCOMPARE(split->property("text").toString(), expected);
     }
 
     void clickSelectsAShapeAndShowsItsOrigin() {

@@ -5,7 +5,7 @@ import QtQuick.Dialogs
 import QtQuick.Layouts
 import "."
 
-// Éditeur UNIQUE du fondu de fils, dans l'inspecteur de l'objet sélectionné.
+// Éditeur UNIQUE du fondu multicolore, dans l'inspecteur de l'objet sélectionné.
 // 1. Barre de fils : les fils numérotés dans l'ordre de couture (mêmes numéros que les poignées
 //    du canevas) ; un fil désigné se règle dans la carte en dessous.
 // 2. Style en tuiles illustrées, 3. direction en flèches, 4. transition Douce / Moyenne / Nette.
@@ -223,7 +223,7 @@ Item {
             width: Math.max(0, viewport.width - 16)
             spacing: 8
 
-            SectionLabel { text: qsTr("FONDU DE FILS") }
+            SectionLabel { text: qsTr("FONDU MULTICOLORE") }
 
             Text {
                 objectName: root.prefix + "Summary"
@@ -236,7 +236,7 @@ Item {
                 text: !root.ready ? qsTr("Outil indisponible.")
                       : root.hasFade && root.colors.length === 1 ? qsTr("Un seul fil : dégradé de densité, de plein à clairsemé.")
                       : root.hasFade ? qsTr("%1 fils, cousus du n° 1 au n° %1.").arg(root.colors.length)
-                      : root.canCreate ? qsTr("Passez d'un fil à l'autre sur cette forme : choisissez les fils, puis créez le fondu.")
+                      : root.canCreate ? qsTr("Passez d'un fil à l'autre sur cette forme : choisissez les fils, puis créez le fondu multicolore.")
                       : root.controller.incompatibility
             }
 
@@ -470,8 +470,8 @@ Item {
             StudioButton {
                 objectName: root.prefix + "Create"
                 visible: !root.hasFade && root.canCreate
-                text: root.ready && root.controller.satinTarget ? qsTr("Créer le satin entrelacé")
-                                                                : qsTr("Créer le fondu")
+                text: root.ready && root.controller.satinTarget ? qsTr("Créer le fondu multicolore (satin entrelacé)")
+                                                                : qsTr("Créer le fondu multicolore")
                 emphasized: true
                 enabled: root.paletteValid
                 Layout.fillWidth: true

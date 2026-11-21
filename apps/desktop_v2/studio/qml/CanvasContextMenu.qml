@@ -63,7 +63,7 @@ Controls.Menu {
         Controls.MenuItem { text: qsTr("Intersection\tCtrl+*"); enabled: shapesMenu.two; onTriggered: shapesMenu.vec.booleanOp("intersect") }
         Controls.MenuItem { text: qsTr("Exclusion\tCtrl+^"); enabled: shapesMenu.two; onTriggered: shapesMenu.vec.booleanOp("exclude") }
         Controls.MenuSeparator { }
-        Controls.MenuItem { text: qsTr("Séparer\tCtrl+Maj+K"); enabled: shapesMenu.some; onTriggered: shapesMenu.vec.breakApart() }
+        Controls.MenuItem { objectName: "contextBreakApart"; text: qsTr("Séparer en formes indépendantes\tCtrl+Maj+K"); enabled: shapesMenu.some; onTriggered: shapesMenu.vec.breakApart() }
         Controls.MenuItem { text: qsTr("Simplifier"); enabled: shapesMenu.some; onTriggered: shapesMenu.vec.simplify(0.1) }
         Controls.MenuItem { text: qsTr("Lisser"); enabled: shapesMenu.some; onTriggered: shapesMenu.vec.smooth(0.15) }
         Controls.MenuItem { text: qsTr("Combler les trous"); enabled: shapesMenu.some; onTriggered: shapesMenu.vec.fillHoles(4) }
