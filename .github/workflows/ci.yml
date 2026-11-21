@@ -216,6 +216,11 @@ jobs:
             "`"$project`"", '--software', '--screenshot', "`"$output`""
           ) -Wait -PassThru -WindowStyle Hidden
           if ($process.ExitCode -ne 0 -or -not (Test-Path $output)) { throw 'Studio screenshot failed' }
+          # Second UX pass: all four Studio spaces, at normal and narrow window sizes.
+          # Qt is already configured to run offscreen/software on this Windows runner.
+          python scripts/ux/verify.py capture --studio build/msvc/apps/desktop_v2/studio/Release/openstitch.exe --project $project --out dist/studio-screenshots/ux --backend software
+          if ($LASTEXITCODE -ne 0) { throw 'Studio UX screenshot matrix failed' }
+
 
       - name: Upload actual Qt Studio screenshots
         if: always()
@@ -224,7 +229,10 @@ jobs:
           name: openstitch-studio-screenshots-windows
           if-no-files-found: warn
           retention-days: 30
-          path: dist/studio-screenshots/*.png
+          path: |
+            dist/studio-screenshots/*.png
+            dist/studio-screenshots/ux/*.png
+            dist/studio-screenshots/ux/report.json
 
       - name: Test (Release)
         run: ctest --preset msvc-release --output-on-failure

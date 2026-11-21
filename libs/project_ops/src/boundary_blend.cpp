@@ -95,7 +95,8 @@ make_boundary_blend_command(const document::Project& project, ObjectId a, Object
 
 Result<MultiBoundaryBlend> make_multi_boundary_blend_command(const document::Project& project,
                                                              std::vector<ObjectId> ids,
-                                                             const BoundaryBlendOptions& options) {
+                                                             const BoundaryBlendOptions& options,
+                                                             bool update_existing) {
     std::ranges::sort(ids, {}, [](ObjectId id) { return id.value; });
     const auto [first, last] = std::ranges::unique(ids);
     ids.erase(first, last);
@@ -111,8 +112,22 @@ Result<MultiBoundaryBlend> make_multi_boundary_blend_command(const document::Pro
     for (std::size_t i = 0; i < ids.size(); ++i) {
         for (std::size_t j = i + 1; j < ids.size(); ++j) {
             const auto* zone = project.findEmbroidery(ids[i]);
-            if (zone != nullptr && document::boundary_blend_link(*zone, ids[j]) != nullptr) {
-                ++result.kept;
+            const auto* link =
+                zone != nullptr ? document::boundary_blend_link(*zone, ids[j]) : nullptr;
+            if (link != nullptr) {
+                if (!update_existing) {
+                    ++result.kept;
+                    continue;
+                }
+                BoundaryBlendOptions edited = pairOptions;
+                if (const auto info = boundary_blend_info(project, ids[i], ids[j])) {
+                    edited.manual_frontier = info->options.manual_frontier;
+                }
+                auto cmd = make_boundary_blend_command(project, ids[i], ids[j], edited);
+                if (cmd) {
+                    composite->add(std::move(*cmd));
+                    ++result.updated;
+                }
                 continue;
             }
             auto cmd = make_boundary_blend_command(project, ids[i], ids[j], pairOptions);
@@ -123,7 +138,7 @@ Result<MultiBoundaryBlend> make_multi_boundary_blend_command(const document::Pro
             result.created.emplace_back(ids[i], ids[j]);
         }
     }
-    if (result.created.empty()) {
+    if (result.created.empty() && result.updated == 0) {
         return std::unexpected(coded(ErrorCategory::OperationImpossible, "E_BLEND_NO_PAIR",
                                      result.kept > 0
                                          ? "Toutes les zones voisines sont déjà fondues"
@@ -149,6 +164,46 @@ make_remove_boundary_blend_command(const document::Project& project, ObjectId id
     return std::make_unique<commands::SetBoundaryBlendLinkCommand>(
         id, std::nullopt, partner, std::optional<document::BoundaryBlendLink>{},
         "Retirer le fondu à la frontière");
+}
+
+Result<std::unique_ptr<commands::ICommand>>
+make_multi_remove_boundary_blend_command(const document::Project& project,
+                                         std::vector<ObjectId> ids) {
+    std::ranges::sort(ids, {}, [](ObjectId id) { return id.value; });
+    const auto [first, last] = std::ranges::unique(ids);
+    ids.erase(first, last);
+    if (ids.size() < 2) {
+        return std::unexpected(coded(ErrorCategory::UserInput, "E_BLEND_FEW_ZONES",
+                                     "Sélectionnez au moins deux zones remplies",
+                                     "select two or more fill objects"));
+    }
+    const auto linked = [&](ObjectId a, ObjectId b) {
+        const auto* zone = project.findEmbroidery(a);
+        return zone != nullptr && document::boundary_blend_link(*zone, b) != nullptr;
+    };
+    auto composite = std::make_unique<commands::CompositeCommand>("Retirer les fondus du groupe");
+    bool any = false;
+    for (std::size_t i = 0; i < ids.size(); ++i) {
+        for (std::size_t j = i + 1; j < ids.size(); ++j) {
+            // Le retrait d'un couple ôte les deux liens : partir du côté qui en porte un.
+            const bool fromI = linked(ids[i], ids[j]);
+            if (!fromI && !linked(ids[j], ids[i])) {
+                continue;
+            }
+            auto cmd = fromI ? make_remove_boundary_blend_command(project, ids[i], ids[j])
+                             : make_remove_boundary_blend_command(project, ids[j], ids[i]);
+            if (cmd) {
+                composite->add(std::move(*cmd));
+                any = true;
+            }
+        }
+    }
+    if (!any) {
+        return std::unexpected(coded(ErrorCategory::UserInput, "E_BLEND_NONE",
+                                     "Aucun fondu entre ces zones",
+                                     "select zones that are blended together"));
+    }
+    return std::unique_ptr<commands::ICommand>(std::move(composite));
 }
 
 Result<std::unique_ptr<commands::ICommand>>
