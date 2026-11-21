@@ -561,6 +561,8 @@ Peindre une zone active la préservation des traits à la prochaine mise à jour
 segmentation à relancer). Test : `couche de traits : zone de traits fins…` (un trait de contraste 9
 pris dans la zone, ignoré hors zone).
 
+**Fond continu sous les traits** : les aplats complétés n'avaient aucun trou sous les traits, mais leur vectorisation trace chaque région en retrait de ses pixels ; une lamelle étroite le long d'un trait (anti-crénelage, vitre entre deux montants) devenait une forme plus fine encore, et deux aplats qui se rejoignaient sous un trait laissaient un liseré de tissu nu. `revectorize` prolonge donc chaque aplat **sous les traits qui le bordent** (`grow_fills_under_strokes`, `op_steps.cpp`) : bande des traits vectorisée et élargie de 0,25 mm, aplat élargi de la largeur d'un trait (1 mm) + 0,25 mm, intersection des deux réunie à l'aplat. Les voisins se chevauchent sous le trait, qui les recouvre ; hors des traits, rien ne change. Mesuré sur le phare (zone de traits fins sur la lanterne) : surface de la galerie sans aplat 658 → 170 px, plus de tissu nu visible dans la lanterne ; l'armature brune paraît un peu plus massive. Essai écarté : rendre aux voisins les lamelles fines le long des traits avant vectorisation (pixel par pixel ou par morceau, deux largeurs) — gain nul, vitres effacées.
+
 **Couleur locale des traits** : la couleur était choisie par composante connexe, or la rambarde
 marine, la lanterne brune et le mât forment un seul réseau, cousu tout en brun. `colour_strokes`
 choisit désormais la couleur pixel par pixel (moitié la plus sombre des pixels de trait d'une

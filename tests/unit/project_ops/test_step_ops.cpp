@@ -8,12 +8,14 @@
 #include <cmath>
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
 #include "openstitch/document/project.hpp"
 #include "openstitch/geometry/boolean.hpp"
 #include "openstitch/geometry/path.hpp"
+#include "openstitch/image/image.hpp"
 #include "openstitch/project_ops/errors.hpp"
 #include "openstitch/project_ops/operations.hpp"
 #include "openstitch/project_ops/revectorize.hpp"
@@ -261,6 +263,51 @@ TEST_CASE("revectorize: preserve linework adds open strokes over completed fills
     const auto again = project_ops::revectorize(project, {});
     CHECK(again.add.empty());
     CHECK(again.replace.empty());
+}
+
+TEST_CASE("revectorize: completed fills continue under the strokes",
+          "[project_ops][steps][linework]") {
+    // Trait noir de 3 px posé sur la frontière ciel / sable (cas de la rambarde sur la lanterne) :
+    // les deux aplats doivent se rejoindre SOUS le trait, sans liseré de tissu nu.
+    document::Project project;
+    image::Image img;
+    img.width = 120;
+    img.height = 80;
+    img.rgba.assign(static_cast<std::size_t>(img.width * img.height * 4), 255);
+    for (int y = 0; y < img.height; ++y) {
+        for (int x = 0; x < img.width; ++x) {
+            const auto i = static_cast<std::size_t>((y * img.width + x) * 4);
+            const bool line = y >= 39 && y < 42 && x >= 10 && x < 110;
+            const bool sky = y < 40;
+            img.rgba[i] = line ? 5 : (sky ? 90 : 230);
+            img.rgba[i + 1] = line ? 5 : (sky ? 150 : 210);
+            img.rgba[i + 2] = line ? 15 : (sky ? 220 : 160);
+        }
+    }
+    project.imageSource().original = std::move(img);
+    project.imageSource().mm_per_px = Millimeters{0.25};
+    REQUIRE(run(project, R"({"op":"segment_image","max_colors":3,"min_region_px":4})").ok);
+    project.imageSource().preserve_linework = true;
+    const auto plan = project_ops::revectorize(project, {});
+    REQUIRE(count_linework(plan.add) >= 1);
+    std::vector<geometry::PathSet> fills;
+    for (const auto& shape : plan.add) {
+        if (!shape.linework) {
+            fills.insert(fills.end(), shape.paths.begin(), shape.paths.end());
+        }
+    }
+    // Bande de 1 mm centrée sur le trait (y = 40,5 px), loin de ses extrémités. Repère : origine
+    // au centre, Y vers le haut, 250 um/px.
+    geometry::PathSet probe;
+    for (const auto& [px, py] : {std::pair{30.0, 38.5}, {90.0, 38.5}, {90.0, 42.5}, {30.0, 42.5}}) {
+        geometry::PathNode n;
+        n.pos = Vec2um{Micrometers{static_cast<std::int32_t>((px - 60.0) * 250.0)},
+                       Micrometers{static_cast<std::int32_t>((40.0 - py) * 250.0)}};
+        probe.outer.nodes.push_back(n);
+    }
+    const auto bare = geometry::difference_polygons({probe}, fills);
+    REQUIRE(bare.has_value());
+    CHECK(bare->empty());
 }
 
 TEST_CASE("linework end to end: strokes sewn as running stitch after the fills",

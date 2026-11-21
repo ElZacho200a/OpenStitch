@@ -18,11 +18,73 @@
 #include "openstitch/autodigitize/line_layer.hpp"
 #include "openstitch/commands/composite_command.hpp"
 #include "openstitch/commands/project_commands.hpp"
+#include "openstitch/core/parallel.hpp"
+#include "openstitch/geometry/boolean.hpp"
+#include "openstitch/geometry/offset.hpp"
 #include "openstitch/image/ops.hpp"
 #include "openstitch/project_ops/revectorize.hpp"
 #include "openstitch/vectorization/vectorize.hpp"
 
 namespace openstitch::project_ops {
+
+namespace {
+
+// Fond continu sous les traits : chaque aplat est prolongé SOUS les traits qui le bordent, sur la
+// largeur d'un trait plus une marge, et seulement dans la bande des traits. Les aplats voisins se
+// chevauchent sous le trait (qui les recouvre) au lieu de laisser un liseré de tissu nu ou un
+// fond haché ; hors des traits, rien ne change. Déterministe (une case par aplat).
+void grow_fills_under_strokes(std::vector<Result<std::vector<geometry::PathSet>>>& fills,
+                              const segmentation::Segmentation& strokes,
+                              const vectorization::VectorizeOptions& options) {
+    std::vector<RegionId> ids;
+    for (const auto& slot : strokes.region_slots) {
+        if (slot) {
+            ids.push_back(slot->id);
+        }
+    }
+    std::vector<geometry::PathSet> raw;
+    for (auto& r : vectorization::vectorize_regions(strokes, ids, options)) {
+        if (r) {
+            raw.insert(raw.end(), r->begin(), r->end());
+        }
+    }
+    // Bande des traits élargie d'une marge : couvre l'anti-crénelage et le retrait du tracé.
+    constexpr Micrometers kMargin{250};
+    std::vector<geometry::PathSet> band;
+    for (const auto& set : raw) {
+        if (auto grown = geometry::inset_path_set(set, Micrometers{-kMargin.value})) {
+            band.insert(band.end(), grown->begin(), grown->end());
+        }
+    }
+    auto under = geometry::union_polygons(band);
+    if (!under || under->empty()) {
+        return;
+    }
+    const Micrometers reach{static_cast<std::int32_t>(autodigitize::kLineworkWidthMm * 1000.0) +
+                            kMargin.value};
+    parallel_for(fills.size(), [&](std::size_t i) {
+        if (!fills[i] || fills[i]->empty()) {
+            return;
+        }
+        std::vector<geometry::PathSet> wide;
+        for (const auto& set : *fills[i]) {
+            if (auto grown = geometry::inset_path_set(set, Micrometers{-reach.value})) {
+                wide.insert(wide.end(), grown->begin(), grown->end());
+            }
+        }
+        auto extra = geometry::intersect_polygons(wide, *under);
+        if (!extra || extra->empty()) {
+            return;
+        }
+        std::vector<geometry::PathSet> all = *fills[i];
+        all.insert(all.end(), extra->begin(), extra->end());
+        if (auto merged = geometry::union_polygons(all); merged && !merged->empty()) {
+            *fills[i] = std::move(*merged);
+        }
+    });
+}
+
+} // namespace
 
 RevectorizePlan revectorize(const document::Project& project, const RevectorizeOptions& opt) {
     RevectorizePlan out;
@@ -74,7 +136,10 @@ RevectorizePlan revectorize(const document::Project& project, const RevectorizeO
                              std::lround(opt.curve_tolerance_px * source.mm_per_px.value * 1000.0))}
                        : Micrometers{0},
         .detail_mask = &source.detail_mask};
-    const auto results = vectorization::vectorize_regions(*fills, ids, options);
+    auto results = vectorization::vectorize_regions(*fills, ids, options);
+    if (linework && linework->has_linework && !linework->strokes.labels.empty()) {
+        grow_fills_under_strokes(results, linework->strokes, options);
+    }
     for (std::size_t i = 0; i < ids.size(); ++i) {
         if (!results[i]) {
             continue;
