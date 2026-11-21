@@ -23,7 +23,7 @@ Les captures sont des **preuves visuelles seulement** : elles ne prouvent pas qu
 
 ## Rapport (moins de 35 lignes)
 
-- Verdict : PASS / FRICTION / BLOQUANT ; indiquer le commit et le mode de rendu (native RHI ou software/offscreen).
+- Verdict : PASS / FRICTION / BLOQUANT ; indiquer le commit et le mode de rendu (native RHI ou software/offscreen), publier un commentaire ou rapport URL pour la traçabilité.
 - 3 à 5 parcours ; nombre de clics réellement mesurés (sinon "non mesuré").
 - P0/P1/P2/P3 : constats reproductibles, image et zone affectée ; au moins une piste d'amélioration par friction.
 - Une amélioration immédiate, une simplification du workflow et une option avancée à masquer/reléguer.
@@ -32,6 +32,6 @@ Les captures sont des **preuves visuelles seulement** : elles ne prouvent pas qu
 
 Après une revue réellement faite, le chef de lot peut consigner *ton* verdict dans le manifeste avec :
 
-    python scripts/ux/verify.py review --report build/ux-gate/latest/report.json --reviewer "os-ux-reviewer/<session>" --verdict PASS --notes "<constats et limites de la revue>"
+    python scripts/ux/verify.py review --report build/ux-gate/latest/report.json --reviewer "os-ux-reviewer/<session>" --verdict PASS --notes "<constats et limites de la revue>" --reference "https://github.com/.../issues/...#issuecomment-..."
 
 **Tu ne t'auto-certifies pas ;** si la relecture indépendante est absente, ne pas fabriquer un nom de reviewer pour faire passer le gate.
