@@ -70,6 +70,27 @@ void DetailZoneController::setTool(const QString& tool) {
     }
     tool_ = next;
     emit toolChanged();
+    // Peindre sur une carte masquée serait aveugle : l'outil la rend visible.
+    if (!tool_.isEmpty()) {
+        setOverlayVisible(true);
+    }
+}
+
+void DetailZoneController::setOverlayVisible(bool visible) {
+    if (visible == overlayVisible_) {
+        return;
+    }
+    overlayVisible_ = visible;
+    emit overlayVisibleChanged();
+}
+
+void DetailZoneController::markShapesUpdated() {
+    if (kind_ != document::MaskKind::Linework || !dirty_) {
+        return;
+    }
+    dirty_ = false;
+    setMessage(QStringLiteral("Formes mises à jour : les zones de traits fins sont appliquées."));
+    emit maskChanged();
 }
 
 void DetailZoneController::setRadiusMm(double radiusMm) {
@@ -130,7 +151,8 @@ QString DetailZoneController::paintStroke(const QVariantList& scenePointsMm) {
     }
     dirty_ = true;
     if (kind_ == document::MaskKind::Linework) {
-        setMessage(erase ? QStringLiteral("Zone de traits fins effacée.")
+        setMessage(erase ? QStringLiteral("Zone de traits fins effacée. Mettez à jour les formes "
+                                          "pour l'appliquer.")
                          : QStringLiteral("Zone de traits fins peinte. Mettez à jour les formes "
                                           "pour l'appliquer."));
         return {};
@@ -150,7 +172,8 @@ QString DetailZoneController::clearAll() {
     }
     dirty_ = true;
     setMessage(kind_ == document::MaskKind::Linework
-                   ? QStringLiteral("Zones de traits fins effacées.")
+                   ? QStringLiteral("Zones de traits fins effacées. Mettez à jour les formes "
+                                    "pour l'appliquer.")
                    : QStringLiteral(
                          "Zones de détail effacées. Relancez la segmentation pour l'appliquer."));
     return {};
@@ -188,7 +211,8 @@ void DetailZoneController::refresh() {
                               buildOverlay(mask, kind_ == document::MaskKind::Linework));
     } else {
         coverage_ = 0.0;
-        dirty_ = false;
+        // Détail : plus de zone, rien à relancer. Traits fins : l'effacement reste à appliquer.
+        dirty_ = dirty_ && kind_ == document::MaskKind::Linework;
         images_.images()->set(overlayKey(kind_), {});
     }
     ++overlayRevision_;

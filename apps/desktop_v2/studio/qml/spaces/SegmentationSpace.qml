@@ -30,6 +30,14 @@ Item {
     readonly property var zone: root.lineworkPainting ? lineworkZones : (root.hasDetail ? detailZones : null)
     readonly property bool zoneErasing: root.zone !== null && root.zone.tool === "erase"
     property bool showSource: true
+    // Couleurs des deux cartes (incrustation, pastille du pinceau, légende) : orange = détail,
+    // cyan = traits fins. Identiques à celles de `DetailZoneController` (buildOverlay).
+    readonly property color detailColor: "#ff8c00"
+    readonly property color lineworkColor: "#00beff"
+    readonly property color zoneColor: root.lineworkPainting ? root.lineworkColor : root.detailColor
+    // La carte qu'on ne peint pas est atténuée pour ne pas se confondre avec celle qu'on peint.
+    readonly property real dimmedOpacity: 0.3
+    readonly property bool updateShapesAvailable: root.seg !== null && root.seg.canUpdateShapes
 
     // Un seul outil modal à la fois : id de la barre -> état des deux contrôleurs.
     function activateTool(id) {
@@ -103,6 +111,12 @@ Item {
         target: root.seg
         function onStageChanged() { root.publish() }
     }
+    // « Mettre à jour les formes » (bouton de la barre, du panneau ou du bandeau) applique la
+    // carte de traits fins : le bouton d'application disparaît.
+    Connections {
+        target: root.hasTools ? regionTools : null
+        function onRegenerated() { if (root.hasLinework) lineworkZones.markShapesUpdated() }
+    }
     Connections {
         target: root.workspace
         // L'espace courant exécute la mise à jour de SON étape (une seule étape d'annulation).
@@ -137,8 +151,8 @@ Item {
                 { id: "erase", icon: "eraser", label: qsTr("Gomme : retirer de la région choisie"), shortcut: "Maj+U", group: "regions" },
                 { id: "detail", icon: "detail", label: qsTr("Zones de détail : peindre où garder les petites formes"), shortcut: "Q", group: "detail", enabled: root.hasDetail },
                 { id: "detailErase", icon: "detail-erase", label: qsTr("Gomme de détail : retirer une zone de détail"), shortcut: "Maj+Q", group: "detail", enabled: root.hasDetail },
-                { id: "linework", icon: "detail", label: qsTr("Zones de traits fins : peindre où détecter plus finement les traits"), shortcut: "", group: "linework", enabled: root.hasLinework },
-                { id: "lineworkErase", icon: "detail-erase", label: qsTr("Gomme de traits fins : retirer une zone de traits fins"), shortcut: "", group: "linework", enabled: root.hasLinework }
+                { id: "linework", icon: "linework", label: qsTr("Zones de traits fins : peindre où détecter plus finement les traits"), shortcut: "W", group: "linework", enabled: root.hasLinework },
+                { id: "lineworkErase", icon: "linework-erase", label: qsTr("Gomme de traits fins : retirer une zone de traits fins"), shortcut: "Maj+W", group: "linework", enabled: root.hasLinework }
             ]
             activeTool: root.activeToolId
             onToolTriggered: id => root.activateTool(id)
@@ -198,7 +212,8 @@ Item {
             objectName: "detailZonesOverlay"
             readonly property double wMm: root.hasDetail ? imageTools.imageWidth * imageTools.mmPerPx : 0
             readonly property double hMm: root.hasDetail ? imageTools.imageHeight * imageTools.mmPerPx : 0
-            visible: root.hasDetail && detailZones.hasDetail && wMm > 0
+            visible: root.hasDetail && detailZones.hasDetail && detailZones.overlayVisible && wMm > 0
+            opacity: root.lineworkPainting ? root.dimmedOpacity : 1.0
             enabled: false
             cache: false
             smooth: false
@@ -215,7 +230,8 @@ Item {
             objectName: "lineworkZonesOverlay"
             readonly property double wMm: root.hasLinework ? imageTools.imageWidth * imageTools.mmPerPx : 0
             readonly property double hMm: root.hasLinework ? imageTools.imageHeight * imageTools.mmPerPx : 0
-            visible: root.hasLinework && lineworkZones.hasDetail && wMm > 0
+            visible: root.hasLinework && lineworkZones.hasDetail && lineworkZones.overlayVisible && wMm > 0
+            opacity: root.detailPainting && !root.lineworkPainting ? root.dimmedOpacity : 1.0
             enabled: false
             cache: false
             smooth: false
@@ -241,7 +257,7 @@ Item {
             y: pick.mouseY - diameter / 2
             color: "transparent"
             border.width: 2
-            border.color: root.zoneErasing ? Theme.foreground : (root.lineworkPainting ? Theme.accent : Theme.warning)
+            border.color: root.zoneErasing ? Theme.foreground : root.zoneColor
         }
 
         // Options du pinceau de détail : rayon en mm, part de l'image marquée, effacement total et
@@ -262,7 +278,15 @@ Item {
                 anchors.left: parent.left
                 anchors.leftMargin: 10
                 spacing: 6
+                Rectangle {
+                    objectName: "zoneColorDot"
+                    Layout.preferredWidth: 10
+                    Layout.preferredHeight: 10
+                    radius: 5
+                    color: root.zoneColor
+                }
                 StudioLabel {
+                    objectName: "zoneToolLabel"
                     text: root.lineworkPainting ? (root.zoneErasing ? qsTr("Gomme de traits fins") : qsTr("Traits fins"))
                                                 : (root.zoneErasing ? qsTr("Gomme de détail") : qsTr("Détail"))
                     tone: "foreground"
@@ -296,6 +320,14 @@ Item {
                     wrapMode: Text.NoWrap
                 }
                 StudioButton {
+                    objectName: "zoneOverlayToggle"
+                    iconName: root.zone !== null && root.zone.overlayVisible ? "eye" : "eye-off"
+                    quiet: true
+                    tooltip: root.zone !== null && root.zone.overlayVisible ? qsTr("Masquer cette carte sur le canevas")
+                                                                              : qsTr("Afficher cette carte sur le canevas")
+                    onClicked: root.zone.overlayVisible = !root.zone.overlayVisible
+                }
+                StudioButton {
                     objectName: "detailClear"
                     visible: root.zone !== null && root.zone.hasDetail
                     text: qsTr("Tout effacer")
@@ -311,6 +343,17 @@ Item {
                     tooltip: qsTr("Relance la segmentation : le détail peint est pris en compte")
                     onClicked: root.segmentNow()
                 }
+                StudioButton {
+                    objectName: "lineworkApply"
+                    visible: root.lineworkPainting && lineworkZones.needsShapesUpdate
+                    enabled: root.updateShapesAvailable
+                    text: qsTr("Mettre à jour les formes")
+                    emphasized: true
+                    tooltip: root.updateShapesAvailable
+                             ? qsTr("Applique les traits fins peints : la détection est renforcée dans la zone à la mise à jour des formes")
+                             : qsTr("Segmentez d'abord l'image : les formes se mettent à jour depuis la segmentation")
+                    onClicked: root.seg.updateShapes(false)
+                }
                 StudioLabel {
                     objectName: "detailMessage"
                     visible: text.length > 0
@@ -318,6 +361,46 @@ Item {
                     wrapMode: Text.NoWrap
                     elide: Text.ElideRight
                     Layout.maximumWidth: 300
+                }
+            }
+        }
+
+        // Légende des deux cartes : couleur, part de l'image, œil pour afficher / masquer chacune.
+        Rectangle {
+            objectName: "zonesLegend"
+            visible: root.hasLinework && (root.detailPainting || detailZones.hasDetail || lineworkZones.hasDetail)
+            x: 8
+            y: 8 + Theme.controlHeight + 12 + 6
+            width: Math.min(parent.width - 16, legendRow.implicitWidth + 20)
+            height: Theme.controlHeight + 4
+            radius: Theme.cardRadius
+            color: Theme.panel
+            border.color: Theme.divider
+            RowLayout {
+                id: legendRow
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.left: parent.left
+                anchors.leftMargin: 10
+                spacing: 4
+                Rectangle { Layout.preferredWidth: 10; Layout.preferredHeight: 10; radius: 5; color: root.detailColor }
+                StudioButton {
+                    objectName: "legendDetail"
+                    text: detailZones.hasDetail ? qsTr("Détail %1 %").arg(detailZones.coveragePercent.toFixed(1)) : qsTr("Détail")
+                    iconName: detailZones.overlayVisible ? "eye" : "eye-off"
+                    quiet: true
+                    tooltip: detailZones.overlayVisible ? qsTr("Masquer la carte des zones de détail (orange)")
+                                                        : qsTr("Afficher la carte des zones de détail (orange)")
+                    onClicked: detailZones.overlayVisible = !detailZones.overlayVisible
+                }
+                Rectangle { Layout.preferredWidth: 10; Layout.preferredHeight: 10; radius: 5; color: root.lineworkColor }
+                StudioButton {
+                    objectName: "legendLinework"
+                    text: lineworkZones.hasDetail ? qsTr("Traits fins %1 %").arg(lineworkZones.coveragePercent.toFixed(1)) : qsTr("Traits fins")
+                    iconName: lineworkZones.overlayVisible ? "eye" : "eye-off"
+                    quiet: true
+                    tooltip: lineworkZones.overlayVisible ? qsTr("Masquer la carte des zones de traits fins (cyan)")
+                                                          : qsTr("Afficher la carte des zones de traits fins (cyan)")
+                    onClicked: lineworkZones.overlayVisible = !lineworkZones.overlayVisible
                 }
             }
         }
