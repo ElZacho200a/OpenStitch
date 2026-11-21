@@ -162,6 +162,8 @@ private slots:
         QVERIFY(exportButton->property("disabledReason")
                     .toString()
                     .contains(QStringLiteral("Prédire et compenser")));
+        auto* reason = findVisual(panel, QStringLiteral("pullExportReason"));
+        QVERIFY(reason && reason->isVisible()); // raison affichée en texte permanent
         auto* strength = findVisual(panel, QStringLiteral("pullCompensationStrength"));
         QVERIFY(strength);
         strength->setProperty("value", 0);

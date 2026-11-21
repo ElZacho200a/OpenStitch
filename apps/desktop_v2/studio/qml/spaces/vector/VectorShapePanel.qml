@@ -46,7 +46,7 @@ ColumnLayout {
     Text {
         objectName: "vectorPrecisionHint"
         Layout.fillWidth: true
-        text: qsTr("Ces réglages ne s'appliquent qu'au prochain « ① Recalculer les formes ».")
+        text: qsTr("Ces réglages ne s'appliquent qu'au prochain « Recalculer les formes » (étape ①).")
         color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize
         wrapMode: Text.WordWrap
     }

@@ -245,7 +245,7 @@ void ToolController::setHint() {
                    ? QStringLiteral("Sélectionnez les formes, puis tracez à main levée un trait "
                                     "qui les traverse pour les découper. Échap : annuler.")
                    : QStringLiteral("Sélectionnez les formes, puis tracez une ligne qui les "
-                                    "traverse pour les découper.");
+                                    "traverse pour les découper. Échap : annuler.");
     } else if (tool_ == QStringLiteral("select.lasso")) {
         text = QStringLiteral("Contourner à main levée les objets à sélectionner (seuls ceux "
                               "entièrement dedans). Alt : aussi les objets touchés. Maj ou Ctrl : "

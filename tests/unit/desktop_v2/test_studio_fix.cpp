@@ -198,6 +198,7 @@ private slots:
         QVERIFY(content);
         auto* go = findVisual(content, QStringLiteral("fixReductionConfirmApply"));
         QVERIFY(go);
+        QVERIFY(go->property("text").toString().startsWith(QStringLiteral("Réduire à ")));
         QVERIFY(QMetaObject::invokeMethod(go, "click"));
         QTRY_COMPARE(rig.session.historySize(), steps + 1);
         QVERIFY(colours(rig.session) != original);

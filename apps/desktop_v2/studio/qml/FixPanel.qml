@@ -136,23 +136,23 @@ Rectangle {
                 wrapMode: Text.WordWrap
                 color: Theme.foreground
                 font.pixelSize: Theme.bodySize
-                text: panel.ready ? qsTr("Réduire de %1 à %2 fils (%3 objets modifiés) ?")
-                                      .arg(panel.controller.threadsBefore).arg(panel.controller.threadsAfter)
-                                      .arg(panel.controller.objectsRecoloured) : ""
+                text: panel.ready ? qsTr("Réduire de %1 à %2 fils ?")
+                                      .arg(panel.controller.threadsBefore).arg(panel.controller.threadsAfter) : ""
             }
             Text {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
                 color: Theme.warning
                 font.pixelSize: Theme.smallSize
-                text: qsTr("Les couleurs et les références seront remplacées. Ctrl+Z annulera cette opération.")
+                text: panel.ready ? qsTr("%1 objets changeront de couleur : les fils retirés sont remplacés par les plus proches. Ctrl+Z annule.")
+                                      .arg(panel.controller.objectsRecoloured) : ""
             }
             RowLayout {
                 Layout.alignment: Qt.AlignRight
                 StudioButton { objectName: "fixReductionCancel"; text: qsTr("Annuler"); onClicked: reductionConfirm.close() }
                 StudioButton {
                     objectName: "fixReductionConfirmApply"
-                    text: qsTr("Appliquer")
+                    text: panel.ready ? qsTr("Réduire à %1 fils").arg(panel.controller.threadsAfter) : qsTr("Réduire")
                     emphasized: true
                     onClicked: {
                         panel.controller.applyReduction()

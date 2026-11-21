@@ -354,9 +354,8 @@ bool InspectorController::selectionHasOpenLine() const {
 
 QString InspectorController::typesNote() const {
     return selectionHasOpenLine()
-               ? QStringLiteral("Ligne ouverte : seuls les types de points qui suivent le tracé "
-                                "sont proposés (pas de remplissage, une ligne n'a pas "
-                                "d'intérieur).")
+               ? QStringLiteral("Ligne ouverte : seuls les points qui suivent le tracé sont "
+                                "proposés (pas de remplissage).")
                : QString();
 }
 
