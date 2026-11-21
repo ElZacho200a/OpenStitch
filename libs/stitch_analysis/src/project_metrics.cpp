@@ -2,7 +2,9 @@
 #include "openstitch/stitch_analysis/project_metrics.hpp"
 
 #include <algorithm>
+#include <climits>
 #include <cmath>
+#include <cstdint>
 #include <numbers>
 #include <set>
 #include <vector>
@@ -178,6 +180,60 @@ ProjectMetrics project_metrics(const document::Project& project,
     }
     m.uncovered_ratio = static_cast<double>(uncovered) / static_cast<double>(targetCount);
     return m;
+}
+
+namespace {
+
+bool small_shape(const document::VectorObject& vec, double max_area_mm2) {
+    {
+        double areaUm2 = 0.0;
+        std::int64_t minX = INT64_MAX, minY = INT64_MAX, maxX = INT64_MIN, maxY = INT64_MIN;
+        for (const auto& set : vec.paths) {
+            areaUm2 += geometry::path_set_area_um2(set);
+            for (const auto& node : set.outer.nodes) {
+                minX = std::min<std::int64_t>(minX, node.pos.x.value);
+                maxX = std::max<std::int64_t>(maxX, node.pos.x.value);
+                minY = std::min<std::int64_t>(minY, node.pos.y.value);
+                maxY = std::max<std::int64_t>(maxY, node.pos.y.value);
+            }
+        }
+        if (minX > maxX) {
+            return false; // forme vide : rien à montrer
+        }
+        if (areaUm2 <= 0.0) {
+            const auto side = static_cast<double>(std::max(maxX - minX, maxY - minY));
+            areaUm2 = side * side;
+        }
+        return areaUm2 / 1e6 < max_area_mm2;
+    }
+}
+
+} // namespace
+
+std::vector<ObjectId> small_object_ids(const document::Project& project, double max_area_mm2) {
+    std::vector<ObjectId> out;
+    for (const auto& obj : project.embroidery_objects) {
+        if (!obj.visible || !project.calqueVisible(obj)) {
+            continue;
+        }
+        const auto* vec = project.findObject(obj.source_vector);
+        if (vec != nullptr && small_shape(*vec, max_area_mm2)) {
+            out.push_back(obj.id);
+        }
+    }
+    return out;
+}
+
+std::vector<ObjectId> small_shape_ids(const document::Project& project, double max_area_mm2) {
+    std::vector<ObjectId> out;
+    for (const auto& vec : project.vector_objects) {
+        const auto* calque = project.calqueOfShape(vec.id);
+        if (vec.visible && (calque == nullptr || calque->visible) &&
+            small_shape(vec, max_area_mm2)) {
+            out.push_back(vec.id);
+        }
+    }
+    return out;
 }
 
 } // namespace openstitch::stitch_analysis

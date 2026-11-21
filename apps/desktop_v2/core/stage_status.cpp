@@ -136,7 +136,8 @@ std::optional<StageId> stageForOperation(std::string_view op) {
         return StageId::Segmentation;
     }
     if (op == "vectorize_segmentation" || op == "remove_small_pieces" || op == "fill_small_holes" ||
-        op == "import_svg" || op == "import_dxf") {
+        op == "absorb_small_objects" || op == "fill_gaps_between" || op == "import_svg" ||
+        op == "import_dxf") {
         return StageId::Vector;
     }
     return StageId::Points;

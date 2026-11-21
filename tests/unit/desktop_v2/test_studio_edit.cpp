@@ -156,6 +156,7 @@ private:
 private slots:
     void initTestCase();
     void selectionCommandsOnRealObjects();
+    void crumbsAreCountedSelectedAndReviewed();
     void objectLockAndMoveToLayerAreUndoable();
     void rotationAroundAChosenCentreIsOneUndoStep();
     void duplicatingALayerCopiesItsObjectsInOneStep();
@@ -241,6 +242,60 @@ void StudioEditTest::selectionCommandsOnRealObjects() {
     QCOMPARE(rig.editor.selectAll(), 4);
     rig.editor.selectNone();
     QVERIFY(rig.session.selection().empty());
+    QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+}
+
+// Miettes : deux traits raccourcis (1,5 mm et 1 mm) passent sous le seuil de 3 mm² ; « toutes »
+// les sélectionne, « suivante » / « précédente » les parcourt une à une en boucle.
+void StudioEditTest::crumbsAreCountedSelectedAndReviewed() {
+    auto project = editFixture();
+    const auto shorten = [&](std::uint64_t objectId, std::int32_t lengthUm) {
+        auto& nodes = project.findObject(ObjectId{objectId - 90})->paths.front().outer.nodes;
+        nodes[1].pos.x = Micrometers{nodes[0].pos.x.value + lengthUm};
+    };
+    shorten(kRed2, 1'500);
+    shorten(kLone, 1'000);
+    Rig rig;
+    open(rig, std::move(project));
+
+    QCOMPARE(rig.editor.smallObjectCount(3.0), 2);
+    QCOMPARE(rig.editor.smallObjectCount(2.0), 1); // trait de 1,5 mm : 2,25 mm²
+    QCOMPARE(rig.editor.smallObjectCount(1.0), 0); // strictement sous le seuil
+    QCOMPARE(rig.editor.smallObjectCount(0.0), 0);
+
+    QCOMPARE(rig.editor.selectSmallObjects(3.0), 2);
+    QCOMPARE(selected(rig), (std::vector<std::uint64_t>{kRed2, kLone}));
+
+    rig.editor.selectNone();
+    QVERIFY(rig.editor.selectNextSmallObject(3.0, true));
+    QCOMPARE(selected(rig), (std::vector<std::uint64_t>{kRed2}));
+    QVERIFY(rig.editor.selectNextSmallObject(3.0, true));
+    QCOMPARE(selected(rig), (std::vector<std::uint64_t>{kLone}));
+    QVERIFY(rig.editor.selectNextSmallObject(3.0, true)); // boucle
+    QCOMPARE(selected(rig), (std::vector<std::uint64_t>{kRed2}));
+    QVERIFY(rig.editor.selectNextSmallObject(3.0, false));
+    QCOMPARE(selected(rig), (std::vector<std::uint64_t>{kLone}));
+
+    // Une miette masquée n'est plus proposée ; sans miette, refus sans changer la sélection.
+    QVERIFY(rig.editor.setObjectVisible(QString::number(kLone), false));
+    settle(rig);
+    QCOMPARE(rig.editor.smallObjectCount(3.0), 1);
+    QCOMPARE(rig.editor.selectSmallObjects(0.5), 0);
+    QVERIFY(!rig.editor.selectNextSmallObject(0.5, true));
+
+    // « Absorber » (même action que la palette) : les deux traits minuscules, sans surface, sont
+    // retirés en une seule étape d'annulation.
+    QVERIFY(rig.editor.setObjectVisible(QString::number(kLone), true));
+    settle(rig);
+    const auto before = steps(rig);
+    QCOMPARE(rig.actions.run(QStringLiteral("shape.absorb_crumbs"),
+                             {{QStringLiteral("max_area_mm2"), QStringLiteral("3")},
+                              {QStringLiteral("priority"), QStringLiteral("same_thread")},
+                              {QStringLiteral("reach_mm"), QStringLiteral("0.2")}}),
+             QString());
+    settle(rig);
+    QCOMPARE(steps(rig), before + 1);
+    QCOMPARE(rig.editor.smallObjectCount(3.0), 0);
     QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
 }
 
