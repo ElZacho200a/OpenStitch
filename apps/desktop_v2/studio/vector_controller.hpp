@@ -20,10 +20,14 @@ class VectorController : public QObject {
     Q_OBJECT
     Q_PROPERTY(QString message READ message NOTIFY messageChanged)
     Q_PROPERTY(int selectedCount READ selectedCount NOTIFY selectionCountChanged)
+    // Union : écart maximal soudé entre formes juxtaposées (mm, 0 à 5 ; défaut 0,3).
+    Q_PROPERTY(double weldMm READ weldMm WRITE setWeldMm NOTIFY weldMmChanged)
 public:
     explicit VectorController(StudioController& studio, QObject* parent = nullptr);
     [[nodiscard]] QString message() const { return message_; }
     [[nodiscard]] int selectedCount() const;
+    [[nodiscard]] double weldMm() const { return weldMm_; }
+    void setWeldMm(double value);
 
     // mode : union | subtract | intersect | exclude ; la DERNIÈRE forme sélectionnée est la
     // principale.
@@ -41,6 +45,7 @@ public:
     Q_INVOKABLE bool smoothContours();
 
 signals:
+    void weldMmChanged();
     void messageChanged();
     void selectionCountChanged();
 
@@ -50,6 +55,7 @@ private:
     void say(const QString& text);
     StudioController& studio_;
     QString message_;
+    double weldMm_{0.3};
 };
 
 } // namespace openstitch::desktop_v2::studio

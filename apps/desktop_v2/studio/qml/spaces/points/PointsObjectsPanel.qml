@@ -11,6 +11,8 @@ ColumnLayout {
     id: panel
     objectName: "pointsObjectsPanel"
     required property var workspace
+    // Canevas recadré sur la miette passée en revue (section Miettes du panneau d'édition).
+    property var canvas: null
     readonly property var spaceCtl: typeof pointsSpace !== "undefined" ? pointsSpace : null
     readonly property int selectedCount: {
         var count = 0
@@ -254,6 +256,7 @@ ColumnLayout {
 
         EditBar {
             id: editActions
+            canvas: panel.canvas
             x: 12
             y: 12
             width: Math.max(0, editActionsScroll.width - 24)

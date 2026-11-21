@@ -44,6 +44,17 @@ StudioCard {
         }
         Op { objectName: "quickUnion"; visible: !bar.nodeMode; text: qsTr("Union"); shortcutLabel: "Ctrl++"; enabled: bar.two; disabledReason: bar.needTwo
              tooltip: qsTr("Réunit les formes sélectionnées en une seule"); onClicked: bar.vec.booleanOp("union") }
+        StudioSpinBox {
+            objectName: "quickWeld"
+            visible: !bar.nodeMode
+            from: 0
+            to: 50
+            value: bar.vec ? Math.round(bar.vec.weldMm * 10) : 3
+            textFromValue: function(v) { return (v / 10).toFixed(1) + " mm" }
+            valueFromText: function(t) { return Math.round(parseFloat(t.replace(",", ".")) * 10) }
+            Accessible.name: qsTr("Soudure de l'union : écart maximal comblé entre formes juxtaposées, en millimètres")
+            onValueModified: if (bar.vec) bar.vec.weldMm = value / 10
+        }
         Op { objectName: "quickSubtract"; visible: !bar.nodeMode; text: qsTr("Soustraire"); shortcutLabel: "Ctrl+-"; enabled: bar.two; disabledReason: bar.needTwo
              tooltip: qsTr("Découpe les formes du dessus dans la plus basse de la pile"); onClicked: bar.vec.booleanOp("subtract") }
         Op { objectName: "quickIntersect"; visible: !bar.nodeMode; text: qsTr("Intersection"); shortcutLabel: "Ctrl+*"; enabled: bar.two; disabledReason: bar.needTwo

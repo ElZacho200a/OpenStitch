@@ -1290,6 +1290,41 @@ void StudioToolsTest::knifeAndBooleans() {
     QCOMPARE(steps(rig), baseSteps);
     QCOMPARE(objects(rig), baseObjects);
     QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+
+    // Soudure de l'union : deux formes séparées d'une fente de 0,2 mm restent deux morceaux sans
+    // soudure, et fusionnent avec la soudure par défaut (0,3 mm). Valeur bornée à [0 ; 5].
+    {
+        const auto c = draw(rig, "draw.rectangle", {20, -10}, {30, 10});
+        const auto d = draw(rig, "draw.rectangle", {30.2, -10}, {40, 10});
+        QVERIFY(c != 0 && d != 0);
+        const auto weldSteps = steps(rig);
+        const auto piecesOfSelection = [&] {
+            const auto& p = rig.session.project();
+            const auto id = rig.session.selection().targets().front().id;
+            const auto* emb = p.findEmbroidery(ObjectId{id});
+            const auto* shape = p.findObject(emb != nullptr ? emb->source_vector : ObjectId{id});
+            return shape != nullptr ? shape->paths.size() : std::size_t{0};
+        };
+        const auto selectPair = [&] {
+            rig.session.selection().replace(
+                {Target{TargetKind::EmbroideryObject, c}, Target{TargetKind::EmbroideryObject, d}});
+        };
+        QCOMPARE(rig.vectors.weldMm(), 0.3);
+        rig.vectors.setWeldMm(0.0);
+        selectPair();
+        QVERIFY(rig.vectors.booleanOp(QStringLiteral("union")));
+        QCOMPARE(piecesOfSelection(), std::size_t{2});
+        QTest::keyClick(rig.window, Qt::Key_Z, Qt::ControlModifier);
+        QCOMPARE(steps(rig), weldSteps);
+        rig.vectors.setWeldMm(0.3);
+        selectPair();
+        QVERIFY(rig.vectors.booleanOp(QStringLiteral("union")));
+        QCOMPARE(piecesOfSelection(), std::size_t{1});
+        QTest::keyClick(rig.window, Qt::Key_Z, Qt::ControlModifier);
+        rig.vectors.setWeldMm(42.0);
+        QCOMPARE(rig.vectors.weldMm(), 5.0);
+        rig.vectors.setWeldMm(0.3);
+    }
 }
 
 // Deux formes sélectionnées, une seule traversée par le trait : elle seule est découpée (l'autre

@@ -557,6 +557,7 @@ Item {
                                         : -1
                 PointsObjectsPanel {
                     workspace: root.workspace
+                    canvas: spaceCanvas
                     anchors.fill: parent
                     anchors.margins: 2
                 }

@@ -114,9 +114,19 @@ bool VectorController::booleanOp(const QString& mode) {
         say(QStringLiteral("Sélectionnez au moins deux formes (la dernière est la principale)"));
         return false;
     }
-    return apply(
-        wrap(R"({"op":"merge","objects":)" + idList(selected) + R"(,"mode":")" + m + "\"}"),
-        kLabels[index], true);
+    const std::string weld =
+        index == 0 ? R"(,"weld_mm":)" + QString::number(weldMm_, 'f', 3).toStdString() : "";
+    return apply(wrap(R"({"op":"merge","objects":)" + idList(selected) + R"(,"mode":")" + m + "\"" +
+                      weld + "}"),
+                 kLabels[index], true);
+}
+
+void VectorController::setWeldMm(double value) {
+    const double clamped = std::clamp(value, 0.0, 5.0);
+    if (clamped != weldMm_) {
+        weldMm_ = clamped;
+        emit weldMmChanged();
+    }
 }
 
 bool VectorController::breakApart() {
