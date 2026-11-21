@@ -176,6 +176,46 @@ ColumnLayout {
         }
     }
 
+    // Nettoyage facultatif entre la vectorisation et la conversion : les miettes laissées par la
+    // vectorisation font des trous et des coupes ; on les fond dans leurs voisines plutôt que de
+    // les supprimer, et on rebouche les vides entre formes. Seuils par défaut (réglables dans
+    // Édition > Miettes et dans la palette).
+    readonly property int crumbCount: { editor.tree; return editor.smallShapeCount(3.0) }
+    Text {
+        objectName: "vectorCleanTitle"
+        Layout.fillWidth: true
+        Layout.topMargin: 4
+        text: panel.crumbCount > 0
+              ? qsTr("Nettoyer (facultatif) : %1 miette(s) de moins de 3 mm²").arg(panel.crumbCount)
+              : qsTr("Nettoyer (facultatif) : aucune miette de moins de 3 mm²")
+        color: panel.crumbCount > 0 ? Theme.warning : Theme.muted
+        font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize; wrapMode: Text.WordWrap
+    }
+    RowLayout {
+        Layout.fillWidth: true
+        spacing: 6
+        StudioButton {
+            objectName: "vectorAbsorbCrumbs"
+            Layout.fillWidth: true
+            Layout.preferredWidth: 1
+            text: qsTr("Absorber les miettes")
+            tooltip: qsTr("Fond chaque petite forme dans sa voisine (même fil d'abord) : plus de trou à sa place. Une étape d'annulation.")
+            enabled: panel.crumbCount > 0 && !studio.busy
+            disabledReason: qsTr("Aucune miette de moins de 3 mm²")
+            onClicked: actions.run("shape.absorb_crumbs", { "max_area_mm2": "3", "priority": "same_thread", "reach_mm": "0.2" })
+        }
+        StudioButton {
+            objectName: "vectorFillGaps"
+            Layout.fillWidth: true
+            Layout.preferredWidth: 1
+            text: qsTr("Reboucher les trous")
+            tooltip: qsTr("Rebouche les petits vides fermés ENTRE formes (moins de 4 mm²). Les trous voulus à l'intérieur d'une forme restent. Une étape d'annulation.")
+            enabled: panel.stage !== null && panel.stage.shapeCount > 1 && !studio.busy
+            disabledReason: qsTr("Il faut au moins deux formes")
+            onClicked: actions.run("shape.fill_gaps_between", { "max_area_mm2": "4", "reach_mm": "0.2" })
+        }
+    }
+
     StudioButton {
         objectName: "vectorConvertButton"
         Layout.fillWidth: true

@@ -80,7 +80,8 @@ int main(int argc, char** argv) {
          QStringLiteral(
              "Recette : ouvre ces panneaux avant --screenshot (liste séparée par des "
              "virgules : vue, fils, analyse, satin, fondu, points, tirage, applique, corriger, "
-             "inspecteur, preferences ; un seul panneau à la fois par groupe, le dernier gagne)"),
+             "inspecteur, edition, preferences ; un seul panneau à la fois par groupe, le dernier "
+             "gagne)"),
          QStringLiteral("liste")});
     parser.addOption({QStringLiteral("theme"),
                       QStringLiteral("Recette : active ce thème (identifiant, ex. bubblegum)"),
@@ -132,6 +133,9 @@ int main(int argc, char** argv) {
     EditController editor(controller);
     FileController files(controller, &actions,
                          QStandardPaths::writableLocation(QStandardPaths::AppDataLocation));
+    if (parser.isSet(QStringLiteral("screenshot"))) {
+        files.deferRecovery(); // une capture ne doit jamais montrer ni consommer l'autosave
+    }
     InspectorController inspector(controller);
     ToolController tools(controller);
     // Journal d'usage local (docs/source/usage-log.md) : jamais envoyé, désactivable.
@@ -254,6 +258,12 @@ int main(int argc, char** argv) {
                         child->setProperty("current", QStringLiteral("image"));
                         break;
                     }
+                }
+            } else if (name == QStringLiteral("edition")) {
+                // Onglet « Édition » de l'espace Vecteur (sélection, miettes, transformations).
+                if (auto* tabs =
+                        window->findChild<QObject*>(QStringLiteral("vectorInspectorTabs"))) {
+                    tabs->setProperty("currentIndex", 1);
                 }
             } else if (name == QStringLiteral("inspecteur")) {
                 window->setProperty("editOpen", true);

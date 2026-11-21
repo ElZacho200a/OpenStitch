@@ -360,6 +360,18 @@ int EditController::smallObjectCount(double maxAreaMm2) const {
     return static_cast<int>(smallObjects(maxAreaMm2).size());
 }
 
+int EditController::smallShapeCount(double maxAreaMm2) const {
+    if (!(maxAreaMm2 > 0.0)) {
+        return 0;
+    }
+    const auto& project = studio_.session().project();
+    int count = 0;
+    for (const auto id : stitch_analysis::small_shape_ids(project, maxAreaMm2)) {
+        count += project.shapeEditLocked(id) ? 0 : 1;
+    }
+    return count;
+}
+
 int EditController::selectSmallObjects(double maxAreaMm2) {
     const auto ids = smallObjects(maxAreaMm2);
     if (ids.empty()) {

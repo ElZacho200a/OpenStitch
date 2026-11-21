@@ -71,6 +71,9 @@ public:
     // n'en sélectionne qu'une, la suivante (ou précédente) après la sélection courante dans
     // l'ordre de couture, en boucle, pour les passer en revue une à une.
     Q_INVOKABLE [[nodiscard]] int smallObjectCount(double maxAreaMm2) const;
+    // Même critère sur les FORMES visibles et éditables, converties en broderie ou non (cible de
+    // « Absorber les miettes » dans l'espace Vecteur).
+    Q_INVOKABLE [[nodiscard]] int smallShapeCount(double maxAreaMm2) const;
     Q_INVOKABLE int selectSmallObjects(double maxAreaMm2);
     Q_INVOKABLE bool selectNextSmallObject(double maxAreaMm2, bool forward = true);
     // Rectangle en mm scène. `crossing` : tout objet touché ; sinon seulement ceux entièrement

@@ -259,6 +259,7 @@ void StudioEditTest::crumbsAreCountedSelectedAndReviewed() {
     open(rig, std::move(project));
 
     QCOMPARE(rig.editor.smallObjectCount(3.0), 2);
+    QCOMPARE(rig.editor.smallShapeCount(3.0), 2);  // mêmes formes, côté Vecteur
     QCOMPARE(rig.editor.smallObjectCount(2.0), 1); // trait de 1,5 mm : 2,25 mm²
     QCOMPARE(rig.editor.smallObjectCount(1.0), 0); // strictement sous le seuil
     QCOMPARE(rig.editor.smallObjectCount(0.0), 0);

@@ -57,7 +57,16 @@ public:
     [[nodiscard]] bool busy() const { return busy_; }
     [[nodiscard]] QString busyLabel() const { return busyLabel_; }
     [[nodiscard]] QString pendingReason() const { return pendingReason_; }
-    [[nodiscard]] bool hasRecovery() const { return recoveryPending_; }
+    [[nodiscard]] bool hasRecovery() const { return recoveryPending_ && !recoveryHidden_; }
+    // Capture/recette : masque la proposition de récupération SANS toucher à la sauvegarde
+    // automatique (le prochain lancement normal la proposera de nouveau). La sauvegarde reste
+    // « en attente » : elle n'est donc ni écrasée ni effacée pendant la session.
+    void deferRecovery() {
+        if (!recoveryHidden_) {
+            recoveryHidden_ = true;
+            emit recoveryChanged();
+        }
+    }
     [[nodiscard]] bool hasLastExport() const { return !lastExport_.empty(); }
     [[nodiscard]] QString lastExportName() const;
     [[nodiscard]] QVariantList machineFormats() const;
@@ -206,6 +215,7 @@ private:
     std::function<void()> pending_;
     bool pendingSaveAs_{false};
     bool recoveryPending_{false};
+    bool recoveryHidden_{false};
     bool wasDirty_{false};
     std::filesystem::path lastExport_;
     std::optional<std::filesystem::path> pendingExport_;
