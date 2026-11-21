@@ -41,8 +41,14 @@ Pour un repli software si la carte ou le contexte GPU n'est pas disponible :
 
     python scripts/ux/verify.py capture --studio build/msvc/apps/desktop_v2/studio/Release/openstitch.exe --project C:/chemin/motif.osp --out build/ux-gate/latest --backend software
 
+Pour inspecter un panneau de fonctionnalité particulier en plus de la vue
+par défaut, préciser l'espace et le panneau (le changement d'espace est
+effectué avant l'ouverture du panneau) :
+
+    python scripts/ux/verify.py capture --studio build/msvc/apps/desktop_v2/studio/Release/openstitch.exe --project C:/chemin/motif.osp --out build/ux-gate/latest --backend native --panel image=inspecteur --panel points=vue
+
 Le script supprime chaque ancienne capture avant son essai, attend chaque processus,
-contrôle l'intégrité CRC/structure du PNG, sa taille attendue et détecte les
+contrôle l'intégrité CRC/structure du PNG, sa taille attendue, la réduction de fenêtre effective et détecte les
 captures identiques pour les espaces différents. Il écrit report.json avec
 le HEAD, une empreinte de l'arbre de travail, les fichiers et leurs SHA256.
 
