@@ -94,7 +94,8 @@ class UXContractTests(unittest.TestCase):
 
             def fake_run(command, **kwargs):
                 shot = Path(command[command.index("--screenshot") + 1])
-                shot.write_bytes(make_png(1440, 900, shot.name.encode()))
+                width, height = map(int, command[command.index("--window-size") + 1].split("x"))
+                shot.write_bytes(make_png(width, height, shot.name.encode()))
                 return subprocess.CompletedProcess(command, 0, "", "")
 
             argv = ["capture", "--studio", str(studio), "--project", str(project),
