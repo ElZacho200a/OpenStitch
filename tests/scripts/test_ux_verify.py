@@ -99,7 +99,9 @@ class UXContractTests(unittest.TestCase):
 
             argv = ["capture", "--studio", str(studio), "--project", str(project),
                     "--out", str(out), "--backend", "software"]
-            with mock.patch.object(ux.subprocess, "run", side_effect=fake_run):
+            with (mock.patch.object(ux.subprocess, "run", side_effect=fake_run),
+                  mock.patch.object(ux, "git_head", return_value="test-head"),
+                  mock.patch.object(ux, "workspace_fingerprint", return_value="test-fingerprint")):
                 self.assertEqual(ux.main(argv), 0)
             report = json.loads((out / "report.json").read_text())
             self.assertEqual(len(report["screenshots"]), 8)
