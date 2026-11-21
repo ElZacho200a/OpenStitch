@@ -151,25 +151,36 @@ Item {
         anchors.margins: Theme.gap
         width: Theme.controlHeight + 16
         height: Math.min(segRail.implicitHeight + 16, root.height - 2 * Theme.gap)
+        // Fenêtre basse : la barre défile au lieu de rogner les derniers outils (pinceaux de zone).
+        Flickable {
+            id: segRailFlick
+            objectName: "segmentationRailFlick"
+            anchors.fill: parent
+            anchors.topMargin: 8
+            anchors.bottomMargin: 8
+            clip: true
+            contentWidth: width
+            contentHeight: segRail.implicitHeight
+            boundsBehavior: Flickable.StopAtBounds
+            interactive: contentHeight > height
         CanvasToolRail {
             id: segRail
-            anchors.top: parent.top
             anchors.horizontalCenter: parent.horizontalCenter
-            anchors.topMargin: 8
             canvas: spaceCanvas
             workspaceActive: root.active
             toolPrefix: "regionTool_"
             entries: [
                 { id: "brush", icon: "brush", label: qsTr("Pinceau de frontière : peindre la région choisie"), shortcut: "U", group: "regions" },
                 { id: "erase", icon: "eraser", label: qsTr("Gomme : retirer de la région choisie"), shortcut: "Maj+U", group: "regions" },
-                { id: "detail", icon: "detail", label: qsTr("Zones de détail : peindre où garder les petites formes"), shortcut: "Q", group: "detail", enabled: root.hasDetail },
-                { id: "detailErase", icon: "detail-erase", label: qsTr("Gomme de détail : retirer une zone de détail"), shortcut: "Maj+Q", group: "detail", enabled: root.hasDetail },
-                { id: "linework", icon: "linework", label: qsTr("Zones de traits fins : peindre où détecter plus finement les traits"), shortcut: "W", group: "linework", enabled: root.hasLinework },
-                { id: "lineworkErase", icon: "linework-erase", label: qsTr("Gomme de traits fins : retirer une zone de traits fins"), shortcut: "Maj+W", group: "linework", enabled: root.hasLinework }
+                { id: "detail", icon: "detail", label: qsTr("Zones de détail : peindre où garder les petites formes"), shortcut: "Q", group: "detail", enabled: root.hasDetail, caption: qsTr("Détail"), captionColor: Theme.zoneDetail, disabledReason: qsTr("indisponible sans image source") },
+                { id: "detailErase", icon: "detail-erase", label: qsTr("Gomme de détail : retirer une zone de détail"), shortcut: "Maj+Q", group: "detail", enabled: root.hasDetail, caption: qsTr("Gomme"), captionColor: Theme.zoneDetail, disabledReason: qsTr("indisponible sans image source") },
+                { id: "linework", icon: "linework", label: qsTr("Zones de traits fins : peindre où détecter plus finement les traits"), shortcut: "W", group: "linework", enabled: root.hasLinework, caption: qsTr("Traits"), captionColor: Theme.zoneLinework, disabledReason: qsTr("indisponible sans image source") },
+                { id: "lineworkErase", icon: "linework-erase", label: qsTr("Gomme de traits fins : retirer une zone de traits fins"), shortcut: "Maj+W", group: "linework", enabled: root.hasLinework, caption: qsTr("Gomme"), captionColor: Theme.zoneLinework, disabledReason: qsTr("indisponible sans image source") }
             ]
             activeTool: root.activeToolId
             onToolTriggered: id => root.activateTool(id)
             onFitRequested: spaceCanvas.fitDesign()
+        }
         }
     }
 

@@ -9,7 +9,9 @@ import "."
 // barre d'édition ou le menu contextuel. Ordre fixe partout : Sélection et Main, puis les outils de
 // l'espace séparés par groupe, puis Ajuster.
 //
-// L'espace fournit `entries` ([{ id, icon, label, shortcut, group }]), l'outil actif (`activeTool`,
+// L'espace fournit `entries` ([{ id, icon, label, shortcut, group, caption?, captionColor?,
+// disabledReason? }]) ; `caption` : étiquette courte visible sous l'icône (outils qu'une icône seule
+// ne distingue pas), l'outil actif (`activeTool`,
 // "" = sélection) et réagit à `toolTriggered(id)` (id "" = retour à la sélection). Recliquer
 // l'outil actif ou son raccourci revient à la sélection. Les raccourcis sont des `Shortcut` QML
 // actifs seulement quand l'espace est visible (`workspaceActive`).
@@ -92,12 +94,25 @@ ColumnLayout {
                 checkable: true
                 checked: !rail.panning && rail.activeTool === entry.modelData.id
                 enabled: entry.modelData.enabled === undefined || entry.modelData.enabled
-                tooltip: entry.modelData.label
+                tooltip: enabled || !entry.modelData.disabledReason
+                         ? entry.modelData.label
+                         : entry.modelData.label + " — " + entry.modelData.disabledReason
                 shortcutLabel: entry.modelData.shortcut || ""
                 Layout.alignment: Qt.AlignHCenter
                 Accessible.name: entry.modelData.label
                 Accessible.description: checked ? qsTr("Outil actif") : entry.modelData.label
                 onClicked: rail.trigger(entry.modelData.id)
+            }
+            Text {
+                objectName: rail.toolPrefix + entry.modelData.id + "_caption"
+                visible: !!entry.modelData.caption
+                text: entry.modelData.caption || ""
+                Layout.alignment: Qt.AlignHCenter
+                Layout.topMargin: -4
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.captionSize - 1
+                color: entry.modelData.captionColor || Theme.muted
+                opacity: entry.modelData.enabled === false ? 0.5 : 1.0
             }
         }
     }

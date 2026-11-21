@@ -15,6 +15,7 @@
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QtTest/QtTest>
+#include <utility>
 
 #include <cmath>
 #include <filesystem>
@@ -1114,6 +1115,28 @@ private slots:
         QVERIFY(fades() >= 1);
         rig.session.undo();
         QCOMPARE(fades(), 0);
+        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+    }
+
+    // Découvrabilité (revue UX) : les outils de zone portent une étiquette visible, et la barre
+    // défile au lieu de rogner ses derniers outils sur une fenêtre basse.
+    void zoneToolsCarryVisibleCaptionsAndTheRailScrolls() {
+        Rig rig;
+        open(rig);
+        for (const auto& [id, text] : {std::pair{"regionTool_detail_caption", "Détail"},
+                                       {"regionTool_linework_caption", "Traits"},
+                                       {"regionTool_lineworkErase_caption", "Gomme"}}) {
+            QObject* caption = rig.named(id);
+            QVERIFY2(caption != nullptr, id);
+            QVERIFY(caption->property("visible").toBool());
+            QCOMPARE(caption->property("text").toString(), QString::fromUtf8(text));
+        }
+        QObject* brushCaption = rig.named("regionTool_brush_caption");
+        QVERIFY(brushCaption != nullptr);
+        QVERIFY(!brushCaption->property("visible").toBool());
+        QObject* flick = rig.named("segmentationRailFlick");
+        QVERIFY(flick != nullptr);
+        QVERIFY(flick->property("contentHeight").toDouble() > 0.0);
         QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
     }
 
