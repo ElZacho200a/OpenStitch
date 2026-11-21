@@ -184,6 +184,16 @@ std::size_t remove_thin_parts(Segmentation& seg, int min_width_px);
                                                int min_width_px,
                                                std::array<std::uint8_t, 3>* mean_rgb = nullptr);
 
+// Traits par CONTRASTE LOCAL (lignes ouvertes, lot 2) : un pixel opaque appartient à un trait s'il
+// est plus sombre d'au moins `min_contrast` (en clarté CIELAB L*) que la fermeture morphologique
+// de l'image (disque de diamètre `min_width_px`), c'est-à-dire que son voisinage clair le plus
+// proche — le « chapeau haut-de-forme noir ». Indépendant de la couleur absolue : un barreau bleu
+// marine sur un fond crème, un treillis brun sur du beige, un hauban noir sur le ciel. Les
+// structures plus larges que `min_width_px` (aplats, nuages) ne sont jamais prises. Les pixels
+// transparents (alpha < 128) ne comptent ni comme trait ni comme fond clair. Déterministe.
+[[nodiscard]] std::vector<char> contrast_thin_mask(const image::Image& img, int min_width_px,
+                                                   double min_contrast);
+
 // Rend les pixels du masque à leurs régions VOISINES (vote 4-connexe, passes synchrones, jamais
 // la région d'origine du pixel). Si `leftover_to_background`, un pixel sans voisine passe au fond
 // (label 0) ; sinon il garde son label. Recompte les pixels ; une région vidée disparaît.

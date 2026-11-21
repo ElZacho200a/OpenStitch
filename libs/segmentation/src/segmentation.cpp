@@ -1047,6 +1047,77 @@ std::vector<char> dark_thin_mask(const image::Image& img, double max_lightness, 
     return mask;
 }
 
+std::vector<char> contrast_thin_mask(const image::Image& img, int min_width_px,
+                                     double min_contrast) {
+    if (min_width_px < 2 || min_contrast <= 0.0 || img.width <= 0 || img.height <= 0 ||
+        img.rgba.size() < static_cast<std::size_t>(img.width) * img.height * 4) {
+        return {};
+    }
+    const int w = img.width;
+    const int h = img.height;
+    // L* sur 0..255 (x 2,55). Un pixel transparent vaut 0 pour la fermeture (il n'éclaire pas son
+    // voisinage) et est exclu du masque.
+    cv::Mat light(h, w, CV_8U, cv::Scalar(0));
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            const std::uint8_t* p =
+                &img.rgba[(static_cast<std::size_t>(y) * w + static_cast<std::size_t>(x)) * 4];
+            if (p[3] >= 128) {
+                light.at<std::uint8_t>(y, x) = static_cast<std::uint8_t>(std::lround(
+                    std::clamp(cielab_lightness({p[0], p[1], p[2]}) * 2.55, 0.0, 255.0)));
+            }
+        }
+    }
+    const cv::Mat kernel =
+        cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(min_width_px, min_width_px));
+    cv::Mat hat;
+    {
+        const auto bytes = light.total();
+        const pipeline_profile::Scope profile(pipeline_profile::Stage::Morphology,
+                                              bytes + kernel.total(), bytes, 1);
+        cv::morphologyEx(light, hat, cv::MORPH_BLACKHAT, kernel);
+    }
+    const auto threshold = static_cast<int>(std::lround(min_contrast * 2.55));
+    // Un trait est clair des DEUX côtés : dans au moins une des quatre directions (horizontale,
+    // verticale, deux diagonales), les deux pixels à distance `reach` de part et d'autre sont plus
+    // clairs que lui d'au moins la moitié du seuil. Le bord d'un aplat sombre contre un clair
+    // (crête d'une vague, nuage dentelé) ne l'est que d'un côté : écarté.
+    const int reach = std::max(2, min_width_px / 2 + 1);
+    const int half = std::max(1, threshold / 2);
+    constexpr std::array<std::array<int, 2>, 4> kDirs{{{1, 0}, {0, 1}, {1, 1}, {1, -1}}};
+    std::vector<char> mask(static_cast<std::size_t>(w) * h, 0);
+    // Une tâche par ligne : lit `light`/`hat` constants, écrit ses seuls octets.
+    parallel_for(static_cast<std::size_t>(h), [&](std::size_t row) {
+        const int y = static_cast<int>(row);
+        for (int x = 0; x < w; ++x) {
+            const std::uint8_t* p =
+                &img.rgba[(static_cast<std::size_t>(y) * w + static_cast<std::size_t>(x)) * 4];
+            if (p[3] < 128 || hat.at<std::uint8_t>(y, x) < threshold) {
+                continue;
+            }
+            const int centre = light.at<std::uint8_t>(y, x);
+            bool ridge = false;
+            for (const auto& d : kDirs) {
+                const int x1 = x + d[0] * reach;
+                const int y1 = y + d[1] * reach;
+                const int x2 = x - d[0] * reach;
+                const int y2 = y - d[1] * reach;
+                if (x1 < 0 || x1 >= w || x2 < 0 || x2 >= w || y1 < 0 || y1 >= h || y2 < 0 ||
+                    y2 >= h) {
+                    continue;
+                }
+                if (light.at<std::uint8_t>(y1, x1) - centre >= half &&
+                    light.at<std::uint8_t>(y2, x2) - centre >= half) {
+                    ridge = true;
+                    break;
+                }
+            }
+            mask[static_cast<std::size_t>(y) * w + x] = ridge ? 1 : 0;
+        }
+    });
+    return mask;
+}
+
 std::size_t remove_thin_parts(Segmentation& seg, int min_width_px) {
     if (min_width_px < 2 || seg.width <= 0 || seg.height <= 0) {
         return 0;
