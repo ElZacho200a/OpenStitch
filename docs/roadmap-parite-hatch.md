@@ -1776,6 +1776,23 @@ libre, colonne satin manuelle, ligne de coupe satin ; édition de nœuds
 - État OpenStitch : ligne de coupe **satin** uniquement (`DrawSatinCutLine`).
 - À faire : couteau général sur toute forme vectorielle (`geometry/cut.hpp`
   existe), les deux morceaux gardent le type de broderie.
+- Correctif (2026-11-21) : le couteau Studio refusait tout le geste dès qu'une seule forme de la
+  sélection multiple n'était pas traversée par le trait (lot `project_ops` transactionnel : un seul
+  `split`/`split_path` refusé annulait aussi les coupes déjà réussies sur les autres formes
+  sélectionnées). `ToolController` filtre désormais, par forme, celles que le trait traverse
+  vraiment (`previewBatch`, aperçu sans mutation) avant de construire le lot final : plusieurs
+  zones vectorielles se découpent en une seule étape d'annulation, celles non traversées restent
+  intactes.
+- Correctif (2026-11-21) : la sélection après une coupe ne redevenait qu'**une seule pièce par
+  forme coupée** (le champ JSON `"id"`, priorisé à tort sur `"created"`/`"vector_ids"` dans
+  `createdObjectIds`), jamais tous les morceaux produits — pas de vraie sélection multiple, et
+  « Forme découpée en N morceaux » comptait aussi faux. `createdObjectIds` (`edit_batch.cpp`)
+  regroupe désormais, par opération, tous les morceaux brodés (`created`) ou, à défaut, tous les
+  morceaux pas encore convertis (`vector_ids`), plus celui qui garde l'identité d'origine
+  (`original`) ; même correction pour « Séparer les morceaux » (`break_apart`, même schéma de
+  résultat). Non-régression : `StudioToolsTest::knifeCutsOnlySelectedShapesTheLineCrosses`
+  (vérifie le nombre exact de pièces sélectionnées, confirmée en échec sur l'ancien code pour les
+  deux correctifs ci-dessus) ; suite `test_desktop_v2_core` (duplication, 365 cas) non régressée.
 
 ### HP-VEC-005 — Supprimer / remplir les trous [P1] — ◐ Partiel (2026-10-13, en PR)
 - Livré (2026-10-25) : Alt + double-clic dans un trou (`RemoveHoleCommand`). Reste : menu, `interaction_map`.
@@ -4682,6 +4699,7 @@ ouvrant le lot (§0.1).
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-11-21 | Claude (revert : atténuation des formes hors du calque actif) | Roadmap : HP-OBJ-024 revient à « pas faite » pour l'atténuation visuelle (seconde amélioration recommandée, voir entrée du 2026-11-20 juste dessous). Essayée au canevas Vecteurs puis corrigée une fois (résolution du calque actif, prémultiplication alpha), mais le rendu visuel (carrés blancs sur les calques) reste jugé inacceptable par l'utilisateur à l'essai réel. Revert complet (`git revert` des deux commits) plutôt qu'un nouveau correctif visuel non vérifié ; `StudioInvalidation::dimmed`, `GpuCanvas::setDimmedShapeIds` et le calcul dans `VectorSpaceController::refresh` retirés. Leçon : vérifier par capture d'écran de l'app réelle avant de déclarer un rendu correct, pas seulement par les tests QTest (qui ne comparent pas l'image). |
 | 2026-11-20 | Claude (Studio : atténuation des formes hors du calque actif) | Roadmap : HP-OBJ-024 inchangé (ergonomie, précisé). Espace Vecteurs : les formes hors du calque actif reçoivent un lavis translucide au rendu (canevas GPU et repli logiciel), sans retrianguler ni invalider la sélection : nouveau domaine d'invalidation `StudioInvalidation::dimmed`, `GpuCanvas::setDimmedShapeIds`, calculé dans `VectorSpaceController::refresh` depuis `Project::calqueOfShape`. Le canal de rendu est générique (bounds de formes vectorielles ou d'objets de broderie) mais **Points et Segmentation ne sont pas câblés** (`PointsSpaceController` n'a pas accès au `GpuCanvas` ; Segmentation n'a pas d'identifiant de forme adressable de la même façon) : lot suivant. Pas de nouveau test dédié (vérifié par la suite existante `test_desktop_v2_studio_space_vector`, inchangée, 23/24 passent — l'échec restant est la régression amont déjà documentée). |
 | 2026-11-20 | Claude (Studio : confirmation de suppression de calque) | Roadmap : HP-OBJ-024 inchangé (ergonomie, précisé). Supprimer un calque qui porte encore des objets (menu contextuel de `ObjectTree.qml`) pose désormais une attente de confirmation (bandeau « Supprimer tout de même » / « Annuler » au lieu d'une suppression silencieuse qui fusionnait les objets dans le calque voisin et changeait l'ordre de couture) ; un calque vide se supprime toujours directement. `root.pendingDeleteLayer` dans le socle commun, partagé par les 4 canevas. Test QTest `layerDeleteRequiresConfirmationWhenNotEmpty`. L'atténuation visuelle des calques non actifs (seconde amélioration recommandée) n'est pas faite. |
 | 2026-11-20 | Claude (ponts cachés par défaut) | **HP-SEQ-006.a ◐** (précisé), **HP-SEQ-006 ◐** (mesure et nouveaux manques). Mesure sur 13 projets réels : 5 271 coupes sans ponts, 3 764 avec (−29 %), 3 072 avec la surface de même fil ; auto-numérisation neuve : −2 %. Ponts cachés activés par défaut pour tout nouveau projet (`HiddenTravel::enabled`, `DigitizeSettings::hidden_travel`) ; un projet enregistré garde son réglage et son fichier machine. Studio : case « Réduire les coupes » de l'export machine, case `auto_join` rebaptisée (son ancien libellé décrivait les ponts). CLI `--no-hidden-travel`. Tests Catch2 (persistance, usine, options d'export), QTest (fenêtre d'export), contrat CLI. Validation machine HP-PHYS-001 à faire. |
