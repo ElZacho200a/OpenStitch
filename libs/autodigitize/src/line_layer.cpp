@@ -233,103 +233,132 @@ void drop_stubby_components(std::vector<char>& m, int w, int h, double min_elong
 }
 
 // Traits par contraste local : chaque trait garde SA couleur (barreaux marine, treillis brun,
-// haubans noirs). Composantes 8-connexes en ordre de lecture ; couleur = moyenne de la moitié la
-// plus sombre de ses pixels (le cœur du trait, pas son anti-crénelage), calée sur la couleur de
-// région la plus proche de la palette (aucun fil nouveau). Une région par couleur, numérotée dans
-// l'ordre de première apparition. Déterministe.
+// haubans noirs), y compris dans un RÉSEAU connexe (rambarde marine soudée à une lanterne brune et
+// à un mât) : la couleur est LOCALE, pas par composante. Pour chaque pixel de trait : moyenne de la
+// moitié la plus sombre des pixels de trait de sa fenêtre (le cœur du trait, pas son
+// anti-crénelage), calée sur la couleur de région la plus proche de la palette (aucun fil
+// nouveau) ; puis un vote majoritaire dans la même fenêtre efface les confettis. Une région par
+// couleur, numérotée dans l'ordre de première apparition. Déterministe.
 segmentation::Segmentation colour_strokes(const std::vector<char>& stitch,
                                           const image::Image& source,
                                           const segmentation::Segmentation& seg) {
+    constexpr int kRadius = 3;
     const int w = seg.width;
     const int h = seg.height;
     segmentation::Segmentation out;
     out.width = w;
     out.height = h;
     out.labels.assign(stitch.size(), 0);
-    std::vector<char> seen(stitch.size(), 0);
-    std::vector<std::size_t> stack;
-    std::vector<std::size_t> comp;
-    std::vector<std::pair<double, std::size_t>> byLight;
-    for (std::size_t start = 0; start < stitch.size(); ++start) {
-        if (stitch[start] == 0 || seen[start] != 0) {
-            continue;
+    std::vector<std::array<std::uint8_t, 3>> palette;
+    for (const auto& slot : seg.region_slots) {
+        if (slot) {
+            palette.push_back(slot->rgb);
         }
-        comp.clear();
-        stack.assign(1, start);
-        seen[start] = 1;
-        while (!stack.empty()) {
-            const std::size_t cur = stack.back();
-            stack.pop_back();
-            comp.push_back(cur);
-            const int cx = static_cast<int>(cur % static_cast<std::size_t>(w));
-            const int cy = static_cast<int>(cur / static_cast<std::size_t>(w));
-            for (int dy = -1; dy <= 1; ++dy) {
-                for (int dx = -1; dx <= 1; ++dx) {
-                    const int nx = cx + dx;
-                    const int ny = cy + dy;
+    }
+    if (palette.empty()) {
+        return out;
+    }
+    std::vector<double> light(stitch.size(), 0.0);
+    for (std::size_t i = 0; i < stitch.size(); ++i) {
+        if (stitch[i] != 0) {
+            const std::uint8_t* px = &source.rgba[i * 4];
+            light[i] = cielab_lightness({px[0], px[1], px[2]});
+        }
+    }
+    // 1. Couleur de palette locale de chaque pixel de trait (index + 1 ; 0 = pas un trait).
+    std::vector<std::uint16_t> local(stitch.size(), 0);
+    parallel_for(static_cast<std::size_t>(h), [&](std::size_t row) {
+        const int y = static_cast<int>(row);
+        std::vector<std::pair<double, std::size_t>> byLight;
+        for (int x = 0; x < w; ++x) {
+            const std::size_t i = static_cast<std::size_t>(y) * w + x;
+            if (stitch[i] == 0) {
+                continue;
+            }
+            byLight.clear();
+            for (int dy = -kRadius; dy <= kRadius; ++dy) {
+                for (int dx = -kRadius; dx <= kRadius; ++dx) {
+                    const int nx = x + dx;
+                    const int ny = y + dy;
                     if (nx < 0 || nx >= w || ny < 0 || ny >= h) {
                         continue;
                     }
                     const std::size_t ni = static_cast<std::size_t>(ny) * w + nx;
-                    if (stitch[ni] != 0 && seen[ni] == 0) {
-                        seen[ni] = 1;
-                        stack.push_back(ni);
+                    if (stitch[ni] != 0) {
+                        byLight.emplace_back(light[ni], ni);
                     }
                 }
             }
+            std::sort(byLight.begin(), byLight.end());
+            const std::size_t core = std::max<std::size_t>(1, byLight.size() / 2);
+            int sum[3] = {0, 0, 0};
+            for (std::size_t k = 0; k < core; ++k) {
+                const std::uint8_t* px = &source.rgba[byLight[k].second * 4];
+                for (int c = 0; c < 3; ++c) {
+                    sum[c] += px[c];
+                }
+            }
+            int best = std::numeric_limits<int>::max();
+            std::size_t bestIndex = 0;
+            for (std::size_t p = 0; p < palette.size(); ++p) {
+                int d = 0;
+                for (std::size_t c = 0; c < 3; ++c) {
+                    const int diff = int{palette[p][c]} - sum[c] / static_cast<int>(core);
+                    d += diff * diff;
+                }
+                if (d < best) {
+                    best = d;
+                    bestIndex = p;
+                }
+            }
+            local[i] = static_cast<std::uint16_t>(bestIndex + 1);
         }
-        byLight.clear();
-        for (const std::size_t i : comp) {
-            const std::uint8_t* px = &source.rgba[i * 4];
-            byLight.emplace_back(cielab_lightness({px[0], px[1], px[2]}), i);
-        }
-        std::sort(byLight.begin(), byLight.end());
-        const std::size_t core = std::max<std::size_t>(1, byLight.size() / 2);
-        std::uint64_t sum[3] = {0, 0, 0};
-        for (std::size_t k = 0; k < core; ++k) {
-            const std::uint8_t* px = &source.rgba[byLight[k].second * 4];
-            sum[0] += px[0];
-            sum[1] += px[1];
-            sum[2] += px[2];
-        }
-        std::array<std::uint8_t, 3> rgb{static_cast<std::uint8_t>(sum[0] / core),
-                                        static_cast<std::uint8_t>(sum[1] / core),
-                                        static_cast<std::uint8_t>(sum[2] / core)};
-        int best = std::numeric_limits<int>::max();
-        std::array<std::uint8_t, 3> snapped = rgb;
-        for (const auto& slot : seg.region_slots) {
-            if (!slot) {
+    });
+    // 2. Vote majoritaire dans la fenêtre (égalité : le plus petit index) : pas de confettis.
+    std::vector<std::uint16_t> voted(stitch.size(), 0);
+    parallel_for(static_cast<std::size_t>(h), [&](std::size_t row) {
+        const int y = static_cast<int>(row);
+        std::vector<int> votes(palette.size() + 1, 0);
+        for (int x = 0; x < w; ++x) {
+            const std::size_t i = static_cast<std::size_t>(y) * w + x;
+            if (local[i] == 0) {
                 continue;
             }
-            int d = 0;
-            for (std::size_t c = 0; c < 3; ++c) {
-                const int diff = int{slot->rgb[c]} - int{rgb[c]};
-                d += diff * diff;
+            std::fill(votes.begin(), votes.end(), 0);
+            for (int dy = -kRadius; dy <= kRadius; ++dy) {
+                for (int dx = -kRadius; dx <= kRadius; ++dx) {
+                    const int nx = x + dx;
+                    const int ny = y + dy;
+                    if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
+                        ++votes[local[static_cast<std::size_t>(ny) * w + nx]];
+                    }
+                }
             }
-            if (d < best) {
-                best = d;
-                snapped = slot->rgb;
+            std::size_t best = local[i];
+            for (std::size_t p = 1; p < votes.size(); ++p) {
+                if (votes[p] > votes[best]) {
+                    best = p;
+                }
             }
+            voted[i] = static_cast<std::uint16_t>(best);
         }
-        std::uint32_t label = 0;
-        for (const auto& slot : out.region_slots) {
-            if (slot && slot->rgb == snapped) {
-                label = static_cast<std::uint32_t>(slot->id.value);
-                break;
-            }
+    });
+    // 3. Une région par couleur, dans l'ordre de première apparition.
+    std::vector<std::uint32_t> labelOf(palette.size() + 1, 0);
+    for (std::size_t i = 0; i < voted.size(); ++i) {
+        if (voted[i] == 0) {
+            continue;
         }
+        std::uint32_t& label = labelOf[voted[i]];
         if (label == 0) {
             segmentation::Region r;
             label = static_cast<std::uint32_t>(out.region_slots.size() + 1);
             r.id = RegionId{label};
-            r.rgb = snapped;
+            r.rgb = palette[voted[i] - 1];
             out.region_slots.push_back(r);
         }
-        auto& region = *out.region_slots[label - 1];
-        region.pixel_count += comp.size();
-        for (const std::size_t i : comp) {
-            out.labels[i] = label;
-        }
+        out.labels[i] = label;
+        ++out.region_slots[label - 1]->pixel_count;
     }
     return out;
 }
@@ -372,6 +401,22 @@ LineworkPlan prepare_linework(const segmentation::Segmentation& seg, const image
     if (lines.local_contrast > 0.0) {
         mask = segmentation::contrast_thin_mask(source, diameter, lines.local_contrast);
         drop_stubby_components(mask, seg.width, seg.height, kMinElongation);
+        // Zones « traits fins » : seconde détection, renforcée, limitée aux pixels peints.
+        if (lines.zone_mask != nullptr && lines.zone_mask->matches(seg.width, seg.height) &&
+            lines.zone_mask->any_detail() && lines.zone_contrast > 0.0) {
+            const int zoneDiameter =
+                std::max(2, static_cast<int>(std::lround(lines.zone_width_mm / px_mm)));
+            auto zone = segmentation::contrast_thin_mask(source, zoneDiameter, lines.zone_contrast);
+            for (std::size_t i = 0; i < zone.size(); ++i) {
+                if (lines.zone_mask->weights[i] < 128) {
+                    zone[i] = 0;
+                }
+            }
+            drop_stubby_components(zone, seg.width, seg.height, lines.zone_min_elongation);
+            for (std::size_t i = 0; i < zone.size() && i < mask.size(); ++i) {
+                mask[i] = static_cast<char>(mask[i] != 0 || zone[i] != 0 ? 1 : 0);
+            }
+        }
         std::uint64_t sum[3] = {0, 0, 0};
         std::uint64_t count = 0;
         for (std::size_t i = 0; i < mask.size(); ++i) {

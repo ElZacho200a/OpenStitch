@@ -19,6 +19,9 @@ namespace openstitch::desktop_v2::studio {
 // de la segmentation, et affine la vectorisation de ces régions. Un trait = UNE commande annulable.
 // Le masque se peint avant comme après la segmentation : il ne s'applique qu'à la suivante.
 // Aucune logique métier ici : conversion mm -> pixel, incrustation, messages.
+// Une seconde instance (`MaskKind::Linework`) pilote les zones « traits fins » : même pinceau,
+// masque distinct (incrustation cyan `image://prepare/linework`), appliqué à la mise à jour des
+// formes (détection des traits renforcée dans la zone) et non à la segmentation.
 class DetailZoneController : public QObject {
     Q_OBJECT
     // "" (hors outil) | "paint" | "erase".
@@ -31,10 +34,18 @@ class DetailZoneController : public QObject {
     Q_PROPERTY(int overlayRevision READ overlayRevision NOTIFY maskChanged)
     // Le masque a changé depuis la dernière segmentation : la relancer l'applique.
     Q_PROPERTY(bool needsSegmentation READ needsSegmentation NOTIFY maskChanged)
+    // "detail" | "linework" : quelle carte ce contrôleur pilote (légende, libellés, couleur).
+    Q_PROPERTY(QString kind READ kindName CONSTANT)
+    // Incrustation affichée sur le canevas ; peindre la rend toujours visible.
+    Q_PROPERTY(bool overlayVisible READ overlayVisible WRITE setOverlayVisible NOTIFY
+                   overlayVisibleChanged)
+    // Traits fins : la carte a changé depuis la dernière mise à jour des formes (qui l'applique).
+    Q_PROPERTY(bool needsShapesUpdate READ needsShapesUpdate NOTIFY maskChanged)
     Q_PROPERTY(QString message READ message NOTIFY messageChanged)
     Q_PROPERTY(bool messageIsError READ messageIsError NOTIFY messageChanged)
 public:
     DetailZoneController(StudioController& studio, ImageController& images,
+                         document::MaskKind kind = document::MaskKind::Detail,
                          QObject* parent = nullptr);
     ~DetailZoneController() override;
 
@@ -45,7 +56,19 @@ public:
     [[nodiscard]] bool hasDetail() const { return coverage_ > 0.0; }
     [[nodiscard]] double coveragePercent() const { return coverage_; }
     [[nodiscard]] int overlayRevision() const { return overlayRevision_; }
-    [[nodiscard]] bool needsSegmentation() const { return dirty_ && hasDetail(); }
+    // Les zones de traits fins n'agissent pas sur la segmentation : jamais à relancer pour elles.
+    [[nodiscard]] bool needsSegmentation() const {
+        return kind_ == document::MaskKind::Detail && dirty_ && hasDetail();
+    }
+    [[nodiscard]] QString kindName() const {
+        return kind_ == document::MaskKind::Linework ? QStringLiteral("linework")
+                                                     : QStringLiteral("detail");
+    }
+    [[nodiscard]] bool overlayVisible() const { return overlayVisible_; }
+    void setOverlayVisible(bool visible);
+    [[nodiscard]] bool needsShapesUpdate() const {
+        return kind_ == document::MaskKind::Linework && dirty_;
+    }
     [[nodiscard]] QString message() const { return message_; }
     [[nodiscard]] bool messageIsError() const { return messageIsError_; }
 
@@ -55,9 +78,13 @@ public:
     // Retourne "" si fait, sinon le refus.
     Q_INVOKABLE QString paintStroke(const QVariantList& scenePointsMm);
     Q_INVOKABLE QString clearAll();
+    // La mise à jour des formes vient d'avoir lieu (signal `regenerated` du RegionController,
+    // relayé par le QML) : la carte de traits fins est appliquée, plus rien à relancer.
+    Q_INVOKABLE void markShapesUpdated();
 
 signals:
     void toolChanged();
+    void overlayVisibleChanged();
     void radiusChanged();
     void maskChanged();
     void messageChanged();
@@ -69,6 +96,7 @@ private:
 
     StudioController& studio_;
     ImageController& images_;
+    document::MaskKind kind_;
     DocumentSession::Token token_{};
     QTimer refreshTimer_;
     QString tool_;
@@ -81,6 +109,7 @@ private:
     int shownWidth_{0};
     int shownHeight_{0};
     bool dirty_{false};
+    bool overlayVisible_{true};
     QString message_;
     bool messageIsError_{false};
 };

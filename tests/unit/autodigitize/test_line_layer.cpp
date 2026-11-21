@@ -720,3 +720,42 @@ TEST_CASE("couche de traits : contraste local, chaque trait garde sa couleur") {
     const auto again = prepare_linework(*seg, img, Millimeters{0.25}, lines);
     CHECK(again.strokes.labels == plan.strokes.labels);
 }
+
+TEST_CASE("couche de traits : zone de traits fins, detection renforcee dans la zone seulement") {
+    // Deux traits pâles (contraste L* ~9, sous le seuil ordinaire de 12) sur fond crème, plus un
+    // trait franc qui sert d'ancrage à la segmentation. Seul le trait pâle peint en zone est pris.
+    image::Image img;
+    img.width = 120;
+    img.height = 60;
+    img.rgba.assign(static_cast<std::size_t>(img.width) * img.height * 4, 0);
+    fill_rect(img, 0, 0, 120, 60, 235, 222, 196);
+    fill_rect(img, 5, 10, 55, 12, 205, 192, 166);   // trait pâle, dans la zone
+    fill_rect(img, 65, 10, 115, 12, 205, 192, 166); // trait pâle, hors zone
+    fill_rect(img, 5, 40, 115, 42, 23, 43, 75);     // trait marine franc
+    const auto seg = segmentation::segment(img, {.max_colors = 4, .min_region_px = 4});
+    REQUIRE(seg.has_value());
+    LineLayerOptions lines;
+    lines.enabled = true;
+    lines.local_contrast = kLineworkContrast;
+    lines.max_line_width_mm = kLineworkWidthMm;
+    const auto label = [&](const LineworkPlan& plan, int x, int y) {
+        return plan.strokes.labels.empty()
+                   ? 0U
+                   : plan.strokes.labels[static_cast<std::size_t>(y) * img.width + x];
+    };
+
+    const auto plain = prepare_linework(*seg, img, Millimeters{0.25}, lines);
+    CHECK(label(plain, 30, 11) == 0);
+    CHECK(label(plain, 90, 11) == 0);
+
+    segmentation::DetailMask zone;
+    segmentation::paint_detail_disc(zone, img.width, img.height, 30, 11, 30, 255, 1.0);
+    lines.zone_mask = &zone;
+    const auto zoned = prepare_linework(*seg, img, Millimeters{0.25}, lines);
+    REQUIRE(zoned.has_linework);
+    CHECK(label(zoned, 30, 11) != 0);
+    CHECK(label(zoned, 90, 11) == 0);
+    CHECK(label(zoned, 60, 41) != 0); // le trait franc reste détecté partout
+    CHECK(prepare_linework(*seg, img, Millimeters{0.25}, lines).strokes.labels ==
+          zoned.strokes.labels);
+}

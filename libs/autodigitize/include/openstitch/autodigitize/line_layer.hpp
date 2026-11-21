@@ -42,6 +42,13 @@ inline constexpr double kLineworkWidthMm = 1.0;
 // Niveau de détail du tracé des traits (`ContourOptions::detail`) : petites boucles et branches
 // courtes gardées (cellules d'un treillis de 1 à 2 mm), simplification serrée.
 inline constexpr double kLineworkDetail = 0.85;
+// Zones « traits fins » peintes par l'utilisateur : détection renforcée par un contraste plus
+// faible (8 au lieu de 12). Largeur et allongement restent ceux de la détection ordinaire :
+// mesuré sur le phare (0,26 mm/px), les élargir ou admettre des fragments trapus fait passer les
+// ombres du dôme et de la galerie pour des traits (aplats bruns pâteux, trous).
+inline constexpr double kLineworkZoneContrast = 8.0;
+inline constexpr double kLineworkZoneWidthMm = kLineworkWidthMm;
+inline constexpr double kLineworkZoneElongation = 6.0;
 
 struct LineLayerOptions {
     bool enabled{false};
@@ -54,6 +61,13 @@ struct LineLayerOptions {
     // que soit sa couleur (`segmentation::contrast_thin_mask`) ; `dark_max_lightness` est alors
     // ignoré. 0 = détection historique par seuil de clarté absolu.
     double local_contrast{0.0};
+    // Zones « traits fins » (masque peint, à la taille de la segmentation, sinon ignoré) : avec
+    // `local_contrast` > 0, les pixels de poids >= 128 sont détectés en plus avec ces réglages
+    // renforcés (contraste, largeur, allongement minimal) et réunis aux traits ordinaires.
+    const segmentation::DetailMask* zone_mask{nullptr};
+    double zone_contrast{kLineworkZoneContrast};
+    double zone_width_mm{kLineworkZoneWidthMm};
+    double zone_min_elongation{kLineworkZoneElongation};
     // Ne coudre que les traits qui sont de VRAIS objets (haubans, mâts, cordages : leur voisinage
     // est une seule zone de remplissage). Un trait dont le voisinage contient au moins deux zones
     // de couleurs différentes est une SÉPARATION (contour entre deux aplats) : il n'est pas cousu,
