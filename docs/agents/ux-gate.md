@@ -62,7 +62,7 @@ Lancer os-ux-reviewer sur les huit PNG et le scénario utilisateur. Une fois
 son rapport reçu et ses frictions critiques corrigées, consigner le verdict
 réel, par exemple :
 
-    python scripts/ux/verify.py review --report build/ux-gate/latest/report.json --reviewer "os-ux-reviewer/session-123" --verdict PASS --notes "Les 4 espaces et les 2 tailles ont ete examines ; parcours novice verifie, pas de P0/P1/P2."
+    python scripts/ux/verify.py review --report build/ux-gate/latest/report.json --reviewer "os-ux-reviewer/session-123" --verdict PASS --notes "Les 4 espaces et les 2 tailles ont ete examines ; parcours novice verifie, pas de P0/P1/P2." --reference "https://github.com/.../issues/...#issuecomment-..."
 
 Puis vérifier :
 
