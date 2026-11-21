@@ -21,3 +21,14 @@
 
 - Essai machine réel effectué ? Si non, indiquer ce qui reste à vérifier :
 - Captures/SVG et points de vigilance pour la revue :
+
+## UX Gate — obligatoire si une interface Studio ou son workflow change
+
+> Gate automatique : voir [docs/agents/ux-gate.md](../docs/agents/ux-gate.md).
+> Sur une PR non UI, laisser cette section non renseignée ; elle est ignorée par la CI.
+
+- Parcours novice : TODO — décrire un scénario exécuté depuis une image, avec résultat.
+- Clics avant/après : TODO — mesurer les gestes du même scénario (exemple 8 -> 4).
+- Captures inspectées : TODO — lien d'artefact openstitch-studio-screenshots-windows et/ou captures locales réelles inspectées.
+- Revue indépendante : TODO — nom de l'agent distinct, verdict PASS/FRICTION/BLOQUANT et preuve.
+- Tests UX : TODO — suites QTest, scénario natif, résultat réel et limites.
