@@ -83,6 +83,10 @@ CI ou capture publiée) et le compte rendu du relecteur.
   reçoit une instruction pour poursuivre. Pour éviter une boucle infinie
   lorsque l'outil ne peut pas lancer le Studio, le hook ne rebloque pas un
   arrêt déjà provoqué par un Stop hook.
+- PreToolUse (Bash) : empêche `gh pr create` sur un lot UI tant que les
+  captures et la revue liée au SHA n'ont pas passé check-report. Ce contrôle
+  ne peut pas intercepter tous les clients GitHub possibles : la CI garde son
+  propre contrôle du texte de PR.
 - Les hooks fournissent un filet de sécurité, **pas une preuve** que Claude a
   lancé un autre agent. Si l'environnement ne permet pas la recette, signaler
   explicitement BLOCKED et laisser la PR en brouillon.
