@@ -4,7 +4,14 @@
   },
   "enableAllProjectMcpServers": true,
   "hooks": {
+    "SessionStart": [
+      {"hooks": [{"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/ux-gate-stop.py\" start", "timeout": 8}]}
+    ],
+    "Stop": [
+      {"hooks": [{"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/ux-gate-stop.py\" stop", "timeout": 28}]}
+    ],
     "PreToolUse": [
+      {"matcher": "Bash", "hooks": [{"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/ux-gate-stop.py\" pre-pr", "timeout": 28}]},
       {
         "hooks": [
           {
