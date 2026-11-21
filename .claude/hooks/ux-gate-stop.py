@@ -64,11 +64,40 @@ def main() -> int:
         event = json.load(sys.stdin)
     except (ValueError, OSError):
         return 0
+    action = sys.argv[1] if len(sys.argv) > 1 else "stop"
+    if action == "pre-pr":
+        # Fail closed only on a real "gh pr create" tool call for a UI branch.
+        import re
+        cmd = (event.get("tool_input") or {}).get("command", "")
+        if (event.get("tool_name") != "Bash"
+                or not re.search(r"\bgh(?:\.exe)?\s+pr\s+create\b", cmd)
+                or not changed_ui_files()):
+            return 0
+        if REPORT.is_file():
+            check = subprocess.run(
+                [sys.executable, str(ROOT / "scripts" / "ux" / "verify.py"),
+                 "check-report", "--report", str(REPORT), "--require-review"],
+                cwd=ROOT, capture_output=True, text=True, timeout=20,
+            )
+            if check.returncode == 0:
+                return 0
+        print(json.dumps({
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "deny",
+                "permissionDecisionReason": (
+                    "PR Studio refusee : lancer la matrice de captures reelles, "
+                    "faire la revue UX independante et valider "
+                    "scripts/ux/verify.py check-report --require-review "
+                    "avant gh pr create. Une GUI non disponible doit etre signalee BLOCKED."
+                ),
+            },
+        }, ensure_ascii=False))
+        return 0
     session_id = event.get("session_id")
     if not isinstance(session_id, str) or not session_id:
         return 0
     record = record_path(session_id)
-    action = sys.argv[1] if len(sys.argv) > 1 else "stop"
 
     if action == "start":
         try:
