@@ -15,6 +15,13 @@ ColumnLayout {
     readonly property bool some: editor.selectedCount > 0
     // Espace Vecteur : « Supprimer » retire la FORME (et ses broderies), pas la seule broderie.
     property bool shapeScope: false
+    // Canevas à recadrer sur la miette passée en revue (facultatif).
+    property var canvas: null
+    // Seuil des miettes, en dixièmes de mm² (valeur du champ) ; recalculé à chaque changement du
+    // document (`editor.tree`).
+    property int crumbTenths: 30
+    readonly property real crumbMm2: crumbTenths / 10
+    readonly property int crumbCount: { editor.tree; return editor.smallObjectCount(crumbMm2) }
     readonly property bool many: editor.selectedCount > 1
     readonly property var box: editor.selectionBox
     readonly property bool hasBox: box.width !== undefined
@@ -74,6 +81,45 @@ ColumnLayout {
         Mini { text: qsTr("Par type ▾"); tooltip: qsTr("Sélectionner par type de points"); onClicked: typeMenu.popup() }
         Mini { text: qsTr("Rappeler ▾"); tooltip: qsTr("Restaurer une sélection mémorisée"); enabled: editor.savedSelections.length > 0; disabledReason: qsTr("Aucune sélection mémorisée"); onClicked: recallMenu.popup() }
         Mini { Layout.columnSpan: 2; text: qsTr("Mémoriser la sélection"); enabled: bar.some; onClicked: editor.saveSelection(qsTr("Sélection %1").arg(editor.savedSelections.length + 1)) }
+    }
+
+    SectionLabel { text: qsTr("MIETTES"); Layout.topMargin: 4 }
+    RowLayout {
+        Layout.fillWidth: true
+        spacing: 6
+        Text {
+            text: qsTr("Sous (mm²)")
+            color: Theme.muted
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.captionSize
+        }
+        StudioSpinBox {
+            objectName: "crumbThreshold"
+            from: 1
+            to: 1000
+            value: bar.crumbTenths
+            textFromValue: function(v) { return (v / 10).toFixed(1) }
+            valueFromText: function(t) { return Math.round(parseFloat(t.replace(",", ".")) * 10) }
+            Accessible.name: qsTr("Aire en dessous de laquelle un objet est une miette, en millimètres carrés")
+            onValueModified: bar.crumbTenths = value
+        }
+        Text {
+            objectName: "crumbCountLabel"
+            Layout.fillWidth: true
+            horizontalAlignment: Text.AlignRight
+            text: bar.crumbCount === 0 ? qsTr("aucune") : qsTr("%1 miette(s)").arg(bar.crumbCount)
+            color: bar.crumbCount > 0 ? Theme.warning : Theme.faint
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.captionSize
+            font.weight: Font.DemiBold
+        }
+    }
+    Group {
+        objectName: "editCrumbFlow"
+        columns: 3
+        Mini { objectName: "crumbPrevButton"; text: "◀"; tooltip: qsTr("Miette précédente (recadrée)"); enabled: bar.crumbCount > 0; disabledReason: qsTr("Aucune miette sous ce seuil"); onClicked: { if (editor.selectNextSmallObject(bar.crumbMm2, false) && bar.canvas) bar.canvas.zoomToSelection() } }
+        Mini { objectName: "crumbAllButton"; text: qsTr("Toutes"); tooltip: qsTr("Sélectionner toutes les miettes"); enabled: bar.crumbCount > 0; disabledReason: qsTr("Aucune miette sous ce seuil"); onClicked: editor.selectSmallObjects(bar.crumbMm2) }
+        Mini { objectName: "crumbNextButton"; text: "▶"; tooltip: qsTr("Miette suivante (recadrée)"); enabled: bar.crumbCount > 0; disabledReason: qsTr("Aucune miette sous ce seuil"); onClicked: { if (editor.selectNextSmallObject(bar.crumbMm2, true) && bar.canvas) bar.canvas.zoomToSelection() } }
     }
 
     SectionLabel { text: qsTr("TRANSFORMER"); Layout.topMargin: 4 }

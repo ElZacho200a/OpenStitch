@@ -66,6 +66,13 @@ public:
     Q_INVOKABLE int selectByType(const QString& typeId);
     Q_INVOKABLE int selectByLayer(const QString& calqueId);
     Q_INVOKABLE int selectGroup(const QString& groupId);
+    // Miettes (`stitch_analysis::small_object_ids`) : objets sélectionnables dont la forme est
+    // sous `maxAreaMm2`. `selectSmallObjects` les sélectionne toutes ; `selectNextSmallObject`
+    // n'en sélectionne qu'une, la suivante (ou précédente) après la sélection courante dans
+    // l'ordre de couture, en boucle, pour les passer en revue une à une.
+    Q_INVOKABLE [[nodiscard]] int smallObjectCount(double maxAreaMm2) const;
+    Q_INVOKABLE int selectSmallObjects(double maxAreaMm2);
+    Q_INVOKABLE bool selectNextSmallObject(double maxAreaMm2, bool forward = true);
     // Rectangle en mm scène. `crossing` : tout objet touché ; sinon seulement ceux entièrement
     // contenus. `additive` : s'ajoute à la sélection courante.
     Q_INVOKABLE int selectRect(double x0, double y0, double x1, double y1, bool crossing,
@@ -147,6 +154,7 @@ private:
     mutable std::optional<QVariantList> treeCache_;
     std::uint64_t gateStamp_{0}; // documentStamp() au dernier changed rediffusé
     [[nodiscard]] std::vector<std::uint64_t> selectedIds() const;
+    [[nodiscard]] std::vector<std::uint64_t> smallObjects(double maxAreaMm2) const;
     [[nodiscard]] bool selectIds(const std::vector<std::uint64_t>& ids, bool additive = false);
     [[nodiscard]] bool visibleObject(std::uint64_t id) const;
     [[nodiscard]] bool selectableObject(std::uint64_t id) const;
