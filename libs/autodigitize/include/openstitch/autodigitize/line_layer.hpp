@@ -34,12 +34,26 @@ struct LineLayerMasks {
     std::vector<char> stitched;   // pixels finalement cousus en lignes
 };
 
+// Réglages de la détection des traits superposés de Studio (« Préserver les traits fins ») :
+// contraste local minimal (L*) et largeur maximale d'un trait (mm). Mesurés sur un gréement noir
+// (navire, 0,15 mm/px) et une rambarde marine sur fond crème (phare, 0,26 mm/px).
+inline constexpr double kLineworkContrast = 12.0;
+inline constexpr double kLineworkWidthMm = 1.0;
+// Niveau de détail du tracé des traits (`ContourOptions::detail`) : petites boucles et branches
+// courtes gardées (cellules d'un treillis de 1 à 2 mm), simplification serrée.
+inline constexpr double kLineworkDetail = 0.85;
+
 struct LineLayerOptions {
     bool enabled{false};
     // Une partie de région plus étroite que cette largeur est un trait.
     double max_line_width_mm{1.6};
     // Un pixel est « sombre » si sa clarté CIELAB L* est au plus égale à cette valeur.
     double dark_max_lightness{25.0};
+    // Détection par CONTRASTE LOCAL (lignes ouvertes, lot 2) : si > 0, un trait est une partie
+    // étroite plus sombre d'au moins cette valeur (L*) que son voisinage clair immédiat, quelle
+    // que soit sa couleur (`segmentation::contrast_thin_mask`) ; `dark_max_lightness` est alors
+    // ignoré. 0 = détection historique par seuil de clarté absolu.
+    double local_contrast{0.0};
     // Ne coudre que les traits qui sont de VRAIS objets (haubans, mâts, cordages : leur voisinage
     // est une seule zone de remplissage). Un trait dont le voisinage contient au moins deux zones
     // de couleurs différentes est une SÉPARATION (contour entre deux aplats) : il n'est pas cousu,

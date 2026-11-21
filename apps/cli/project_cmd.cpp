@@ -424,6 +424,11 @@ void add_digitize_options(CLI::App* cmd, DigitizeOptionValues& v) {
            "--dark-lines-lightness", s.dark_lines_lightness,
            "Avec --dark-lines : clarté CIELAB L* maximale d'un pixel de trait (défaut : 25)")
         ->check(CLI::Range(5.0, 70.0));
+    cmd->add_option("--dark-lines-contrast", s.dark_lines_contrast,
+                    "Avec --dark-lines : détecte les traits par contraste local (écart de clarté "
+                    "L* minimal avec le voisinage, essayer 15) quelle que soit leur couleur ; 0 = "
+                    "seuil de clarté absolu (défaut)")
+        ->check(CLI::Range(0.0, 80.0));
     cmd->add_flag("--hidden-travel", s.hidden_travel,
                   "Remplace les coupes par des sauts ou des ponts cousus cachés sous les points "
                   "cousus plus tard (passe finale, désactivé par défaut)");

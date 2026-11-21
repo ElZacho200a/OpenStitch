@@ -468,6 +468,7 @@ Result<DigitizedObjects> digitize_objects(const DigitizeSource& source, IdGenera
             lo.enabled = true;
             lo.max_line_width_mm = s.dark_lines_width_mm;
             lo.dark_max_lightness = s.dark_lines_lightness;
+            lo.local_contrast = s.dark_lines_contrast;
             lo.objects_only = s.dark_lines_objects_only;
             lo.bars_max_width_mm = s.dark_lines_bars_mm;
             lo.min_line_length_mm = s.dark_lines_min_length_mm;

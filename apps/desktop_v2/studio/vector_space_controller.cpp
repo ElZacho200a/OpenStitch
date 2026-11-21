@@ -482,7 +482,7 @@ bool VectorSpaceController::updateFromSegmentation() {
         return false;
     }
     auto fresh = revectorize(session.project(), precisionMm_, curves_, curveTolerancePx_);
-    if (fresh.replace.empty() && fresh.add.empty()) {
+    if (fresh.replace.empty() && fresh.add.empty() && fresh.absorbed.empty()) {
         say(tr("Les formes suivent déjà la segmentation."));
         return false;
     }
@@ -492,6 +492,7 @@ bool VectorSpaceController::updateFromSegmentation() {
         group->add(std::make_unique<commands::SetVectorPathsCommand>(id, std::move(paths),
                                                                      "Mettre à jour une forme"));
     }
+    project_ops::append_absorbed_removals(session.project(), fresh, *group);
     for (auto& shape : fresh.add) {
         shape.id = session.allocateObjectId();
         group->add(std::make_unique<commands::AddVectorObjectCommand>(std::move(shape)));
@@ -539,8 +540,9 @@ bool VectorSpaceController::updateAllLayersFromSegmentation() {
                                                          .curves = curves_,
                                                          .curve_tolerance_px = curveTolerancePx_,
                                                          .image_source = source});
-        replaced += fresh.replace.size();
+        replaced += fresh.replace.size() + fresh.absorbed.size();
         added += fresh.add.size();
+        project_ops::append_absorbed_removals(session.project(), fresh, *group);
         for (auto& [id, paths] : fresh.replace) {
             group->add(std::make_unique<commands::SetVectorPathsCommand>(
                 id, std::move(paths), "Mettre à jour une forme"));

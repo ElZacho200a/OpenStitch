@@ -47,6 +47,11 @@ RevectorizePlan revectorize(const document::Project& project, const RevectorizeO
         if (working && working->width == fills->width && working->height == fills->height) {
             autodigitize::LineLayerOptions lines;
             lines.enabled = true;
+            // Traits par contraste local (lot 2) : barreaux, treillis, haubans quelle que soit leur
+            // couleur, chacun cousu dans la sienne. Largeur 1 mm : un mât plus large reste un
+            // aplat.
+            lines.local_contrast = autodigitize::kLineworkContrast;
+            lines.max_line_width_mm = autodigitize::kLineworkWidthMm;
             linework = autodigitize::prepare_linework(*fills, *working, source.mm_per_px, lines);
             if (linework->has_linework) {
                 fills = &linework->completed_fills;
@@ -99,7 +104,20 @@ RevectorizePlan revectorize(const document::Project& project, const RevectorizeO
         }
     }
     for (const auto& shape : project.vector_objects) {
-        if (fromSource(shape) && fills->find(*shape.source_region) == nullptr) {
+        if (!fromSource(shape) || fills->find(*shape.source_region) != nullptr) {
+            continue;
+        }
+        const bool absorbed = fills != &*source.segmentation &&
+                              source.segmentation->find(*shape.source_region) != nullptr;
+        const bool locked =
+            shape.locked ||
+            std::any_of(project.embroidery_objects.begin(), project.embroidery_objects.end(),
+                        [&](const document::EmbroideryObject& e) {
+                            return e.source_vector == shape.id && e.locked;
+                        });
+        if (absorbed && !locked) {
+            out.absorbed.push_back(shape.id);
+        } else {
             ++out.orphan;
         }
     }
@@ -117,6 +135,10 @@ RevectorizePlan revectorize(const document::Project& project, const RevectorizeO
         IdGenerator<ObjectId> scratch; // identifiants provisoires, réservés à l'exécution
         autodigitize::ContourOptions contour;
         contour.mm_per_px = source.mm_per_px;
+        // Même tracé que `digitize --dark-lines` : réseau parcouru d'un bloc (moins de coupes) et
+        // détails fins gardés (treillis, rambardes).
+        contour.detail = autodigitize::kLineworkDetail;
+        contour.routing = autodigitize::ContourRouting::SinglePath;
         if (auto made = autodigitize::auto_digitize_contours(linework->strokes, scratch, contour)) {
             strokes = std::move(made->vectors);
         }
@@ -137,7 +159,7 @@ RevectorizePlan revectorize(const document::Project& project, const RevectorizeO
         shape.calque = !shape.source_image.valid() && !project.image_sources.empty()
                            ? project.calques.front().id
                            : shape.source_image;
-        shape.rgb = linework->line_rgb;
+        shape.rgb = strokes[i].rgb;
         shape.paths = std::move(strokes[i].paths);
         out.add.push_back(std::move(shape));
     }
@@ -145,6 +167,20 @@ RevectorizePlan revectorize(const document::Project& project, const RevectorizeO
         out.orphan += static_cast<int>(previous.size() - strokes.size());
     }
     return out;
+}
+
+void append_absorbed_removals(const document::Project& project, const RevectorizePlan& plan,
+                              commands::CompositeCommand& group) {
+    for (const ObjectId shape : plan.absorbed) {
+        for (const auto& e : project.embroidery_objects) {
+            if (e.source_vector == shape) {
+                group.add(std::make_unique<commands::RemoveEmbroideryObjectCommand>(e.id));
+            }
+        }
+    }
+    for (const ObjectId shape : plan.absorbed) {
+        group.add(std::make_unique<commands::RemoveVectorObjectCommand>(shape));
+    }
 }
 
 namespace detail {
@@ -403,13 +439,15 @@ OpStatus op_vectorize_segmentation(OpContext& ctx) {
     json result{{"replaced", plan.replace.size()},
                 {"added", plan.add.size()},
                 {"unchanged", plan.keep},
-                {"orphans", plan.orphan}};
+                {"orphans", plan.orphan},
+                {"absorbed", plan.absorbed.size()}};
     if (prune) {
         result["pruned_shapes"] = orphan_shapes.size();
         result["pruned_stitch_objects"] = orphan_stitches.size();
         result["orphans_kept_locked"] = kept_locked;
     }
-    if (plan.replace.empty() && plan.add.empty() && orphan_shapes.empty()) {
+    if (plan.replace.empty() && plan.add.empty() && plan.absorbed.empty() &&
+        orphan_shapes.empty()) {
         result["note"] = "les formes suivent déjà la segmentation";
         return OpStatus::success(std::move(result));
     }
@@ -421,6 +459,7 @@ OpStatus op_vectorize_segmentation(OpContext& ctx) {
     for (const auto id : orphan_shapes) {
         group->add(std::make_unique<commands::RemoveVectorObjectCommand>(id));
     }
+    append_absorbed_removals(ctx.project, plan, *group);
     for (auto& [id, paths] : plan.replace) {
         group->add(std::make_unique<commands::SetVectorPathsCommand>(id, std::move(paths),
                                                                      "Mettre à jour une forme"));
