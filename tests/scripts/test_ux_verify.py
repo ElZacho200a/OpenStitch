@@ -125,6 +125,49 @@ class UXContractTests(unittest.TestCase):
                 self.assertEqual(ux.main(argv), 1)
             self.assertFalse(stale.exists())
 
+    def test_requested_sizes_must_actually_differ(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            studio, project = root / "studio.exe", root / "project.osp"
+            studio.touch()
+            project.touch()
+
+            def fake_run(command, **kwargs):
+                shot = Path(command[command.index("--screenshot") + 1])
+                # The Studio ignores --window-size, but its PNGs are well-formed.
+                shot.write_bytes(make_png(1440, 900, shot.name.encode()))
+                return subprocess.CompletedProcess(command, 0, "", "")
+
+            argv = ["capture", "--studio", str(studio), "--project", str(project),
+                    "--out", str(root / "screens"), "--spaces", "image"]
+            with mock.patch.object(ux.subprocess, "run", side_effect=fake_run):
+                self.assertEqual(ux.main(argv), 1)
+            self.assertFalse((root / "screens" / "report.json").exists())
+
+    def test_panel_capture_targets_correct_space(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            studio, project = root / "studio.exe", root / "project.osp"
+            studio.touch()
+            project.touch()
+            calls = []
+
+            def fake_run(command, **kwargs):
+                calls.append(command)
+                shot = Path(command[command.index("--screenshot") + 1])
+                shot.write_bytes(make_png(1000, 640, b"targeted"))
+                return subprocess.CompletedProcess(command, 0, "", "")
+
+            argv = ["capture", "--studio", str(studio), "--project", str(project),
+                    "--out", str(root / "screens"), "--spaces", "points",
+                    "--sizes", "1000x640", "--panel", "points=vue"]
+            with (mock.patch.object(ux.subprocess, "run", side_effect=fake_run),
+                  mock.patch.object(ux, "git_head", return_value="test-head"),
+                  mock.patch.object(ux, "workspace_fingerprint", return_value="test-fingerprint")):
+                self.assertEqual(ux.main(argv), 0)
+            self.assertEqual(calls[0][calls[0].index("--open-panels") + 1],
+                             "espace-points,vue")
+
     def test_capture_identical_spaces_rejected(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
