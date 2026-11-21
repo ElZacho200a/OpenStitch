@@ -150,7 +150,8 @@ int main(int argc, char** argv) {
     ImageController imageTools(controller);
     RegionController regionTools(controller, imageTools);
     DetailZoneController detailZones(controller, imageTools);
-    DetailZoneController lineworkZones(controller, imageTools, document::MaskKind::Linework);
+    DetailZoneController lineworkZones(controller, imageTools,
+                                       openstitch::document::MaskKind::Linework);
     ImageSpaceController imageSpace(controller, imageTools);
     SegmentationSpaceController segmentationSpace(controller, imageTools, regionTools);
     SatinController satin(controller);
