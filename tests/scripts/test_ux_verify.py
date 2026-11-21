@@ -33,10 +33,9 @@ def make_png(width=100, height=100, seed=b"test"):
     # Valid RGB PNG with enough varying pixels to catch blank/truncated output.
     scanlines = []
     for y in range(height):
-        row = bytearray()
-        for x in range(width):
-            row.extend(hashlib.sha256(seed + struct.pack(">HH", x, y)).digest()[:3])
-        scanlines.append(b"\x00" + bytes(row))
+        digest = hashlib.sha256(seed + struct.pack(">I", y)).digest()
+        row = (digest * ((width * 3 + 31) // 32))[:width * 3]
+        scanlines.append(b"\x00" + row)
     hdr = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
     return (ux.PNG_HEADER + chunk(b"IHDR", hdr)
             + chunk(b"IDAT", zlib.compress(b"".join(scanlines)))
