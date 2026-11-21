@@ -766,3 +766,31 @@ TEST_CASE("multi zone blend links every touching pair in one undo step", "[proje
     REQUIRE_FALSE(few.has_value());
     CHECK(few.error().code == "E_BLEND_FEW_ZONES");
 }
+
+TEST_CASE("multi zone blend re-edit updates every existing pair in one undo step",
+          "[project_ops][blend]") {
+    auto project = make_project();
+    commands::UndoStack stack;
+    const std::vector<ObjectId> ids{ObjectId{2}, ObjectId{4}, ObjectId{6}};
+    auto first = project_ops::make_multi_boundary_blend_command(project, ids, {});
+    REQUIRE(first.has_value());
+    stack.execute(std::move(first->command), project);
+
+    project_ops::BoundaryBlendOptions wider;
+    wider.width_a = Micrometers{4000};
+    wider.width_b = Micrometers{4000};
+    auto edit = project_ops::make_multi_boundary_blend_command(project, ids, wider, true);
+    REQUIRE(edit.has_value());
+    CHECK(edit->created.empty());
+    CHECK(edit->updated == 1);
+    stack.execute(std::move(edit->command), project);
+    const auto info = project_ops::boundary_blend_info(project, ObjectId{2}, ObjectId{4});
+    REQUIRE(info.has_value());
+    CHECK(info->options.width_a == Micrometers{4000});
+    CHECK(info->options.width_b == Micrometers{4000});
+
+    stack.undo(project);
+    const auto back = project_ops::boundary_blend_info(project, ObjectId{2}, ObjectId{4});
+    REQUIRE(back.has_value());
+    CHECK(back->options.width_a != Micrometers{4000});
+}
