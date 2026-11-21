@@ -121,6 +121,12 @@ ColumnLayout {
         Mini { objectName: "crumbAllButton"; text: qsTr("Toutes"); tooltip: qsTr("Sélectionner toutes les miettes"); enabled: bar.crumbCount > 0; disabledReason: qsTr("Aucune miette sous ce seuil"); onClicked: editor.selectSmallObjects(bar.crumbMm2) }
         Mini { objectName: "crumbNextButton"; text: "▶"; tooltip: qsTr("Miette suivante (recadrée)"); enabled: bar.crumbCount > 0; disabledReason: qsTr("Aucune miette sous ce seuil"); onClicked: { if (editor.selectNextSmallObject(bar.crumbMm2, true) && bar.canvas) bar.canvas.zoomToSelection() } }
     }
+    Group {
+        objectName: "editCrumbFixFlow"
+        // Fondre plutôt que supprimer : la miette rejoint sa voisine (même fil d'abord), sans trou.
+        Mini { objectName: "crumbAbsorbButton"; text: qsTr("Absorber"); tooltip: qsTr("Fondre chaque miette dans sa voisine (même fil d'abord), sans laisser de trou"); enabled: bar.crumbCount > 0; disabledReason: qsTr("Aucune miette sous ce seuil"); onClicked: actions.run("shape.absorb_crumbs", { "max_area_mm2": String(bar.crumbMm2), "priority": "same_thread", "reach_mm": "0.2" }) }
+        Mini { objectName: "gapFillButton"; text: qsTr("Reboucher"); tooltip: qsTr("Reboucher les vides fermés entre formes (les trous internes d'une forme restent)"); onClicked: actions.run("shape.fill_gaps_between", { "max_area_mm2": "4", "reach_mm": "0.2" }) }
+    }
 
     SectionLabel { text: qsTr("TRANSFORMER"); Layout.topMargin: 4 }
     Group {

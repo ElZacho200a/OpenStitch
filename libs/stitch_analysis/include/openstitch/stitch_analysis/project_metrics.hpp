@@ -58,4 +58,9 @@ struct ProjectMetrics {
 [[nodiscard]] std::vector<ObjectId> small_object_ids(const document::Project& project,
                                                      double max_area_mm2);
 
+// Même critère sur les FORMES vectorielles visibles (calque compris), brodées ou non : rend leurs
+// identifiants dans l'ordre du document.
+[[nodiscard]] std::vector<ObjectId> small_shape_ids(const document::Project& project,
+                                                    double max_area_mm2);
+
 } // namespace openstitch::stitch_analysis

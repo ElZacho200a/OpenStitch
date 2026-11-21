@@ -282,6 +282,20 @@ void StudioEditTest::crumbsAreCountedSelectedAndReviewed() {
     QCOMPARE(rig.editor.smallObjectCount(3.0), 1);
     QCOMPARE(rig.editor.selectSmallObjects(0.5), 0);
     QVERIFY(!rig.editor.selectNextSmallObject(0.5, true));
+
+    // « Absorber » (même action que la palette) : les deux traits minuscules, sans surface, sont
+    // retirés en une seule étape d'annulation.
+    QVERIFY(rig.editor.setObjectVisible(QString::number(kLone), true));
+    settle(rig);
+    const auto before = steps(rig);
+    QCOMPARE(rig.actions.run(QStringLiteral("shape.absorb_crumbs"),
+                             {{QStringLiteral("max_area_mm2"), QStringLiteral("3")},
+                              {QStringLiteral("priority"), QStringLiteral("same_thread")},
+                              {QStringLiteral("reach_mm"), QStringLiteral("0.2")}}),
+             QString());
+    settle(rig);
+    QCOMPARE(steps(rig), before + 1);
+    QCOMPARE(rig.editor.smallObjectCount(3.0), 0);
     QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
 }
 
