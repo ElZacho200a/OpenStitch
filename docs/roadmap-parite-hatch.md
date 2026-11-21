@@ -1776,6 +1776,16 @@ libre, colonne satin manuelle, ligne de coupe satin ; édition de nœuds
 - État OpenStitch : ligne de coupe **satin** uniquement (`DrawSatinCutLine`).
 - À faire : couteau général sur toute forme vectorielle (`geometry/cut.hpp`
   existe), les deux morceaux gardent le type de broderie.
+- Correctif (2026-11-21) : le couteau Studio refusait tout le geste dès qu'une seule forme de la
+  sélection multiple n'était pas traversée par le trait (lot `project_ops` transactionnel : un seul
+  `split`/`split_path` refusé annulait aussi les coupes déjà réussies sur les autres formes
+  sélectionnées). `ToolController` filtre désormais, par forme, celles que le trait traverse
+  vraiment (`previewBatch`, aperçu sans mutation) avant de construire le lot final : plusieurs
+  zones vectorielles se découpent en une seule étape d'annulation, celles non traversées restent
+  intactes. La sélection après la coupe redevient les morceaux produits (déjà le cas avant ce
+  correctif, mais jamais exercé par un test multi-formes). Non-régression :
+  `StudioToolsTest::knifeCutsOnlySelectedShapesTheLineCrosses` (confirmé en échec sur l'ancien
+  code avant correctif).
 
 ### HP-VEC-005 — Supprimer / remplir les trous [P1] — ◐ Partiel (2026-10-13, en PR)
 - Livré (2026-10-25) : Alt + double-clic dans un trou (`RemoveHoleCommand`). Reste : menu, `interaction_map`.
