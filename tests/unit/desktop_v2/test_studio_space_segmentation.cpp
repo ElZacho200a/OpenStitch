@@ -1125,7 +1125,7 @@ private slots:
         open(rig);
         for (const auto& [id, text] : {std::pair{"regionTool_detail_caption", "Détail"},
                                        {"regionTool_linework_caption", "Traits"},
-                                       {"regionTool_lineworkErase_caption", "Gomme"}}) {
+                                       {"regionTool_lineworkErase_caption", "− Traits"}}) {
             QObject* caption = rig.named(id);
             QVERIFY2(caption != nullptr, id);
             QVERIFY(caption->property("visible").toBool());
@@ -1133,7 +1133,7 @@ private slots:
         }
         QObject* brushCaption = rig.named("regionTool_brush_caption");
         QVERIFY(brushCaption != nullptr);
-        QVERIFY(!brushCaption->property("visible").toBool());
+        QCOMPARE(brushCaption->property("text").toString(), QStringLiteral("Région"));
         QObject* flick = rig.named("segmentationRailFlick");
         QVERIFY(flick != nullptr);
         QVERIFY(flick->property("contentHeight").toDouble() > 0.0);
@@ -1273,6 +1273,12 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(rig.named("lineworkApply") != nullptr, 5'000);
         // Jamais de « Segmenter » pour les traits fins.
         QVERIFY(!rig.linework.needsSegmentation());
+        // L'action reste visible dans la légende après avoir quitté l'outil (revue UX).
+        QVERIFY(rig.press("regionTool_linework"));
+        QTRY_VERIFY_WITH_TIMEOUT(rig.named("legendUpdateShapes") != nullptr &&
+                                     rig.named("legendUpdateShapes")->property("visible").toBool(),
+                                 5'000);
+        QVERIFY(rig.press("regionTool_linework"));
 
         QSignalSpy regenerated(&rig.regions, &RegionController::regenerated);
         QVERIFY(rig.press("lineworkApply"));

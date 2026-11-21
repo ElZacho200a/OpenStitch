@@ -170,12 +170,12 @@ Item {
             workspaceActive: root.active
             toolPrefix: "regionTool_"
             entries: [
-                { id: "brush", icon: "brush", label: qsTr("Pinceau de frontière : peindre la région choisie"), shortcut: "U", group: "regions" },
-                { id: "erase", icon: "eraser", label: qsTr("Gomme : retirer de la région choisie"), shortcut: "Maj+U", group: "regions" },
+                { id: "brush", icon: "brush", label: qsTr("Pinceau de frontière : peindre la région choisie"), shortcut: "U", group: "regions", caption: qsTr("Région") },
+                { id: "erase", icon: "eraser", label: qsTr("Gomme : retirer de la région choisie"), shortcut: "Maj+U", group: "regions", caption: qsTr("− Région") },
                 { id: "detail", icon: "detail", label: qsTr("Zones de détail : peindre où garder les petites formes"), shortcut: "Q", group: "detail", enabled: root.hasDetail, caption: qsTr("Détail"), captionColor: Theme.zoneDetail, disabledReason: qsTr("indisponible sans image source") },
-                { id: "detailErase", icon: "detail-erase", label: qsTr("Gomme de détail : retirer une zone de détail"), shortcut: "Maj+Q", group: "detail", enabled: root.hasDetail, caption: qsTr("Gomme"), captionColor: Theme.zoneDetail, disabledReason: qsTr("indisponible sans image source") },
+                { id: "detailErase", icon: "detail-erase", label: qsTr("Gomme de détail : retirer une zone de détail"), shortcut: "Maj+Q", group: "detail", enabled: root.hasDetail, caption: qsTr("− Détail"), captionColor: Theme.zoneDetail, disabledReason: qsTr("indisponible sans image source") },
                 { id: "linework", icon: "linework", label: qsTr("Zones de traits fins : peindre où détecter plus finement les traits"), shortcut: "W", group: "linework", enabled: root.hasLinework, caption: qsTr("Traits"), captionColor: Theme.zoneLinework, disabledReason: qsTr("indisponible sans image source") },
-                { id: "lineworkErase", icon: "linework-erase", label: qsTr("Gomme de traits fins : retirer une zone de traits fins"), shortcut: "Maj+W", group: "linework", enabled: root.hasLinework, caption: qsTr("Gomme"), captionColor: Theme.zoneLinework, disabledReason: qsTr("indisponible sans image source") }
+                { id: "lineworkErase", icon: "linework-erase", label: qsTr("Gomme de traits fins : retirer une zone de traits fins"), shortcut: "Maj+W", group: "linework", enabled: root.hasLinework, caption: qsTr("− Traits"), captionColor: Theme.zoneLinework, disabledReason: qsTr("indisponible sans image source") }
             ]
             activeTool: root.activeToolId
             onToolTriggered: id => root.activateTool(id)
@@ -430,6 +430,19 @@ Item {
                     tooltip: legend.lz.overlayVisible ? qsTr("Masquer la carte des zones de traits fins (cyan)")
                                                           : qsTr("Afficher la carte des zones de traits fins (cyan)")
                     onClicked: legend.lz.overlayVisible = !legend.lz.overlayVisible
+                }
+                // Action persistante : visible dès qu'une zone de traits fins attend d'être
+                // appliquée, quel que soit l'outil actif.
+                StudioButton {
+                    objectName: "legendUpdateShapes"
+                    visible: root.hasLinework && legend.lz.hasDetail && lineworkZones.needsShapesUpdate
+                    enabled: root.updateShapesAvailable
+                    text: qsTr("Mettre à jour les formes")
+                    emphasized: true
+                    tooltip: root.updateShapesAvailable
+                             ? qsTr("Applique les zones peintes : la détection des traits est renforcée dans la zone")
+                             : qsTr("Segmentez d'abord l'image : les formes se mettent à jour depuis la segmentation")
+                    onClicked: root.seg.updateShapes(false)
                 }
             }
         }
