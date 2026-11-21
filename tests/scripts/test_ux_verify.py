@@ -61,7 +61,8 @@ class UXContractTests(unittest.TestCase):
         for field in ux.REVIEW_FIELDS:
             with self.subTest(field=field):
                 prefix = GOOD_PR.splitlines()
-                replacement = [line for line in prefix if not line.lstrip("- ").startswith(field)]
+                import re
+                replacement = [line for line in prefix if not re.search(ux.REVIEW_FIELDS[field], line)]
                 self.assertTrue(ux.validate_pr("\n".join(replacement),
                              ["apps/desktop_v2/studio/qml/Inspector.qml"]))
 
