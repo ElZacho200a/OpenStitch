@@ -116,6 +116,8 @@ def check_report(path: Path, require_review: bool = False) -> dict:
             raise ValueError("Relecteur UX independant non identifie")
         if len(review.get("notes", "").strip()) < 20:
             raise ValueError("Notes de revue UX insuffisantes")
+        if not review.get("reference", "").startswith("https://"):
+            raise ValueError("Lien du rapport ou commentaire de revue independante absent")
     return report
 
 
@@ -287,7 +289,8 @@ def main(argv: list[str] | None = None) -> int:
     reviewed.add_argument("--reviewer", required=True)
     reviewed.add_argument("--verdict", choices=("PASS", "FRICTION", "BLOQUANT"), required=True)
     reviewed.add_argument("--notes", required=True)
-    reviewed.add_argument("--reference", default="")
+    reviewed.add_argument("--reference", required=True,
+                          help="URL HTTPS du compte rendu independant")
     checked = sub.add_parser("check-report", help="reverifier les captures et leur revue")
     checked.add_argument("--report", required=True)
     checked.add_argument("--require-review", action="store_true")
