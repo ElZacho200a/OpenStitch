@@ -18,6 +18,9 @@ ColumnLayout {
     property var pendingPlan: null
     // Carte de réglages de la conversion en broderie, ouverte par « ② Convertir en broderie ».
     property bool convertOptionsOpen: false
+    // Petite fenêtre : les textes d'aide (redondants avec les infobulles) sont masqués pour que
+    // les étapes ① Recalculer, Nettoyer et ② Convertir restent visibles sans défiler.
+    property bool compact: false
     spacing: 9
 
     function askUpdate() {
@@ -102,6 +105,7 @@ ColumnLayout {
     // Chaque réglage et chaque action dit ce qu'il produit, en une ligne, sans survol.
     Text {
         objectName: "vectorPrecisionHelp"
+        visible: !panel.compact
         Layout.fillWidth: true
         text: qsTr("Tolérance haute : contours plus simples, moins de nœuds. Basse : plus fidèle à l'image (sous 1 px, les courbes suivent les escaliers des pixels). Pris en compte à l'étape ①.")
         color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize; wrapMode: Text.WordWrap
@@ -117,6 +121,7 @@ ColumnLayout {
     }
     Text {
         objectName: "vectorUpdateHelp"
+        visible: !panel.compact
         Layout.fillWidth: true
         text: qsTr("Redessine les contours depuis les régions segmentées du calque courant. Les retouches faites sur ces formes sont écrasées (confirmation demandée).")
         color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize; wrapMode: Text.WordWrap
@@ -317,6 +322,7 @@ ColumnLayout {
     }
     Text {
         objectName: "vectorConvertHelp"
+        visible: !panel.compact
         Layout.fillWidth: true
         text: qsTr("Crée un objet de points (satin, remplissage…) pour chaque forme qui n'en a pas encore. Les formes déjà converties ne changent pas. Résultat dans l'espace Points.")
         color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize; wrapMode: Text.WordWrap

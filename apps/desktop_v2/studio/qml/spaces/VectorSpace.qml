@@ -238,14 +238,14 @@ Item {
                     Accessible.name: qsTr("Calque à vectoriser")
                     onActivated: index => imageTools.selectImageLayer(index)
                 }
-                // Défilant et plafonné : sur une petite fenêtre, les étapes de vectorisation ne
+                // Défilant et plafonné (62 %) : sur une petite fenêtre, les étapes de vectorisation ne
                 // poussent plus les onglets Calques / Édition hors de l'écran.
                 Controls.ScrollView {
                     id: shapePanelScroll
                     objectName: "vectorShapePanelScroll"
                     Layout.fillWidth: true
                     Layout.preferredHeight: Math.min(shapePanel.implicitHeight + 2 * Theme.panelPadding,
-                                                     Math.max(160, vectorSideColumn.height * 0.55))
+                                                     Math.max(160, vectorSideColumn.height * 0.62))
                     clip: true
                     contentWidth: availableWidth
                     contentHeight: shapePanel.implicitHeight + 2 * Theme.panelPadding
@@ -255,6 +255,7 @@ Item {
                         x: Theme.panelPadding
                         y: Theme.panelPadding
                         width: shapePanelScroll.availableWidth - 2 * Theme.panelPadding
+                        compact: vectorSideColumn.height < 760
                         stage: root.stage
                         workspace: root.workspace
                         onGoToRegionRequested: {
