@@ -21,7 +21,7 @@ GOOD_PR = """## UX Gate
 - Parcours novice : importer un motif ORA et regler les zones, puis revenir aux points.
 - Clics avant/après : 8 -> 4, mesure sur le meme projet.
 - Captures inspectées : CI artifact openstitch-studio-screenshots-windows.
-- Revue indépendante : agent UX distinct PASS, aucune friction bloquante.
+- Revue indépendante : agent UX distinct PASS, https://github.com/ElZacho200a/OpenStitch/issues/278#issuecomment-123 ; aucune friction bloquante.
 - Tests UX : test_desktop_v2_studio_space_image 14/14 PASS.
 """
 
