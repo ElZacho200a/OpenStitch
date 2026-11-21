@@ -142,6 +142,14 @@ def capture(args: argparse.Namespace) -> int:
         raise ValueError("Le Studio compile et un projet OSP reel sont requis")
     output = Path(args.out).resolve()
     output.mkdir(parents=True, exist_ok=True)
+    panels = {}
+    for entry in args.panel:
+        if "=" not in entry:
+            raise ValueError(f"Panel cible invalide: {entry} (attendu espace=panneau)")
+        space_key, panel_names = entry.split("=", 1)
+        if space_key.strip() not in SPACES or not panel_names.strip():
+            raise ValueError(f"Panel cible invalide: {entry}")
+        panels[space_key.strip()] = panel_names.strip()
     rows = []
     for size in args.sizes.split(","):
         match = re.fullmatch(r"(\d+)x(\d+)", size.strip())
@@ -156,6 +164,10 @@ def capture(args: argparse.Namespace) -> int:
             shot.unlink(missing_ok=True)  # jamais accepter une ancienne capture
             command = [str(studio), str(project), "--screenshot", str(shot),
                        "--open-space", space, "--window-size", size]
+            if space in panels:
+                # main.cpp processes --open-panels before --open-space.
+                # Explicitly select the workspace first for the target panel.
+                command += ["--open-panels", f"espace-{space},{panels[space]}"]
             if args.backend == "software":
                 command += ["--software", "--flat"]
             env = dict(os.environ)
@@ -249,6 +261,8 @@ def main(argv: list[str] | None = None) -> int:
     shots.add_argument("--backend", choices=("native", "software"), default="native")
     shots.add_argument("--sizes", default=",".join(SIZES))
     shots.add_argument("--spaces", default=",".join(SPACES))
+    shots.add_argument("--panel", action="append", default=[],
+                       help="panneau ouvert dans un espace (ex. points=vue, image=inspecteur)")
     shots.add_argument("--timeout", type=int, default=90)
     review = sub.add_parser("check-pr", help="controler le contrat UX de la PR")
     review.add_argument("--changed-files", required=True)
