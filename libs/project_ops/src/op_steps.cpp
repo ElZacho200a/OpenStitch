@@ -42,7 +42,8 @@ RevectorizePlan revectorize(const document::Project& project, const RevectorizeO
     // intacte) et les traits deviennent des chemins ouverts indépendants.
     const segmentation::Segmentation* fills = &*source.segmentation;
     std::optional<autodigitize::LineworkPlan> linework;
-    if (source.preserve_linework) {
+    // Des zones « traits fins » peintes activent aussi la préservation des traits.
+    if (source.preserve_linework || source.linework_mask.any_detail()) {
         const auto working = image::apply_pipeline(source.original, source.ops);
         if (working && working->width == fills->width && working->height == fills->height) {
             autodigitize::LineLayerOptions lines;
@@ -52,6 +53,7 @@ RevectorizePlan revectorize(const document::Project& project, const RevectorizeO
             // aplat.
             lines.local_contrast = autodigitize::kLineworkContrast;
             lines.max_line_width_mm = autodigitize::kLineworkWidthMm;
+            lines.zone_mask = &source.linework_mask;
             linework = autodigitize::prepare_linework(*fills, *working, source.mm_per_px, lines);
             if (linework->has_linework) {
                 fills = &linework->completed_fills;

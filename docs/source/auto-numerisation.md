@@ -543,6 +543,23 @@ navire LigneNoir, gréement continu et plus de trous de tissu autour des mâts ;
 rambarde cousues, motif du treillis en partie reproduit (limite : cellules de 1 à 2 mm à
 0,26 mm/px). Sans contraste (`0`, défaut du CLI) : comportement historique inchangé.
 
+#### Zones « traits fins » (pinceau, lignes ouvertes lot 3)
+
+Un seuil unique est un compromis : assez haut pour ne pas prendre les bords de nuages et de
+vagues, il rate les traits pâles ou courts d'un motif précis (treillis d'une rambarde). Studio
+offre donc un second pinceau, à côté des zones de détail (espace Segmentation, outils « Zones de
+traits fins » et sa gomme, incrustation cyan) : `ImageSource::linework_mask`, même format que
+`detail_mask`, enregistré dans l'OSP (`linework_mask.u8`, entrée facultative), modifié par
+`PaintDetailMaskCommand` / `ClearDetailMaskCommand` avec la cible `MaskKind::Linework`.
+
+Dans les pixels peints (poids >= 128), `prepare_linework` lance une seconde détection renforcée
+(`LineLayerOptions::zone_mask`) et la réunit aux traits ordinaires : contraste 6 au lieu de 12
+(`kLineworkZoneContrast`), largeur 1,4 mm au lieu de 1 (`kLineworkZoneWidthMm`), allongement
+minimal 2,5 au lieu de 6 (`kLineworkZoneElongation`). Hors zone, rien ne change. Peindre une zone
+active la préservation des traits à la prochaine mise à jour des formes (aucune segmentation à
+relancer). Test : `couche de traits : zone de traits fins…` (un trait de contraste 9 pris dans la
+zone, ignoré hors zone).
+
 La mise à jour des formes (`revectorize`) retire désormais les formes dont la région a été
 entièrement absorbée par les aplats complétés (`RevectorizePlan::absorbed`, objets de broderie
 compris, jamais une forme verrouillée) : avant, ces morceaux de trait restaient comme petites

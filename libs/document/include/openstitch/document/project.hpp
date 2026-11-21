@@ -28,6 +28,9 @@
 namespace openstitch::document {
 
 // Chaque source possède son échelle, ses retouches et sa segmentation.
+// Masques peints sur l'image source.
+enum class MaskKind { Detail, Linework };
+
 struct ImageSource {
     image::Image original;              // jamais modifiée après l'import
     Millimeters mm_per_px{25.4 / 96.0}; // résolution de travail
@@ -41,6 +44,19 @@ struct ImageSource {
     // Elles pilotent le lissage et le nettoyage de la segmentation (`SegmentationOptions::
     // detail_mask`) ; modifiées par `PaintDetailMaskCommand`, enregistrées dans le projet.
     segmentation::DetailMask detail_mask;
+
+    // Zones « traits fins » peintes au pinceau (même format que `detail_mask`) : la détection des
+    // traits y est plus agressive (contraste plus faible, traits plus courts admis) et leur
+    // présence active la préservation des traits. Modifiées par `PaintDetailMaskCommand` (cible
+    // `MaskKind::Linework`), enregistrées dans le projet.
+    segmentation::DetailMask linework_mask;
+
+    [[nodiscard]] segmentation::DetailMask& mask(MaskKind kind) {
+        return kind == MaskKind::Linework ? linework_mask : detail_mask;
+    }
+    [[nodiscard]] const segmentation::DetailMask& mask(MaskKind kind) const {
+        return kind == MaskKind::Linework ? linework_mask : detail_mask;
+    }
 
     // « Préserver les traits fins » (AUTO-LINEWORK-01) : la mise à jour des formes depuis la
     // segmentation détecte les traits fins sombres, coud les aplats complétés sous eux et produit

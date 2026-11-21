@@ -150,6 +150,7 @@ int main(int argc, char** argv) {
     ImageController imageTools(controller);
     RegionController regionTools(controller, imageTools);
     DetailZoneController detailZones(controller, imageTools);
+    DetailZoneController lineworkZones(controller, imageTools, document::MaskKind::Linework);
     ImageSpaceController imageSpace(controller, imageTools);
     SegmentationSpaceController segmentationSpace(controller, imageTools, regionTools);
     SatinController satin(controller);
@@ -202,6 +203,7 @@ int main(int argc, char** argv) {
     engine.rootContext()->setContextProperty(QStringLiteral("imageSpace"), &imageSpace);
     engine.rootContext()->setContextProperty(QStringLiteral("regionTools"), &regionTools);
     engine.rootContext()->setContextProperty(QStringLiteral("detailZones"), &detailZones);
+    engine.rootContext()->setContextProperty(QStringLiteral("lineworkZones"), &lineworkZones);
     engine.rootContext()->setContextProperty(QStringLiteral("segmentationSpace"),
                                              &segmentationSpace);
     // Mode QML externe (opt-in, Studio Dev) : repli sur les ressources embarquées sinon.

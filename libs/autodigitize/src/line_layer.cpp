@@ -372,6 +372,22 @@ LineworkPlan prepare_linework(const segmentation::Segmentation& seg, const image
     if (lines.local_contrast > 0.0) {
         mask = segmentation::contrast_thin_mask(source, diameter, lines.local_contrast);
         drop_stubby_components(mask, seg.width, seg.height, kMinElongation);
+        // Zones « traits fins » : seconde détection, renforcée, limitée aux pixels peints.
+        if (lines.zone_mask != nullptr && lines.zone_mask->matches(seg.width, seg.height) &&
+            lines.zone_mask->any_detail() && lines.zone_contrast > 0.0) {
+            const int zoneDiameter =
+                std::max(2, static_cast<int>(std::lround(lines.zone_width_mm / px_mm)));
+            auto zone = segmentation::contrast_thin_mask(source, zoneDiameter, lines.zone_contrast);
+            for (std::size_t i = 0; i < zone.size(); ++i) {
+                if (lines.zone_mask->weights[i] < 128) {
+                    zone[i] = 0;
+                }
+            }
+            drop_stubby_components(zone, seg.width, seg.height, lines.zone_min_elongation);
+            for (std::size_t i = 0; i < zone.size() && i < mask.size(); ++i) {
+                mask[i] = static_cast<char>(mask[i] != 0 || zone[i] != 0 ? 1 : 0);
+            }
+        }
         std::uint64_t sum[3] = {0, 0, 0};
         std::uint64_t count = 0;
         for (std::size_t i = 0; i < mask.size(); ++i) {

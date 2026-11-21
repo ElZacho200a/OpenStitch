@@ -58,6 +58,8 @@ constexpr const char* kImageEntry = "original.png";
 constexpr const char* kLabelsEntry = "segmentation.u32";
 
 constexpr const char* kDetailMaskEntry = "detail_mask.u8";
+// Zones « traits fins » : même format que le masque de détail, entrée facultative.
+constexpr const char* kLineworkMaskEntry = "linework_mask.u8";
 
 // Masque de détail : largeur et hauteur (uint32 little-endian) puis un octet par pixel.
 detail::Blob detail_mask_to_bytes(const segmentation::DetailMask& mask) {
@@ -204,6 +206,9 @@ Result<void> save_project(const std::filesystem::path& path, const document::Pro
     if (project.detail_mask.any_detail()) {
         entries.emplace(kDetailMaskEntry, detail_mask_to_bytes(project.detail_mask));
     }
+    if (project.linework_mask.any_detail()) {
+        entries.emplace(kLineworkMaskEntry, detail_mask_to_bytes(project.linework_mask));
+    }
 
     for (const auto& layer : project.image_sources) {
         const auto prefix = "images/" + std::to_string(layer.calque.value) + "/";
@@ -219,6 +224,10 @@ Result<void> save_project(const std::filesystem::path& path, const document::Pro
         if (layer.source.detail_mask.any_detail()) {
             entries.emplace(prefix + kDetailMaskEntry,
                             detail_mask_to_bytes(layer.source.detail_mask));
+        }
+        if (layer.source.linework_mask.any_detail()) {
+            entries.emplace(prefix + kLineworkMaskEntry,
+                            detail_mask_to_bytes(layer.source.linework_mask));
         }
     }
 
@@ -265,6 +274,9 @@ Result<void> read_source_entries(const std::map<std::string, detail::Blob>& entr
 
     if (const auto maskIt = entries.find(prefix + kDetailMaskEntry); maskIt != entries.end()) {
         source.detail_mask = detail_mask_from_bytes(maskIt->second);
+    }
+    if (const auto maskIt = entries.find(prefix + kLineworkMaskEntry); maskIt != entries.end()) {
+        source.linework_mask = detail_mask_from_bytes(maskIt->second);
     }
 
     if (source.segmentation) {

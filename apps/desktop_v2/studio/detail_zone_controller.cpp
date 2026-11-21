@@ -14,27 +14,34 @@ namespace {
 constexpr std::size_t kMaxStrokePoints = 200'000;
 
 // Incrustation orange translucide : opacité proportionnelle au poids du masque (bord doux compris).
-QImage buildOverlay(const segmentation::DetailMask& mask) {
+QImage buildOverlay(const segmentation::DetailMask& mask, bool linework) {
     QImage image(mask.width, mask.height, QImage::Format_ARGB32_Premultiplied);
     constexpr std::uint32_t kMaxAlpha = 140;
-    constexpr std::uint32_t kR = 255;
-    constexpr std::uint32_t kG = 140;
+    // Orange pour le détail, cyan pour les traits fins.
+    const std::uint32_t kR = linework ? 0U : 255U;
+    const std::uint32_t kG = linework ? 190U : 140U;
+    const std::uint32_t kB = linework ? 255U : 0U;
     for (int y = 0; y < mask.height; ++y) {
         auto* row = reinterpret_cast<std::uint32_t*>(image.scanLine(y));
         const auto* weights = mask.weights.data() + static_cast<std::size_t>(y) * mask.width;
         for (int x = 0; x < mask.width; ++x) {
             const std::uint32_t a = weights[x] * kMaxAlpha / 255U;
-            row[x] = (a << 24) | ((kR * a / 255U) << 16) | ((kG * a / 255U) << 8);
+            row[x] = (a << 24) | ((kR * a / 255U) << 16) | ((kG * a / 255U) << 8) | (kB * a / 255U);
         }
     }
     return image;
 }
 
+QString overlayKey(document::MaskKind kind) {
+    return kind == document::MaskKind::Linework ? QStringLiteral("linework")
+                                                : QStringLiteral("detail");
+}
+
 } // namespace
 
 DetailZoneController::DetailZoneController(StudioController& studio, ImageController& images,
-                                           QObject* parent)
-    : QObject(parent), studio_(studio), images_(images) {
+                                           document::MaskKind kind, QObject* parent)
+    : QObject(parent), studio_(studio), images_(images), kind_(kind) {
     refreshTimer_.setSingleShot(true);
     refreshTimer_.setInterval(0);
     connect(&refreshTimer_, &QTimer::timeout, this, [this] { refresh(); });
@@ -115,13 +122,19 @@ QString DetailZoneController::paintStroke(const QVariantList& scenePointsMm) {
     }
     const bool erase = tool_ == QLatin1String("erase");
     const auto result =
-        paintDetailPixels(studio_.session(), w, h, mmPerPx, pixels, radiusMm_, erase);
+        paintDetailPixels(studio_.session(), w, h, mmPerPx, pixels, radiusMm_, erase, kind_);
     if (!result.ok) {
         const auto text = QString::fromStdString(result.message);
         setMessage(text, true);
         return text;
     }
     dirty_ = true;
+    if (kind_ == document::MaskKind::Linework) {
+        setMessage(erase ? QStringLiteral("Zone de traits fins effacée.")
+                         : QStringLiteral("Zone de traits fins peinte. Mettez à jour les formes "
+                                          "pour l'appliquer."));
+        return {};
+    }
     setMessage(erase ? QStringLiteral("Zone de détail effacée.")
                      : QStringLiteral("Zone de détail peinte. Relancez la segmentation pour "
                                       "l'appliquer."));
@@ -129,15 +142,17 @@ QString DetailZoneController::paintStroke(const QVariantList& scenePointsMm) {
 }
 
 QString DetailZoneController::clearAll() {
-    const auto result = clearDetail(studio_.session());
+    const auto result = clearDetail(studio_.session(), kind_);
     if (!result.ok) {
         const auto text = QString::fromStdString(result.message);
         setMessage(text, true);
         return text;
     }
     dirty_ = true;
-    setMessage(
-        QStringLiteral("Zones de détail effacées. Relancez la segmentation pour l'appliquer."));
+    setMessage(kind_ == document::MaskKind::Linework
+                   ? QStringLiteral("Zones de traits fins effacées.")
+                   : QStringLiteral(
+                         "Zones de détail effacées. Relancez la segmentation pour l'appliquer."));
     return {};
 }
 
@@ -156,7 +171,7 @@ void DetailZoneController::scheduleRefresh() {
 void DetailZoneController::refresh() {
     static const segmentation::DetailMask none;
     const auto& project = studio_.session().project();
-    const auto& mask = project.hasActiveImage() ? project.imageSource().detail_mask : none;
+    const auto& mask = project.hasActiveImage() ? project.imageSource().mask(kind_) : none;
     if (mask.width == shownWidth_ && mask.height == shownHeight_ && mask.weights == shownWeights_) {
         return;
     }
@@ -169,11 +184,12 @@ void DetailZoneController::refresh() {
             marked += weight >= 128 ? 1U : 0U;
         }
         coverage_ = 100.0 * static_cast<double>(marked) / static_cast<double>(mask.weights.size());
-        images_.images()->set(QStringLiteral("detail"), buildOverlay(mask));
+        images_.images()->set(overlayKey(kind_),
+                              buildOverlay(mask, kind_ == document::MaskKind::Linework));
     } else {
         coverage_ = 0.0;
         dirty_ = false;
-        images_.images()->set(QStringLiteral("detail"), {});
+        images_.images()->set(overlayKey(kind_), {});
     }
     ++overlayRevision_;
     emit maskChanged();

@@ -19,6 +19,9 @@ namespace openstitch::desktop_v2::studio {
 // de la segmentation, et affine la vectorisation de ces régions. Un trait = UNE commande annulable.
 // Le masque se peint avant comme après la segmentation : il ne s'applique qu'à la suivante.
 // Aucune logique métier ici : conversion mm -> pixel, incrustation, messages.
+// Une seconde instance (`MaskKind::Linework`) pilote les zones « traits fins » : même pinceau,
+// masque distinct (incrustation cyan `image://prepare/linework`), appliqué à la mise à jour des
+// formes (détection des traits renforcée dans la zone) et non à la segmentation.
 class DetailZoneController : public QObject {
     Q_OBJECT
     // "" (hors outil) | "paint" | "erase".
@@ -35,6 +38,7 @@ class DetailZoneController : public QObject {
     Q_PROPERTY(bool messageIsError READ messageIsError NOTIFY messageChanged)
 public:
     DetailZoneController(StudioController& studio, ImageController& images,
+                         document::MaskKind kind = document::MaskKind::Detail,
                          QObject* parent = nullptr);
     ~DetailZoneController() override;
 
@@ -45,7 +49,10 @@ public:
     [[nodiscard]] bool hasDetail() const { return coverage_ > 0.0; }
     [[nodiscard]] double coveragePercent() const { return coverage_; }
     [[nodiscard]] int overlayRevision() const { return overlayRevision_; }
-    [[nodiscard]] bool needsSegmentation() const { return dirty_ && hasDetail(); }
+    // Les zones de traits fins n'agissent pas sur la segmentation : jamais à relancer pour elles.
+    [[nodiscard]] bool needsSegmentation() const {
+        return kind_ == document::MaskKind::Detail && dirty_ && hasDetail();
+    }
     [[nodiscard]] QString message() const { return message_; }
     [[nodiscard]] bool messageIsError() const { return messageIsError_; }
 
@@ -69,6 +76,7 @@ private:
 
     StudioController& studio_;
     ImageController& images_;
+    document::MaskKind kind_;
     DocumentSession::Token token_{};
     QTimer refreshTimer_;
     QString tool_;
