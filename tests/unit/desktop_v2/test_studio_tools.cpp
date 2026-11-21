@@ -1316,11 +1316,19 @@ void StudioToolsTest::knifeCutsOnlySelectedShapesTheLineCrosses() {
     QCOMPARE(bAfter.x0, bBefore.x0);
     QCOMPARE(bAfter.x1, bBefore.x1);
 
+    // La sélection après la coupe redevient TOUS les morceaux produits (sélection multiple), pas
+    // une seule pièce représentative, et jamais `b` qui n'a pas été touchée. Un seul morceau
+    // garde l'identité de `a` (le premier conservé par `add_piece_commands`) ; les autres sont de
+    // nouveaux objets : la sélection compte donc un de plus que les objets vraiment nouveaux.
     const auto selection = rig.session.selection().targets();
-    QVERIFY(!selection.empty());
+    QCOMPARE(selection.size(), (objects(rig) - baseObjects) + 1);
+    QVERIFY(selection.size() >= 2); // une ligne qui traverse un rectangle le coupe en au moins 2
+    bool keepsOriginal = false;
     for (const auto& t : selection) {
         QVERIFY(t.id != b);
+        keepsOriginal = keepsOriginal || t.id == a;
     }
+    QVERIFY(keepsOriginal);
 
     QTest::keyClick(rig.window, Qt::Key_Z, Qt::ControlModifier); // une seule étape à défaire
     QCOMPARE(steps(rig), baseSteps);

@@ -2,8 +2,10 @@
 #include "edit_batch.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
+#include <optional>
 
 namespace openstitch::desktop_v2 {
 
@@ -26,6 +28,58 @@ bool pivotOk(PointMm p) {
 
 std::string pivotJson(PointMm p) {
     return R"(,"center_mm":[)" + num(p.x) + "," + num(p.y) + "]";
+}
+
+// Tous les entiers du tableau JSON qui suit `key` (clé complète, guillemets compris) ; vide si la
+// clé est absente ou si sa valeur n'est pas un tableau (ex. `"id":41` isolé).
+std::vector<std::uint64_t> arrayInts(const std::string& json, const std::string& key) {
+    std::vector<std::uint64_t> out;
+    const auto at = json.find(key);
+    if (at == std::string::npos) {
+        return out;
+    }
+    std::size_t i = at + key.size();
+    while (i < json.size() &&
+           (json[i] == ':' || std::isspace(static_cast<unsigned char>(json[i])))) {
+        ++i;
+    }
+    if (i >= json.size() || json[i] != '[') {
+        return out;
+    }
+    for (++i; i < json.size() && json[i] != ']'; ++i) {
+        if (!std::isdigit(static_cast<unsigned char>(json[i]))) {
+            continue;
+        }
+        std::uint64_t value = 0;
+        while (i < json.size() && std::isdigit(static_cast<unsigned char>(json[i]))) {
+            value = value * 10 + static_cast<std::uint64_t>(json[i] - '0');
+            ++i;
+        }
+        out.push_back(value);
+        --i;
+    }
+    return out;
+}
+
+// Entier isolé qui suit `key` (ex. `"id":41`) ; vide si absent.
+std::optional<std::uint64_t> singleInt(const std::string& json, const std::string& key) {
+    const auto at = json.find(key);
+    if (at == std::string::npos) {
+        return std::nullopt;
+    }
+    std::size_t i = at + key.size();
+    while (i < json.size() &&
+           (json[i] == ':' || std::isspace(static_cast<unsigned char>(json[i])))) {
+        ++i;
+    }
+    std::uint64_t value = 0;
+    bool any = false;
+    while (i < json.size() && std::isdigit(static_cast<unsigned char>(json[i]))) {
+        value = value * 10 + static_cast<std::uint64_t>(json[i] - '0');
+        any = true;
+        ++i;
+    }
+    return any ? std::optional<std::uint64_t>{value} : std::nullopt;
 }
 
 } // namespace
@@ -183,11 +237,26 @@ std::string batchSplitPath(const std::vector<std::uint64_t>& ids,
 std::vector<std::uint64_t> createdObjectIds(const project_ops::BatchReport& report) {
     std::vector<std::uint64_t> out;
     for (const auto& o : report.outcomes) {
-        project_ops::BatchReport one;
-        one.outcomes.push_back(o);
-        if (const auto id = createdObjectId(one)) {
-            out.push_back(*id);
+        const auto& json = o.result_json;
+        // Découpe/séparation : chaque morceau entre dans la sélection qui suit l'opération, y
+        // compris celui qui garde l'identité de la forme d'origine (`original`) -- seuls les
+        // NOUVEAUX morceaux apparaissent dans `created` (brodés) ou, à défaut, `vector_ids` (pas
+        // encore convertis ; jamais les deux : une pièce déjà brodée n'est comptée que par son id
+        // de broderie, pas aussi par celui de son vecteur). Sans pluralité de morceaux (fusion,
+        // ajout, duplication...) : un seul identifiant (`id`).
+        std::vector<std::uint64_t> ids = arrayInts(json, "\"created\"");
+        if (ids.empty()) {
+            ids = arrayInts(json, "\"vector_ids\"");
         }
+        if (const auto original = singleInt(json, "\"original\"")) {
+            ids.push_back(*original);
+        }
+        if (ids.empty()) {
+            if (const auto id = singleInt(json, "\"id\"")) {
+                ids.push_back(*id);
+            }
+        }
+        out.insert(out.end(), ids.begin(), ids.end());
     }
     return out;
 }
