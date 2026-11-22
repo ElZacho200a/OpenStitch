@@ -848,9 +848,7 @@ Item {
             text: qsTr("Réduire les coupes : passer sous les points cousus ensuite")
             readonly property string help: qsTr("Cache les sauts de fil sous des points cousus plus tard, quand c'est possible.")
             Accessible.description: help
-            Controls.ToolTip.visible: hovered
-            Controls.ToolTip.delay: 500
-            Controls.ToolTip.text: help
+            StudioToolTip { text: parent.help } // survol ou focus clavier
             checked: panel.exportValues.hiddenTravel === true
             onToggled: panel.exportValues.hiddenTravel = checked
         }
@@ -1013,14 +1011,14 @@ Item {
         readonly property var result: panel.ctl ? panel.ctl.photoResult : ({})
         readonly property bool hasResult: result !== undefined && result.path !== undefined
         visible: hasResult && !(panel.ctl && panel.ctl.busy)
-        // Même colonne que les notifications du Studio (Main.qml, studioFeedbackToast) : bord
-        // droit du canevas, inspecteur dégagé, au-dessus de la barre de zoom (bas gauche).
+        // Coin bas droit du canevas, sur la rangée de la barre de zoom (bas gauche) et dans la
+        // colonne des notifications du Studio (Main.qml, studioFeedbackToast) : le centre du
+        // motif reste dégagé, y compris à 1000 × 640. Largeur fixe et compacte (320 px).
         anchors.right: parent.right
         anchors.rightMargin: Theme.inspectorWidth + 46
         anchors.bottom: parent.bottom
-        anchors.bottomMargin: 104
-        width: Math.min(parent.width - Theme.inspectorWidth - 46 - 16,
-                        Math.max(340, photoDoneBody.implicitWidth + 24))
+        anchors.bottomMargin: 52
+        width: Math.min(320, parent.width - Theme.inspectorWidth - 46 - 16)
         height: photoDoneBody.implicitHeight + 24
         radius: Theme.radius
         color: Theme.surface
@@ -1049,6 +1047,15 @@ Item {
             spacing: 8
             RowLayout {
                 spacing: 8
+                // Le succès est porté par un pictogramme, pas seulement par la bordure verte.
+                StudioIcon {
+                    name: "check"
+                    color: Theme.success
+                    implicitWidth: 18
+                    implicitHeight: 18
+                    Layout.alignment: Qt.AlignTop
+                    Layout.topMargin: 1
+                }
                 ColumnLayout {
                     spacing: 2
                     Layout.fillWidth: true
@@ -1070,6 +1077,12 @@ Item {
                         font.pixelSize: Theme.smallSize
                         elide: Text.ElideMiddle
                         Layout.fillWidth: true
+                        // Chemin complet au survol (le nom seul tient dans la carte).
+                        HoverHandler { id: photoDoneDetailHover }
+                        StudioToolTip {
+                            visible: photoDoneDetailHover.hovered && text.length > 0
+                            text: photoDoneCard.hasResult ? photoDoneCard.result.path : ""
+                        }
                     }
                 }
                 StudioButton {
