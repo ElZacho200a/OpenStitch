@@ -110,7 +110,7 @@ ColumnLayout {
     Text {
         objectName: "vectorPrecisionHelp"
         Layout.fillWidth: true
-        text: qsTr("Tolérance haute : contours plus simples, moins de nœuds. Basse : plus fidèle à l'image ; 0 garde le contour exact des pixels (sous 1 px, les courbes suivent les escaliers des pixels). Pris en compte à l'étape ①.")
+        text: qsTr("Tolérance haute : contours plus simples, moins de nœuds. Basse : plus fidèle à l'image (sous 1 px, les courbes suivent les escaliers des pixels). À 0 : contour exact des pixels, sans simplification. Pris en compte à l'étape ①.")
         color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize; wrapMode: Text.WordWrap
     }
 
