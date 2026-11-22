@@ -44,6 +44,9 @@ class FileController : public QObject {
     Q_PROPERTY(QVariantList hoops READ hoops CONSTANT)
     Q_PROPERTY(QVariantList machines READ machines CONSTANT)
     Q_PROPERTY(QVariantList userHoops READ userHoops NOTIFY userHoopsChanged)
+    // Dernier rendu photo terminé, affiché jusqu'à ce que l'utilisateur le ferme : name, path,
+    // seconds, width, height, segments. Vide tant qu'aucun rendu n'a abouti.
+    Q_PROPERTY(QVariantMap photoResult READ photoResult NOTIFY photoResultChanged)
 public:
     // `stateDir` : dossier des préférences hors document (récents, sauvegarde automatique, cadres
     // personnels). Vide : rien n'est persisté (tests, mode sans état).
@@ -118,9 +121,15 @@ public:
     Q_INVOKABLE void exportImage(const QUrl& url, double pxPerMm = 6.0, int jpegQuality = 92);
     // Rendu photo par lancer de rayons (RENDER-PBR-01, lot D) : scène de brins puis
     // tools/raytrace/render_mitsuba.py (Mitsuba 3, outil externe) hors du fil d'interface ;
-    // l'image est ouverte à la fin. Options (facultatives, bornées) : tiltDeg [0 ; 70],
-    // samples [1 ; 4096], pxPerMm [2 ; 40], threadWidthMm [0,15 ; 1], fabric « r,g,b ».
+    // à la fin, `photoResult` alimente la carte « Rendu photo terminé ». Options (facultatives,
+    // bornées) : tiltDeg [0 ; 70], samples [1 ; 4096], pxPerMm [2 ; 40], threadWidthMm [0,15 ; 1],
+    // fabric « r,g,b ».
     Q_INVOKABLE void exportPhotoRender(const QUrl& url, const QVariantMap& options = {});
+    [[nodiscard]] QVariantMap photoResult() const { return photoResult_; }
+    // Actions de la carte « Rendu photo terminé » : ouvrir l'image, montrer son dossier, fermer.
+    Q_INVOKABLE void openPhotoResult();
+    Q_INVOKABLE void revealPhotoResult();
+    Q_INVOKABLE void dismissPhotoResult();
     Q_INVOKABLE void exportProductionSheet(const QUrl& url);
     Q_INVOKABLE void exportPlacementTemplate(const QUrl& url, const QVariantMap& options = {});
     // CX07 : ce que l'export « image » (pxPerMm) ou « template » (paper, landscape) produira,
@@ -160,6 +169,7 @@ signals:
     void exportChanged();
     void exportConfirmationRequested(const QString& warning);
     void userHoopsChanged();
+    void photoResultChanged();
     // QML doit ouvrir « Enregistrer sous » pour poursuivre (document sans fichier).
     void saveAsRequested();
     void quitApproved();
@@ -211,6 +221,7 @@ private:
     std::optional<std::filesystem::path> pendingExport_;
     std::uint64_t pendingExportRevision_{0};
     std::uint64_t loadGeneration_{0};
+    QVariantMap photoResult_;
     QString exportCheckText_;
     std::uint64_t exportCheckGeneration_{0};
     TaskId currentTask_{0};

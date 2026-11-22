@@ -7,9 +7,11 @@
 #include <QCoreApplication>
 #include <QDesktopServices>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QImage>
+#include <QImageReader>
 #include <QPageSize>
 #include <QPainter>
 #include <QPdfWriter>
@@ -1228,7 +1230,13 @@ QString raytraceScript() {
 struct PhotoRenderJob {
     std::size_t segments{0};
     QString engineLine;
+    double seconds{0.0};
 };
+
+// Pas d'application externe en mode sans écran (tests QTest headless).
+bool canLaunchExternalApps() {
+    return QGuiApplication::platformName() != QLatin1String("offscreen");
+}
 } // namespace
 
 void FileController::exportPhotoRender(const QUrl& url, const QVariantMap& options) {
@@ -1243,6 +1251,11 @@ void FileController::exportPhotoRender(const QUrl& url, const QVariantMap& optio
         return;
     }
     const QString python = qEnvironmentVariable("OPENSTITCH_PYTHON", QStringLiteral("python"));
+    if (!ensureCanStartTask()) {
+        return;
+    }
+    // Un nouveau rendu remplace la carte du précédent.
+    dismissPhotoResult();
     const auto snapshot = studio_.session().snapshot();
     const auto scene =
         std::filesystem::temp_directory_path() /
@@ -1309,6 +1322,8 @@ void FileController::exportPhotoRender(const QUrl& url, const QVariantMap& optio
          background, fabricType, threadType,
          threadTuning](const TaskContext& task) -> Result<PhotoRenderJob> {
             PhotoRenderJob job;
+            QElapsedTimer clock;
+            clock.start();
             auto count = export_thread_scene(snapshot, scene, threadWidthMm, task);
             if (!count) {
                 return std::unexpected(count.error());
@@ -1369,18 +1384,65 @@ void FileController::exportPhotoRender(const QUrl& url, const QVariantMap& optio
                                       : last.toStdString());
             }
             job.engineLine = output.section(QLatin1Char('\n'), -1);
+            job.seconds = static_cast<double>(clock.elapsed()) / 1000.0;
             return job;
         },
         [this, path](PhotoRenderJob&& job) {
+            const QString file = fromPath(path);
+            // La carte persistante remplace l'ouverture automatique de la visionneuse : un
+            // rendu de plusieurs minutes ne vole plus le premier plan, et son résultat reste
+            // visible tant que l'utilisateur ne l'a pas fermé.
+            const QSize size = QImageReader(file).size();
+            photoResult_ =
+                QVariantMap{{QStringLiteral("name"), fromPath(path.filename())},
+                            {QStringLiteral("path"), file},
+                            {QStringLiteral("seconds"), job.seconds},
+                            {QStringLiteral("width"), size.width()},
+                            {QStringLiteral("height"), size.height()},
+                            {QStringLiteral("segments"), static_cast<qulonglong>(job.segments)}};
+            emit photoResultChanged();
             setMessage(QStringLiteral("Rendu photo écrit : %1 (%2 brins)")
                            .arg(fromPath(path.filename()))
                            .arg(static_cast<qulonglong>(job.segments)));
-            // Pas de visionneuse en mode sans écran (tests QTest headless).
-            if (QGuiApplication::platformName() != QLatin1String("offscreen")) {
-                QDesktopServices::openUrl(QUrl::fromLocalFile(fromPath(path)));
-            }
         },
         QStringLiteral("Rendu photo impossible : "));
+}
+
+void FileController::openPhotoResult() {
+    const QString file = photoResult_.value(QStringLiteral("path")).toString();
+    if (file.isEmpty()) {
+        return;
+    }
+    if (!QFileInfo::exists(file)) {
+        setMessage(QStringLiteral("Image introuvable : %1").arg(QFileInfo(file).fileName()), true);
+        return;
+    }
+    if (canLaunchExternalApps() && !QDesktopServices::openUrl(QUrl::fromLocalFile(file))) {
+        setMessage(QStringLiteral("Aucune application n'ouvre les images PNG sur ce poste."), true);
+    }
+}
+
+void FileController::revealPhotoResult() {
+    const QString file = photoResult_.value(QStringLiteral("path")).toString();
+    if (file.isEmpty() || !canLaunchExternalApps()) {
+        return;
+    }
+#ifdef Q_OS_WIN
+    if (QFileInfo::exists(file) &&
+        QProcess::startDetached(QStringLiteral("explorer.exe"),
+                                {QStringLiteral("/select,") + QDir::toNativeSeparators(file)})) {
+        return;
+    }
+#endif
+    QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(file).absolutePath()));
+}
+
+void FileController::dismissPhotoResult() {
+    if (photoResult_.isEmpty()) {
+        return;
+    }
+    photoResult_.clear();
+    emit photoResultChanged();
 }
 
 void FileController::exportProductionSheet(const QUrl& url) {

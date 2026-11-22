@@ -14,7 +14,10 @@ Item {
     signal quitApproved()
     signal imageImported()
     objectName: "filePanel"
-    readonly property bool notificationVisible: toast.visible
+    readonly property bool notificationVisible: toast.visible || photoDoneCard.visible
+    // Marge basse à laisser libre au-dessus des notifications du panneau (toast de Main.qml).
+    readonly property real notificationClearance: photoDoneCard.visible
+        ? photoDoneCard.anchors.bottomMargin + photoDoneCard.height + 12 : 108
     anchors.fill: parent
 
     readonly property var ctl: (typeof files !== "undefined") ? files : null
@@ -27,6 +30,12 @@ Item {
     function openUrl(url) { if (ctl) ctl.openUrl(url); else studio.openProject(url) }
     function requestQuit() { return ctl ? ctl.requestQuit() : true }
     function openMenu() { menu.open() }
+    // Échap (raccourci unique de Main.qml) : ferme la carte de fin de rendu si elle est affichée.
+    function dismissNotification() {
+        if (!photoDoneCard.visible) return false
+        ctl.dismissPhotoResult()
+        return true
+    }
     function openExportDialog() { if (ctl) { exportValues = ctl.exportOptions(); exportDialog.open(); ctl.requestExportCheck(exportDialog.format) } }
     function openHoopDialog() { if (ctl) hoopDialog.open() }
     function importImageDialog() { imageDialog.open() }
@@ -921,9 +930,30 @@ Item {
     Rectangle {
         id: toast
         objectName: "fileToast"
+        // FilePanel est déclaré avant l'espace de travail dans Main.qml : sans cette couche, le
+        // canevas se dessinait par-dessus et masquait le retour des tâches (fin de rendu photo).
+        parent: Controls.Overlay.overlay
         z: 50
         property bool shown: false
-        readonly property bool activeToast: panel.ctl ? (shown || panel.ctl.busy) : false
+        // La carte « Rendu photo terminé » porte déjà le message de fin : pas de doublon.
+        readonly property bool activeToast: panel.ctl
+            ? (panel.ctl.busy || (shown && !photoDoneCard.hasResult)) : false
+        // Temps écoulé d'une tâche longue (rendu photo : plusieurs minutes), affiché après 3 s.
+        property int elapsedSeconds: 0
+        function elapsedText() {
+            if (elapsedSeconds < 3) return ""
+            var m = Math.floor(elapsedSeconds / 60)
+            var s = elapsedSeconds % 60
+            return " " + (m > 0 ? qsTr("%1 min %2 s").arg(m).arg(s < 10 ? "0" + s : s)
+                                : qsTr("%1 s").arg(s))
+        }
+        Timer {
+            interval: 1000
+            repeat: true
+            running: panel.ctl !== null && panel.ctl.busy
+            onRunningChanged: if (running) toast.elapsedSeconds = 0
+            onTriggered: toast.elapsedSeconds += 1
+        }
         visible: activeToast || opacity > 0
         opacity: activeToast ? 1 : 0
         Behavior on opacity { NumberAnimation { duration: Theme.feedbackFastMs } }
@@ -941,7 +971,8 @@ Item {
             spacing: 10
             Text {
                 objectName: "fileToastText"
-                text: panel.ctl ? (panel.ctl.busy ? panel.ctl.busyLabel + "…" : panel.ctl.message) : ""
+                text: panel.ctl ? (panel.ctl.busy ? panel.ctl.busyLabel + "…" + toast.elapsedText()
+                                                  : panel.ctl.message) : ""
                 color: panel.ctl && panel.ctl.messageIsError ? Theme.error : Theme.foreground
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.bodySize
@@ -968,6 +999,106 @@ Item {
             id: toastTimer
             interval: 8000
             onTriggered: toast.shown = false
+        }
+    }
+
+    // Fin d'un rendu photo : carte persistante (un rendu dure souvent plusieurs minutes, un
+    // message de 8 s passe inaperçu). Elle reste jusqu'à « Fermer » ou au rendu suivant ; si la
+    // fenêtre n'est pas au premier plan, la barre des tâches clignote.
+    Rectangle {
+        id: photoDoneCard
+        objectName: "photoDoneCard"
+        parent: Controls.Overlay.overlay // au-dessus du canevas, comme le message de tâche
+        z: 51
+        readonly property var result: panel.ctl ? panel.ctl.photoResult : ({})
+        readonly property bool hasResult: result !== undefined && result.path !== undefined
+        visible: hasResult && !(panel.ctl && panel.ctl.busy)
+        // Même colonne que les notifications du Studio (Main.qml, studioFeedbackToast) : bord
+        // droit du canevas, inspecteur dégagé, au-dessus de la barre de zoom (bas gauche).
+        anchors.right: parent.right
+        anchors.rightMargin: Theme.inspectorWidth + 46
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 104
+        width: Math.min(parent.width - Theme.inspectorWidth - 46 - 16,
+                        Math.max(340, photoDoneBody.implicitWidth + 24))
+        height: photoDoneBody.implicitHeight + 24
+        radius: Theme.radius
+        color: Theme.surface
+        border.color: Theme.success
+        border.width: Theme.borderWidth
+        Accessible.role: Accessible.AlertMessage
+        Accessible.name: photoDoneTitle.text + ". " + photoDoneDetail.text
+        function sizeText() {
+            if (!hasResult) return ""
+            var parts = []
+            if (result.width > 0)
+                parts.push(qsTr("%1 × %2 px").arg(result.width).arg(result.height))
+            var s = Math.round(result.seconds)
+            parts.push(s >= 60 ? qsTr("%1 min %2 s").arg(Math.floor(s / 60)).arg(s % 60)
+                               : qsTr("%1 s").arg(Math.max(1, s)))
+            return result.name + " · " + parts.join(" · ")
+        }
+        onHasResultChanged: {
+            if (hasResult && Window.window && !Window.window.active)
+                Window.window.alert(0)
+        }
+        ColumnLayout {
+            id: photoDoneBody
+            anchors.fill: parent
+            anchors.margins: 12
+            spacing: 8
+            RowLayout {
+                spacing: 8
+                ColumnLayout {
+                    spacing: 2
+                    Layout.fillWidth: true
+                    Text {
+                        id: photoDoneTitle
+                        objectName: "photoDoneTitle"
+                        text: qsTr("Rendu photo terminé")
+                        color: Theme.foreground
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.bodySize
+                        font.weight: Theme.strongWeight
+                    }
+                    Text {
+                        id: photoDoneDetail
+                        objectName: "photoDoneDetail"
+                        text: photoDoneCard.sizeText()
+                        color: Theme.muted
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.smallSize
+                        elide: Text.ElideMiddle
+                        Layout.fillWidth: true
+                    }
+                }
+                StudioButton {
+                    objectName: "photoDoneClose"
+                    iconName: "close"
+                    tooltip: qsTr("Fermer (Échap)")
+                    quiet: true
+                    implicitWidth: 28
+                    implicitHeight: 28
+                    Layout.alignment: Qt.AlignTop
+                    onClicked: panel.ctl.dismissPhotoResult()
+                }
+            }
+            RowLayout {
+                spacing: 8
+                StudioButton {
+                    objectName: "photoDoneOpen"
+                    text: qsTr("Ouvrir l'image")
+                    emphasized: true
+                    onClicked: panel.ctl.openPhotoResult()
+                }
+                StudioButton {
+                    objectName: "photoDoneReveal"
+                    text: qsTr("Ouvrir le dossier")
+                    tooltip: qsTr("Affiche l'image dans l'Explorateur de fichiers")
+                    onClicked: panel.ctl.revealPhotoResult()
+                }
+                Item { Layout.fillWidth: true }
+            }
         }
     }
 }

@@ -388,6 +388,8 @@ Window {
             // second Shortcut « Escape » rendrait la touche ambiguë et aucun ne s'exécuterait.
             const space = spaceHost.space
             if (space && typeof space.cancelTool === "function" && space.cancelTool()) return
+            // Puis la carte « Rendu photo terminé », avant de toucher à la sélection.
+            if (filePanel.dismissNotification()) return
             editor.eyedropper = false
             if (!canvas || !canvas.cancelGesture()) studio.clearSelection()
         }
@@ -725,7 +727,7 @@ Window {
         // known panel instead of the window edge.
         anchors.rightMargin: Theme.inspectorWidth + 46
         // The FilePanel already owns a centred task toast; never overlap it.
-        anchors.bottomMargin: filePanel.notificationVisible ? 108 : 48
+        anchors.bottomMargin: filePanel.notificationVisible ? filePanel.notificationClearance : 48
         visible: window.feedbackText.length > 0
         enabled: false
         implicitWidth: Math.min(440, Math.max(160, feedbackLabel.implicitWidth + 28))
