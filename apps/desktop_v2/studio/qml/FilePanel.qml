@@ -1026,6 +1026,8 @@ Item {
         border.width: Theme.borderWidth
         Accessible.role: Accessible.AlertMessage
         Accessible.name: photoDoneTitle.text + ". " + photoDoneDetail.text
+        // Chemin complet aussi pour le lecteur d'écran (l'infobulle n'apparaît qu'au survol).
+        Accessible.description: hasResult ? result.path : ""
         function sizeText() {
             if (!hasResult) return ""
             var parts = []
@@ -1106,8 +1108,8 @@ Item {
                 }
                 StudioButton {
                     objectName: "photoDoneReveal"
-                    text: qsTr("Ouvrir le dossier")
-                    tooltip: qsTr("Affiche l'image dans l'Explorateur de fichiers")
+                    text: qsTr("Afficher dans l'Explorateur")
+                    tooltip: qsTr("Ouvre le dossier de l'image, fichier sélectionné")
                     onClicked: panel.ctl.revealPhotoResult()
                 }
                 Item { Layout.fillWidth: true }
