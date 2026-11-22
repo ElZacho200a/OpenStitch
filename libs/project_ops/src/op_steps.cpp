@@ -614,8 +614,8 @@ void register_step_ops(std::vector<OpSpec>& out) {
         "vectorize_segmentation",
         "Étape Vecteurs : crée ou met à jour une forme vectorielle par région de la "
         "segmentation (comme « Mettre à jour depuis la segmentation » dans Studio).",
-        {{"precision_mm", "number", "mm", "simplification des contours (défaut 0,2)", false,
-          "[0.01 ; 2]"},
+        {{"precision_mm", "number", "mm",
+          "simplification des contours (défaut 0,2 ; 0 = contour brut)", false, "[0 ; 2]"},
          {"curves", "boolean", "", "ajuster des courbes (défaut faux)", false, ""},
          {"curve_tolerance_px", "number", "px", "tolérance des courbes (défaut 1,5)", false,
           "[0.1 ; 10]"},

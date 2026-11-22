@@ -17,7 +17,8 @@ namespace openstitch::project_ops {
 // Bornes uniques des réglages (VEC-ADAPT-01, lot A) : Studio, opération et CLI/MCP valident
 // contre les mêmes valeurs. Sous un pixel, l'ajustement suit les escaliers du raster plutôt que
 // d'ajouter du détail : la borne basse permet de le mesurer, le défaut reste 1,5 px.
-inline constexpr double kPrecisionMinMm = 0.01;
+// Tolérance de simplification 0 : contour brut des pixels, aucun nœud retiré.
+inline constexpr double kPrecisionMinMm = 0.0;
 inline constexpr double kPrecisionMaxMm = 2.0;
 inline constexpr double kCurveToleranceMinPx = 0.1;
 inline constexpr double kCurveToleranceMaxPx = 10.0;

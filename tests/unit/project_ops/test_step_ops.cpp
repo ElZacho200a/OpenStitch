@@ -116,9 +116,10 @@ TEST_CASE("step ops: vectorize_segmentation fine tolerance bounds", "[project_op
         run(project, R"({"op":"vectorize_segmentation","curves":true,"curve_tolerance_px":0.05})")
             .ok);
     CHECK(run(project, R"({"op":"vectorize_segmentation","precision_mm":0.01})").ok);
-    CHECK_FALSE(run(project, R"({"op":"vectorize_segmentation","precision_mm":0.005})").ok);
+    CHECK(run(project, R"({"op":"vectorize_segmentation","precision_mm":0})").ok);
+    CHECK_FALSE(run(project, R"({"op":"vectorize_segmentation","precision_mm":-0.01})").ok);
     CHECK(project_ops::kCurveToleranceMinPx == 0.1);
-    CHECK(project_ops::kPrecisionMinMm == 0.01);
+    CHECK(project_ops::kPrecisionMinMm == 0.0);
 }
 
 TEST_CASE("step ops: image_prep crop and refusals", "[project_ops][steps]") {

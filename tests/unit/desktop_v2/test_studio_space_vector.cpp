@@ -742,8 +742,8 @@ private slots:
         QCOMPARE(options.count(), 1);
         rig.stage.setPrecisionMm(99.0);
         QCOMPARE(rig.stage.precisionMm(), 2.0);
-        rig.stage.setPrecisionMm(0.0);
-        QCOMPARE(rig.stage.precisionMm(), 0.01);
+        rig.stage.setPrecisionMm(-1.0);
+        QCOMPARE(rig.stage.precisionMm(), 0.0); // 0 accepté : contour brut, sans simplification
         rig.stage.setPrecisionMm(0.2);
 
         auto* slider = deepItem(rig.window->contentItem(), QStringLiteral("vectorPrecisionSlider"));

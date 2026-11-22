@@ -60,7 +60,7 @@ ColumnLayout {
         StudioSlider {
             objectName: "vectorPrecisionSlider"
             Layout.fillWidth: true
-            from: 0.01; to: 2.0; stepSize: 0.01
+            from: 0.0; to: 2.0; stepSize: 0.01
             value: panel.stage ? panel.stage.precisionMm : 0.2
             Accessible.name: qsTr("Tolérance de simplification en millimètres")
             onMoved: panel.stage.precisionMm = value
@@ -70,7 +70,7 @@ ColumnLayout {
             objectName: "vectorPrecisionValue"
             implicitWidth: 56
             text: panel.stage ? panel.stage.precisionMm.toFixed(2) : ""
-            wheelStep: 0.01; wheelMin: 0.01; wheelMax: 2.0; wheelDecimals: 2
+            wheelStep: 0.01; wheelMin: 0.0; wheelMax: 2.0; wheelDecimals: 2
             Accessible.name: qsTr("Tolérance de simplification, saisie en millimètres")
             onEditingFinished: { const v = Number(text.replace(",", ".")); if (isFinite(v)) panel.stage.precisionMm = v; else text = panel.stage.precisionMm.toFixed(2) }
         }
@@ -110,7 +110,7 @@ ColumnLayout {
     Text {
         objectName: "vectorPrecisionHelp"
         Layout.fillWidth: true
-        text: qsTr("Tolérance haute : contours plus simples, moins de nœuds. Basse : plus fidèle à l'image (sous 1 px, les courbes suivent les escaliers des pixels). Pris en compte à l'étape ①.")
+        text: qsTr("Tolérance haute : contours plus simples, moins de nœuds. Basse : plus fidèle à l'image ; 0 garde le contour exact des pixels (sous 1 px, les courbes suivent les escaliers des pixels). Pris en compte à l'étape ①.")
         color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize; wrapMode: Text.WordWrap
     }
 
