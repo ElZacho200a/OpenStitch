@@ -371,7 +371,8 @@ private slots:
         // Lasso (outil de la barre) autour du bloc bas-gauche, Ctrl ajoute à la sélection.
         QVERIFY(rig.press("regionTool_lasso"));
         QTRY_COMPARE(rig.regions.tool(), QStringLiteral("lasso"));
-        // Le lasso n'a pas de rayon : seule son étiquette (et son message) occupe la barre d'options.
+        // Le lasso n'a pas de rayon : seule son étiquette (et son message) occupe la barre
+        // d'options.
         QTRY_VERIFY(rig.named("regionLassoLabel")->isVisible());
         QVERIFY(!rig.named("regionBrushRadius")->isVisible());
         drag({rig.windowPos(-4, 54).toPoint(), rig.windowPos(88, 54).toPoint(),
