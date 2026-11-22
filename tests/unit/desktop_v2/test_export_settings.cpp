@@ -56,6 +56,28 @@ TEST_CASE("export options are read in millimetres and changed in one undo step",
     CHECK_FALSE(exportOptionsOf(s.project()).designStart.has_value());
 }
 
+TEST_CASE("hidden travel is on for a new project and switched in one undo step",
+          "[desktop_v2][export]") {
+    auto s = newSession();
+    auto o = exportOptionsOf(s.project());
+    CHECK(o.hiddenTravel); // nouveau projet : ponts cachés activés (2026-11-20)
+    const auto levels = s.project().finishing.hidden_travel;
+
+    const auto depth = s.undoNames().size();
+    o.hiddenTravel = false;
+    REQUIRE(setExportOptions(s, o).ok);
+    CHECK(s.undoNames().size() == depth + 1);
+    CHECK_FALSE(s.project().finishing.hidden_travel.enabled);
+    CHECK_FALSE(exportOptionsOf(s.project()).hiddenTravel);
+    // Seul l'interrupteur change : niveaux et longueurs restent ceux du projet.
+    auto expected = levels;
+    expected.enabled = false;
+    CHECK(s.project().finishing.hidden_travel == expected);
+
+    REQUIRE(s.undo());
+    CHECK(exportOptionsOf(s.project()).hiddenTravel);
+}
+
 TEST_CASE("invalid export options are refused without stacking anything", "[desktop_v2][export]") {
     auto s = newSession();
     const auto depth = s.undoNames().size();

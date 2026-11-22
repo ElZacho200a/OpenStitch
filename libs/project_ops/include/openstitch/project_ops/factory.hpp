@@ -61,7 +61,8 @@ struct DigitizeSettings {
     std::optional<double> min_region_mm2;
     double trim_threshold_mm{3.0};
     std::string lock{"backforth"};
-    bool hidden_travel{false};
+    // Ponts cachés (HP-SEQ-006.a), activés par défaut depuis le 2026-11-20.
+    bool hidden_travel{true};
     bool hidden_same_color{false};
     std::string hidden_levels{"all"};
     double hidden_max_mm{50.0};
@@ -91,6 +92,7 @@ struct DigitizeSettings {
     bool dark_lines{false};
     double dark_lines_width_mm{1.6};
     double dark_lines_lightness{25.0};
+    double dark_lines_contrast{0.0}; // > 0 : traits par contraste local (L*), lot 2
     double dark_lines_bars_mm{
         0.0}; // barres sombres jusqu'à cette largeur : bandes (satin), 0 = non
     double dark_lines_min_length_mm{0.0}; // fragments de trait isolés plus courts : non cousus

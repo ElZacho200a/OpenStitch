@@ -35,7 +35,7 @@ PDF_NAME = "OpenStitch-Studio-Documentation.pdf"
 CHAPTERS = [
     "index", "introduction", "getting-started", "installation", "user-guide", "cli", "cli-project",
     "mcp", "ai-companion",
-    "image-processing", "segmentation", "vectorization", "embroidery-objects",
+    "image-processing", "segmentation", "vectorization", "lignes-ouvertes", "embroidery-objects",
     "auto-numerisation",
     "stitch-generation", "moteur-de-points", "satin-squelette", "satin", "tatami", "directional-fill",
     "lettering",

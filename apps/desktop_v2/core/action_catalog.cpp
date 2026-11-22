@@ -385,7 +385,7 @@ std::vector<ActionDef> makeCatalog() {
                                  {"triangle", "Triangle"},
                                  {"zigzag", "Zigzag"},
                                  {"none", "Aucun"}}),
-                    boolField("hidden_travel", "Ponts cachés (au lieu de sauts)", false)};
+                    boolField("hidden_travel", "Ponts cachés (au lieu de sauts)", true)};
         a.build = [](const Values& v, const ActionContext&, std::string&) {
             return wrap(R"({"op":"set_finishing","enabled":)" +
                         std::string(flag(v, "enabled") ? "true" : "false") +
@@ -459,6 +459,38 @@ std::vector<ActionDef> makeCatalog() {
         a.build = [](const Values& v, const ActionContext& c, std::string&) {
             return wrap(R"({"op":"remove_small_pieces","objects":)" + idList(c) +
                         R"(,"min_area_mm2":)" + num(number(v, "min_area_mm2")) + "}");
+        };
+        out.push_back(std::move(a));
+    }
+    {
+        ActionDef a;
+        a.id = "shape.absorb_crumbs";
+        a.label = "Absorber les miettes dans leurs voisines…";
+        a.group = "Formes";
+        a.fields = {numberField("max_area_mm2", "Miette sous", 0.0001, 1000000, "3", "mm²"),
+                    choiceField("priority", "Voisine choisie",
+                                {{"same_thread", "Même fil d'abord"},
+                                 {"longest_border", "Plus longue frontière"},
+                                 {"largest", "La plus grande"}}),
+                    numberField("reach_mm", "Fente comblée jusqu'à", 0, 5, "0.2", "mm")};
+        a.build = [](const Values& v, const ActionContext&, std::string&) {
+            return wrap(R"({"op":"absorb_small_objects","max_area_mm2":)" +
+                        num(number(v, "max_area_mm2")) + R"(,"priority":")" + v.at("priority") +
+                        R"(","reach_mm":)" + num(number(v, "reach_mm")) + "}");
+        };
+        out.push_back(std::move(a));
+    }
+    {
+        ActionDef a;
+        a.id = "shape.fill_gaps_between";
+        a.label = "Reboucher les interstices entre formes…";
+        a.group = "Formes";
+        a.fields = {numberField("max_area_mm2", "Interstice jusqu'à", 0.0001, 1000000, "4", "mm²"),
+                    numberField("reach_mm", "Contact avec les bords", 0, 5, "0.2", "mm")};
+        a.build = [](const Values& v, const ActionContext&, std::string&) {
+            return wrap(R"({"op":"fill_gaps_between","max_area_mm2":)" +
+                        num(number(v, "max_area_mm2")) + R"(,"reach_mm":)" +
+                        num(number(v, "reach_mm")) + "}");
         };
         out.push_back(std::move(a));
     }

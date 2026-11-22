@@ -208,6 +208,25 @@ TEST_CASE("geometry actions edit the selected shapes through the engine", "[desk
     const auto both = m.project().embroidery_objects.front().id.value;
     CHECK(run(m, "shape.remove_small", {{"min_area_mm2", "10"}}, {both}).committed);
 
+    // Miette collée à une grande forme : fondue dans sa voisine (une étape).
+    auto ab = blank();
+    (void)*createdObjectId(ab.applyBatch(batchAddRect({0, 0}, 30, 30), "G").report);
+    (void)*createdObjectId(ab.applyBatch(batchAddRect({15.6, 0}, 1, 1), "M").report);
+    const auto shapesBefore = ab.project().vector_objects.size();
+    CHECK(run(ab, "shape.absorb_crumbs",
+              {{"max_area_mm2", "3"}, {"priority", "same_thread"}, {"reach_mm", "0.2"}}, {})
+              .committed);
+    CHECK(ab.project().vector_objects.size() == shapesBefore - 1);
+
+    // Vide fermé entre quatre formes : rebouché.
+    auto gp = blank();
+    (void)gp.applyBatch(batchAddRect({2.5, 5}, 5, 10), "A");
+    (void)gp.applyBatch(batchAddRect({8.5, 5}, 5, 10), "B");
+    (void)gp.applyBatch(batchAddRect({5.5, 2}, 1, 4), "C");
+    (void)gp.applyBatch(batchAddRect({5.5, 7.5}, 1, 5), "D");
+    CHECK(run(gp, "shape.fill_gaps_between", {{"max_area_mm2", "4"}, {"reach_mm", "0.2"}}, {})
+              .committed);
+
     // Une action sans effet possible est REFUSÉE par le moteur, jamais empilée.
     auto n = blank();
     const auto lone = *createdObjectId(n.applyBatch(batchAddRect({0, 0}, 30, 30), "L").report);

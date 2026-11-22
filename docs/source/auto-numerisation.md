@@ -519,6 +519,63 @@ géométrique, pas validée sur machine ; pas de satin en éventail ou concentri
 
 ## Couche de traits sombres (`--dark-lines`, HP-AUTO-005)
 
+### Détection par contraste local (`--dark-lines-contrast`, lignes ouvertes lot 2)
+
+Le seuil de clarté absolu rate les traits qui ne sont pas noirs : barreaux marine d'une rambarde
+sur fond crème, treillis brun sur beige. Mesuré sur un phare (0,26 mm/px) : la rambarde n'était
+pas détectée du tout, le seuil effectif tombant à L* 8 à cause du noir du cadre ovale. Avec
+`local_contrast > 0` (`--dark-lines-contrast`, Studio : `kLineworkContrast` = 12) :
+
+1. `segmentation::contrast_thin_mask` : chapeau haut-de-forme noir (fermeture moins image, sur
+   L*) ; un pixel est un trait s'il est plus sombre d'au moins le seuil que son voisinage clair, sur
+   une largeur sous `max_line_width_mm` (Studio : 1 mm, un mât plus large reste un aplat).
+2. **Test des deux côtés** : dans une des quatre directions, les deux pixels à mi-largeur + 1 de
+   part et d'autre sont plus clairs. Le bord d'un aplat sombre (nuage dentelé, crête de vague)
+   n'est clair que d'un côté : écarté.
+3. **Allongement** : une composante dont diagonale² / pixels < 6 (pointe effilée d'un nuage ou
+   d'un reflet) reste un aplat ; un réseau (rambarde, gréement) est une seule composante allongée.
+4. **Une couleur par trait** : moyenne de la moitié la plus sombre de chaque composante, calée sur
+   la couleur de palette la plus proche ; une région de traits par couleur.
+
+Le tracé des traits de Studio utilise `kLineworkDetail` (0,85 : petites boucles d'un treillis
+gardées) et le parcours d'un bloc (`SinglePath`), comme le CLI. Mesures (rendu avant/après) :
+navire LigneNoir, gréement continu et plus de trous de tissu autour des mâts ; phare, lanterne et
+rambarde cousues, motif du treillis en partie reproduit (limite : cellules de 1 à 2 mm à
+0,26 mm/px). Sans contraste (`0`, défaut du CLI) : comportement historique inchangé.
+
+#### Zones « traits fins » (pinceau, lignes ouvertes lot 3)
+
+Un seuil unique est un compromis : assez haut pour ne pas prendre les bords de nuages et de
+vagues, il rate les traits pâles ou courts d'un motif précis (treillis d'une rambarde). Studio
+offre donc un second pinceau, à côté des zones de détail (espace Segmentation, outils « Zones de
+traits fins » et sa gomme, incrustation cyan) : `ImageSource::linework_mask`, même format que
+`detail_mask`, enregistré dans l'OSP (`linework_mask.u8`, entrée facultative), modifié par
+`PaintDetailMaskCommand` / `ClearDetailMaskCommand` avec la cible `MaskKind::Linework`.
+
+Dans les pixels peints (poids >= 128), `prepare_linework` lance une seconde détection renforcée
+(`LineLayerOptions::zone_mask`) et la réunit aux traits ordinaires : contraste 8 au lieu de 12
+(`kLineworkZoneContrast`), même largeur et même allongement minimal. Mesuré sur le phare : élargir
+(1,4 mm) ou admettre des fragments trapus (allongement 2,5) fait passer les ombres du dôme et de la
+galerie pour des traits (aplats bruns pâteux) ; seul le contraste aide. Hors zone, rien ne change.
+Peindre une zone active la préservation des traits à la prochaine mise à jour des formes (aucune
+segmentation à relancer). Test : `couche de traits : zone de traits fins…` (un trait de contraste 9
+pris dans la zone, ignoré hors zone).
+
+**Fond continu sous les traits** : les aplats complétés n'avaient aucun trou sous les traits, mais leur vectorisation trace chaque région en retrait de ses pixels ; une lamelle étroite le long d'un trait (anti-crénelage, vitre entre deux montants) devenait une forme plus fine encore, et deux aplats qui se rejoignaient sous un trait laissaient un liseré de tissu nu. `revectorize` prolonge donc chaque aplat **sous les traits qui le bordent** (`grow_fills_under_strokes`, `op_steps.cpp`) : bande des traits vectorisée et élargie de 0,25 mm, aplat élargi de la largeur d'un trait (1 mm) + 0,25 mm, intersection des deux réunie à l'aplat. Les voisins se chevauchent sous le trait, qui les recouvre ; hors des traits, rien ne change. Mesuré sur le phare (zone de traits fins sur la lanterne) : surface de la galerie sans aplat 658 → 170 px, plus de tissu nu visible dans la lanterne ; l'armature brune paraît un peu plus massive. Essai écarté : rendre aux voisins les lamelles fines le long des traits avant vectorisation (pixel par pixel ou par morceau, deux largeurs) — gain nul, vitres effacées.
+
+**Couleur locale des traits** : la couleur était choisie par composante connexe, or la rambarde
+marine, la lanterne brune et le mât forment un seul réseau, cousu tout en brun. `colour_strokes`
+choisit désormais la couleur pixel par pixel (moitié la plus sombre des pixels de trait d'une
+fenêtre 7 × 7, calée sur la palette), puis un vote majoritaire dans la même fenêtre efface les
+confettis. Sur le phare, le quadrillage de la lanterne ressort ; les petites cellules du treillis de
+la galerie restent trouées (cellules de 1 à 2 mm), avec ou sans zone.
+
+La mise à jour des formes (`revectorize`) retire désormais les formes dont la région a été
+entièrement absorbée par les aplats complétés (`RevectorizePlan::absorbed`, objets de broderie
+compris, jamais une forme verrouillée) : avant, ces morceaux de trait restaient comme petites
+formes isolées.
+
+
 Sur une illustration à contours noirs (mâts, haubans, bords de nuages), le mode formes seul traite
 un trait comme n'importe quelle région : il fusionne avec les aplats sombres voisins et devient un
 amas de blocs. `auto_digitize_with_lines` (`line_layer.cpp`) sépare les traits :

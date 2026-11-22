@@ -174,6 +174,20 @@ void BoundaryBlendController::rebuild() {
         // Deux zones sans fondu entre elles : le choix de rangées en attente reste valable.
         rows_ = pendingRows;
     }
+    groupBlendCount_ = 0;
+    if (snapshot && zones_.size() >= 3) {
+        const auto linked = [&](std::uint64_t a, std::uint64_t b) {
+            const auto* zone = snapshot->findEmbroidery(ObjectId{a});
+            return zone != nullptr && document::boundary_blend_link(*zone, ObjectId{b}) != nullptr;
+        };
+        for (std::size_t i = 0; i < zones_.size(); ++i) {
+            for (std::size_t j = i + 1; j < zones_.size(); ++j) {
+                if (linked(zones_[i], zones_[j]) || linked(zones_[j], zones_[i])) {
+                    ++groupBlendCount_;
+                }
+            }
+        }
+    }
     if (snapshot && zones_.size() == 2) {
         const auto refusal = project_ops::boundary_blend_refusal(*snapshot, ObjectId{primary_},
                                                                  ObjectId{zones_.front()});
@@ -277,6 +291,15 @@ bool BoundaryBlendController::create(double widthMm, double partnerWidthMm, int 
 
 bool BoundaryBlendController::createAll(double widthMm, int curve) {
     refresh();
+    return applyAll(widthMm, curve, false);
+}
+
+bool BoundaryBlendController::editAll(double widthMm, int curve) {
+    refresh();
+    return applyAll(widthMm, curve, true);
+}
+
+bool BoundaryBlendController::applyAll(double widthMm, int curve, bool update) {
     if (zones_.size() < 2) {
         say(false, QStringLiteral("Sélectionnez plusieurs zones remplies"));
         return false;
@@ -299,13 +322,18 @@ bool BoundaryBlendController::createAll(double widthMm, int curve) {
     for (const auto z : zones_) {
         ids.push_back(ObjectId{z});
     }
-    auto multi = project_ops::make_multi_boundary_blend_command(*snapshot, ids, options);
+    auto multi = project_ops::make_multi_boundary_blend_command(*snapshot, ids, options, update);
     if (!multi) {
         say(false, QString::fromStdString(multi.error().message));
         return false;
     }
     const auto created = multi->created.size();
+    const auto updated = multi->updated;
     studio_.session().execute(std::move(multi->command)); // UN pas d'annulation
+    if (update) {
+        say(true, QStringLiteral("%1 fondus du groupe réglés").arg(created + updated));
+        return true;
+    }
     say(true, created == 1 ? QStringLiteral("1 fondu posé entre zones voisines")
                            : QStringLiteral("%1 fondus posés entre zones voisines").arg(created));
     return true;
@@ -336,6 +364,16 @@ bool BoundaryBlendController::setRows(const QString& rows) {
         return false;
     }
     if (value == rows_) {
+        return true;
+    }
+    if (groupBlendCount_ > 0) {
+        const auto previous = rows_;
+        rows_ = value;
+        if (!applyAll(widthMm_, curve_, true)) {
+            rows_ = previous;
+            emit changed();
+            return false;
+        }
         return true;
     }
     if (!hasBlend_) {
@@ -385,6 +423,27 @@ bool BoundaryBlendController::clearFrontier() {
         return false;
     }
     return apply(primary_, other_, widthMm_, partnerWidthMm_, curve_, {});
+}
+
+bool BoundaryBlendController::removeAll() {
+    refresh();
+    const auto snapshot = studio_.session().snapshot();
+    if (!snapshot) {
+        return false;
+    }
+    std::vector<ObjectId> ids;
+    for (const auto z : zones_) {
+        ids.push_back(ObjectId{z});
+    }
+    auto cmd = project_ops::make_multi_remove_boundary_blend_command(*snapshot, ids);
+    if (!cmd) {
+        say(false, QString::fromStdString(cmd.error().message));
+        return false;
+    }
+    const int count = groupBlendCount_;
+    studio_.session().execute(std::move(*cmd)); // UN pas d'annulation
+    say(true, QStringLiteral("%1 fondus retirés").arg(count));
+    return true;
 }
 
 bool BoundaryBlendController::remove() {

@@ -216,6 +216,11 @@ jobs:
             "`"$project`"", '--software', '--screenshot', "`"$output`""
           ) -Wait -PassThru -WindowStyle Hidden
           if ($process.ExitCode -ne 0 -or -not (Test-Path $output)) { throw 'Studio screenshot failed' }
+          # Second UX pass: all four Studio spaces, at normal and narrow window sizes.
+          # Qt is already configured to run offscreen/software on this Windows runner.
+          python scripts/ux/verify.py capture --studio build/msvc/apps/desktop_v2/studio/Release/openstitch.exe --project $project --out dist/studio-screenshots/ux --backend software
+          if ($LASTEXITCODE -ne 0) { throw 'Studio UX screenshot matrix failed' }
+
 
       - name: Upload actual Qt Studio screenshots
         if: always()
@@ -224,7 +229,10 @@ jobs:
           name: openstitch-studio-screenshots-windows
           if-no-files-found: warn
           retention-days: 30
-          path: dist/studio-screenshots/*.png
+          path: |
+            dist/studio-screenshots/*.png
+            dist/studio-screenshots/ux/*.png
+            dist/studio-screenshots/ux/report.json
 
       - name: Test (Release)
         run: ctest --preset msvc-release --output-on-failure
@@ -336,6 +344,13 @@ jobs:
             echo '::warning::Boost archive prefetch failed; vcpkg will try the original URL'
           fi
           # vcpkg verifies the SHA512 hash itself; this does not bypass integrity checks.
+
+      # GitHub répond par intermittence 503 aux correctifs « commit/<sha>.patch » que téléchargent
+      # opencv4 et spdlog hors cache binaire (2026-11-20 : trois configurations ratées de suite).
+      # Copies conservées dans le dépôt, déposées seulement si le vcpkg épinglé les attend encore ;
+      # vcpkg revérifie chaque SHA512. Voir .github/vcpkg-downloads/README.md.
+      - name: Seed vcpkg downloads with mirrored upstream patches
+        run: bash .github/vcpkg-downloads/seed.sh "$RUNNER_TEMP/vcpkg"
 
       - name: System dependencies (OpenCV via vcpkg)
         run: sudo apt-get update && sudo apt-get install -y nasm

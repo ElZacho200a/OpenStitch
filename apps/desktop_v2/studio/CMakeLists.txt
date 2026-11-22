@@ -108,7 +108,7 @@ list(APPEND studio_qml_files qml/spaces/vector/VectorQuickBar.qml)
 # Les sous-composants d'un espace (qml/spaces/<x>/...) s'ajoutent ICI, une ligne par fichier.
 list(APPEND studio_qml_files qml/spaces/image/ImageOpStack.qml qml/spaces/image/CompareCurtain.qml
     qml/spaces/image/CropOverlay.qml qml/spaces/image/ImageToolOverlay.qml
-    qml/spaces/image/ImageSizeSection.qml)
+    qml/spaces/image/ImageSizeSection.qml qml/spaces/image/ImageLayerSelector.qml)
 list(APPEND studio_qml_files qml/spaces/segmentation/SegmentationPanels.qml qml/spaces/segmentation/RegionLayerControls.qml
     qml/spaces/segmentation/RegionContextMenu.qml)
 list(APPEND studio_qml_files

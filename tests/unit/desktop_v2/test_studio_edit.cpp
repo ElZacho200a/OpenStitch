@@ -156,6 +156,7 @@ private:
 private slots:
     void initTestCase();
     void selectionCommandsOnRealObjects();
+    void crumbsAreCountedSelectedAndReviewed();
     void objectLockAndMoveToLayerAreUndoable();
     void rotationAroundAChosenCentreIsOneUndoStep();
     void duplicatingALayerCopiesItsObjectsInOneStep();
@@ -169,6 +170,7 @@ private slots:
     void mouseMoveWithSnapGuidesAndUndo();
     void handlesResizeAndRotate();
     void layersTreeAndObjectEditing();
+    void layerDeleteRequiresConfirmationWhenNotEmpty();
     void layerWorkflowIsSharedLockedAndScoped();
     void contextMenuAndEyedropper();
     void shortcutsReachTheEditor();
@@ -240,6 +242,60 @@ void StudioEditTest::selectionCommandsOnRealObjects() {
     QCOMPARE(rig.editor.selectAll(), 4);
     rig.editor.selectNone();
     QVERIFY(rig.session.selection().empty());
+    QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+}
+
+// Miettes : deux traits raccourcis (1,5 mm et 1 mm) passent sous le seuil de 3 mm² ; « toutes »
+// les sélectionne, « suivante » / « précédente » les parcourt une à une en boucle.
+void StudioEditTest::crumbsAreCountedSelectedAndReviewed() {
+    auto project = editFixture();
+    const auto shorten = [&](std::uint64_t objectId, std::int32_t lengthUm) {
+        auto& nodes = project.findObject(ObjectId{objectId - 90})->paths.front().outer.nodes;
+        nodes[1].pos.x = Micrometers{nodes[0].pos.x.value + lengthUm};
+    };
+    shorten(kRed2, 1'500);
+    shorten(kLone, 1'000);
+    Rig rig;
+    open(rig, std::move(project));
+
+    QCOMPARE(rig.editor.smallObjectCount(3.0), 2);
+    QCOMPARE(rig.editor.smallObjectCount(2.0), 1); // trait de 1,5 mm : 2,25 mm²
+    QCOMPARE(rig.editor.smallObjectCount(1.0), 0); // strictement sous le seuil
+    QCOMPARE(rig.editor.smallObjectCount(0.0), 0);
+
+    QCOMPARE(rig.editor.selectSmallObjects(3.0), 2);
+    QCOMPARE(selected(rig), (std::vector<std::uint64_t>{kRed2, kLone}));
+
+    rig.editor.selectNone();
+    QVERIFY(rig.editor.selectNextSmallObject(3.0, true));
+    QCOMPARE(selected(rig), (std::vector<std::uint64_t>{kRed2}));
+    QVERIFY(rig.editor.selectNextSmallObject(3.0, true));
+    QCOMPARE(selected(rig), (std::vector<std::uint64_t>{kLone}));
+    QVERIFY(rig.editor.selectNextSmallObject(3.0, true)); // boucle
+    QCOMPARE(selected(rig), (std::vector<std::uint64_t>{kRed2}));
+    QVERIFY(rig.editor.selectNextSmallObject(3.0, false));
+    QCOMPARE(selected(rig), (std::vector<std::uint64_t>{kLone}));
+
+    // Une miette masquée n'est plus proposée ; sans miette, refus sans changer la sélection.
+    QVERIFY(rig.editor.setObjectVisible(QString::number(kLone), false));
+    settle(rig);
+    QCOMPARE(rig.editor.smallObjectCount(3.0), 1);
+    QCOMPARE(rig.editor.selectSmallObjects(0.5), 0);
+    QVERIFY(!rig.editor.selectNextSmallObject(0.5, true));
+
+    // « Absorber » (même action que la palette) : les deux traits minuscules, sans surface, sont
+    // retirés en une seule étape d'annulation.
+    QVERIFY(rig.editor.setObjectVisible(QString::number(kLone), true));
+    settle(rig);
+    const auto before = steps(rig);
+    QCOMPARE(rig.actions.run(QStringLiteral("shape.absorb_crumbs"),
+                             {{QStringLiteral("max_area_mm2"), QStringLiteral("3")},
+                              {QStringLiteral("priority"), QStringLiteral("same_thread")},
+                              {QStringLiteral("reach_mm"), QStringLiteral("0.2")}}),
+             QString());
+    settle(rig);
+    QCOMPARE(steps(rig), before + 1);
+    QCOMPARE(rig.editor.smallObjectCount(3.0), 0);
     QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
 }
 
@@ -902,6 +958,53 @@ void StudioEditTest::layersTreeAndObjectEditing() {
     rig.session.undo();
     QCOMPARE(rig.session.project().findEmbroidery(ObjectId{kGreen})->name,
              std::string("Ligne 102"));
+    QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+}
+
+// Supprimer un calque qui porte encore des objets demande confirmation (le menu contextuel pose
+// l'attente dans ObjectTree.qml, pas un Dialog modal) ; un calque vide se supprime directement.
+void StudioEditTest::layerDeleteRequiresConfirmationWhenNotEmpty() {
+    Rig rig;
+    open(rig);
+    const auto before = rig.editor.layers().size();
+    QVERIFY(rig.editor.addLayer(QStringLiteral("Second")));
+    const auto layerId = rig.editor.layers().front().toMap().value(QStringLiteral("id")).toString();
+    select(rig, {kBlue});
+    QVERIFY(rig.editor.moveSelectionToLayer(layerId));
+    QCOMPARE(rig.editor.layers().front().toMap().value(QStringLiteral("objects")).toInt(), 1);
+
+    auto* tree = rig.window->findChild<QObject*>(QStringLiteral("objectTree"));
+    QVERIFY(tree);
+    // Le menu contextuel (Controls.Menu) n'instancie ses éléments qu'à l'ouverture réelle
+    // (popup() est une surcharge JS non invocable depuis C++) : on pose directement l'attente de
+    // confirmation que son "Supprimer" poserait, pour tester le mécanisme réel (ObjectTree.qml),
+    // pas la plomberie d'ouverture du menu (déjà couverte ailleurs par contextMenuAndEyedropper).
+    tree->setProperty("pendingDeleteLayer",
+                      QVariantMap{{QStringLiteral("id"), layerId},
+                                  {QStringLiteral("name"), QStringLiteral("Second")},
+                                  {QStringLiteral("objects"), 1}});
+    QCOMPARE(rig.editor.layers().size(),
+             before + 1); // pas encore supprimé : confirmation en attente
+    auto* yes = rig.window->findChild<QObject*>(QStringLiteral("layerDeleteConfirmYes"));
+    QVERIFY(yes);
+    QVERIFY(QMetaObject::invokeMethod(yes, "clicked"));
+    QCOMPARE(rig.editor.layers().size(), before);
+    QVERIFY(tree->property("pendingDeleteLayer").isNull());
+    QCOMPARE(
+        shapeOf(rig.session.project(), kBlue).calque.value,
+        rig.editor.layers().front().toMap().value(QStringLiteral("id")).toString().toULongLong());
+
+    // Annuler laisse le calque intact (peu importe lequel ici, seul le mécanisme est testé).
+    const auto remainingId =
+        rig.editor.layers().front().toMap().value(QStringLiteral("id")).toString();
+    tree->setProperty("pendingDeleteLayer", QVariantMap{{QStringLiteral("id"), remainingId},
+                                                        {QStringLiteral("objects"), 1}});
+    auto* no = rig.window->findChild<QObject*>(QStringLiteral("layerDeleteConfirmNo"));
+    QVERIFY(no);
+    QVERIFY(QMetaObject::invokeMethod(no, "clicked"));
+    QCOMPARE(rig.editor.layers().size(), before);
+    QVERIFY(tree->property("pendingDeleteLayer").isNull());
+
     QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
 }
 

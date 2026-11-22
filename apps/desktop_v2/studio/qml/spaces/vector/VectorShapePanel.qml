@@ -43,6 +43,13 @@ ColumnLayout {
 
     // Précision de la vectorisation (V1) : appliquée à la prochaine mise à jour des formes.
     SectionLabel { text: qsTr("PRÉCISION") }
+    Text {
+        objectName: "vectorPrecisionHint"
+        Layout.fillWidth: true
+        text: qsTr("Ces réglages ne s'appliquent qu'au prochain « Recalculer les formes » (étape ①).")
+        color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize
+        wrapMode: Text.WordWrap
+    }
     RowLayout {
         Layout.fillWidth: true
         visible: panel.stage && !panel.stage.curves
@@ -314,6 +321,27 @@ ColumnLayout {
         font.family: Theme.fontFamily
         font.pixelSize: Theme.smallSize
         wrapMode: Text.WordWrap
+    }
+
+    // Calque de la forme sélectionnée : cliquable pour le rendre actif (même action que
+    // ObjectTree/LayerPanel, via EditController).
+    Text {
+        objectName: "vectorShapeLayer"
+        Layout.fillWidth: true
+        readonly property var shape: panel.stage ? panel.stage.selectedShape : ({})
+        visible: shape.id !== undefined && shape.layerName !== undefined && shape.layerName.length > 0
+        text: qsTr("Calque : %1").arg(shape.layerName)
+        color: layerArea.containsMouse ? Theme.foreground : Theme.muted
+        font.family: Theme.fontFamily
+        font.pixelSize: Theme.smallSize
+        font.underline: layerArea.containsMouse
+        MouseArea {
+            id: layerArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: editor.setActiveLayer(parent.shape.layerId)
+        }
     }
 
     StudioButton {

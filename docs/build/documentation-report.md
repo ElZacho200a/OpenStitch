@@ -2,11 +2,11 @@
 
 - **PDF** : `docs/build/OpenStitch-Studio-Documentation.pdf`
 - **Existe** : oui
-- **Pages** : 342
-- **Taille** : 2547.8 Kio (2608966 octets)
+- **Pages** : 345
+- **Taille** : 2562.3 Kio (2623791 octets)
 - **Chaîne** : python-markdown -> HTML/CSS -> xhtml2pdf (reportlab), SVG via svglib
 - **Commande** : `docs\scripts\build-docs.ps1` (ou `python docs/scripts/build-docs.py`)
-- **Chapitres produits** : 55
+- **Chapitres produits** : 56
 
 ## Chapitres
 - À propos de ce document
@@ -21,6 +21,7 @@
 - Traitement d'image
 - Segmentation
 - Vectorisation
+- Lignes ouvertes
 - Objets de broderie
 - Numérisation automatique
 - Génération de points — point droit et fondations

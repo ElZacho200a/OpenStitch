@@ -9,6 +9,7 @@
 #include <utility>
 #include <vector>
 
+#include "openstitch/commands/composite_command.hpp"
 #include "openstitch/document/project.hpp"
 
 namespace openstitch::project_ops {
@@ -35,7 +36,17 @@ struct RevectorizePlan {
     std::vector<document::VectorObject> add; // nouvelles formes, id à réserver à l'exécution
     int keep{0};                             // formes déjà à jour
     int orphan{0}; // formes dont la région n'existe plus (laissées telles quelles)
+    // « Préserver les traits fins » : formes dont la région, présente dans la segmentation, a été
+    // entièrement absorbée par les aplats complétés (c'était un morceau de trait). Retirées avec
+    // leurs objets de broderie par `append_absorbed_removals` ; une forme verrouillée (ou dont un
+    // objet l'est) n'y figure jamais.
+    std::vector<ObjectId> absorbed;
 };
+
+// Ajoute à `group` le retrait des formes `plan.absorbed` et de leurs objets de broderie (objets
+// d'abord). Rien si la liste est vide.
+void append_absorbed_removals(const document::Project& project, const RevectorizePlan& plan,
+                              commands::CompositeCommand& group);
 
 // Plan vide sans segmentation. Ne modifie pas le projet.
 [[nodiscard]] RevectorizePlan revectorize(const document::Project& project,

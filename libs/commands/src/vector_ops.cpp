@@ -237,6 +237,18 @@ VectorOpResult make_boolean_command(document::Project& project, BooleanOp op,
         if (!united) {
             return failure(united.error().message);
         }
+        // La fermeture (dilatation puis retrait, jointures en biseau) peut rogner les angles
+        // saillants : on la réunit à la matière d'origine pour ne garder que ce qu'elle AJOUTE
+        // (ponts entre formes juxtaposées, fentes fines).
+        if (union_gap.value > 0) {
+            auto kept_all = all;
+            kept_all.insert(kept_all.end(), united->begin(), united->end());
+            auto exact = geometry::union_polygons(kept_all);
+            if (!exact) {
+                return failure(exact.error().message);
+            }
+            united = std::move(*exact);
+        }
         result = std::move(*united);
     } else if (op == BooleanOp::Subtract) {
         std::vector<PathSet> cutters;

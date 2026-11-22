@@ -15,6 +15,7 @@
 #include "openstitch/commands/composite_command.hpp"
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/commands/stitch_preset_commands.hpp"
+#include "openstitch/document/shape_kind.hpp"
 #include "openstitch/document/stitch_recipes.hpp"
 #include "openstitch/project_ops/gradient_fill.hpp"
 #include "openstitch/project_ops/operations.hpp"
@@ -341,11 +342,34 @@ bool InspectorController::typeMixed() const {
     return selection().typeMixed;
 }
 
+bool InspectorController::selectionHasOpenLine() const {
+    const auto s = selection();
+    const auto& project = session_.project();
+    return std::ranges::any_of(s.ids, [&](std::uint64_t id) {
+        const auto* object = findObject(project, id);
+        const auto* shape = object ? project.findObject(object->source_vector) : nullptr;
+        return shape != nullptr && document::is_open_line(*shape);
+    });
+}
+
+QString InspectorController::typesNote() const {
+    return selectionHasOpenLine()
+               ? QStringLiteral("Ligne ouverte : seuls les points qui suivent le tracé sont "
+                                "proposés (pas de remplissage).")
+               : QString();
+}
+
 QVariantList InspectorController::types() const {
     const auto s = selection();
     const std::string current = settableIdOf(s.typeId);
+    // Une ligne ouverte n'a pas d'intérieur : seuls les types qui suivent un chemin sont proposés
+    // (les autres seraient refusés par `set_stitch_type`).
+    const bool anyOpenLine = selectionHasOpenLine();
     QVariantList out;
     for (const auto& t : settableStitchTypes()) {
+        if (anyOpenLine && !settableTypeFollowsPath(t.id)) {
+            continue;
+        }
         out.push_back(QVariantMap{{QStringLiteral("id"), u8(t.id)},
                                   {QStringLiteral("label"), u8(t.label)},
                                   {QStringLiteral("current"), !s.typeMixed && t.id == current}});

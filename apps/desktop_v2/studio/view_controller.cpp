@@ -11,6 +11,7 @@
 #include <cmath>
 #include <fstream>
 #include <sstream>
+#include <unordered_map>
 
 #include "openstitch/stitch_generation/overrides.hpp"
 #include "openstitch/stitch_render/segments.hpp"
@@ -27,6 +28,7 @@ struct ViewController::SimData {
     std::vector<OverlayTrim> trims;
     std::vector<std::uint32_t> stitchesBefore; // size = commands + 1
     std::vector<std::uint32_t> segmentsBefore; // visible segments prefix, size = commands + 1
+    std::vector<std::size_t> layerMarks;       // positions where a new calque rank begins (0 exclu)
     std::uint64_t revision{0};
 };
 
@@ -559,12 +561,21 @@ void ViewController::rebuildSimData() {
             const auto& commands = data->sequence->commands;
             data->stitchesBefore.reserve(commands.size() + 1);
             data->segmentsBefore.reserve(commands.size() + 1);
+            // Rang de calque (0 = fond) de chaque objet de broderie, calculé une fois : la
+            // navigation par calque de la simulation s'appuie sur ce rang, pas sur l'objet.
+            std::unordered_map<std::uint64_t, std::size_t> layerRankOf;
+            layerRankOf.reserve(project->embroidery_objects.size());
+            for (const auto& object : project->embroidery_objects) {
+                layerRankOf.emplace(object.id.value, project->calqueRankOf(object));
+            }
             std::uint32_t stitches = 0;
             std::uint32_t segments = 0;
             bool hasPos = false;
             float lastX = 0.0F;
             float lastY = 0.0F;
             std::uint64_t lastSource = 0;
+            bool firstLayer = true;
+            std::size_t lastLayerRank = 0;
             for (std::size_t i = 0; i < commands.size(); ++i) {
                 data->stitchesBefore.push_back(stitches);
                 data->segmentsBefore.push_back(segments);
@@ -593,6 +604,17 @@ void ViewController::rebuildSimData() {
                     lastY = y;
                     lastSource = source;
                     hasPos = true;
+                    // Même convention que les marques d'objet de simulationMarks() : une
+                    // marque de calque au premier point qui change de rang, position 0 exclue.
+                    const auto rankIt = layerRankOf.find(source);
+                    const auto rank = rankIt != layerRankOf.end() ? rankIt->second : 0;
+                    if (firstLayer || rank != lastLayerRank) {
+                        if (!firstLayer && i > 0) {
+                            data->layerMarks.push_back(i);
+                        }
+                        lastLayerRank = rank;
+                        firstLayer = false;
+                    }
                 }
                 if (commands[i].type == stitch::CommandType::Jump && i > 0 &&
                     data->jumps.size() < kMaxJumpLines) {
@@ -759,6 +781,22 @@ void ViewController::previousColour() {
         pause();
         simActive_ = false;
         goTo(previousMark(sim_->marks.colours, position_));
+    }
+}
+
+void ViewController::nextLayer() {
+    if (sim_) {
+        pause();
+        simActive_ = false;
+        goTo(nextMark(sim_->layerMarks, position_, sim_->marks.total));
+    }
+}
+
+void ViewController::previousLayer() {
+    if (sim_) {
+        pause();
+        simActive_ = false;
+        goTo(previousMark(sim_->layerMarks, position_));
     }
 }
 

@@ -52,3 +52,13 @@ TEST_CASE("masque de detail : absent ou vide = aucun masque au rechargement") {
     const auto erased = round_trip(project, "openstitch_detail_mask_erased.osp");
     CHECK_FALSE(erased.detail_mask.any_detail());
 }
+
+TEST_CASE("zones de traits fins : aller-retour exact, independant du masque de detail") {
+    auto project = make_project();
+    segmentation::paint_detail_disc(project.linework_mask, 12, 8, 3, 3, 2, 255, 1.0);
+    REQUIRE(project.linework_mask.any_detail());
+
+    const auto loaded = round_trip(project, "openstitch_linework_mask_roundtrip.osp");
+    CHECK(loaded.linework_mask == project.linework_mask);
+    CHECK(loaded.detail_mask.empty());
+}

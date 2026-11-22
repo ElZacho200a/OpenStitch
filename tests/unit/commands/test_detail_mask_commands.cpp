@@ -57,3 +57,21 @@ TEST_CASE("pinceau de detail : tout effacer est annulable") {
     stack.undo(project);
     CHECK(project.detail_mask == painted);
 }
+
+TEST_CASE("pinceau de traits fins : cible son propre masque, annulable") {
+    document::Project project;
+    UndoStack stack;
+    stack.execute(
+        std::make_unique<PaintDetailMaskCommand>(20, 10, std::vector<std::pair<int, int>>{{5, 5}},
+                                                 2, false, 1.0, document::MaskKind::Linework),
+        project);
+    CHECK(project.linework_mask.any_detail());
+    CHECK(project.detail_mask.empty());
+
+    stack.execute(std::make_unique<ClearDetailMaskCommand>(document::MaskKind::Linework), project);
+    CHECK(project.linework_mask.empty());
+    stack.undo(project);
+    CHECK(project.linework_mask.any_detail());
+    stack.undo(project);
+    CHECK(project.linework_mask.empty());
+}

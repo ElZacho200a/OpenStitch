@@ -27,6 +27,15 @@ ColumnLayout {
     // Keep excess content inside its panel, not across the point inspector.
     clip: true
 
+    // Défaut à la première ouverture de l'espace Points (le Loader hôte ne détruit jamais cette
+    // instance : ceci ne s'applique donc qu'une fois par session, jamais par-dessus un choix
+    // explicite de l'utilisateur fait ensuite) : un document à plusieurs calques s'ouvre en vue
+    // Arbre, sinon la vue Liste de la V1 reste le défaut.
+    Component.onCompleted: {
+        if (editor.layers.length > 1)
+            panel.workspace.treeMode = true
+    }
+
     RowLayout {
         Layout.fillWidth: true
         Layout.preferredHeight: 44

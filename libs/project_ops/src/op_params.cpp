@@ -28,6 +28,7 @@
 #include "openstitch/commands/thread_commands.hpp"
 #include "openstitch/document/hoop_library.hpp"
 #include "openstitch/document/machine_profile.hpp"
+#include "openstitch/document/shape_kind.hpp"
 #include "openstitch/document/stitch_recipes.hpp"
 #include "openstitch/geometry/boolean.hpp"
 #include "openstitch/geometry/polyline.hpp"
@@ -55,6 +56,20 @@ struct Refusal {
 
 [[noreturn]] void refuse(const char* code, std::string message, std::string hint = {}) {
     throw Refusal{code, std::move(message), std::move(hint)};
+}
+
+// Ligne ouverte (document/shape_kind.hpp) : aucun intérieur, donc aucun remplissage. Refus
+// explicite plutôt qu'un remplissage de la corde entre les extrémités.
+void refuse_area_on_open_line(const document::Project& project,
+                              const document::EmbroideryObject& emb,
+                              const document::StitchParams& params) {
+    const auto* source = project.findObject(emb.source_vector);
+    if (source != nullptr && document::is_open_line(*source) &&
+        document::stitch_needs_area(params)) {
+        refuse(code::kRefused,
+               "la forme est une ligne ouverte : un remplissage demande une surface fermée",
+               "types possibles sur une ligne ouverte : running, blanket ou motif_run");
+    }
 }
 
 OpHandler guarded(std::function<OpStatus(OpContext&)> fn) {
@@ -1757,6 +1772,7 @@ OpSpec op_set_stitch_type() {
                 base, source->paths, static_cast<std::uint32_t>(id.value));
             label = "Type : remplissage directionnel";
         }
+        refuse_area_on_open_line(ctx.project, emb, params);
         const std::size_t before = ctx.project.embroidery_objects.size();
         ctx.stack.execute(
             std::make_unique<commands::ConvertFillGroupCommand>(id, std::move(params), label),
@@ -1804,6 +1820,7 @@ OpSpec op_apply_recipe() {
             // Graine de l'aspect fait main propre à l'objet, comme `set_stitch_type`.
             directional->seed = static_cast<std::uint32_t>(id.value);
         }
+        refuse_area_on_open_line(ctx.project, emb, params);
         const std::string from = stitch_type_name(emb.params);
         const std::size_t before = ctx.project.embroidery_objects.size();
         ctx.stack.execute(std::make_unique<commands::ConvertFillGroupCommand>(

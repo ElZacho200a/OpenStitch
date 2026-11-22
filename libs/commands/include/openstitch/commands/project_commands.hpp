@@ -93,16 +93,17 @@ private:
 class PaintDetailMaskCommand final : public ICommand {
 public:
     PaintDetailMaskCommand(int width, int height, std::vector<std::pair<int, int>> centers,
-                           int radius_px, bool erase, double hardness)
+                           int radius_px, bool erase, double hardness,
+                           document::MaskKind kind = document::MaskKind::Detail)
         : width_(width), height_(height), centers_(std::move(centers)), radius_(radius_px),
-          erase_(erase), hardness_(hardness) {}
+          erase_(erase), hardness_(hardness), kind_(kind) {}
 
     void apply(document::Project& project) override {
-        wasEmpty_ = project.imageSource().detail_mask.empty();
+        wasEmpty_ = project.imageSource().mask(kind_).empty();
         changes_.clear();
         for (const auto& [cx, cy] : centers_) {
             auto step =
-                segmentation::paint_detail_disc(project.imageSource().detail_mask, width_, height_,
+                segmentation::paint_detail_disc(project.imageSource().mask(kind_), width_, height_,
                                                 cx, cy, radius_, erase_ ? 0 : 255, hardness_);
             changes_.insert(changes_.end(), step.begin(), step.end());
         }
@@ -110,14 +111,16 @@ public:
     void revert(document::Project& project) override {
         // Ordre inverse : un pixel touché par plusieurs disques retrouve sa valeur d'origine.
         for (auto it = changes_.rbegin(); it != changes_.rend(); ++it) {
-            project.imageSource().detail_mask.weights[it->index] = it->before;
+            project.imageSource().mask(kind_).weights[it->index] = it->before;
         }
         if (wasEmpty_) {
-            project.imageSource()
-                .detail_mask = {}; // le masque a été créé par ce trait : on le retire
+            project.imageSource().mask(kind_) = {}; // créé par ce trait : on le retire
         }
     }
     [[nodiscard]] std::string name() const override {
+        if (kind_ == document::MaskKind::Linework) {
+            return erase_ ? "Effacer une zone de traits fins" : "Peindre une zone de traits fins";
+        }
         return erase_ ? "Effacer une zone de détail" : "Peindre une zone de détail";
     }
 
@@ -130,6 +133,7 @@ private:
     int radius_;
     bool erase_;
     double hardness_;
+    document::MaskKind kind_;
     bool wasEmpty_{false};
     std::vector<segmentation::DetailMaskChange> changes_;
 };
@@ -137,19 +141,25 @@ private:
 // Efface toutes les zones de détail (annulable : le masque est restitué tel quel).
 class ClearDetailMaskCommand final : public ICommand {
 public:
+    explicit ClearDetailMaskCommand(document::MaskKind kind = document::MaskKind::Detail)
+        : kind_(kind) {}
     void apply(document::Project& project) override {
-        previous_ = std::move(project.imageSource().detail_mask);
-        project.imageSource().detail_mask = {};
+        previous_ = std::move(project.imageSource().mask(kind_));
+        project.imageSource().mask(kind_) = {};
     }
     void revert(document::Project& project) override {
-        project.imageSource().detail_mask = std::move(previous_);
+        project.imageSource().mask(kind_) = std::move(previous_);
         previous_ = {};
     }
-    [[nodiscard]] std::string name() const override { return "Effacer les zones de détail"; }
+    [[nodiscard]] std::string name() const override {
+        return kind_ == document::MaskKind::Linework ? "Effacer les zones de traits fins"
+                                                     : "Effacer les zones de détail";
+    }
 
     [[nodiscard]] bool affectsEmbroidery() const override { return false; }
 
 private:
+    document::MaskKind kind_;
     segmentation::DetailMask previous_;
 };
 

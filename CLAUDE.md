@@ -39,7 +39,34 @@ Avant tout nouveau lot autonome : inspecter les tâches existantes, propriétair
   lisent des données constantes et écrivent leur propre case ; assemblage séquentiel).
 - Jamais de commit sur `main` ; jamais de merge de PR ; PR contre `main`.
 
+
+## UX Gate — critère d'acceptation des modifications Studio
+
+**Toute nouvelle fonctionnalité qui affecte l'interface** doit être conçue depuis un parcours novice, puis examinée dans la vraie fenêtre Qt, et relue indépendamment. Un QTest vert ou une capture non inspectée ne suffit pas à prouver l'ergonomie. Lire le skill `openstitch-studio-ux` et [docs/agents/ux-gate.md](docs/agents/ux-gate.md) **avant le premier changement**. Le relecteur est `os-ux-reviewer`, distinct de l'implémenteur, en lecture seule.
+
+Exécuter des captures des quatre espaces à 1440×900 et 1000×640 avec `scripts/ux/verify.py capture`, inspecter les PNG et mesurer les clics d'au moins un parcours débutant. Consigner le résultat d'un second agent avec `review`, puis `check-report --require-review`. Un hook Claude Code SessionStart/Stop rappelle ces preuves lors d'un changement UI au cours de la session. La CI Windows produit les images et la CI rapide refuse une PR UI dépourvue d'un compte rendu UX substantiel. **Ne pas falsifier une validation** : si Studio ou la revue sont indisponibles, signaler BLOCKED, et ne pas présenter la PR comme validée.
+
+
 ## Build & tests
+
+**Worktree = build de main réutilisé d'abord.** Avant toute édition C++ dans un nouveau
+worktree, vérifier `build/msvc/CMakeCache.txt`. S'il manque et que le dépôt principal
+dispose d'un `build/msvc` compilé, appeler depuis le worktree :
+`pwsh scripts/worktree-seed-build.ps1 -IfNeeded -Preset msvc` (ou `powershell -File`).
+La source par défaut est le dépôt principal ; passer `-Source` si besoin.
+Ne jamais démarrer une compilation à froid tant qu'un build source compatible est
+réutilisable. Ne pas supprimer de cache existant. Le seed est spécifique au preset
+Visual Studio `msvc`, pas aux presets Ninja `dev-*`.
+
+**Mode développement = compilation différée.** Grouper les modifications d'un lot
+cohérent sans compiler après chaque édition. Vérifications statiques/format pendant
+l'écriture ; **un build ciblé + tests pertinents après la passe de code**, puis
+corrections et relance ciblée seulement si échec. Build complet + CTest une fois
+avant livraison, selon l'impact et les exigences du skill `openstitch-build-test`.
+L'intégrateur est propriétaire de la validation globale : les sous-agents ne
+lancent pas de builds complets concurrents. Une vérification explicitement demandée
+par l'utilisateur reste prioritaire. Ne jamais déclarer une validation sans
+exécution réelle ni preuve.
 
 Prérequis : VS 2022+, CMake ≥ 3.27, vcpkg, Qt 6.8.3 ; variables `VCPKG_ROOT`, `QT_ROOT`.
 Presets : `msvc` (configure), `msvc-debug`, `msvc-release`. **Itération : cible + exécutable

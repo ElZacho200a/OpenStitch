@@ -55,10 +55,11 @@ TEST_CASE("finishing : projet anterieur sans le bloc -> finitions desactivees") 
     fs::remove(path);
 }
 
-TEST_CASE("finishing : ponts caches -- round-trip, defaut desactive, ancien bloc relu") {
-    // Défaut : désactivé, donc un projet sans le sous-bloc produit la même séquence qu'avant.
-    CHECK_FALSE(document::Project{}.finishing.hidden_travel.enabled);
+TEST_CASE("finishing : ponts caches -- round-trip, defaut active, ancien bloc relu") {
+    // Défaut d'un NOUVEAU projet : activé depuis le 2026-11-20 (le mode avancé reste coupé).
+    CHECK(document::Project{}.finishing.hidden_travel.enabled);
     CHECK_FALSE(document::Project{}.finishing.hidden_travel.reorder_regions); // avancé
+    CHECK_FALSE(document::SequenceFinishing::legacy().hidden_travel.enabled);
 
     document::Project project;
     project.original.width = 1;
@@ -82,7 +83,18 @@ TEST_CASE("finishing : ponts caches -- round-trip, defaut desactive, ancien bloc
     CHECK(loaded->finishing.hidden_travel == project.finishing.hidden_travel);
     fs::remove(path);
 
-    // Bloc `finishing` d'avant cette fonction (sans `hiddenTravel`) : ponts désactivés.
+    // Valeur enregistrée `enabled: false` (défaut d'avant le 2026-11-20) : relue telle quelle, le
+    // projet produit le même fichier machine qu'avant le changement de défaut.
+    project.finishing.hidden_travel = document::HiddenTravel{};
+    project.finishing.hidden_travel.enabled = false;
+    REQUIRE(project_io::save_project(path, project).has_value());
+    const auto savedOff = project_io::load_project(path);
+    REQUIRE(savedOff.has_value());
+    CHECK_FALSE(savedOff->finishing.hidden_travel.enabled);
+    fs::remove(path);
+
+    // Bloc `finishing` d'avant cette fonction (sans `hiddenTravel`) : ponts désactivés, même si
+    // le défaut d'un nouveau projet est désormais activé.
     const std::string json =
         R"({"schemaVersion":3,"document":{"mmPerPx":0.5,"objectIdLast":0,"ops":[],)"
         R"("vectorObjects":[],"embroideryObjects":[],)"

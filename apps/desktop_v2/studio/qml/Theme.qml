@@ -101,6 +101,9 @@ QtObject {
     readonly property color secondaryAccent: tok("color.secondaryAccent", "#b7a6f2")
     readonly property color info: tok("color.info", "#8ad4f0")
     readonly property color warning: tok("color.warning", "#ebc47c")
+    // Cartes peintes de l'espace Segmentation (mêmes teintes que leurs incrustations C++).
+    readonly property color zoneDetail: tok("color.zoneDetail", "#ff8c00")
+    readonly property color zoneLinework: tok("color.zoneLinework", "#00beff")
     readonly property color error: tok("color.error", "#f1a0ad")
     readonly property color accentSoft: tok("color.accentSoft", "#4b344c")
     readonly property color accentInk: tok("color.accentInk", "#281a28")

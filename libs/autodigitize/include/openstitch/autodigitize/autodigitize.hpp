@@ -215,7 +215,8 @@ struct AutoResult {
 // (`formats::read_svg_file`), qui produit directement des `VectorObject`
 // sans jamais passer par image/segmentation/vectorisation. `AutoResult::
 // vectors` ne contient donc PAS les objets d'entrée (déjà dans le document
-// de l'appelant).
+// de l'appelant). Une ligne ouverte (`document::is_open_line`) devient un point droit simple,
+// ajouté après les surfaces du lot.
 [[nodiscard]] Result<AutoResult>
 auto_digitize_vectors(const std::vector<document::VectorObject>& vectors,
                       IdGenerator<ObjectId>& ids, const AutoOptions& options);
