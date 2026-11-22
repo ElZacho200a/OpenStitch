@@ -8,11 +8,13 @@ familles d'adresses ont fait échouer `linux-core` trois configurations de suite
   503 même depuis un poste personnel) ;
 - les archives `…/-/archive/…` de gitlab.com et gitlab.freedesktop.org : réponses 429.
 
-`seed.sh` prépare `downloads/` de vcpkg avant la configuration (étape « Seed vcpkg downloads » de
-`.github/workflows/ci.yml`) :
+Deux scripts préparent `downloads/` de vcpkg dans le job `linux-core` de `.github/workflows/ci.yml` :
 
-1. il dépose les copies de ce dossier, listées dans `SHA512SUMS` ;
-2. il précharge les archives de `PREFETCH` avec curl, qui réessaie en respectant `Retry-After`.
+1. `seed.sh`, avant la configuration (étape « Seed vcpkg downloads… »), dépose les copies de ce
+   dossier listées dans `SHA512SUMS` ;
+2. `prefetch.sh`, appelé par l'étape Configure après une tentative ratée seulement, précharge les
+   archives de `PREFETCH` avec curl, qui réessaie en respectant `Retry-After`. Quand le cache binaire
+   fournit tous les paquets, aucune requête n'est faite.
 
 Rien n'est déposé si le SHA512 ne figure pas dans un portfile du vcpkg épinglé. Une copie altérée
 fait échouer l'étape ; une archive préchargée dont l'empreinte diffère est écartée. vcpkg vérifie
@@ -30,8 +32,8 @@ Ce dossier ne sert que lorsqu'un paquet manque au cache binaire, par exemple apr
 
 ## Mise à jour (montée de `builtin-baseline` / `VCPKG_COMMIT`)
 
-`seed.sh` ignore, avec un avertissement, tout fichier que les ports du vcpkg épinglé n'attendent plus :
-une entrée périmée ne casse jamais le build. Pour en ajouter une :
+Les deux scripts ignorent, avec un avertissement, toute entrée que les ports du vcpkg épinglé
+n'attendent plus : une entrée périmée ne casse jamais le build. Pour en ajouter une :
 
 - **correctif `.patch`** : `curl -L "<url du portfile>" -o <FILENAME>` ;
 - **correctif `.diff`** (si l'adresse renvoie 503) : le reconstruire avec git, qui donne les mêmes
