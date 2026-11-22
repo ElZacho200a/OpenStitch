@@ -678,3 +678,42 @@ TEST_CASE("perf: regeneration after a one-region paint stroke", "[.perf][desktop
                 "applyRegeneration=%.0f ms effective_sequence=%.0f ms\n",
                 regions.size(), regen->objectsAfter, regen->reused, regenMs, applyMs, seqMs);
 }
+
+TEST_CASE("a zone selects the regions it encloses or touches", "[desktop_v2][regions]") {
+    Digitized d;
+    const auto& project = d.session.project();
+    const auto& seg = *project.imageSource().segmentation;
+    const double w = seg.width;
+    const double h = seg.height;
+    // Un cadre qui déborde de l'image enferme toutes les régions, dans l'ordre de `listRegions`.
+    const std::vector<PixelPointF> all{{-2, -2}, {w + 2, -2}, {w + 2, h + 2}, {-2, h + 2}};
+    CHECK(regionsInZone(project, all, ZoneSelectMode::Enclosed) == allRegionIds(project));
+    // Moins de trois sommets : rien.
+    CHECK(regionsInZone(project, {{0, 0}, {w, h}}, ZoneSelectMode::Touching).empty());
+    // Un petit carré autour d'un centre de pixel touche la région de ce pixel sans l'enfermer
+    // (la plus grande région a bien plus d'un pixel).
+    const auto biggest = listRegions(project).front();
+    int bx = -1;
+    int by = -1;
+    for (int y = 0; y < seg.height && bx < 0; ++y) {
+        for (int x = 0; x < seg.width; ++x) {
+            if (regionAtPixel(project, x, y) == biggest.id) {
+                bx = x;
+                by = y;
+                break;
+            }
+        }
+    }
+    REQUIRE(bx >= 0);
+    const std::vector<PixelPointF> dot{
+        {bx + 0.2, by + 0.2}, {bx + 0.8, by + 0.2}, {bx + 0.8, by + 0.8}, {bx + 0.2, by + 0.8}};
+    const auto touched = regionsInZone(project, dot, ZoneSelectMode::Touching);
+    REQUIRE(touched.size() == 1);
+    CHECK(touched.front() == biggest.id);
+    CHECK(regionsInZone(project, dot, ZoneSelectMode::Enclosed).empty());
+    // Entièrement hors image : rien ; même résultat à chaque appel (déterminisme).
+    const std::vector<PixelPointF> outside{{-50, -50}, {-10, -50}, {-10, -10}};
+    CHECK(regionsInZone(project, outside, ZoneSelectMode::Touching).empty());
+    CHECK(regionsInZone(project, all, ZoneSelectMode::Touching) ==
+          regionsInZone(project, all, ZoneSelectMode::Touching));
+}

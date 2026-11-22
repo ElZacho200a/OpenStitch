@@ -127,11 +127,14 @@ ColumnLayout {
     // Pinceau et gomme : barre latérale de l'espace (CanvasToolRail) ; rayon au canevas.
     StudioLabel {
         objectName: "regionToolHint"
-        visible: regionTools.tool !== "select"
         Layout.fillWidth: true
         text: regionTools.tool === "brush"
               ? qsTr("Pinceau actif : peignez sur le canevas pour agrandir la région choisie.")
-              : qsTr("Gomme active : peignez sur le canevas pour retirer de la région choisie.")
+              : regionTools.tool === "erase"
+                ? qsTr("Gomme active : peignez sur le canevas pour retirer de la région choisie.")
+                : regionTools.tool === "lasso"
+                  ? qsTr("Lasso actif : entourez des régions sur le canevas. Ctrl ajoute, Alt prend aussi les régions touchées.")
+                  : qsTr("Cliquez une région ou glissez un cadre pour en prendre plusieurs. Ctrl ajoute, Alt prend aussi les régions touchées.")
     }
 
     SectionLabel { text: qsTr("RÉGIONS (%1)").arg(regionTools.regions.length) }

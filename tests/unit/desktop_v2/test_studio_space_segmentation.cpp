@@ -19,6 +19,7 @@
 #include <cmath>
 #include <filesystem>
 #include <memory>
+#include <set>
 
 #include "action_controller.hpp"
 #include "analysis_controller.hpp"
@@ -327,6 +328,67 @@ private slots:
         rig.regions.selectRegion(first);
         QTRY_VERIFY(!rig.canvas()->regionLayer()->highlight.isNull());
         QCOMPARE(rig.space.selectedCount(), 1);
+        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+    }
+
+    // --- sélection par zone : cadre glissé et lasso -----------------------------------------
+    void dragBoxAndLassoSelectSeveralRegions() {
+        Rig rig;
+        open(rig);
+        const auto& project = rig.session.project();
+        const auto topLeft = regionAtPixel(project, 20, 20).value();
+        const auto topRight = regionAtPixel(project, 120, 20).value();
+        const auto bottomLeft = regionAtPixel(project, 20, 90).value();
+        const auto ids = [&rig] {
+            std::set<std::uint64_t> out;
+            for (const auto& v : rig.regions.selected()) {
+                out.insert(static_cast<std::uint64_t>(v.toDouble()));
+            }
+            return out;
+        };
+        const auto drag = [&rig](const QList<QPoint>& path, Qt::KeyboardModifiers mods) {
+            QTest::mousePress(rig.window, Qt::LeftButton, mods, path.front());
+            for (qsizetype i = 1; i < path.size(); ++i) {
+                QTest::mouseMove(rig.window, path[i]);
+            }
+            QTest::mouseRelease(rig.window, Qt::LeftButton, mods, path.back());
+        };
+        // Cadre glissé en sélection, de l'extérieur de l'image jusqu'au début de la moitié basse :
+        // les deux blocs du haut sont entièrement dedans, ceux du bas seulement touchés.
+        const auto a = rig.windowPos(-4, -4).toPoint();
+        const auto b = rig.windowPos(164, 66).toPoint();
+        drag({a, (a + b) / 2, b}, Qt::NoModifier);
+        QTRY_COMPARE(rig.regions.selectedCount(), 2);
+        QCOMPARE(ids(), (std::set<std::uint64_t>{topLeft, topRight}));
+        QVERIFY(rig.canvas()->regionLayer()->highlight.isNull() == false);
+        // Alt : les régions touchées comptent aussi.
+        drag({a, (a + b) / 2, b}, Qt::AltModifier);
+        QTRY_COMPARE(rig.regions.selectedCount(), 4);
+        // Un simple clic sans glisser garde son sens : une seule région.
+        QTest::mouseClick(rig.window, Qt::LeftButton, Qt::NoModifier,
+                          rig.windowPos(20, 20).toPoint());
+        QTRY_COMPARE(rig.regions.selectedCount(), 1);
+        // Lasso (outil de la barre) autour du bloc bas-gauche, Ctrl ajoute à la sélection.
+        QVERIFY(rig.press("regionTool_lasso"));
+        QTRY_COMPARE(rig.regions.tool(), QStringLiteral("lasso"));
+        // Le lasso n'a pas de rayon : seule son étiquette (et son message) occupe la barre d'options.
+        QTRY_VERIFY(rig.named("regionLassoLabel")->isVisible());
+        QVERIFY(!rig.named("regionBrushRadius")->isVisible());
+        drag({rig.windowPos(-4, 54).toPoint(), rig.windowPos(88, 54).toPoint(),
+              rig.windowPos(88, 124).toPoint(), rig.windowPos(-4, 124).toPoint(),
+              rig.windowPos(-4, 60).toPoint()},
+             Qt::ControlModifier);
+        QTRY_COMPARE(rig.regions.selectedCount(), 2);
+        QCOMPARE(ids(), (std::set<std::uint64_t>{topLeft, bottomLeft}));
+        // Zone vide : la sélection est remplacée par rien, avec une explication.
+        drag({rig.windowPos(30, 30).toPoint(), rig.windowPos(50, 30).toPoint(),
+              rig.windowPos(50, 40).toPoint()},
+             Qt::NoModifier);
+        QTRY_COMPARE(rig.regions.selectedCount(), 0);
+        QVERIFY(rig.regions.message().contains(QStringLiteral("Alt")));
+        // Recliquer le lasso revient à la sélection.
+        QVERIFY(rig.press("regionTool_lasso"));
+        QTRY_COMPARE(rig.regions.tool(), QStringLiteral("select"));
         QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
     }
 
