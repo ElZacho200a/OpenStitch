@@ -101,11 +101,19 @@ GitHub répond par intermittence 503 aux URL `github.com/<dépôt>/commit/<sha>.
 téléchargent les ports opencv4 et spdlog hors cache binaire. Le 2026-11-20, `linux-core` a raté ses trois
 configurations de suite, chaque fois sur un correctif différent. L'entrée de cache `vcpkg-linux-…` de
 `main`, vide (206 o) depuis le 2026-11-19, aggravait la panne : chaque job reconstruisait les 28 paquets
-(clé corrigée par la PR #440). L'étape « Seed vcpkg downloads with mirrored upstream patches » dépose les
-copies de `.github/vcpkg-downloads/` dans `downloads/`. vcpkg les reprend (« Using cached ») après avoir
-vérifié leur SHA512. Une copie que le vcpkg épinglé n'attend plus est ignorée avec un avertissement. Le
-README du dossier décrit la mise à jour. L'API REST ne peut pas remplacer ces fichiers : ses correctifs
+(clé corrigée par la PR #440). L'étape « Seed vcpkg downloads (mirrored patches, patient prefetch) » dépose
+les copies de `.github/vcpkg-downloads/` dans `downloads/`. vcpkg les reprend (« Using cached ») après
+avoir vérifié leur SHA512. Une copie que le vcpkg épinglé n'attend plus est ignorée avec un avertissement.
+Le README du dossier décrit la mise à jour. L'API REST ne peut pas remplacer ces fichiers : ses correctifs
 ont des index abrégés, donc une autre empreinte.
+
+Le même jour, le correctif `commit/f0888a1….diff` d'opencv4 a renvoyé 503 de façon persistante, même
+depuis un poste personnel. Sa copie a été reconstruite avec `git diff --full-index <parent> <sha>`, qui
+redonne exactement les octets attendus. Les archives de libtiff (gitlab.com) et de freetype
+(gitlab.freedesktop.org) ont aussi renvoyé 429 : `PREFETCH` les fait précharger par curl, qui respecte
+`Retry-After`, et l'archive n'est déposée que si son SHA512 est celui du portfile. Depuis que le cache
+`vcpkg-linux-v2-…` est rempli (209 Mo le 2026-11-20), ce dispositif ne sert qu'aux paquets absents du
+cache : changement de `vcpkg.json` ou de `VCPKG_COMMIT`, ou éviction après 7 jours sans accès.
 
 ## 5. Pistes non implémentées
 

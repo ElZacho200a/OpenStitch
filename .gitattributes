@@ -16,4 +16,6 @@
 *.sh text eol=lf
 # Correctifs vcpkg conservés pour la CI : octets exacts (SHA512 vérifiés par seed.sh puis vcpkg)
 .github/vcpkg-downloads/*.patch -text
+.github/vcpkg-downloads/*.diff -text
 .github/vcpkg-downloads/SHA512SUMS text eol=lf
+.github/vcpkg-downloads/PREFETCH text eol=lf

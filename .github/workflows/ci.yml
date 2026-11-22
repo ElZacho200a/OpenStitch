@@ -345,11 +345,12 @@ jobs:
           fi
           # vcpkg verifies the SHA512 hash itself; this does not bypass integrity checks.
 
-      # GitHub répond par intermittence 503 aux correctifs « commit/<sha>.patch » que téléchargent
-      # opencv4 et spdlog hors cache binaire (2026-11-20 : trois configurations ratées de suite).
-      # Copies conservées dans le dépôt, déposées seulement si le vcpkg épinglé les attend encore ;
-      # vcpkg revérifie chaque SHA512. Voir .github/vcpkg-downloads/README.md.
-      - name: Seed vcpkg downloads with mirrored upstream patches
+      # Hors cache binaire, vcpkg retélécharge des correctifs « commit/<sha>.patch|.diff » auxquels
+      # GitHub répond 503, et des archives GitLab qui répondent 429 (2026-11-20 : trois configurations
+      # ratées de suite). Correctifs copiés dans le dépôt, archives préchargées avec des reprises
+      # patientes ; rien n'est déposé si le vcpkg épinglé n'attend pas l'empreinte, et vcpkg revérifie
+      # chaque SHA512. Voir .github/vcpkg-downloads/README.md.
+      - name: Seed vcpkg downloads (mirrored patches, patient prefetch)
         run: bash .github/vcpkg-downloads/seed.sh "$RUNNER_TEMP/vcpkg"
 
       - name: System dependencies (OpenCV via vcpkg)
