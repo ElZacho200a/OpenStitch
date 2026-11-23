@@ -297,6 +297,90 @@ std::vector<std::uint64_t> allRegionIds(const document::Project& project) {
     return out;
 }
 
+std::vector<std::uint64_t> regionsInZone(const document::Project& project,
+                                         const std::vector<PixelPointF>& polygon,
+                                         ZoneSelectMode mode) {
+    std::vector<std::uint64_t> out;
+    const auto* seg = segmentationOf(project);
+    if (seg == nullptr || polygon.size() < 3 || seg->width <= 0 || seg->height <= 0) {
+        return out;
+    }
+    const auto w = static_cast<std::size_t>(seg->width);
+    const auto h = static_cast<std::size_t>(seg->height);
+    if (seg->labels.size() < w * h) {
+        return out;
+    }
+    std::uint32_t maxLabel = 0;
+    for (std::size_t i = 0; i < w * h; ++i) {
+        maxLabel = std::max(maxLabel, seg->labels[i]);
+    }
+    std::vector<std::size_t> total(static_cast<std::size_t>(maxLabel) + 1, 0);
+    for (std::size_t i = 0; i < w * h; ++i) {
+        ++total[seg->labels[i]];
+    }
+
+    double minY = polygon.front().y;
+    double maxY = minY;
+    for (const auto& p : polygon) {
+        minY = std::min(minY, p.y);
+        maxY = std::max(maxY, p.y);
+    }
+    // Lignes dont le centre (y + 0,5) peut tomber dans le polygone.
+    const auto firstRow = std::max<long long>(0, static_cast<long long>(std::floor(minY - 0.5)));
+    const auto lastRow = std::min<long long>(static_cast<long long>(h) - 1,
+                                             static_cast<long long>(std::ceil(maxY - 0.5)));
+    std::vector<std::size_t> inside(total.size(), 0);
+    std::vector<double> crossings;
+    for (long long row = firstRow; row <= lastRow; ++row) {
+        const double cy = static_cast<double>(row) + 0.5;
+        crossings.clear();
+        // Même règle d'arête demi-ouverte que `pointInPolygon` : chaque sommet compte une fois.
+        for (std::size_t i = 0, j = polygon.size() - 1; i < polygon.size(); j = i++) {
+            const auto& a = polygon[i];
+            const auto& b = polygon[j];
+            if ((a.y > cy) != (b.y > cy)) {
+                crossings.push_back(a.x + (cy - a.y) * (b.x - a.x) / (b.y - a.y));
+            }
+        }
+        std::sort(crossings.begin(), crossings.end());
+        const std::size_t rowStart = static_cast<std::size_t>(row) * w;
+        for (std::size_t k = 0; k + 1 < crossings.size(); k += 2) {
+            // Pixels dont le centre x + 0,5 est dans [x0, x1).
+            const auto from =
+                std::max<long long>(0, static_cast<long long>(std::ceil(crossings[k] - 0.5)));
+            const auto to =
+                std::min<long long>(static_cast<long long>(w),
+                                    static_cast<long long>(std::ceil(crossings[k + 1] - 0.5)));
+            for (long long x = from; x < to; ++x) {
+                ++inside[seg->labels[rowStart + static_cast<std::size_t>(x)]];
+            }
+        }
+    }
+
+    std::set<std::uint64_t> chosen;
+    for (std::size_t i = 0; i < w * h; ++i) {
+        const std::uint32_t label = seg->labels[i];
+        if (label == 0 || inside[label] == 0) {
+            continue;
+        }
+        const bool take = mode == ZoneSelectMode::Touching || inside[label] == total[label];
+        inside[label] = 0; // un seul passage par étiquette
+        if (take) {
+            const auto id =
+                segmentation::region_at(*seg, static_cast<int>(i % w), static_cast<int>(i / w));
+            if (id && id->valid()) {
+                chosen.insert(id->value);
+            }
+        }
+    }
+    for (const auto& r : listRegions(project)) {
+        if (chosen.count(r.id) != 0) {
+            out.push_back(r.id);
+        }
+    }
+    return out;
+}
+
 std::vector<std::uint64_t> sameColorRegions(const document::Project& project, std::uint64_t id) {
     std::vector<std::uint64_t> out;
     const auto regions = listRegions(project);

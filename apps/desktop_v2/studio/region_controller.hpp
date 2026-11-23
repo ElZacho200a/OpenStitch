@@ -76,6 +76,12 @@ public:
     Q_INVOKABLE void selectRegion(double id, const QString& mode = QStringLiteral("replace"));
     // Pixel de l'image de travail (clic sur la carte des régions).
     Q_INVOKABLE void selectAtPixel(int x, int y, bool additive = false);
+    // Cadre ou lasso : polygone de points {x, y} en pixels (fractionnaires) de l'image de travail.
+    // `additive` ajoute à la sélection au lieu de la remplacer ; `touching` prend aussi les
+    // régions seulement touchées (sinon : entièrement dans la zone). Les régions verrouillées sont
+    // écartées. Renvoie le nombre de régions désignées par la zone.
+    Q_INVOKABLE int selectInZone(const QVariantList& polygonPx, bool additive = false,
+                                 bool touching = false);
     Q_INVOKABLE void selectSameColor();
     Q_INVOKABLE void selectNeighbours();
     Q_INVOKABLE void invertSelection();

@@ -69,6 +69,24 @@ struct RegionMapImage {
 [[nodiscard]] std::vector<std::uint64_t> invertRegionSet(const document::Project& project,
                                                          const std::vector<std::uint64_t>& ids);
 
+// --- Sélection par zone (cadre ou lasso tracé sur le canevas) ------------------------------------
+// Sommet d'une zone en pixels de l'image de travail, fractionnaires (le centre du pixel (x, y) est
+// en (x + 0,5 ; y + 0,5)). Repère de l'interface seulement : jamais stocké dans le document.
+struct PixelPointF {
+    double x{0.0};
+    double y{0.0};
+};
+enum class ZoneSelectMode : std::uint8_t {
+    Enclosed, // régions dont TOUS les pixels sont dans la zone (défaut, comme le lasso d'objets)
+    Touching, // régions dont au moins un pixel est dans la zone
+};
+// Régions désignées par un polygone fermé (dernier sommet relié au premier, règle pair-impair) ;
+// un pixel compte si son centre est dans le polygone. Ordre de `listRegions`. Moins de 3 sommets ou
+// aucune segmentation : vide. Déterministe.
+[[nodiscard]] std::vector<std::uint64_t> regionsInZone(const document::Project& project,
+                                                       const std::vector<PixelPointF>& polygon,
+                                                       ZoneSelectMode mode);
+
 // --- Lien région <-> objets ----------------------------------------------------------------------
 // Objets de broderie issus de ces régions (vecteur `source_region` -> broderie `source_vector`).
 [[nodiscard]] std::vector<std::uint64_t>
