@@ -2,11 +2,11 @@
 
 - **PDF** : `docs/build/OpenStitch-Studio-Documentation.pdf`
 - **Existe** : oui
-- **Pages** : 312
-- **Taille** : 2398.5 Kio (2456031 octets)
+- **Pages** : 345
+- **Taille** : 2562.3 Kio (2623791 octets)
 - **Chaîne** : python-markdown -> HTML/CSS -> xhtml2pdf (reportlab), SVG via svglib
 - **Commande** : `docs\scripts\build-docs.ps1` (ou `python docs/scripts/build-docs.py`)
-- **Chapitres produits** : 47
+- **Chapitres produits** : 56
 
 ## Chapitres
 - À propos de ce document
@@ -15,10 +15,13 @@
 - Installation et premier démarrage
 - Guide utilisateur détaillé
 - Ligne de commande (openstitch-cli)
-- Interface programmatique : projets `.osp` en ligne de commande
+- Interface programmatique : projets .osp en ligne de commande
+- Serveur MCP (openstitch-mcp) : OpenStitch pour les agents IA
+- Compagnon IA
 - Traitement d'image
 - Segmentation
 - Vectorisation
+- Lignes ouvertes
 - Objets de broderie
 - Numérisation automatique
 - Génération de points — point droit et fondations
@@ -38,14 +41,20 @@
 - Simulation de couture
 - Analyse et validation
 - Fiche de production
+- Langues de l'interface (traduction)
 - Format DST (Tajima)
-- formats-pes-jef-exp
-- Format de projet `.osp`
+- Formats PES, JEF et EXP
+- Format de projet .osp
 - Architecture logicielle
 - Référence des modules
 - Modèle de données
 - Algorithmes
 - Compilation et développement
+- Coûts réels de compilation : protocole et mesures de base (BUILD-OPT-01.1)
+- Cache d'objets C++ avec sccache (POC BUILD-OPT-01.4)
+- Audit vcpkg et temps de préparation CI (BUILD-OPT-01.5)
+- Parallélisme mémoire, PCH sélectifs et Unity Build (BUILD-OPT-01.6)
+- Intégration continue (CI)
 - Guide du développeur
 - Tests
 - Guide de contribution
@@ -58,8 +67,4 @@
 - Annexe — Audit du dépôt
 
 ## Contrôles de cohérence
-**Problèmes (bloquants) :**
-- ⛔ Lien vers un chapitre inconnu (index.md) : mcp.md
-- ⛔ Lien vers un chapitre inconnu (index.md) : ai-companion.md
-- ⛔ Lien vers un chapitre inconnu (index.md) : i18n.md
-- ⛔ Lien vers un chapitre inconnu (licenses.md) : ai-companion.md
+- ✅ Aucun problème bloquant (liens d'images, fichiers source, marqueurs TODO_DOC, secrets, chapitres vides).
