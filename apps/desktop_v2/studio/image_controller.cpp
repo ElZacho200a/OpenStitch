@@ -4,11 +4,15 @@
 #include "segmentation_settings.hpp"
 #include "task_pump.hpp"
 
+#include <QSettings>
+
 #include <set>
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
 
+#include "ai_segmentation_service.hpp"
 #include "openstitch/ai_segmentation/backend_registry.hpp"
 #include "openstitch/commands/composite_command.hpp"
 #include "openstitch/commands/project_commands.hpp"
@@ -26,6 +30,17 @@ struct SegmentedLayers {
 
 QString fromUtf8(const std::string& text) {
     return QString::fromUtf8(text.data(), static_cast<qsizetype>(text.size()));
+}
+
+constexpr auto kAiSettingsKey = "ai/backendsFile";
+
+// Fichier de backends effectif : celui des réglages du Studio, sinon OPENSTITCH_AI_BACKENDS.
+std::filesystem::path effectiveBackendsFile(const QString& chosen) {
+    const QString trimmed = chosen.trimmed();
+    if (!trimmed.isEmpty()) {
+        return std::filesystem::path(trimmed.toStdWString());
+    }
+    return std::filesystem::path(ai_segmentation::backend_settings_env_path());
 }
 
 QString errorText(const Error& error) {
@@ -212,6 +227,7 @@ QImage PrepareImageProvider::requestImage(const QString& id, QSize* size,
 ImageController::ImageController(StudioController& studio, QObject* parent)
     : QObject(parent), studio_(studio) {
     attachTaskPump(tasks_, this);
+    aiSettingsFile_ = QSettings().value(QLatin1String(kAiSettingsKey)).toString();
     refreshTimer_.setSingleShot(true);
     refreshTimer_.setInterval(0);
     connect(&refreshTimer_, &QTimer::timeout, this, [this] { refreshNow(); });
@@ -803,8 +819,86 @@ void ImageController::startSegmentation(const QVariantMap& optionsMap, bool allL
         });
 }
 
+void ImageController::setAiSettingsFile(const QString& path) {
+    if (path == aiSettingsFile_) {
+        return;
+    }
+    aiSettingsFile_ = path;
+    QSettings().setValue(QLatin1String(kAiSettingsKey), path);
+    emit aiChanged();
+}
+
+void ImageController::applyAiSegmentation(const QVariantMap& options) {
+    if (!hasImage()) {
+        setMessage(tr("Le projet n'a pas d'image source."), true);
+        return;
+    }
+    if (aiRunTask_ != 0) {
+        return;
+    }
+    cancelSegmentationPreview();
+    desktop_v2::AiSegmentationRequest request;
+    request.engine = options.value(QStringLiteral("engine")).toString().toStdString();
+    request.settings_file = effectiveBackendsFile(aiSettingsFile_);
+    request.refine_by_color = options.value(QStringLiteral("refine"), true).toBool();
+    request.max_colors = static_cast<int>(numberOr(options, "max_colors", request.max_colors));
+    request.min_region_px =
+        static_cast<int>(numberOr(options, "min_region_px", request.min_region_px));
+    auto& session = studio_.session();
+    const auto snapshot = session.snapshot();
+    const auto revision = session.revision();
+    const ObjectId target = snapshot->imageSourceId();
+    const bool classicalOnly = request.engine == desktop_v2::kAiEngineClassical;
+    const auto label =
+        classicalOnly ? tr("Segmentation couleur (CIELAB)") : tr("Segmentation par IA");
+    aiBusy_ = true;
+    emit aiChanged();
+    setBusy(true, label);
+    aiRunTask_ = tasks_.submit<desktop_v2::AiSegmentationOutcome>(
+        label.toStdString(),
+        [snapshot, request](const TaskContext& task) -> Result<desktop_v2::AiSegmentationOutcome> {
+            return desktop_v2::segmentWithAi(snapshot->imageSource(), request, task);
+        },
+        [this, revision, target](Result<desktop_v2::AiSegmentationOutcome>&& result) {
+            aiRunTask_ = 0;
+            aiBusy_ = false;
+            setBusy(false);
+            emit aiChanged();
+            if (!result) {
+                if (result.error().category == ErrorCategory::Cancelled) {
+                    setMessage(tr("Analyse annulée : le document est intact."));
+                } else {
+                    setMessage(tr("Segmentation impossible : %1").arg(errorText(result.error())),
+                               true);
+                }
+                return;
+            }
+            auto& current = studio_.session();
+            if (current.revision() != revision) {
+                setMessage(tr("Le document a changé pendant le calcul : relancez la segmentation."),
+                           true);
+                return;
+            }
+            auto outcome = std::move(*result);
+            const int regions = static_cast<int>(outcome.segmentation.region_count());
+            current.execute(std::make_unique<commands::SetSegmentationCommand>(
+                std::move(outcome.segmentation), target));
+            QString text = tr("%1 : image segmentée en %2 régions (Ctrl+Z pour annuler). Les "
+                              "objets sont à régénérer.")
+                               .arg(fromUtf8(outcome.engine_label))
+                               .arg(regions);
+            if (!outcome.notice.empty()) {
+                text = fromUtf8(outcome.notice) + QStringLiteral(" ") + text;
+            }
+            // Un repli (backend demandé mais indisponible) reste visible comme avertissement.
+            setMessage(text, false);
+            emit segmentationAppliedToLayer(target);
+            emit segmentationApplied(regionCount());
+        });
+}
+
 void ImageController::cancelTask() {
-    for (TaskId* id : {&refreshTask_, &prepTask_, &segTask_, &applyTask_, &aiTask_}) {
+    for (TaskId* id : {&refreshTask_, &prepTask_, &segTask_, &applyTask_, &aiTask_, &aiRunTask_}) {
         if (*id != 0) {
             (void)tasks_.cancel(*id);
             *id = 0;
@@ -829,15 +923,16 @@ void ImageController::refreshAiBackends() {
     };
     aiTask_ = tasks_.submit<Report>(
         "Backends de segmentation IA",
-        [](const TaskContext&) -> Result<Report> {
+        [file = aiSettingsFile_](const TaskContext&) -> Result<Report> {
             Report report;
-            const auto path = backend_settings_env_path();
+            const auto path = effectiveBackendsFile(file);
             if (path.empty()) {
                 report.summary = QStringLiteral(
-                    "Aucun backend IA déclaré : segmentation classique par couleurs.");
+                    "Aucun backend IA déclaré : indiquez le fichier de backends ci-dessous. "
+                    "La segmentation classique par couleurs (CIELAB) reste disponible.");
                 return report;
             }
-            auto settings = load_backend_settings(std::filesystem::path(path));
+            auto settings = load_backend_settings(path);
             if (!settings) {
                 report.summary = QStringLiteral("Réglages IA illisibles : ") +
                                  fromUtf8(settings.error().message) +

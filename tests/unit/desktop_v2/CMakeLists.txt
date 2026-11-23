@@ -39,6 +39,7 @@ add_executable(test_desktop_v2_core
     test_path_optimizer.cpp
     test_fabric_risk.cpp
     test_segmentation_preview.cpp
+    test_ai_segmentation_service.cpp
     test_snap.cpp
     test_region_edit.cpp
     test_pen_shape.cpp

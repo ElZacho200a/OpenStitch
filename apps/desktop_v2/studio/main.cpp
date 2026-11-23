@@ -220,6 +220,8 @@ int main(int argc, char** argv) {
     if (!window) {
         return 2;
     }
+    // Recette « ia-segmenter » : la capture attend que l'analyse ait démarré puis fini.
+    bool recipeAiPending = false;
     if (parser.isSet(QStringLiteral("open-panels"))) {
         const auto names =
             parser.value(QStringLiteral("open-panels")).split(QLatin1Char(','), Qt::SkipEmptyParts);
@@ -262,6 +264,32 @@ int main(int argc, char** argv) {
                 window->setProperty("editOpen", true);
             } else if (name == QStringLiteral("preferences")) {
                 QMetaObject::invokeMethod(window, "openPreferences");
+            } else if (name == QStringLiteral("ia") || name == QStringLiteral("ia-segmenter")) {
+                // Recette : onglet « IA » de l'espace Segmentation ; « ia-segmenter » lance en plus
+                // l'analyse (moteur : OPENSTITCH_AI_RECIPE_ENGINE, vide = backend préféré).
+                if (auto* panels =
+                        window->findChild<QObject*>(QStringLiteral("segmentationPanels"))) {
+                    panels->setProperty("tab", 2);
+                }
+                if (name == QStringLiteral("ia-segmenter")) {
+                    // Le document charge en tâche de fond : on attend l'image avant de lancer.
+                    recipeAiPending = true;
+                    auto* waitImage = new QTimer(&app);
+                    waitImage->setInterval(100);
+                    QObject::connect(waitImage, &QTimer::timeout, &app,
+                                     [&imageTools, &recipeAiPending, waitImage] {
+                                         if (!imageTools.hasImage()) {
+                                             return;
+                                         }
+                                         waitImage->stop();
+                                         recipeAiPending = false;
+                                         imageTools.applyAiSegmentation(
+                                             {{QStringLiteral("engine"),
+                                               qEnvironmentVariable("OPENSTITCH_AI_RECIPE_ENGINE")},
+                                              {QStringLiteral("refine"), true}});
+                                     });
+                    waitImage->start();
+                }
             }
         }
     }
@@ -347,7 +375,7 @@ int main(int argc, char** argv) {
             if (!canvas) {
                 canvas = window->findChild<GpuCanvas*>(); // canevas de l'espace courant
             }
-            if (controller.busy()) {
+            if (controller.busy() || imageTools.busy() || recipeAiPending) {
                 return;
             }
             const auto screenshot = window->grabWindow();
@@ -379,7 +407,8 @@ int main(int argc, char** argv) {
             app.exit(screenshot.save(output) ? 0 : 4);
         });
         capture.start();
-        QTimer::singleShot(60'000, &app, [&app] { app.exit(5); });
+        // Une analyse IA (chargement du modèle compris) dépasse largement la minute.
+        QTimer::singleShot(recipeAiPending ? 300'000 : 60'000, &app, [&app] { app.exit(5); });
     }
     std::unique_ptr<QmlDevReloader> qmlReloader;
     if (qmlSource.external && !parser.isSet(QStringLiteral("screenshot")) &&

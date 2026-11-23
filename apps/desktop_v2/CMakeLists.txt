@@ -34,6 +34,7 @@ add_library(openstitch_desktop_v2_core STATIC
     core/path_optimizer.cpp
     core/fabric_risk.cpp
     core/segmentation_preview.cpp
+    core/ai_segmentation_service.cpp
     core/snap.cpp
     core/region_edit.cpp
     core/pen_shape.cpp
@@ -79,6 +80,7 @@ target_link_libraries(openstitch_desktop_v2_core
     PUBLIC openstitch::core openstitch::document openstitch::commands openstitch::project_ops
            openstitch::stitch openstitch::stitch_generation openstitch::stitch_render openstitch::formats openstitch::image
            openstitch::mcp openstitch::optimization openstitch::stitch_analysis openstitch::autodigitize openstitch::segmentation openstitch::stipple openstitch::project_io
+           openstitch::ai_segmentation
     PRIVATE openstitch::warnings)
 # Moteur de thèmes (core/theme_*) : JSON lu derrière une API sans type tiers.
 find_package(nlohmann_json CONFIG REQUIRED)
