@@ -365,9 +365,9 @@ ColumnLayout {
         StudioButton { objectName: "regionDelete"; text: qsTr("Supprimer"); enabled: regionTools.selectedCount > 0; onClicked: regionTools.deleteSelected() }
         StudioButton {
             objectName: "regionSplit"
-            text: qsTr("Séparer en morceaux")
+            text: qsTr("Séparer les zones non reliées")
             enabled: regionTools.selectedCount === 1
-            tooltip: qsTr("Si cette région couvre des zones non adjacentes (fusion antérieure), les sépare en régions distinctes")
+            tooltip: qsTr("Si cette région est faite de plusieurs zones qui ne se touchent pas, crée une région distincte pour chacune")
             onClicked: regionTools.splitSelected()
         }
     }

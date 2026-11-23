@@ -301,7 +301,7 @@ QColor FadeController::background() const {
 
 QString FadeController::summary() const {
     if (multiSettings_) {
-        return QStringLiteral("Camaïeu de %1 fils. Couches cousues séparément, "
+        return QStringLiteral("Fondu multicolore de %1 fils. Couches cousues séparément, "
                               "avec profil de densité par couleur.")
             .arg(multiSettings_->colors.size());
     }
@@ -692,7 +692,7 @@ bool FadeController::createMulticolorAdvanced(const QVariantList& colors, bool c
     settings->crosshatchLayers = crosshatchLayers;
     settings->crosshatchAngleDeg = crosshatchAngleDeg;
     return report(createMultiFade(studio_.session(), id_, *settings),
-                  QStringLiteral("Camaïeu multicolore créé."));
+                  QStringLiteral("Fondu multicolore créé."));
 }
 
 bool FadeController::editMulticolor(const QVariantList& colors, bool complementary, int texture,
@@ -728,7 +728,7 @@ bool FadeController::editMulticolorAdvanced(const QVariantList& colors, bool com
         return true; // aucune commande pour un clic Appliquer sans changement
     }
     return report(editMultiFade(studio_.session(), id_, *settings),
-                  QStringLiteral("Camaïeu multicolore enregistré."));
+                  QStringLiteral("Fondu multicolore enregistré."));
 }
 
 bool FadeController::edit(const QColor& foreground, bool complementary) {
@@ -817,7 +817,7 @@ bool FadeController::setCurve(int curve) {
         auto spec =
             project_ops::describe_multicolor_gradient(studio_.session().project(), ObjectId{id_});
         if (!spec) {
-            return refuse(QStringLiteral("Camaïeu introuvable."));
+            return refuse(QStringLiteral("Fondu multicolore introuvable."));
         }
         const auto selected = static_cast<document::DensityCurve>(curve);
         const bool allSelected = std::all_of(

@@ -51,8 +51,8 @@ StudioCard {
         Op { objectName: "quickExclude"; visible: !bar.nodeMode; text: qsTr("Exclusion"); shortcutLabel: "Ctrl+^"; enabled: bar.two; disabledReason: bar.needTwo
              tooltip: qsTr("Garde tout sauf la partie commune"); onClicked: bar.vec.booleanOp("exclude") }
         Rectangle { visible: !bar.nodeMode; implicitWidth: 1; implicitHeight: 18; color: Theme.divider; Layout.leftMargin: 3; Layout.rightMargin: 3 }
-        Op { objectName: "quickBreak"; visible: !bar.nodeMode; text: qsTr("Séparer"); shortcutLabel: "Ctrl+Maj+K"; enabled: bar.count > 0
-             tooltip: qsTr("Sépare chaque morceau disjoint en objet indépendant"); onClicked: bar.vec.breakApart() }
+        Op { objectName: "quickBreak"; visible: !bar.nodeMode; text: qsTr("Séparer en formes indépendantes"); shortcutLabel: "Ctrl+Maj+K"; enabled: bar.count > 0
+             tooltip: qsTr("Fait de chaque partie non reliée une forme indépendante"); onClicked: bar.vec.breakApart() }
         Op { objectName: "quickNodeCorner"; visible: bar.nodeMode; text: qsTr("Anguleux"); shortcutLabel: "C"; enabled: bar.nodes
              disabledReason: qsTr("Sélectionnez des nœuds"); onClicked: bar.toolCtl.setSelectedNodeKind(false) }
         Op { objectName: "quickNodeSmooth"; visible: bar.nodeMode; text: qsTr("Lisse"); shortcutLabel: "S"; enabled: bar.nodes

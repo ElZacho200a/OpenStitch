@@ -16,6 +16,7 @@
 #include <memory>
 #include <set>
 
+#include "action_catalog.hpp"
 #include "inspector_controller.hpp"
 #include "inspector_model.hpp"
 #include "object_labels.hpp"
@@ -162,6 +163,7 @@ private slots:
     void stitchTypeConversion();
     void openLineExplainsTheReducedTypeList();
     void multicolorGradientType();
+    void fadeVocabularyIsUnified();
     void searchAndLevels();
     void machineOutputIsByteIdentical();
     void persistsInTheOspFile();
@@ -583,6 +585,26 @@ void StudioInspectorTest::stitchTypeConversion() {
     QVERIFY(inspector.setStitchType(QStringLiteral("contour_fill")).isEmpty());
     QCOMPARE(inspector.typeId(), QStringLiteral("contour_fill"));
     QVERIFY(inspector.fields().size() > 0); // concentric: its table is complete since family J
+}
+
+// Lot 2 vocabulaire : un seul nom (« Fondu multicolore ») pour le type de points et l'action du
+// catalogue ; « Fondu à la frontière » reste une fonction distincte.
+void StudioInspectorTest::fadeVocabularyIsUnified() {
+    const auto& types = settableStitchTypes();
+    const auto type =
+        std::ranges::find_if(types, [](const auto& t) { return t.id == "multicolor_gradient"; });
+    QVERIFY(type != types.end());
+    QCOMPARE(QString::fromUtf8(type->label.data(), static_cast<qsizetype>(type->label.size())),
+             QStringLiteral("Fondu multicolore"));
+    const auto* create = findAction("fade.create");
+    QVERIFY(create != nullptr);
+    const auto createLabel = QString::fromStdString(create->label);
+    QVERIFY(createLabel.startsWith(QStringLiteral("Fondu multicolore")));
+    QVERIFY(!createLabel.contains(QStringLiteral("fils")));
+    const auto* boundary = findAction("fade.boundary");
+    QVERIFY(boundary != nullptr);
+    QVERIFY(
+        QString::fromStdString(boundary->label).startsWith(QStringLiteral("Fondu à la frontière")));
 }
 
 // Mission 2026-11-14 : « Fondu multicolore » est un véritable type de points dans le sélecteur,
