@@ -71,7 +71,7 @@ Compression (2026-10) : l'image PNG, déjà compressée, est stockée telle quel
   `edgeWeight`, `inset`, `stagger`, les réglages de sous-couche du tatami,
   `hiddenUnderpath`, `sectorOverlap`, `handmade`, `handmadeIntensity`,
   `seed`, `spacingRegularity` (réel [0 ; 1], absent = 0 ; borné à la
-  lecture) et l'objet `densityGradient` (`fromX`, `fromY`, `toX`, `toY`,
+  lecture), `smoothField` (booléen, absent = faux : champ lissé) et l'objet `densityGradient` (`fromX`, `fromY`, `toX`, `toY`,
   `spacingFrom`, `spacingTo`, µm entiers ; `curve` entier 0 linéaire / 1 douce /
   2 marquée, absent = 0 ; absent = écart uniforme ; `densityStops` : arrêts
   `[position, poids]` d'un fondu, 2 à 64 ; avec `sharedRows: true`, arrêts

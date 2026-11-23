@@ -1590,6 +1590,14 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                                        "le remplissage, pour masquer les bouts de lignes "
                                        "(bords effilochés)."));
                 outline->setChecked(p.edge_outline);
+                auto* smoothField =
+                    new QCheckBox(tr("Lignes de couture lissées (formes courbes)"), body_);
+                smoothField->setObjectName(QStringLiteral("check_directionalSmoothField"));
+                smoothField->setToolTip(tr("Adoucit les cassures de direction sur les formes "
+                                           "larges ou courbes (cœur, spirale, C épais) : les "
+                                           "lignes de couture suivent la courbure au lieu de "
+                                           "former des facettes."));
+                smoothField->setChecked(p.smooth_field);
                 // HP-ENG-001 : prolonge chaque ligne de couture à ses deux bouts.
                 auto* dirPull =
                     mmSpin(to_millimeters(p.pull_compensation).value, 3.0, 0.0,
@@ -1708,6 +1716,7 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                     })) {
                     markMixed(regular);
                 }
+                form->addRow(QString(), smoothField);
                 form->addRow(tr("Longueur de point :"), len);
                 form->addRow(tr("Influence des bords :"), edge);
                 form->addRow(tr("Retrait de bord :"), inset);
@@ -1799,6 +1808,7 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 bindMm(uSpacing, tr("Espacement de la sous-couche"), &T::underlay_spacing);
                 bindBool(underpath, tr("Liaisons cousues cachées"), &T::hidden_underpath);
                 bindBool(outline, tr("Contour cousu par-dessus"), &T::edge_outline);
+                bindBool(smoothField, tr("Champ lissé"), &T::smooth_field);
                 bindMm(dirPull, tr("Compensation du tirage"), &T::pull_compensation);
                 bindBool(dirZig, tr("Sous-couche en zigzag"), &T::underlay_zigzag);
                 bindInt(intensity, tr("Intensité"), &T::handmade_intensity);

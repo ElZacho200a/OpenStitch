@@ -926,6 +926,7 @@ fields_of<document::DirectionalFillParams>() {
         std::vector<Field<P>> v;
         v.push_back(mm_field<P>("row_spacing_mm", &P::row_spacing, 0.1, 5.0));
         v.push_back(ratio_field<P>("spacing_regularity", &P::spacing_regularity, 0.0, 1.0));
+        v.push_back(bool_field<P>("smooth_field", &P::smooth_field));
         v.push_back(mm_field<P>("stitch_length_mm", &P::stitch_length, 1.0, 7.0));
         v.push_back(ratio_field<P>("edge_weight", &P::edge_weight, 0.0, 1.0));
         v.push_back(mm_field<P>("inset_mm", &P::inset, 0.0, 5.0));

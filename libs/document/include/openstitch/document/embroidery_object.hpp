@@ -247,6 +247,10 @@ struct DirectionalFillParams {
     // résolution quadratique qui égalise l'écart entre lignes voisines aux
     // dépens, au besoin, de leur direction d'origine (1 = espacement d'abord).
     double spacing_regularity{0.0};
+    // Champ lissé : adoucit par diffusion amortie les facettes que le champ « tangente du guide
+    // le plus proche » forme sur les formes larges ou courbes (cœur, spirale, C épais). Faux
+    // (défaut) = champ historique, rendu inchangé octet pour octet.
+    bool smooth_field{false};
     Micrometers stitch_length{3'000}; // longueur cible, bornée à [1 ; 7] mm à la génération
     double edge_weight{0.0};          // influence de la tangente du bord le plus proche, [0 ; 1]
     Micrometers inset{200};           // retrait du bord (compensation de contour)
