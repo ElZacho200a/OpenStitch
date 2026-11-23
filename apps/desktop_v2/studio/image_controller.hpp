@@ -81,6 +81,8 @@ class ImageController : public QObject {
     Q_PROPERTY(QVariantList aiBackends READ aiBackends NOTIFY aiChanged)
     Q_PROPERTY(QString aiSummary READ aiSummary NOTIFY aiChanged)
     Q_PROPERTY(bool aiBusy READ aiBusy NOTIFY aiChanged)
+    // Fichier `openstitch.ai.backends/1` (vide = variable OPENSTITCH_AI_BACKENDS), mémorisé.
+    Q_PROPERTY(QString aiSettingsFile READ aiSettingsFile WRITE setAiSettingsFile NOTIFY aiChanged)
 public:
     explicit ImageController(StudioController& studio, QObject* parent = nullptr);
     ~ImageController() override;
@@ -126,6 +128,8 @@ public:
     [[nodiscard]] QVariantList aiBackends() const { return ai_; }
     [[nodiscard]] QString aiSummary() const { return aiSummary_; }
     [[nodiscard]] bool aiBusy() const { return aiBusy_; }
+    [[nodiscard]] QString aiSettingsFile() const { return aiSettingsFile_; }
+    void setAiSettingsFile(const QString& path);
 
     // --- Prétraitement (non destructif : pile d'opérations rejouée depuis l'original) --------
     // kind : brightness_contrast, grayscale, sharpen, clahe, median, bilateral, flatten, quantize,
@@ -150,6 +154,11 @@ public:
 
     // --- Segmentation IA (backends déclarés dans les réglages IA) ---------------------------
     Q_INVOKABLE void refreshAiBackends();
+    // options : engine ("" = backend préféré, "classical" = CIELAB sans IA, ou l'id d'un backend),
+    // refine (découpe chaque forme par couleur CIELAB), max_colors, min_region_px. Un backend
+    // absent ou en échec retombe, avec la raison affichée, sur la segmentation couleur. Une seule
+    // étape d'annulation ; les objets sont à régénérer.
+    Q_INVOKABLE void applyAiSegmentation(const QVariantMap& options);
 
 signals:
     void changed();
@@ -197,11 +206,13 @@ private:
     QVariantList ai_;
     QString aiSummary_;
     bool aiBusy_{false};
+    QString aiSettingsFile_;
     TaskId refreshTask_{0};
     TaskId prepTask_{0};
     TaskId segTask_{0};
     TaskId applyTask_{0};
     TaskId aiTask_{0};
+    TaskId aiRunTask_{0};
     // Détruit avant les membres ci-dessus : ses rappels les utilisent.
     TaskManager tasks_;
 };
