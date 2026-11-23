@@ -95,7 +95,9 @@ Chargés à la demande selon leur description : `openstitch-docs`, `-build-test`
 `-multi-agent`, `-roadmap`, `-token-efficiency`, `-notion`, `-studio-ux`. Règles qui s'appliquent même sans les charger :
 
 - **Chaque commit met à jour `docs/roadmap-parite-hatch.md`** (statut, nouveaux manques,
-  journal §28) ou écrit « roadmap : aucune entrée concernée » dans le message.
+  journal §28) ou écrit « roadmap : aucune entrée concernée » dans le message. Vérifié
+  mécaniquement commit par commit par la CI `Roadmap Gate` sur chaque PR (hors fusions) ;
+  ne pas compter sur la discipline manuelle seule (`scripts/roadmap_gate.py`).
 - **Toute fonctionnalité est câblée dans `apps/desktop`** (menu/outil/dialogue/panneau,
   `ICommand`, test QTest headless), sauf demande contraire explicite.
 - **Trois modes de session** (détail : `openstitch-commit`, `openstitch-roadmap`) :
