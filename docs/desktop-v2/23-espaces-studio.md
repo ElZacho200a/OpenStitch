@@ -132,12 +132,22 @@ les raccourcis ne sont actifs que dans l'espace visible.
 | Espace | Outils (raccourci) | Source de l'état |
 |---|---|---|
 | Image | Recadrer (`C`), Règle (`M`), Fond transparent (`Maj+I`) | `imageSpace.tool` |
-| Segmentation | Pinceau de frontière (`U`), Gomme (`Maj+U`) | `regionTools.tool` |
+| Segmentation | Lasso (`Maj+V`), Pinceau de frontière (`U`), Gomme (`Maj+U`) | `regionTools.tool` |
 | Vecteurs | Formes, Tracés, Édition (registre d'outils) | `tools.activeTool` |
 | Points | Gestes points, satin, barreaux, guide, rupture | `digitizer.mode` |
 
 Les options de l'outil actif s'affichent sur le canevas, à côté de la barre (rayon du pinceau et
 dernier message en Segmentation ; tolérance, zone contiguë ou longueur réelle en Image).
+
+**Sélection par zone en Segmentation** : avec l'outil Sélection, un clic prend la région sous le
+curseur et un glisser (au-delà de 4 px) trace un **cadre** ; l'outil **Lasso** (`Maj+V`) trace un
+contour libre (un clic sans glisser reste un clic). Au relâchement, les régions dont **tous** les
+pixels sont dans la zone remplacent la sélection ; `Ctrl` ou `Maj` les ajoute, `Alt` prend aussi
+les régions seulement touchées (convention du lasso d'objets). Les régions verrouillées sont
+écartées et le choix d'une cible de fusion n'accepte qu'un clic. Calcul pur dans
+`region_edit::regionsInZone` (balayage de lignes sur la carte d'étiquettes, un pixel compte si son
+centre est dans le polygone, résultat dans l'ordre de `listRegions`) ; le canevas n'affiche que le
+tracé pointillé. Une zone sans région l'explique dans le message de l'outil.
 
 **Documents multi-calques** (`.ora`, lot d'images) : les calques partagent une toile et une
 échelle communes. La **règle** et la taille de l'image changent l'échelle de **tous** les calques

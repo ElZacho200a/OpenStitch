@@ -30,10 +30,12 @@ APP_VERSION = "0.1.0"
 DOC_VERSION = "1.0"
 PDF_NAME = "OpenStitch-Studio-Documentation.pdf"
 
-# Ordre éditorial des chapitres (le nom de fichier sans .md).
+# Ordre éditorial des chapitres (le nom de fichier sans .md), calqué sur la table des
+# matières de index.md : un chapitre cité par un lien [..](nom.md) doit figurer ici.
 CHAPTERS = [
     "index", "introduction", "getting-started", "installation", "user-guide", "cli", "cli-project",
-    "image-processing", "segmentation", "vectorization", "embroidery-objects",
+    "mcp", "ai-companion",
+    "image-processing", "segmentation", "vectorization", "lignes-ouvertes", "embroidery-objects",
     "auto-numerisation",
     "stitch-generation", "moteur-de-points", "satin-squelette", "satin", "tatami", "directional-fill",
     "lettering",
@@ -41,8 +43,11 @@ CHAPTERS = [
     "patent-research", "patent-sheets-satin", "patent-sheets-autodigitize",
     "patent-sheets-underlay-geometry", "patent-sheets-decorative-applique",
     "palettes-and-threads", "simulation", "analysis-and-validation", "production-sheet",
+    "i18n",
     "dst-format", "formats-pes-jef-exp", "project-format", "architecture", "module-reference",
-    "data-model", "algorithms", "build-system", "developer-guide", "testing",
+    "data-model", "algorithms", "build-system",
+    "build-baseline", "build-sccache", "build-vcpkg-audit", "build-pch-unity", "build-ci",
+    "developer-guide", "testing",
     "contributing", "troubleshooting", "usage-log", "limitations", "roadmap", "glossary",
     "licenses", "generated-project-audit",
 ]
@@ -187,6 +192,11 @@ IMG_RE = re.compile(r'!\[[^\]]*\]\(([^)]+)\)')
 CHAPTER_LINK_RE = re.compile(r'\]\((?:\./)?([A-Za-z0-9_-]+)\.md(?:#[^)]*)?\)')
 LINK_RE = re.compile(r'\]\(([^)]+)\)')
 TITLE_RE = re.compile(r'^#\s+(.*)$', re.M)
+# Cellule de tableau vide (`| |` en Markdown -> <td></td>) : xhtml2pdf fige alors sa colonne
+# à la seule somme des marges (10 pt) et le moindre arrondi de ReportLab rend la largeur utile
+# négative (« flowable given negative availWidth »), selon la pagination. Une espace insécable
+# laisse la cellule vide à l'œil et la colonne dimensionnée comme les autres.
+EMPTY_CELL_RE = re.compile(r'<(t[dh])((?:\s[^>]*)?)>\s*</\1>')
 
 
 def build():
@@ -208,7 +218,8 @@ def build():
         if not os.path.exists(path):
             problems.append(f"Chapitre manquant : {name}.md")
             continue
-        with open(path, "r", encoding="utf-8") as f:
+        # utf-8-sig : un BOM en tête cacherait le titre « # … » (ni h1 ni entrée de TOC).
+        with open(path, "r", encoding="utf-8-sig") as f:
             text = f.read()
         if len(text.strip()) < 40:
             problems.append(f"Chapitre vide ou quasi vide : {name}.md")
@@ -233,13 +244,15 @@ def build():
             if not os.path.exists(ap):
                 problems.append(f"Image introuvable ({name}.md) : {ref}")
 
-        # Titre du chapitre
+        # Titre du chapitre, sans les ` du Markdown : c'est le texte du signet du h1 rendu,
+        # auquel la TOC le compare pour trouver son numéro de page.
         mt = TITLE_RE.search(text)
-        title = mt.group(1).strip() if mt else name
+        title = mt.group(1).strip().replace("`", "") if mt else name
         cid = "ch_" + name
         titles.append((cid, title))
 
         html = markdown.markdown(text, extensions=MD_EXT, output_format="html5")
+        html = EMPTY_CELL_RE.sub(r"<\1\2>&nbsp;</\1>", html)
         # Transforme les blockquotes commençant par un mot-clé en encadrés stylés
         html = style_admonitions(html)
         chapter_html.append(part_divider(name))
@@ -265,16 +278,24 @@ def build():
             + "</body></html>"
         )
 
-    def render(html, dest):
-        with open(dest, "wb") as f:
-            return pisa.CreatePDF(html, dest=f, encoding="utf-8",
-                                  link_callback=lambda uri, rel: link_cb(uri))
+    def render(html, dest, label):
+        # Une exception de ReportLab devient un problème bloquant du rapport, au lieu d'arrêter
+        # le script avant qu'il ne réécrive ce rapport (qui resterait celui d'un ancien rendu).
+        try:
+            with open(dest, "wb") as f:
+                return pisa.CreatePDF(html, dest=f, encoding="utf-8",
+                                      link_callback=lambda uri, rel: link_cb(uri))
+        except Exception as e:  # noqa: BLE001
+            detail = " ".join(str(e).split())
+            problems.append(f"Échec du rendu xhtml2pdf ({label}), PDF non régénéré : "
+                            f"{type(e).__name__}: {detail}")
+            return None
 
     out = os.path.join(BUILD, PDF_NAME)
 
     # Passe 1 : sans numéros de page, pour découvrir la pagination.
     tmp = os.path.join(BUILD, "_pass1.pdf")
-    render(assemble(None), tmp)
+    pass1 = render(assemble(None), tmp, "passe 1")
 
     toc_pages = {}
     try:
@@ -282,13 +303,16 @@ def build():
         reader1 = PdfReader(tmp)
         title_to_page = {}
 
-        def walk(items):
+        # Signets de premier niveau seulement (h1 = titres de chapitre) : un h2 homonyme plus
+        # loin (« ## Compagnon IA » de licenses.md) ne doit pas remplacer la page du chapitre.
+        def walk(items, depth=0):
             for it in items:
                 if isinstance(it, list):
-                    walk(it)
-                else:
+                    walk(it, depth + 1)
+                elif depth == 0:
                     try:
-                        title_to_page[str(it.title)] = reader1.get_destination_page_number(it) + 1
+                        title_to_page.setdefault(
+                            str(it.title), reader1.get_destination_page_number(it) + 1)
                     except Exception:  # noqa: BLE001
                         pass
         walk(reader1.outline)
@@ -298,13 +322,14 @@ def build():
     except Exception as e:  # noqa: BLE001
         warnings.append(f"Numéros de page de la TOC indisponibles : {e}")
 
-    # Passe 2 : rendu final avec numéros de page.
-    res = render(assemble(toc_pages), out)
+    # Passe 2 : rendu final avec numéros de page, sautée si la passe 1 a échoué (le PDF
+    # existant n'est pas écrasé par un rendu voué au même échec).
+    res = render(assemble(toc_pages), out, "passe 2") if pass1 is not None else None
     try:
         os.remove(tmp)
     except OSError:
         pass
-    if res.err:
+    if res is not None and res.err:
         problems.append("xhtml2pdf a signalé des erreurs de rendu.")
 
     # 5) Vérification du PDF

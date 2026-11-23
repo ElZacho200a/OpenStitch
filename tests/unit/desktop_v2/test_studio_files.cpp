@@ -1264,7 +1264,8 @@ void StudioFilesTest::exportsAreDeterministicAndRepeatable() {
 void StudioFilesTest::photoRenderRunsTheExternalEngineOnTheThreadScene() {
     QTemporaryDir dir;
     QVERIFY(dir.isValid());
-    Rig rig;
+    Rig rig({}, true); // fenêtre réelle : la carte de fin de rendu y est vérifiée
+    QVERIFY(rig.window);
     rig.session.replaceProject(studioFixture(), true);
     // Interpréteur absent : message d'erreur clair, aucun fichier.
     qputenv("OPENSTITCH_PYTHON", "openstitch-python-absent-xyz");
@@ -1302,24 +1303,75 @@ void StudioFilesTest::photoRenderRunsTheExternalEngineOnTheThreadScene() {
                 "print('rendu factice', len(scene['segments']))\n");
     }
     qputenv("OPENSTITCH_RAYTRACE_SCRIPT", fake.toUtf8());
-    rig.files->exportPhotoRender(url(dir, "photo.png"),
-                                 {{QStringLiteral("tiltDeg"), 12},
-                                  {QStringLiteral("samples"), 4},
-                                  {QStringLiteral("pxPerMm"), 99}, // borné à 40
-                                  {QStringLiteral("threadWidthMm"), 0.5},
-                                  {QStringLiteral("fabric"), QStringLiteral("10,20,30")},
-                                  {QStringLiteral("fabricType"), QStringLiteral("jersey")},
-                                  {QStringLiteral("threadType"), QStringLiteral("coton")},
-                                  {QStringLiteral("threadPlies"), 9},
-                                  {QStringLiteral("relief"), 0.0},
-                                  {QStringLiteral("light"), 3.5},
-                                  {QStringLiteral("background"), QStringLiteral("1,2,999")}});
+    const QVariantMap photoOptions{{QStringLiteral("tiltDeg"), 12},
+                                   {QStringLiteral("samples"), 4},
+                                   {QStringLiteral("pxPerMm"), 99}, // borné à 40
+                                   {QStringLiteral("threadWidthMm"), 0.5},
+                                   {QStringLiteral("fabric"), QStringLiteral("10,20,30")},
+                                   {QStringLiteral("fabricType"), QStringLiteral("jersey")},
+                                   {QStringLiteral("threadType"), QStringLiteral("coton")},
+                                   {QStringLiteral("threadPlies"), 9},
+                                   {QStringLiteral("relief"), 0.0},
+                                   {QStringLiteral("light"), 3.5},
+                                   {QStringLiteral("background"), QStringLiteral("1,2,999")}};
+    rig.files->exportPhotoRender(url(dir, "photo.png"), photoOptions);
     QVERIFY(rig.waitIdle());
     qunsetenv("OPENSTITCH_RAYTRACE_SCRIPT");
     QVERIFY2(!rig.files->messageIsError(), qPrintable(rig.files->message()));
     QVERIFY(rig.files->message().contains(QStringLiteral("Rendu photo écrit")));
     QImage png(dir.filePath(QStringLiteral("photo.png")));
     QCOMPARE(png.size(), QSize(1, 1));
+    // Fin de rendu : la carte persistante reçoit le fichier, sa taille et la durée.
+    const QVariantMap done = rig.files->photoResult();
+    QCOMPARE(done.value(QStringLiteral("name")).toString(), QStringLiteral("photo.png"));
+    QCOMPARE(QFileInfo(done.value(QStringLiteral("path")).toString()),
+             QFileInfo(dir.filePath(QStringLiteral("photo.png"))));
+    QCOMPARE(done.value(QStringLiteral("width")).toInt(), 1);
+    QCOMPARE(done.value(QStringLiteral("height")).toInt(), 1);
+    QVERIFY(done.value(QStringLiteral("seconds")).toDouble() >= 0.0);
+    QVERIFY(done.value(QStringLiteral("segments")).toULongLong() > 0);
+    rig.files->openPhotoResult(); // sans écran : aucune application lancée, aucun message d'erreur
+    QVERIFY(!rig.files->messageIsError());
+    // Dans la fenêtre : la carte persistante remplace le message de 8 s (pas de doublon).
+    auto* card = rig.window->findChild<QQuickItem*>(QStringLiteral("photoDoneCard"));
+    auto* toast = rig.window->findChild<QQuickItem*>(QStringLiteral("fileToast"));
+    auto* detail = rig.window->findChild<QQuickItem*>(QStringLiteral("photoDoneDetail"));
+    auto* close = rig.window->findChild<QQuickItem*>(QStringLiteral("photoDoneClose"));
+    QVERIFY(card && toast && detail && close);
+    QTRY_VERIFY_WITH_TIMEOUT(card->isVisible(), 3'000);
+    QTRY_VERIFY_WITH_TIMEOUT(!toast->isVisible(), 3'000);
+    QVERIFY(detail->property("text").toString().startsWith(QStringLiteral("photo.png")));
+    QVERIFY(rig.window->findChild<QQuickItem*>(QStringLiteral("photoDoneOpen"))->isVisible());
+    QVERIFY(rig.window->findChild<QQuickItem*>(QStringLiteral("photoDoneReveal"))->isVisible());
+    // Captures d'inspection manuelle (UX Gate) : taille standard puis fenêtre basse.
+    if (const QString grab = qEnvironmentVariable("OPENSTITCH_TEST_GRAB"); !grab.isEmpty()) {
+        rig.window->resize(1440, 900);
+        QTest::qWait(200);
+        rig.window->grabWindow().save(grab + QStringLiteral("-1440.png"));
+        rig.window->resize(1000, 640);
+        QTest::qWait(200);
+        rig.window->grabWindow().save(grab + QStringLiteral("-1000.png"));
+    }
+    QTRY_VERIFY_WITH_TIMEOUT(rig.window->isExposed(), 5'000);
+    // Échap ferme la carte sans toucher au reste ; le bouton Fermer est vérifié ensuite.
+    rig.window->requestActivate();
+    QTest::keyClick(rig.window, Qt::Key_Escape);
+    QTRY_VERIFY_WITH_TIMEOUT(!card->isVisible(), 3'000);
+    QVERIFY(rig.files->photoResult().isEmpty());
+    qputenv("OPENSTITCH_RAYTRACE_SCRIPT", fake.toUtf8());
+    rig.files->exportPhotoRender(url(dir, "photo2.png"), photoOptions);
+    QVERIFY(rig.waitIdle());
+    qunsetenv("OPENSTITCH_RAYTRACE_SCRIPT");
+    QTRY_VERIFY_WITH_TIMEOUT(card->isVisible(), 3'000);
+    QSignalSpy dismissed(rig.files.get(), &FileController::photoResultChanged);
+    QTest::mouseClick(
+        rig.window, Qt::LeftButton, Qt::NoModifier,
+        close->mapToScene(QPointF(close->width() / 2.0, close->height() / 2.0)).toPoint());
+    QTRY_VERIFY_WITH_TIMEOUT(rig.files->photoResult().isEmpty(), 3'000);
+    QTRY_VERIFY_WITH_TIMEOUT(!card->isVisible(), 3'000);
+    QCOMPARE(dismissed.count(), 1);
+    rig.files->dismissPhotoResult(); // déjà fermée : pas de nouveau signal
+    QCOMPARE(dismissed.count(), 1);
 }
 
 void StudioFilesTest::documentExportsWriteRealFiles() {

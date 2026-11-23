@@ -138,8 +138,8 @@ void RegionController::setStale(bool stale, const QString& reason) {
 }
 
 void RegionController::setTool(const QString& tool) {
-    if ((tool != QLatin1String("select") && tool != QLatin1String("brush") &&
-         tool != QLatin1String("erase")) ||
+    if ((tool != QLatin1String("select") && tool != QLatin1String("lasso") &&
+         tool != QLatin1String("brush") && tool != QLatin1String("erase")) ||
         tool == tool_) {
         return;
     }
@@ -324,6 +324,43 @@ void RegionController::selectAtPixel(int x, int y, bool additive) {
     }
     selectRegion(static_cast<double>(*id),
                  additive ? QStringLiteral("toggle") : QStringLiteral("replace"));
+}
+
+int RegionController::selectInZone(const QVariantList& polygonPx, bool additive, bool touching) {
+    const PerfScope perf("region.selectInZone");
+    if (mergeTargetMode_) {
+        return 0; // le choix de cible attend UNE région cliquée, pas une zone
+    }
+    std::vector<PixelPointF> polygon;
+    polygon.reserve(static_cast<std::size_t>(polygonPx.size()));
+    for (const auto& value : polygonPx) {
+        const auto point = value.toMap();
+        polygon.push_back({point.value(QStringLiteral("x")).toDouble(),
+                           point.value(QStringLiteral("y")).toDouble()});
+    }
+    auto found = regionsInZone(studio_.session().project(), polygon,
+                               touching ? ZoneSelectMode::Touching : ZoneSelectMode::Enclosed);
+    std::erase_if(found, [this](std::uint64_t id) { return locked_.find(id) != locked_.end(); });
+    const int count = static_cast<int>(found.size());
+    auto next = additive ? selected_ : std::vector<std::uint64_t>{};
+    for (const auto id : found) {
+        if (std::find(next.begin(), next.end(), id) == next.end()) {
+            next.push_back(id);
+        }
+    }
+    if (count == 0) {
+        setMessage(touching ? QStringLiteral("Aucune région dans la zone.")
+                            : QStringLiteral("Aucune région entièrement dans la zone : maintenez "
+                                             "Alt pour prendre aussi les régions touchées."));
+    } else {
+        setMessage(count == 1 ? QStringLiteral("1 région sélectionnée par la zone.")
+                              : QStringLiteral("%1 régions sélectionnées par la zone.").arg(count));
+    }
+    if (next != selected_) {
+        selected_ = std::move(next);
+        emit selectionChanged();
+    }
+    return count;
 }
 
 void RegionController::selectSameColor() {

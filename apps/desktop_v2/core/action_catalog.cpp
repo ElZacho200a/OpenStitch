@@ -497,7 +497,7 @@ std::vector<ActionDef> makeCatalog() {
     {
         ActionDef a;
         a.id = "shape.break_apart";
-        a.label = "Séparer les morceaux disjoints";
+        a.label = "Séparer en formes indépendantes";
         a.group = "Formes";
         a.needsSelection = true;
         a.build = [](const Values&, const ActionContext& c, std::string&) {
@@ -581,11 +581,12 @@ std::vector<ActionDef> makeCatalog() {
         out.push_back(std::move(a));
     }
 
-    // --- Fondu de fils (ICommand : `run`, pas de lot JSON) ; même moteur que l'inspecteur ------
+    // --- Fondu multicolore (ICommand : `run`, pas de lot JSON) ; même moteur que l'inspecteur
+    // ------
     {
         ActionDef a;
         a.id = "fade.create";
-        a.label = "Fondu de fils…";
+        a.label = "Fondu multicolore…";
         a.group = "Fondu";
         a.needsSelection = true;
         a.fields = {textField("foreground", "Fil d'arrivée (#RRGGBB)", "#FF8800", true),

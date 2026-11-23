@@ -3,6 +3,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls as Controls
 import QtQuick.Layouts
+import QtQuick.Shapes
 import OpenStitch.Studio 1.0
 import ".."
 import "segmentation"
@@ -160,6 +161,7 @@ Item {
             workspaceActive: root.active
             toolPrefix: "regionTool_"
             entries: [
+                { id: "lasso", icon: "lasso", label: qsTr("Lasso : entourer les régions à sélectionner (Ctrl ajoute, Alt prend aussi les régions touchées)"), shortcut: "Maj+V", group: "selection" },
                 { id: "brush", icon: "brush", label: qsTr("Pinceau de frontière : peindre la région choisie"), shortcut: "U", group: "regions" },
                 { id: "erase", icon: "eraser", label: qsTr("Gomme : retirer de la région choisie"), shortcut: "Maj+U", group: "regions" },
                 { id: "detail", icon: "detail", label: qsTr("Zones de détail : peindre où garder les petites formes"), shortcut: "Q", group: "detail", enabled: root.hasDetail },
@@ -423,10 +425,13 @@ Item {
             }
         }
 
-        // Options de l'outil actif (pinceau, gomme) posées sur le canevas, à côté de la barre :
-        // rayon et dernier message de l'outil (un refus reste visible quel que soit l'onglet).
+        // Options de l'outil actif (pinceau, gomme, lasso) posées sur le canevas, à côté de la
+        // barre : rayon (pinceau et gomme seulement) et dernier message de l'outil (un refus ou le
+        // résultat du lasso reste visible quel que soit l'onglet).
         Rectangle {
+            id: regionToolOptions
             objectName: "regionToolOptions"
+            readonly property bool brushing: root.hasTools && (regionTools.tool === "brush" || regionTools.tool === "erase")
             visible: root.hasTools && regionTools.tool !== "select"
             x: 8
             y: 8
@@ -442,12 +447,21 @@ Item {
                 anchors.leftMargin: 10
                 spacing: 6
                 StudioLabel {
+                    objectName: "regionLassoLabel"
+                    visible: !regionToolOptions.brushing
+                    text: qsTr("Lasso")
+                    tone: "foreground"
+                    wrapMode: Text.NoWrap
+                }
+                StudioLabel {
+                    visible: regionToolOptions.brushing
                     text: qsTr("Rayon")
                     tone: "foreground"
                     wrapMode: Text.NoWrap
                 }
                 StudioButton {
                     objectName: "brushSmaller"
+                    visible: regionToolOptions.brushing
                     text: "−"
                     quiet: true
                     tooltip: qsTr("Pinceau : rayon plus petit")
@@ -455,6 +469,7 @@ Item {
                 }
                 StudioSpinBox {
                     objectName: "regionBrushRadius"
+                    visible: regionToolOptions.brushing
                     from: 1; to: 200; editable: true
                     value: root.hasTools ? regionTools.brushRadius : 1
                     Accessible.name: qsTr("Rayon du pinceau (px)")
@@ -462,6 +477,7 @@ Item {
                 }
                 StudioButton {
                     objectName: "brushLarger"
+                    visible: regionToolOptions.brushing
                     text: "+"
                     quiet: true
                     tooltip: qsTr("Pinceau : rayon plus grand")
@@ -470,7 +486,11 @@ Item {
                 StudioLabel {
                     objectName: "regionToolMessage"
                     visible: text.length > 0
-                    text: root.hasTools ? regionTools.message : ""
+                    // Lasso sans message : le mode d'emploi, visible quel que soit l'onglet ouvert.
+                    text: !root.hasTools ? ""
+                          : regionTools.message.length > 0 ? regionTools.message
+                          : regionToolOptions.brushing ? ""
+                          : qsTr("Entourez les régions · Ctrl ajoute · Alt prend aussi les régions touchées")
                     wrapMode: Text.NoWrap
                     elide: Text.ElideRight
                     Layout.maximumWidth: 320
@@ -560,9 +580,11 @@ Item {
             Accessible.name: qsTr("Aperçu de segmentation en cours, document inchangé")
         }
 
-        // Clic : sélection de la région sous le curseur (Ctrl = multi-sélection) ; pinceau / gomme
-        // des régions quand l'outil de RegionController l'est. Les autres boutons (déplacement,
-        // molette) restent au canevas.
+        // Clic : sélection de la région sous le curseur (Ctrl = multi-sélection). Glisser en
+        // sélection trace un CADRE, l'outil lasso un contour libre : les régions entièrement
+        // dedans sont sélectionnées (Ctrl/Maj ajoute, Alt prend aussi les régions touchées).
+        // Pinceau / gomme des régions quand l'outil de RegionController l'est. Les autres boutons
+        // (déplacement, molette) restent au canevas.
         MouseArea {
             id: pick
             objectName: "segmentationPickArea"
@@ -572,16 +594,50 @@ Item {
             hoverEnabled: root.detailPainting
             property var stroke: []
             readonly property bool painting: root.hasTools && regionTools.tool !== "select"
+                                             && regionTools.tool !== "lasso"
+            readonly property bool lassoTool: root.hasTools && regionTools.tool === "lasso"
+            // Zone en cours, en pixels de l'écran : "" | "pending" (bouton enfoncé, pas encore
+            // glissé) | "rect" | "lasso".
+            property string zoneKind: ""
+            property point zoneStart: Qt.point(0, 0)
+            property point zoneEnd: Qt.point(0, 0)
+            property var zonePoints: []
+            property int zoneModifiers: 0
+            readonly property int dragThreshold: 4
             function scenePoint(mx, my) {
                 const v = spaceCanvas.viewState()
                 return Qt.point(v.centerX + (mx - width / 2) / v.zoom,
                                 v.centerY + (my - height / 2) / v.zoom)
+            }
+            function resetZone() {
+                pick.zoneKind = ""
+                pick.zonePoints = []
+            }
+            // Clic sans glisser : la région sous le point de départ, comme avant.
+            function clickPick() {
+                const p = pick.scenePoint(pick.zoneStart.x, pick.zoneStart.y)
+                root.seg.pickAt(p.x, p.y, (pick.zoneModifiers & Qt.ControlModifier) !== 0)
+            }
+            function commitZone() {
+                const screen = pick.zoneKind === "rect"
+                    ? [pick.zoneStart, Qt.point(pick.zoneEnd.x, pick.zoneStart.y), pick.zoneEnd,
+                       Qt.point(pick.zoneStart.x, pick.zoneEnd.y)]
+                    : pick.zonePoints
+                const scene = []
+                for (let i = 0; i < screen.length; ++i) {
+                    const sp = pick.scenePoint(screen[i].x, screen[i].y)
+                    scene.push({ x: sp.x, y: sp.y })
+                }
+                const additive = (pick.zoneModifiers & (Qt.ControlModifier | Qt.ShiftModifier)) !== 0
+                const touching = (pick.zoneModifiers & Qt.AltModifier) !== 0
+                root.seg.selectInZone(scene, additive, touching)
             }
             onPressed: function(mouse) {
                 // Clic droit : sélectionne la région sous le curseur (sauf pinceau/gomme actifs,
                 // où il resterait sans effet visible) puis ouvre le menu contextuel pour elle.
                 if (mouse.button === Qt.RightButton) {
                     if (pick.painting || root.detailPainting || !root.hasTools) return
+                    pick.resetZone()
                     const rp = pick.scenePoint(mouse.x, mouse.y)
                     root.seg.pickAt(rp.x, rp.y, false)
                     if (regionTools.selectedCount === 1)
@@ -596,12 +652,35 @@ Item {
                 } else if (pick.painting) {
                     const px = root.seg.pixelAt(p.x, p.y)
                     pick.stroke = px.valid ? [{ x: px.x, y: px.y }] : []
+                } else if (root.hasTools && regionTools.mergeTargetMode) {
+                    // Choix de la cible de fusion : un clic, jamais une zone.
+                    root.seg.pickAt(p.x, p.y, false)
                 } else {
-                    root.seg.pickAt(p.x, p.y, (mouse.modifiers & Qt.ControlModifier) !== 0)
+                    // Sélection : décidée au relâchement (clic, cadre ou lasso).
+                    pick.zoneStart = Qt.point(mouse.x, mouse.y)
+                    pick.zoneEnd = pick.zoneStart
+                    pick.zonePoints = [Qt.point(mouse.x, mouse.y)]
+                    pick.zoneModifiers = mouse.modifiers
+                    pick.zoneKind = "pending"
                 }
             }
             onPositionChanged: function(mouse) {
-                if (root.detailPainting && pick.pressed) {
+                if (pick.zoneKind !== "" && pick.pressed) {
+                    if (pick.zoneKind === "pending"
+                            && Math.abs(mouse.x - pick.zoneStart.x) < pick.dragThreshold
+                            && Math.abs(mouse.y - pick.zoneStart.y) < pick.dragThreshold)
+                        return
+                    if (pick.zoneKind === "pending")
+                        pick.zoneKind = pick.lassoTool ? "lasso" : "rect"
+                    pick.zoneEnd = Qt.point(mouse.x, mouse.y)
+                    // Alt ou Ctrl enfoncé en cours de tracé compte aussi.
+                    pick.zoneModifiers |= mouse.modifiers
+                    if (pick.zoneKind === "lasso") {
+                        const zpts = pick.zonePoints
+                        zpts.push(Qt.point(mouse.x, mouse.y)) // copie : pas une référence à zoneEnd
+                        pick.zonePoints = zpts
+                    }
+                } else if (root.detailPainting && pick.pressed) {
                     const dp = pick.scenePoint(mouse.x, mouse.y)
                     const dpts = pick.stroke
                     dpts.push({ x: dp.x, y: dp.y })
@@ -616,13 +695,50 @@ Item {
                     }
                 }
             }
-            onReleased: {
-                if (root.detailPainting && pick.stroke.length > 0) {
+            onReleased: function(mouse) {
+                if (pick.zoneKind !== "")
+                    pick.zoneModifiers |= mouse.modifiers
+                if (pick.zoneKind === "pending") {
+                    pick.clickPick()
+                } else if (pick.zoneKind === "rect"
+                           || (pick.zoneKind === "lasso" && pick.zonePoints.length >= 3)) {
+                    pick.commitZone()
+                } else if (root.detailPainting && pick.stroke.length > 0) {
                     root.zone.paintStroke(pick.stroke)
                 } else if (pick.painting && pick.stroke.length > 0) {
                     regionTools.paintStroke(pick.stroke, regionTools.tool === "erase")
                 }
+                pick.resetZone()
                 pick.stroke = []
+            }
+            onCanceled: { pick.resetZone(); pick.stroke = [] }
+        }
+
+        // Tracé de la zone en cours (cadre ou lasso) : trait pointillé, aucun calcul.
+        Shape {
+            id: zoneOutline
+            objectName: "segmentationZoneOutline"
+            anchors.fill: parent
+            enabled: false
+            visible: pick.zoneKind === "rect" || pick.zoneKind === "lasso"
+            ShapePath {
+                strokeColor: Theme.accent
+                strokeWidth: 1.5
+                strokeStyle: ShapePath.DashLine
+                dashPattern: [4, 3]
+                fillColor: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.12)
+                PathPolyline {
+                    path: {
+                        if (pick.zoneKind === "rect") {
+                            const a = pick.zoneStart
+                            const b = pick.zoneEnd
+                            return [a, Qt.point(b.x, a.y), b, Qt.point(a.x, b.y), a]
+                        }
+                        const pts = pick.zonePoints.slice()
+                        if (pts.length > 0) pts.push(pts[0])
+                        return pts
+                    }
+                }
             }
         }
 

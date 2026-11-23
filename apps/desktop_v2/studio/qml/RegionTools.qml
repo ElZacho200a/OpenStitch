@@ -127,11 +127,14 @@ ColumnLayout {
     // Pinceau et gomme : barre latérale de l'espace (CanvasToolRail) ; rayon au canevas.
     StudioLabel {
         objectName: "regionToolHint"
-        visible: regionTools.tool !== "select"
         Layout.fillWidth: true
         text: regionTools.tool === "brush"
               ? qsTr("Pinceau actif : peignez sur le canevas pour agrandir la région choisie.")
-              : qsTr("Gomme active : peignez sur le canevas pour retirer de la région choisie.")
+              : regionTools.tool === "erase"
+                ? qsTr("Gomme active : peignez sur le canevas pour retirer de la région choisie.")
+                : regionTools.tool === "lasso"
+                  ? qsTr("Lasso actif : entourez des régions sur le canevas. Ctrl ajoute, Alt prend aussi les régions touchées.")
+                  : qsTr("Cliquez une région ou glissez un cadre pour en prendre plusieurs. Ctrl ajoute, Alt prend aussi les régions touchées.")
     }
 
     SectionLabel { text: qsTr("RÉGIONS (%1)").arg(regionTools.regions.length) }
@@ -362,9 +365,9 @@ ColumnLayout {
         StudioButton { objectName: "regionDelete"; text: qsTr("Supprimer"); enabled: regionTools.selectedCount > 0; onClicked: regionTools.deleteSelected() }
         StudioButton {
             objectName: "regionSplit"
-            text: qsTr("Séparer en morceaux")
+            text: qsTr("Séparer les zones non reliées")
             enabled: regionTools.selectedCount === 1
-            tooltip: qsTr("Si cette région couvre des zones non adjacentes (fusion antérieure), les sépare en régions distinctes")
+            tooltip: qsTr("Si cette région est faite de plusieurs zones qui ne se touchent pas, crée une région distincte pour chacune")
             onClicked: regionTools.splitSelected()
         }
     }

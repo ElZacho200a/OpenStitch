@@ -1,0 +1,39 @@
+name: Roadmap Gate
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  roadmap-contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Test the roadmap gate itself
+        run: python -m unittest discover -s tests/scripts -p 'test_roadmap_*.py' -v
+
+      - name: Check every commit updates the roadmap or justifies skipping it
+        if: github.event_name == 'pull_request'
+        run: |
+          python scripts/roadmap_gate.py check-pr \
+            --base "${{ github.event.pull_request.base.sha }}" \
+            --head "${{ github.event.pull_request.head.sha }}"
+
+# CLAUDE.md : "Chaque commit met a jour docs/roadmap-parite-hatch.md ... ou ecrit
+# <<roadmap : aucune entree concernee>> dans le message." Un audit du 2026-11-21 a
+# trouve que ~26% seulement des commits des 60 derniers jours respectaient cette
+# regle sans verification mecanique. Volontairement une porte CI plutot qu'un hook
+# git local : un hook se contourne (--no-verify) et ne s'installe pas seul dans les
+# worktrees paralleles du depot. Branch protection must require this check to make
+# it unskippable at merge time.

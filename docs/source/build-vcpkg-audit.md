@@ -107,6 +107,16 @@ vérifié leur SHA512. Une copie que le vcpkg épinglé n'attend plus est ignor�
 README du dossier décrit la mise à jour. L'API REST ne peut pas remplacer ces fichiers : ses correctifs
 ont des index abrégés, donc une autre empreinte.
 
+Le même jour, le correctif `commit/f0888a1….diff` d'opencv4 a renvoyé 503 de façon persistante, même
+depuis un poste personnel. Sa copie a été reconstruite avec `git diff --full-index <parent> <sha>`, qui
+redonne exactement les octets attendus. Les archives de libtiff (gitlab.com) et de freetype
+(gitlab.freedesktop.org) ont aussi renvoyé 429. Après une configuration ratée seulement, l'étape
+Configure appelle `prefetch.sh`, qui les précharge avec curl en respectant `Retry-After`. L'archive n'est
+déposée que si son SHA512 est celui du portfile ; aucune requête n'est faite tant que la configuration
+réussit du premier coup. Depuis que le cache
+`vcpkg-linux-v2-…` est rempli (209 Mo le 2026-11-20), ce dispositif ne sert qu'aux paquets absents du
+cache : changement de `vcpkg.json` ou de `VCPKG_COMMIT`, ou éviction après 7 jours sans accès.
+
 ## 5. Pistes non implémentées
 
 | Piste | Gain attendu | Pourquoi pas ici |

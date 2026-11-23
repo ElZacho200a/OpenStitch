@@ -105,6 +105,28 @@ bool SegmentationSpaceController::pickAt(double xMm, double yMm, bool additive) 
     return inside;
 }
 
+int SegmentationSpaceController::selectInZone(const QVariantList& scenePointsMm, bool additive,
+                                              bool touching) {
+    const auto& source = studio_.session().project().imageSource();
+    if (!source.segmentation || source.mm_per_px.value <= 0.0) {
+        return 0;
+    }
+    // Même conversion que `scenePointToPixel`, sans troncature ni rejet hors image : un cadre peut
+    // commencer à côté du dessin.
+    const double mm = source.mm_per_px.value;
+    const double halfW = source.segmentation->width / 2.0;
+    const double halfH = source.segmentation->height / 2.0;
+    QVariantList pixels;
+    pixels.reserve(scenePointsMm.size());
+    for (const auto& value : scenePointsMm) {
+        const auto point = value.toMap();
+        pixels.push_back(QVariantMap{
+            {QStringLiteral("x"), point.value(QStringLiteral("x")).toDouble() / mm + halfW},
+            {QStringLiteral("y"), point.value(QStringLiteral("y")).toDouble() / mm + halfH}});
+    }
+    return regions_.selectInZone(pixels, additive, touching);
+}
+
 QVariantMap SegmentationSpaceController::pixelAt(double xMm, double yMm) const {
     int px = 0;
     int py = 0;
