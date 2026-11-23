@@ -10,7 +10,7 @@
 #include <QCheckBox>
 #include <QDoubleSpinBox>
 #include <QGraphicsEllipseItem>
-#include <QGraphicsPixmapItem>
+#include <QGraphicsItem>
 #include <QGraphicsScene>
 #include <QIcon>
 #include <QImage>
@@ -22,12 +22,16 @@
 #include <QPushButton>
 #include <QSignalBlocker>
 #include <QStatusBar>
+#include <QStyleOptionGraphicsItem>
 #include <QTimer>
 #include <QToolBar>
 #include <QTransform>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstdint>
+#include <vector>
 
 #include "app_theme.hpp"
 #include "canvas_view.hpp"
@@ -45,6 +49,65 @@ constexpr double kMaxRadiusMm = 40.0;
 constexpr double kBrushHardness =
     0.5; // bord doux : le lissage passe progressivement de l'un à l'autre
 constexpr int kOverlayAlpha = 150;
+
+// Table poids du masque (0..255) -> pixel prémultiplié de la surcouche : évite un
+// `qPremultiply` par pixel (l'image entière peut compter plusieurs millions de pixels).
+std::array<QRgb, 256> overlayTable(const QColor& accent) {
+    std::array<QRgb, 256> table{};
+    for (int w = 0; w < 256; ++w) {
+        table[static_cast<std::size_t>(w)] = qPremultiply(
+            qRgba(accent.red(), accent.green(), accent.blue(), w * kOverlayAlpha / 255));
+    }
+    return table;
+}
+
+// Surcouche du masque de détail. Dessine l'image directement (pas de QPixmap) pour qu'un coup de
+// pinceau ne touche que les pixels modifiés : reconstruire et reconvertir l'image entière à chaque
+// déplacement de souris gelait l'interface sur les grandes images.
+class DetailOverlayItem final : public QGraphicsItem {
+public:
+    void setImage(QImage image) {
+        prepareGeometryChange();
+        image_ = std::move(image);
+        update();
+    }
+    [[nodiscard]] const QImage& image() const noexcept { return image_; }
+
+    // Répercute les pixels réellement modifiés par un disque ; ne redessine que leur boîte.
+    void applyChanges(const std::vector<segmentation::DetailMaskChange>& changes,
+                      const segmentation::DetailMask& mask, const std::array<QRgb, 256>& table) {
+        if (changes.empty() || image_.width() != mask.width || image_.height() != mask.height) {
+            return;
+        }
+        int x0 = image_.width();
+        int y0 = image_.height();
+        int x1 = -1;
+        int y1 = -1;
+        for (const segmentation::DetailMaskChange& change : changes) {
+            const int x = static_cast<int>(change.index % static_cast<std::uint32_t>(mask.width));
+            const int y = static_cast<int>(change.index / static_cast<std::uint32_t>(mask.width));
+            reinterpret_cast<QRgb*>(image_.scanLine(y))[x] = table[mask.weights[change.index]];
+            x0 = std::min(x0, x);
+            y0 = std::min(y0, y);
+            x1 = std::max(x1, x);
+            y1 = std::max(y1, y);
+        }
+        update(QRectF(x0, y0, x1 - x0 + 1, y1 - y0 + 1));
+    }
+
+    [[nodiscard]] QRectF boundingRect() const override {
+        return QRectF(0.0, 0.0, image_.width(), image_.height());
+    }
+    void paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget*) override {
+        const QRect area = option->exposedRect.toAlignedRect().intersected(image_.rect());
+        if (!area.isEmpty()) {
+            painter->drawImage(area.topLeft(), image_, area);
+        }
+    }
+
+private:
+    QImage image_;
+};
 
 QIcon detailIcon() {
     QPixmap pm(40, 40);
@@ -223,26 +286,24 @@ void MainWindow::refreshDetailZonesOverlay() {
         }
         return;
     }
-    const QColor accent = AppTheme::instance().tokens().accent;
+    const auto table = overlayTable(AppTheme::instance().tokens().accent);
     QImage image(mask.width, mask.height, QImage::Format_ARGB32_Premultiplied);
     for (int y = 0; y < mask.height; ++y) {
         auto* line = reinterpret_cast<QRgb*>(image.scanLine(y));
+        const std::uint8_t* weights =
+            mask.weights.data() + static_cast<std::size_t>(y) * static_cast<std::size_t>(mask.width);
         for (int x = 0; x < mask.width; ++x) {
-            const int w =
-                mask.weights[static_cast<std::size_t>(y) * static_cast<std::size_t>(mask.width) +
-                             static_cast<std::size_t>(x)];
-            const int alpha = w * kOverlayAlpha / 255;
-            line[x] = qPremultiply(qRgba(accent.red(), accent.green(), accent.blue(), alpha));
+            line[x] = table[weights[x]];
         }
     }
     if (detailOverlayItem_ == nullptr) {
-        detailOverlayItem_ = new QGraphicsPixmapItem();
+        detailOverlayItem_ = new DetailOverlayItem();
         detailOverlayItem_->setZValue(11.0);
         detailOverlayItem_->setAcceptedMouseButtons(Qt::NoButton);
         scene_->addItem(detailOverlayItem_);
     }
     const double mmPerPx = project_.mm_per_px.value;
-    detailOverlayItem_->setPixmap(QPixmap::fromImage(image));
+    static_cast<DetailOverlayItem*>(detailOverlayItem_)->setImage(std::move(image));
     detailOverlayItem_->setTransform(QTransform::fromScale(mmPerPx, mmPerPx));
     detailOverlayItem_->setPos(-mask.width / 2.0 * mmPerPx, -mask.height / 2.0 * mmPerPx);
     detailOverlayItem_->setVisible(true);
@@ -304,10 +365,20 @@ void MainWindow::moveDetailStroke(QPointF sceneMm) {
     }
     detailStroke_->centers.emplace_back(px, py);
     detailStroke_->lastSceneMm = sceneMm;
-    segmentation::paint_detail_disc(detailLive_, processed_.width, processed_.height, px, py,
-                                    radiusPx(detailRadiusMm_, mmPerPx),
-                                    detailStroke_->erase ? 0 : 255, kBrushHardness);
-    refreshDetailZonesOverlay();
+    const auto changes = segmentation::paint_detail_disc(
+        detailLive_, processed_.width, processed_.height, px, py, radiusPx(detailRadiusMm_, mmPerPx),
+        detailStroke_->erase ? 0 : 255, kBrushHardness);
+    // Geste : ne retoucher que les pixels du disque. La surcouche entière n'est reconstruite que
+    // lorsqu'elle n'existe pas encore (premier pixel de détail) ou n'a plus la taille du masque.
+    auto* overlay = static_cast<DetailOverlayItem*>(detailOverlayItem_);
+    if (overlay == nullptr || !overlay->isVisible() ||
+        overlay->image().width() != detailLive_.width ||
+        overlay->image().height() != detailLive_.height) {
+        refreshDetailZonesOverlay();
+    } else {
+        overlay->applyChanges(changes, detailLive_,
+                              overlayTable(AppTheme::instance().tokens().accent));
+    }
 }
 
 void MainWindow::cancelDetailStroke() {
