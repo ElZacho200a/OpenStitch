@@ -5,9 +5,12 @@
 #include <QAction>
 #include <QApplication>
 #include <QCheckBox>
-#include <QGraphicsPixmapItem>
+#include <QGraphicsItem>
+#include <QGraphicsScene>
+#include <QImage>
 #include <QMenu>
 #include <QMouseEvent>
+#include <QPainter>
 #include <QSettings>
 #include <QSpinBox>
 #include <QTemporaryDir>
@@ -130,6 +133,44 @@ private slots:
         QVERIFY(f.window.project_.detail_mask.empty());
         QVERIFY(f.window.undoStack_.redo(f.window.project_));
         QVERIFY(f.window.project_.detail_mask == painted);
+    }
+
+    // Le geste ne retouche que les pixels du disque (plus de reconstruction de l'image entière à
+    // chaque déplacement) : le résultat doit rester identique à une reconstruction complète.
+    void theIncrementalOverlayMatchesAFullRebuild() {
+        Fixture f;
+        setup(f);
+        stroke(f.view, QPointF(-6.0, -2.0), QPointF(6.0, 3.0), false); // trait en cours
+        QVERIFY(f.window.detailStroke_.has_value());
+        QVERIFY(f.window.detailOverlayItem_ != nullptr && f.window.detailOverlayItem_->isVisible());
+
+        const auto renderOverlay = [&f] {
+            const QRectF area = f.window.detailOverlayItem_->sceneBoundingRect();
+            QImage out(200, 200, QImage::Format_ARGB32_Premultiplied);
+            out.fill(Qt::transparent);
+            QPainter painter(&out);
+            f.window.scene_->render(&painter, QRectF(0, 0, 200, 200), area);
+            return out;
+        };
+        const QImage incremental = renderOverlay();
+        f.window.refreshDetailZonesOverlay(); // reconstruction complète depuis le masque vivant
+        const QImage rebuilt = renderOverlay();
+        QVERIFY2(incremental == rebuilt, "surcouche incrémentale != reconstruction complète");
+
+        // Et le trait a bien laissé de la peinture visible quelque part.
+        bool painted = false;
+        for (int y = 0; y < incremental.height() && !painted; ++y) {
+            for (int x = 0; x < incremental.width(); ++x) {
+                if (incremental.pixel(x, y) != rebuilt.pixel(0, 0)) {
+                    painted = true;
+                    break;
+                }
+            }
+        }
+        QVERIFY(painted);
+        QTest::keyClick(f.view, Qt::Key_Escape);
+        QTest::mouseRelease(f.view->viewport(), Qt::LeftButton, Qt::NoModifier,
+                            px(f.view, 6.0, 3.0));
     }
 
     void escapeAbandonsTheStroke() {
