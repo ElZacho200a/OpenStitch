@@ -246,9 +246,14 @@ struct LiveEndpoint {
 [[nodiscard]] std::string make_live_token();
 [[nodiscard]] bool write_live_endpoint(const std::filesystem::path& dir, const LiveEndpoint& e);
 void remove_live_endpoint(const std::filesystem::path& dir, int pid);
-// Le plus récent des fichiers de `dir` (ou celui de `pid` si > 0).
-[[nodiscard]] std::optional<LiveEndpoint> find_live_endpoint(const std::filesystem::path& dir,
-                                                             int pid = 0);
+// Le processus `pid` existe-t-il encore ? (Windows : OpenProcess ; POSIX : kill(pid, 0).)
+[[nodiscard]] bool is_process_alive(int pid);
+// Le plus récent des fichiers de `dir` (ou celui de `pid` si > 0). Les fichiers d'un hôte dont le
+// processus n'existe plus (arrêt brutal, plantage) sont ignorés ET supprimés, pour qu'un client
+// ne tente jamais de se connecter à un tube mort. `alive` remplace le test de vivacité (tests).
+[[nodiscard]] std::optional<LiveEndpoint>
+find_live_endpoint(const std::filesystem::path& dir, int pid = 0,
+                   const std::function<bool(int)>& alive = {});
 
 // Client bloquant de tube nommé (Windows) / socket de domaine Unix (Linux).
 class LocalLineClient final : public ILiveTransport {

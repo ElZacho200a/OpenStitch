@@ -10,6 +10,15 @@
 #include <catch2/catch_test_macros.hpp>
 #include <nlohmann/json.hpp>
 
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#else
+#include <unistd.h>
+#endif
+
 #include "openstitch/commands/undo_stack.hpp"
 #include "openstitch/document/project.hpp"
 #include "openstitch/geometry/primitives.hpp"
@@ -439,17 +448,48 @@ TEST_CASE("live discovery files round trip and pick the requested pid", "[live]"
     mcp::LiveEndpoint b{222, "pipe-b", "tok-b"};
     REQUIRE(mcp::write_live_endpoint(dir, a));
     REQUIRE(mcp::write_live_endpoint(dir, b));
-    const auto only_a = mcp::find_live_endpoint(dir, 111);
+    const auto all_alive = [](int) { return true; }; // pids fictifs
+    const auto only_a = mcp::find_live_endpoint(dir, 111, all_alive);
     REQUIRE(only_a.has_value());
     CHECK(only_a->endpoint == "pipe-a");
     CHECK(only_a->token == "tok-a");
-    REQUIRE(mcp::find_live_endpoint(dir).has_value());
+    REQUIRE(mcp::find_live_endpoint(dir, 0, all_alive).has_value());
     mcp::remove_live_endpoint(dir, 111);
     mcp::remove_live_endpoint(dir, 222);
-    CHECK_FALSE(mcp::find_live_endpoint(dir).has_value());
+    CHECK_FALSE(mcp::find_live_endpoint(dir, 0, all_alive).has_value());
     std::filesystem::remove_all(dir);
     CHECK(mcp::make_live_token().size() == 64);
     CHECK(mcp::make_live_token() != mcp::make_live_token());
+}
+
+TEST_CASE("live discovery ignores and purges files of dead hosts", "[live]") {
+    const auto dir = std::filesystem::temp_directory_path() / "openstitch-live-stale-test";
+    std::filesystem::remove_all(dir);
+    REQUIRE(mcp::write_live_endpoint(dir, {111, "pipe-dead", "tok-dead"}));
+    REQUIRE(mcp::write_live_endpoint(dir, {222, "pipe-live", "tok-live"}));
+    const auto only_222 = [](int pid) { return pid == 222; };
+
+    const auto found = mcp::find_live_endpoint(dir, 0, only_222);
+    REQUIRE(found.has_value());
+    CHECK(found->endpoint == "pipe-live");
+    CHECK_FALSE(std::filesystem::exists(dir / "111.json")); // purge du fichier périmé
+    CHECK(std::filesystem::exists(dir / "222.json"));
+
+    // Hôte demandé explicitement mais mort : rien à trouver, fichier purgé.
+    mcp::remove_live_endpoint(dir, 222);
+    REQUIRE(mcp::write_live_endpoint(dir, {111, "pipe-dead", "tok-dead"}));
+    CHECK_FALSE(mcp::find_live_endpoint(dir, 111, only_222).has_value());
+    CHECK_FALSE(std::filesystem::exists(dir / "111.json"));
+
+    // Le test de vivacité réel : ce processus existe, un pid absurde non.
+#ifdef _WIN32
+    const int self = static_cast<int>(GetCurrentProcessId());
+#else
+    const int self = static_cast<int>(getpid());
+#endif
+    CHECK(mcp::is_process_alive(self));
+    CHECK_FALSE(mcp::is_process_alive(0));
+    std::filesystem::remove_all(dir);
 }
 
 TEST_CASE("live host refuses oversized requests", "[live]") {
