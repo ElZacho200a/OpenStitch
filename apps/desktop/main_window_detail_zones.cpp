@@ -291,7 +291,8 @@ void MainWindow::refreshDetailZonesOverlay() {
     for (int y = 0; y < mask.height; ++y) {
         auto* line = reinterpret_cast<QRgb*>(image.scanLine(y));
         const std::uint8_t* weights =
-            mask.weights.data() + static_cast<std::size_t>(y) * static_cast<std::size_t>(mask.width);
+            mask.weights.data() +
+            static_cast<std::size_t>(y) * static_cast<std::size_t>(mask.width);
         for (int x = 0; x < mask.width; ++x) {
             line[x] = table[weights[x]];
         }
@@ -366,8 +367,8 @@ void MainWindow::moveDetailStroke(QPointF sceneMm) {
     detailStroke_->centers.emplace_back(px, py);
     detailStroke_->lastSceneMm = sceneMm;
     const auto changes = segmentation::paint_detail_disc(
-        detailLive_, processed_.width, processed_.height, px, py, radiusPx(detailRadiusMm_, mmPerPx),
-        detailStroke_->erase ? 0 : 255, kBrushHardness);
+        detailLive_, processed_.width, processed_.height, px, py,
+        radiusPx(detailRadiusMm_, mmPerPx), detailStroke_->erase ? 0 : 255, kBrushHardness);
     // Geste : ne retoucher que les pixels du disque. La surcouche entière n'est reconstruite que
     // lorsqu'elle n'existe pas encore (premier pixel de détail) ou n'a plus la taille du masque.
     auto* overlay = static_cast<DetailOverlayItem*>(detailOverlayItem_);
