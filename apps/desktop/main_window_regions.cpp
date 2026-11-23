@@ -32,6 +32,7 @@
 #include <memory>
 
 #include "app_theme.hpp"
+#include "busy_indicator.hpp"
 #include "canvas_view.hpp"
 #include "main_window.hpp"
 #include "openstitch/commands/composite_command.hpp"
@@ -306,9 +307,19 @@ void MainWindow::cleanIslands() {
     const auto minPx = static_cast<std::size_t>(std::ceil(areaMm2 / (mmPerPx * mmPerPx)));
     // Essai sur une copie : quelles régions disparaissent ? (objets vectoriels déjà créés à
     // propos, jamais d'orphelin silencieux.)
+    // Copie + fusion d'une carte de la taille de l'image : hors du fil d'interface (la copie est
+    // privée, le document n'est pas touché pendant le calcul).
     segmentation::Segmentation trial = *project_.segmentation;
-    const std::size_t merges = segmentation::merge_small_regions(
-        trial, minPx, std::nullopt, 0.0, segmentation::MergeTarget::ClosestColour, maxDeltaE);
+    std::size_t merges = 0;
+    {
+        BusyIndicator busy(this, tr("Recherche des petits îlots…"),
+                           std::initializer_list<QTimer*>{autosaveTimer_, simTimer_});
+        merges = busy.run([&trial, minPx, maxDeltaE] {
+            return segmentation::merge_small_regions(trial, minPx, std::nullopt, 0.0,
+                                                     segmentation::MergeTarget::ClosestColour,
+                                                     maxDeltaE);
+        });
+    }
     if (merges == 0) {
         statusBar()->showMessage(tr("Aucun îlot à fusionner avec ces réglages."), 4000);
         return;

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Découverte de l'hôte live et client de tube nommé / socket local (aucun port réseau).
 #include <algorithm>
+#include <cerrno>
+#include <csignal>
 #include <cstdlib>
 #include <fstream>
 #include <system_error>
@@ -94,7 +96,26 @@ void remove_live_endpoint(const fs::path& dir, int pid) {
     fs::remove(dir / (std::to_string(pid) + ".json"), ec);
 }
 
-std::optional<LiveEndpoint> find_live_endpoint(const fs::path& dir, int pid) {
+bool is_process_alive(int pid) {
+    if (pid <= 0) {
+        return false;
+    }
+#ifdef _WIN32
+    HANDLE h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, static_cast<DWORD>(pid));
+    if (h == nullptr) {
+        return GetLastError() == ERROR_ACCESS_DENIED; // existe mais protégé
+    }
+    DWORD code = 0;
+    const bool alive = GetExitCodeProcess(h, &code) != 0 && code == STILL_ACTIVE;
+    CloseHandle(h);
+    return alive;
+#else
+    return ::kill(static_cast<pid_t>(pid), 0) == 0 || errno == EPERM;
+#endif
+}
+
+std::optional<LiveEndpoint> find_live_endpoint(const fs::path& dir, int pid,
+                                               const std::function<bool(int)>& alive) {
     std::error_code ec;
     std::optional<LiveEndpoint> best;
     fs::file_time_type best_time{};
@@ -102,8 +123,12 @@ std::optional<LiveEndpoint> find_live_endpoint(const fs::path& dir, int pid) {
         if (ec || entry.path().extension() != ".json") {
             continue;
         }
-        std::ifstream in(entry.path(), std::ios::binary);
-        const json doc = json::parse(in, nullptr, /*exceptions=*/false);
+        json doc;
+        {
+            // Fermé avant tout `remove` : Windows refuse de supprimer un fichier ouvert.
+            std::ifstream in(entry.path(), std::ios::binary);
+            doc = json::parse(in, nullptr, /*exceptions=*/false);
+        }
         if (doc.is_discarded() || !doc.is_object() || !doc.contains("endpoint") ||
             !doc.contains("token") || !doc.at("endpoint").is_string() ||
             !doc.at("token").is_string()) {
@@ -114,6 +139,13 @@ std::optional<LiveEndpoint> find_live_endpoint(const fs::path& dir, int pid) {
         e.endpoint = doc.at("endpoint").get<std::string>();
         e.token = doc.at("token").get<std::string>();
         if (pid > 0 && e.pid != pid) {
+            continue;
+        }
+        // Hôte disparu sans nettoyage : fichier périmé, on le supprime. Sans pid exploitable
+        // (fichier ancien ou tiers), on ne peut rien affirmer : comportement historique.
+        if (e.pid > 0 && !(alive ? alive(e.pid) : is_process_alive(e.pid))) {
+            std::error_code rm;
+            fs::remove(entry.path(), rm);
             continue;
         }
         const auto when = fs::last_write_time(entry.path(), ec);

@@ -1578,7 +1578,7 @@ private:
     QDoubleSpinBox* detailRadiusSpin_{nullptr};
     QCheckBox* detailEraseCheck_{nullptr};
     QGraphicsEllipseItem* detailRing_{nullptr};
-    QGraphicsPixmapItem* detailOverlayItem_{nullptr};
+    QGraphicsItem* detailOverlayItem_{nullptr}; // DetailOverlayItem (main_window_detail_zones.cpp)
     std::optional<DetailStroke> detailStroke_;
     segmentation::DetailMask detailLive_; // masque + trait en cours, pour l'aperçu
     double detailRadiusMm_{4.0};
