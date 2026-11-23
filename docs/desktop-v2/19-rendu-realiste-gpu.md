@@ -111,8 +111,14 @@ comparaison photo reelle, variante CPU (llvm) non disponible ici (LLVM absent) d
 Studio (ajoute ensuite) : Fichier > Exporter > « Rendu photo, lancer de rayons (PNG)… »
 (`FileController::exportPhotoRender`) : scene ecrite par `export_thread_scene` (desktop_v2/core,
 format commun `stitch_render::thread_scene_json`, partage avec la CLI), puis le script lance par
-QProcess dans la tache de fond (annulable), vue inclinee 35 degres, 64 spp ; l'image s'ouvre a la
-fin. Interpreteur : `OPENSTITCH_PYTHON` (defaut `python`) ; script : `OPENSTITCH_RAYTRACE_SCRIPT`,
+QProcess dans la tache de fond (annulable), vue inclinee 35 degres, 64 spp. Pendant le calcul, le
+message de tache affiche le temps ecoule (au-dela de 3 s) ; a la fin, une carte persistante
+« Rendu photo termine » (nom, taille en px, duree ; « Ouvrir l'image », « Ouvrir le dossier »,
+fermeture par la croix ou Echap) remplace l'ouverture automatique de la visionneuse, et la barre
+des taches clignote si la fenetre est en arriere-plan. Le message de tache et la carte vivent dans
+`Overlay.overlay` : declares dans `FilePanel` (avant l'espace de travail de `Main.qml`), ils etaient
+auparavant dessines sous le canevas, d'ou l'absence de tout retour visible en fin de rendu.
+Interpreteur : `OPENSTITCH_PYTHON` (defaut `python`) ; script : `OPENSTITCH_RAYTRACE_SCRIPT`,
 sinon `tools/raytrace/` a cote de l'executable, sinon les sources. Messages clairs si Python ou
 Mitsuba manquent. Test QTest `photoRenderRunsTheExternalEngineOnTheThreadScene` (moteur factice).
 Non fait : copie du script au deploiement (windeployqt), reglages (inclinaison, qualite) dans l'IHM.
