@@ -247,7 +247,8 @@ void generate_running(stitch::StitchSequence& sequence, const document::VectorOb
                       const document::EmbroideryObject& object,
                       const document::RunningStitchParams& params) {
     const auto stitchContour = [&](const geometry::Path& path) {
-        const auto sampled = sample_path(path, params.stitch_length, params.min_length);
+        const auto sampled = sample_path_adaptive(path, params.stitch_length, params.min_length,
+                                                  params.chord_tolerance);
         std::vector<Vec2um> points;
         switch (params.style) {
         case document::RunningStyle::Bean:

@@ -427,6 +427,7 @@ QVariantMap InspectorController::fieldMap(const Selection& s, const ParamSpec& s
     }
     return {{QStringLiteral("key"), u8(spec.key)},
             {QStringLiteral("label"), u8(spec.label)},
+            {QStringLiteral("help"), u8(spec.help)},
             {QStringLiteral("kind"), QString::fromLatin1(kindName(spec.kind))},
             {QStringLiteral("min"), spec.min},
             {QStringLiteral("max"), spec.max},
