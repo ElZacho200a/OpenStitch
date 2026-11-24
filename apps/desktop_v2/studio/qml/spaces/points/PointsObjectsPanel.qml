@@ -38,9 +38,10 @@ ColumnLayout {
 
     RowLayout {
         Layout.fillWidth: true
-        Layout.preferredHeight: 44
+        Layout.preferredHeight: 36
         Layout.leftMargin: Theme.panelPadding
         Layout.rightMargin: Theme.panelPadding
+        spacing: 8
         Text {
             text: qsTr("Objets de broderie")
             color: Theme.foreground
@@ -70,7 +71,7 @@ ColumnLayout {
 
     RowLayout {
         Layout.fillWidth: true
-        Layout.margins: 6
+        Layout.margins: 4
         spacing: 4
         StudioButton {
             objectName: "listModeButton"
@@ -123,7 +124,27 @@ ColumnLayout {
         spacing: 1
         topMargin: 4
         bottomMargin: 4
-        Controls.ScrollBar.vertical: Controls.ScrollBar { }
+        // Visible dès que des objets dépassent : la carte est basse sur une fenêtre de 640 px
+        // et seule une barre apparente dit qu'il y en a d'autres sous la ligne coupée.
+        Controls.ScrollBar.vertical: Controls.ScrollBar {
+            id: listBar
+            objectName: "objectListScrollBar"
+            policy: objectList.contentHeight > objectList.height + 1 ? Controls.ScrollBar.AlwaysOn
+                                                                     : Controls.ScrollBar.AsNeeded
+            implicitWidth: 10
+            background: Rectangle {
+                implicitWidth: 10
+                radius: 5
+                color: Theme.raised
+                visible: listBar.size < 1
+            }
+            contentItem: Rectangle {
+                implicitWidth: 6
+                radius: 3
+                color: listBar.pressed ? Theme.accent : Theme.muted
+                visible: listBar.size < 1
+            }
+        }
 
         delegate: Controls.ItemDelegate {
             id: objectRow
@@ -132,7 +153,9 @@ ColumnLayout {
             readonly property var source: panel.sourceOf(modelData.id)
             readonly property bool primarySelected: modelData.selected && studio.primarySelectionId === modelData.id
             width: objectList.width
-            height: Theme.rowHeight
+            // Deux lignes de texte (nom + sous-titre) : la ligne grandit avec son contenu au lieu
+            // de laisser le sous-titre dépasser du fond de sélection.
+            height: Math.max(Theme.rowHeight, contentItem.implicitHeight + 12)
             leftPadding: 18
             rightPadding: 18
             hoverEnabled: true
@@ -273,5 +296,9 @@ ColumnLayout {
         font.family: Theme.fontFamily
         font.pixelSize: Theme.captionSize
         wrapMode: Text.WordWrap
+        // Carte basse : une seule ligne (l'état « à jour / périmé » est au début du texte),
+        // pour laisser la place aux objets.
+        maximumLineCount: panel.height < 260 ? 1 : 2
+        elide: Text.ElideRight
     }
 }

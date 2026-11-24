@@ -1029,6 +1029,13 @@ void StudioInspectorTest::sliderWheelRequiresFocusAndOtherwiseScrollsThePanel() 
     auto* scrollBar = find("inspectorScrollBar");
     QVERIFY(scrollBar != nullptr);
     QCOMPARE(scrollBar->property("policy").toInt(), 2);
+    // ... and it must never sit on top of a field: the header subtitle ("N objet(s) · type")
+    // elides instead of widening the column under the bar.
+    auto* count = find("inspectorCount");
+    QVERIFY(count != nullptr);
+    const double countRight = count->mapToItem(root, QPointF(count->width(), 0)).x();
+    QVERIFY2(countRight <= root->width() - scrollBar->property("implicitWidth").toDouble(),
+             qPrintable(QString::number(countRight)));
 
     const auto sendWheel = [&] {
         const QPointF scene =
