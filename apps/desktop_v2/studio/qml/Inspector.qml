@@ -56,7 +56,13 @@ Item {
         contentHeight: column.implicitHeight + 24
         clip: true
         boundsBehavior: Flickable.StopAtBounds
-        Controls.ScrollBar.vertical: Controls.ScrollBar { }
+        // Visible tant que le contenu déborde : sur une fenêtre basse (1000×640) les réglages
+        // sous les en-têtes ne sont atteignables qu'en défilant, et une barre masquée ne le dit pas.
+        Controls.ScrollBar.vertical: Controls.ScrollBar {
+            objectName: "inspectorScrollBar"
+            policy: flick.contentHeight > flick.height + 1 ? Controls.ScrollBar.AlwaysOn
+                                                          : Controls.ScrollBar.AsNeeded
+        }
 
         ColumnLayout {
             id: column
