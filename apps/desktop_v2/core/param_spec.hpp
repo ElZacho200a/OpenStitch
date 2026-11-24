@@ -41,6 +41,9 @@ struct ParamSpec {
     std::string_view unit; // « mm », « ° », « » ; affichage seulement
     // Choice : « valeur|libellé;valeur|libellé » ; la valeur lue / écrite est l'INDEX (0 .. n-1).
     std::string_view options;
+    // Aide courte affichée sous le libellé (une phrase) ; vide = aucune. Pour les réglages dont le
+    // libellé seul ne dit pas le sens de la valeur ou ce que vaut 0.
+    std::string_view help;
 };
 
 // Niveau d'un réglage : les essentiels sont toujours visibles ; les avancés se révèlent à la

@@ -46,6 +46,11 @@ constexpr std::string_view kGradientMethod =
 const std::vector<ParamSpec>& table() {
     static const std::vector<ParamSpec> kTable{
         {"running", "stitch_length_mm", "Longueur de point", K::Number, 0.5, 12.0, 0.1, "mm"},
+        {"running", "chord_tolerance_mm", "Écart max. à la courbe", K::Number, 0.0, 0.5, 0.01, "mm",
+         "",
+         "0 = longueur de point fixe. Plus l'écart est petit, plus les courbes sont fidèles "
+         "(points "
+         "courts dans les virages, longs sur les droites). Conseil : 0,1."},
         {"running", "repeats", "Passages", K::Integer, 1, 3, 1, ""},
 
         {"tatami", "angle_deg", "Angle des rangées", K::Number, -360.0, 360.0, 5.0, "°"},
@@ -526,6 +531,7 @@ Opt readP(const document::RunningStitchParams& p, std::string_view key) {
     PS_N("repeats", repeats);
     PS_E("style", style);
     PS_MM("stem_offset_mm", stem_offset);
+    PS_MM("chord_tolerance_mm", chord_tolerance);
     return std::nullopt;
 }
 

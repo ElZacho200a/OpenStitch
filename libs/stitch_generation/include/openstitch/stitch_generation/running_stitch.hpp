@@ -49,6 +49,13 @@ struct RunningConfig {
     bool reverse{false};                // inverse le sens de parcours
     double phase{0.0};                  // décalage curviligne initial [0,1) (boucles lisses)
     std::optional<Vec2um> start;        // point de départ imposé (projeté), boucles fermées
+    // Longueur de point adaptative à la courbure. 0 (défaut) : division en parts égales de
+    // longueur <= `target_length`. > 0 : flèche maximale admise entre la corde d'un point et la
+    // courbe aplatie ; chaque point est le plus long possible (<= `target_length`) tout en
+    // respectant cette flèche, sans descendre sous `min_length` (la flèche peut alors dépasser
+    // la tolérance : courbe plus serrée que la longueur minimale ne permet de suivre). Les
+    // droites gardent `target_length`, les courbes serrées reçoivent des points courts.
+    Micrometers chord_tolerance{0};
 };
 
 // Point courant correct : aplatissement (courbes comprises) → découpe aux coins
@@ -59,6 +66,13 @@ struct RunningConfig {
 // Compatibilité : échantillonnage simple (délègue à run_stitch, un passage).
 [[nodiscard]] std::vector<Vec2um> sample_path(const geometry::Path& path, Micrometers target_length,
                                               Micrometers min_length);
+
+// Même échantillonnage avec longueur de point adaptative à la courbure
+// (`RunningConfig::chord_tolerance`) ; `chord_tolerance` <= 0 équivaut à `sample_path`.
+[[nodiscard]] std::vector<Vec2um> sample_path_adaptive(const geometry::Path& path,
+                                                       Micrometers target_length,
+                                                       Micrometers min_length,
+                                                       Micrometers chord_tolerance);
 
 // Modes de répétition explicites (§8-9).
 enum class RepeatMode {

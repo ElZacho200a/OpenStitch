@@ -1317,6 +1317,15 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                                    tr("Distance cible entre deux pénétrations."));
                 auto* minl = mmSpin(to_millimeters(p.min_length).value, 20.0, 0.1,
                                     tr("En dessous de cette longueur, les points sont fusionnés."));
+                auto* chord = mmSpin(
+                    to_millimeters(p.chord_tolerance).value, 0.5, 0.0,
+                    tr("Écart maximal toléré entre un point et la courbe. Les points "
+                       "raccourcissent "
+                       "dans les courbes serrées (jusqu'à la longueur minimale) et restent à la "
+                       "longueur de point sur les droites. 0 : longueur fixe. Conseil : 0,1 mm."));
+                chord->setObjectName(QStringLiteral("spin_chordTolerance"));
+                chord->setSingleStep(0.05);
+                chord->setSpecialValueText(tr("Désactivée (longueur fixe)"));
                 auto* rep = new QSpinBox(body_);
                 rep->setKeyboardTracking(false);
                 rep->setRange(1, 3);
@@ -1336,6 +1345,7 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 form->addRow(tr("Style :"), runStyle);
                 form->addRow(tr("Longueur de point :"), len);
                 form->addRow(tr("Longueur minimale :"), minl);
+                form->addRow(tr("Précision des courbes :"), chord);
                 form->addRow(tr("Passages :"), rep);
                 form->addRow(tr("Décalage du point tige :"), stemOff);
                 const auto syncRunStyle = [form, runStyle, rep, stemOff] {
@@ -1350,6 +1360,7 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 bindMm(stemOff, tr("Décalage du point tige"), &T::stem_offset);
                 bindMm(len, tr("Longueur de point"), &T::stitch_length);
                 bindMm(minl, tr("Longueur minimale"), &T::min_length);
+                bindMm(chord, tr("Précision des courbes"), &T::chord_tolerance);
                 bindInt(rep, tr("Passages"), &T::repeats);
             } else if constexpr (std::is_same_v<T, document::TatamiParams>) {
                 auto* spacing = mmSpin(to_millimeters(p.row_spacing).value, 5.0, 0.1,

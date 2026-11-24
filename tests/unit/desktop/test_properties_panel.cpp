@@ -234,7 +234,8 @@ void PropertiesPanelTest::showEmbroideryPopulatesSpinBoxesWithoutEmittingWhileBu
 
     QCOMPARE(emitCount, 0); // peuplement initial : pas d'édit émis
     const auto spins = panel.findChildren<QDoubleSpinBox*>();
-    QCOMPARE(spins.size(), 3); // longueur de point, longueur minimale, decalage du point tige
+    // longueur de point, longueur minimale, précision des courbes, décalage du point tige
+    QCOMPARE(spins.size(), 4);
     QCOMPARE(spins.at(0)->value(), 3.0);
     QCOMPARE(spins.at(1)->value(), 0.5);
 }
@@ -271,7 +272,7 @@ void PropertiesPanelTest::editingASpinBoxEmitsParamsEditedWithUpdatedValueAndPre
 void PropertiesPanelTest::switchingToInfoRemovesThePreviousFormControls() {
     PropertiesPanel panel;
     panel.showEmbroidery(runningStitchObject(3));
-    QCOMPARE(panel.findChildren<QDoubleSpinBox*>().size(), 3);
+    QCOMPARE(panel.findChildren<QDoubleSpinBox*>().size(), 4);
 
     panel.showInfo(QStringLiteral("Région"), QStringLiteral("détails"));
 
@@ -815,6 +816,12 @@ void PropertiesPanelTest::runningStyleComboEmitsStyleAndStemOffset() {
     QVERIFY(off != nullptr);
     off->setValue(0.5);
     QCOMPARE(std::get<openstitch::document::RunningStitchParams>(*emitted).stem_offset.value, 500);
+    auto* chord = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_chordTolerance"));
+    QVERIFY(chord != nullptr);
+    QCOMPARE(chord->value(), 0.0); // défaut : longueur fixe (comportement historique)
+    chord->setValue(0.1);
+    QCOMPARE(std::get<openstitch::document::RunningStitchParams>(*emitted).chord_tolerance.value,
+             100);
 }
 
 void PropertiesPanelTest::engineSettingsEmitDedicatedEdits() {
@@ -1141,6 +1148,10 @@ void PropertiesPanelTest::rowSpacingAndLengthsAreBoundedWithRangeTooltips() {
     PropertiesPanel running;
     running.showEmbroidery(runningStitchObject(34));
     for (auto* spin : running.findChildren<QDoubleSpinBox*>()) {
+        // « Précision des courbes » : 0 = désactivée (longueur fixe), seul champ autorisé à 0.
+        if (spin->objectName() == QStringLiteral("spin_chordTolerance")) {
+            continue;
+        }
         QVERIFY(spin->minimum() >= 0.1);
     }
     QVERIFY(running.findChildren<QDoubleSpinBox*>().at(0)->minimum() >= 0.5);

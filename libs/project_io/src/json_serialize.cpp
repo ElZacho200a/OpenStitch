@@ -352,7 +352,8 @@ json params_to_json(const document::StitchParams& params) {
                      {"minLength", p.min_length.value},
                      {"repeats", p.repeats},
                      {"style", static_cast<int>(p.style)},
-                     {"stemOffset", p.stem_offset.value}};
+                     {"stemOffset", p.stem_offset.value},
+                     {"chordTolerance", p.chord_tolerance.value}};
             } else if constexpr (std::is_same_v<T, document::TatamiParams>) {
                 j = {{"type", "tatami"},
                      {"angle", p.angle.radians},
@@ -846,6 +847,8 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.style = (style >= 0 && style <= 3) ? static_cast<document::RunningStyle>(style)
                                              : document::RunningStyle::Run;
         p.stem_offset = Micrometers{j.value("stemOffset", p.stem_offset.value)};
+        // Longueur adaptative à la courbure : absente des anciens .osp (0 = longueur fixe).
+        p.chord_tolerance = Micrometers{j.value("chordTolerance", p.chord_tolerance.value)};
         return document::StitchParams{p};
     }
     if (type == "tatami") {

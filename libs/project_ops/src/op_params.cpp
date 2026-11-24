@@ -885,6 +885,7 @@ fields_of<document::RunningStitchParams>() {
         v.push_back(int_field<P>("repeats", &P::repeats, 1, 3));
         v.push_back(enum_field<P>("style", &P::style, running_style_table()));
         v.push_back(mm_field<P>("stem_offset_mm", &P::stem_offset, 0.1, 2.0));
+        v.push_back(mm_field<P>("chord_tolerance_mm", &P::chord_tolerance, 0.0, 0.5));
         return v;
     }();
     return fields;

@@ -63,6 +63,10 @@ Compression (2026-10) : l'image PNG, déjà compressée, est stockée telle quel
   positif = contour de découpe vers l'extérieur) et `stops` (booléen, défaut vrai : deux arrêts
   machine). Toutes les clés sont optionnelles et bornées à la lecture ; un `tack` hors [0 ; 2] est refusé.
   Un lecteur sans ce type refuse le fichier, `schemaVersion` inchangé.
+  Le `running` (point de contour) porte en plus de `stitchLength`, `minLength`, `repeats`, `style`
+  et `stemOffset` la clé optionnelle `chordTolerance` (µm entiers, défaut 0 = longueur de point
+  fixe ; sinon flèche maximale entre un point et la courbe, voir *Point droit adaptatif*) : un
+  ancien `.osp` se relit à l'identique.
   Le `tatami` porte de même ses réglages avancés (Lot 7) : `underlayEdge`,
   `underlayParallel`, `underlayInset`, `underlaySpacing`, `hiddenUnderpath` et
   `entryPoint` — optionnels et rétrocompatibles. Le `directional`

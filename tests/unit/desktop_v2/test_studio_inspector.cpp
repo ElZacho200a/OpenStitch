@@ -152,6 +152,7 @@ class StudioInspectorTest : public QObject {
 private slots:
     void initTestCase();
     void everySpecFieldIsExposedAndEditable();
+    void contourCurvePrecisionIsEssentialExplainedAndNextToTheStitchLength();
     void listsAndPointsEditEndToEnd();
     void everyTypePersistsAndKeepsTheMachineOutput();
     void refusalsNeverCorrectSilently();
@@ -259,6 +260,44 @@ void StudioInspectorTest::everySpecFieldIsExposedAndEditable() {
     QVERIFY(specFields == 181); // the complete table lists every engine setting of the 14 types
     QCOMPARE(exposed, specFields);
     QCOMPARE(typesWithSpecs.size(), static_cast<std::size_t>(14));
+}
+
+// UX Gate (review of the curve-precision setting): visible without opening advanced settings,
+// right after the stitch length, a label short enough not to be elided, and a help line that says
+// what the value means and what 0 does.
+void StudioInspectorTest::contourCurvePrecisionIsEssentialExplainedAndNextToTheStitchLength() {
+    DocumentSession session;
+    const auto id = objectOfType(session, "running");
+    QVERIFY(id != 0);
+    StudioController studio(session);
+    InspectorController inspector(studio); // essentials only: no advanced / expert toggle
+    QStringList keys;
+    for (const auto& f : inspector.fields()) {
+        keys << f.toMap().value(QStringLiteral("key")).toString();
+    }
+    const auto lengthAt = keys.indexOf(QStringLiteral("stitch_length_mm"));
+    QVERIFY(lengthAt >= 0);
+    QCOMPARE(keys.value(lengthAt + 1), QStringLiteral("chord_tolerance_mm"));
+
+    const auto field = fieldOf(inspector, QStringLiteral("chord_tolerance_mm"));
+    QCOMPARE(field.value(QStringLiteral("level")).toString(), QStringLiteral("essential"));
+    QVERIFY(field.value(QStringLiteral("label")).toString().size() <= 24);
+    const auto help = field.value(QStringLiteral("help")).toString();
+    QVERIFY(help.contains(QStringLiteral("0 ="))); // says what zero does
+    QVERIFY(help.contains(QStringLiteral("fidèles")));
+    QVERIFY(fieldOf(inspector, QStringLiteral("repeats"))
+                .value(QStringLiteral("help"))
+                .toString()
+                .isEmpty()); // other settings stay without a help line
+
+    // The edit goes through the engine: one undo step, value written in µm, and undone cleanly.
+    QCOMPARE(inspector.setParam(QStringLiteral("chord_tolerance_mm"), 0.1), QString());
+    const auto& running = std::get<document::RunningStitchParams>(object(session, id).params);
+    QCOMPARE(running.chord_tolerance.value, 100);
+    session.undo();
+    QCOMPARE(
+        std::get<document::RunningStitchParams>(object(session, id).params).chord_tolerance.value,
+        0);
 }
 
 void StudioInspectorTest::listsAndPointsEditEndToEnd() {

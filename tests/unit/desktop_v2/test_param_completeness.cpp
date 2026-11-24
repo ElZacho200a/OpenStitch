@@ -35,7 +35,7 @@ struct MemberCounts {
 MemberCounts memberCounts() {
     using namespace document;
     // Chaque ligne ne compile que si le nombre de noms est exactement celui des membres.
-    OS_COUNT_MEMBERS(RunningStitchParams, a, b, c, d, e)
+    OS_COUNT_MEMBERS(RunningStitchParams, a, b, c, d, e, f)
     OS_COUNT_MEMBERS(TatamiParams, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s)
     OS_COUNT_MEMBERS(DirectionalFillParams, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s,
                      t, u, v, w, x)
@@ -53,7 +53,7 @@ MemberCounts memberCounts() {
     OS_COUNT_MEMBERS(CrossStitchParams, a, b, c, d, e)
     OS_COUNT_MEMBERS(AppliqueParams, a, b, c, d, e, f, g, h)
     OS_COUNT_MEMBERS(MulticolorGradientParams, a, b, c, d, e, f, g, h, i, j)
-    return {{{"running", 5},
+    return {{{"running", 6},
              {"tatami", 19},
              {"directional", 24},
              {"satin", 35},
@@ -213,7 +213,8 @@ TEST_CASE("every engine parameter field is exposed by param_spec or excluded wit
     CHECK(exposed + excluded == engineFields);
     // rail_a, rail_b, topology, border, palette, transition, stitch_angle, image_weights
     CHECK(excluded == 8);
-    CHECK(exposed == 187); // + tie_down_mm, couching_*_mm, scatter (STCH-CROS-01), smooth_field
+    CHECK(exposed ==
+          187); // + tie_down_mm, couching_*_mm, scatter (STCH-CROS-01), chord_tolerance_mm
 }
 
 TEST_CASE("every table row reads back from a default object, inside its own range",
