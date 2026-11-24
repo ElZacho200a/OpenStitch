@@ -62,6 +62,18 @@ ColumnLayout {
         }
     }
 
+    // Short help (what the value means, what 0 does) for settings whose label alone is not enough.
+    Text {
+        Layout.fillWidth: true
+        visible: text.length > 0
+        objectName: "help_" + root.fieldKey
+        text: root.f.help ? root.f.help : ""
+        color: Theme.muted
+        wrapMode: Text.WordWrap
+        font.family: Theme.fontFamily
+        font.pixelSize: Theme.captionSize
+    }
+
     // Numbers and integers: slider for dragging + exact typed entry.
     RowLayout {
         Layout.fillWidth: true

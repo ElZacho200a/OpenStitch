@@ -79,8 +79,9 @@ document::Project rich_project() {
     run.name = "contour";
     run.source_vector = vec.id;
     run.rgb = {200, 50, 0};
-    run.params = document::RunningStitchParams{Micrometers{2'500}, Micrometers{400}, 3,
-                                               document::RunningStyle::Stem, Micrometers{450}};
+    run.params = document::RunningStitchParams{
+        Micrometers{2'500},           Micrometers{400}, 3,
+        document::RunningStyle::Stem, Micrometers{450}, Micrometers{120}};
     project.embroidery_objects.push_back(run);
 
     document::EmbroideryObject fill;
@@ -437,6 +438,7 @@ TEST_CASE("projet complet : save puis load = memes donnees") {
             std::get<document::RunningStitchParams>(loaded->embroidery_objects[0].params);
         CHECK(lr.style == document::RunningStyle::Stem);
         CHECK(lr.stem_offset.value == 450);
+        CHECK(lr.chord_tolerance.value == 120);
     }
     CHECK(loaded->embroidery_objects[1].is_tatami());
     const auto& loadedTat = std::get<document::TatamiParams>(loaded->embroidery_objects[1].params);
@@ -905,4 +907,34 @@ TEST_CASE("preserve linework flag and linework strokes survive a roundtrip") {
     const auto plain = project_io::detail::project_to_json(document::Project{});
     CHECK(plain.dump().find("preserveLinework") == std::string::npos);
     CHECK(plain.dump().find("linework") == std::string::npos);
+}
+
+TEST_CASE("running chord tolerance: round-trips and defaults to 0 when the key is absent",
+          "[running_chord]") {
+    document::Project project;
+    document::VectorObject vector;
+    vector.id = ObjectId{1};
+    vector.paths = {geometry::PathSet{square_path(), {}}};
+    project.vector_objects.push_back(vector);
+    document::EmbroideryObject obj;
+    obj.id = ObjectId{2};
+    obj.source_vector = vector.id;
+    document::RunningStitchParams params;
+    params.chord_tolerance = Micrometers{90};
+    obj.params = params;
+    project.embroidery_objects.push_back(obj);
+    project.object_ids.reset(obj.id.value);
+
+    auto json = project_io::detail::project_to_json(project);
+    REQUIRE(json["embroideryObjects"][0]["params"]["chordTolerance"].get<int>() == 90);
+    const auto parsed = project_io::detail::project_from_json(nlohmann::json::parse(json.dump()));
+    REQUIRE(parsed);
+    CHECK(parsed->embroidery_objects[0].params == obj.params);
+
+    // .osp anterieur : la cle n'existe pas -> longueur fixe (0).
+    json["embroideryObjects"][0]["params"].erase("chordTolerance");
+    const auto old = project_io::detail::project_from_json(nlohmann::json::parse(json.dump()));
+    REQUIRE(old);
+    CHECK(std::get<document::RunningStitchParams>(old->embroidery_objects[0].params)
+              .chord_tolerance.value == 0);
 }

@@ -33,6 +33,11 @@ struct RunningStitchParams {
     int repeats{1};                   // 1 simple, 2 aller-retour, 3 point triple
     RunningStyle style{RunningStyle::Run};
     Micrometers stem_offset{300}; // décalage latéral du point tige (0,3 mm)
+    // Longueur de point adaptative à la courbure : 0 (défaut) = longueur fixe `stitch_length`.
+    // Sinon, flèche maximale admise entre un point (corde) et la courbe réelle : le point est
+    // raccourci dans les courbes serrées (jusqu'à `min_length`) et reste à `stitch_length` sur
+    // les droites. Plage utile 0,02 – 0,5 mm ; typiquement 0,1 mm.
+    Micrometers chord_tolerance{0};
 
     bool operator==(const RunningStitchParams&) const = default;
 };
