@@ -1695,8 +1695,8 @@ QString FileController::designHoopWarning() const {
     if (widthMm <= hoopW + 0.5 && heightMm <= hoopH + 0.5) {
         return {};
     }
-    return QStringLiteral("Le motif (%1 × %2 mm) dépasse le cadre (%3 × %4 mm) : agrandissez le cadre "
-                          "ou réduisez le motif.")
+    return QStringLiteral("Le motif (%1 × %2 mm) dépasse le cadre (%3 × %4 mm) : agrandissez le "
+                          "cadre ou réduisez le motif.")
         .arg(widthMm, 0, 'f', 0)
         .arg(heightMm, 0, 'f', 0)
         .arg(hoopW, 0, 'f', 0)

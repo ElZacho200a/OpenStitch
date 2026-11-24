@@ -160,8 +160,8 @@ private:
     [[nodiscard]] QVariantList buildTree() const;
     mutable std::optional<QVariantList> treeCache_;
     [[nodiscard]] std::uint64_t treeStamp() const; // révision + scène, SANS la sélection
-    std::uint64_t gateStamp_{0};     // documentStamp() au dernier changed rediffusé
-    std::uint64_t treeGateStamp_{0}; // treeStamp() au dernier treeChanged
+    std::uint64_t gateStamp_{0};                   // documentStamp() au dernier changed rediffusé
+    std::uint64_t treeGateStamp_{0};               // treeStamp() au dernier treeChanged
     [[nodiscard]] std::vector<std::uint64_t> selectedIds() const;
     [[nodiscard]] std::vector<std::uint64_t> smallObjects(double maxAreaMm2) const;
     [[nodiscard]] bool selectIds(const std::vector<std::uint64_t>& ids, bool additive = false);
