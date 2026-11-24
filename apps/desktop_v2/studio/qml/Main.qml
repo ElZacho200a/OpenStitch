@@ -523,10 +523,17 @@ Window {
                 // Cadre du document, toujours visible : un clic ouvre le réglage rapide.
                 StudioButton {
                     objectName: "hoopButton"
+                    // Avertissement quand les formes dépassent le cadre (relu à chaque modification).
+                    readonly property string overflow: {
+                        studio.commandCount
+                        return typeof files !== "undefined" && files !== null ? files.designHoopWarning() : ""
+                    }
                     text: headerCard.compact ? "" : qsTr("Cadre %1").arg(spaceHost.hoopSummary())
+                          + (overflow.length > 0 ? "  ⚠" : "")
                     iconName: headerCard.compact ? "fit" : ""
                     quiet: true
-                    tooltip: qsTr("Cadre : forme, dimensions, marge, Mes cadres (aussi au clic droit sur le canevas)")
+                    tooltip: overflow.length > 0 ? overflow
+                             : qsTr("Cadre : forme, dimensions, marge, Mes cadres (aussi au clic droit sur le canevas)")
                     onClicked: spaceHost.openHoop(null, 0, 0)
                 }
 
@@ -693,6 +700,18 @@ Window {
                     implicitWidth: 18
                     implicitHeight: 18
                     Accessible.name: qsTr("Opération en cours")
+                }
+                // Parcours en quatre étapes : un bouton libellé vers l'espace suivant (le chevron de
+                // l'en-tête ouvre l'historique, pas l'étape suivante).
+                StudioButton {
+                    objectName: "nextStepButton"
+                    readonly property int nextIndex: workspaceCtl.currentIndex + 1
+                    visible: nextIndex < workspaceCtl.spaces.length
+                    quiet: true
+                    implicitHeight: 22
+                    text: visible ? qsTr("Étape suivante : %1  ›").arg(workspaceCtl.spaces[nextIndex].label) : ""
+                    tooltip: qsTr("Passer à l'espace suivant du parcours (Ctrl+1 à Ctrl+4 pour choisir)")
+                    onClicked: workspaceCtl.setCurrent(workspaceCtl.spaces[nextIndex].id)
                 }
                 Text {
                     objectName: "renderBackendLabel"

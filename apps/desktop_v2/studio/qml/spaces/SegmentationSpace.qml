@@ -547,9 +547,12 @@ Item {
         // appliqué de la segmentation réelle du document.
         Rectangle {
             objectName: "segmentationPreviewBadge"
-            anchors.top: parent.top
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.topMargin: 16
+            // En bas à droite : le haut du canevas appartient à la barre Réaliste/Vue/Fils (qui
+            // cachait le bandeau), le bas à gauche au panneau des régions.
+            anchors.bottom: parent.bottom
+            anchors.right: parent.right
+            anchors.bottomMargin: 16
+            anchors.rightMargin: 16
             visible: root.previewing
             enabled: false
             width: previewRow.implicitWidth + 24

@@ -28,7 +28,7 @@ Rectangle {
             objectName: "segmentationSummary"
             Layout.fillWidth: true
             text: controls.seg.hasSegmentation
-                  ? qsTr("%1 régions · %2 sélectionnée(s)").arg(controls.seg.regionCount).arg(controls.seg.selectedCount)
+                  ? qsTr("Document : %1 régions · %2 sélectionnée(s)").arg(controls.seg.regionCount).arg(controls.seg.selectedCount)
                   : qsTr("Pas encore de segmentation")
             color: Theme.foreground
             font.family: Theme.fontFamily

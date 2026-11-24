@@ -12,6 +12,10 @@ ColumnLayout {
     // ObjectTree owns its scrolling. Never let an undersized dock paint over its siblings.
     clip: true
     readonly property alias tree: objectTree
+    // Peu de hauteur : les actions rares passent dans un menu « Plus… » (la liste garde la place).
+    // Fixé par l'espace hôte d'après SA hauteur : le dériver de la hauteur de ce panneau créerait
+    // une boucle de liaison avec la rangée d'actions.
+    property bool compactActions: false
     // Le calque actif du document : le même dans tous les canevas (clic sur un calque de l'arbre).
     readonly property string layerId: editor.activeLayer
     readonly property bool layerLocked: {
@@ -29,6 +33,8 @@ ColumnLayout {
         }
     }
 
+    // Actions courantes : toujours visibles. Les actions rares forment une seconde rangée, remplacée par
+    // « Plus… » quand la place manque (une rangée masquée ne prend aucune hauteur dans la colonne).
     Flow {
         objectName: "layerActionsFlow"
         Layout.fillWidth: true
@@ -46,20 +52,48 @@ ColumnLayout {
             onClicked: editor.addLayer(qsTr("Calque %1").arg(editor.layers.length + 1))
         }
         StudioButton {
-            objectName: "layerDuplicateButton"
-            text: qsTr("Dupl.")
-            implicitHeight: 28
-            enabled: panel.layerId.length > 0
-            tooltip: qsTr("Dupliquer le calque et ses objets")
-            onClicked: editor.duplicateLayer(panel.layerId)
-        }
-        StudioButton {
             objectName: "layerRenameButton"
             text: qsTr("Renommer")
             implicitHeight: 28
             enabled: panel.layerId.length > 0
             tooltip: qsTr("Renommer le calque actif (F2, ou double-clic dans l'arbre)")
             onClicked: panel.startRename()
+        }
+        StudioButton {
+            objectName: "layerMoreButton"
+            visible: panel.compactActions
+            text: qsTr("Plus…")
+            implicitHeight: 28
+            tooltip: qsTr("Dupliquer, supprimer, déplacer, isoler le calque")
+            onClicked: moreMenu.popup()
+            Controls.Menu {
+                id: moreMenu
+                Controls.MenuItem { text: qsTr("Dupliquer le calque"); enabled: panel.layerId.length > 0; onTriggered: editor.duplicateLayer(panel.layerId) }
+                Controls.MenuItem { text: qsTr("Supprimer le calque"); enabled: editor.layers.length > 1 && panel.layerId.length > 0; onTriggered: editor.removeLayer(panel.layerId) }
+                Controls.MenuItem { text: qsTr("Monter le calque"); enabled: panel.layerId.length > 0; onTriggered: editor.moveLayer(panel.layerId, 1) }
+                Controls.MenuItem { text: qsTr("Descendre le calque"); enabled: panel.layerId.length > 0; onTriggered: editor.moveLayer(panel.layerId, -1) }
+                Controls.MenuItem { text: qsTr("Placer la sélection ici"); enabled: editor.selectedCount > 0 && panel.layerId.length > 0 && !panel.layerLocked; onTriggered: editor.moveSelectionToLayer(panel.layerId) }
+                Controls.MenuItem { text: qsTr("Isoler le calque"); enabled: editor.layers.length > 1 && panel.layerId.length > 0; onTriggered: editor.isolateLayer(panel.layerId) }
+                Controls.MenuItem { text: qsTr("Tout afficher"); enabled: editor.layers.some(l => !l.visible); onTriggered: editor.showAllLayers() }
+            }
+        }
+    }
+
+    Flow {
+        objectName: "layerSecondaryActionsFlow"
+        visible: !panel.compactActions
+        Layout.fillWidth: true
+        Layout.preferredHeight: childrenRect.height
+        Layout.leftMargin: 10
+        Layout.rightMargin: 10
+        spacing: 4
+        StudioButton {
+            objectName: "layerDuplicateButton"
+            text: qsTr("Dupl.")
+            implicitHeight: 28
+            enabled: panel.layerId.length > 0
+            tooltip: qsTr("Dupliquer le calque et ses objets")
+            onClicked: editor.duplicateLayer(panel.layerId)
         }
         StudioButton {
             objectName: "layerRemoveButton"
@@ -87,7 +121,7 @@ ColumnLayout {
         }
         StudioButton {
             objectName: "layerMoveHereButton"
-            text: qsTr("Sélection ici")
+            text: qsTr("Placer ici")
             implicitHeight: 28
             enabled: editor.selectedCount > 0 && panel.layerId.length > 0 && !panel.layerLocked
             disabledReason: panel.layerLocked ? qsTr("Le calque actif est verrouillé.") : ""
@@ -136,6 +170,18 @@ ColumnLayout {
         font.pixelSize: Theme.bodySize
         onAccepted: { editor.renameLayer(panel.layerId, text); visible = false }
         Keys.onEscapePressed: visible = false
+    }
+
+    StudioTextField {
+        id: searchField
+        objectName: "layerSearchField"
+        Layout.fillWidth: true
+        Layout.leftMargin: 10
+        Layout.rightMargin: 10
+        placeholderText: qsTr("Rechercher un objet…")
+        Accessible.name: qsTr("Rechercher un objet par son nom")
+        onTextChanged: objectTree.filterText = text
+        Keys.onEscapePressed: text = ""
     }
 
     ObjectTree {

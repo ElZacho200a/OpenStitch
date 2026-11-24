@@ -35,15 +35,27 @@ Item {
         studio.selectObject(id, Boolean(modifiers & Qt.ControlModifier))
         root.anchorId = id
     }
+    // Objets sélectionnés ({id: true}) : hors de `editor.tree`, qui ne se reconstruit pas à un clic.
+    readonly property var selectedSet: editor.selectedIdSet
     property bool dragActive: false
     property string dragLabel: ""
     property point dragPos: Qt.point(0, 0)
     // Calques et groupes repliés (clé « kind:id ») ; état d'affichage seulement, pas le document.
     property var collapsed: ({})
     // Lignes visibles + nombre d'objets sous chaque calque/groupe, depuis l'arbre plat (depth).
+    // Filtre par nom (champ de recherche du LayerPanel) : vide = arbre complet.
+    property string filterText: ""
     readonly property var folded: {
         const tree = editor.tree
         const rows = []
+        const needle = root.filterText.trim().toLowerCase()
+        if (needle.length > 0) {
+            // Recherche : liste plate des objets dont le nom contient le texte.
+            for (let i = 0; i < tree.length; ++i)
+                if (tree[i].kind === "object" && tree[i].label.toLowerCase().indexOf(needle) >= 0)
+                    rows.push(tree[i])
+            return { rows: rows, counts: {} }
+        }
         const counts = {}
         const stack = []
         let hideBelow = -1
@@ -87,7 +99,8 @@ Item {
             required property var modelData
             required property int index
             readonly property bool isObject: modelData.kind === "object"
-            readonly property bool primarySelected: isObject && modelData.selected
+            readonly property bool isSelected: isObject && root.selectedSet[modelData.id] === true
+            readonly property bool primarySelected: isSelected
                                                     && studio.primarySelectionId === modelData.id
             readonly property bool isLayer: modelData.kind === "layer"
             readonly property bool isGroup: modelData.kind === "group"
@@ -101,7 +114,7 @@ Item {
             activeFocusOnTab: true
             Accessible.role: Accessible.ListItem
             Accessible.name: modelData.label
-            Accessible.selected: isObject && modelData.selected
+            Accessible.selected: isSelected
             Keys.onReturnPressed: {
                 if (row.isObject) studio.selectObject(row.modelData.id)
                 else if (row.isLayer) editor.selectByLayer(row.modelData.id)
@@ -114,7 +127,7 @@ Item {
             readonly property bool dropTarget: root.dragActive && isLayer && root.dropId === modelData.id
             Rectangle {
                 anchors.fill: parent
-                color: row.isObject && row.modelData.selected ? Theme.accentSoft
+                color: row.isSelected ? Theme.accentSoft
                        : row.dropTarget ? Theme.accentSoft
                        : row.isLayer ? Theme.raised
                        : area.containsMouse || row.activeFocus ? Theme.hover : "transparent"
@@ -137,7 +150,7 @@ Item {
                     anchors.top: parent.top
                     anchors.bottom: parent.bottom
                     color: row.primarySelected ? Theme.accent : Theme.info
-                    visible: row.isObject && row.modelData.selected
+                    visible: row.isSelected
                 }
             }
 
@@ -235,9 +248,9 @@ Item {
                 }
                 Rectangle {
                     visible: row.isObject
-                    implicitWidth: 11
-                    implicitHeight: 11
-                    radius: 3
+                    implicitWidth: 12
+                    implicitHeight: 12
+                    radius: 6 // ronde : ne se confond pas avec une case à cocher
                     color: row.isObject ? row.modelData.color : "transparent"
                     border.width: 1
                     border.color: Qt.alpha(Theme.faint, 0.4)
@@ -250,7 +263,7 @@ Item {
                     text: row.modelData.label + (row.isObject && row.modelData.locked ? "  (verrouillé)" : "")
                           + (row.isLayer || row.isCollapsed ? "  · " + row.childCount : "")
                     // Un calque masqué reste lisible mais s'efface : l'état se voit sans icône.
-                    color: row.isObject && row.modelData.selected ? Theme.foreground
+                    color: row.isSelected ? Theme.foreground
                            : row.isLayer && !row.modelData.visible ? Theme.faint
                            : row.isActiveLayer ? Theme.foreground : Theme.muted
                     font.family: Theme.fontFamily

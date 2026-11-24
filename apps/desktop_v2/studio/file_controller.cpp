@@ -1654,6 +1654,55 @@ QVariantMap FileController::currentHoop() const {
             {QStringLiteral("marginMm"), currentMarginMm(project)}};
 }
 
+QString FileController::designHoopWarning() const {
+    const auto& project = studio_.session().project();
+    bool any = false;
+    std::int64_t minX = 0;
+    std::int64_t maxX = 0;
+    std::int64_t minY = 0;
+    std::int64_t maxY = 0;
+    const auto consider = [&](const geometry::Path& path) {
+        for (const auto& node : path.nodes) {
+            const std::int64_t x = node.pos.x.value;
+            const std::int64_t y = node.pos.y.value;
+            if (!any) {
+                minX = maxX = x;
+                minY = maxY = y;
+                any = true;
+            } else {
+                minX = std::min(minX, x);
+                maxX = std::max(maxX, x);
+                minY = std::min(minY, y);
+                maxY = std::max(maxY, y);
+            }
+        }
+    };
+    for (const auto& shape : project.vector_objects) {
+        for (const auto& set : shape.paths) {
+            consider(set.outer);
+            for (const auto& hole : set.holes) {
+                consider(hole);
+            }
+        }
+    }
+    if (!any) {
+        return {};
+    }
+    const double widthMm = static_cast<double>(maxX - minX) / 1000.0;
+    const double heightMm = static_cast<double>(maxY - minY) / 1000.0;
+    const double hoopW = static_cast<double>(project.canvas.width.value) / 1000.0;
+    const double hoopH = static_cast<double>(project.canvas.height.value) / 1000.0;
+    if (widthMm <= hoopW + 0.5 && heightMm <= hoopH + 0.5) {
+        return {};
+    }
+    return QStringLiteral("Le motif (%1 × %2 mm) dépasse le cadre (%3 × %4 mm) : agrandissez le cadre "
+                          "ou réduisez le motif.")
+        .arg(widthMm, 0, 'f', 0)
+        .arg(heightMm, 0, 'f', 0)
+        .arg(hoopW, 0, 'f', 0)
+        .arg(hoopH, 0, 'f', 0);
+}
+
 namespace {
 QString refusalOf(const ServiceResult& result) {
     return result.ok ? QString() : fromUtf8(result.message);

@@ -23,6 +23,15 @@ ColumnLayout {
     function sourceOf(objectId) {
         return spaceCtl && spaceCtl.sources[objectId] ? spaceCtl.sources[objectId] : null
     }
+    // Filtre par nom de la vue Liste (la vue Arbre a son propre champ, dans LayerPanel).
+    property string filterText: ""
+    readonly property var shownObjects: {
+        const needle = panel.filterText.trim().toLowerCase()
+        const all = studio.objects
+        if (needle.length === 0)
+            return all
+        return all.filter(o => String(o.label || "").toLowerCase().indexOf(needle) >= 0)
+    }
     spacing: 0
     // Keep excess content inside its panel, not across the point inspector.
     clip: true
@@ -110,6 +119,19 @@ ColumnLayout {
         Layout.minimumHeight: implicitHeight
     }
 
+    StudioTextField {
+        objectName: "objectSearchField"
+        visible: !panel.workspace.treeMode
+        Layout.fillWidth: true
+        Layout.leftMargin: Theme.panelPadding
+        Layout.rightMargin: Theme.panelPadding
+        Layout.bottomMargin: 4
+        placeholderText: qsTr("Rechercher un objet…")
+        Accessible.name: qsTr("Rechercher un objet par son nom")
+        onTextChanged: panel.filterText = text
+        Keys.onEscapePressed: text = ""
+    }
+
     ListView {
         id: objectList
         objectName: "objectList"
@@ -119,7 +141,7 @@ ColumnLayout {
         Layout.minimumHeight: 80
         clip: true
         boundsBehavior: Flickable.StopAtBounds
-        model: studio.objects
+        model: panel.shownObjects
         spacing: 1
         topMargin: 4
         bottomMargin: 4
@@ -164,7 +186,7 @@ ColumnLayout {
                 Rectangle {
                     implicitWidth: 12
                     implicitHeight: 12
-                    radius: 3
+                    radius: 6 // ronde : ne se confond pas avec une case à cocher
                     color: objectRow.modelData.color
                     border.width: 1
                     border.color: Qt.alpha(Theme.faint, 0.4)
