@@ -851,6 +851,100 @@ private slots:
         QCOMPARE(steps(rig), depth);
     }
 
+    // Mesure du parcours « retrouver un objet précis » dans une liste d'environ 400 objets, fenêtre
+    // 1000x640 : parcours de la liste page par page (avant l'ajout du champ de recherche), puis avec
+    // la recherche. Une « action » = un clic (dont une page d'ascenseur) ou une frappe.
+    void searchFindsAnObjectInFewerActionsThanScrolling() {
+        Rig rig;
+        open(rig, false);
+        rig.session.replaceProject(manyShapesProject(400), false);
+        enterSpace(rig);
+        rig.window->resize(1000, 640);
+        QVERIFY(rig.stage.convertToEmbroidery());
+        QTRY_VERIFY_WITH_TIMEOUT(!rig.stage.converting(), 60'000);
+
+        const auto tree = rig.editor.tree();
+        std::vector<int> objectRows;
+        for (int i = 0; i < tree.size(); ++i) {
+            if (tree[i].toMap().value(QStringLiteral("kind")).toString() == QStringLiteral("object")) {
+                objectRows.push_back(i);
+            }
+        }
+        QVERIFY(objectRows.size() >= 300);
+        const int row = objectRows[objectRows.size() * 2 / 3];
+        const auto target = tree[row].toMap();
+        const QString label = target.value(QStringLiteral("label")).toString();
+        const QString id = target.value(QStringLiteral("id")).toString();
+
+        auto* list = deepItem(rig.window->contentItem(), QStringLiteral("objectTreeList"));
+        QTRY_VERIFY_WITH_TIMEOUT(list != nullptr && list->isVisible() && list->height() > 100, 5'000);
+        const auto itemAt = [&](int index) {
+            QQuickItem* item = nullptr;
+            QMetaObject::invokeMethod(list, "itemAtIndex", Q_RETURN_ARG(QQuickItem*, item),
+                                      Q_ARG(int, index));
+            return item;
+        };
+        QQuickItem* first = nullptr;
+        QTRY_VERIFY_WITH_TIMEOUT((first = itemAt(0)) != nullptr, 5'000);
+        const double pitch = first->height() + list->property("spacing").toDouble();
+
+        // 1. Sans recherche : l'ordre de la liste est celui de la couture, la position d'un objet
+        // n'est pas connue de l'utilisateur ; le seul moyen sûr est de parcourir la liste page par
+        // page. Mesure sur la géométrie réelle : pages d'écran de liste jusqu'à la ligne visée
+        // (les crans de molette simulés ne sont pas un compteur fiable : Qt Quick les convertit en
+        // vitesse qui se dissipe avec le temps). Une page = une action (clic dans l'ascenseur).
+        const double rowBottom = row * pitch + first->height();
+        const int scrollActions = static_cast<int>(std::ceil(rowBottom / list->height())) + 1; // + clic
+        const int visibleRows = static_cast<int>(list->height() / pitch);
+
+        // 2. Recherche : clic dans le champ, frappe du nom, clic sur la ligne.
+        auto* search = deepItem(rig.window->contentItem(), QStringLiteral("layerSearchField"));
+        QVERIFY(search != nullptr);
+        int searchActions = 0;
+        QTest::mouseClick(rig.window, Qt::LeftButton, {},
+                          search->mapToScene(QPointF(search->width() / 2, search->height() / 2)).toPoint());
+        ++searchActions;
+        for (const QChar ch : label) {
+            QTest::keyClick(rig.window, ch.toLatin1());
+            ++searchActions; // une frappe = une action
+        }
+        QQuickItem* hit = nullptr;
+        QTRY_VERIFY_WITH_TIMEOUT(
+            [&] {
+                for (int i = 0; i < 10; ++i) {
+                    auto* item = itemAt(i);
+                    if (item != nullptr &&
+                        item->property("modelData").toMap().value(QStringLiteral("label")).toString() ==
+                            label) {
+                        hit = item;
+                        return true;
+                    }
+                }
+                return false;
+            }(),
+            5'000);
+        QTest::mouseClick(rig.window, Qt::LeftButton, {},
+                          hit->mapToScene(QPointF(hit->width() / 2, hit->height() / 2)).toPoint());
+        ++searchActions;
+        QTRY_VERIFY_WITH_TIMEOUT(rig.session.selection().primary().has_value(), 3'000);
+        QCOMPARE(QString::number(rig.session.selection().primary()->id), id);
+
+        qInfo().noquote() << QStringLiteral("MESURE clics : objet « %1 », %2 objets, fenêtre 1000x640 : "
+                                            "sans recherche %3 actions (%4 pages de %7 lignes + 1 clic) -> "
+                                            "recherche %5 actions (1 clic + %6 frappes + 1 clic)")
+                                 .arg(label)
+                                 .arg(objectRows.size())
+                                 .arg(scrollActions)
+                                 .arg(scrollActions - 1)
+                                 .arg(searchActions)
+                                 .arg(label.size())
+                                 .arg(visibleRows);
+        QVERIFY2(searchActions < scrollActions,
+                 qPrintable(QStringLiteral("recherche %1 actions, parcours %2 actions")
+                                .arg(searchActions)
+                                .arg(scrollActions)));
+    }
+
     void convertToEmbroideryIsOneUndoStep() {
         Rig rig;
         open(rig);
