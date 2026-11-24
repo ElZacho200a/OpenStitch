@@ -92,7 +92,8 @@ Item {
         boundsBehavior: Flickable.StopAtBounds
         model: root.folded.rows
         spacing: 1
-        Controls.ScrollBar.vertical: Controls.ScrollBar { }
+        // Barre toujours visible : une ligne coupée en bas se lit comme du défilement.
+        Controls.ScrollBar.vertical: Controls.ScrollBar { policy: Controls.ScrollBar.AlwaysOn }
 
         delegate: Item {
             id: row

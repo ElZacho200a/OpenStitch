@@ -555,6 +555,21 @@ bool GpuCanvas::zoomToSelection() {
     return true;
 }
 
+void GpuCanvas::previewObject(const QString& id) {
+    std::optional<std::uint64_t> next;
+    if (!id.isEmpty()) {
+        bool ok = false;
+        const auto value = id.toULongLong(&ok);
+        if (ok) {
+            next = value;
+        }
+    }
+    if (hoveredObjectId_ != next) {
+        hoveredObjectId_ = next;
+        emit overlayChanged();
+    }
+}
+
 void GpuCanvas::zoomToScale(double pxPerMm) {
     if (!std::isfinite(pxPerMm) || pxPerMm <= 0) {
         return;

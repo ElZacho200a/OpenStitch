@@ -557,6 +557,8 @@ Item {
                                         : -1
                 PointsObjectsPanel {
                     workspace: root.workspace
+                    canvas: spaceCanvas
+                    compactRows: root.height < 700
                     anchors.fill: parent
                     anchors.margins: 2
                 }
@@ -593,7 +595,9 @@ Item {
                     SectionLabel { text: qsTr("TYPE DE POINTS") }
                     Text {
                         Layout.fillWidth: true
-                        text: qsTr("Sélectionnez un objet dans la vue ou dans la liste : son type de points (satin, tatami, fondu, contour…) et tous ses réglages apparaissent ici.")
+                        text: root.height < 700
+                              ? qsTr("Sélectionnez un objet : son type de points et ses réglages apparaissent ici.")
+                              : qsTr("Sélectionnez un objet dans la vue ou dans la liste : son type de points (satin, tatami, fondu, contour…) et tous ses réglages apparaissent ici.")
                         color: Theme.faint
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.smallSize
@@ -601,6 +605,7 @@ Item {
                         lineHeight: 1.35
                     }
                     Text {
+                        visible: root.height >= 700
                         Layout.fillWidth: true
                         text: qsTr("Ctrl + clic pour une sélection multiple")
                         color: Theme.faint

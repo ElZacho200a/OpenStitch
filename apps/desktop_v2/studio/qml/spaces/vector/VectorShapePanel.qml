@@ -44,6 +44,15 @@ ColumnLayout {
         SectionLabel { text: qsTr("VECTORISATION") }
         Item { Layout.fillWidth: true }
         StudioButton {
+            objectName: "vectorPrecisionHeaderToggle"
+            // Précision repliée (très petite fenêtre) : le bouton remonte ici, la rangée PRÉCISION disparaît.
+            visible: panel.veryCompact && !panel.showPrecision
+            quiet: true
+            text: qsTr("Précision")
+            tooltip: qsTr("Afficher les réglages de précision de la vectorisation")
+            onClicked: panel.precisionMode = 1
+        }
+        StudioButton {
             objectName: "vectorHelpToggle"
             quiet: true
             text: panel.showHelp ? qsTr("Masquer l'aide") : qsTr("Afficher l'aide")
@@ -64,6 +73,7 @@ ColumnLayout {
 
     // Précision de la vectorisation (V1) : appliquée à la prochaine mise à jour des formes.
     RowLayout {
+        visible: panel.showPrecision
         Layout.fillWidth: true
         SectionLabel { text: qsTr("PRÉCISION") }
         Item { Layout.fillWidth: true }

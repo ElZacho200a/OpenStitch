@@ -23,6 +23,10 @@ ColumnLayout {
     function sourceOf(objectId) {
         return spaceCtl && spaceCtl.sources[objectId] ? spaceCtl.sources[objectId] : null
     }
+    // Canevas de l'espace (survol d'une ligne = présélection de l'objet) et lignes compactes en
+    // fenêtre basse : fournis par l'espace hôte, jamais déduits de la taille de ce panneau.
+    property var canvas: null
+    property bool compactRows: false
     // Filtre par nom de la vue Liste (la vue Arbre a son propre champ, dans LayerPanel).
     property string filterText: ""
     readonly property var shownObjects: {
@@ -145,7 +149,8 @@ ColumnLayout {
         spacing: 1
         topMargin: 4
         bottomMargin: 4
-        Controls.ScrollBar.vertical: Controls.ScrollBar { }
+        // Barre toujours visible : la liste dépasse presque toujours, la coupure se lit comme du défilement.
+        Controls.ScrollBar.vertical: Controls.ScrollBar { policy: Controls.ScrollBar.AlwaysOn }
 
         delegate: Controls.ItemDelegate {
             id: objectRow
@@ -154,10 +159,12 @@ ColumnLayout {
             readonly property var source: panel.sourceOf(modelData.id)
             readonly property bool primarySelected: modelData.selected && studio.primarySelectionId === modelData.id
             width: objectList.width
-            height: Theme.rowHeight
+            height: panel.compactRows ? 32 : Theme.rowHeight
             leftPadding: 18
             rightPadding: 18
             hoverEnabled: true
+            // Survol : l'objet est mis en évidence sur le motif (relie la ligne à la zone vue).
+            onHoveredChanged: if (panel.canvas) panel.canvas.previewObject(hovered ? modelData.id : "")
             focusPolicy: Qt.StrongFocus
             Accessible.name: modelData.label
             Accessible.description: modelData.type
@@ -199,6 +206,7 @@ ColumnLayout {
                     Text {
                         Layout.fillWidth: true
                         text: objectRow.modelData.label
+                              + (panel.compactRows ? "  ·  " + objectRow.modelData.type : "")
                         color: objectRow.modelData.selected ? Theme.foreground : Theme.muted
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.bodySize
@@ -206,6 +214,7 @@ ColumnLayout {
                     }
                     Text {
                         objectName: "objectSubtitle"
+                        visible: !panel.compactRows
                         Layout.fillWidth: true
                         text: objectRow.modelData.type
                               + (objectRow.modelData.visible ? "" : qsTr(" · masqué"))

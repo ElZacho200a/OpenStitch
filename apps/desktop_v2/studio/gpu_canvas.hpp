@@ -139,6 +139,8 @@ public:
     Q_INVOKABLE bool zoomToSelection();
     // Absolute scale in px/mm, anchored on the viewport centre (100 % = physical size).
     Q_INVOKABLE void zoomToScale(double pxPerMm);
+    // Présélection d'un objet depuis une liste (survol d'une ligne) ; "" l'efface. UI seulement.
+    Q_INVOKABLE void previewObject(const QString& id);
     Q_INVOKABLE bool zoomPrevious();
     // Centre the viewport on a SCENE point without changing the scale.
     Q_INVOKABLE void centerOnScene(double x, double y);

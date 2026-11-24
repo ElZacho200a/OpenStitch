@@ -529,7 +529,7 @@ Window {
                         return typeof files !== "undefined" && files !== null ? files.designHoopWarning() : ""
                     }
                     text: headerCard.compact ? "" : qsTr("Cadre %1").arg(spaceHost.hoopSummary())
-                          + (overflow.length > 0 ? "  ⚠" : "")
+                          + (overflow.length > 0 ? qsTr("  ⚠ motif plus grand") : "")
                     iconName: headerCard.compact ? "fit" : ""
                     quiet: true
                     tooltip: overflow.length > 0 ? overflow
