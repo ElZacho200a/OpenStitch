@@ -333,6 +333,9 @@ Result<AutoResult> build_contour_objects(const ContourNetwork& net, IdGenerator<
             e.intent = document::EmbroideryIntent::AutoChoice;
             document::RunningStitchParams rp;
             rp.repeats = kind == ContourStrategy::SingleRun ? 1 : 3;
+            // Contours : points courts dans les courbes serrées, longs sur les droites
+            // (flèche max. 0,1 mm entre un point et la ligne), au lieu d'une longueur fixe.
+            rp.chord_tolerance = Micrometers{100};
             e.params = rp;
             e.name = "Contour " + label + (rp.repeats == 1 ? " (simple)" : " (triple)");
             result.embroideries.push_back(std::move(e));

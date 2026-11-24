@@ -71,10 +71,83 @@ double nearest_arc_length(const std::vector<Vec2um>& pts, const std::vector<doub
     return best;
 }
 
+// Distance du point `p` à la droite (a, b) (a != b), en µm.
+double distance_to_line(Vec2um p, Vec2um a, Vec2um b) {
+    const double ex = static_cast<double>(b.x.value) - static_cast<double>(a.x.value);
+    const double ey = static_cast<double>(b.y.value) - static_cast<double>(a.y.value);
+    const double len = std::hypot(ex, ey);
+    if (len <= 0.0) {
+        return length_um(p - a);
+    }
+    const double px = static_cast<double>(p.x.value) - static_cast<double>(a.x.value);
+    const double py = static_cast<double>(p.y.value) - static_cast<double>(a.y.value);
+    return std::abs(ex * py - ey * px) / len;
+}
+
+// Ré-échantillonne un tronçon avec une longueur de point adaptée à la courbure : depuis le point
+// courant P (abscisse s), on prend le point suivant Q le plus loin possible (<= `target`) tel que
+// la corde PQ s'écarte de la courbe d'au plus `tolerance` (flèche). La flèche d'un arc de rayon R
+// vaut ~ l²/(8R) : une droite garde `target`, un virage serré raccourcit le point jusqu'à
+// `minLen`. La distance à la corde est maximale à un sommet de la polyligne aplatie : il suffit
+// de tester les sommets intermédiaires. Pas de conteneur non ordonné, essais décroissants
+// (x0,8) : déterministe.
+std::vector<Vec2um> resample_run_adaptive(const std::vector<Vec2um>& points, Micrometers target,
+                                          Micrometers minLength, Micrometers tolerance) {
+    if (points.size() < 2 || target.value <= 0) {
+        return points;
+    }
+    const auto cum = geometry::cumulative_lengths(points);
+    const double L = cum.back();
+    if (L == 0.0) {
+        return {points.front()};
+    }
+    const double tMax = static_cast<double>(target.value);
+    const double tMin = std::clamp(static_cast<double>(minLength.value), 50.0, tMax);
+    const double tol = static_cast<double>(tolerance.value);
+
+    // Flèche maximale de la corde [s ; s + l] par rapport aux sommets de la polyligne.
+    const auto deviation = [&](double s, double l, Vec2um p, Vec2um q) {
+        double worst = 0.0;
+        const auto first = std::upper_bound(cum.begin(), cum.end(), s);
+        for (auto it = first; it != cum.end() && *it < s + l; ++it) {
+            worst = std::max(
+                worst, distance_to_line(points[static_cast<std::size_t>(it - cum.begin())], p, q));
+        }
+        return worst;
+    };
+
+    std::vector<Vec2um> out;
+    out.push_back(points.front());
+    double s = 0.0;
+    while (L - s > 1.0) {
+        const double remaining = L - s;
+        const Vec2um p = out.back();
+        double l = std::min(tMax, remaining);
+        Vec2um q = geometry::point_at_length(points, cum, s + l);
+        while (l > tMin && deviation(s, l, p, q) > tol) {
+            l = std::max(tMin, l * 0.8);
+            q = geometry::point_at_length(points, cum, s + l);
+        }
+        // Reste trop court pour un point : on l'absorbe dans le dernier point si la longueur max
+        // le permet (sinon un dernier point court reste).
+        if (remaining - l < tMin && remaining <= tMax) {
+            l = remaining;
+            q = points.back();
+        }
+        s += l;
+        out.push_back(s >= L - 1.0 ? points.back() : q);
+    }
+    out.front() = points.front();
+    out.back() = points.back();
+    return out;
+}
+
 // Découpe une polyligne (ouverte ou fermée) en tronçons entre coins vifs, puis
-// ré-échantillonne chaque tronçon par longueur d'arc et concatène.
+// ré-échantillonne chaque tronçon par longueur d'arc et concatène. `tolerance` > 0 :
+// longueur de point adaptée à la courbure (`resample_run_adaptive`).
 std::vector<Vec2um> sample_by_runs(const std::vector<Vec2um>& poly, bool closed, Micrometers target,
-                                   double cornerThreshold) {
+                                   double cornerThreshold, Micrometers minLength = Micrometers{0},
+                                   Micrometers tolerance = Micrometers{0}) {
     std::vector<Vec2um> out;
     const std::size_t m = poly.size();
     if (m < 2) {
@@ -102,7 +175,9 @@ std::vector<Vec2um> sample_by_runs(const std::vector<Vec2um>& poly, bool closed,
     }
 
     const auto appendRun = [&](const std::vector<Vec2um>& run) {
-        const auto sampled = geometry::resample_run(run, target);
+        const auto sampled = tolerance.value > 0
+                                 ? resample_run_adaptive(run, target, minLength, tolerance)
+                                 : geometry::resample_run(run, target);
         for (const Vec2um& p : sampled) {
             if (out.empty() || out.back() != p) {
                 out.push_back(p);
@@ -172,7 +247,13 @@ RunningResult run_stitch(const geometry::Path& path, const RunningConfig& config
         return result;
     }
 
-    geometry::Polyline poly = geometry::flatten(path, config.flatten_tolerance);
+    // Longueur adaptative : le polygone aplati doit lui-même suivre la courbe mieux que la
+    // flèche visée (sinon on « précise » une approximation grossière).
+    Micrometers flattenTol = config.flatten_tolerance;
+    if (config.chord_tolerance.value > 0) {
+        flattenTol = Micrometers{std::clamp(config.chord_tolerance.value / 4, 5, flattenTol.value)};
+    }
+    geometry::Polyline poly = geometry::flatten(path, flattenTol);
     if (poly.points.size() < 2) {
         result.warnings.push_back({WarningCode::PathTooShort, "Chemin trop court pour être cousu",
                                    path.nodes.front().pos});
@@ -209,8 +290,9 @@ RunningResult run_stitch(const geometry::Path& path, const RunningConfig& config
                                    poly.points.front()});
     }
 
-    result.points = sample_by_runs(poly.points, poly.closed, config.target_length,
-                                   config.corner_threshold.radians);
+    result.points =
+        sample_by_runs(poly.points, poly.closed, config.target_length,
+                       config.corner_threshold.radians, config.min_length, config.chord_tolerance);
 
     // Diagnostic longueurs (aucune suppression aveugle : on avertit).
     for (std::size_t i = 1; i < result.points.size(); ++i) {
@@ -233,6 +315,15 @@ std::vector<Vec2um> sample_path(const geometry::Path& path, Micrometers target_l
     RunningConfig cfg;
     cfg.target_length = target_length;
     cfg.min_length = min_length;
+    return run_stitch(path, cfg).points;
+}
+
+std::vector<Vec2um> sample_path_adaptive(const geometry::Path& path, Micrometers target_length,
+                                         Micrometers min_length, Micrometers chord_tolerance) {
+    RunningConfig cfg;
+    cfg.target_length = target_length;
+    cfg.min_length = min_length;
+    cfg.chord_tolerance = chord_tolerance;
     return run_stitch(path, cfg).points;
 }
 

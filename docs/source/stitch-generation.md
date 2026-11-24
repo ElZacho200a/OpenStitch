@@ -56,6 +56,27 @@ Le résultat est structuré : `RunningResult { points, warnings, stats }`. Il ne
 plante jamais et renvoie un avertissement (chemin vide, trop court, point trop
 long…).
 
+## Point droit adaptatif (longueur selon la courbure)
+
+Avec une longueur de point fixe, la précision d'un contour dépend de la longueur : un point de
+`l` sur un arc de rayon `R` s'écarte de la courbe d'une flèche ≈ `l² / (8R)` (3 mm sur un rayon
+de 2 mm : ~0,6 mm). `RunningConfig::chord_tolerance` (`RunningStitchParams::chord_tolerance`,
+inspecteur Studio « Écart max. à la courbe » (ancien panneau : « Précision des courbes »), clé
+`.osp` `chordTolerance`) fixe cette flèche maximale ;
+0 (défaut) garde la longueur fixe historique.
+
+Quand elle est > 0, chaque tronçon entre coins est parcouru de proche en proche : depuis le point
+courant P, le point suivant Q est le plus loin possible (au plus `stitch_length`) tel que la
+corde PQ reste à moins de la tolérance de tous les sommets aplatis intermédiaires (essais
+décroissants ×0,8, plancher `min_length`). Les droites et grands rayons gardent donc la
+longueur cible, les virages serrés reçoivent des points courts ; le polygone aplati est lui-même
+resserré (tolérance/4) pour ne pas « préciser » une approximation grossière. Longueur admissible
+≈ `√(8·R·tol)` : avec 0,1 mm, 3 mm à partir de R ≈ 11 mm, 1,3 mm pour R = 2 mm. Le plancher
+`min_length` prime : une courbe plus serrée que lui dépasse la tolérance. Les coins vifs restent
+des pénétrations exactes. L'auto-numérisation en mode contours crée ses objets avec 0,1 mm ;
+les objets existants et les `.osp` anciens restent à 0. Déterministe (aucun conteneur non
+ordonné, doubles purs).
+
 ## Chemins fermés, sens, phase, départ
 
 `RunningConfig` expose : `reverse` (sens), `phase` (décalage curviligne des
