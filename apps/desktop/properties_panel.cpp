@@ -1590,8 +1590,7 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                                        "le remplissage, pour masquer les bouts de lignes "
                                        "(bords effilochés)."));
                 outline->setChecked(p.edge_outline);
-                auto* smoothField =
-                    new QCheckBox(tr("Lignes de couture lissées (formes courbes)"), body_);
+                auto* smoothField = new QCheckBox(tr("Lignes lissées (formes courbes)"), body_);
                 smoothField->setObjectName(QStringLiteral("check_directionalSmoothField"));
                 smoothField->setToolTip(tr("Adoucit les cassures de direction sur les formes "
                                            "larges ou courbes (cœur, spirale, C épais) : les "
