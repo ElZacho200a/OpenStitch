@@ -38,7 +38,7 @@ struct HandleItem {
 
 class DigitizeGestures : public QObject {
     Q_OBJECT
-    // "", "points", "fade", "satin", "guide", "break", "rungs".
+    // "", "points", "fade", "satin", "guide", "guided", "break", "rungs".
     Q_PROPERTY(QString mode READ mode WRITE setMode NOTIFY modeChanged)
     Q_PROPERTY(bool capturesMouse READ capturesMouse NOTIFY modeChanged)
     Q_PROPERTY(bool busy READ busy NOTIFY overlayChanged)
@@ -92,6 +92,7 @@ private:
     [[nodiscard]] static PointMm toModel(double x, double y) { return screenToModel(x, y); }
     [[nodiscard]] static ScenePoint toScene(PointMm p) { return {p.x, -p.y}; }
     [[nodiscard]] std::uint64_t satinId() const { return satin_.objectId().toULongLong(); }
+    [[nodiscard]] bool isGuideMode() const;
     [[nodiscard]] std::vector<Grip> grips() const;
     [[nodiscard]] std::optional<Grip> gripAt(PointMm p) const;
     [[nodiscard]] int fadeHandleAt(PointMm p) const;
@@ -111,6 +112,7 @@ private:
     FadeController& fade_;
     SatinController& satin_;
     QString mode_;
+    std::uint64_t guidedTarget_{0};
     bool pointsTurnedOn_{false};
 
     double scale_{1.0};

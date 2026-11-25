@@ -45,7 +45,11 @@ DigitizeGestures::DigitizeGestures(StudioController& studio, PointEditController
         }
     });
     connect(&satin_, &SatinController::changed, this, [this] {
-        if (mode_ == QLatin1String("satin") || mode_ == QLatin1String("guide")) {
+        if (mode_ == QLatin1String("guided") &&
+            (guidedTarget_ != satinId() || !satin_.isGuidedSatin() ||
+             !satin_.guidedSatinDisabledReason().isEmpty())) {
+            setMode({});
+        } else if (mode_ == QLatin1String("satin") || isGuideMode()) {
             rebuildStatic();
         }
     });
@@ -57,9 +61,12 @@ void DigitizeGestures::setMode(const QString& mode) {
                                    QStringLiteral("fade"),
                                    QStringLiteral("satin"),
                                    QStringLiteral("guide"),
+                                   QStringLiteral("guided"),
                                    QStringLiteral("break"),
                                    QStringLiteral("rungs")};
-    if (mode == mode_ || !known.contains(mode)) {
+    if (mode == mode_ || !known.contains(mode) ||
+        (mode == QLatin1String("guided") &&
+         (!satin_.isGuidedSatin() || !satin_.guidedSatinDisabledReason().isEmpty()))) {
         return;
     }
     cancel();
@@ -69,12 +76,17 @@ void DigitizeGestures::setMode(const QString& mode) {
         pointsTurnedOn_ = false;
     }
     mode_ = mode;
+    guidedTarget_ = mode_ == QLatin1String("guided") ? satinId() : 0;
     if (mode_ == QLatin1String("points") && !points_.active()) {
         points_.setActive(true);
         pointsTurnedOn_ = true;
     }
     emit modeChanged();
     rebuildStatic();
+}
+
+bool DigitizeGestures::isGuideMode() const {
+    return mode_ == QLatin1String("guide") || mode_ == QLatin1String("guided");
 }
 
 QString DigitizeGestures::hint() const {
@@ -118,7 +130,7 @@ std::vector<DigitizeGestures::Grip> DigitizeGestures::grips() const {
     if (id == 0) {
         return out;
     }
-    if (mode_ == QLatin1String("guide")) {
+    if (isGuideMode()) {
         const auto paths = satin_.autoSatinGuidePaths();
         for (int guide = 0; guide < paths.size(); ++guide) {
             const auto points = paths[guide].toList();
@@ -345,17 +357,20 @@ bool DigitizeGestures::press(double x, double y, double pxPerMm, Qt::KeyboardMod
             return false;
         }
         drag_ = grip_->type == Grip::Type::RailNode ? Drag::RailNode : Drag::RungEnd;
-    } else if (mode_ == QLatin1String("guide") || mode_ == QLatin1String("break")) {
+    } else if (isGuideMode() || mode_ == QLatin1String("break")) {
         if (points_.objectId().isEmpty() && satin_.objectId().isEmpty()) {
             note(tr("Sélectionnez un remplissage."), false);
             return false;
         }
-        if (mode_ == QLatin1String("guide")) {
+        if (isGuideMode()) {
             grip_ = gripAt(anchor_);
             if (grip_ && grip_->type == Grip::Type::GuideNode) {
                 drag_ = Drag::GuideNode;
                 rebuildDynamic();
                 return true;
+            }
+            if (mode_ == QLatin1String("guided") && satin_.hasGuidedPath()) {
+                return false;
             }
         }
         stroke_.push_back(anchor_);
@@ -576,7 +591,7 @@ void DigitizeGestures::rebuildStatic() {
             }
             static_.push_back(std::move(stops));
         }
-    } else if (mode_ == QLatin1String("guide")) {
+    } else if (isGuideMode()) {
         const auto paths = satin_.autoSatinGuidePaths();
         HandleItem handles{HandleItem::Kind::Handle, {}};
         for (const auto& raw : paths) {

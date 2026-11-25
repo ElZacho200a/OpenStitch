@@ -10,7 +10,13 @@ Rectangle {
     id: panel
     objectName: "satinPanel"
     property var controller
+    signal guidedTraceRequested()
     readonly property bool ready: controller !== undefined && controller !== null
+    readonly property var actionController: typeof actions !== "undefined" ? actions : null
+    readonly property bool guided: ready && controller.isGuidedSatin
+    readonly property string selectedObjectId: ready ? controller.objectId : ""
+    property string guidedRefusal: ""
+    onSelectedObjectIdChanged: guidedRefusal = ""
     function parseRailCoordinate(value) {
         const mm = String(value).trim().replace(",", ".")
         if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(mm))
@@ -45,9 +51,55 @@ Rectangle {
             id: column
             width: parent.width - 12
             spacing: 8
-            SectionLabel { text: qsTr("COLONNE SATIN") }
+            SectionLabel { text: qsTr("SATIN GUIDÉ") }
+            Text {
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                color: Theme.muted
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.smallSize
+                text: panel.ready && panel.controller.guidedSatinDisabledReason !== ""
+                      ? panel.controller.guidedSatinDisabledReason
+                      : qsTr("Tracez la ligne centrale pour faire tourner les points le long de la forme.")
+            }
+            StudioButton {
+                objectName: "guidedSatinTraceButton"
+                text: !panel.guided ? qsTr("Créer un satin guidé")
+                      : panel.controller.hasGuidedPath ? qsTr("Modifier la ligne centrale")
+                      : qsTr("Tracer la ligne centrale")
+                enabled: panel.ready && panel.controller.guidedSatinDisabledReason === ""
+                         && panel.actionController !== null && !studio.busy
+                disabledReason: studio.busy ? qsTr("Recalcul des points en cours.")
+                                : panel.ready ? panel.controller.guidedSatinDisabledReason : ""
+                onClicked: {
+                    panel.guidedRefusal = ""
+                    if (!panel.guided && panel.controller.isAutoSatin) {
+                        if (!panel.controller.useGuidedStrategy())
+                            return
+                    } else if (!panel.guided) {
+                        panel.guidedRefusal = panel.actionController.run(
+                            "satin.auto", { spacing_mm: "0.4", strategy: "guided_satin" })
+                        if (panel.guidedRefusal !== "")
+                            return
+                    }
+                    panel.guidedTraceRequested()
+                }
+            }
+            Text {
+                visible: panel.guidedRefusal !== ""
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                color: Theme.accent
+                font.family: Theme.fontFamily
+                text: panel.guidedRefusal
+            }
+            SectionLabel {
+                visible: panel.ready && panel.controller.isSatin
+                text: qsTr("COLONNE SATIN")
+            }
             Text {
                 objectName: "satinDiagnosis"
+                visible: panel.ready && panel.controller.isSatin
                 Layout.fillWidth: true
                 wrapMode: Text.Wrap
                 color: Theme.faint
@@ -57,6 +109,7 @@ Rectangle {
                       : qsTr("L'objet sélectionné n'est pas une colonne satin à rails.")
             }
             Flow {
+                visible: panel.ready && panel.controller.isSatin
                 Layout.fillWidth: true
                 spacing: 4
                 enabled: panel.ready && panel.controller.isSatin
@@ -66,8 +119,12 @@ Rectangle {
                     enabled: panel.controller.redundantRungIndex >= 0
                     onClicked: panel.controller.removeRung(panel.controller.redundantRungIndex) }
             }
-            SectionLabel { text: qsTr("NŒUD D'UN RAIL (mm)") }
+            SectionLabel {
+                visible: panel.ready && panel.controller.isSatin
+                text: qsTr("NŒUD D'UN RAIL (mm)")
+            }
             RowLayout {
+                visible: panel.ready && panel.controller.isSatin
                 enabled: panel.ready && panel.controller.isSatin
                 StudioComboBox { id: side; objectName: "satinSide"; model: ["A", "B"] }
                 StudioSpinBox {
@@ -103,8 +160,9 @@ Rectangle {
                         panel.parseRailCoordinate(nx.text), panel.parseRailCoordinate(ny.text))
                 }
             }
-            SectionLabel { text: qsTr("TRACER UN GUIDE (mm)") }
+            SectionLabel { visible: !panel.guided; text: qsTr("TRACER UN GUIDE (mm)") }
             RowLayout {
+                visible: !panel.guided
                 Layout.fillWidth: true
                 StudioLabel { text: qsTr("Début") }
                 StudioTextField {
@@ -123,6 +181,7 @@ Rectangle {
                 }
             }
             RowLayout {
+                visible: !panel.guided
                 Layout.fillWidth: true
                 StudioLabel { text: qsTr("Fin") }
                 StudioTextField {
@@ -142,6 +201,7 @@ Rectangle {
             }
             StudioButton {
                 objectName: "addDirectionGuide"
+                visible: !panel.guided
                 text: qsTr("Ajouter le guide")
                 enabled: panel.ready && panel.validGuidePoints()
                 tooltip: qsTr("Crée un guide de direction entre deux points du modèle (mm)")
@@ -149,19 +209,22 @@ Rectangle {
             }
             StudioButton {
                 objectName: "addBreakLine"
+                visible: !panel.guided
                 text: qsTr("Ajouter la ligne de rupture")
                 enabled: panel.ready && panel.validGuidePoints()
                          && panel.controller.breakLineCount >= 0
                 tooltip: qsTr("Crée une ligne de rupture entre deux points du modèle (mm)")
                 onClicked: panel.controller.addGuide(panel.guidePoints(), true)
             }
-            SectionLabel { text: qsTr("GUIDES DE DIRECTION") }
+            SectionLabel { text: panel.guided ? qsTr("LIGNE CENTRALE") : qsTr("GUIDES DE DIRECTION") }
             Text {
                 Layout.fillWidth: true
                 wrapMode: Text.Wrap
                 color: Theme.faint
                 font.family: Theme.fontFamily
                 text: !panel.ready || panel.controller.guideCount < 0 ? qsTr("Remplissage non directionnel (le premier guide le convertit).")
+                      : panel.guided
+                        ? (panel.controller.hasGuidedPath ? qsTr("Ligne centrale tracée.") : qsTr("Aperçu automatique."))
                       : panel.controller.breakLineCount < 0
                         ? panel.controller.guideCount + qsTr(" guide(s) de satin")
                         : panel.controller.guideCount + qsTr(" guide(s), ") + panel.controller.breakLineCount + qsTr(" ligne(s) de rupture")
@@ -170,8 +233,18 @@ Rectangle {
                 Layout.fillWidth: true
                 spacing: 4
                 enabled: panel.ready && panel.controller.guideCount >= 0
-                StudioButton { objectName: "guidesClear"; text: qsTr("Retirer les guides"); onClicked: panel.controller.clearGuides(false) }
+                StudioButton {
+                    objectName: "guidesClear"
+                    visible: !panel.guided || panel.controller.guideCount > 0
+                    text: panel.guided ? qsTr("Revenir à l’aperçu automatique") : qsTr("Retirer les guides")
+                    enabled: panel.controller.guideCount > 0
+                             && (!panel.guided || panel.controller.guidedSatinDisabledReason === "")
+                    disabledReason: panel.guided ? panel.controller.guidedSatinDisabledReason
+                                                 : qsTr("Aucun guide à retirer.")
+                    onClicked: panel.controller.clearGuides(false)
+                }
                 StudioButton { objectName: "breaksClear"; text: qsTr("Retirer les ruptures")
+                    visible: !panel.guided
                     enabled: panel.ready && panel.controller.breakLineCount >= 0
                     onClicked: panel.controller.clearGuides(true) }
             }

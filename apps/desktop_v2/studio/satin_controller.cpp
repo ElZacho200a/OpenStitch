@@ -2,8 +2,11 @@
 #include "satin_controller.hpp"
 
 #include <algorithm>
+#include <memory>
 
 #include "direction_guides.hpp"
+#include "openstitch/commands/project_commands.hpp"
+#include "openstitch/document/shape_kind.hpp"
 
 namespace openstitch::desktop_v2::studio {
 namespace {
@@ -47,6 +50,8 @@ void SatinController::refresh() {
     id_ = count == 1 ? id : 0;
     railA_ = railB_ = rungs_ = 0;
     guides_ = breaks_ = -1;
+    autoStrategy_.reset();
+    hasGuidedPath_ = false;
     diagnosis_ = SatinDiagnosis{};
     if (id_ != 0) {
         const auto& project = studio_.session().project();
@@ -56,12 +61,55 @@ void SatinController::refresh() {
         diagnosis_ = diagnoseSatin(project, id_);
         guides_ = directionGuideCount(project, id_);
         breaks_ = desktop_v2::breakLineCount(project, id_);
+        if (const auto* object = project.findEmbroidery(ObjectId{id_})) {
+            if (const auto* params = std::get_if<document::AutoSatinParams>(&object->params)) {
+                autoStrategy_ = params->strategy;
+                hasGuidedPath_ = std::ranges::any_of(
+                    params->guides, [](const auto& guide) { return guide.path.size() >= 2; });
+            }
+        }
     }
     emit changed();
 }
 
 QString SatinController::objectId() const {
     return id_ == 0 ? QString() : QString::number(id_);
+}
+
+QString SatinController::guidedSatinDisabledReason() const {
+    const auto& project = studio_.session().project();
+    const auto* object = project.findEmbroidery(ObjectId{id_});
+    if (!object) {
+        return tr("Sélectionnez un seul objet de broderie.");
+    }
+    if (object->locked) {
+        return tr("Déverrouillez l’objet pour modifier son satin.");
+    }
+    const auto* shape = project.findObject(object->source_vector);
+    if (!shape || shape->paths.empty() || document::is_open_line(*shape)) {
+        return tr("Le satin guidé demande une forme fermée.");
+    }
+    return {};
+}
+
+bool SatinController::useGuidedStrategy() {
+    const auto reason = guidedSatinDisabledReason();
+    if (!reason.isEmpty()) {
+        return refuse(reason);
+    }
+    auto& session = studio_.session();
+    const auto* object = session.project().findEmbroidery(ObjectId{id_});
+    const auto* current = std::get_if<document::AutoSatinParams>(&object->params);
+    if (!current) {
+        return refuse(tr("Sélectionnez un satin automatique."));
+    }
+    if (current->strategy != document::AutoSatinStrategy::Guided) {
+        auto params = *current;
+        params.strategy = document::AutoSatinStrategy::Guided;
+        session.execute(std::make_unique<commands::EditAutoSatinCommand>(
+            object->id, std::move(params), tr("Choisir le satin guidé").toStdString()));
+    }
+    return report({true, {}}, {});
 }
 
 QString SatinController::diagnosis() const {

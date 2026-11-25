@@ -428,8 +428,11 @@ courbe qui revient sur elle-même selon cet axe n'est pas suivie fidèlement. Te
 
 **Satin guidé (`guided_satin`).** Sans tracé, la colonne démarre sur l'axe principal.
 Si cet axe rencontre plusieurs intervalles du contour, comme sur un ruban courbe ou un
-anneau, la construction par axe médian fournit l'aperçu initial. Un tracé par l'outil
-**Guide de direction** dans Studio prend ensuite la main. L'API accepte ce même tracé
+anneau, la construction par axe médian fournit l'aperçu initial. Dans Studio, sélectionnez
+une forme dans **Points**, puis choisissez **Satin › Créer un satin guidé** et glissez
+au centre de la bande. Pour retoucher le tracé, choisissez **Modifier la ligne centrale**
+ou appuyez sur **D** avec le satin sélectionné, puis déplacez ses nœuds. **Revenir à
+l’aperçu automatique** retire le tracé et permet d’en dessiner un autre. L'API accepte ce même tracé
 dès la conversion `auto_satin`, dans `guides: [{"path_mm": [[x, y], ...]}]`.
 
 Les traversées suivent la normale à la tangente interpolée entre les nœuds du guide.
