@@ -526,6 +526,9 @@ json params_to_json(const document::StitchParams& params) {
                 if (p.spacing_regularity != 0.0) {
                     j["spacingRegularity"] = p.spacing_regularity;
                 }
+                if (p.smooth_field) {
+                    j["smoothField"] = true;
+                }
                 if (p.density_gradient) {
                     const auto& g = *p.density_gradient;
                     j["densityGradient"] = {{"fromX", g.from.x.value},
@@ -1023,6 +1026,7 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.underlay_zigzag = j.value("underlayZigzag", false);
         // Valeur hors [0 ; 1] ou non finie : bornée (fichier édité à la main).
         p.spacing_regularity = std::clamp(j.value("spacingRegularity", 0.0), 0.0, 1.0);
+        p.smooth_field = j.value("smoothField", false);
         if (j.contains("densityGradient") && j.at("densityGradient").is_object()) {
             const auto& g = j.at("densityGradient");
             document::DensityGradient grad;

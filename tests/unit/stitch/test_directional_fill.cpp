@@ -1136,6 +1136,63 @@ TEST_CASE("directional spacing regularity is deterministic and off by default") 
           trace_directional_streamlines(region, fan_params()).size());
 }
 
+TEST_CASE("directional smooth field is off by default and leaves the legacy fill untouched") {
+    const auto region = rect_mm(0, 0, 30, 20);
+    auto dp = fan_params();
+    CHECK_FALSE(dp.smooth_field);
+    const auto legacy = fill_directional(region, dp);
+    dp.smooth_field = false;
+    CHECK(fill_directional(region, dp) == legacy);
+    // Sans guide il n'y a rien à lisser : le repli sur l'axe principal reste identique.
+    auto bare = base_params();
+    const auto bareLegacy = fill_directional(region, bare);
+    bare.smooth_field = true;
+    CHECK(fill_directional(region, bare) == bareLegacy);
+}
+
+TEST_CASE("directional smooth field is deterministic and stays inside the shape") {
+    const auto region = rect_mm(0, 0, 30, 20);
+    auto dp = fan_params();
+    const auto legacy = fill_directional(region, dp);
+    dp.smooth_field = true;
+    const auto a = fill_directional(region, dp);
+    const auto b = fill_directional(region, dp);
+    REQUIRE(a.size() > 100);
+    CHECK(a == b);
+    CHECK(a != legacy); // le champ diverge bien de la tangente du guide le plus proche
+    for (const auto& line : trace_directional_streamlines(region, dp)) {
+        for (const Vec2um p : line.points) {
+            CHECK(p.x.value >= -1);
+            CHECK(p.x.value <= 30'001);
+            CHECK(p.y.value >= -1);
+            CHECK(p.y.value <= 20'001);
+        }
+    }
+}
+
+TEST_CASE("directional smooth field keeps rows on the guide direction next to a guide") {
+    // Un guide horizontal au milieu d'un rectangle : le long du guide, la direction reste
+    // celle du guide (nœuds ancrés), lissage ou non.
+    const auto region = rect_mm(0, 0, 30, 20);
+    auto dp = base_params();
+    dp.guides.push_back(line_mm(0, 10, 30, 10));
+    dp.smooth_field = true;
+    const auto lines = trace_directional_streamlines(region, dp);
+    REQUIRE(lines.size() > 10);
+    double worst = 0.0;
+    for (const auto& line : lines) {
+        for (std::size_t i = 1; i < line.points.size(); ++i) {
+            const double dx = line.points[i].x.value - line.points[i - 1].x.value;
+            const double dy = line.points[i].y.value - line.points[i - 1].y.value;
+            if (std::abs(dx) + std::abs(dy) < 1.0) {
+                continue;
+            }
+            worst = std::max(worst, std::abs(dy) / (std::abs(dx) + 1e-9));
+        }
+    }
+    CHECK(worst < 0.2); // pente maximale d'un segment : lignes quasi horizontales
+}
+
 TEST_CASE("directional spacing regularity works together with a density gradient") {
     const auto region = rect_mm(0, 0, 30, 20);
     auto dp = base_params();

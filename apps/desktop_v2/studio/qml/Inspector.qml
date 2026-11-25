@@ -56,21 +56,48 @@ Item {
         contentHeight: column.implicitHeight + 24
         clip: true
         boundsBehavior: Flickable.StopAtBounds
-        Controls.ScrollBar.vertical: Controls.ScrollBar { }
+        // Visible tant que le contenu déborde : sur une fenêtre basse (1000×640) les réglages
+        // sous les en-têtes ne sont atteignables qu'en défilant, et une barre masquée ne le dit pas.
+        Controls.ScrollBar.vertical: Controls.ScrollBar {
+            id: flickBar
+            objectName: "inspectorScrollBar"
+            policy: flick.contentHeight > flick.height + 1 ? Controls.ScrollBar.AlwaysOn
+                                                          : Controls.ScrollBar.AsNeeded
+            // Piste et poignée contrastées : la fine barre par défaut passe inaperçue.
+            implicitWidth: 10
+            background: Rectangle {
+                implicitWidth: 10
+                radius: 5
+                color: Theme.raised
+                visible: flickBar.size < 1
+            }
+            contentItem: Rectangle {
+                implicitWidth: 6
+                radius: 3
+                color: flickBar.pressed ? Theme.accent : Theme.muted
+                visible: flickBar.size < 1
+            }
+        }
 
         ColumnLayout {
             id: column
-            width: flick.width - 36
+            // Marge droite de 20 px : la barre (10 px) ne recouvre jamais un champ.
+            width: flick.width - 38
             x: 18
             y: 12
-            spacing: 12
+            spacing: 8
 
             RowLayout {
                 Layout.fillWidth: true
                 SectionLabel { text: qsTr("RÉGLAGES DE POINTS") }
-                Item { Layout.fillWidth: true }
+                // Elide au lieu d'élargir la colonne : un sous-titre long ne doit pas pousser
+                // les champs sous la barre de défilement.
                 Text {
                     objectName: "inspectorCount"
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    horizontalAlignment: Text.AlignRight
+                    elide: Text.ElideRight
                     text: root.ctl ? qsTr("%1 objet(s) · %2").arg(root.ctl.count).arg(root.ctl.typeLabel) : ""
                     color: Theme.faint
                     font.family: Theme.fontFamily
@@ -236,26 +263,37 @@ Item {
                 wrapMode: Text.WordWrap
             }
 
-            StudioSwitch {
-                objectName: "advancedSwitch"
-                text: qsTr("Réglages avancés") + (root.ctl && root.ctl.hiddenAdvancedCount > 0
-                                                  ? " (" + root.ctl.hiddenAdvancedCount + ")" : "")
-                checked: root.ctl ? root.ctl.showAdvanced : false
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.smallSize
-                palette.windowText: Theme.foreground
-                onToggled: root.ctl.showAdvanced = checked
-            }
-
-            StudioSwitch {
-                objectName: "expertSwitch"
-                text: qsTr("Niveau expert") + (root.ctl && root.ctl.hiddenExpertCount > 0
-                                               ? " (" + root.ctl.hiddenExpertCount + ")" : "")
-                checked: root.ctl ? root.ctl.showExpert : false
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.smallSize
-                palette.windowText: Theme.foreground
-                onToggled: root.ctl.showExpert = checked
+            // Les deux niveaux sur une seule ligne : à 1000×640 chaque ligne de moins rapproche
+            // le premier réglage du haut du panneau.
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                StudioSwitch {
+                    objectName: "advancedSwitch"
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    text: qsTr("Avancés") + (root.ctl && root.ctl.hiddenAdvancedCount > 0
+                                             ? " (" + root.ctl.hiddenAdvancedCount + ")" : "")
+                    checked: root.ctl ? root.ctl.showAdvanced : false
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.smallSize
+                    palette.windowText: Theme.foreground
+                    Accessible.name: qsTr("Réglages avancés")
+                    onToggled: root.ctl.showAdvanced = checked
+                }
+                StudioSwitch {
+                    objectName: "expertSwitch"
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    text: qsTr("Expert") + (root.ctl && root.ctl.hiddenExpertCount > 0
+                                            ? " (" + root.ctl.hiddenExpertCount + ")" : "")
+                    checked: root.ctl ? root.ctl.showExpert : false
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.smallSize
+                    palette.windowText: Theme.foreground
+                    Accessible.name: qsTr("Niveau expert")
+                    onToggled: root.ctl.showExpert = checked
+                }
             }
 
             Text {

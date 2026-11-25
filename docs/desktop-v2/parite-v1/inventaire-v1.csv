@@ -309,6 +309,7 @@ df6f4ad1,case,Je possède ce fil,thread_panel.cpp
 1a41ec3c,case,Liaison en spirale,properties_panel.cpp
 e47033c8,case,Liaisons cousues cachées,properties_panel.cpp
 1e94712b,case,"Ligatures (ff, fi, fl, ffi, ffl)",text_dialog.cpp
+602bd10d,case,Lignes lissées (formes courbes),properties_panel.cpp
 623246f4,case,Limiter la recherche du fil le plus proche à mes fils,thread_panel.cpp
 41c3b1d2,case,Optimiser les trajets (réglage de ce fichier : moins de coupes et de sauts),machine_export_dialog.cpp
 246e3e21,case,Orientation paysage,placement_template_dialog.cpp

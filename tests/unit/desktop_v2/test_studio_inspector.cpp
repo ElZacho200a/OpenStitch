@@ -257,7 +257,7 @@ void StudioInspectorTest::everySpecFieldIsExposedAndEditable() {
             }
         }
     }
-    QVERIFY(specFields == 181); // the complete table lists every engine setting of the 14 types
+    QVERIFY(specFields == 182); // the complete table lists every engine setting of the 14 types
     QCOMPARE(exposed, specFields);
     QCOMPARE(typesWithSpecs.size(), static_cast<std::size_t>(14));
 }
@@ -1062,6 +1062,19 @@ void StudioInspectorTest::sliderWheelRequiresFocusAndOtherwiseScrollsThePanel() 
     auto* flick = find("inspectorFlick");
     QVERIFY(flick != nullptr);
     QTRY_VERIFY(flick->property("contentHeight").toDouble() > flick->height() + 10.0);
+
+    // The panel overflows, so its scrollbar must stay visible (AlwaysOn = 2): on a short
+    // window nothing else tells the user that more settings sit below the fold.
+    auto* scrollBar = find("inspectorScrollBar");
+    QVERIFY(scrollBar != nullptr);
+    QCOMPARE(scrollBar->property("policy").toInt(), 2);
+    // ... and it must never sit on top of a field: the header subtitle ("N objet(s) · type")
+    // elides instead of widening the column under the bar.
+    auto* count = find("inspectorCount");
+    QVERIFY(count != nullptr);
+    const double countRight = count->mapToItem(root, QPointF(count->width(), 0)).x();
+    QVERIFY2(countRight <= root->width() - scrollBar->property("implicitWidth").toDouble(),
+             qPrintable(QString::number(countRight)));
 
     const auto sendWheel = [&] {
         const QPointF scene =
