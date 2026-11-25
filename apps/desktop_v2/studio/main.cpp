@@ -266,7 +266,8 @@ int main(int argc, char** argv) {
                 // pour inspecter le texte d'aide aux deux tailles de la grille de captures.
                 if (auto* section =
                         window->findChild<QObject*>(QStringLiteral("segmentationSection"))) {
-                    section->setProperty("liveEnabled", false);
+                    // L'aperçu en direct reste actif : le changement relance l'aperçu, que la
+                    // capture montre avec les fils retrouvés.
                     section->setProperty("fineStructures", true);
                 }
             } else if (name == QStringLiteral("avances")) {

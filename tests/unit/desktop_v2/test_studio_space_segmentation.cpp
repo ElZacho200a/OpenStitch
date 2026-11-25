@@ -1206,7 +1206,8 @@ private slots:
                     .toBool());
 
         // Parcours novice mesuré : un clic coche la case, un second clic applique (2 clics depuis
-        // l'espace Segmentation, aperçu en direct déjà actif).
+        // l'espace Segmentation). L'aperçu en direct est coupé ici pour que le test ne dépende
+        // pas du minuteur de 350 ms ; il est actif par défaut dans l'application.
         QSignalSpy applied(&rig.images, &ImageController::segmentationApplied);
         QVERIFY(rig.press("segApplyButton"));
         QTRY_COMPARE_WITH_TIMEOUT(applied.count(), 1, 60'000);
