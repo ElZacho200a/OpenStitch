@@ -3,7 +3,7 @@
 - **PDF** : `docs/build/OpenStitch-Studio-Documentation.pdf`
 - **Existe** : oui
 - **Pages** : 346
-- **Taille** : 2565.8 Kio (2627420 octets)
+- **Taille** : 2566.7 Kio (2628298 octets)
 - **Chaîne** : python-markdown -> HTML/CSS -> xhtml2pdf (reportlab), SVG via svglib
 - **Commande** : `docs\scripts\build-docs.ps1` (ou `python docs/scripts/build-docs.py`)
 - **Chapitres produits** : 56

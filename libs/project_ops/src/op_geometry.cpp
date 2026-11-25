@@ -114,34 +114,39 @@ OpStatus read_point(const OpContext& ctx, const char* key, bool required, Vec2um
     return st;
 }
 
-OpStatus read_points(const OpContext& ctx, const char* key, std::size_t min_count,
-                     std::size_t max_count, std::vector<Vec2um>& out) {
-    const auto it = ctx.args.find(key);
-    if (it == ctx.args.end() || !it->is_array()) {
-        return usage(std::string("argument « ") + key +
-                     " » obligatoire : tableau de points [x, y]");
+OpStatus read_point_array(const json& value, const std::string& label, std::size_t min_count,
+                          std::size_t max_count, std::vector<Vec2um>& out) {
+    if (!value.is_array()) {
+        return usage(label + " : tableau de points [x, y] attendu");
     }
-    if (it->size() < min_count) {
-        return usage(std::string("argument « ") + key + " » : au moins " +
-                         std::to_string(min_count) + " points sont requis (" +
-                         std::to_string(it->size()) + " donné(s))",
-                     "");
+    if (value.size() < min_count) {
+        return usage(label + " : au moins " + std::to_string(min_count) + " points sont requis (" +
+                     std::to_string(value.size()) + " donné(s))");
     }
-    if (it->size() > max_count) {
-        return out_of_range(std::string("argument « ") + key + " » : au plus " +
-                            std::to_string(max_count) + " points");
+    if (value.size() > max_count) {
+        return out_of_range(label + " : au plus " + std::to_string(max_count) + " points");
     }
     out.clear();
-    out.reserve(it->size());
-    for (std::size_t i = 0; i < it->size(); ++i) {
+    out.reserve(value.size());
+    for (std::size_t i = 0; i < value.size(); ++i) {
         Vec2um p;
-        const auto st = point_from((*it)[i], std::string(key) + "[" + std::to_string(i) + "]", p);
+        const auto st = point_from(value[i], label + "[" + std::to_string(i) + "]", p);
         if (!st.ok) {
             return st;
         }
         out.push_back(p);
     }
     return OpStatus::success();
+}
+
+OpStatus read_points(const OpContext& ctx, const char* key, std::size_t min_count,
+                     std::size_t max_count, std::vector<Vec2um>& out) {
+    const auto it = ctx.args.find(key);
+    if (it == ctx.args.end()) {
+        return usage(std::string("argument « ") + key +
+                     " » obligatoire : tableau de points [x, y]");
+    }
+    return read_point_array(*it, key, min_count, max_count, out);
 }
 
 OpStatus read_enum(const OpContext& ctx, const char* key,
@@ -1013,7 +1018,7 @@ OpStatus read_guides(const OpContext& ctx, std::vector<document::AutoSatinGuide>
         return OpStatus::success();
     }
     if (!it->is_array()) {
-        return usage("argument « guides » : tableau d'objets {anchor_mm, angle_deg, absolute?}");
+        return usage("argument « guides » : tableau de guides {path_mm} ou {anchor_mm, angle_deg}");
     }
     if (it->size() > 64) {
         return out_of_range("argument « guides » : au plus 64 guides");
@@ -1022,29 +1027,47 @@ OpStatus read_guides(const OpContext& ctx, std::vector<document::AutoSatinGuide>
         const auto& g = (*it)[i];
         const std::string where = "guides[" + std::to_string(i) + "]";
         if (!g.is_object()) {
-            return usage(where + " : objet {anchor_mm, angle_deg, absolute?} attendu");
+            return usage(where + " : objet guide attendu");
         }
         for (const auto& [key, value] : g.items()) {
             (void)value;
-            if (key != "anchor_mm" && key != "angle_deg" && key != "absolute") {
+            if (key != "anchor_mm" && key != "angle_deg" && key != "absolute" && key != "path_mm") {
                 return usage(where + " : clé inconnue « " + key + " »");
             }
         }
-        if (!g.contains("anchor_mm") || !g.contains("angle_deg")) {
-            return usage(where + " : « anchor_mm » et « angle_deg » sont obligatoires");
-        }
         document::AutoSatinGuide guide;
-        if (auto st = point_from(g["anchor_mm"], where + ".anchor_mm", guide.anchor); !st.ok) {
-            return st;
+        if (const auto path = g.find("path_mm"); path != g.end()) {
+            if (auto st = read_point_array(*path, where + ".path_mm", 2, 1024, guide.path);
+                !st.ok) {
+                return st;
+            }
+            guide.path.erase(std::unique(guide.path.begin(), guide.path.end()), guide.path.end());
+            if (guide.path.size() < 2) {
+                return usage(where + ".path_mm : au moins deux points distincts sont requis");
+            }
+            guide.anchor = guide.path.front();
+            const auto end = guide.path[1];
+            guide.angle = Angle{wrap_half_pi(std::atan2(end.y.value - guide.anchor.y.value,
+                                                        end.x.value - guide.anchor.x.value))};
+            guide.absolute = true;
+        } else if (!g.contains("anchor_mm") || !g.contains("angle_deg")) {
+            return usage(where + " : « path_mm » ou « anchor_mm » et « angle_deg » requis");
         }
-        if (!g["angle_deg"].is_number()) {
-            return usage(where + ".angle_deg : un nombre est attendu");
+        if (const auto anchor = g.find("anchor_mm"); anchor != g.end()) {
+            if (auto st = point_from(*anchor, where + ".anchor_mm", guide.anchor); !st.ok) {
+                return st;
+            }
         }
-        const double deg = g["angle_deg"].get<double>();
-        if (!std::isfinite(deg) || deg < -360.0 || deg > 360.0) {
-            return out_of_range(where + ".angle_deg hors plage [-360 ; 360]");
+        if (const auto angle = g.find("angle_deg"); angle != g.end()) {
+            if (!angle->is_number()) {
+                return usage(where + ".angle_deg : un nombre est attendu");
+            }
+            const double deg = angle->get<double>();
+            if (!std::isfinite(deg) || deg < -360.0 || deg > 360.0) {
+                return out_of_range(where + ".angle_deg hors plage [-360 ; 360]");
+            }
+            guide.angle = Angle{wrap_half_pi(deg * std::numbers::pi / 180.0)};
         }
-        guide.angle = Angle{wrap_half_pi(deg * std::numbers::pi / 180.0)};
         if (g.contains("absolute")) {
             if (!g["absolute"].is_boolean()) {
                 return usage(where + ".absolute : booléen attendu");
@@ -1315,7 +1338,9 @@ void register_geometry_ops(std::vector<OpSpec>& out) {
          {"sweep_angle_deg", "number", "°",
           "balayage parallèle : angle des traversées (défaut : automatique)", false,
           "[-360 ; 360]"},
-         {"guides", "array", "", "guides [{anchor_mm:[x,y], angle_deg, absolute?}] d'orientation",
+         {"guides", "array", "",
+          "guides d'orientation {anchor_mm, angle_deg, absolute?} ou "
+          "tracés {path_mm:[[x,y],...]}",
           false, "au plus 64"}},
         R"({"op":"auto_satin","object":1,"spacing_mm":0.4})",
         op_auto_satin});

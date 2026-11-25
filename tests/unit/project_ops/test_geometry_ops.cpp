@@ -675,6 +675,30 @@ TEST_CASE("auto_satin valide ses arguments", "[project_ops][geometry][auto_satin
     CHECK(params.guides[0].absolute);
 }
 
+TEST_CASE("auto_satin accepts a central guide during conversion",
+          "[project_ops][geometry][auto_satin]") {
+    Env env;
+    const ObjectId obj = add_rect(env, 0, 0, 30, 4);
+    const auto convert = [&](const json& path) {
+        return env.run("auto_satin", json{{"object", obj.value},
+                                          {"strategy", "guided_satin"},
+                                          {"guides", json::array({json{{"path_mm", path}}})}});
+    };
+    CHECK(convert({{0, 0}, {0, 0}}).error.code == "E_USAGE");
+    CHECK(env.stack.undoNames().size() == 1);
+
+    const auto converted = convert({{-12, 0}, {0, 0.5}, {12, 0}});
+    REQUIRE(converted.ok);
+    CHECK(env.stack.undoNames().size() == 2);
+    const auto& params =
+        std::get<document::AutoSatinParams>(env.project.findEmbroidery(obj)->params);
+    CHECK(params.strategy == document::AutoSatinStrategy::Guided);
+    REQUIRE(params.guides.size() == 1);
+    CHECK(params.guides.front().path.size() == 3);
+    REQUIRE(env.stack.undo(env.project));
+    CHECK_FALSE(env.project.findEmbroidery(obj)->is_auto_satin());
+}
+
 TEST_CASE("geometry_ops sont deterministes", "[project_ops][geometry]") {
     const auto scenario = [] {
         Env env;
