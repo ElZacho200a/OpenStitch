@@ -102,17 +102,18 @@ Result<FineStructureMap> detect_fine_structures(const image::Image& img,
     for (const int d : kernel_diameters(options.max_width_px)) {
         const cv::Mat kernel = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(d, d));
         std::array<cv::Mat, 3> hat;
-        for (std::size_t c = 0; c < 3; ++c) {
-            cv::Mat black;
-            cv::Mat white;
-            {
-                const auto bytes = planes[c].total();
-                const pipeline_profile::Scope profile(pipeline_profile::Stage::Morphology,
-                                                      bytes + kernel.total(), bytes, 2);
+        {
+            const auto bytes = planes.front().total() * hat.size();
+            const pipeline_profile::Scope profile(pipeline_profile::Stage::Morphology,
+                                                  bytes + kernel.total(), bytes, 2 * hat.size());
+            // Les canaux sont indépendants. Chaque tâche écrit uniquement dans son propre plan.
+            parallel_for(hat.size(), [&](std::size_t c) {
+                cv::Mat black;
+                cv::Mat white;
                 cv::morphologyEx(planes[c], black, cv::MORPH_BLACKHAT, kernel);
                 cv::morphologyEx(planes[c], white, cv::MORPH_TOPHAT, kernel);
-            }
-            hat[c] = cv::max(black, white);
+                hat[c] = cv::max(black, white);
+            });
         }
         const int reachFar = d - 1;
         const int reachNear = std::max(2, reachFar / 2 + 1);

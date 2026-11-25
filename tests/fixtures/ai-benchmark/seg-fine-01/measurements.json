@@ -1,0 +1,770 @@
+{
+  "baseline": "9ade411a",
+  "cpu": "AMD Ryzen 7 7700X",
+  "gpu_driver": "32.0.16.1088",
+  "cpu_csv": {
+    "clairseme-4k-18": [
+      "run,mode,segment_ms,detect_ms,morphology_ms,regions,mask_pixels",
+      "0,on,8594.07,8633.14,8170.86,518,86377",
+      "0,off,198.621,0,0,349,0",
+      "1,off,198.555,0,0,349,0",
+      "1,on,8599.71,8263.14,8182.33,518,86377",
+      "2,on,8547.96,8257.66,8145.22,518,86377",
+      "2,off,183.595,0,0,349,0",
+      "3,off,182.162,0,0,349,0",
+      "3,on,8505.69,8282.38,8097.7,518,86377",
+      "4,on,8551.38,8343.75,8116.83,518,86377",
+      "4,off,182.979,0,0,349,0"
+    ],
+    "clairseme-4k-cpu-10": [
+      "run,mode,segment_ms,detect_ms,morphology_ms,regions,mask_pixels",
+      "0,on,3341.16,3054.58,2972.97,518,86377",
+      "0,off,199.705,0,0,349,0",
+      "1,off,200.144,0,0,349,0",
+      "1,on,3431.31,3050.74,3060.17,518,86377",
+      "2,on,3397.54,3034.15,3029.21,518,86377",
+      "2,off,188.375,0,0,349,0",
+      "3,off,187.938,0,0,349,0",
+      "3,on,3391.6,3014.77,3002.68,518,86377",
+      "4,on,3366.65,3113.31,2980.94,518,86377",
+      "4,off,189.417,0,0,349,0"
+    ],
+    "dense-4k-18": [
+      "run,mode,segment_ms,detect_ms,morphology_ms,regions,mask_pixels",
+      "0,on,8749.55,8340.76,8223.76,14187,639514",
+      "0,off,221.74,0,0,9315,0",
+      "1,off,220.577,0,0,9315,0",
+      "1,on,8700.6,8285.66,8180.56,14187,639514",
+      "2,on,8680.9,8361.24,8174.07,14187,639514",
+      "2,off,214.296,0,0,9315,0",
+      "3,off,213.001,0,0,9315,0",
+      "3,on,8653.94,8282.11,8138.02,14187,639514",
+      "4,on,8641.55,8267.7,8127.22,14187,639514",
+      "4,off,217.26,0,0,9315,0"
+    ],
+    "dense-4k-cpu-10": [
+      "run,mode,segment_ms,detect_ms,morphology_ms,regions,mask_pixels",
+      "0,on,3447.31,3064.9,2966.96,14187,639514",
+      "0,off,223.033,0,0,9315,0",
+      "1,off,225.374,0,0,9315,0",
+      "1,on,3486.25,3094.43,2982.86,14187,639514",
+      "2,on,3478.1,3003.77,3001.63,14187,639514",
+      "2,off,215.762,0,0,9315,0",
+      "3,off,219.37,0,0,9315,0",
+      "3,on,3413.51,3006.09,2923.59,14187,639514",
+      "4,on,3436.84,2991.06,2951.59,14187,639514",
+      "4,off,212.725,0,0,9315,0"
+    ],
+    "marine-18": [
+      "run,mode,segment_ms,detect_ms,morphology_ms,regions,mask_pixels",
+      "0,on,91.9126,81.0033,76.3512,22,3403",
+      "0,off,9.4609,0,0,20,0",
+      "1,off,8.6693,0,0,20,0",
+      "1,on,93.756,80.857,77.3887,22,3403",
+      "2,on,92.1928,81.5643,76.2652,22,3403",
+      "2,off,9.621,0,0,20,0",
+      "3,off,9.1389,0,0,20,0",
+      "3,on,92.7066,86.9051,76.2974,22,3403",
+      "4,on,93.5845,81.0619,77.4057,22,3403",
+      "4,off,8.9914,0,0,20,0"
+    ],
+    "marine-24": [
+      "run,mode,segment_ms,detect_ms,morphology_ms,regions,mask_pixels",
+      "0,on,93.4321,81.7279,77.4032,22,3403",
+      "0,off,9.0603,0,0,20,0",
+      "1,off,8.9586,0,0,20,0",
+      "1,on,92.588,80.5577,76.1564,22,3403",
+      "2,on,92.1953,80.8873,75.6725,22,3403",
+      "2,off,9.2006,0,0,20,0",
+      "3,off,9.223,0,0,20,0",
+      "3,on,93.9519,79.8341,77.2454,22,3403",
+      "4,on,91.5731,79.5922,75.944,22,3403",
+      "4,off,8.7693,0,0,20,0"
+    ],
+    "marine-32": [
+      "run,mode,segment_ms,detect_ms,morphology_ms,regions,mask_pixels",
+      "0,on,94.2589,80.7757,77.1507,22,3403",
+      "0,off,9.3067,0,0,20,0",
+      "1,off,9.4523,0,0,20,0",
+      "1,on,93.5098,81.2973,77.433,22,3403",
+      "2,on,91.0728,81.74,75.5078,22,3403",
+      "2,off,9.3227,0,0,20,0",
+      "3,off,9.5811,0,0,20,0",
+      "3,on,93.2533,83.421,77.6862,22,3403",
+      "4,on,94.7549,80.4093,77.3805,22,3403",
+      "4,off,9.2433,0,0,20,0"
+    ],
+    "marine-cpu-10": [
+      "run,mode,segment_ms,detect_ms,morphology_ms,regions,mask_pixels",
+      "0,on,43.1152,31.5592,26.9162,22,3403",
+      "0,off,8.9489,0,0,20,0",
+      "1,off,9.4304,0,0,20,0",
+      "1,on,43.5132,32.177,28.1434,22,3403",
+      "2,on,42.3806,31.4861,27.2013,22,3403",
+      "2,off,8.7901,0,0,20,0",
+      "3,off,9.2922,0,0,20,0",
+      "3,on,42.3845,31.4498,26.979,22,3403",
+      "4,on,43.329,31.4213,28.0547,22,3403",
+      "4,off,9.1784,0,0,20,0"
+    ],
+    "marine-cpu-16": [
+      "run,mode,segment_ms,detect_ms,morphology_ms,regions,mask_pixels",
+      "0,on,42.3639,30.8352,26.4766,22,3305",
+      "0,off,9.4227,0,0,20,0",
+      "1,off,8.9885,0,0,20,0",
+      "1,on,43.6145,30.2191,27.1592,22,3305",
+      "2,on,47.2279,31.1122,31.6668,22,3305",
+      "2,off,9.7724,0,0,20,0",
+      "3,off,9.7625,0,0,20,0",
+      "3,on,45.168,31.9701,28.5441,22,3305",
+      "4,on,43.6241,31.5681,27.5305,22,3305",
+      "4,off,9.8281,0,0,20,0"
+    ],
+    "peche-18": [
+      "run,mode,segment_ms,detect_ms,morphology_ms,regions,mask_pixels",
+      "0,on,799.304,712.134,690.662,3012,250349",
+      "0,off,39.3939,0,0,1200,0",
+      "1,off,39.3842,0,0,1200,0",
+      "1,on,784.119,701.918,676.657,3012,250349",
+      "2,on,786.008,693.902,677.07,3012,250349",
+      "2,off,39.3321,0,0,1200,0",
+      "3,off,39.2262,0,0,1200,0",
+      "3,on,792.91,697.587,686.403,3012,250349",
+      "4,on,783.401,713.251,681.209,3012,250349",
+      "4,off,38.1984,0,0,1200,0"
+    ],
+    "peche-24": [
+      "run,mode,segment_ms,detect_ms,morphology_ms,regions,mask_pixels",
+      "0,on,785.076,697.11,681.962,3031,247529",
+      "0,off,40.4667,0,0,1200,0",
+      "1,off,37.9776,0,0,1200,0",
+      "1,on,782.23,720.937,680.028,3031,247529",
+      "2,on,788.179,699.068,688.839,3031,247529",
+      "2,off,37.015,0,0,1200,0",
+      "3,off,37.898,0,0,1200,0",
+      "3,on,784.973,696.42,681.01,3031,247529",
+      "4,on,793.851,699.453,689.267,3031,247529",
+      "4,off,38.6311,0,0,1200,0"
+    ],
+    "peche-32": [
+      "run,mode,segment_ms,detect_ms,morphology_ms,regions,mask_pixels",
+      "0,on,781.794,697.418,682.514,3031,247529",
+      "0,off,38.901,0,0,1200,0",
+      "1,off,39.8113,0,0,1200,0",
+      "1,on,788.815,700.245,690.054,3031,247529",
+      "2,on,783.807,698.555,685.705,3031,247529",
+      "2,off,38.6112,0,0,1200,0",
+      "3,off,37.1047,0,0,1200,0",
+      "3,on,776.847,709.637,677.496,3031,247529",
+      "4,on,774.877,703.362,677.09,3031,247529",
+      "4,off,37.8767,0,0,1200,0"
+    ],
+    "peche-cpu-10": [
+      "run,mode,segment_ms,detect_ms,morphology_ms,regions,mask_pixels",
+      "0,on,360.837,280.804,259.667,3012,250349",
+      "0,off,39.9581,0,0,1200,0",
+      "1,off,39.4672,0,0,1200,0",
+      "1,on,357.233,254.462,257.159,3012,250349",
+      "2,on,383.878,265.154,278.66,3012,250349",
+      "2,off,39.6736,0,0,1200,0",
+      "3,off,40.0655,0,0,1200,0",
+      "3,on,354.586,263.88,252.789,3012,250349",
+      "4,on,341.209,268.597,237.822,3012,250349",
+      "4,off,39.7984,0,0,1200,0"
+    ],
+    "peche-cpu-16": [
+      "run,mode,segment_ms,detect_ms,morphology_ms,regions,mask_pixels",
+      "0,on,328.042,253.228,245.233,1970,80642",
+      "0,off,40.691,0,0,1200,0",
+      "1,off,41.7941,0,0,1200,0",
+      "1,on,338.613,281.428,251.997,1970,80642",
+      "2,on,325.317,270.35,240.963,1970,80642",
+      "2,off,40.2055,0,0,1200,0",
+      "3,off,40.081,0,0,1200,0",
+      "3,on,332.966,256.31,249.083,1970,80642",
+      "4,on,355.552,264.014,270.259,1970,80642",
+      "4,off,40.4225,0,0,1200,0"
+    ],
+    "voilier-18": [
+      "run,mode,segment_ms,detect_ms,morphology_ms,regions,mask_pixels",
+      "0,on,922.156,819.887,800.944,2137,179602",
+      "0,off,51.3172,0,0,717,0",
+      "1,off,50.215,0,0,717,0",
+      "1,on,918.116,821.889,799.433,2137,179602",
+      "2,on,939.036,823.639,817.872,2137,179602",
+      "2,off,48.4735,0,0,717,0",
+      "3,off,48.8988,0,0,717,0",
+      "3,on,919.456,823.525,797.495,2137,179602",
+      "4,on,920.964,832.004,799.774,2137,179602",
+      "4,off,49.4984,0,0,717,0"
+    ],
+    "voilier-24": [
+      "run,mode,segment_ms,detect_ms,morphology_ms,regions,mask_pixels",
+      "0,on,929.773,831.636,807.318,2097,178730",
+      "0,off,49.6629,0,0,717,0",
+      "1,off,49.877,0,0,717,0",
+      "1,on,923.895,825.875,802.049,2097,178730",
+      "2,on,927.222,833.385,808.874,2097,178730",
+      "2,off,48.8312,0,0,717,0",
+      "3,off,51.4019,0,0,717,0",
+      "3,on,934.038,831.959,820.355,2097,178730",
+      "4,on,937.365,830.97,819.224,2097,178730",
+      "4,off,49.1464,0,0,717,0"
+    ],
+    "voilier-32": [
+      "run,mode,segment_ms,detect_ms,morphology_ms,regions,mask_pixels",
+      "0,on,913.194,827.224,804.251,1839,178405",
+      "0,off,49.1467,0,0,717,0",
+      "1,off,48.9836,0,0,717,0",
+      "1,on,910.727,819.133,801.278,1839,178405",
+      "2,on,932.423,824.906,817.452,1839,178405",
+      "2,off,49.2781,0,0,717,0",
+      "3,off,52.6667,0,0,717,0",
+      "3,on,927.6,817.914,808.791,1839,178405",
+      "4,on,908.514,838.107,801.624,1839,178405",
+      "4,off,49.5637,0,0,717,0"
+    ],
+    "voilier-cpu-10": [
+      "run,mode,segment_ms,detect_ms,morphology_ms,regions,mask_pixels",
+      "0,on,399.33,309.81,288.663,2137,179602",
+      "0,off,49.8561,0,0,717,0",
+      "1,off,49.5595,0,0,717,0",
+      "1,on,394.688,332.327,280.829,2137,179602",
+      "2,on,401.37,330.082,289.139,2137,179602",
+      "2,off,52.4441,0,0,717,0",
+      "3,off,48.5489,0,0,717,0",
+      "3,on,399.144,315.506,287.614,2137,179602",
+      "4,on,410.985,318.21,294.677,2137,179602",
+      "4,off,50.7712,0,0,717,0"
+    ],
+    "voilier-cpu-16": [
+      "run,mode,segment_ms,detect_ms,morphology_ms,regions,mask_pixels",
+      "0,on,377.084,300.34,281.2,1511,96041",
+      "0,off,49.9757,0,0,717,0",
+      "1,off,50.0063,0,0,717,0",
+      "1,on,414.257,306.412,316.371,1511,96041",
+      "2,on,445.306,306.378,348.92,1511,96041",
+      "2,off,49.2937,0,0,717,0",
+      "3,off,50.6311,0,0,717,0",
+      "3,on,395.553,295.813,295.506,1511,96041",
+      "4,on,385.365,320.962,288.773,1511,96041",
+      "4,off,51.7023,0,0,717,0"
+    ]
+  },
+  "gpu_jsonl": [
+    {
+      "adapter": "NVIDIA GeForce RTX 5060 Ti",
+      "first_gpu_wall_ms": 4.2627,
+      "init_ms": 185.7694,
+      "kind": "device"
+    },
+    {
+      "bit_exact": true,
+      "calls": 1,
+      "dispatch_ms": 22.7,
+      "download_bytes": 0,
+      "height": 720,
+      "kind": "sample",
+      "mode": "cpu",
+      "peak_working_bytes": 2073681,
+      "readback_ms": null,
+      "run": 0,
+      "scenario": "segmentation-open-9",
+      "upload_bytes": 0,
+      "upload_ms": null,
+      "wall_ms": 22.7026,
+      "width": 960
+    },
+    {
+      "bit_exact": true,
+      "calls": 1,
+      "dispatch_ms": 1.021088,
+      "download_bytes": 2764800,
+      "height": 720,
+      "kind": "sample",
+      "mode": "gpu",
+      "peak_working_bytes": 15207793,
+      "readback_ms": 1.357,
+      "run": 0,
+      "scenario": "segmentation-open-9",
+      "upload_bytes": 2765272,
+      "upload_ms": 1.6649,
+      "wall_ms": 3.1222,
+      "width": 960
+    },
+    {
+      "bit_exact": true,
+      "calls": 1,
+      "dispatch_ms": 2.800992,
+      "download_bytes": 2764800,
+      "height": 720,
+      "kind": "sample",
+      "mode": "gpu",
+      "peak_working_bytes": 15207793,
+      "readback_ms": 3.1854,
+      "run": 1,
+      "scenario": "segmentation-open-9",
+      "upload_bytes": 2765272,
+      "upload_ms": 1.334,
+      "wall_ms": 4.6006,
+      "width": 960
+    },
+    {
+      "bit_exact": true,
+      "calls": 1,
+      "dispatch_ms": 22.735,
+      "download_bytes": 0,
+      "height": 720,
+      "kind": "sample",
+      "mode": "cpu",
+      "peak_working_bytes": 2073681,
+      "readback_ms": null,
+      "run": 1,
+      "scenario": "segmentation-open-9",
+      "upload_bytes": 0,
+      "upload_ms": null,
+      "wall_ms": 22.7366,
+      "width": 960
+    },
+    {
+      "bit_exact": true,
+      "calls": 1,
+      "dispatch_ms": 22.305,
+      "download_bytes": 0,
+      "height": 720,
+      "kind": "sample",
+      "mode": "cpu",
+      "peak_working_bytes": 2073681,
+      "readback_ms": null,
+      "run": 2,
+      "scenario": "segmentation-open-9",
+      "upload_bytes": 0,
+      "upload_ms": null,
+      "wall_ms": 22.306,
+      "width": 960
+    },
+    {
+      "bit_exact": true,
+      "calls": 1,
+      "dispatch_ms": 0.277408,
+      "download_bytes": 2764800,
+      "height": 720,
+      "kind": "sample",
+      "mode": "gpu",
+      "peak_working_bytes": 15207793,
+      "readback_ms": 0.9151,
+      "run": 2,
+      "scenario": "segmentation-open-9",
+      "upload_bytes": 2765272,
+      "upload_ms": 1.5032,
+      "wall_ms": 2.5087,
+      "width": 960
+    },
+    {
+      "bit_exact": true,
+      "calls": 1,
+      "dispatch_ms": 0.467488,
+      "download_bytes": 2764800,
+      "height": 720,
+      "kind": "sample",
+      "mode": "gpu",
+      "peak_working_bytes": 15207793,
+      "readback_ms": 0.7937,
+      "run": 3,
+      "scenario": "segmentation-open-9",
+      "upload_bytes": 2765272,
+      "upload_ms": 1.5024,
+      "wall_ms": 2.368,
+      "width": 960
+    },
+    {
+      "bit_exact": true,
+      "calls": 1,
+      "dispatch_ms": 22.293,
+      "download_bytes": 0,
+      "height": 720,
+      "kind": "sample",
+      "mode": "cpu",
+      "peak_working_bytes": 2073681,
+      "readback_ms": null,
+      "run": 3,
+      "scenario": "segmentation-open-9",
+      "upload_bytes": 0,
+      "upload_ms": null,
+      "wall_ms": 22.2935,
+      "width": 960
+    },
+    {
+      "bit_exact": true,
+      "calls": 1,
+      "dispatch_ms": 22.5761,
+      "download_bytes": 0,
+      "height": 720,
+      "kind": "sample",
+      "mode": "cpu",
+      "peak_working_bytes": 2073681,
+      "readback_ms": null,
+      "run": 4,
+      "scenario": "segmentation-open-9",
+      "upload_bytes": 0,
+      "upload_ms": null,
+      "wall_ms": 22.5774,
+      "width": 960
+    },
+    {
+      "bit_exact": true,
+      "calls": 1,
+      "dispatch_ms": 0.612832,
+      "download_bytes": 2764800,
+      "height": 720,
+      "kind": "sample",
+      "mode": "gpu",
+      "peak_working_bytes": 15207793,
+      "readback_ms": 1.1427,
+      "run": 4,
+      "scenario": "segmentation-open-9",
+      "upload_bytes": 2765272,
+      "upload_ms": 1.4598,
+      "wall_ms": 2.6883,
+      "width": 960
+    },
+    {
+      "bit_exact": true,
+      "calls": 1,
+      "dispatch_ms": 20.9329,
+      "download_bytes": 0,
+      "height": 360,
+      "kind": "sample",
+      "mode": "cpu",
+      "peak_working_bytes": 518689,
+      "readback_ms": null,
+      "run": 0,
+      "scenario": "segmentation-open-17",
+      "upload_bytes": 0,
+      "upload_ms": null,
+      "wall_ms": 20.9333,
+      "width": 480
+    },
+    {
+      "bit_exact": true,
+      "calls": 1,
+      "dispatch_ms": 0.492576,
+      "download_bytes": 691200,
+      "height": 360,
+      "kind": "sample",
+      "mode": "gpu",
+      "peak_working_bytes": 3806529,
+      "readback_ms": 0.6515,
+      "run": 0,
+      "scenario": "segmentation-open-17",
+      "upload_bytes": 692920,
+      "upload_ms": 0.739,
+      "wall_ms": 1.4137,
+      "width": 480
+    },
+    {
+      "bit_exact": true,
+      "calls": 1,
+      "dispatch_ms": 0.452128,
+      "download_bytes": 691200,
+      "height": 360,
+      "kind": "sample",
+      "mode": "gpu",
+      "peak_working_bytes": 3806529,
+      "readback_ms": 0.5951,
+      "run": 1,
+      "scenario": "segmentation-open-17",
+      "upload_bytes": 692920,
+      "upload_ms": 0.4901,
+      "wall_ms": 1.0984,
+      "width": 480
+    },
+    {
+      "bit_exact": true,
+      "calls": 1,
+      "dispatch_ms": 21.4465,
+      "download_bytes": 0,
+      "height": 360,
+      "kind": "sample",
+      "mode": "cpu",
+      "peak_working_bytes": 518689,
+      "readback_ms": null,
+      "run": 1,
+      "scenario": "segmentation-open-17",
+      "upload_bytes": 0,
+      "upload_ms": null,
+      "wall_ms": 21.4469,
+      "width": 480
+    },
+    {
+      "bit_exact": true,
+      "calls": 1,
+      "dispatch_ms": 20.5837,
+      "download_bytes": 0,
+      "height": 360,
+      "kind": "sample",
+      "mode": "cpu",
+      "peak_working_bytes": 518689,
+      "readback_ms": null,
+      "run": 2,
+      "scenario": "segmentation-open-17",
+      "upload_bytes": 0,
+      "upload_ms": null,
+      "wall_ms": 20.5842,
+      "width": 480
+    },
+    {
+      "bit_exact": true,
+      "calls": 1,
+      "dispatch_ms": 0.433152,
+      "download_bytes": 691200,
+      "height": 360,
+      "kind": "sample",
+      "mode": "gpu",
+      "peak_working_bytes": 3806529,
+      "readback_ms": 0.5853,
+      "run": 2,
+      "scenario": "segmentation-open-17",
+      "upload_bytes": 692920,
+      "upload_ms": 0.3836,
+      "wall_ms": 0.9835,
+      "width": 480
+    },
+    {
+      "bit_exact": true,
+      "calls": 1,
+      "dispatch_ms": 0.37744,
+      "download_bytes": 691200,
+      "height": 360,
+      "kind": "sample",
+      "mode": "gpu",
+      "peak_working_bytes": 3806529,
+      "readback_ms": 0.4965,
+      "run": 3,
+      "scenario": "segmentation-open-17",
+      "upload_bytes": 692920,
+      "upload_ms": 0.4159,
+      "wall_ms": 1.253,
+      "width": 480
+    },
+    {
+      "bit_exact": true,
+      "calls": 1,
+      "dispatch_ms": 20.4886,
+      "download_bytes": 0,
+      "height": 360,
+      "kind": "sample",
+      "mode": "cpu",
+      "peak_working_bytes": 518689,
+      "readback_ms": null,
+      "run": 3,
+      "scenario": "segmentation-open-17",
+      "upload_bytes": 0,
+      "upload_ms": null,
+      "wall_ms": 20.489,
+      "width": 480
+    },
+    {
+      "bit_exact": true,
+      "calls": 1,
+      "dispatch_ms": 20.4031,
+      "download_bytes": 0,
+      "height": 360,
+      "kind": "sample",
+      "mode": "cpu",
+      "peak_working_bytes": 518689,
+      "readback_ms": null,
+      "run": 4,
+      "scenario": "segmentation-open-17",
+      "upload_bytes": 0,
+      "upload_ms": null,
+      "wall_ms": 20.4035,
+      "width": 480
+    },
+    {
+      "bit_exact": true,
+      "calls": 1,
+      "dispatch_ms": 0.403104,
+      "download_bytes": 691200,
+      "height": 360,
+      "kind": "sample",
+      "mode": "gpu",
+      "peak_working_bytes": 3806529,
+      "readback_ms": 0.5419,
+      "run": 4,
+      "scenario": "segmentation-open-17",
+      "upload_bytes": 692920,
+      "upload_ms": 0.9532,
+      "wall_ms": 1.5091,
+      "width": 480
+    },
+    {
+      "batch_masks": 2,
+      "cpu_fallback": true,
+      "edge_cases": 1555,
+      "kind": "parity",
+      "work_guard": true
+    }
+  ],
+  "scores": {
+    "scores": {
+      "18": {
+        "marine": {
+          "precision": 0.193723,
+          "recall": 1.0,
+          "f1": 0.324569,
+          "iou": 0.193723,
+          "precision_1px": 0.193723,
+          "recall_1px": 1.0,
+          "fp_sky_water": 0.011384
+        },
+        "voilier": {
+          "trace_recall_1px": {
+            "hauban-pale": 0.0
+          },
+          "false_positive_rate": {
+            "ciel": 0.0,
+            "eau": 0.76
+          }
+        },
+        "peche": {
+          "trace_recall_1px": {
+            "antenne": 1.0,
+            "amarre": 1.0
+          },
+          "false_positive_rate": {
+            "ciel": 0.0,
+            "eau": 0.788239,
+            "feuillage": 0.794167
+          }
+        }
+      },
+      "24": {
+        "marine": {
+          "precision": 0.193723,
+          "recall": 1.0,
+          "f1": 0.324569,
+          "iou": 0.193723,
+          "precision_1px": 0.193723,
+          "recall_1px": 1.0,
+          "fp_sky_water": 0.011384
+        },
+        "voilier": {
+          "trace_recall_1px": {
+            "hauban-pale": 0.0
+          },
+          "false_positive_rate": {
+            "ciel": 0.0,
+            "eau": 0.76
+          }
+        },
+        "peche": {
+          "trace_recall_1px": {
+            "antenne": 1.0,
+            "amarre": 1.0
+          },
+          "false_positive_rate": {
+            "ciel": 0.0,
+            "eau": 0.788239,
+            "feuillage": 0.794167
+          }
+        }
+      },
+      "32": {
+        "marine": {
+          "precision": 0.193723,
+          "recall": 1.0,
+          "f1": 0.324569,
+          "iou": 0.193723,
+          "precision_1px": 0.193723,
+          "recall_1px": 1.0,
+          "fp_sky_water": 0.011384
+        },
+        "voilier": {
+          "trace_recall_1px": {
+            "hauban-pale": 0.0
+          },
+          "false_positive_rate": {
+            "ciel": 0.0,
+            "eau": 0.76
+          }
+        },
+        "peche": {
+          "trace_recall_1px": {
+            "antenne": 1.0,
+            "amarre": 1.0
+          },
+          "false_positive_rate": {
+            "ciel": 0.0,
+            "eau": 0.788239,
+            "feuillage": 0.794167
+          }
+        }
+      }
+    },
+    "scores-cpu": {
+      "cpu-10": {
+        "marine": {
+          "precision": 0.193723,
+          "recall": 1.0,
+          "f1": 0.324569,
+          "iou": 0.193723,
+          "precision_1px": 0.193723,
+          "recall_1px": 1.0,
+          "fp_sky_water": 0.011384
+        },
+        "voilier": {
+          "trace_recall_1px": {
+            "hauban-pale": 0.0
+          },
+          "false_positive_rate": {
+            "ciel": 0.0,
+            "eau": 0.76
+          }
+        },
+        "peche": {
+          "trace_recall_1px": {
+            "antenne": 1.0,
+            "amarre": 1.0
+          },
+          "false_positive_rate": {
+            "ciel": 0.0,
+            "eau": 0.788239,
+            "feuillage": 0.794167
+          }
+        }
+      },
+      "cpu-16": {
+        "marine": {
+          "precision": 0.193723,
+          "recall": 1.0,
+          "f1": 0.324569,
+          "iou": 0.193723,
+          "precision_1px": 0.193723,
+          "recall_1px": 1.0,
+          "fp_sky_water": 0.011384
+        },
+        "voilier": {
+          "trace_recall_1px": {
+            "hauban-pale": 0.0
+          },
+          "false_positive_rate": {
+            "ciel": 0.0,
+            "eau": 0.109674
+          }
+        },
+        "peche": {
+          "trace_recall_1px": {
+            "antenne": 1.0,
+            "amarre": 0.981982
+          },
+          "false_positive_rate": {
+            "ciel": 0.0,
+            "eau": 0.068952,
+            "feuillage": 0.292917
+          }
+        }
+      }
+    }
+  }
+}
