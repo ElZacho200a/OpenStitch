@@ -530,12 +530,14 @@ Window {
                     }
                     // Libellé court quand le motif dépasse : le détail est dans l'infobulle, et un
                     // libellé long tronquait le nom du projet et poussait « Enregistrer » au bord.
-                    text: headerCard.compact ? ""
-                          : overflow.length > 0 ? qsTr("⚠ %1 trop petit").arg(spaceHost.hoopSummary())
+                    // Étroit : l'avertissement garde au moins un « ⚠ » (l'infobulle dit lequel).
+                    text: headerCard.compact ? (overflow.length > 0 ? qsTr("⚠") : "")
+                          : overflow.length > 0 ? qsTr("⚠ Cadre %1 trop petit").arg(spaceHost.hoopSummary())
                           : qsTr("Cadre %1").arg(spaceHost.hoopSummary())
                     iconName: headerCard.compact ? "fit" : ""
                     quiet: true
-                    tooltip: overflow.length > 0 ? overflow
+                    tooltip: overflow.length > 0 ? overflow + "
+" + qsTr("Cliquez pour choisir un autre cadre.")
                              : qsTr("Cadre : forme, dimensions, marge, Mes cadres (aussi au clic droit sur le canevas)")
                     onClicked: spaceHost.openHoop(null, 0, 0)
                 }
