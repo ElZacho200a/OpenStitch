@@ -13,7 +13,7 @@ CanvasToolRail {
     readonly property var icons: ({
         "draw.rectangle": "rectangle", "draw.ellipse": "ellipse", "draw.polygon": "polygon",
         "draw.polygon-regular": "regular", "draw.bezier": "bezier", "draw.freeform": "freeform",
-        "select.lasso": "lasso", "node.edit": "node", "knife": "knife", "warp-brush": "warp", "bucket": "bucket"
+        "select.lasso": "lasso", "node.edit": "node", "knife": "knife", "warp-brush": "warp", "bucket": "bucket", "text": "text"
     })
     fitTooltip: qsTr("Ajuster le motif à la fenêtre")
     toolPrefix: "tool_"

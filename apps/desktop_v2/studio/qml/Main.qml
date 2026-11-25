@@ -383,6 +383,12 @@ Window {
     Shortcut {
         sequence: "Escape"
         onActivated: {
+            // Saisie de l'outil Texte ouverte : Échap l'abandonne (et non seulement le champ).
+            if (toolController !== null && toolController.text.editing) {
+                toolController.text.cancel()
+                if (canvas) canvas.forceActiveFocus()
+                return
+            }
             if (window.keyboardOwnedByControl) { window.activeFocusItem.focus = false; return }
             // L'espace courant quitte d'abord son outil modal (recadrage, pipette, règle…) : un
             // second Shortcut « Escape » rendrait la touche ambiguë et aucun ne s'exécuterait.

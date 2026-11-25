@@ -172,6 +172,14 @@ Item {
                     canvas: spaceCanvas
                 }
 
+                // Outil Texte : saisie sur place (UX-TEXT-01).
+                TextEditorOverlay {
+                    anchors.fill: parent
+                    canvas: spaceCanvas
+                    toolController: root.toolController
+                    actionController: typeof actions !== "undefined" ? actions : null
+                }
+
                 VectorQuickBar {
                     anchors.top: parent.top
                     anchors.topMargin: 8

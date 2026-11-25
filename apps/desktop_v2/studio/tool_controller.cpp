@@ -26,11 +26,19 @@ struct ToolSpec {
 
 // Outils opérationnels dans Studio ; le libellé, le raccourci et le geste viennent du registre.
 constexpr ToolSpec kSpecs[] = {
-    {"draw.rectangle", "▭", "Formes"},   {"draw.ellipse", "◯", "Formes"},
-    {"draw.polygon", "⬠", "Formes"},     {"draw.polygon-regular", "⬡", "Formes"},
-    {"draw.bezier", "✒", "Tracés"},      {"draw.freeform", "✎", "Tracés"},
-    {"node.edit", "◇", "Édition"},       {"knife", "✂", "Édition"},
-    {"warp-brush", "≈", "Édition"},      {"bucket", "▣", "Édition"},
+    {"draw.rectangle", "▭", "Formes"},
+    {"draw.ellipse", "◯", "Formes"},
+    {"draw.polygon", "⬠", "Formes"},
+    {"draw.polygon-regular", "⬡", "Formes"},
+    {"draw.bezier", "✒", "Tracés"},
+    {"draw.freeform", "✎", "Tracés"},
+    // Texte juste après les tracés : le rail déborde à 1000 x 640 et le bas reste inaccessible à la
+    // souris ; l'outil du parcours « prénom » doit rester dans la partie visible.
+    {"text", "T", "Texte"},
+    {"node.edit", "◇", "Édition"},
+    {"knife", "✂", "Édition"},
+    {"warp-brush", "≈", "Édition"},
+    {"bucket", "▣", "Édition"},
     {"select.lasso", "➰", "Sélection"},
 };
 
@@ -66,8 +74,9 @@ std::vector<PointMm> sampleBezier(PointMm p0, PointMm c1, PointMm c2, PointMm p1
 } // namespace
 
 ToolController::ToolController(StudioController& studio, QObject* parent)
-    : QObject(parent), studio_(studio), warp_(studio), bucket_(studio),
+    : QObject(parent), studio_(studio), warp_(studio), bucket_(studio), text_(studio),
       registry_(ToolRegistry::builtin()) {
+    connect(&text_, &TextTool::message, this, &ToolController::inform);
     connect(&warp_, &WarpTool::changed, this, &ToolController::rebuild);
     connect(&bucket_, &BucketTool::changed, this, &ToolController::rebuild);
     connect(&warp_, &WarpTool::message, this, &ToolController::inform);
@@ -188,8 +197,8 @@ bool ToolController::capturesMouse() const {
 }
 
 bool ToolController::busy() const {
-    return warp_.active() || bucket_.active() || drag_ != Drag::None || !polyPoints_.empty() ||
-           !penNodes_.empty();
+    return warp_.active() || bucket_.active() || text_.editing() || drag_ != Drag::None ||
+           !polyPoints_.empty() || !penNodes_.empty();
 }
 
 void ToolController::setActiveTool(const QString& id) {
@@ -246,6 +255,10 @@ void ToolController::setHint() {
                                     "qui les traverse pour les découper. Échap : annuler.")
                    : QStringLiteral("Sélectionnez les formes, puis tracez une ligne qui les "
                                     "traverse pour les découper. Échap : annuler.");
+    } else if (tool_ == QStringLiteral("text")) {
+        text =
+            QStringLiteral("Cliquer où placer le texte, puis taper. Ctrl+Entrée ou clic ailleurs : "
+                           "valider ; Échap : annuler. Cliquer sur un texte : le modifier.");
     } else if (tool_ == QStringLiteral("select.lasso")) {
         text = QStringLiteral("Contourner à main levée les objets à sélectionner (seuls ceux "
                               "entièrement dedans). Alt : aussi les objets touchés. Maj ou Ctrl : "
@@ -367,6 +380,7 @@ PointMm ToolController::snapped(PointMm p, bool allowGrid) const {
 void ToolController::reset() {
     warp_.cancel();
     bucket_.cancel();
+    text_.cancel();
     drag_ = Drag::None;
     stroke_.clear();
     penNodes_.clear();
@@ -635,6 +649,8 @@ bool ToolController::press(double x, double y, double pxPerMm, Qt::KeyboardModif
         return warp_.begin(raw);
     if (tool_ == QStringLiteral("bucket"))
         return bucket_.begin(raw);
+    if (tool_ == QStringLiteral("text"))
+        return text_.begin(x, y, raw);
     const bool nodeTool = tool_ == QStringLiteral("node.edit") || selectNodes;
     // Lasso et couteau libre : points bruts, un accrochage au sommet ferait sauter le tracé.
     const bool rawPath =

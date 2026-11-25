@@ -23,6 +23,7 @@
 #include "pen_shape.hpp"
 #include "studio_camera.hpp"
 #include "studio_controller.hpp"
+#include "text_tool.hpp"
 #include "tool_registry.hpp"
 #include "warp_tool.hpp"
 
@@ -55,6 +56,8 @@ class ToolController : public QObject {
     Q_PROPERTY(bool knifeFree READ knifeFree WRITE setKnifeFree NOTIFY optionsChanged)
     Q_PROPERTY(int selectedNodeCount READ selectedNodeCount NOTIFY overlayChanged)
     Q_PROPERTY(QObject* warp READ warp CONSTANT)
+    // Outil Texte (UX-TEXT-01) : état de la saisie sur place, voir TextTool.
+    Q_PROPERTY(QObject* text READ text CONSTANT)
     Q_PROPERTY(bool needleOriginCustom READ needleOriginCustom NOTIFY needleOriginChanged)
     // Position effective du point zéro (mm, repère document, Y vers le haut) : le point choisi,
     // sinon le centre de la broderie ; 0 tant qu'il n'y a pas de points.
@@ -90,6 +93,8 @@ public:
     void setKnifeFree(bool value);
     [[nodiscard]] int selectedNodeCount() const { return static_cast<int>(nodeSel_.size()); }
     QObject* warp() { return &warp_; }
+    QObject* text() { return &text_; }
+    [[nodiscard]] TextTool& textTool() { return text_; }
     // Point zéro de l'aiguille choisi par l'utilisateur (faux : par défaut, centre de la broderie).
     [[nodiscard]] bool needleOriginCustom() const;
     // Revient au centre de la broderie ; faux s'il y était déjà.
@@ -187,6 +192,7 @@ private:
     StudioController& studio_;
     WarpTool warp_;
     BucketTool bucket_;
+    TextTool text_;
     ToolRegistry registry_;
     QString tool_{QStringLiteral("select")};
     QString hint_;

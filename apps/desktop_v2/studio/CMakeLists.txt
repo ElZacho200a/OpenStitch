@@ -34,6 +34,7 @@ add_library(openstitch_studio_ui STATIC
     tool_controller.cpp tool_controller.hpp
     warp_tool.cpp warp_tool.hpp
     bucket_tool.cpp bucket_tool.hpp
+    text_tool.cpp text_tool.hpp
     vector_controller.cpp vector_controller.hpp
     workspace_controller.cpp workspace_controller.hpp
     vector_space_controller.cpp vector_space_controller.hpp
@@ -105,6 +106,7 @@ set(studio_qml_files
     qml/spaces/VectorSpace.qml qml/spaces/PointsSpace.qml)
 list(APPEND studio_qml_files qml/spaces/vector/VectorShapePanel.qml)
 list(APPEND studio_qml_files qml/spaces/vector/VectorQuickBar.qml)
+list(APPEND studio_qml_files qml/TextEditorOverlay.qml)
 # Les sous-composants d'un espace (qml/spaces/<x>/...) s'ajoutent ICI, une ligne par fichier.
 list(APPEND studio_qml_files qml/spaces/image/ImageOpStack.qml qml/spaces/image/CompareCurtain.qml
     qml/spaces/image/CropOverlay.qml qml/spaces/image/ImageToolOverlay.qml

@@ -439,6 +439,20 @@ if(TARGET openstitch::studio_ui)
         set_tests_properties(test_desktop_v2_studio_space_vector PROPERTIES
             ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QUICK_CONTROLS_STYLE=Basic;QML_IMPORT_PATH=${studio_space_vector_qml_imports};QT_QPA_FONTDIR=${PROJECT_SOURCE_DIR}/resources/fonts"
             ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+        # UX-TEXT-01 lot B : outil Texte natif (vraie fenetre, vrais clics et frappes).
+        add_executable(test_desktop_v2_studio_text_tool test_studio_text_tool.cpp)
+        target_link_libraries(test_desktop_v2_studio_text_tool
+            PRIVATE openstitch::studio_ui openstitch::project_ops Qt6::Test openstitch::warnings)
+        target_compile_definitions(test_desktop_v2_studio_text_tool
+            PRIVATE OPENSTITCH_FONTS_DIR="${PROJECT_SOURCE_DIR}/resources/fonts")
+        qt_add_resources(test_desktop_v2_studio_text_tool studio_text_tool_qml PREFIX "/studio"
+            BASE "${studio_test_qml_root}" FILES ${studio_all_qml}
+                "${studio_test_qml_root}/qml/qmldir")
+        add_test(NAME test_desktop_v2_studio_text_tool COMMAND test_desktop_v2_studio_text_tool -o -,txt)
+        get_filename_component(studio_text_tool_qml_imports "${Qt6_DIR}/../../../qml" ABSOLUTE)
+        set_tests_properties(test_desktop_v2_studio_text_tool PROPERTIES
+            ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QUICK_CONTROLS_STYLE=Basic;QML_IMPORT_PATH=${studio_text_tool_qml_imports};QT_QPA_FONTDIR=${PROJECT_SOURCE_DIR}/resources/fonts"
+            ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
     endif()
 endif()
 

@@ -261,12 +261,43 @@ std::vector<ActionDef> makeCatalog() {
         for (auto& f : textStyleFields()) {
             a.fields.push_back(std::move(f));
         }
-        a.build = [](const Values& v, const ActionContext&, std::string&) {
+        a.build = [](const Values& v, const ActionContext&, std::string& error) {
+            // Position optionnelle (outil Texte du canevas) : la ligne de base du texte, en mm
+            // modèle. Ce ne sont pas des champs du dialogue ; absentes, le moteur garde [0, 0].
+            std::string origin;
+            const auto ox = v.find("origin_x_mm");
+            const auto oy = v.find("origin_y_mm");
+            if (ox != v.end() || oy != v.end()) {
+                char* endX = nullptr;
+                char* endY = nullptr;
+                const double x = ox != v.end() ? std::strtod(ox->second.c_str(), &endX) : 0.0;
+                const double y = oy != v.end() ? std::strtod(oy->second.c_str(), &endY) : 0.0;
+                if ((ox != v.end() && (ox->second.empty() || *endX != '\0')) ||
+                    (oy != v.end() && (oy->second.empty() || *endY != '\0')) || !std::isfinite(x) ||
+                    !std::isfinite(y) || std::abs(x) > 1000.0 || std::abs(y) > 1000.0) {
+                    error = "Position du texte : coordonnées entre -1000 et 1000 mm attendues.";
+                    return std::string();
+                }
+                origin = R"(,"origin_mm":[)" + num(x) + "," + num(y) + "]";
+            }
+            // Fil optionnel (outil Texte) : « #RRGGBB » ; absent, le moteur garde le noir.
+            if (const auto rgb = v.find("rgb"); rgb != v.end()) {
+                const std::string& hex = rgb->second;
+                const bool valid = hex.size() == 7 && hex[0] == '#' &&
+                                   std::ranges::all_of(hex.substr(1), [](unsigned char c) {
+                                       return std::isxdigit(c);
+                                   });
+                if (!valid) {
+                    error = "Couleur du fil : « #RRGGBB » attendu.";
+                    return std::string();
+                }
+                origin += R"(,"rgb":)" + quote(hex);
+            }
             return wrap(R"({"op":"add_text","text":)" + quote(v.at("text")) +
                         R"(,"cap_height_mm":)" + num(number(v, "cap_height_mm")) + R"(,"fill":")" +
                         v.at("fill") + R"(","align":")" + v.at("align") + R"(","rotation_deg":)" +
                         num(number(v, "rotation_deg")) + R"(,"font_file":)" +
-                        quote(v.at("font_file")) + textStyleJson(v) + "}");
+                        quote(v.at("font_file")) + origin + textStyleJson(v) + "}");
         };
         out.push_back(std::move(a));
     }
