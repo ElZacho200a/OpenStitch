@@ -528,8 +528,11 @@ Window {
                         studio.commandCount
                         return typeof files !== "undefined" && files !== null ? files.designHoopWarning() : ""
                     }
-                    text: headerCard.compact ? "" : qsTr("Cadre %1").arg(spaceHost.hoopSummary())
-                          + (overflow.length > 0 ? qsTr("  ⚠ motif plus grand") : "")
+                    // Libellé court quand le motif dépasse : le détail est dans l'infobulle, et un
+                    // libellé long tronquait le nom du projet et poussait « Enregistrer » au bord.
+                    text: headerCard.compact ? ""
+                          : overflow.length > 0 ? qsTr("⚠ %1 trop petit").arg(spaceHost.hoopSummary())
+                          : qsTr("Cadre %1").arg(spaceHost.hoopSummary())
                     iconName: headerCard.compact ? "fit" : ""
                     quiet: true
                     tooltip: overflow.length > 0 ? overflow
