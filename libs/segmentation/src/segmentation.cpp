@@ -23,6 +23,8 @@ namespace openstitch::segmentation {
 namespace {
 
 constexpr std::uint8_t kAlphaOpaque = 128; // seuil : en dessous, pixel de fond
+// Écart (ΔE76) toléré à un mélange fond/trait pour rattacher un pixel anticrénelé à son trait.
+constexpr double kFineBlendDeltaE = 12.0;
 
 std::size_t slot_of(RegionId id) {
     return static_cast<std::size_t>(id.value - 1);
@@ -155,6 +157,221 @@ std::vector<LabQ8> deterministic_kmeans(const std::vector<LabQ8>& samples, int k
     return bestCenters;
 }
 
+// SEG-FINE-01 : un trait anticrénelé est quantifié en plusieurs classes (noir franc, gris de
+// mélange, parfois la classe du fond) : sans correction il devient un chapelet de régions. Pour
+// chaque composante 8-connexe de la carte des traits, la classe DOMINANTE du trait (hors classe du
+// fond local) est cherchée ; chaque pixel protégé dont la couleur est un MÉLANGE de cette classe et
+// du fond local (distance au segment [fond, trait] <= `blend_delta_e`) la rejoint. Un pixel d'une
+// autre couleur (trait de couleur différente qui croise) garde sa classe. Séquentiel, déterministe.
+void unify_fine_classes(cv::Mat& colorIdx, const cv::Mat& lab, const FineStructureMap& fine,
+                        const std::vector<LabQ8>& centers, double blend_delta_e) {
+    const int w = colorIdx.cols;
+    const int h = colorIdx.rows;
+    const auto k = centers.size();
+    cv::Mat maskMat(h, w, CV_8U);
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            maskMat.at<std::uint8_t>(y, x) =
+                fine.mask[static_cast<std::size_t>(y) * static_cast<std::size_t>(w) +
+                          static_cast<std::size_t>(x)] != 0
+                    ? 255
+                    : 0;
+        }
+    }
+    cv::Mat comp;
+    const int n = cv::connectedComponents(maskMat, comp, 8, CV_32S);
+    const auto protectedAt = [&](int x, int y) { return comp.at<int>(y, x) > 0; };
+
+    // Classe du fond local : majorité des pixels NON protégés d'une fenêtre 7x7 (égalité : plus
+    // petit indice de classe), -1 s'il n'y en a pas.
+    constexpr int kWin = 3;
+    std::vector<int> localBg(static_cast<std::size_t>(w) * static_cast<std::size_t>(h), -1);
+    std::vector<int> counts(k);
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            if (!protectedAt(x, y) || colorIdx.at<int>(y, x) < 0) {
+                continue;
+            }
+            std::fill(counts.begin(), counts.end(), 0);
+            for (int dy = -kWin; dy <= kWin; ++dy) {
+                for (int dx = -kWin; dx <= kWin; ++dx) {
+                    const int nx = x + dx;
+                    const int ny = y + dy;
+                    if (nx < 0 || ny < 0 || nx >= w || ny >= h || protectedAt(nx, ny)) {
+                        continue;
+                    }
+                    const int c = colorIdx.at<int>(ny, nx);
+                    if (c >= 0) {
+                        ++counts[static_cast<std::size_t>(c)];
+                    }
+                }
+            }
+            const auto best = std::max_element(counts.begin(), counts.end());
+            if (best != counts.end() && *best > 0) {
+                localBg[static_cast<std::size_t>(y) * static_cast<std::size_t>(w) +
+                        static_cast<std::size_t>(x)] = static_cast<int>(best - counts.begin());
+            }
+        }
+    }
+
+    // Classe du TRAIT de chaque composante : parmi les classes hors fond local qui pèsent au moins
+    // 20 % de la plus fréquente, la plus éloignée du fond de la composante (le noir franc, pas le
+    // gris de mélange qui n'en est qu'une nuance).
+    std::vector<std::vector<int>> hist(static_cast<std::size_t>(n), std::vector<int>(k, 0));
+    std::vector<std::vector<int>> bgHist(static_cast<std::size_t>(n), std::vector<int>(k, 0));
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            const int c = colorIdx.at<int>(y, x);
+            const int id = comp.at<int>(y, x);
+            if (id <= 0 || c < 0) {
+                continue;
+            }
+            const int bg = localBg[static_cast<std::size_t>(y) * static_cast<std::size_t>(w) +
+                                   static_cast<std::size_t>(x)];
+            if (bg >= 0) {
+                ++bgHist[static_cast<std::size_t>(id)][static_cast<std::size_t>(bg)];
+            }
+            if (c != bg) {
+                ++hist[static_cast<std::size_t>(id)][static_cast<std::size_t>(c)];
+            }
+        }
+    }
+    std::vector<int> dominant(static_cast<std::size_t>(n), -1);
+    for (int id = 1; id < n; ++id) {
+        const auto& hs = hist[static_cast<std::size_t>(id)];
+        const auto& bs = bgHist[static_cast<std::size_t>(id)];
+        const int maxCount = *std::max_element(hs.begin(), hs.end());
+        if (maxCount <= 0) {
+            continue;
+        }
+        const auto bgIt = std::max_element(bs.begin(), bs.end());
+        const int compBg = *bgIt > 0 ? static_cast<int>(bgIt - bs.begin()) : -1;
+        std::int64_t bestDist = -1;
+        for (std::size_t c = 0; c < k; ++c) {
+            if (hs[c] <= 0 || hs[c] * 5 < maxCount) {
+                continue;
+            }
+            const std::int64_t d =
+                compBg >= 0 ? dist_q8(centers[c], centers[static_cast<std::size_t>(compBg)])
+                            : static_cast<std::int64_t>(hs[c]);
+            if (d > bestDist) {
+                bestDist = d;
+                dominant[static_cast<std::size_t>(id)] = static_cast<int>(c);
+            }
+        }
+    }
+
+    const auto toDouble = [](const LabQ8& v) {
+        // L 8 bits d'OpenCV = L* x 2,55 : ramené à L* pour que la distance soit en ΔE.
+        return std::array<double, 3>{static_cast<double>(v[0]) / static_cast<double>(kQ8) * 100.0 /
+                                         255.0,
+                                     static_cast<double>(v[1]) / static_cast<double>(kQ8),
+                                     static_cast<double>(v[2]) / static_cast<double>(kQ8)};
+    };
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            const int id = comp.at<int>(y, x);
+            const int bg = localBg[static_cast<std::size_t>(y) * static_cast<std::size_t>(w) +
+                                   static_cast<std::size_t>(x)];
+            if (id <= 0 || colorIdx.at<int>(y, x) < 0 || bg < 0) {
+                continue;
+            }
+            const int dom = dominant[static_cast<std::size_t>(id)];
+            if (dom < 0 || dom == colorIdx.at<int>(y, x)) {
+                continue;
+            }
+            const auto* px = lab.ptr<std::uint8_t>(y) + x * 3;
+            const auto p = toDouble(LabQ8{px[0] * kQ8, px[1] * kQ8, px[2] * kQ8});
+            const auto c0 = toDouble(centers[static_cast<std::size_t>(bg)]);
+            const auto c1 = toDouble(centers[static_cast<std::size_t>(dom)]);
+            double vv = 0.0;
+            double pv = 0.0;
+            for (std::size_t i = 0; i < 3; ++i) {
+                vv += (c1[i] - c0[i]) * (c1[i] - c0[i]);
+                pv += (p[i] - c0[i]) * (c1[i] - c0[i]);
+            }
+            const double t = vv > 1e-9 ? std::clamp(pv / vv, 0.0, 1.0) : 0.0;
+            double d2 = 0.0;
+            for (std::size_t i = 0; i < 3; ++i) {
+                const double q = c0[i] + t * (c1[i] - c0[i]);
+                d2 += (p[i] - q) * (p[i] - q);
+            }
+            if (d2 <= blend_delta_e * blend_delta_e) {
+                colorIdx.at<int>(y, x) = dom;
+            }
+        }
+    }
+}
+
+// SEG-FINE-01 : relie en 8-connexité les pixels PROTÉGÉS d'une même classe `c` (une diagonale d'un
+// pixel est une seule composante), sans toucher à la 4-connexité des autres pixels. `components`
+// vient de cv::connectedComponents (4-connexité, `count` labels fond compris) ; renvoie le
+// nouveau nombre de labels. Déterministe : les nouveaux numéros suivent le plus petit ancien
+// numéro de chaque groupe.
+int join_protected_diagonals(cv::Mat& components, int count, const cv::Mat& colorIdx, int c,
+                             const FineStructureMap& fine) {
+    const int w = components.cols;
+    const int h = components.rows;
+    std::vector<int> parent(static_cast<std::size_t>(count));
+    for (int i = 0; i < count; ++i) {
+        parent[static_cast<std::size_t>(i)] = i;
+    }
+    const auto find = [&](int v) {
+        while (parent[static_cast<std::size_t>(v)] != v) {
+            parent[static_cast<std::size_t>(v)] =
+                parent[static_cast<std::size_t>(parent[static_cast<std::size_t>(v)])];
+            v = parent[static_cast<std::size_t>(v)];
+        }
+        return v;
+    };
+    const auto isProtectedOfClass = [&](int x, int y) {
+        return fine.mask[static_cast<std::size_t>(y) * static_cast<std::size_t>(w) +
+                         static_cast<std::size_t>(x)] != 0 &&
+               colorIdx.at<int>(y, x) == c;
+    };
+    bool merged = false;
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            if (!isProtectedOfClass(x, y)) {
+                continue;
+            }
+            for (const int dy : {1, -1}) {
+                const int nx = x + 1;
+                const int ny = y + dy;
+                if (nx >= w || ny < 0 || ny >= h || !isProtectedOfClass(nx, ny)) {
+                    continue;
+                }
+                const int a = find(components.at<int>(y, x));
+                const int b = find(components.at<int>(ny, nx));
+                if (a != b) {
+                    parent[static_cast<std::size_t>(std::max(a, b))] = std::min(a, b);
+                    merged = true;
+                }
+            }
+        }
+    }
+    if (!merged) {
+        return count;
+    }
+    std::vector<int> renumber(static_cast<std::size_t>(count), 0);
+    int next = 0;
+    for (int label = 1; label < count; ++label) {
+        const int root = find(label);
+        if (renumber[static_cast<std::size_t>(root)] == 0) {
+            renumber[static_cast<std::size_t>(root)] = ++next;
+        }
+    }
+    for (int y = 0; y < h; ++y) {
+        int* row = components.ptr<int>(y);
+        for (int x = 0; x < w; ++x) {
+            if (row[x] > 0) {
+                row[x] = renumber[static_cast<std::size_t>(find(row[x]))];
+            }
+        }
+    }
+    return next + 1;
+}
+
 // Composantes connexes (4-connexité) des pixels de `id` : `components` prend la valeur du numéro
 // de composante (0 = hors région), renvoie le nombre de labels cv::connectedComponents (fond
 // inclus : nombre de composantes = résultat - 1). Lecture seule, réutilisée par `split_region`
@@ -263,6 +480,11 @@ std::size_t Segmentation::region_count() const {
 }
 
 Result<Segmentation> segment(const image::Image& img, const SegmentationOptions& options) {
+    return segment(img, options, nullptr);
+}
+
+Result<Segmentation> segment(const image::Image& img, const SegmentationOptions& options,
+                             FineStructureMap* fine_out) {
     if (img.empty()) {
         return fail(ErrorCategory::Internal, "Aucune image à segmenter");
     }
@@ -325,8 +547,60 @@ Result<Segmentation> segment(const image::Image& img, const SegmentationOptions&
             samplesVec.push_back(LabQ8{px[0] * kQ8, px[1] * kQ8, px[2] * kQ8});
         }
     }
-    const int k = std::min<int>(options.max_colors, static_cast<int>(samplesVec.size()));
-    const std::vector<LabQ8> centers = deterministic_kmeans(samplesVec, k);
+    const int baseK = std::min<int>(options.max_colors, static_cast<int>(samplesVec.size()));
+    const std::vector<LabQ8> mainCenters = deterministic_kmeans(samplesVec, baseK);
+
+    // SEG-FINE-01 : structures fines lues sur l'image non quantifiée. `fine.mask` est vide quand la
+    // protection est désactivée (chemin historique, strictement inchangé).
+    FineStructureMap fine;
+    if (options.fine_structures.has_value()) {
+        auto detected = detect_fine_structures(img, *options.fine_structures);
+        if (!detected) {
+            return std::unexpected(detected.error());
+        }
+        fine = std::move(*detected);
+    }
+    const bool protect = !fine.mask.empty();
+    const auto isProtected = [&](std::size_t i) { return protect && fine.mask[i] != 0; };
+
+    // Couleurs rares : un trait dont la couleur n'est proche d'aucun centre serait, sinon, confondu
+    // avec le fond. Quelques centres supplémentaires, calculés sur ces seuls pixels.
+    std::vector<LabQ8> centers = mainCenters;
+    if (protect && options.fine_structures->max_extra_colors > 0) {
+        const auto rareQ8 = static_cast<std::int64_t>(options.fine_structures->rare_color_delta_e *
+                                                      static_cast<double>(kQ8));
+        const std::int64_t rareSq = rareQ8 * rareQ8;
+        std::vector<LabQ8> rare;
+        constexpr std::size_t kMaxRareSamples = 4'000;
+        std::size_t rareSeen = 0;
+        const std::size_t rareStride = std::max<std::size_t>(1, fine.pixel_count / kMaxRareSamples);
+        for (std::size_t i = 0; i < pixelCount; ++i) {
+            if (!isProtected(i)) {
+                continue;
+            }
+            const auto* px =
+                lab.ptr<std::uint8_t>(static_cast<int>(i / static_cast<std::size_t>(img.width)),
+                                      static_cast<int>(i % static_cast<std::size_t>(img.width)));
+            const LabQ8 sample{px[0] * kQ8, px[1] * kQ8, px[2] * kQ8};
+            std::int64_t d = 0;
+            nearest_center(sample, mainCenters, &d);
+            if (d >= rareSq && rareSeen++ % rareStride == 0) {
+                rare.push_back(sample);
+            }
+        }
+        if (!rare.empty()) {
+            const int extraK = std::min<int>(options.fine_structures->max_extra_colors,
+                                             static_cast<int>(rare.size()));
+            for (const LabQ8& c : deterministic_kmeans(rare, extraK)) {
+                std::int64_t d = 0;
+                nearest_center(c, mainCenters, &d);
+                if (d >= rareSq) {
+                    centers.push_back(c);
+                }
+            }
+        }
+    }
+    const int k = static_cast<int>(centers.size());
 
     // Couleur RGB représentative de chaque centre Lab (arrondi entier au plus proche).
     cv::Mat centersLab8(1, k, CV_8UC3);
@@ -355,10 +629,19 @@ Result<Segmentation> segment(const image::Image& img, const SegmentationOptions&
                 continue;
             }
             const std::uint8_t* px = labRow + col * 3;
+            // Seuls les pixels protégés peuvent rejoindre une couleur rare ajoutée pour les traits.
+            const auto& palette = isProtected(rowIndex * static_cast<std::size_t>(img.width) +
+                                              static_cast<std::size_t>(col))
+                                      ? centers
+                                      : mainCenters;
             out[col] =
-                nearest_center(LabQ8{px[0] * kQ8, px[1] * kQ8, px[2] * kQ8}, centers, nullptr);
+                nearest_center(LabQ8{px[0] * kQ8, px[1] * kQ8, px[2] * kQ8}, palette, nullptr);
         }
     });
+
+    if (protect) {
+        unify_fine_classes(colorIdx, lab, fine, centers, kFineBlendDeltaE);
+    }
 
     // Lissage optionnel : vote local majoritaire par classe de couleur, pour
     // absorber le bruit poivre-et-sel de l'affectation pixel-à-pixel
@@ -491,7 +774,11 @@ Result<Segmentation> segment(const image::Image& img, const SegmentationOptions&
                 const int* bc = bestClass.ptr<int>(y);
                 int* out = smoothedColorIdx.ptr<int>(y0 + y);
                 for (int x = 0; x < img.width; ++x) {
-                    if (idx[x] >= 0) { // pixel transparent : jamais reclasse
+                    // Pixel transparent : jamais reclassé. Pixel de trait fin : jamais écrasé par
+                    // le vote majoritaire (une ligne d'un pixel n'y pèse que 1/3).
+                    if (idx[x] >= 0 && !isProtected(static_cast<std::size_t>(y0 + y) *
+                                                        static_cast<std::size_t>(img.width) +
+                                                    static_cast<std::size_t>(x))) {
                         out[x] = bc[x];
                     }
                 }
@@ -529,6 +816,10 @@ Result<Segmentation> segment(const image::Image& img, const SegmentationOptions&
                 }
             }
             componentCount[b] = cv::connectedComponents(mask, components[b], 4, CV_32S);
+            if (protect && componentCount[b] > 2) {
+                componentCount[b] =
+                    join_protected_diagonals(components[b], componentCount[b], colorIdx, c, fine);
+            }
         });
         for (std::size_t b = 0; b < count; ++b) {
             const int c = first + static_cast<int>(b);
@@ -578,7 +869,21 @@ Result<Segmentation> segment(const image::Image& img, const SegmentationOptions&
                 }
             }
         }
+        // Une région surtout composée de pixels de traits fins (>= 50 %) n'est jamais absorbée :
+        // son aire ne dit rien de son importance structurelle.
+        std::vector<std::uint64_t> protectedSum;
+        if (protect) {
+            protectedSum.assign(seg.region_slots.size(), 0);
+            for (std::size_t i = 0; i < seg.labels.size(); ++i) {
+                if (seg.labels[i] != 0 && fine.mask[i] != 0) {
+                    ++protectedSum[seg.labels[i] - 1];
+                }
+            }
+        }
         const auto thresholdOf = [&](std::size_t s) {
+            if (protect && 2 * protectedSum[s] >= seg.region_slots[s]->pixel_count) {
+                return std::size_t{0};
+            }
             if (detail != nullptr && weightSum[s] >= 128ULL * seg.region_slots[s]->pixel_count) {
                 return static_cast<std::size_t>(std::max(options.detail_min_region_px, 0));
             }
@@ -669,6 +974,9 @@ Result<Segmentation> segment(const image::Image& img, const SegmentationOptions&
         }
     }
 
+    if (fine_out != nullptr) {
+        *fine_out = std::move(fine);
+    }
     return seg;
 }
 

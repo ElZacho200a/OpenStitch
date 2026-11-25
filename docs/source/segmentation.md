@@ -85,6 +85,67 @@ un octet par pixel de l'image de travail : 0 = aplat, 255 = détail) donne un r�
   de proposition automatique de zones. Un recadrage ou une rotation de l'image rend le masque
   inutilisable (taille différente) : il est ignoré puis remplacé au prochain trait.
 
+## Structures fines (SEG-FINE-01, expérimental)
+
+Option **désactivée par défaut** : `SegmentationOptions::fine_structures` (un
+`std::optional<FineStructureOptions>`). Sans valeur, `segment()` produit les mêmes labels,
+octet pour octet, qu'avant le chantier (garde : suite `test_segmentation`).
+
+**Pourquoi.** La quantification k-means affecte chaque pixel au centre le plus proche : un trait
+d'un pixel, anticrénelé ou peu contrasté, est (1) confondu avec le fond si sa couleur est rare,
+(2) effacé par le vote de lissage (une ligne d'un pixel dans une fenêtre 3×3 ne pèse que 1/3 des
+voix), (3) fragmenté par la 4-connexité (une diagonale), (4) absorbé par le nettoyage des petites
+régions (16 pixels). Les traits sont donc lus sur l'image **non quantifiée** et protégés.
+
+**Détection** (`detect_fine_structures`, `fine_structures.hpp`, masques raster uniquement) :
+
+1. chapeaux haut-de-forme noir et blanc sur L\*, a\*, b\* à plusieurs diamètres de noyau
+   (3, 5, 9, 17 selon `max_width_px`) ; réponse = norme (ΔE) des trois canaux, ce qui capte aussi
+   un trait de clarté voisine mais de teinte différente ;
+2. validation « crête » dans quatre directions : le centre diffère des deux côtés (≥ la moitié du
+   contraste) **et** les deux côtés ne sont pas alignés avec lui (`ridge_side_ratio`) — une
+   frontière simple, une rampe de dégradé et un bord d'aplat sont écartés, un trait qui traverse
+   deux aplats de couleurs différentes est conservé ;
+3. hystérésis 8-connexe (germes ≥ `high_contrast`, propagation ≥ `low_contrast`) ;
+4. rejet des composantes plus courtes que `max(min_length_px, largeur moyenne)` : le coin arrondi
+   d'un gros aplat répond comme un trait épais et court, un vrai trait est plus long que large.
+
+Sortie : `FineStructureMap` (masque, confiance 0–255, borne de largeur, compteurs). Pas de
+géométrie vectorielle.
+
+**Protection dans `segment()`** :
+
+- couleur rare : les pixels protégés dont la couleur est à plus de `rare_color_delta_e` de tout
+  centre de la palette fournissent jusqu'à `max_extra_colors` centres **supplémentaires** (la
+  palette peut donc dépasser `max_colors` de ce nombre) ; seuls les pixels protégés peuvent les
+  rejoindre ;
+- un trait anticrénelé est quantifié en plusieurs classes ; pour chaque composante du masque, la
+  classe du trait (la plus éloignée du fond local parmi les classes assez fréquentes) absorbe les
+  pixels protégés dont la couleur est un mélange fond/trait (ΔE ≤ 12 au segment) ;
+- les pixels protégés ne sont jamais écrasés par le vote de lissage ;
+- les pixels protégés d'une même classe se relient en **8-connexité** (une diagonale d'un pixel est
+  une région) ; les aplats gardent la 4-connexité ;
+- une région dont ≥ 50 % des pixels sont protégés n'est jamais absorbée par le nettoyage.
+
+`segment(img, options, &carte)` renvoie aussi la `FineStructureMap` utilisée, pour qui veut le
+masque de traits (couche de traits, aperçu) sans recalcul.
+
+**Mesures** (corpus synthétique, `tests/unit/segmentation/test_fine_structures.cpp`, tolérance 1 px) :
+rappel 1,00 et précision ≥ 0,97 pour des traits sombres de 1, 2, 4 et 8 px (horizontaux,
+diagonaux, courbes, verticaux), traits clairs sur fond sombre, traits chromatiques, trait traversant
+deux aplats, bruit JPEG ±3 ; zéro faux positif sur frontière simple, dégradé, bruit seul, gros
+aplat. Diagonale d'un pixel (k = 3, lissage 1, nettoyage 16) : 0 % de la vérité conservée sans
+l'option, 100 % avec, en 2 régions (fond + trait). Le masque détecté déborde d'environ 1 px de part
+et d'autre de la vérité (précision stricte 0,8–0,9) : c'est le halo anticrénelé.
+
+**Limites et non-faits.** Corpus synthétique seulement : aucune image réelle (cordages, gravures,
+nervures, lettrages) n'a été mesurée, donc le chantier n'est pas validé. Pas de comparaison
+Hessienne/Sato/Frangi ni de branche B (surfaces reconstituées indépendamment) : l'approche A
+(K-means protégé) suffit sur le corpus ; B n'est à étudier que si les images réelles échouent. Pas
+de complétion des aplats sous les traits (voir `autodigitize::line_layer`), pas d'interface Studio,
+pas de mesure de temps/mémoire à grande résolution. Deux traits parallèles écartés de moins que la
+portée du noyau peuvent se masquer mutuellement (le test de crête utilise alors la portée courte).
+
 ## Identifiants stables
 
 Chaque région a un `RegionId` = index de slot + 1. Les slots ne sont **jamais**
