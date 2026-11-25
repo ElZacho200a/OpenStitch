@@ -125,7 +125,9 @@ géométrie vectorielle.
 - les pixels protégés ne sont jamais écrasés par le vote de lissage ;
 - les pixels protégés d'une même classe se relient en **8-connexité** (une diagonale d'un pixel est
   une région) ; les aplats gardent la 4-connexité ;
-- une région dont ≥ 50 % des pixels sont protégés n'est jamais absorbée par le nettoyage.
+- une région dont ≥ 50 % des pixels sont protégés échappe au nettoyage si l'étendue de ses
+  pixels protégés atteint `min_length_px` sur au moins un axe. Le nettoyage peut ainsi absorber
+  les fragments courts créés quand la quantification découpe un trait en plusieurs couleurs.
 
 `segment(img, options, &carte)` renvoie aussi la `FineStructureMap` utilisée, pour qui veut le
 masque de traits (couche de traits, aperçu) sans recalcul.
@@ -153,13 +155,32 @@ aplat. Diagonale d'un pixel (k = 3, lissage 1, nettoyage 16) : 0 % de la vérit�
 l'option, 100 % avec, en 2 régions (fond + trait). Le masque détecté déborde d'environ 1 px de part
 et d'autre de la vérité (précision stricte 0,8–0,9) : c'est le halo anticrénelé.
 
-**Limites et non-faits.** Corpus synthétique seulement : aucune image réelle (cordages, gravures,
-nervures, lettrages) n'a été mesurée, donc le chantier n'est pas validé. Pas de comparaison
-Hessienne/Sato/Frangi ni de branche B (surfaces reconstituées indépendamment) : l'approche A
-(K-means protégé) suffit sur le corpus ; B n'est à étudier que si les images réelles échouent. Pas
-de complétion des aplats sous les traits (voir `autodigitize::line_layer`), pas d'interface Studio,
-pas de mesure de temps/mémoire à grande résolution. Deux traits parallèles écartés de moins que la
-portée du noyau peuvent se masquer mutuellement (le test de crête utilise alors la portée courte).
+**Coût et fragmentation.** Comparatif Windows Release, trois répétitions alternées par réglage,
+`segment_image` avec `max_colors=8`, `min_region_px=16` et `smoothing_radius_px=1`, après
+`set_source_image` dans un lot `project apply`. Le temps mur et le pic de mémoire résidente incluent
+le lancement du CLI, la lecture de l'image et l'écriture OSP. Les comptes excluent le label 0.
+
+| Image | Régions OFF / ON initial / ON corrigé | Temps médian OFF / ON corrigé | Pic résident médian OFF / ON corrigé |
+| --- | ---: | ---: | ---: |
+| Illustration marine `sample/0215a7e5-97b1-44cb-8b5a-2b5a67e9efbe.png` (1445 × 1088) | 148 / 3502 / 594 | 0,34 / 2,28 s | 133 / 163 Mio |
+| Motif `tests/fixtures/tentabrode.png` (1117 × 1408) | 226 / 4629 / 613 | 0,37 / 2,28 s | 133 / 154 Mio |
+| Marine synthétique `tests/fixtures/ai-benchmark/marine-synth-01/source.png` | 20 / 54 / 35 | 0,12 / 0,21 s | 26 / 28 Mio |
+
+Le SHA-256 de `segmentation.u32` est stable sur les trois répétitions de chaque réglage. Les
+empreintes OFF sont identiques avant et après le correctif, y compris avec le paramètre omis.
+La marine synthétique donne 20 formes vectorielles et 20 objets brodés en OFF, 33 formes et 33
+objets en ON via `vectorize_segmentation` et `convert_vectors`.
+
+**Photo de gréement.** Avec les mêmes réglages, la photo de Mathieu Dréo
+([Wikimedia Commons, domaine public](https://commons.wikimedia.org/wiki/File:Tall_ship_rigging_in_amsterdam_close.jpg),
+640 × 480) passe de 756 à 1488 régions, de 0,30 à 0,75 s et de 44 à 52 Mio (médianes OFF / ON
+corrigé). À l'inspection des cartes de régions recolorées, plusieurs cordages diagonaux sont plus
+visibles, tandis que des bordures et des ombres sont épaissies.
+
+**Limites.** Le gain de fidélité reste à mesurer sur des images réelles annotées. La branche B
+(surfaces reconstituées indépendamment), Hessienne/Sato/Frangi et la complétion des aplats sous les
+traits restent à comparer. Deux traits parallèles écartés de moins que la portée du noyau peuvent
+se masquer mutuellement (le test de crête utilise alors la portée courte).
 
 ## Identifiants stables
 

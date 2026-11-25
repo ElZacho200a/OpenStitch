@@ -869,19 +869,30 @@ Result<Segmentation> segment(const image::Image& img, const SegmentationOptions&
                 }
             }
         }
-        // Une région surtout composée de pixels de traits fins (>= 50 %) n'est jamais absorbée :
-        // son aire ne dit rien de son importance structurelle.
+        // La quantification peut scinder une crête en régions de couleurs différentes. Protéger
+        // les régions majoritairement sur la crête seulement si elles gardent une longueur de
+        // trait.
         std::vector<std::uint64_t> protectedSum;
+        std::vector<cv::Rect> protectedBounds;
         if (protect) {
             protectedSum.assign(seg.region_slots.size(), 0);
-            for (std::size_t i = 0; i < seg.labels.size(); ++i) {
-                if (seg.labels[i] != 0 && fine.mask[i] != 0) {
-                    ++protectedSum[seg.labels[i] - 1];
+            protectedBounds.resize(seg.region_slots.size());
+            for (int y = 0; y < img.height; ++y) {
+                const auto offset = static_cast<std::size_t>(y) * img.width;
+                for (int x = 0; x < img.width; ++x) {
+                    const auto i = offset + x;
+                    if (seg.labels[i] != 0 && fine.mask[i] != 0) {
+                        const auto slot = seg.labels[i] - 1;
+                        ++protectedSum[slot];
+                        protectedBounds[slot] |= cv::Rect(x, y, 1, 1);
+                    }
                 }
             }
         }
         const auto thresholdOf = [&](std::size_t s) {
-            if (protect && 2 * protectedSum[s] >= seg.region_slots[s]->pixel_count) {
+            if (protect && 2 * protectedSum[s] >= seg.region_slots[s]->pixel_count &&
+                std::max(protectedBounds[s].width, protectedBounds[s].height) >=
+                    options.fine_structures->min_length_px) {
                 return std::size_t{0};
             }
             if (detail != nullptr && weightSum[s] >= 128ULL * seg.region_slots[s]->pixel_count) {
