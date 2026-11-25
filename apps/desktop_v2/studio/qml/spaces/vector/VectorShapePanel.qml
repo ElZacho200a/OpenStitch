@@ -18,6 +18,16 @@ ColumnLayout {
     property var pendingPlan: null
     // Carte de réglages de la conversion en broderie, ouverte par « ② Convertir en broderie ».
     property bool convertOptionsOpen: false
+    // Fenêtre basse : les paragraphes d'aide se replient (sans eux, la liste des calques reste
+    // visible). 0 = automatique, 1 = montrée, 2 = masquée par l'utilisateur.
+    property bool compact: false
+    property int helpMode: 0
+    readonly property bool showHelp: helpMode === 1 || (helpMode === 0 && !compact)
+    // Très petite fenêtre : les réglages de précision se replient aussi, la liste des calques
+    // garde ainsi la hauteur. 0 = automatique, 1 = dépliés, 2 = repliés par l'utilisateur.
+    property bool veryCompact: false
+    property int precisionMode: 0
+    readonly property bool showPrecision: precisionMode === 1 || (precisionMode === 0 && !veryCompact)
     spacing: 9
 
     function askUpdate() {
@@ -29,7 +39,27 @@ ColumnLayout {
         }
     }
 
-    SectionLabel { text: qsTr("VECTORISATION") }
+    RowLayout {
+        Layout.fillWidth: true
+        SectionLabel { text: qsTr("VECTORISATION") }
+        Item { Layout.fillWidth: true }
+        StudioButton {
+            objectName: "vectorPrecisionHeaderToggle"
+            // Précision repliée (très petite fenêtre) : le bouton remonte ici, la rangée PRÉCISION disparaît.
+            visible: panel.veryCompact && !panel.showPrecision
+            quiet: true
+            text: qsTr("Précision")
+            tooltip: qsTr("Afficher les réglages de précision de la vectorisation")
+            onClicked: panel.precisionMode = 1
+        }
+        StudioButton {
+            objectName: "vectorHelpToggle"
+            quiet: true
+            text: panel.showHelp ? qsTr("Masquer l'aide") : qsTr("Afficher l'aide")
+            tooltip: qsTr("Affiche ou replie les explications de chaque réglage")
+            onClicked: panel.helpMode = panel.showHelp ? 2 : 1
+        }
+    }
 
     Text {
         objectName: "vectorStageDetail"
@@ -42,9 +72,23 @@ ColumnLayout {
     }
 
     // Précision de la vectorisation (V1) : appliquée à la prochaine mise à jour des formes.
-    SectionLabel { text: qsTr("PRÉCISION") }
+    RowLayout {
+        visible: panel.showPrecision
+        Layout.fillWidth: true
+        SectionLabel { text: qsTr("PRÉCISION") }
+        Item { Layout.fillWidth: true }
+        StudioButton {
+            objectName: "vectorPrecisionToggle"
+            visible: panel.veryCompact || panel.precisionMode !== 0
+            quiet: true
+            text: panel.showPrecision ? qsTr("Replier") : qsTr("Régler")
+            tooltip: qsTr("Affiche ou replie les réglages de précision")
+            onClicked: panel.precisionMode = panel.showPrecision ? 2 : 1
+        }
+    }
     Text {
         objectName: "vectorPrecisionHint"
+        visible: panel.showHelp && panel.showPrecision
         Layout.fillWidth: true
         text: qsTr("Ces réglages ne s'appliquent qu'au prochain « Recalculer les formes » (étape ①).")
         color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize
@@ -52,7 +96,7 @@ ColumnLayout {
     }
     RowLayout {
         Layout.fillWidth: true
-        visible: panel.stage && !panel.stage.curves
+        visible: panel.showPrecision && panel.stage && !panel.stage.curves
         Text {
             text: qsTr("Tolérance (mm)")
             color: Theme.foreground; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize
@@ -77,6 +121,7 @@ ColumnLayout {
     }
     StudioCheckBox {
         objectName: "vectorCurvesBox"
+        visible: panel.showPrecision
         text: qsTr("Courbes de Bézier (moins de nœuds)")
         checked: panel.stage ? panel.stage.curves : false
         onToggled: panel.stage.curves = checked
@@ -84,7 +129,7 @@ ColumnLayout {
     }
     RowLayout {
         Layout.fillWidth: true
-        visible: panel.stage && panel.stage.curves
+        visible: panel.showPrecision && panel.stage && panel.stage.curves
         Text {
             text: qsTr("Écart max. (px)")
             color: Theme.foreground; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize
@@ -109,6 +154,7 @@ ColumnLayout {
     // Chaque réglage et chaque action dit ce qu'il produit, en une ligne, sans survol.
     Text {
         objectName: "vectorPrecisionHelp"
+        visible: panel.showHelp && panel.showPrecision
         Layout.fillWidth: true
         text: qsTr("Tolérance haute : contours plus simples, moins de nœuds. Basse : plus fidèle à l'image (sous 1 px, les courbes suivent les escaliers des pixels). À 0 : contour exact des pixels, sans simplification. Pris en compte à l'étape ①.")
         color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize; wrapMode: Text.WordWrap
@@ -124,6 +170,7 @@ ColumnLayout {
     }
     Text {
         objectName: "vectorUpdateHelp"
+        visible: panel.showHelp
         Layout.fillWidth: true
         text: qsTr("Redessine les contours depuis les régions segmentées du calque courant. Les retouches faites sur ces formes sont écrasées (confirmation demandée).")
         color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize; wrapMode: Text.WordWrap
@@ -284,11 +331,19 @@ ColumnLayout {
     }
     Text {
         objectName: "vectorConvertHelp"
+        visible: panel.showHelp
         Layout.fillWidth: true
         text: qsTr("Crée un objet de points (satin, remplissage…) pour chaque forme qui n'en a pas encore. Les formes déjà converties ne changent pas. Résultat dans l'espace Points.")
         color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize; wrapMode: Text.WordWrap
     }
 
+    // Très petite fenêtre : ce bloc quitte le panneau qui défile (VectorSpace l'affiche en une
+    // ligne fixe) pour ne plus être coupé en deux par la limite de hauteur.
+    property bool showSelection: true
+    ColumnLayout {
+    visible: panel.showSelection
+    Layout.fillWidth: true
+    spacing: 9
     Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }
 
     SectionLabel { text: qsTr("FORME SÉLECTIONNÉE") }
@@ -354,6 +409,7 @@ ColumnLayout {
         onClicked: panel.goToRegionRequested()
     }
 
+    }
     Text {
         objectName: "vectorMessage"
         Layout.fillWidth: true

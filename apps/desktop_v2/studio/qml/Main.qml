@@ -523,10 +523,21 @@ Window {
                 // Cadre du document, toujours visible : un clic ouvre le réglage rapide.
                 StudioButton {
                     objectName: "hoopButton"
-                    text: headerCard.compact ? "" : qsTr("Cadre %1").arg(spaceHost.hoopSummary())
+                    // Avertissement quand les formes dépassent le cadre (relu à chaque modification).
+                    readonly property string overflow: {
+                        studio.commandCount
+                        return typeof files !== "undefined" && files !== null ? files.designHoopWarning() : ""
+                    }
+                    // Libellé court quand le motif dépasse : le détail est dans l'infobulle, et un
+                    // libellé long tronquait le nom du projet et poussait « Enregistrer » au bord.
+                    // Étroit : l'avertissement garde au moins un « ⚠ » (l'infobulle dit lequel).
+                    text: headerCard.compact ? (overflow.length > 0 ? qsTr("⚠") : "")
+                          : overflow.length > 0 ? qsTr("⚠ Cadre %1 trop petit").arg(spaceHost.hoopSummary())
+                          : qsTr("Cadre %1").arg(spaceHost.hoopSummary())
                     iconName: headerCard.compact ? "fit" : ""
                     quiet: true
-                    tooltip: qsTr("Cadre : forme, dimensions, marge, Mes cadres (aussi au clic droit sur le canevas)")
+                    tooltip: overflow.length > 0 ? overflow + "\n" + qsTr("Cliquez pour choisir un autre cadre.")
+                             : qsTr("Cadre : forme, dimensions, marge, Mes cadres (aussi au clic droit sur le canevas)")
                     onClicked: spaceHost.openHoop(null, 0, 0)
                 }
 
@@ -693,6 +704,18 @@ Window {
                     implicitWidth: 18
                     implicitHeight: 18
                     Accessible.name: qsTr("Opération en cours")
+                }
+                // Parcours en quatre étapes : un bouton libellé vers l'espace suivant (le chevron de
+                // l'en-tête ouvre l'historique, pas l'étape suivante).
+                StudioButton {
+                    objectName: "nextStepButton"
+                    readonly property int nextIndex: workspaceCtl.currentIndex + 1
+                    visible: nextIndex < workspaceCtl.spaces.length
+                    quiet: true
+                    implicitHeight: 22
+                    text: visible ? qsTr("Étape suivante : %1  ›").arg(workspaceCtl.spaces[nextIndex].label) : ""
+                    tooltip: qsTr("Passer à l'espace suivant du parcours (Ctrl+1 à Ctrl+4 pour choisir)")
+                    onClicked: workspaceCtl.setCurrent(workspaceCtl.spaces[nextIndex].id)
                 }
                 Text {
                     objectName: "renderBackendLabel"

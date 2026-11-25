@@ -141,6 +141,9 @@ public:
 
     // --- Cadre et machine -------------------------------------------------------------------
     Q_INVOKABLE [[nodiscard]] QVariantMap currentHoop() const;
+    // Texte d'avertissement si les formes dépassent le cadre courant (« » sinon). Un seul parcours
+    // des nœuds des formes : aucune statistique de points n'est recalculée.
+    Q_INVOKABLE [[nodiscard]] QString designHoopWarning() const;
     Q_INVOKABLE QString applyHoop(const QString& hoopId, double marginMm);
     Q_INVOKABLE QString applyCustomHoop(double widthMm, double heightMm, double marginMm);
     // Cadre complet en UNE commande annulable : forme (« rectangle », « ellipse », « rounded »),

@@ -93,6 +93,7 @@ private slots:
     void radialSpiralCrosshatchEditsEmitParamsAndConversionIsOffered();
     void directionalGradientControlsRequestMainWindow();
     void directionalSpacingRegularityIsEditable();
+    void directionalSmoothFieldIsEditable();
     void autoSatinInspectorListsGuidesAndEditsScalars();
     void autoSatinGuideAngleEditAndRemoveEmitDedicatedSignals();
     void autoSatinStateRefreshUpdatesListWithoutRebuildingTheForm();
@@ -632,6 +633,29 @@ void PropertiesPanelTest::directionalSpacingRegularityIsEditable() {
     const auto& out = std::get<openstitch::document::DirectionalFillParams>(*emitted);
     QCOMPARE(out.spacing_regularity, 0.6);
     QCOMPARE(out.seed, 5U); // les autres champs sont conservés
+}
+
+void PropertiesPanelTest::directionalSmoothFieldIsEditable() {
+    PropertiesPanel panel;
+    EmbroideryObject e;
+    e.id = openstitch::ObjectId{15};
+    openstitch::document::DirectionalFillParams dp;
+    dp.seed = 7;
+    e.params = dp;
+    panel.showEmbroidery(e);
+
+    auto* check = panel.findChild<QCheckBox*>(QStringLiteral("check_directionalSmoothField"));
+    QVERIFY(check != nullptr);
+    QVERIFY(!check->isChecked()); // défaut : champ historique
+
+    std::optional<StitchParams> emitted;
+    QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
+                     [&](openstitch::ObjectId, StitchParams params) { emitted = params; });
+    check->setChecked(true);
+    QVERIFY(emitted.has_value());
+    const auto& out = std::get<openstitch::document::DirectionalFillParams>(*emitted);
+    QVERIFY(out.smooth_field);
+    QCOMPARE(out.seed, 7U); // les autres champs sont conservés
 }
 
 void PropertiesPanelTest::autoSatinInspectorListsGuidesAndEditsScalars() {

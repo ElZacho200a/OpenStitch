@@ -27,6 +27,7 @@ historiques ne changent pas).
 | `row_spacing` | 0,4 mm | écart entre lignes de couture (densité) |
 | `density_gradient` | absent | dégradé de densité (voir ci-dessous) ; remplace `row_spacing` pour le tracé |
 | `spacing_regularity` | 0 | régularité de l'espacement [0 ; 1] (voir *Régularisation*) ; 0 = tracé brut |
+| `smooth_field` | faux | champ lissé (voir *Champ lissé*) ; faux = champ historique |
 | `stitch_length` | 3 mm | longueur cible, **bornée à [1 ; 7] mm** à la génération |
 | `edge_weight` | 0 | influence de la tangente du bord le plus proche, [0 ; 1] |
 | `inset` | 0,2 mm | retrait de bord (comme le tatami) |
@@ -219,6 +220,34 @@ Intensité `I` = `handmade_intensity` / 100 (0 si `handmade` est faux ; à
 - tout tirage passe par un hachage splitmix64 de (graine, clés) — jamais
   `std::uniform_*_distribution`, dont la sortie dépend de la bibliothèque
   standard : même projet, même résultat sur toute plateforme.
+
+## Champ lissé (`smooth_field`, 2026-11-23)
+
+Le champ historique prend, en chaque nœud de la grille, la tangente des guides
+pondérée par `1 / (d² + h²)` (h = écart des lignes). Sur une forme large ou
+courbe (cœur, spirale, C épais) les guides voisins se partagent la grille en
+facettes quasi Voronoï : la direction saute à leur frontière et les lignes
+forment des coudes ou des éventails.
+
+Avec `smooth_field`, le champ historique `F0` est adouci par une équation de
+**Poisson écrantée** : chaque nœud libre minimise `|F − F0|² + σ²|∇F|²`
+(vecteurs à angle doublé, donc sans orientation). Les nœuds situés à moins de
+0,75 case d'un guide restent EXACTEMENT sur sa tangente ; ailleurs seules les
+discontinuités sont adoucies, sur une longueur `σ = 0,5 × demi-largeur
+maximale` (bornée à 1,2–8 mm). Une bande étroite garde donc son champ, une
+forme large perd ses facettes.
+
+Le système est résolu par Gauss-Seidel sur-relaxé à balayage fixe (déterministe)
+sur une grille grossière de pas ≈ σ/8, puis interpolé bilinéairement : environ
+0,1 s ajoutées sur une forme de 250 mm. Sans guide il n'y a rien à lisser.
+
+Banc de 12 formes courbes (`project check` / `project density`), lissage contre
+historique : cœur couvert 0,950 → 0,966, sauts 16 → 12 ; spirale sauts 18 → 6 ;
+C épais couvert 0,959 → 0,975, sauts 20 → 11 ; banane 0,959 → 0,966. Régressions
+connues : croissant (couvert 0,943 → 0,928) et corne (0,931 → 0,926) ; le S passe
+de 7 à 9 sauts. La case est donc **désactivée par défaut**. Un recadrage des bouts
+de guides (couper l'épine du squelette puis prolonger tout droit) a été essayé et
+écarté : il dégrade le cœur, la spirale et l'onde.
 
 ## Alternatives écartées
 
@@ -697,6 +726,9 @@ Aussi : `test_roundtrip.cpp` (sérialisation), `test_undo_stack.cpp`
   le tatami).
 - Pas d'édition des poignées de tangente des guides (seulement les points).
 - Aucune validation sur machine réelle.
+- Champ lissé : régresse légèrement sur les formes effilées (croissant, corne) ; non testé sur
+  des contours d'image réels. Le plus long chemin des guides automatiques retombe sur une seule
+  arête au-delà de 64 arêtes de squelette.
 - Phase 4 (fondu de couleurs) : disponible via **Broderie ▸ Fondu de couleurs à
   deux fils** (voir la section du même nom). Limites : un dégradé linéaire par
   région ; les deux objets partagent leur forme source, mais leurs paramètres

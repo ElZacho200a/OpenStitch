@@ -951,18 +951,27 @@ void StudioViewTest::statusEventsDoNotReloadThreadsFiltersOrTree() {
     QSignalSpy threads(&rig.threads, &ThreadController::changed);
     QSignalSpy view(&rig.view, &ViewController::changed);
     QSignalSpy tree(&editor, &EditController::treeChanged);
+    QSignalSpy selection(&editor, &EditController::selectionStateChanged);
     for (int i = 0; i < 5; ++i) {
         emit rig.studio.changed();
     }
     QCOMPARE(threads.count(), 0);
     QCOMPARE(view.count(), 0);
     QCOMPARE(tree.count(), 0);
+    QCOMPARE(selection.count(), 0);
 
     const auto id = rig.session.project().embroidery_objects.front().id.value;
     rig.studio.selectObject(QString::number(id)); // la sélection change vraiment
     QTRY_VERIFY(threads.count() >= 1);
     QVERIFY(view.count() >= 1);
-    QVERIFY(tree.count() >= 1);
+    // Une sélection ne reconstruit PAS l'arbre (des milliers de lignes côté QML) : seul l'état
+    // de sélection est rediffusé, et les lignes de l'arbre ne portent pas `selected`.
+    QCOMPARE(tree.count(), 0);
+    QVERIFY(selection.count() >= 1);
+    QVERIFY(editor.selectedIdSet().value(QString::number(id)).toBool());
+    for (const auto& row : editor.tree()) {
+        QVERIFY(!row.toMap().contains(QStringLiteral("selected")));
+    }
     threads.clear();
     view.clear();
     tree.clear();

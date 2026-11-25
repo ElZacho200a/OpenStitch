@@ -38,7 +38,7 @@ MemberCounts memberCounts() {
     OS_COUNT_MEMBERS(RunningStitchParams, a, b, c, d, e, f)
     OS_COUNT_MEMBERS(TatamiParams, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s)
     OS_COUNT_MEMBERS(DirectionalFillParams, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s,
-                     t, u, v, w)
+                     t, u, v, w, x)
     OS_COUNT_MEMBERS(SatinParams, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v,
                      w, x, y, z, A, B, C, D, E, F, G, H, I)
     OS_COUNT_MEMBERS(AutoSatinParams, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u,
@@ -55,7 +55,7 @@ MemberCounts memberCounts() {
     OS_COUNT_MEMBERS(MulticolorGradientParams, a, b, c, d, e, f, g, h, i, j)
     return {{{"running", 6},
              {"tatami", 19},
-             {"directional", 23},
+             {"directional", 24},
              {"satin", 35},
              {"auto_satin", 33},
              {"blanket", 4},
@@ -213,8 +213,8 @@ TEST_CASE("every engine parameter field is exposed by param_spec or excluded wit
     CHECK(exposed + excluded == engineFields);
     // rail_a, rail_b, topology, border, palette, transition, stitch_angle, image_weights
     CHECK(excluded == 8);
-    CHECK(exposed ==
-          187); // + tie_down_mm, couching_*_mm, scatter (STCH-CROS-01), chord_tolerance_mm
+    CHECK(exposed == 188); // + tie_down_mm, couching_*_mm, scatter (STCH-CROS-01),
+                           // chord_tolerance_mm, smooth_field
 }
 
 TEST_CASE("every table row reads back from a default object, inside its own range",

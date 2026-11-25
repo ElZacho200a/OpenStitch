@@ -272,8 +272,8 @@ void StudioController::rebuildScene() {
                      {QStringLiteral("pickGridMs"), t.pickGridMs},
                      {QStringLiteral("builds"), sceneBuilds_}});
             }
-            status_ =
-                QStringLiteral("%1 segments · coordonnées en mm").arg(scene_->segments.size());
+            status_ = QStringLiteral("%1 segments de fil · coordonnées en mm")
+                          .arg(scene_->segments.size());
             const PerfScope applyPerf("scene.apply(UI)");
             {
                 const PerfScope p1("apply.sceneChanged");

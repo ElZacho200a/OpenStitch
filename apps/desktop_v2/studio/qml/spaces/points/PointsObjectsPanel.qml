@@ -23,6 +23,19 @@ ColumnLayout {
     function sourceOf(objectId) {
         return spaceCtl && spaceCtl.sources[objectId] ? spaceCtl.sources[objectId] : null
     }
+    // Canevas de l'espace (survol d'une ligne = présélection de l'objet) et lignes compactes en
+    // fenêtre basse : fournis par l'espace hôte, jamais déduits de la taille de ce panneau.
+    property var canvas: null
+    property bool compactRows: false
+    // Filtre par nom de la vue Liste (la vue Arbre a son propre champ, dans LayerPanel).
+    property string filterText: ""
+    readonly property var shownObjects: {
+        const needle = panel.filterText.trim().toLowerCase()
+        const all = studio.objects
+        if (needle.length === 0)
+            return all
+        return all.filter(o => String(o.label || "").toLowerCase().indexOf(needle) >= 0)
+    }
     spacing: 0
     // Keep excess content inside its panel, not across the point inspector.
     clip: true
@@ -38,9 +51,10 @@ ColumnLayout {
 
     RowLayout {
         Layout.fillWidth: true
-        Layout.preferredHeight: 44
+        Layout.preferredHeight: 36
         Layout.leftMargin: Theme.panelPadding
         Layout.rightMargin: Theme.panelPadding
+        spacing: 8
         Text {
             text: qsTr("Objets de broderie")
             color: Theme.foreground
@@ -70,7 +84,7 @@ ColumnLayout {
 
     RowLayout {
         Layout.fillWidth: true
-        Layout.margins: 6
+        Layout.margins: 4
         spacing: 4
         StudioButton {
             objectName: "listModeButton"
@@ -110,6 +124,19 @@ ColumnLayout {
         Layout.minimumHeight: implicitHeight
     }
 
+    StudioTextField {
+        objectName: "objectSearchField"
+        visible: !panel.workspace.treeMode
+        Layout.fillWidth: true
+        Layout.leftMargin: Theme.panelPadding
+        Layout.rightMargin: Theme.panelPadding
+        Layout.bottomMargin: 4
+        placeholderText: qsTr("Rechercher un objet…")
+        Accessible.name: qsTr("Rechercher un objet par son nom")
+        onTextChanged: panel.filterText = text
+        Keys.onEscapePressed: text = ""
+    }
+
     ListView {
         id: objectList
         objectName: "objectList"
@@ -119,11 +146,31 @@ ColumnLayout {
         Layout.minimumHeight: 80
         clip: true
         boundsBehavior: Flickable.StopAtBounds
-        model: studio.objects
+        model: panel.shownObjects
         spacing: 1
         topMargin: 4
         bottomMargin: 4
-        Controls.ScrollBar.vertical: Controls.ScrollBar { }
+        // Visible dès que des objets dépassent : la carte est basse sur une fenêtre de 640 px
+        // et seule une barre apparente dit qu'il y en a d'autres sous la ligne coupée.
+        Controls.ScrollBar.vertical: Controls.ScrollBar {
+            id: listBar
+            objectName: "objectListScrollBar"
+            policy: objectList.contentHeight > objectList.height + 1 ? Controls.ScrollBar.AlwaysOn
+                                                                     : Controls.ScrollBar.AsNeeded
+            implicitWidth: 10
+            background: Rectangle {
+                implicitWidth: 10
+                radius: 5
+                color: Theme.raised
+                visible: listBar.size < 1
+            }
+            contentItem: Rectangle {
+                implicitWidth: 6
+                radius: 3
+                color: listBar.pressed ? Theme.accent : Theme.muted
+                visible: listBar.size < 1
+            }
+        }
 
         delegate: Controls.ItemDelegate {
             id: objectRow
@@ -132,10 +179,15 @@ ColumnLayout {
             readonly property var source: panel.sourceOf(modelData.id)
             readonly property bool primarySelected: modelData.selected && studio.primarySelectionId === modelData.id
             width: objectList.width
-            height: Theme.rowHeight
+            // Fenêtre basse : lignes compactes de hauteur fixe (le type passe dans la ligne du nom).
+            // Sinon deux lignes de texte (nom + sous-titre) : la ligne grandit avec son contenu au
+            // lieu de laisser le sous-titre dépasser du fond de sélection.
+            height: panel.compactRows ? 32 : Math.max(Theme.rowHeight, contentItem.implicitHeight + 12)
             leftPadding: 18
             rightPadding: 18
             hoverEnabled: true
+            // Survol : l'objet est mis en évidence sur le motif (relie la ligne à la zone vue).
+            onHoveredChanged: if (panel.canvas) panel.canvas.previewObject(hovered ? modelData.id : "")
             focusPolicy: Qt.StrongFocus
             Accessible.name: modelData.label
             Accessible.description: modelData.type
@@ -164,7 +216,7 @@ ColumnLayout {
                 Rectangle {
                     implicitWidth: 12
                     implicitHeight: 12
-                    radius: 3
+                    radius: 6 // ronde : ne se confond pas avec une case à cocher
                     color: objectRow.modelData.color
                     border.width: 1
                     border.color: Qt.alpha(Theme.faint, 0.4)
@@ -177,6 +229,7 @@ ColumnLayout {
                     Text {
                         Layout.fillWidth: true
                         text: objectRow.modelData.label
+                              + (panel.compactRows ? "  ·  " + objectRow.modelData.type : "")
                         color: objectRow.modelData.selected ? Theme.foreground : Theme.muted
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.bodySize
@@ -184,6 +237,7 @@ ColumnLayout {
                     }
                     Text {
                         objectName: "objectSubtitle"
+                        visible: !panel.compactRows
                         Layout.fillWidth: true
                         text: objectRow.modelData.type
                               + (objectRow.modelData.visible ? "" : qsTr(" · masqué"))
@@ -273,5 +327,9 @@ ColumnLayout {
         font.family: Theme.fontFamily
         font.pixelSize: Theme.captionSize
         wrapMode: Text.WordWrap
+        // Carte basse : une seule ligne (l'état « à jour / périmé » est au début du texte),
+        // pour laisser la place aux objets.
+        maximumLineCount: panel.height < 260 ? 1 : 2
+        elide: Text.ElideRight
     }
 }

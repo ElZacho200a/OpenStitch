@@ -80,15 +80,26 @@ std::optional<RectMm> vectorShapeSceneBounds(const document::VectorObject& shape
 EditController::EditController(StudioController& studio, QObject* parent)
     : QObject(parent), studio_(studio) {
     gateStamp_ = documentStamp(studio_);
+    treeGateStamp_ = treeStamp();
     // Connecté en premier : le cache est invalidé avant que QML ne relise `tree`.
     connect(this, &EditController::treeChanged, this, [this] { treeCache_.reset(); });
     connect(&studio_, &StudioController::changed, this, [this] {
+        // L'arbre (lignes, calques, types) ne dépend PAS de la sélection : un clic ne doit pas
+        // le reconstruire ni faire recalculer ses milliers de lignes côté QML. La sélection a
+        // son propre signal (selectionStateChanged).
         const auto stamp = documentStamp(studio_);
-        if (stamp != gateStamp_) { // l'arbre d'objets n'est reconstruit que s'il a changé
+        const auto tree = treeStamp();
+        if (tree != treeGateStamp_) { // l'arbre d'objets n'est reconstruit que s'il a changé
+            treeGateStamp_ = tree;
             gateStamp_ = stamp;
             emit treeChanged();
+        } else if (stamp != gateStamp_) {
+            gateStamp_ = stamp;
+            emit selectionStateChanged();
         }
     });
+    // Tout ce qui recompose l'arbre peut aussi déplacer la boîte et les compteurs de sélection.
+    connect(this, &EditController::treeChanged, this, &EditController::selectionStateChanged);
     connect(&studio_, &StudioController::sceneChanged, this, &EditController::treeChanged);
     connect(&studio_, &StudioController::documentReplaced, this, [this] {
         saved_.clear(); // les identifiants d'un autre document n'ont aucun sens ici
@@ -1010,6 +1021,22 @@ QVariantList EditController::layers() const {
     return list;
 }
 
+std::uint64_t EditController::treeStamp() const {
+    constexpr std::uint64_t kPrime = 1099511628211ULL;
+    const auto& scene = studio_.scene();
+    return (studio_.session().revision() * kPrime) ^ (scene ? scene->revision + 1U : 0U);
+}
+
+QVariantMap EditController::selectedIdSet() const {
+    QVariantMap ids;
+    for (const auto& target : studio_.session().selection().targets()) {
+        if (target.kind == TargetKind::EmbroideryObject) {
+            ids.insert(idText(target.id), true);
+        }
+    }
+    return ids;
+}
+
 QVariantList EditController::tree() const {
     // QML relit `tree` une fois par binding (des dizaines de milliers de fois sur 570 objets) :
     // la liste n'est reconstruite qu'après un `treeChanged` (QVariantList est à copie partagée).
@@ -1023,7 +1050,6 @@ QVariantList EditController::tree() const {
 QVariantList EditController::buildTree() const {
     QVariantList rows;
     const auto& project = studio_.session().project();
-    const auto& selection = studio_.session().selection();
     const auto order = project.sewingOrder();
     const auto all = openstitch::desktop_v2::calques(project);
     const auto active = activeLayer();
@@ -1043,7 +1069,7 @@ QVariantList EditController::buildTree() const {
         }
     }
     const auto objectRow = [&](const document::EmbroideryObject& object, int depth) {
-        const Target target{TargetKind::EmbroideryObject, object.id.value};
+        // Pas de champ `selected` : voir selectedIdSet() (un clic ne reconstruit pas l'arbre).
         const auto type = stitchTypeId(object);
         return QVariantMap{
             {QStringLiteral("kind"), QStringLiteral("object")},
@@ -1053,7 +1079,6 @@ QVariantList EditController::buildTree() const {
                                                         : object.name)},
             {QStringLiteral("depth"), depth},
             {QStringLiteral("color"), QColor(object.rgb[0], object.rgb[1], object.rgb[2])},
-            {QStringLiteral("selected"), selection.contains(target)},
             {QStringLiteral("visible"), object.visible},
             {QStringLiteral("locked"), object.locked},
             {QStringLiteral("type"),
