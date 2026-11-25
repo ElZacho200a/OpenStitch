@@ -291,6 +291,12 @@ void unify_fine_classes(cv::Mat& colorIdx, const cv::Mat& lab, const FineStructu
                 pv += (p[i] - c0[i]) * (c1[i] - c0[i]);
             }
             const double t = vv > 1e-9 ? std::clamp(pv / vv, 0.0, 1.0) : 0.0;
+            // Être proche du segment fond–trait ne suffit pas : les pixels proches de
+            // l'extrémité fond ne portent pas assez de couleur du trait pour être recolorés.
+            constexpr double kMinStrokeFraction = 0.15;
+            if (t < kMinStrokeFraction) {
+                continue;
+            }
             double d2 = 0.0;
             for (std::size_t i = 0; i < 3; ++i) {
                 const double q = c0[i] + t * (c1[i] - c0[i]);

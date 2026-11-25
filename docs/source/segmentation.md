@@ -121,7 +121,9 @@ géométrie vectorielle.
   rejoindre ;
 - un trait anticrénelé est quantifié en plusieurs classes ; pour chaque composante du masque, la
   classe du trait (la plus éloignée du fond local parmi les classes assez fréquentes) absorbe les
-  pixels protégés dont la couleur est un mélange fond/trait (ΔE ≤ 12 au segment) ;
+  pixels protégés dont la couleur est un mélange fond/trait (ΔE ≤ 12 au segment et projection
+  à au moins 15 % du trajet du fond vers le trait). Cette borne évite de recolorer le fond uni
+  lorsque sa couleur tombe près de l'extrémité fond du segment ;
 - les pixels protégés ne sont jamais écrasés par le vote de lissage ;
 - les pixels protégés d'une même classe se relient en **8-connexité** (une diagonale d'un pixel est
   une région) ; les aplats gardent la 4-connexité ;
