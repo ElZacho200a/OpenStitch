@@ -84,7 +84,7 @@ ColumnLayout {
     Text {
         objectName: "segmentationInfo"
         Layout.fillWidth: true
-        text: imageTools.segPreviewActive ? imageTools.segPreviewInfo
+        text: imageTools.segPreviewActive ? qsTr("Aperçu (non appliqué) : %1").arg(imageTools.segPreviewInfo)
               : imageTools.hasSegmentation ? qsTr("Segmentation du projet : %1 régions, %2 couleurs").arg(imageTools.regionCount).arg(imageTools.colorCount)
               : qsTr("Pas encore de segmentation.")
         color: Theme.muted; font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily
@@ -127,7 +127,7 @@ ColumnLayout {
         objectName: "segBlendHint"
         Layout.fillWidth: true
         visible: section.blendZones
-        text: qsTr("Découpe l'image aux seuls bords nets ; « Mettre à jour les formes » coud ensuite chaque zone avec un fondu de 1 à 3 fils pris dans la palette. Expérimental : selon l'image, plus de coupes ou des couleurs moins fidèles qu'une segmentation classique.")
+        text: qsTr("Découpe l'image aux seuls bords nets ; À l'étape Vecteurs, « Recalculer les formes » coud ensuite chaque zone avec un fondu de 1 à 3 fils pris dans la palette. Expérimental : selon l'image, plus de coupes ou des couleurs moins fidèles qu'une segmentation classique.")
         wrapMode: Text.WordWrap
         color: Theme.muted; font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily
     }
@@ -143,7 +143,7 @@ ColumnLayout {
         objectName: "segLineworkHint"
         Layout.fillWidth: true
         visible: imageTools.preserveLinework
-        text: qsTr("« Mettre à jour les formes » coud les aplats en continu sous les traits sombres fins (cordages, nervures) et crée chaque trait comme une ligne ouverte, cousue par-dessus.")
+        text: qsTr("À l'étape Vecteurs, « Recalculer les formes » coud les aplats en continu sous les traits sombres fins (cordages, nervures) et crée chaque trait comme une ligne ouverte, cousue par-dessus.")
         wrapMode: Text.WordWrap
         color: Theme.muted; font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily
     }

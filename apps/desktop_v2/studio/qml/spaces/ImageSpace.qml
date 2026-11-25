@@ -127,9 +127,11 @@ Item {
         // Barre d'affichage de l'image : avant / après / rideau (les outils sont dans la barre latérale).
         Rectangle {
             objectName: "imageToolbar"
-            x: 0
-            y: 0
+            // En bas, centrée : le haut du canevas appartient à la barre Réaliste/Vue/Fils, qui
+            // recouvrait « Rideau » en fenêtre étroite.
             width: Math.min(parent.width, toolRow.implicitWidth + 16)
+            x: (parent.width - width) / 2
+            y: parent.height - height - Theme.gap
             clip: true
             height: Theme.controlHeight + 12
             radius: Theme.cardRadius

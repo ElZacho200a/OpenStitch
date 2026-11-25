@@ -32,11 +32,14 @@ class EditController : public QObject {
     Q_PROPERTY(QString message READ message NOTIFY messageChanged)
     Q_PROPERTY(bool snapEnabled READ snapEnabled WRITE setSnapEnabled NOTIFY snapChanged)
     Q_PROPERTY(bool eyedropper READ eyedropper WRITE setEyedropper NOTIFY eyedropperChanged)
-    Q_PROPERTY(int selectedCount READ selectedCount NOTIFY treeChanged)
+    Q_PROPERTY(int selectedCount READ selectedCount NOTIFY selectionStateChanged)
     // Formes éditables désignées par la sélection (broderie ou non) : cible de `deleteShapes`.
-    Q_PROPERTY(int selectedShapeCount READ selectedShapeCount NOTIFY treeChanged)
+    Q_PROPERTY(int selectedShapeCount READ selectedShapeCount NOTIFY selectionStateChanged)
     // Boîte de la sélection (mm scène) : x, y, width, height, cx, cy ; vide sans sélection.
-    Q_PROPERTY(QVariantMap selectionBox READ selectionBox NOTIFY treeChanged)
+    Q_PROPERTY(QVariantMap selectionBox READ selectionBox NOTIFY selectionStateChanged)
+    // Identifiants (texte) des objets de broderie sélectionnés : {id: true}. Séparé de `tree`
+    // pour qu'un clic ne reconstruise pas les milliers de lignes de l'arbre.
+    Q_PROPERTY(QVariantMap selectedIdSet READ selectedIdSet NOTIFY selectionStateChanged)
 public:
     explicit EditController(StudioController& studio, QObject* parent = nullptr);
     ~EditController() override;
@@ -54,6 +57,7 @@ public:
     [[nodiscard]] int selectedCount() const;
     [[nodiscard]] int selectedShapeCount() const;
     [[nodiscard]] QVariantMap selectionBox() const;
+    [[nodiscard]] QVariantMap selectedIdSet() const;
     // Union des boîtes de la sélection, en mm scène ; vide sans sélection ni scène.
     [[nodiscard]] std::optional<stitch_render::RectMm> selectionBounds() const;
 
@@ -144,6 +148,9 @@ public:
     Q_INVOKABLE int selectTreeRange(const QString& anchorId, const QString& id, bool additive);
 signals:
     void treeChanged();
+    // La sélection (ou ce qu'elle désigne : boîte, compteurs) a changé ; aussi après
+    // treeChanged.
+    void selectionStateChanged();
     void messageChanged();
     void savedSelectionsChanged();
     void snapChanged();
@@ -152,7 +159,9 @@ signals:
 private:
     [[nodiscard]] QVariantList buildTree() const;
     mutable std::optional<QVariantList> treeCache_;
-    std::uint64_t gateStamp_{0}; // documentStamp() au dernier changed rediffusé
+    [[nodiscard]] std::uint64_t treeStamp() const; // révision + scène, SANS la sélection
+    std::uint64_t gateStamp_{0};                   // documentStamp() au dernier changed rediffusé
+    std::uint64_t treeGateStamp_{0};               // treeStamp() au dernier treeChanged
     [[nodiscard]] std::vector<std::uint64_t> selectedIds() const;
     [[nodiscard]] std::vector<std::uint64_t> smallObjects(double maxAreaMm2) const;
     [[nodiscard]] bool selectIds(const std::vector<std::uint64_t>& ids, bool additive = false);

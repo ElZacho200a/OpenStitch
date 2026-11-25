@@ -91,13 +91,28 @@ Item {
             Layout.alignment: Qt.AlignTop
             Layout.preferredWidth: Theme.controlHeight + 16
             Layout.preferredHeight: Math.min(vectorRail.implicitHeight + 16, root.height - 2 * Theme.gap)
-            ToolRail {
-                id: vectorRail
-                anchors.top: parent.top
-                anchors.horizontalCenter: parent.horizontalCenter
+            // Fenêtre basse : le rail défile dans sa carte au lieu de déborder sur la barre d'état.
+            Flickable {
+                objectName: "vectorRailScroll"
+                anchors.fill: parent
                 anchors.topMargin: 8
-                canvas: spaceCanvas
-                workspaceActive: root.active
+                anchors.bottomMargin: 8
+                clip: true
+                contentWidth: width
+                contentHeight: vectorRail.implicitHeight
+                boundsBehavior: Flickable.StopAtBounds
+                interactive: contentHeight > height
+                Controls.ScrollBar.vertical: Controls.ScrollBar {
+                    policy: vectorRailScroll.interactive ? Controls.ScrollBar.AlwaysOn : Controls.ScrollBar.AlwaysOff
+                }
+                id: vectorRailScroll
+                ToolRail {
+                    id: vectorRail
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    spacing: root.height < 620 ? 2 : 6
+                    canvas: spaceCanvas
+                    workspaceActive: root.active
+                }
             }
         }
 
@@ -222,6 +237,7 @@ Item {
             Layout.preferredWidth: 320
             Layout.fillHeight: true
             ColumnLayout {
+                id: sideColumn
                 anchors.fill: parent
                 anchors.margins: 2
                 spacing: 0
@@ -237,16 +253,66 @@ Item {
                     Accessible.name: qsTr("Calque à vectoriser")
                     onActivated: index => imageTools.selectImageLayer(index)
                 }
-                VectorShapePanel {
-                    id: shapePanel
+                // Le panneau de forme défile dans au plus 55 % de la carte : sans cela il repoussait
+                // l'onglet Calques et la liste hors de la fenêtre (rognés, sur la barre d'état).
+                Controls.ScrollView {
+                    id: shapeScroll
+                    objectName: "vectorShapeScroll"
                     Layout.fillWidth: true
-                    Layout.margins: Theme.panelPadding
-                    stage: root.stage
-                    workspace: root.workspace
-                    onGoToRegionRequested: {
-                        // Sélection partagée : la région d'origine, puis bascule d'espace.
-                        if (root.stage.selectOriginRegion())
-                            root.workspace.setCurrent("segmentation")
+                    Layout.preferredHeight: Math.min(shapePanel.implicitHeight + 2 * Theme.panelPadding,
+                                                     sideColumn.height * (shapePanel.veryCompact ? 0.5 : 0.55))
+                    clip: true
+                    contentWidth: availableWidth
+                    Controls.ScrollBar.horizontal.policy: Controls.ScrollBar.AlwaysOff
+                    // Barre visible dès que le panneau dépasse : une coupure se lit comme du défilement.
+                    Controls.ScrollBar.vertical.policy: shapePanel.implicitHeight + 2 * Theme.panelPadding > shapeScroll.height
+                                                        ? Controls.ScrollBar.AlwaysOn : Controls.ScrollBar.AlwaysOff
+                    VectorShapePanel {
+                        id: shapePanel
+                        x: Theme.panelPadding
+                        y: Theme.panelPadding
+                        width: shapeScroll.availableWidth - 2 * Theme.panelPadding
+                        compact: root.height < 860
+                        veryCompact: root.height < 620
+                        showSelection: !veryCompact
+                        stage: root.stage
+                        workspace: root.workspace
+                        onGoToRegionRequested: {
+                            // Sélection partagée : la région d'origine, puis bascule d'espace.
+                            if (root.stage.selectOriginRegion())
+                                root.workspace.setCurrent("segmentation")
+                        }
+                    }
+                }
+                // Très petite fenêtre : forme sélectionnée en une ligne fixe, jamais coupée.
+                RowLayout {
+                    objectName: "vectorCompactSelection"
+                    visible: shapePanel.veryCompact
+                    Layout.fillWidth: true
+                    Layout.leftMargin: Theme.panelPadding
+                    Layout.rightMargin: Theme.panelPadding
+                    Layout.bottomMargin: 4
+                    spacing: 8
+                    readonly property var shape: root.stage ? root.stage.selectedShape : ({})
+                    Text {
+                        Layout.fillWidth: true
+                        text: parent.shape.id === undefined
+                              ? qsTr("Cliquez une forme pour voir son origine.")
+                              : (parent.shape.name.length > 0 ? parent.shape.name : qsTr("Forme"))
+                                + qsTr(" · %1 nœud(s)").arg(parent.shape.nodes)
+                        elide: Text.ElideRight
+                        color: Theme.muted
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.smallSize
+                    }
+                    StudioButton {
+                        objectName: "vectorCompactOriginButton"
+                        text: qsTr("Origine")
+                        implicitHeight: 28
+                        tooltip: qsTr("Ouvre l'espace Segmentation sur la région d'origine de la forme")
+                        enabled: parent.shape.id !== undefined && parent.shape.hasSource === true
+                                 && parent.shape.regionExists === true
+                        onClicked: if (root.stage.selectOriginRegion()) root.workspace.setCurrent("segmentation")
                     }
                 }
                 Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }
@@ -268,7 +334,7 @@ Item {
                         StudioButton {
                             objectName: "vectorLayersTab"
                             Layout.fillWidth: true
-                            text: qsTr("Calques")
+                            text: qsTr("Calques et objets")
                             tooltip: qsTr("Afficher les calques et les objets")
                             checkable: true
                             checked: vectorInspectorTabs.currentIndex === 0
@@ -289,10 +355,12 @@ Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     Layout.minimumHeight: 100
+                    clip: true // la liste des calques ne déborde plus de la carte
                     currentIndex: vectorInspectorTabs.currentIndex
 
                     LayerPanel {
                         objectName: "layerPanel"
+                        compactActions: root.height < 620
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                     }

@@ -193,6 +193,7 @@ private slots:
     void batchSegmentationSkipsTransparentImage();
     void vectorizeAllLayersIsIdempotent();
     void autosaveRecoveryAndDiscard();
+    void designHoopWarningFlagsOversizedShapes();
     void hoopMachineAndUserHoops();
     void hoopQuickSettingsAreOneUndoStepEach();
     void lastChosenHoopSeedsNewProjects();
@@ -1615,6 +1616,22 @@ void StudioFilesTest::autosaveRecoveryAndDiscard() {
     last.files->resolveGuard(QStringLiteral("discard"));
     Rig after(state.path());
     QVERIFY(!after.files->hasRecovery());
+}
+
+// L'en-tête signale un motif plus grand que le cadre (sans recalculer les statistiques de points).
+void StudioFilesTest::designHoopWarningFlagsOversizedShapes() {
+    Rig rig({}, true);
+    QVERIFY(rig.window);
+    QTRY_VERIFY_WITH_TIMEOUT(rig.window->isExposed(), 5'000);
+    auto project = studioFixture();
+    project.canvas.width = Micrometers{10'000};
+    project.canvas.height = Micrometers{10'000};
+    rig.session.replaceProject(project, true);
+    QVERIFY(rig.files->designHoopWarning().contains(QStringLiteral("dépasse le cadre")));
+    project.canvas.width = Micrometers{1'000'000};
+    project.canvas.height = Micrometers{1'000'000};
+    rig.session.replaceProject(project, true);
+    QVERIFY(rig.files->designHoopWarning().isEmpty());
 }
 
 void StudioFilesTest::hoopMachineAndUserHoops() {

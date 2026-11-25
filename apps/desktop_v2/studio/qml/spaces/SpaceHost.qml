@@ -312,9 +312,13 @@ Item {
                                 }
                             }
                             Text {
-                                visible: !stepper.compact || tab.current
+                                // Sous le palier compact, les étapes inactives gardent un libellé
+                                // court (« Segm. », « Vect. ») : une coche seule ne dit pas où elle mène.
+                                readonly property string shortLabel: tab.modelData.label.length > 6
+                                                                     ? tab.modelData.label.substring(0, 4) + "."
+                                                                     : tab.modelData.label
                                 anchors.verticalCenter: parent.verticalCenter
-                                text: tab.modelData.label
+                                text: stepper.compact && !tab.current ? shortLabel : tab.modelData.label
                                 color: tab.current ? host.tabSelectedInk : Theme.muted
                                 font.family: Theme.fontFamily
                                 font.pixelSize: Theme.bodySize
