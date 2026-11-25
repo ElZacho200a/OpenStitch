@@ -213,8 +213,8 @@ TEST_CASE("every engine parameter field is exposed by param_spec or excluded wit
     CHECK(exposed + excluded == engineFields);
     // rail_a, rail_b, topology, border, palette, transition, stitch_angle, image_weights
     CHECK(excluded == 8);
-    CHECK(exposed ==
-          187); // + tie_down_mm, couching_*_mm, scatter (STCH-CROS-01), chord_tolerance_mm
+    CHECK(exposed == 188); // + tie_down_mm, couching_*_mm, scatter (STCH-CROS-01),
+                           // chord_tolerance_mm, smooth_field
 }
 
 TEST_CASE("every table row reads back from a default object, inside its own range",

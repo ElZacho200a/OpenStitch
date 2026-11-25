@@ -257,7 +257,7 @@ void StudioInspectorTest::everySpecFieldIsExposedAndEditable() {
             }
         }
     }
-    QVERIFY(specFields == 181); // the complete table lists every engine setting of the 14 types
+    QVERIFY(specFields == 182); // the complete table lists every engine setting of the 14 types
     QCOMPARE(exposed, specFields);
     QCOMPARE(typesWithSpecs.size(), static_cast<std::size_t>(14));
 }
