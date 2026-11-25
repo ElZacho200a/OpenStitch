@@ -536,8 +536,7 @@ Window {
                           : qsTr("Cadre %1").arg(spaceHost.hoopSummary())
                     iconName: headerCard.compact ? "fit" : ""
                     quiet: true
-                    tooltip: overflow.length > 0 ? overflow + "
-" + qsTr("Cliquez pour choisir un autre cadre.")
+                    tooltip: overflow.length > 0 ? overflow + "\n" + qsTr("Cliquez pour choisir un autre cadre.")
                              : qsTr("Cadre : forme, dimensions, marge, Mes cadres (aussi au clic droit sur le canevas)")
                     onClicked: spaceHost.openHoop(null, 0, 0)
                 }
