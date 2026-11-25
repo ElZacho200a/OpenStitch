@@ -282,6 +282,7 @@ json params_json(const document::StitchParams& params, bool full) {
             } else if constexpr (std::is_same_v<T, document::DirectionalFillParams>) {
                 j["row_spacing_mm"] = mm(p.row_spacing);
                 j["spacing_regularity"] = p.spacing_regularity;
+                j["smooth_field"] = p.smooth_field;
                 j["stitch_length_mm"] = mm(p.stitch_length);
                 j["edge_weight"] = p.edge_weight;
                 j["inset_mm"] = mm(p.inset);

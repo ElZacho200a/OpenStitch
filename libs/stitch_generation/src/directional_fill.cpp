@@ -492,6 +492,9 @@ struct FieldConfig {
     double fallbackAngle{0.0};
     double noiseAmplitude{0.0}; // radians (0 = pas d'ondulation)
     std::uint32_t seed{0};
+    // Champ lissé (`DirectionalFillParams::smooth_field`) : diffusion amortie des vecteurs à
+    // angle doublé, ancrée près des guides ; adoucit les facettes « tangente du plus proche ».
+    bool smooth{false};
 };
 
 // Champ d'orientations d'un secteur, échantillonné sur une grille régulière
@@ -510,6 +513,8 @@ public:
         const P2 fallback = doubled(from_angle(cfg_.fallbackAngle));
         const double h2 = cfg_.softening * cfg_.softening;
         values_.resize(static_cast<std::size_t>(nx_) * static_cast<std::size_t>(ny_));
+        std::vector<char> nearGuide(values_.size(), 0);
+        const double fixedD2 = (0.75 * cell_) * (0.75 * cell_);
         for (int j = 0; j < ny_; ++j) {
             for (int i = 0; i < nx_; ++i) {
                 const P2 p{ox_ + i * cell_, oy_ + j * cell_};
@@ -524,6 +529,10 @@ public:
                         if (n.d2 == std::numeric_limits<double>::max()) {
                             continue;
                         }
+                        if (n.d2 <= fixedD2) {
+                            nearGuide[static_cast<std::size_t>(j) * static_cast<std::size_t>(nx_) +
+                                      static_cast<std::size_t>(i)] = 1;
+                        }
                         const double w = 1.0 / (n.d2 + h2);
                         acc = acc + doubled(n.tangent) * w;
                         wsum += w;
@@ -535,7 +544,19 @@ public:
                         base = m > 1e-6 ? mean * (1.0 / m) : fallback;
                     }
                 }
-                if (cfg_.edgeWeight > 0.0) {
+                values_[static_cast<std::size_t>(j) * static_cast<std::size_t>(nx_) +
+                        static_cast<std::size_t>(i)] = base;
+            }
+        }
+        if (cfg_.smooth && !guides.empty()) {
+            diffuse(nearGuide, edges);
+        }
+        if (cfg_.edgeWeight > 0.0) {
+            for (int j = 0; j < ny_; ++j) {
+                for (int i = 0; i < nx_; ++i) {
+                    const P2 p{ox_ + i * cell_, oy_ + j * cell_};
+                    P2& base = values_[static_cast<std::size_t>(j) * static_cast<std::size_t>(nx_) +
+                                       static_cast<std::size_t>(i)];
                     if (const auto e = edges.nearest_edge(p)) {
                         const double alpha = std::clamp(cfg_.edgeWeight, 0.0, 1.0) *
                                              std::exp(-e->first / cfg_.edgeBand);
@@ -546,8 +567,6 @@ public:
                         }
                     }
                 }
-                values_[static_cast<std::size_t>(j) * static_cast<std::size_t>(nx_) +
-                        static_cast<std::size_t>(i)] = base;
             }
         }
     }
@@ -607,6 +626,170 @@ public:
     }
 
 private:
+    // Lissage amorti (équation de Poisson écrantée, Gauss-Seidel sur-relaxé, balayage fixe donc
+    // déterministe) du champ historique « tangente du guide le plus proche » : chaque nœud libre
+    // minimise |F - F0|^2 + sigma^2 |grad F|^2. Les nœuds proches d'un guide restent EXACTEMENT sur
+    // la tangente du guide ; ailleurs seules les discontinuités (frontières entre guides, facettes)
+    // sont adoucies, sur une longueur `sigma` proportionnelle à la demi-largeur de la forme : une
+    // bande courbe garde son champ, une forme large perd ses facettes. Hors domaine (région +
+    // marge de 2 cases) la valeur de départ est conservée. Le système est résolu sur une grille
+    // GROSSIÈRE (pas ≈ sigma / 8) puis interpolé bilinéairement : coût borné quelle que soit la
+    // taille.
+    void diffuse(const std::vector<char>& nearGuide, const RegionIndex& region) {
+        const std::size_t count = values_.size();
+        const auto fidx = [&](int i, int j) {
+            return static_cast<std::size_t>(j) * static_cast<std::size_t>(nx_) +
+                   static_cast<std::size_t>(i);
+        };
+        std::vector<char> in(count, 0);
+        for (int j = 0; j < ny_; ++j) {
+            for (int i = 0; i < nx_; ++i) {
+                in[fidx(i, j)] = region.inside({ox_ + i * cell_, oy_ + j * cell_}) ? 1 : 0;
+            }
+        }
+        // Demi-largeur maximale (rayon du plus grand cercle inscrit), estimée sur ~400 nœuds
+        // intérieurs régulièrement répartis (une recherche de bord coûte cher au cœur d'une grande
+        // forme : on borne le nombre de requêtes, pas leur taille).
+        double rMax = 0.0;
+        std::size_t inside = 0;
+        for (const char c : in) {
+            inside += c != 0 ? 1U : 0U;
+        }
+        const int probe = std::max(
+            1, static_cast<int>(std::ceil(std::sqrt(static_cast<double>(inside) / 400.0))));
+        for (int j = 0; j < ny_; j += probe) {
+            for (int i = 0; i < nx_; i += probe) {
+                if (in[fidx(i, j)]) {
+                    if (const auto e = region.nearest_edge({ox_ + i * cell_, oy_ + j * cell_})) {
+                        rMax = std::max(rMax, e->first);
+                    }
+                }
+            }
+        }
+        for (int pass = 0; pass < 2; ++pass) { // dilatation de 2 cases
+            std::vector<char> grown = in;
+            for (int j = 0; j < ny_; ++j) {
+                for (int i = 0; i < nx_; ++i) {
+                    if (in[fidx(i, j)]) {
+                        for (int dj = -1; dj <= 1; ++dj) {
+                            for (int di = -1; di <= 1; ++di) {
+                                const int u = i + di;
+                                const int v = j + dj;
+                                if (u >= 0 && v >= 0 && u < nx_ && v < ny_) {
+                                    grown[fidx(u, v)] = 1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            in = std::move(grown);
+        }
+        std::vector<char> state(count, 0); // 0 hors domaine, 1 libre, 2 contraint
+        for (std::size_t k = 0; k < count; ++k) {
+            state[k] = nearGuide[k] ? 2 : (in[k] ? 1 : 0);
+        }
+
+        const double sigma = std::clamp(0.5 * rMax, 1'200.0, 8'000.0);
+        const int ratio = std::max(1, static_cast<int>(std::lround(sigma / 8.0 / cell_)));
+        const double hc = ratio * cell_;
+        const double a = (sigma * sigma) / (hc * hc);
+        const int ncx = (nx_ - 1) / ratio + 2;
+        const int ncy = (ny_ - 1) / ratio + 2;
+        const auto cidx = [&](int I, int J) {
+            return static_cast<std::size_t>(J) * static_cast<std::size_t>(ncx) +
+                   static_cast<std::size_t>(I);
+        };
+        const std::size_t ccount = static_cast<std::size_t>(ncx) * static_cast<std::size_t>(ncy);
+        std::vector<P2> f0(ccount, P2{0.0, 0.0});
+        std::vector<P2> cv(ccount, P2{0.0, 0.0});
+        std::vector<char> cstate(ccount, 0);
+        const int half = ratio / 2;
+        for (int J = 0; J < ncy; ++J) {
+            for (int I = 0; I < ncx; ++I) {
+                char st = 0;
+                const int i0 = I * ratio - half;
+                const int j0 = J * ratio - half;
+                for (int j = std::max(j0, 0); j < std::min(j0 + ratio, ny_); ++j) {
+                    for (int i = std::max(i0, 0); i < std::min(i0 + ratio, nx_); ++i) {
+                        st = std::max(st, state[fidx(i, j)]);
+                    }
+                }
+                P2 acc{0.0, 0.0};
+                for (int j = std::max(j0, 0); j < std::min(j0 + ratio, ny_); ++j) {
+                    for (int i = std::max(i0, 0); i < std::min(i0 + ratio, nx_); ++i) {
+                        const char fs = state[fidx(i, j)];
+                        if (st == 2 ? fs == 2 : (st == 0 || fs != 0)) {
+                            acc = acc + values_[fidx(i, j)];
+                        }
+                    }
+                }
+                const double m = norm(acc);
+                f0[cidx(I, J)] =
+                    m > 1e-9 ? acc * (1.0 / m) : doubled(from_angle(cfg_.fallbackAngle));
+                cv[cidx(I, J)] = f0[cidx(I, J)];
+                cstate[cidx(I, J)] = st;
+            }
+        }
+        constexpr int kMaxSweeps = 800;
+        constexpr double kOmega = 1.7;
+        constexpr double kTolerance = 2e-4;
+        for (int sweep = 0; sweep < kMaxSweeps; ++sweep) {
+            double worst = 0.0;
+            for (int J = 0; J < ncy; ++J) {
+                for (int I = 0; I < ncx; ++I) {
+                    const std::size_t k = cidx(I, J);
+                    if (cstate[k] != 1) {
+                        continue;
+                    }
+                    P2 acc{0.0, 0.0};
+                    int n = 0;
+                    const auto take = [&](int u, int v) {
+                        if (u >= 0 && v >= 0 && u < ncx && v < ncy && cstate[cidx(u, v)] != 0) {
+                            acc = acc + cv[cidx(u, v)];
+                            ++n;
+                        }
+                    };
+                    take(I - 1, J);
+                    take(I + 1, J);
+                    take(I, J - 1);
+                    take(I, J + 1);
+                    if (n == 0) {
+                        continue;
+                    }
+                    const P2 target = (f0[k] + acc * a) * (1.0 / (1.0 + a * n));
+                    const P2 next = cv[k] + (target - cv[k]) * kOmega;
+                    worst = std::max(worst, norm(next - cv[k]));
+                    cv[k] = next;
+                }
+            }
+            if (worst < kTolerance) {
+                break;
+            }
+        }
+        // Interpolation bilinéaire vers la grille fine (nœuds libres uniquement).
+        for (int j = 0; j < ny_; ++j) {
+            for (int i = 0; i < nx_; ++i) {
+                const std::size_t k = fidx(i, j);
+                if (state[k] != 1) {
+                    continue;
+                }
+                const double gx = static_cast<double>(i + half) / ratio;
+                const double gy = static_cast<double>(j + half) / ratio;
+                const int I = std::clamp(static_cast<int>(gx), 0, ncx - 2);
+                const int J = std::clamp(static_cast<int>(gy), 0, ncy - 2);
+                const double tx = std::clamp(gx - I, 0.0, 1.0);
+                const double ty = std::clamp(gy - J, 0.0, 1.0);
+                const P2 v = (cv[cidx(I, J)] * (1.0 - tx) + cv[cidx(I + 1, J)] * tx) * (1.0 - ty) +
+                             (cv[cidx(I, J + 1)] * (1.0 - tx) + cv[cidx(I + 1, J + 1)] * tx) * ty;
+                const double m = norm(v);
+                if (m > 1e-6) {
+                    values_[k] = v * (1.0 / m);
+                }
+            }
+        }
+    }
+
     [[nodiscard]] P2 at(int i, int j) const {
         return values_[static_cast<std::size_t>(j) * static_cast<std::size_t>(nx_) +
                        static_cast<std::size_t>(i)];
@@ -1302,6 +1485,7 @@ std::vector<Sector> build_sectors(const geometry::PathSet& region,
         cfg.edgeWeight = std::clamp(params.edge_weight, 0.0, 1.0);
         cfg.edgeBand = std::max(2'000.0, 5.0 * spacing);
         cfg.seed = params.seed;
+        cfg.smooth = params.smooth_field;
         cfg.noiseAmplitude = intensity * kMaxHandmadeTurn;
         if (const auto axis = geometry::principal_axis({piece})) {
             cfg.fallbackAngle = axis->angle.radians;

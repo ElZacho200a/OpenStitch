@@ -560,6 +560,7 @@ TEST_CASE("remplissage directionnel : save puis load = memes parametres") {
     dp.handmade_intensity = 65;
     dp.seed = 4'000'000'000U; // > int32 : doit survivre intact
     dp.spacing_regularity = 0.35;
+    dp.smooth_field = true;
     dp.density_gradient = document::DensityGradient{um(0, 100), um(4'000, 5'100), Micrometers{300},
                                                     Micrometers{1'200}};
 
@@ -590,6 +591,17 @@ TEST_CASE("remplissage directionnel : save puis load = memes parametres") {
         std::get<document::DirectionalFillParams>(plain->embroidery_objects[0].params);
     CHECK_FALSE(back.density_gradient.has_value());
     CHECK(back == dp);
+    CHECK(back.smooth_field);
+    fs::remove(path);
+
+    // Champ lissé coupé : la clé est absente, la relecture redonne le défaut (faux).
+    dp.smooth_field = false;
+    project.embroidery_objects[0].params = dp;
+    REQUIRE(project_io::save_project(path, project).has_value());
+    const auto off = project_io::load_project(path);
+    REQUIRE(off.has_value());
+    CHECK_FALSE(
+        std::get<document::DirectionalFillParams>(off->embroidery_objects[0].params).smooth_field);
     fs::remove(path);
 }
 

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <algorithm>
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
@@ -131,6 +132,30 @@ TEST_CASE("choice settings write the engine keyword and read back as an index",
     CHECK(batchSetParam({d.id}, "tatami", "pull_mode", 4).empty()); // hors des options
     CHECK(
         batchSetParam({d.id}, "tatami", "pull_mode", -1).empty()); // « mixte » n'est pas une valeur
+}
+
+TEST_CASE("the smooth field setting is advanced, searchable and settable on a directional fill",
+          "[desktop_v2][params][levels]") {
+    const auto specs = paramSpecs("directional");
+    const auto it = std::find_if(specs.begin(), specs.end(),
+                                 [](const ParamSpec& s) { return s.key == "smooth_field"; });
+    REQUIRE(it != specs.end());
+    // Hors du parcours simple : réglage fin à découvrir par « Réglages avancés » ou la recherche.
+    CHECK(paramLevel(*it) == ParamLevel::Advanced);
+    CHECK(paramMatches(*it, "lisse"));
+    CHECK(paramMatches(*it, "COURBE"));
+    CHECK(paramMatches(*it, "smooth"));
+    CHECK(paramMatches(*it, "cassure")); // vocabulaire du novice
+    CHECK(paramMatches(*it, "Facette"));
+    CHECK_FALSE(paramMatches(*it, "sous-couche"));
+
+    auto d = rectWithType("directional");
+    CHECK(*readParam(d.session.project().embroidery_objects.front(), "smooth_field") == 0.0);
+    REQUIRE(d.session.applyBatch(batchSetParam({d.id}, "directional", "smooth_field", 1), "Champ")
+                .committed);
+    CHECK(*readParam(d.session.project().embroidery_objects.front(), "smooth_field") == 1.0);
+    REQUIRE(d.session.undo());
+    CHECK(*readParam(d.session.project().embroidery_objects.front(), "smooth_field") == 0.0);
 }
 
 TEST_CASE("special fills expose their own essential settings", "[desktop_v2][params]") {

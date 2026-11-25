@@ -80,7 +80,8 @@ int main(int argc, char** argv) {
          QStringLiteral(
              "Recette : ouvre ces panneaux avant --screenshot (liste séparée par des "
              "virgules : vue, fils, analyse, satin, fondu, points, tirage, applique, corriger, "
-             "inspecteur, preferences ; un seul panneau à la fois par groupe, le dernier gagne)"),
+             "inspecteur, preferences, avances, recherche:<texte> ; un seul panneau à la fois "
+             "par groupe, le dernier gagne)"),
          QStringLiteral("liste")});
     parser.addOption({QStringLiteral("theme"),
                       QStringLiteral("Recette : active ce thème (identifiant, ex. bubblegum)"),
@@ -260,6 +261,12 @@ int main(int argc, char** argv) {
                         break;
                     }
                 }
+            } else if (name == QStringLiteral("avances")) {
+                // Recette : réglages avancés de l'inspecteur Points déjà affichés.
+                inspector.setShowAdvanced(true);
+            } else if (name.startsWith(QStringLiteral("recherche:"))) {
+                // Recette : « recherche:lisse » préremplit la recherche de réglage.
+                inspector.setQuery(raw.trimmed().mid(10));
             } else if (name == QStringLiteral("inspecteur")) {
                 window->setProperty("editOpen", true);
             } else if (name == QStringLiteral("preferences")) {

@@ -75,6 +75,7 @@ const std::vector<ParamSpec>& table() {
          ""},
         {"directional", "spacing_regularity", "Régularité de l'écart", K::Number, 0.0, 1.0, 0.05,
          ""},
+        {"directional", "smooth_field", "Lignes lissées (formes courbes)", K::Bool, 0, 1, 1, ""},
         {"directional", "edge_weight", "Poids des bords", K::Number, 0.0, 1.0, 0.05, ""},
         {"directional", "underlay_inset_mm", "Retrait de la sous-couche", K::Number, 0.0, 5.0, 0.1,
          "mm"},
@@ -395,10 +396,10 @@ std::string foldForSearch(std::string_view text) {
 
 ParamLevel paramLevel(const ParamSpec& spec) {
     static constexpr std::string_view kAdvanced[] = {
-        "underlay_inset_mm", "underlay_spacing_mm", "underlay_zigzag",      "hidden_underpath",
-        "stagger",           "row_end_clip_mm",     "edge_outline",         "spacing_regularity",
-        "edge_weight",       "sector_overlap_mm",   "max_stitch_length_mm", "max_width_hard_mm",
-        "underlay_mode"};
+        "underlay_inset_mm", "underlay_spacing_mm", "underlay_zigzag",   "hidden_underpath",
+        "stagger",           "row_end_clip_mm",     "edge_outline",      "spacing_regularity",
+        "smooth_field",      "edge_weight",         "sector_overlap_mm", "max_stitch_length_mm",
+        "max_width_hard_mm", "underlay_mode"};
     // Expert : graines, seuils, collections et points d'entrée / sortie.
     static constexpr std::string_view kExpert[] = {"seed",
                                                    "jagged_seed",
@@ -477,8 +478,12 @@ bool paramMatches(const ParamSpec& spec, std::string_view query) {
     if (needle.empty()) {
         return true;
     }
+    // Vocabulaire du novice : il cherche « cassure » ou « facette », pas « champ de directions ».
+    const std::string_view synonyms =
+        spec.key == "smooth_field" ? "cassure facette direction lissage courbure" : "";
     return foldForSearch(spec.label).find(needle) != std::string::npos ||
-           foldForSearch(spec.key).find(needle) != std::string::npos;
+           foldForSearch(spec.key).find(needle) != std::string::npos ||
+           foldForSearch(synonyms).find(needle) != std::string::npos;
 }
 
 namespace {
@@ -564,6 +569,7 @@ Opt readP(const document::DirectionalFillParams& p, std::string_view key) {
     PS_B("underlay_parallel", underlay_parallel);
     PS_B("hidden_underpath", hidden_underpath);
     PS_N("stagger", stagger);
+    PS_B("smooth_field", smooth_field);
     if (key == "spacing_regularity")
         return p.spacing_regularity;
     if (key == "edge_weight")
