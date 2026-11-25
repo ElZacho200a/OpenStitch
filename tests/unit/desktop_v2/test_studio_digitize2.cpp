@@ -455,6 +455,7 @@ void StudioDigitize2Test::guidedSatinStartsFromPanelAndTracesOnCanvas() {
     };
     auto* satinPanel = button("satinPanelButton");
     QVERIFY(satinPanel && satinPanel->isVisible());
+    QCOMPARE(satinPanel->property("text").toString(), QStringLiteral("Satin"));
     rig.canvas->setPanMode(true);
     click(satinPanel);
     auto* startGuide = button("guidedSatinTraceButton");
@@ -486,6 +487,27 @@ void StudioDigitize2Test::guidedSatinStartsFromPanelAndTracesOnCanvas() {
     drag(rig, at(rig, nodeX, nodeY), at(rig, nodeX, nodeY - 1.5));
     QCOMPARE(rig.steps(), depth + 3);
     QVERIFY(dstBytes(rig.session) != traced);
+    QVERIFY(rig.session.undo());
+    QVERIFY(dstBytes(rig.session) == traced);
+
+    auto* selectionTool = button("selectToolButton");
+    QVERIFY(selectionTool && selectionTool->isVisible());
+    click(selectionTool);
+    QTRY_COMPARE(rig.digitizer.mode(), QString());
+    click(satinPanel);
+    QTRY_VERIFY(startGuide->isVisible() && startGuide->isEnabled());
+    click(startGuide);
+    QTRY_VERIFY(!startGuide->isVisible());
+    QCOMPARE(rig.digitizer.mode(), QStringLiteral("guided"));
+    QCOMPARE(rig.steps(), depth + 2);
+
+    click(satinPanel);
+    auto* clearGuide = button("guidesClear");
+    QTRY_VERIFY(clearGuide && clearGuide->isVisible() && clearGuide->isEnabled());
+    click(clearGuide);
+    QTRY_VERIFY(!rig.satin.hasGuidedPath());
+    QCOMPARE(rig.steps(), depth + 3);
+    QVERIFY(dstBytes(rig.session) == preview);
     QVERIFY(rig.session.undo());
     QVERIFY(dstBytes(rig.session) == traced);
 

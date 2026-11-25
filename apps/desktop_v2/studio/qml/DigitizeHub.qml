@@ -78,8 +78,10 @@ Item {
                 // Barre d'outils historique : à gauche. Espace « Points » : bord droit, comme
                 // le tiroir de la Vue (jamais deux tiroirs ouverts : le hub frère se ferme).
                 x: hub.toolbarVisible ? 44 : parent.width - width - 12
-                width: Math.min(340, parent.width - (hub.toolbarVisible ? 90 : 24))
+                width: Math.min(hub.openPanel === "satin" && satinPanel.compactPresentation ? 240 : 340,
+                                parent.width - (hub.toolbarVisible ? 90 : 24))
                 SatinPanel {
+                    id: satinPanel
                     anchors.fill: parent
                     visible: hub.openPanel === "satin"
                     controller: satin

@@ -15,8 +15,14 @@ Rectangle {
     readonly property var actionController: typeof actions !== "undefined" ? actions : null
     readonly property bool guided: ready && controller.isGuidedSatin
     readonly property string selectedObjectId: ready ? controller.objectId : ""
+    readonly property bool showNumericGuides: !guided && numericGuidesOpen && selectedObjectId !== ""
+    readonly property bool compactPresentation: !showNumericGuides && (!ready || !controller.isSatin)
+    property bool numericGuidesOpen: false
     property string guidedRefusal: ""
-    onSelectedObjectIdChanged: guidedRefusal = ""
+    onSelectedObjectIdChanged: {
+        guidedRefusal = ""
+        numericGuidesOpen = false
+    }
     function parseRailCoordinate(value) {
         const mm = String(value).trim().replace(",", ".")
         if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(mm))
@@ -47,6 +53,7 @@ Rectangle {
         anchors.margins: 10
         contentHeight: column.implicitHeight
         clip: true
+        Controls.ScrollBar.vertical: Controls.ScrollBar {}
         ColumnLayout {
             id: column
             width: parent.width - 12
@@ -60,6 +67,8 @@ Rectangle {
                 font.pixelSize: Theme.smallSize
                 text: panel.ready && panel.controller.guidedSatinDisabledReason !== ""
                       ? panel.controller.guidedSatinDisabledReason
+                      : panel.guided && panel.controller.hasGuidedPath
+                        ? qsTr("Déplacez les nœuds pour ajuster l’orientation des points.")
                       : qsTr("Tracez la ligne centrale pour faire tourner les points le long de la forme.")
             }
             StudioButton {
@@ -160,9 +169,18 @@ Rectangle {
                         panel.parseRailCoordinate(nx.text), panel.parseRailCoordinate(ny.text))
                 }
             }
-            SectionLabel { visible: !panel.guided; text: qsTr("TRACER UN GUIDE (mm)") }
+            StudioButton {
+                objectName: "numericGuidesToggle"
+                visible: !panel.guided && panel.selectedObjectId !== ""
+                quiet: true
+                checkable: true
+                checked: panel.showNumericGuides
+                text: qsTr("Saisie par coordonnées")
+                onClicked: panel.numericGuidesOpen = checked
+            }
+            SectionLabel { visible: panel.showNumericGuides; text: qsTr("GUIDE DE DIRECTION (mm)") }
             RowLayout {
-                visible: !panel.guided
+                visible: panel.showNumericGuides
                 Layout.fillWidth: true
                 StudioLabel { text: qsTr("Début") }
                 StudioTextField {
@@ -181,7 +199,7 @@ Rectangle {
                 }
             }
             RowLayout {
-                visible: !panel.guided
+                visible: panel.showNumericGuides
                 Layout.fillWidth: true
                 StudioLabel { text: qsTr("Fin") }
                 StudioTextField {
@@ -201,7 +219,7 @@ Rectangle {
             }
             StudioButton {
                 objectName: "addDirectionGuide"
-                visible: !panel.guided
+                visible: panel.showNumericGuides
                 text: qsTr("Ajouter le guide")
                 enabled: panel.ready && panel.validGuidePoints()
                 tooltip: qsTr("Crée un guide de direction entre deux points du modèle (mm)")
@@ -209,15 +227,16 @@ Rectangle {
             }
             StudioButton {
                 objectName: "addBreakLine"
-                visible: !panel.guided
+                visible: panel.showNumericGuides
                 text: qsTr("Ajouter la ligne de rupture")
                 enabled: panel.ready && panel.validGuidePoints()
                          && panel.controller.breakLineCount >= 0
                 tooltip: qsTr("Crée une ligne de rupture entre deux points du modèle (mm)")
                 onClicked: panel.controller.addGuide(panel.guidePoints(), true)
             }
-            SectionLabel { text: panel.guided ? qsTr("LIGNE CENTRALE") : qsTr("GUIDES DE DIRECTION") }
+            SectionLabel { visible: panel.showNumericGuides; text: qsTr("GUIDES DE DIRECTION") }
             Text {
+                visible: panel.guided || panel.showNumericGuides
                 Layout.fillWidth: true
                 wrapMode: Text.Wrap
                 color: Theme.faint
@@ -232,12 +251,13 @@ Rectangle {
             Flow {
                 Layout.fillWidth: true
                 spacing: 4
+                visible: panel.guided || panel.showNumericGuides
                 enabled: panel.ready && panel.controller.guideCount >= 0
                 StudioButton {
                     objectName: "guidesClear"
                     visible: !panel.guided || panel.controller.guideCount > 0
                     text: panel.guided ? qsTr("Revenir à l’aperçu automatique") : qsTr("Retirer les guides")
-                    enabled: panel.controller.guideCount > 0
+                    enabled: panel.ready && panel.controller.guideCount > 0
                              && (!panel.guided || panel.controller.guidedSatinDisabledReason === "")
                     disabledReason: panel.guided ? panel.controller.guidedSatinDisabledReason
                                                  : qsTr("Aucun guide à retirer.")

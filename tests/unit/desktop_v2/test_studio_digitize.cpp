@@ -951,6 +951,9 @@ void StudioDigitizeTest::mainQmlHostsDigitizePanels() {
     auto* addGuideButton = named(window, "addDirectionGuide");
     auto* addBreakButton = named(window, "addBreakLine");
     QVERIFY(startX && startY && endX && endY && addGuideButton && addBreakButton);
+    QVERIFY(!startX->isVisible());
+    QVERIFY(press(window, "numericGuidesToggle"));
+    QVERIFY(startX->isVisible());
     QVERIFY(startX->setProperty("text", QStringLiteral("-10mm")));
     QVERIFY(startY->setProperty("text", QStringLiteral("-5")));
     QVERIFY(endX->setProperty("text", QStringLiteral("10")));

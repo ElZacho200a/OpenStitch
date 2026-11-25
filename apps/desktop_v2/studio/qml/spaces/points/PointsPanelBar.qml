@@ -53,7 +53,7 @@ Rectangle {
             font.pixelSize: Theme.smallSize
             Layout.rightMargin: 4
         }
-        Tab { objectName: "satinPanelButton"; visible: bar.digitizeHub.ready; iconName: "satin"; text: bar.labelSettings(qsTr("Satin")); tooltip: qsTr("Réglages du satin"); checked: bar.digitizeHub.openPanel === "satin"; onClicked: bar.digitizeHub.toggle("satin") }
+        Tab { objectName: "satinPanelButton"; visible: bar.digitizeHub.ready; iconName: "satin"; text: qsTr("Satin"); tooltip: qsTr("Réglages du satin"); checked: bar.digitizeHub.openPanel === "satin"; onClicked: bar.digitizeHub.toggle("satin") }
         Tab { objectName: "pointEditPanelButton"; visible: bar.digitizeHub.ready; iconName: "stitches"; text: bar.labelSettings(qsTr("Retouche")); tooltip: qsTr("Retouche point à point"); checked: bar.digitizeHub.openPanel === "points"; onClicked: bar.digitizeHub.toggle("points") }
         Tab { objectName: "pullPanelButton"; visible: bar.digitizeHub.ready && typeof pull !== "undefined"; iconName: "pull"; text: bar.labelSettings(qsTr("Tirage")); tooltip: qsTr("Compensation du tirage du tissu"); checked: bar.digitizeHub.openPanel === "pull"; onClicked: bar.digitizeHub.toggle("pull") }
         Tab { objectName: "fixPanelButton"; visible: bar.digitizeHub.ready && typeof fix !== "undefined"; iconName: "analysis"; text: bar.labelSettings(qsTr("Corriger")); tooltip: qsTr("Corriger les problèmes, réduire les fils"); checked: bar.digitizeHub.openPanel === "fix"; onClicked: bar.digitizeHub.toggle("fix") }
