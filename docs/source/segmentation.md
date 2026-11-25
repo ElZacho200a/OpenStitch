@@ -130,6 +130,21 @@ géométrie vectorielle.
 `segment(img, options, &carte)` renvoie aussi la `FineStructureMap` utilisée, pour qui veut le
 masque de traits (couche de traits, aperçu) sans recalcul.
 
+**Où l'activer.** Même réglage partout, décoché par défaut :
+
+- Studio, espace Segmentation, panneau Segmentation : case « Les garder dans les régions
+  (expérimental) » (`segFineStructures`), sous le titre « TRAITS FINS (CORDAGES, NERVURES) ». Elle suit l'aperçu en direct, « Appliquer », « Segmenter
+  la sélection » et « Re-segmenter » (`segmentationSettingsFrom`, clé `fine_structures`) ; grisée en
+  mode « zones de fondu ». À ne pas confondre avec « Coudre les traits sombres en lignes (étape Vecteurs) » (anciennement
+  « Préserver les traits fins »), qui agit plus loin (aplats continus sous les traits, traits cousus par-dessus) ; les deux se
+  complètent ;
+- ancien bureau : case « Garder les traits fins (expérimental) » dans « Segmenter l'image » (mémorisée avec les autres réglages) ;
+- `openstitch-cli project digitize --fine-structures` et l'opération `segment_image` (argument
+  booléen `fine_structures`, donc aussi côté MCP) ; le rapport `digitize-report/1` porte
+  `settings.fine_structures`.
+
+Mesure sur une image de voilier (640×400, haubans d'un pixel) : 4 régions sans l'option, 32 avec.
+
 **Mesures** (corpus synthétique, `tests/unit/segmentation/test_fine_structures.cpp`, tolérance 1 px) :
 rappel 1,00 et précision ≥ 0,97 pour des traits sombres de 1, 2, 4 et 8 px (horizontaux,
 diagonaux, courbes, verticaux), traits clairs sur fond sombre, traits chromatiques, trait traversant

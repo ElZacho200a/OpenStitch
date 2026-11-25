@@ -950,17 +950,20 @@ Result<Regeneration> resegmentObjects(std::shared_ptr<const document::Project> p
     if (task.cancelled()) {
         return cancelled_error();
     }
+    segmentation::SegmentationOptions segOptions{
+        .max_colors = settings.max_colors,
+        .min_region_px = settings.min_region_px,
+        .smoothing_radius_px = settings.smoothing_px,
+        .detail_mask = usableDetailMask(project->imageSource(), working.width, working.height)};
+    if (settings.fine_structures) {
+        segOptions.fine_structures = segmentation::FineStructureOptions{};
+    }
     auto seg =
         settings.mode == "blend"
             ? segmentation::segment_blend_zones(working, project->imageSource().mm_per_px,
                                                 {.edge_threshold = settings.blend_edge,
                                                  .min_zone_mm2 = settings.blend_min_zone_mm2})
-            : segmentation::segment(
-                  working, {.max_colors = settings.max_colors,
-                            .min_region_px = settings.min_region_px,
-                            .smoothing_radius_px = settings.smoothing_px,
-                            .detail_mask = usableDetailMask(project->imageSource(), working.width,
-                                                            working.height)});
+            : segmentation::segment(working, segOptions);
     if (!seg) {
         return fail(ErrorCategory::OperationImpossible,
                     "Segmentation impossible : " + seg.error().message,

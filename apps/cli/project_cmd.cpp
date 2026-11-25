@@ -334,6 +334,10 @@ void add_digitize_options(CLI::App* cmd, DigitizeOptionValues& v) {
         ->check(CLI::PositiveNumber);
     cmd->add_option("--smoothing-px", s.smoothing_px, "Lissage des formes en px (défaut : 3)")
         ->check(CLI::NonNegativeNumber);
+    cmd->add_flag(
+        "--fine-structures", s.fine_structures,
+        "Expérimental : les traits fins (cordages, nervures) lus sur l'image survivent au "
+        "lissage et au nettoyage des petites régions de la segmentation");
     cmd->add_option("--skip-background", v.skipBackground,
                     "Ignorer la plus grande région (le fond) : auto (défaut : seulement si c'est "
                     "un fond quasi blanc touchant au moins 3 bords) | yes | no | outer (seulement "

@@ -302,6 +302,7 @@ c37dbd3d,case,Fond de tissu opaque,export_image_dialog.cpp
 eb932cc3,case,Fractionner les traversées longues (> 7 mm),main_window_satin_auto.cpp
 213d5af7,case,Fusionner aussi les régions voisines de même couleur,segmentation_colors_panel.cpp
 8fd5f3dc,case,Fusionner les points trop courts,generation_options_dialog.cpp
+d7778903,case,Garder les traits fins (expérimental),segmentation_dialog.cpp
 e181a7ab,case,Gomme,main_window_detail_zones.cpp
 5674752c,case,Ignorer la plus grande région (probablement le fond),ai_segmentation_dialog.cpp
 e368f34e,case,Inverser les tons,main_window_create.cpp

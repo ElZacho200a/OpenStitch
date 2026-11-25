@@ -19,6 +19,9 @@ struct SegmentationSettings {
     // cousue en fondu de fils mélangés (`project_ops::DigitizeSettings::mode = "blend"`).
     bool blend_zones{false};
     int blend_threads{12};
+    // Expérimental (SEG-FINE-01) : les traits fins (cordages, nervures) lus sur l'image
+    // survivent au lissage et au nettoyage des petites régions.
+    bool fine_structures{false};
 };
 
 [[nodiscard]] inline SegmentationSettings segmentationSettingsFrom(const QVariantMap& map,
@@ -39,6 +42,8 @@ struct SegmentationSettings {
                                            number("smoothing_px", defaults.smoothing_radius_px))),
                    0, 10);
     out.blend_zones = map.value(QLatin1String("blend_zones"), defaults.blend_zones).toBool();
+    out.fine_structures =
+        map.value(QLatin1String("fine_structures"), defaults.fine_structures).toBool();
     out.blend_threads =
         std::clamp(static_cast<int>(number("blend_threads", defaults.blend_threads)), 2, 16);
     return out;

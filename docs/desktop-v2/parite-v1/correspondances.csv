@@ -444,3 +444,4 @@ f67ff16e,fait,Rect,libellé retrouvé dans la V2,Rect
 7937b507,fait,Select,libellé retrouvé dans la V2,Select
 c8de119f,fait,Text,libellé retrouvé dans la V2,Text
 602bd10d,fait,smooth_field,réglage avancé param_spec,Lignes lissées (formes courbes)
+d7778903,fait,segFineStructures,case « Garder les traits fins » du panneau Segmentation (SEG-FINE-01),Garder les traits fins (expérimental)
