@@ -54,6 +54,51 @@ project_ops::BatchReport run(document::Project& project, const std::string& op) 
 
 } // namespace
 
+TEST_CASE("step ops: segment_image fine_structures keeps a one pixel line",
+          "[project_ops][steps]") {
+    // 80 x 60 blanc, diagonale noire d'un pixel : sans l'option, lissage et nettoyage l'effacent.
+    document::Project project;
+    image::Image img;
+    img.width = 80;
+    img.height = 60;
+    img.rgba.assign(static_cast<std::size_t>(img.width * img.height * 4), 255);
+    std::vector<std::size_t> line;
+    for (int x = 4; x < 76; ++x) {
+        const int y = 4 + (x - 4) * 52 / 72;
+        const auto i = static_cast<std::size_t>(y * img.width + x);
+        img.rgba[i * 4] = img.rgba[i * 4 + 1] = img.rgba[i * 4 + 2] = 10;
+        line.push_back(i);
+    }
+    project.imageSource().original = std::move(img);
+    project.imageSource().mm_per_px = Millimeters{0.25};
+
+    const auto kept = [&](const document::Project& p) {
+        const auto& seg = *p.imageSource().segmentation;
+        const auto background = seg.labels[0];
+        return static_cast<std::size_t>(std::count_if(
+            line.begin(), line.end(), [&](std::size_t i) { return seg.labels[i] != background; }));
+    };
+
+    auto plain = project;
+    REQUIRE(
+        run(plain,
+            R"({"op":"segment_image","max_colors":3,"min_region_px":16,"smoothing_radius_px":1})")
+            .ok);
+    CHECK(kept(plain) * 2 < line.size()); // la ligne est perdue
+
+    auto protectedRun = project;
+    REQUIRE(
+        run(protectedRun,
+            R"({"op":"segment_image","max_colors":3,"min_region_px":16,"smoothing_radius_px":1,"fine_structures":true})")
+            .ok);
+    CHECK(kept(protectedRun) * 10 >= line.size() * 9); // au moins 90 % conservée
+
+    // Un booléen est exigé : refus nommé, projet intact.
+    auto wrong = project;
+    CHECK_FALSE(run(wrong, R"({"op":"segment_image","fine_structures":"oui"})").ok);
+    CHECK_FALSE(wrong.imageSource().segmentation.has_value());
+}
+
 TEST_CASE("step ops: image to stitches through every Studio step", "[project_ops][steps]") {
     auto project = two_color_project();
 

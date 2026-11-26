@@ -85,6 +85,105 @@ un octet par pixel de l'image de travail : 0 = aplat, 255 = détail) donne un r�
   de proposition automatique de zones. Un recadrage ou une rotation de l'image rend le masque
   inutilisable (taille différente) : il est ignoré puis remplacé au prochain trait.
 
+## Structures fines (SEG-FINE-01, expérimental)
+
+Option **désactivée par défaut** : `SegmentationOptions::fine_structures` (un
+`std::optional<FineStructureOptions>`). Sans valeur, `segment()` produit les mêmes labels,
+octet pour octet, qu'avant le chantier (garde : suite `test_segmentation`).
+
+**Pourquoi.** La quantification k-means affecte chaque pixel au centre le plus proche : un trait
+d'un pixel, anticrénelé ou peu contrasté, est (1) confondu avec le fond si sa couleur est rare,
+(2) effacé par le vote de lissage (une ligne d'un pixel dans une fenêtre 3×3 ne pèse que 1/3 des
+voix), (3) fragmenté par la 4-connexité (une diagonale), (4) absorbé par le nettoyage des petites
+régions (16 pixels). Les traits sont donc lus sur l'image **non quantifiée** et protégés.
+
+**Détection** (`detect_fine_structures`, `fine_structures.hpp`, masques raster uniquement) :
+
+1. chapeaux haut-de-forme noir et blanc sur L\*, a\*, b\* à plusieurs diamètres de noyau
+   (3, 5, 9, 17 selon `max_width_px`) ; réponse = norme (ΔE) des trois canaux, ce qui capte aussi
+   un trait de clarté voisine mais de teinte différente ;
+2. validation « crête » dans quatre directions : le centre diffère des deux côtés (≥ la moitié du
+   contraste) **et** les deux côtés ne sont pas alignés avec lui (`ridge_side_ratio`) — une
+   frontière simple, une rampe de dégradé et un bord d'aplat sont écartés, un trait qui traverse
+   deux aplats de couleurs différentes est conservé ;
+3. hystérésis 8-connexe (germes ≥ `high_contrast`, propagation ≥ `low_contrast`) ;
+4. rejet des composantes plus courtes que `max(min_length_px, largeur moyenne)` : le coin arrondi
+   d'un gros aplat répond comme un trait épais et court, un vrai trait est plus long que large.
+
+Sortie : `FineStructureMap` (masque, confiance 0–255, borne de largeur, compteurs). Pas de
+géométrie vectorielle.
+
+**Protection dans `segment()`** :
+
+- couleur rare : les pixels protégés dont la couleur est à plus de `rare_color_delta_e` de tout
+  centre de la palette fournissent jusqu'à `max_extra_colors` centres **supplémentaires** (la
+  palette peut donc dépasser `max_colors` de ce nombre) ; seuls les pixels protégés peuvent les
+  rejoindre ;
+- un trait anticrénelé est quantifié en plusieurs classes ; pour chaque composante du masque, la
+  classe du trait (la plus éloignée du fond local parmi les classes assez fréquentes) absorbe les
+  pixels protégés dont la couleur est un mélange fond/trait (ΔE ≤ 12 au segment et projection
+  à au moins 15 % du trajet du fond vers le trait). Cette borne évite de recolorer le fond uni
+  lorsque sa couleur tombe près de l'extrémité fond du segment ;
+- les pixels protégés ne sont jamais écrasés par le vote de lissage ;
+- les pixels protégés d'une même classe se relient en **8-connexité** (une diagonale d'un pixel est
+  une région) ; les aplats gardent la 4-connexité ;
+- une région dont ≥ 50 % des pixels sont protégés échappe au nettoyage si l'étendue de ses
+  pixels protégés atteint `min_length_px` sur au moins un axe. Le nettoyage peut ainsi absorber
+  les fragments courts créés quand la quantification découpe un trait en plusieurs couleurs.
+
+`segment(img, options, &carte)` renvoie aussi la `FineStructureMap` utilisée, pour qui veut le
+masque de traits (couche de traits, aperçu) sans recalcul.
+
+**Où l'activer.** Même réglage partout, décoché par défaut :
+
+- Studio, espace Segmentation, panneau Segmentation : case « Les garder dans les régions
+  (expérimental) » (`segFineStructures`), sous le titre « TRAITS FINS (CORDAGES, NERVURES) ». Elle suit l'aperçu en direct, « Appliquer », « Segmenter
+  la sélection » et « Re-segmenter » (`segmentationSettingsFrom`, clé `fine_structures`) ; grisée en
+  mode « zones de fondu ». À ne pas confondre avec « Coudre les traits sombres en lignes (étape Vecteurs) » (anciennement
+  « Préserver les traits fins »), qui agit plus loin (aplats continus sous les traits, traits cousus par-dessus) ; les deux se
+  complètent ;
+- ancien bureau : case « Garder les traits fins (expérimental) » dans « Segmenter l'image » (mémorisée avec les autres réglages) ;
+- `openstitch-cli project digitize --fine-structures` et l'opération `segment_image` (argument
+  booléen `fine_structures`, donc aussi côté MCP) ; le rapport `digitize-report/1` porte
+  `settings.fine_structures`.
+
+Mesure sur une image de voilier (640×400, haubans d'un pixel) : 4 régions sans l'option, 32 avec.
+
+**Mesures** (corpus synthétique, `tests/unit/segmentation/test_fine_structures.cpp`, tolérance 1 px) :
+rappel 1,00 et précision ≥ 0,97 pour des traits sombres de 1, 2, 4 et 8 px (horizontaux,
+diagonaux, courbes, verticaux), traits clairs sur fond sombre, traits chromatiques, trait traversant
+deux aplats, bruit JPEG ±3 ; zéro faux positif sur frontière simple, dégradé, bruit seul, gros
+aplat. Diagonale d'un pixel (k = 3, lissage 1, nettoyage 16) : 0 % de la vérité conservée sans
+l'option, 100 % avec, en 2 régions (fond + trait). Le masque détecté déborde d'environ 1 px de part
+et d'autre de la vérité (précision stricte 0,8–0,9) : c'est le halo anticrénelé.
+
+**Coût et fragmentation.** Comparatif Windows Release, trois répétitions alternées par réglage,
+`segment_image` avec `max_colors=8`, `min_region_px=16` et `smoothing_radius_px=1`, après
+`set_source_image` dans un lot `project apply`. Le temps mur et le pic de mémoire résidente incluent
+le lancement du CLI, la lecture de l'image et l'écriture OSP. Les comptes excluent le label 0.
+
+| Image | Régions OFF / ON initial / ON corrigé | Temps médian OFF / ON corrigé | Pic résident médian OFF / ON corrigé |
+| --- | ---: | ---: | ---: |
+| Illustration marine `sample/0215a7e5-97b1-44cb-8b5a-2b5a67e9efbe.png` (1445 × 1088) | 148 / 3502 / 594 | 0,34 / 2,28 s | 133 / 163 Mio |
+| Motif `tests/fixtures/tentabrode.png` (1117 × 1408) | 226 / 4629 / 613 | 0,37 / 2,28 s | 133 / 154 Mio |
+| Marine synthétique `tests/fixtures/ai-benchmark/marine-synth-01/source.png` | 20 / 54 / 35 | 0,12 / 0,21 s | 26 / 28 Mio |
+
+Le SHA-256 de `segmentation.u32` est stable sur les trois répétitions de chaque réglage. Les
+empreintes OFF sont identiques avant et après le correctif, y compris avec le paramètre omis.
+La marine synthétique donne 20 formes vectorielles et 20 objets brodés en OFF, 33 formes et 33
+objets en ON via `vectorize_segmentation` et `convert_vectors`.
+
+**Photo de gréement.** Avec les mêmes réglages, la photo de Mathieu Dréo
+([Wikimedia Commons, domaine public](https://commons.wikimedia.org/wiki/File:Tall_ship_rigging_in_amsterdam_close.jpg),
+640 × 480) passe de 756 à 1488 régions, de 0,30 à 0,75 s et de 44 à 52 Mio (médianes OFF / ON
+corrigé). À l'inspection des cartes de régions recolorées, plusieurs cordages diagonaux sont plus
+visibles, tandis que des bordures et des ombres sont épaissies.
+
+**Limites.** Le gain de fidélité reste à mesurer sur des images réelles annotées. La branche B
+(surfaces reconstituées indépendamment), Hessienne/Sato/Frangi et la complétion des aplats sous les
+traits restent à comparer. Deux traits parallèles écartés de moins que la portée du noyau peuvent
+se masquer mutuellement (le test de crête utilise alors la portée courte).
+
 ## Identifiants stables
 
 Chaque région a un `RegionId` = index de slot + 1. Les slots ne sont **jamais**

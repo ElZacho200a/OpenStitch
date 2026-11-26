@@ -11,6 +11,7 @@
 #include "openstitch/core/error.hpp"
 #include "openstitch/core/ids.hpp"
 #include "openstitch/image/image.hpp"
+#include "openstitch/segmentation/fine_structures.hpp"
 
 namespace openstitch::segmentation {
 
@@ -96,12 +97,27 @@ struct SegmentationOptions {
     const DetailMask* detail_mask{nullptr};
     int detail_smoothing_radius_px{0};
     int detail_min_region_px{2};
+
+    // SEG-FINE-01 (expérimental, DÉSACTIVÉ par défaut) : protection des structures fines. Sans
+    // valeur, le résultat est strictement celui d'avant (octet pour octet). Avec une valeur, les
+    // traits détectés sur l'image non quantifiée (`detect_fine_structures`) sont : (1) affectés à
+    // la palette élargie de couleurs rares (au plus `max_extra_colors` centres en plus de
+    // `max_colors`, seulement si la couleur du trait est absente de la palette) ; (2) exclus du
+    // vote de lissage ; (3) reliés en 8-connexité entre eux (une diagonale d'un pixel reste une
+    // seule région) ; (4) jamais absorbés par le nettoyage des petites régions, qui se juge sur la
+    // part de pixels protégés (>= 50 %) et non sur la seule aire.
+    std::optional<FineStructureOptions> fine_structures{};
 };
 
 // Quantifie l'image en CIELAB (k-means déterministe) puis extrait les
 // composantes connexes (4-connexité). Les pixels d'alpha < 128 forment le fond.
 [[nodiscard]] Result<Segmentation> segment(const image::Image& img,
                                            const SegmentationOptions& options);
+
+// Comme `segment`, et renvoie dans `fine_out` (si non nul) la carte des structures fines utilisée
+// pour la protection (vide si `options.fine_structures` n'a pas de valeur).
+[[nodiscard]] Result<Segmentation>
+segment(const image::Image& img, const SegmentationOptions& options, FineStructureMap* fine_out);
 
 [[nodiscard]] std::optional<RegionId> region_at(const Segmentation& seg, int x, int y);
 

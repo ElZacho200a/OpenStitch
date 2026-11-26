@@ -754,9 +754,13 @@ Result<DigitizeReport> digitize_image_into(document::Project& project,
                     working, project.imageSource().mm_per_px,
                     {.edge_threshold = s.blend_edge, .min_zone_mm2 = s.blend_min_zone_mm2});
             }
-            return segmentation::segment(working, {.max_colors = s.max_colors,
-                                                   .min_region_px = s.min_region_px,
-                                                   .smoothing_radius_px = s.smoothing_px});
+            segmentation::SegmentationOptions options{.max_colors = s.max_colors,
+                                                      .min_region_px = s.min_region_px,
+                                                      .smoothing_radius_px = s.smoothing_px};
+            if (s.fine_structures) {
+                options.fine_structures = segmentation::FineStructureOptions{};
+            }
+            return segmentation::segment(working, options);
         }();
         if (!seg) {
             return fail(ErrorCategory::OperationImpossible,

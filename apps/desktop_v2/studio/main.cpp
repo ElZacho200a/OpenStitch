@@ -261,6 +261,15 @@ int main(int argc, char** argv) {
                         break;
                     }
                 }
+            } else if (name == QStringLiteral("traits-fins")) {
+                // Recette (SEG-FINE-01) : espace Segmentation avec la case « traits fins » cochée,
+                // pour inspecter le texte d'aide aux deux tailles de la grille de captures.
+                if (auto* section =
+                        window->findChild<QObject*>(QStringLiteral("segmentationSection"))) {
+                    // L'aperçu en direct reste actif : le changement relance l'aperçu, que la
+                    // capture montre avec les fils retrouvés.
+                    section->setProperty("fineStructures", true);
+                }
             } else if (name == QStringLiteral("avances")) {
                 // Recette : réglages avancés de l'inspecteur Points déjà affichés.
                 inspector.setShowAdvanced(true);

@@ -374,6 +374,10 @@ OpStatus op_segment_image(OpContext& ctx) {
         !st.ok) {
         return st;
     }
+    bool fine_structures = false;
+    if (auto st = read_flag(ctx, "fine_structures", false, fine_structures); !st.ok) {
+        return st;
+    }
     // Image de travail = image d'origine + pile de prétraitements (comme le bureau).
     image::Image working = ctx.project.imageSource().original;
     for (const auto& op : ctx.project.imageSource().ops) {
@@ -383,10 +387,14 @@ OpStatus op_segment_image(OpContext& ctx) {
         }
         working = std::move(*next);
     }
-    auto seg = segmentation::segment(
-        working, {.max_colors = static_cast<int>(std::lround(max_colors)),
-                  .min_region_px = static_cast<int>(std::lround(min_region)),
-                  .smoothing_radius_px = static_cast<int>(std::lround(smoothing))});
+    segmentation::SegmentationOptions options{
+        .max_colors = static_cast<int>(std::lround(max_colors)),
+        .min_region_px = static_cast<int>(std::lround(min_region)),
+        .smoothing_radius_px = static_cast<int>(std::lround(smoothing))};
+    if (fine_structures) {
+        options.fine_structures = segmentation::FineStructureOptions{};
+    }
+    auto seg = segmentation::segment(working, options);
     if (!seg) {
         return refused("segmentation impossible : " + seg.error().message);
     }
@@ -590,8 +598,12 @@ void register_cleanup_ops(std::vector<OpSpec>& out) {
          {"min_region_px", "integer", "px", "régions plus petites absorbées (défaut 16)", false,
           "[1 ; 100000]"},
          {"smoothing_radius_px", "integer", "px", "lissage des frontières (défaut 0)", false,
-          "[0 ; 10]"}},
-        R"({"op":"segment_image","max_colors":6,"min_region_px":30})",
+          "[0 ; 10]"},
+         {"fine_structures", "boolean", "",
+          "expérimental : garde les traits fins (cordages, nervures) au lissage et au nettoyage "
+          "(défaut faux)",
+          false, ""}},
+        R"({"op":"segment_image","max_colors":6,"min_region_px":30,"fine_structures":true})",
         op_segment_image});
 
     out.push_back(

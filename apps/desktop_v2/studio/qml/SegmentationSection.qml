@@ -17,9 +17,13 @@ ColumnLayout {
     // mélangés au lieu d'aplats quantifiés.
     property bool blendZones: imageTools.segmentationDefaults.blend_zones
     property int blendThreads: imageTools.segmentationDefaults.blend_threads
+    // Expérimental : un trait fin (cordage, nervure, hauban) lu sur l'image survit au lissage et au
+    // nettoyage des petites régions au lieu d'être effacé ou fragmenté.
+    property bool fineStructures: imageTools.segmentationDefaults.fine_structures
     readonly property var options: ({ max_colors: maxColors, min_region_px: minRegionPx,
                                       smoothing_radius_px: smoothing, blend_zones: blendZones,
-                                      blend_threads: blendThreads })
+                                      blend_threads: blendThreads,
+                                      fine_structures: fineStructures })
     // The preview describes a specific parameter tuple. Invalidate/cancel it
     // immediately when colours, island size or smoothing changes.
     // Aperçu en direct (comme en V1) : un changement de réglage relance l'aperçu après 350 ms, sans
@@ -76,6 +80,7 @@ ColumnLayout {
     onSmoothingChanged: invalidatePreview()
     onBlendZonesChanged: invalidatePreview()
     onBlendThreadsChanged: invalidatePreview()
+    onFineStructuresChanged: invalidatePreview()
 
     // Pas de vignette d'aperçu ici : le canevas principal (plein format) montre déjà l'image
     // segmentée ou l'aperçu en direct, avec le badge « Aperçu de segmentation — document
@@ -131,9 +136,31 @@ ColumnLayout {
         wrapMode: Text.WordWrap
         color: Theme.muted; font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily
     }
+    // Deux réglages distincts, regroupés et nommés par l'étape où ils agissent (revue UX : deux
+    // libellés quasi identiques étaient confondus) : celui-ci, à la segmentation ; le suivant, à
+    // l'étape Vecteurs.
+    SectionLabel { text: qsTr("TRAITS FINS (CORDAGES, NERVURES)") }
+    StudioCheckBox {
+        objectName: "segFineStructures"
+        text: qsTr("Les garder dans les régions (expérimental)")
+        checked: section.fineStructures
+        enabled: !section.blendZones
+        onToggled: section.fineStructures = checked
+        palette.windowText: Theme.foreground
+    }
+    // Un seul texte, trois états : pourquoi cocher, ce que ça change, pourquoi c'est grisé.
+    Text {
+        objectName: "segFineStructuresHint"
+        Layout.fillWidth: true
+        text: section.blendZones ? qsTr("Indisponible avec les zones de fondu.")
+              : section.fineStructures ? qsTr("Les fils, même d'un pixel ou peu contrastés, restent des régions. Une texture ou un bruit marqué peut ajouter de petites régions : vérifiez l'aperçu.")
+              : qsTr("Des fils très fins disparaissent de l'aperçu ? Cochez cette case.")
+        wrapMode: Text.WordWrap
+        color: Theme.muted; font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily
+    }
     StudioCheckBox {
         objectName: "segPreserveLinework"
-        text: qsTr("Préserver les traits fins")
+        text: qsTr("Coudre les traits sombres en lignes (étape Vecteurs)")
         checked: imageTools.preserveLinework
         enabled: imageTools.hasImage
         onToggled: imageTools.preserveLinework = checked

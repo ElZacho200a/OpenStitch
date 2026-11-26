@@ -53,6 +53,29 @@ private slots:
         QCOMPARE(options.smoothing_radius_px, 7);
     }
 
+    // SEG-FINE-01 : la case est décochée par défaut (comportement historique), son état part dans
+    // les options de l'aperçu et de l'application, et n'est mémorisé qu'à la demande.
+    void fineStructuresCheckIsOffByDefaultAndReachesTheOptions() {
+        {
+            SegmentationDialog dialog(0.25);
+            auto* check = dialog.findChild<QCheckBox*>("segmentFineStructuresCheck");
+            QVERIFY(check != nullptr);
+            QVERIFY(!check->isChecked());
+            QVERIFY(!dialog.options().fine_structures.has_value());
+
+            QSignalSpy spy(&dialog, &SegmentationDialog::optionsChanged);
+            check->setChecked(true);
+            QVERIFY(spy.wait(2000));
+            QVERIFY(spy.takeFirst().at(0).value<SegmentationOptions>().fine_structures.has_value());
+            QVERIFY(dialog.options().fine_structures.has_value());
+            dialog.rememberSettings();
+        }
+        {
+            SegmentationDialog dialog(0.25);
+            QVERIFY(dialog.options().fine_structures.has_value()); // mémorisée après validation
+        }
+    }
+
     void applyEmitsTheCurrentOptionsAndPreviewToggleIsForwarded() {
         SegmentationDialog dialog(0.25);
         QSignalSpy applied(&dialog, &SegmentationDialog::applyRequested);
