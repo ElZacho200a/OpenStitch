@@ -11,6 +11,7 @@
 #include <QVariantList>
 #include <QVariantMap>
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 #include "satin_column.hpp"
@@ -22,6 +23,10 @@ class SatinController : public QObject {
     Q_OBJECT
     Q_PROPERTY(QString objectId READ objectId NOTIFY changed)
     Q_PROPERTY(bool isSatin READ isSatin NOTIFY changed)
+    Q_PROPERTY(bool isAutoSatin READ isAutoSatin NOTIFY changed)
+    Q_PROPERTY(bool isGuidedSatin READ isGuidedSatin NOTIFY changed)
+    Q_PROPERTY(bool hasGuidedPath READ hasGuidedPath NOTIFY changed)
+    Q_PROPERTY(QString guidedSatinDisabledReason READ guidedSatinDisabledReason NOTIFY changed)
     Q_PROPERTY(int railNodesA READ railNodesA NOTIFY changed)
     Q_PROPERTY(int railNodesB READ railNodesB NOTIFY changed)
     Q_PROPERTY(int rungCount READ rungCount NOTIFY changed)
@@ -36,6 +41,13 @@ public:
 
     [[nodiscard]] QString objectId() const;
     [[nodiscard]] bool isSatin() const { return railA_ > 0; }
+    [[nodiscard]] bool isAutoSatin() const { return autoStrategy_.has_value(); }
+    [[nodiscard]] bool isGuidedSatin() const {
+        return autoStrategy_ == document::AutoSatinStrategy::Guided;
+    }
+    [[nodiscard]] bool hasGuidedPath() const { return hasGuidedPath_; }
+    [[nodiscard]] QString guidedSatinDisabledReason() const;
+    Q_INVOKABLE bool useGuidedStrategy();
     [[nodiscard]] int railNodesA() const { return railA_; }
     [[nodiscard]] int railNodesB() const { return railB_; }
     [[nodiscard]] int rungCount() const { return rungs_; }
@@ -91,6 +103,8 @@ private:
     int rungs_{0};
     int guides_{-1};
     int breaks_{-1};
+    std::optional<document::AutoSatinStrategy> autoStrategy_;
+    bool hasGuidedPath_{false};
     SatinDiagnosis diagnosis_;
     QString message_;
     bool ok_{true};

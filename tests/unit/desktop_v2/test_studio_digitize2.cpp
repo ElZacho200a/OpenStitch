@@ -137,6 +137,7 @@ private slots:
     void fadeThreadStopsByMouse();
     void satinHandlesAndRungsByMouse();
     void guideStrokeByMouse();
+    void guidedSatinStartsFromPanelAndTracesOnCanvas();
     void pullAndCalibration();
     void appliqueConvertAndCut();
     void overlayIsGroupedAndNonMutating();
@@ -439,6 +440,96 @@ void StudioDigitize2Test::guideStrokeByMouse() {
     drag(rig, at(rig, 0, -8), at(rig, 0, 8));
     QCOMPARE(rig.steps(), depth + 1);
     QTRY_VERIFY(rig.satin.breakLineCount() >= 1);
+}
+
+void StudioDigitize2Test::guidedSatinStartsFromPanelAndTracesOnCanvas() {
+    Rig rig;
+    open(rig);
+    const auto button = [&](const char* name) {
+        return findVisual(rig.window->contentItem(), QString::fromLatin1(name));
+    };
+    const auto click = [&](QQuickItem* item) {
+        QTest::mouseClick(
+            rig.window, Qt::LeftButton, {},
+            item->mapToScene(QPointF(item->width() / 2, item->height() / 2)).toPoint());
+    };
+    auto* satinPanel = button("satinPanelButton");
+    QVERIFY(satinPanel && satinPanel->isVisible());
+    QCOMPARE(satinPanel->property("text").toString(), QStringLiteral("Satin"));
+    rig.canvas->setPanMode(true);
+    click(satinPanel);
+    auto* startGuide = button("guidedSatinTraceButton");
+    QTRY_VERIFY(startGuide && startGuide->isVisible() && startGuide->isEnabled());
+    const auto tatami = dstBytes(rig.session);
+    const auto depth = rig.steps();
+    click(startGuide);
+    QTRY_VERIFY(rig.satin.isGuidedSatin());
+    QTRY_COMPARE(rig.digitizer.mode(), QStringLiteral("guided"));
+    QVERIFY(!rig.canvas->panMode());
+    QCOMPARE(rig.steps(), depth + 1);
+    QVERIFY(!rig.satin.hasGuidedPath());
+    QTRY_VERIFY(!startGuide->isVisible());
+    QTRY_VERIFY(!rig.studio.busy());
+    const auto preview = dstBytes(rig.session);
+    QVERIFY(!preview.empty() && preview != tatami);
+
+    drag(rig, at(rig, -14, -1), at(rig, 14, 1));
+    QTRY_VERIFY(rig.satin.hasGuidedPath());
+    QCOMPARE(rig.steps(), depth + 2);
+    const auto traced = dstBytes(rig.session);
+    QVERIFY(!traced.empty() && traced != preview);
+    drag(rig, at(rig, -14, 5), at(rig, 14, 5));
+    QCOMPARE(rig.steps(), depth + 2); // editing the central line cannot add a second stroke
+    QVERIFY(dstBytes(rig.session) == traced);
+
+    const auto node = rig.satin.autoSatinGuidePaths().first().toList().first().toMap();
+    const double nodeX = node.value("x").toDouble(), nodeY = node.value("y").toDouble();
+    drag(rig, at(rig, nodeX, nodeY), at(rig, nodeX, nodeY - 1.5));
+    QCOMPARE(rig.steps(), depth + 3);
+    QVERIFY(dstBytes(rig.session) != traced);
+    QVERIFY(rig.session.undo());
+    QVERIFY(dstBytes(rig.session) == traced);
+
+    auto* selectionTool = button("selectToolButton");
+    QVERIFY(selectionTool && selectionTool->isVisible());
+    click(selectionTool);
+    QTRY_COMPARE(rig.digitizer.mode(), QString());
+    click(satinPanel);
+    QTRY_VERIFY(startGuide->isVisible() && startGuide->isEnabled());
+    click(startGuide);
+    QTRY_VERIFY(!startGuide->isVisible());
+    QCOMPARE(rig.digitizer.mode(), QStringLiteral("guided"));
+    QCOMPARE(rig.steps(), depth + 2);
+
+    click(satinPanel);
+    auto* clearGuide = button("guidesClear");
+    QTRY_VERIFY(clearGuide && clearGuide->isVisible() && clearGuide->isEnabled());
+    click(clearGuide);
+    QTRY_VERIFY(!rig.satin.hasGuidedPath());
+    QCOMPARE(rig.steps(), depth + 3);
+    QVERIFY(dstBytes(rig.session) == preview);
+    QVERIFY(rig.session.undo());
+    QVERIFY(dstBytes(rig.session) == traced);
+
+    QVERIFY(rig.session.undo());
+    QVERIFY(dstBytes(rig.session) == preview);
+    QVERIFY(rig.session.undo());
+    QTRY_COMPARE(rig.digitizer.mode(), QString());
+    QVERIFY(dstBytes(rig.session) == tatami);
+
+    QCOMPARE(rig.actions.run(QStringLiteral("satin.auto"),
+                             {{"spacing_mm", "0.6"}, {"strategy", "parallel_sweep"}}),
+             QString());
+    QTRY_VERIFY(rig.satin.isAutoSatin() && !rig.satin.isGuidedSatin());
+    if (!startGuide->isVisible()) {
+        click(satinPanel);
+    }
+    QTRY_VERIFY(startGuide->isVisible() && startGuide->isEnabled());
+    click(startGuide);
+    QTRY_VERIFY(rig.satin.isGuidedSatin());
+    const auto& params = std::get<document::AutoSatinParams>(
+        rig.session.project().findEmbroidery(ObjectId{rig.id})->params);
+    QCOMPARE(params.spacing.value, 600);
 }
 
 void StudioDigitize2Test::pullAndCalibration() {

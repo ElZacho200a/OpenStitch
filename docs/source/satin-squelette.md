@@ -378,7 +378,7 @@ contre 11) et `trident` (1 colonne contre 3, 98,3 contre 99 %). Non validé sur 
 ## Choix de la méthode par l'utilisateur (lot C) et comparaison (lot E)
 
 Une région auto-satin porte sa méthode : `document::AutoSatinParams::strategy`
-(`Skeleton`, `ParallelSweep`, `MedialAxis`) et, pour le balayage, `sweep_angle` facultatif.
+(`Skeleton`, `ParallelSweep`, `MedialAxis`, `Guided`) et, pour le balayage, `sweep_angle` facultatif.
 **Depuis le 2026-10-17, le balayage parallèle est la méthode proposée aux nouveaux
 auto-satins créés par l'utilisateur** (bureau, CLI, API : `document::kDefaultAutoSatinStrategy`).
 `AutoSatinParams{}` garde le squelette : un `.osp` sans la clé `strategy`, le lettrage et
@@ -425,6 +425,23 @@ Limite : l'angle reste fonction de la seule position le long de l'axe de balayag
 courbe qui revient sur elle-même selon cet axe n'est pas suivie fidèlement. Tests :
 `test_parallel_sweep` (courbe, orphelin, déterminisme), `test_auto_satin_strategy_persistence`
 (aller-retour), `test_main_window` (un pas d'annulation).
+
+**Satin guidé (`guided_satin`).** Sans tracé, la colonne démarre sur l'axe principal.
+Si cet axe rencontre plusieurs intervalles du contour, comme sur un ruban courbe ou un
+anneau, la construction par axe médian fournit l'aperçu initial. Dans Studio, sélectionnez
+une forme dans **Points**, puis choisissez **Satin › Créer un satin guidé** et glissez
+au centre de la bande. Pour retoucher le tracé, choisissez **Modifier la ligne centrale**
+ou appuyez sur **D** avec le satin sélectionné, puis déplacez ses nœuds. **Revenir à
+l’aperçu automatique** retire le tracé et permet d’en dessiner un autre. L'API accepte ce même tracé
+dès la conversion `auto_satin`, dans `guides: [{"path_mm": [[x, y], ...]}]`.
+
+Les traversées suivent la normale à la tangente interpolée entre les nœuds du guide.
+Cette interpolation conserve la position du guide et évite le changement brutal de
+direction qui découpait un ruban courbe en huit colonnes avec un guide à neuf nœuds.
+Le moteur coupe toujours la colonne si le guide quitte la région ou si deux traversées
+se croisent. Un virage trop serré ou des guides qui se recouvrent peuvent demander
+une retouche. Les cas `[guided_satin]` vérifient la continuité et la couverture du
+ruban, et le test Studio vérifie que déplacer un nœud recalcule les points et s'annule.
 
 Limites : l'auto-numérisation (`autodigitize::choose_satin`) et le lettrage continuent
 d'utiliser le squelette ; non validé sur machine.

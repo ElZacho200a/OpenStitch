@@ -11,11 +11,16 @@ Rectangle {
     objectName: "pointsOptionsBar"
     readonly property var toolCtl: typeof tools !== "undefined" ? tools : null
     readonly property var digitizeCtl: typeof digitizer !== "undefined" ? digitizer : null
+    readonly property var satinCtl: typeof satin !== "undefined" ? satin : null
     readonly property var spaceCtl: typeof pointsSpace !== "undefined" ? pointsSpace : null
     readonly property bool compact: width < 900
     readonly property bool needleToolActive: toolCtl !== null && toolCtl.activeTool === "needle.origin"
     readonly property string stateName: spaceCtl ? spaceCtl.state : "empty"
+    readonly property bool guidedTrace: digitizeCtl && digitizeCtl.mode === "guided" && satinCtl !== null
     readonly property string hintText: {
+        if (guidedTrace)
+            return satinCtl.hasGuidedPath ? qsTr("Glissez les nœuds pour ajuster la ligne centrale.")
+                                         : qsTr("Glissez au centre de la bande, d’une extrémité à l’autre.")
         if (digitizeCtl && digitizeCtl.mode !== "")
             return digitizeCtl.hint !== "" ? digitizeCtl.hint : qsTr("Geste actif : cliquez sur le canevas ; Échap pour terminer.")
         if (toolCtl && toolCtl.hint !== "")
@@ -33,7 +38,8 @@ Rectangle {
 
         Text {
             objectName: "pointsMode"
-            text: bar.digitizeCtl && bar.digitizeCtl.mode !== "" ? qsTr("Geste : ") + bar.digitizeCtl.mode
+            text: bar.guidedTrace ? qsTr("Ligne centrale du satin")
+                  : bar.digitizeCtl && bar.digitizeCtl.mode !== "" ? qsTr("Geste : ") + bar.digitizeCtl.mode
                   : bar.toolCtl && bar.toolCtl.activeTool === "needle.origin" ? qsTr("Point zéro")
                   : qsTr("Sélection")
             color: Theme.foreground

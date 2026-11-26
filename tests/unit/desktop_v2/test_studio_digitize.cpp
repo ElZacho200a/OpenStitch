@@ -571,6 +571,8 @@ void StudioDigitizeTest::guidedAutoSatinGuideStaysAutoSatin() {
     const auto* before = rig.session.project().findEmbroidery(ObjectId{rig.id});
     QVERIFY(before != nullptr);
     QVERIFY(std::holds_alternative<document::AutoSatinParams>(before->params));
+    const auto automatic = sequenceOf(rig.session);
+    QVERIFY(!automatic.commands.empty());
     const auto depth = rig.steps();
     const auto point = [](double x, double y) { return QVariantMap{{"x", x}, {"y", y}}; };
     QVERIFY(rig.satin.addGuide({point(-10, 0), point(0, 1), point(10, 0)}, false));
@@ -582,6 +584,18 @@ void StudioDigitizeTest::guidedAutoSatinGuideStaysAutoSatin() {
     QVERIFY(satin->strategy == document::AutoSatinStrategy::Guided);
     QCOMPARE(satin->guides.size(), std::size_t{1});
     QCOMPARE(satin->guides.front().path.size(), std::size_t{3});
+    const auto guided = sequenceOf(rig.session);
+    QVERIFY(!guided.commands.empty());
+    QVERIFY(guided.commands != automatic.commands);
+
+    QVERIFY(rig.satin.moveAutoSatinGuidePoint(0, 1, 0, 2));
+    const auto moved = sequenceOf(rig.session);
+    QVERIFY(!moved.commands.empty());
+    QVERIFY(moved.commands != guided.commands);
+    QCOMPARE(rig.steps(), depth + 2);
+    QVERIFY(rig.session.undo());
+    QVERIFY(sequenceOf(rig.session).commands == guided.commands);
+
     QVERIFY(rig.satin.clearGuides(false));
     const auto* cleared = rig.session.project().findEmbroidery(ObjectId{rig.id});
     QVERIFY(cleared != nullptr);
@@ -937,6 +951,9 @@ void StudioDigitizeTest::mainQmlHostsDigitizePanels() {
     auto* addGuideButton = named(window, "addDirectionGuide");
     auto* addBreakButton = named(window, "addBreakLine");
     QVERIFY(startX && startY && endX && endY && addGuideButton && addBreakButton);
+    QVERIFY(!startX->isVisible());
+    QVERIFY(press(window, "numericGuidesToggle"));
+    QVERIFY(startX->isVisible());
     QVERIFY(startX->setProperty("text", QStringLiteral("-10mm")));
     QVERIFY(startY->setProperty("text", QStringLiteral("-5")));
     QVERIFY(endX->setProperty("text", QStringLiteral("10")));

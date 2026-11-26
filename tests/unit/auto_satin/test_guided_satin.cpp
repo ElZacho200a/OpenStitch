@@ -2,7 +2,9 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
+#include <numbers>
 
 #include "openstitch/auto_satin/satin_strategy.hpp"
 #include "openstitch/auto_satin/shapes.hpp"
@@ -105,4 +107,42 @@ TEST_CASE("guided satin: a curve outside region cannot bridge the empty area", "
     REQUIRE(result.has_value());
     CHECK(result->columns.empty());
     CHECK(result->diagnostics.outside_samples > 0);
+}
+
+TEST_CASE("guided satin: automatic preview covers a curved ribbon", "[guided_satin]") {
+    const auto region = as::make_shape("ribbon");
+    REQUIRE(region.has_value());
+    as::SkeletonSatinParameters params;
+    params.measure_coverage = true;
+    const auto result = as::generate_satin(as::SatinStrategy::Guided, *region, params);
+    REQUIRE(result.has_value());
+    REQUIRE(result->diagnostics.coverage_measured);
+    CHECK(result->columns.size() == 1);
+    CHECK(result->diagnostics.coverage_ratio > 0.95);
+    CHECK(as::measure_result(*result).crossing_pairs == 0);
+
+    const auto again = as::generate_satin(as::SatinStrategy::Guided, *region, params);
+    REQUIRE(again.has_value());
+    CHECK(same(*result, *again));
+}
+
+TEST_CASE("guided satin: a sparse curved guide keeps a continuous ribbon", "[guided_satin]") {
+    const auto region = as::make_shape("ribbon");
+    REQUIRE(region.has_value());
+    as::SkeletonSatinGuide guide;
+    for (int i = 0; i <= 8; ++i) {
+        const double angle = std::numbers::pi * (0.15 + 0.70 * i / 8.0);
+        guide.path.push_back(
+            pt(static_cast<std::int32_t>(std::lround(20'000 + 18'000 * std::cos(angle))),
+               static_cast<std::int32_t>(std::lround(18'000 * std::sin(angle)))));
+    }
+    as::SkeletonSatinParameters params;
+    params.measure_coverage = true;
+    params.guides.push_back(std::move(guide));
+    const auto result = as::generate_satin(as::SatinStrategy::Guided, *region, params);
+    REQUIRE(result.has_value());
+    REQUIRE(result->diagnostics.coverage_measured);
+    CHECK(result->columns.size() == 1);
+    CHECK(result->diagnostics.coverage_ratio > 0.95);
+    CHECK(as::measure_result(*result).crossing_pairs == 0);
 }

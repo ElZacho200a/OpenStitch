@@ -13,6 +13,7 @@
 #include "chord.hpp"
 #include "coverage.hpp"
 #include "geometry_detail.hpp"
+#include "openstitch/auto_satin/medial_axis_satin.hpp"
 #include "openstitch/geometry/moments.hpp"
 #include "openstitch/geometry/polyline.hpp"
 
@@ -85,13 +86,27 @@ struct Station {
 
 std::vector<Station> stations(const Path& path, double spacing) {
     std::vector<double> lengths{0.0};
+    std::vector<P2> directions;
     for (std::size_t i = 1; i < path.size(); ++i) {
-        lengths.push_back(lengths.back() + detail::norm(path[i] - path[i - 1]));
+        const P2 delta = path[i] - path[i - 1];
+        const double length = detail::norm(delta);
+        lengths.push_back(lengths.back() + length);
+        directions.push_back(delta * (1.0 / length));
     }
     if (lengths.size() < 2 || lengths.back() < spacing * 0.5) {
         return {};
     }
     const double total = lengths.back();
+    // Interpolate the turn between vertex tangents instead of pivoting all at
+    // once at each polyline vertex. Keep the guide positions and the sewing pitch.
+    const bool closed = path.size() > 3 && detail::norm(path.front() - path.back()) <= 1.0;
+    const P2 seam = closed ? (directions.back() + directions.front()) * 0.5 : P2{};
+    std::vector<P2> tangents{closed ? seam : directions.front()};
+    for (std::size_t i = 1; i < directions.size(); ++i) {
+        tangents.push_back((directions[i - 1] + directions[i]) * 0.5);
+    }
+    tangents.push_back(closed ? seam : directions.back());
+
     // Hard cap protects interactive editing from huge/repeated guide paths.
     const std::size_t count = std::min<std::size_t>(
         100000, std::max<std::size_t>(2, static_cast<std::size_t>(std::ceil(total / spacing))));
@@ -108,8 +123,9 @@ std::vector<Station> stations(const Path& path, double spacing) {
             continue;
         }
         const double t = std::clamp((s - lengths[segment - 1]) / span, 0.0, 1.0);
-        const P2 tangent = (path[segment] - path[segment - 1]) * (1.0 / span);
-        // A local chord is normal to the user-controlled centreline.
+        const P2 direction = tangents[segment - 1] * (1.0 - t) + tangents[segment] * t;
+        const double norm = detail::norm(direction);
+        const P2 tangent = norm > 1e-9 ? direction * (1.0 / norm) : directions[segment - 1];
         out.push_back({path[segment - 1] + (path[segment] - path[segment - 1]) * t, tangent});
     }
     return out;
@@ -138,7 +154,26 @@ Result<SkeletonSatinResult> generate_guided_satin(const geometry::PathSet& curve
         }
     }
     if (guidePaths.empty()) {
-        guidePaths.push_back(automatic_axis(region, polygons));
+        auto axis = automatic_axis(region, polygons);
+        if (axis.size() == 2) {
+            const P2 delta = axis.back() - axis.front();
+            const auto intervals =
+                detail::line_intervals(polygons, axis.front(), delta * (1.0 / detail::norm(delta)));
+            if (intervals.size() != 1) {
+                // A straight axis in a curved band or an annulus runs through
+                // empty space. Bootstrap with the contour's medial construction.
+                auto seedParams = params;
+                seedParams.guides.clear();
+                auto seed = generate_medial_axis_satin(region, seedParams);
+                if (seed && !seed->columns.empty()) {
+                    seed->diagnostics.orphan_guides += diagnostics.orphan_guides;
+                    seed->diagnostics.messages.push_back(
+                        "satin guidé : départ sur l'axe médian ; tracez un guide pour le modifier");
+                    return seed;
+                }
+            }
+        }
+        guidePaths.push_back(std::move(axis));
         diagnostics.messages.push_back("satin guidé : axe initial automatique ; tracez un guide "
                                        "courbe pour piloter les points");
     }
