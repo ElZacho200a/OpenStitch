@@ -1180,6 +1180,42 @@ private slots:
         QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
     }
 
+    // SEG-FINE-01 : la case « Garder les traits fins » est visible, désactivée par défaut, et son
+    // choix voyage jusqu'aux réglages envoyés au moteur (aperçu, application, « Re-segmenter »).
+    void fineStructuresCheckboxCarriesTheChoiceToTheEngine() {
+        Rig rig;
+        open(rig);
+        auto* settings = rig.named("segmentationSection");
+        QVERIFY(settings);
+        QVERIFY(settings->setProperty("liveEnabled", false));
+        auto* box = rig.named("segFineStructures");
+        QVERIFY(box != nullptr);
+        QVERIFY(!box->property("checked").toBool());
+        QVERIFY(
+            !rig.images.segmentationDefaults().value(QStringLiteral("fine_structures")).toBool());
+        QVERIFY(!settings->property("options")
+                     .toMap()
+                     .value(QStringLiteral("fine_structures"))
+                     .toBool());
+
+        QVERIFY(rig.press("segFineStructures"));
+        QTRY_VERIFY(settings->property("fineStructures").toBool());
+        QVERIFY(settings->property("options")
+                    .toMap()
+                    .value(QStringLiteral("fine_structures"))
+                    .toBool());
+
+        // Parcours novice mesuré : un clic coche la case, un second clic applique (2 clics depuis
+        // l'espace Segmentation). L'aperçu en direct est coupé ici pour que le test ne dépende
+        // pas du minuteur de 350 ms ; il est actif par défaut dans l'application.
+        QSignalSpy applied(&rig.images, &ImageController::segmentationApplied);
+        QVERIFY(rig.press("segApplyButton"));
+        QTRY_COMPARE_WITH_TIMEOUT(applied.count(), 1, 60'000);
+        QVERIFY(
+            rig.images.lastSegmentationOptions().value(QStringLiteral("fine_structures")).toBool());
+        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+    }
+
     // --- zones de détail --------------------------------------------------------------------
     void detailBrushPaintsUndoablyAndOnlyOneToolIsActive() {
         Rig rig;

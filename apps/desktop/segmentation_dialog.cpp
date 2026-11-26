@@ -152,6 +152,17 @@ SegmentationDialog::SegmentationDialog(double mmPerPx, QWidget* parent)
     form->addRow(tr("Taille minimale de région :"), minSizeRow);
     form->addRow(tr("Lissage des formes :"), smoothingSpin_);
 
+    // SEG-FINE-01 (expérimental) : sans cette case, un trait d'un pixel est effacé par le lissage
+    // puis absorbé par le nettoyage des petites régions.
+    fineStructuresCheck_ = new QCheckBox(tr("Garder les traits fins (expérimental)"), this);
+    fineStructuresCheck_->setObjectName(QStringLiteral("segmentFineStructuresCheck"));
+    fineStructuresCheck_->setChecked(
+        ui_memory::boolValue(QStringLiteral("segment/fineStructures"), false));
+    fineStructuresCheck_->setToolTip(
+        tr("Les lignes fines (cordages, nervures, haubans), même d'un pixel ou peu contrastées, "
+           "restent des régions au lieu d'être lissées ou absorbées. Vérifiez l'aperçu : une "
+           "texture ou un bruit marqué peut ajouter de petites régions."));
+
     // Zones de détail : mêmes réglages, appliqués seulement là où l'utilisateur a peint avec
     // l'outil « Zones de détail » ; sans zone peinte ces deux réglages n'ont aucun effet.
     detailSmoothingSpin_ = new QSpinBox(this);
@@ -215,7 +226,13 @@ SegmentationDialog::SegmentationDialog(double mmPerPx, QWidget* parent)
     previewCheck_->setChecked(true);
     previewCheck_->setToolTip(tr("Affiche la carte des régions telle qu'elle sera créée, sans rien "
                                  "modifier tant que vous ne cliquez pas « Segmenter »."));
-    layout->addWidget(previewCheck_);
+    // Même ligne que l'aperçu : la boîte tient dans la hauteur maximale gardée par
+    // `test_ui_responsive` (HP-QA-008).
+    auto* optionsRow = new QHBoxLayout;
+    optionsRow->addWidget(previewCheck_);
+    optionsRow->addWidget(fineStructuresCheck_);
+    optionsRow->addStretch(1);
+    layout->addLayout(optionsRow);
 
     statsLabel_ = new QLabel(this);
     statsLabel_->setObjectName(QStringLiteral("segmentStatsLabel"));
@@ -242,6 +259,7 @@ SegmentationDialog::SegmentationDialog(double mmPerPx, QWidget* parent)
         scheduleChange();
     });
     connect(smoothingSpin_, &QSpinBox::valueChanged, this, [this] { scheduleChange(); });
+    connect(fineStructuresCheck_, &QCheckBox::toggled, this, [this] { scheduleChange(); });
     connect(detailSmoothingSpin_, &QSpinBox::valueChanged, this, [this] { scheduleChange(); });
     connect(detailMinSizeSpin_, &QSpinBox::valueChanged, this, [this] { scheduleChange(); });
     connect(changeTimer_, &QTimer::timeout, this, [this] { emit optionsChanged(options()); });
@@ -252,12 +270,17 @@ SegmentationDialog::SegmentationDialog(double mmPerPx, QWidget* parent)
 }
 
 segmentation::SegmentationOptions SegmentationDialog::options() const {
-    return {.max_colors = colorsSpin_->value(),
-            .min_region_px = minSizeSpin_->value(),
-            .smoothing_radius_px = smoothingSpin_->value(),
-            .detail_mask = nullptr, // fourni par MainWindow (masque du projet)
-            .detail_smoothing_radius_px = detailSmoothingSpin_->value(),
-            .detail_min_region_px = detailMinSizeSpin_->value()};
+    segmentation::SegmentationOptions result{
+        .max_colors = colorsSpin_->value(),
+        .min_region_px = minSizeSpin_->value(),
+        .smoothing_radius_px = smoothingSpin_->value(),
+        .detail_mask = nullptr, // fourni par MainWindow (masque du projet)
+        .detail_smoothing_radius_px = detailSmoothingSpin_->value(),
+        .detail_min_region_px = detailMinSizeSpin_->value()};
+    if (fineStructuresCheck_->isChecked()) {
+        result.fine_structures = segmentation::FineStructureOptions{};
+    }
+    return result;
 }
 
 bool SegmentationDialog::previewEnabled() const {
@@ -317,6 +340,8 @@ void SegmentationDialog::rememberSettings() const {
     ui_memory::setIntValue(QStringLiteral("segment/detailSmoothing"),
                            detailSmoothingSpin_->value());
     ui_memory::setIntValue(QStringLiteral("segment/detailMinSize"), detailMinSizeSpin_->value());
+    ui_memory::setBoolValue(QStringLiteral("segment/fineStructures"),
+                            fineStructuresCheck_->isChecked());
 }
 
 void SegmentationDialog::scheduleChange() {

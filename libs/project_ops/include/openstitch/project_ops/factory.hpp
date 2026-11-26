@@ -82,6 +82,10 @@ struct DigitizeSettings {
     bool satin_bands{false};        // shapes
     bool single_path{false};        // contours
     bool coherent_lines{false};     // contours : FDoG avant segmentation
+    // SEG-FINE-01 (expérimental) : les traits fins (cordages, nervures) lus sur l'image non
+    // quantifiée survivent au lissage et au nettoyage des petites régions
+    // (`SegmentationOptions::fine_structures`). Sans effet en modes blend et stipple.
+    bool fine_structures{false};
     // Traitements d'image AVANT la segmentation (non destructifs : stockés dans
     // `project.imageSource().ops`, `original` reste la source). Opérations séparées par `+`,
     // chacune `nom[:arg[:arg…]]` : median[:1|2], bilateral[:1..3], flatten[:1..3], clahe[:C],

@@ -430,7 +430,8 @@ QVariantMap ImageController::segmentationDefaults() const {
             {QStringLiteral("min_region_px"), defaults.min_region_px},
             {QStringLiteral("smoothing_radius_px"), 3},
             {QStringLiteral("blend_zones"), false},
-            {QStringLiteral("blend_threads"), 12}};
+            {QStringLiteral("blend_threads"), 12},
+            {QStringLiteral("fine_structures"), false}};
 }
 
 QVariantMap ImageController::lastSegmentationOptions() const {
@@ -605,6 +606,9 @@ segmentation::SegmentationOptions ImageController::optionsFrom(const QVariantMap
     options.max_colors = chosen.max_colors;
     options.min_region_px = chosen.min_region_px;
     options.smoothing_radius_px = chosen.smoothing_radius_px;
+    if (chosen.fine_structures) {
+        options.fine_structures = segmentation::FineStructureOptions{};
+    }
     return options;
 }
 

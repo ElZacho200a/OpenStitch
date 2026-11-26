@@ -12,6 +12,11 @@ if(WIN32)
     target_link_libraries(openstitch-bench PRIVATE psapi)
 endif()
 
+# SEG-FINE-01: référence CPU et cartes raster, hors CTest et sans Qt.
+add_executable(openstitch-seg-fine-bench EXCLUDE_FROM_ALL seg_fine_bench.cpp)
+target_link_libraries(openstitch-seg-fine-bench
+    PRIVATE openstitch::image openstitch::segmentation openstitch::warnings)
+
 # Mesures opt-in du parcours CLI complet, hors CTest et sans Qt (R01-01).
 find_package(nlohmann_json CONFIG REQUIRED)
 add_executable(openstitch-profile-engine EXCLUDE_FROM_ALL profile_engine.cpp)

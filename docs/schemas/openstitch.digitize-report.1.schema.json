@@ -64,6 +64,9 @@
         "smoothing_px": {
           "type": "integer"
         },
+        "fine_structures": {
+          "type": "boolean"
+        },
         "skip_background": {
           "type": "integer"
         },

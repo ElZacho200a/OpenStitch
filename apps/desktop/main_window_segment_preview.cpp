@@ -38,7 +38,8 @@ bool sameOptions(const segmentation::SegmentationOptions& a,
     return a.max_colors == b.max_colors && a.min_region_px == b.min_region_px &&
            a.smoothing_radius_px == b.smoothing_radius_px &&
            a.detail_smoothing_radius_px == b.detail_smoothing_radius_px &&
-           a.detail_min_region_px == b.detail_min_region_px;
+           a.detail_min_region_px == b.detail_min_region_px &&
+           a.fine_structures.has_value() == b.fine_structures.has_value();
 }
 
 // Image de l'instantané, ou une image vide si le dialogue vient de se fermer (instantané libéré).

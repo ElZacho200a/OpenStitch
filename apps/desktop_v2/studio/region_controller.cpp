@@ -704,6 +704,7 @@ void RegionController::regenerate(bool resegment, bool confirmed, const QVariant
     digitize.max_colors = chosen.max_colors;
     digitize.min_region_px = chosen.min_region_px;
     digitize.smoothing_px = chosen.smoothing_radius_px;
+    digitize.fine_structures = chosen.fine_structures;
     if (chosen.blend_zones) {
         // Expérimental : zones de fondu, chaque zone cousue en fondu de fils mélangés.
         digitize.mode = "blend";

@@ -1,0 +1,22 @@
+{
+  "voilier": {
+    "source": "https://commons.wikimedia.org/wiki/File:Mirage_24_sailboat_Reflection_3878.jpg",
+    "author": "Ahunt (CC0)",
+    "size": [846, 960],
+    "sha256": "33b0551ea82333e9d0e6397becb16c5746700f055471ad59f0b095d69bd44a65",
+    "lines": {"hauban-pale": [[484, 200], [610, 520]]},
+    "negative_boxes": {"ciel": [60, 80, 240, 270], "eau": [20, 815, 100, 930]}
+  },
+  "peche": {
+    "source": "https://commons.wikimedia.org/wiki/File:Fishing_Boat.JPG",
+    "author": "VladUK (domaine public)",
+    "size": [960, 720],
+    "sha256": "cb949a6b9aeddd513229a54d68fbe9fdbd32dbf2a5b5615b155ab0c4cd0f8ad1",
+    "lines": {"antenne": [[358, 24], [366, 158]], "amarre": [[621, 387], [731, 458]]},
+    "negative_boxes": {
+      "ciel": [700, 55, 875, 185],
+      "eau": [78, 465, 270, 620],
+      "feuillage": [795, 322, 895, 346]
+    }
+  }
+}

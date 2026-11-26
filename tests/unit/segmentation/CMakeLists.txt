@@ -3,6 +3,7 @@ add_executable(test_segmentation
     test_blend_zones.cpp
     test_color_merge.cpp
     test_region_growing.cpp
+    test_fine_structures.cpp
 )
 target_link_libraries(test_segmentation
     PRIVATE openstitch::segmentation Catch2::Catch2WithMain openstitch::warnings)

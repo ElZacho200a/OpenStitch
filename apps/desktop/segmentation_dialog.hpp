@@ -67,6 +67,7 @@ private:
     QSpinBox* detailSmoothingSpin_{nullptr};
     QSpinBox* detailMinSizeSpin_{nullptr};
     QCheckBox* previewCheck_{nullptr};
+    QCheckBox* fineStructuresCheck_{nullptr};
     QLabel* sourceThumbnail_{nullptr};
     QLabel* segmentationThumbnail_{nullptr};
     QLabel* statsLabel_{nullptr};

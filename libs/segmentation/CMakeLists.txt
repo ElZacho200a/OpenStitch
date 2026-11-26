@@ -2,6 +2,7 @@ find_package(OpenCV CONFIG REQUIRED COMPONENTS core imgproc)
 
 add_library(openstitch_segmentation
     src/segmentation.cpp
+    src/fine_structures.cpp
     src/color_merge.cpp
     src/region_growing.cpp
     src/blend_zones.cpp

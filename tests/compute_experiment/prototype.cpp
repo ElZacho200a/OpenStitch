@@ -40,6 +40,13 @@ constexpr std::array scenarios{
     Scenario{"tentabrode-distance", 320, 241, 106, Method::DistanceL2Mask3},
 };
 
+// Isolate the existing single-channel operation at SEG-FINE-01 scales. Stay inside
+// the original R01 visit budget; these cases still transfer once per opening.
+constexpr std::array segmentationScenarios{
+    Scenario{"segmentation-open-9", 960, 720, 1, Method::OpenEllipse, 9},
+    Scenario{"segmentation-open-17", 480, 360, 1, Method::OpenEllipse, 17},
+};
+
 double milliseconds(Clock::duration duration) {
     return std::chrono::duration<double, std::milli>(duration).count();
 }
@@ -234,11 +241,15 @@ void verify_fallback() {
 
 int main(int argc, char** argv) {
     try {
-        constexpr int repetitions = 21;
         const bool cpuOnly = argc == 2 && std::string_view(argv[1]) == "--cpu-only";
-        if (argc != 1 && !cpuOnly) {
-            throw std::invalid_argument("usage: openstitch-compute-prototype [--cpu-only]");
+        const bool segmentationOnly = argc == 2 && std::string_view(argv[1]) == "--segmentation";
+        if (argc != 1 && !cpuOnly && !segmentationOnly) {
+            throw std::invalid_argument(
+                "usage: openstitch-compute-prototype [--cpu-only | --segmentation]");
         }
+        const int repetitions = segmentationOnly ? 5 : 21;
+        const auto cases = segmentationOnly ? std::span<const Scenario>(segmentationScenarios)
+                                            : std::span<const Scenario>(scenarios);
         verify_fallback();
         if (cpuOnly) {
             std::cout << "{\"kind\":\"parity\",\"cpu_fallback\":true}\n";
@@ -269,7 +280,7 @@ int main(int argc, char** argv) {
         const int edgeCases = verify_edges(adapter->run);
         verify_work_guard(adapter->run);
         int batches = 0;
-        for (const auto& scenario : scenarios) {
+        for (const auto& scenario : cases) {
             std::vector<Mask> masks;
             std::vector<Pixels> reference;
             masks.reserve(static_cast<std::size_t>(scenario.count));
