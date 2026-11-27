@@ -25,8 +25,11 @@ class ThreadController : public QObject {
     Q_OBJECT
     Q_PROPERTY(QString message READ message NOTIFY messageChanged)
     Q_PROPERTY(bool lastOk READ lastOk NOTIFY messageChanged)
-    // [{index, id, label, color, objectCount, visible, selected}] in order of first sewing.
+    // [{index, id, label, color, objectCount, visible}] in order of first sewing. Selection state
+    // is NOT part of the rows (a click would rebuild every swatch): see selectedEntrySet.
     Q_PROPERTY(QVariantList entries READ entries NOTIFY changed)
+    // {"<entry index>": true} for every thread holding a selected object.
+    Q_PROPERTY(QVariantMap selectedEntrySet READ selectedEntrySet NOTIFY selectionChanged)
     Q_PROPERTY(int threadCount READ threadCount NOTIFY changed)
     // [{id, name, color, position}] in sewing order, background first.
     Q_PROPERTY(QVariantList sewingOrder READ sewingOrder NOTIFY changed)
@@ -49,6 +52,7 @@ public:
     [[nodiscard]] QString message() const { return message_; }
     [[nodiscard]] bool lastOk() const { return ok_; }
     [[nodiscard]] QVariantList entries() const;
+    [[nodiscard]] QVariantMap selectedEntrySet() const;
     [[nodiscard]] int threadCount() const;
     [[nodiscard]] QVariantList sewingOrder() const;
     [[nodiscard]] QVariantList colorways() const;
@@ -107,12 +111,13 @@ public:
                                double grainAngleDeg, double weftSoftness);
 signals:
     void changed();
+    void selectionChanged();
     void chartsChanged();
     void messageChanged();
     void stockChanged();
 
 private:
-    std::uint64_t gateStamp_{0}; // documentStamp() au dernier changed rediffusé
+    std::uint64_t gateStamp_{0}; // contentStamp() au dernier changed rediffusé
     bool report(const ServiceResult& result, const QString& success);
     [[nodiscard]] bool persistStock(const thread_palette::ThreadStock& stock);
     [[nodiscard]] bool persistStockSetting(bool limit);

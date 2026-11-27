@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
+#include <QHash>
 #include <QObject>
 #include <QString>
 #include <QVariantList>
 #include <QVariantMap>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -130,7 +132,11 @@ private:
         // Objects grouped by stitch type (one group when the type is common, several when mixed).
         std::vector<std::pair<std::string, std::vector<std::uint64_t>>> groups;
     };
-    [[nodiscard]] Selection selection() const;
+    // Mémorisée pour un état (révision du document, révision de la sélection) : à chaque
+    // rafraîchissement QML, chaque champ appelle field() deux fois ; sans cache, chacun refaisait
+    // inspect() et la table des réglages (dizaines de recalculs par clic de sélection).
+    [[nodiscard]] const Selection& selection() const;
+    [[nodiscard]] Selection computeSelection() const;
     // Settings of the selection: the type's own table, or - for mixed types - the scalar
     // settings every type has in common (same key, kind and options; range intersected).
     [[nodiscard]] std::vector<ParamSpec> specsOf(const Selection& selection) const;
@@ -153,6 +159,15 @@ private:
     QString message_;
     bool ok_{true};
     int revision_{0};
+    struct Cache {
+        std::uint64_t documentRevision{0};
+        std::uint64_t selectionRevision{0};
+        Selection selection;
+        std::optional<std::vector<ParamSpec>> specs;
+        QHash<QString, QVariantMap> fields; // field(key) déjà calculés pour cet état
+    };
+    mutable std::optional<Cache> cache_;
+    [[nodiscard]] Cache& cacheForCurrentState() const;
 };
 
 } // namespace openstitch::desktop_v2::studio

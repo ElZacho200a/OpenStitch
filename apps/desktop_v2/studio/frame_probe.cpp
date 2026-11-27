@@ -6,11 +6,15 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QMouseEvent>
 #include <QQuickWindow>
 #include <algorithm>
 #include <cmath>
 
 #include "gpu_canvas.hpp"
+#include "studio_controller.hpp"
+
+#include <functional>
 
 namespace openstitch::desktop_v2::studio {
 
@@ -101,6 +105,79 @@ void FrameProbe::start(GpuCanvas* canvas) {
         });
         driver_.start();
     }
+    const bool clicks =
+        scenario_ == QStringLiteral("click") || scenario_ == QStringLiteral("click-jitter");
+    if ((scenario_ == QStringLiteral("select") || clicks) && canvas_ && canvas_->controller()) {
+        // Sélections successives des zones aux formes les plus détaillées (plus une très simple,
+        // témoin) : mesure le temps bloquant de chaque sélection sur le fil d'interface.
+        auto* controller = canvas_->controller();
+        const auto& project = controller->session().project();
+        std::vector<std::pair<std::size_t, std::uint64_t>> ranked;
+        for (const auto& object : project.embroidery_objects) {
+            std::size_t nodes = 0;
+            if (const auto* shape = project.findObject(object.source_vector)) {
+                for (const auto& set : shape->paths) {
+                    nodes += set.outer.nodes.size();
+                    for (const auto& hole : set.holes) {
+                        nodes += hole.nodes.size();
+                    }
+                }
+            }
+            ranked.emplace_back(nodes, object.id.value);
+        }
+        std::ranges::sort(ranked, std::greater{});
+        for (std::size_t i = 0; i < ranked.size() && i < 5; ++i) {
+            selectTargets_.push_back(ranked[i]);
+        }
+        if (ranked.size() > 5) {
+            selectTargets_.push_back(ranked.back());
+        }
+        driver_.setInterval(600);
+        connect(&driver_, &QTimer::timeout, this, [this] {
+            if (selectTargets_.empty() || !canvas_ || !canvas_->controller()) {
+                return;
+            }
+            const auto [nodes, id] = selectTargets_[driverTick_++ % selectTargets_.size()];
+            QElapsedTimer timer;
+            const auto revBefore = canvas_->controller()->session().revision();
+            if (scenario_ == QStringLiteral("select")) {
+                timer.start();
+                canvas_->controller()->selectObject(QString::number(id));
+            } else {
+                // Vrai clic souris sur le contour de la forme (premier nœud), comme l'utilisateur.
+                const auto& project = canvas_->controller()->session().project();
+                const auto* object = project.findEmbroidery(ObjectId{id});
+                const auto* shape = object ? project.findObject(object->source_vector) : nullptr;
+                if (shape == nullptr || shape->paths.empty() ||
+                    shape->paths[0].outer.nodes.empty()) {
+                    return;
+                }
+                const auto pos = shape->paths[0].outer.nodes[0].pos;
+                const auto s =
+                    canvas_->camera().worldToScreen({static_cast<double>(pos.x.value) / 1000.0,
+                                                     -static_cast<double>(pos.y.value) / 1000.0});
+                const QPointF local = canvas_->mapToScene(QPointF(s.x, s.y));
+                const auto send = [this](QEvent::Type type, QPointF at, Qt::MouseButtons buttons) {
+                    QMouseEvent event(type, at, at, window_.mapToGlobal(at), Qt::LeftButton,
+                                      buttons, Qt::NoModifier);
+                    QCoreApplication::sendEvent(&window_, &event);
+                };
+                timer.start();
+                send(QEvent::MouseButtonPress, local, Qt::LeftButton);
+                if (scenario_ == QStringLiteral("click-jitter")) {
+                    send(QEvent::MouseMove, local + QPointF(3.0, 2.0), Qt::LeftButton);
+                    send(QEvent::MouseButtonRelease, local + QPointF(3.0, 2.0), Qt::NoButton);
+                } else {
+                    send(QEvent::MouseButtonRelease, local, Qt::NoButton);
+                }
+            }
+            const double ms = static_cast<double>(timer.nsecsElapsed()) / 1.0e6;
+            const bool edited = canvas_->controller()->session().revision() != revBefore;
+            const auto& targets = canvas_->controller()->session().selection().targets();
+            selections_.push_back({id, nodes, ms, edited, targets.empty() ? 0 : targets.back().id});
+        });
+        driver_.start();
+    }
     QTimer::singleShot(seconds_ * 1000, this, [this] { finish(); });
 }
 
@@ -130,6 +207,20 @@ void FrameProbe::finish() {
     root["gui_stalls_over_16ms"] =
         static_cast<qint64>(std::ranges::count_if(stalls_, [](double v) { return v > 16.0; }));
     root["gui_wakeups"] = static_cast<qint64>(stalls_.size());
+    if (!selections_.empty()) {
+        QJsonArray rows;
+        std::vector<double> selectMs;
+        for (const auto& s : selections_) {
+            rows.append(QJsonObject{{"id", static_cast<qint64>(s.id)},
+                                    {"nodes", static_cast<qint64>(s.nodes)},
+                                    {"ms", s.ms},
+                                    {"edited", s.edited},
+                                    {"selected", static_cast<qint64>(s.selected)}});
+            selectMs.push_back(s.ms);
+        }
+        root["selections"] = rows;
+        root["select_sync_ms"] = distribution(selectMs);
+    }
     root["backend"] = canvas_ ? canvas_->backendName() : QString();
     root["window_px"] = QString("%1x%2").arg(window_.width()).arg(window_.height());
     QFile file(output_);

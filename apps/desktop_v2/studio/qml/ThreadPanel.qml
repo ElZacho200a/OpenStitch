@@ -268,7 +268,7 @@ Rectangle {
                     Layout.fillWidth: true
                     implicitHeight: 32
                     radius: Theme.radius
-                    color: panel.current === modelData.index ? Theme.accentSoft : (modelData.selected ? Theme.raised : (row.activeFocus || threadRowMouse.containsMouse) ? Theme.hover : "transparent")
+                    color: panel.current === modelData.index ? Theme.accentSoft : (panel.controller && panel.controller.selectedEntrySet[String(modelData.index)] === true ? Theme.raised : (row.activeFocus || threadRowMouse.containsMouse) ? Theme.hover : "transparent")
                     border.width: panel.movedThreadIndex === modelData.index ? 2
                                   : panel.current === modelData.index || row.activeFocus ? 1 : 0
                     border.color: panel.movedThreadIndex === modelData.index ? Theme.success

@@ -14,6 +14,7 @@
 #include <filesystem>
 #include <limits>
 
+#include "change_gate.hpp"
 #include "inspector_model.hpp"
 #include "object_labels.hpp"
 #include "openstitch/project_io/project_io.hpp"
@@ -23,9 +24,18 @@ namespace openstitch::desktop_v2::studio {
 
 StudioController::StudioController(DocumentSession& session, QObject* parent)
     : QObject(parent), session_(session) {
-    // Connecté en premier : invalidé avant que QML ne relise `objects`.
-    connect(this, &StudioController::changed, this, [this] { objectsCache_.reset(); });
-    connect(this, &StudioController::selectionChanged, this, [this] { objectsCache_.reset(); });
+    // Connecté en premier : invalidé avant que QML ne relise `objects`. La liste ne dépend pas de
+    // la sélection : un clic ne la reconstruit pas (ni ses lignes QML), seul selectedIdSet change.
+    connect(this, &StudioController::changed, this, [this] {
+        const auto stamp = contentStamp(*this);
+        if (objectsStamp_ != stamp) {
+            objectsStamp_ = stamp;
+            objectsCache_.reset();
+            emit objectsChanged();
+        }
+    });
+    connect(this, &StudioController::documentReplaced, this, [this] { objectsStamp_.reset(); });
+    objectsStamp_ = contentStamp(*this);
     lastNotifiedRevision_ = session_.revision();
     documentToken_ = session_.subscribe([this](ChangeKind kind) {
         // markSaved only changes the dirty flag. A segmentation edit changes the document
@@ -308,20 +318,35 @@ QVariantList StudioController::buildObjects() const {
                 continue; // couche physique interne : l'arbre expose uniquement l'ancre logique
             }
         }
-        const Target target{TargetKind::EmbroideryObject, object.id.value};
         list.push_back(QVariantMap{
             {QStringLiteral("id"), QString::number(object.id.value)},
             {QStringLiteral("label"),
              QString::fromStdString(object.name.empty() ? "Objet " + std::to_string(object.id.value)
                                                         : object.name)},
             {QStringLiteral("color"), QColor(object.rgb[0], object.rgb[1], object.rgb[2])},
-            {QStringLiteral("selected"), session_.selection().contains(target)},
             {QStringLiteral("visible"), object.visible && session_.project().calqueVisible(object)},
             {QStringLiteral("type"),
              QString::fromUtf8(stitchTypeId(object).data(),
                                static_cast<qsizetype>(stitchTypeId(object).size()))}});
     }
     return list;
+}
+
+QVariantMap StudioController::selectedIdSet() const {
+    QVariantMap set;
+    for (const auto& target : session_.selection().targets()) {
+        if (target.kind == TargetKind::EmbroideryObject) {
+            set.insert(QString::number(target.id), true);
+        }
+    }
+    return set;
+}
+
+int StudioController::selectedObjectCount() const {
+    return static_cast<int>(
+        std::ranges::count_if(session_.selection().targets(), [](const Target& t) {
+            return t.kind == TargetKind::EmbroideryObject;
+        }));
 }
 
 QString StudioController::selectionInfo() const {

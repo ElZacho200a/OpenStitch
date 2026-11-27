@@ -960,26 +960,42 @@ void StudioViewTest::statusEventsDoNotReloadThreadsFiltersOrTree() {
     QCOMPARE(tree.count(), 0);
     QCOMPARE(selection.count(), 0);
 
+    QSignalSpy objects(&rig.studio, &StudioController::objectsChanged);
+    QSignalSpy threadSelection(&rig.threads, &ThreadController::selectionChanged);
     const auto id = rig.session.project().embroidery_objects.front().id.value;
     rig.studio.selectObject(QString::number(id)); // la sélection change vraiment
-    QTRY_VERIFY(threads.count() >= 1);
-    QVERIFY(view.count() >= 1);
-    // Une sélection ne reconstruit PAS l'arbre (des milliers de lignes côté QML) : seul l'état
-    // de sélection est rediffusé, et les lignes de l'arbre ne portent pas `selected`.
+    // Une sélection ne reconstruit NI l'arbre, NI la liste des objets, NI les listes de fils ou
+    // les filtres (des milliers de lignes côté QML) : seuls les ensembles sélectionnés sont
+    // rediffusés, et aucune ligne ne porte `selected`.
+    QTRY_VERIFY(selection.count() >= 1);
     QCOMPARE(tree.count(), 0);
-    QVERIFY(selection.count() >= 1);
+    QCOMPARE(threads.count(), 0);
+    QCOMPARE(view.count(), 0);
+    QCOMPARE(objects.count(), 0);
+    QVERIFY(threadSelection.count() >= 1);
     QVERIFY(editor.selectedIdSet().value(QString::number(id)).toBool());
+    QVERIFY(rig.studio.selectedIdSet().value(QString::number(id)).toBool());
+    QCOMPARE(rig.studio.selectedObjectCount(), 1);
+    QVERIFY(!rig.threads.selectedEntrySet().isEmpty());
     for (const auto& row : editor.tree()) {
+        QVERIFY(!row.toMap().contains(QStringLiteral("selected")));
+    }
+    for (const auto& row : rig.studio.objects()) {
+        QVERIFY(!row.toMap().contains(QStringLiteral("selected")));
+    }
+    for (const auto& row : rig.threads.entries()) {
         QVERIFY(!row.toMap().contains(QStringLiteral("selected")));
     }
     threads.clear();
     view.clear();
     tree.clear();
+    objects.clear();
     QVERIFY(rig.view.setColourVisible(
         rig.view.filterColours().first().toMap().value("id").toString(), false));
     QTRY_VERIFY(threads.count() >= 1); // le document a changé
     QVERIFY(view.count() >= 1);
     QVERIFY(tree.count() >= 1);
+    QVERIFY(objects.count() >= 1);
 }
 
 // Statistiques de broderie (V1) : chiffres de la séquence effective ; fidélité à l'image : mesure

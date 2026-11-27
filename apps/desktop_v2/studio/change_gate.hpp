@@ -24,4 +24,17 @@ namespace openstitch::desktop_v2::studio {
     return hash;
 }
 
+// Empreinte « document + scène » SANS la sélection : pour les listes dont le contenu ne dépend pas
+// de la sélection (fils, filtres de vue, liste des objets). Un clic de sélection ne doit pas les
+// faire recalculer ni recréer leurs lignes côté QML ; l'état sélectionné passe par un ensemble
+// d'identifiants séparé, notifié par `selectionChanged` (même principe que
+// EditController::selectedIdSet).
+[[nodiscard]] inline std::uint64_t contentStamp(StudioController& studio) {
+    constexpr std::uint64_t kPrime = 1099511628211ULL;
+    std::uint64_t hash = studio.session().revision();
+    const auto& scene = studio.scene();
+    hash = (hash * kPrime) ^ (scene ? scene->revision + 1U : 0U);
+    return hash;
+}
+
 } // namespace openstitch::desktop_v2::studio
