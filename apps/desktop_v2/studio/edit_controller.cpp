@@ -152,6 +152,51 @@ std::vector<std::uint64_t> EditController::selectedIds() const {
     return ids;
 }
 
+std::vector<std::uint64_t> EditController::selectedGeometryIds() const {
+    std::vector<std::uint64_t> ids = selectedIds();
+    const auto& project = studio_.session().project();
+    for (const auto& target : studio_.session().selection().targets()) {
+        if (target.kind != TargetKind::VectorObject) {
+            continue;
+        }
+        const auto* shape = project.findObject(ObjectId{target.id});
+        if (shape == nullptr || project.shapeEditLocked(shape->id)) {
+            continue;
+        }
+        // Une couche de cette forme est déjà visée : transformer aussi la forme la déplacerait
+        // deux fois (une transformation de broderie s'applique à sa forme source).
+        const bool viaEmbroidery = std::ranges::any_of(ids, [&](std::uint64_t id) {
+            const auto* emb = project.findEmbroidery(ObjectId{id});
+            return emb != nullptr && emb->source_vector == shape->id;
+        });
+        if (!viaEmbroidery) {
+            ids.push_back(target.id);
+        }
+    }
+    return ids;
+}
+
+void EditController::selectMixedIds(const std::vector<std::uint64_t>& ids, bool additive) {
+    const auto& project = studio_.session().project();
+    std::vector<Target> targets;
+    if (additive) {
+        targets = studio_.session().selection().targets();
+    }
+    for (const auto id : ids) {
+        Target target{TargetKind::EmbroideryObject, id};
+        if (project.findEmbroidery(ObjectId{id}) == nullptr) {
+            if (project.findObject(ObjectId{id}) == nullptr) {
+                continue;
+            }
+            target.kind = TargetKind::VectorObject;
+        }
+        if (std::ranges::find(targets, target) == targets.end()) {
+            targets.push_back(target);
+        }
+    }
+    studio_.session().selection().replace(std::move(targets));
+}
+
 int EditController::selectedShapeCount() const {
     const auto& session = studio_.session();
     return static_cast<int>(
@@ -161,7 +206,11 @@ int EditController::selectedShapeCount() const {
 int EditController::selectedCount() const {
     int count = 0;
     for (const auto& target : studio_.session().selection().targets()) {
-        count += target.kind == TargetKind::EmbroideryObject ? 1 : 0;
+        // Une forme non brodée (espace Vecteur) compte : elle se déplace, se duplique, se supprime.
+        count +=
+            target.kind == TargetKind::EmbroideryObject || target.kind == TargetKind::VectorObject
+                ? 1
+                : 0;
     }
     return count;
 }
@@ -473,6 +522,69 @@ int EditController::selectRect(double x0, double y0, double x1, double y1, bool 
     return static_cast<int>(ids.size());
 }
 
+namespace {
+// Forme saisissable au canevas Vecteur : affichée (forme et calque visibles) et non verrouillée.
+bool selectableShape(const document::Project& project, const document::VectorObject& shape) {
+    const auto* calque = project.calqueOfShape(shape.id);
+    return shape.visible && (calque == nullptr || calque->visible) &&
+           !project.shapeEditLocked(shape.id);
+}
+
+// Identifiant qui désigne une forme dans la sélection, comme un clic de l'espace Vecteur : sa
+// première broderie si elle est brodée, sinon la forme elle-même.
+std::uint64_t shapeSelectionId(const document::Project& project, ObjectId shape) {
+    for (const auto& object : project.embroidery_objects) {
+        if (object.source_vector == shape) {
+            return object.id.value;
+        }
+    }
+    return shape.value;
+}
+} // namespace
+
+int EditController::selectShapesRect(double x0, double y0, double x1, double y1, bool crossing,
+                                     bool additive) {
+    const auto& project = studio_.session().project();
+    const RectMm rect{std::min(x0, x1), std::min(y0, y1), std::max(x0, x1), std::max(y0, y1)};
+    std::vector<std::uint64_t> ids;
+    for (const auto& shape : project.vector_objects) { // ordre du document : déterministe
+        if (!selectableShape(project, shape)) {
+            continue;
+        }
+        const auto box = vectorShapeSceneBounds(shape);
+        if (!box) {
+            continue;
+        }
+        const bool inside =
+            box->x0 >= rect.x0 && box->x1 <= rect.x1 && box->y0 >= rect.y0 && box->y1 <= rect.y1;
+        if (crossing ? touches(*box, rect, 0.0) : inside) {
+            ids.push_back(shapeSelectionId(project, shape.id));
+        }
+    }
+    if (ids.empty() && !additive) {
+        studio_.clearSelection();
+        return 0;
+    }
+    selectMixedIds(ids, additive);
+    return static_cast<int>(ids.size());
+}
+
+int EditController::selectAllShapes() {
+    const auto& project = studio_.session().project();
+    std::vector<std::uint64_t> ids;
+    for (const auto& shape : project.vector_objects) {
+        if (selectableShape(project, shape)) {
+            ids.push_back(shapeSelectionId(project, shape.id));
+        }
+    }
+    if (ids.empty()) {
+        return refuse(QStringLiteral("Aucune forme à sélectionner")), 0;
+    }
+    selectMixedIds(ids);
+    say(QStringLiteral("%1 forme(s) sélectionnée(s)").arg(ids.size()));
+    return static_cast<int>(ids.size());
+}
+
 bool EditController::saveSelection(const QString& name) {
     const auto ids = selectedIds();
     const QString trimmed = name.trimmed();
@@ -576,7 +688,7 @@ std::string EditController::mergeBatches(const std::vector<std::string>& batches
 }
 
 bool EditController::rotate(double degrees) {
-    return applyBatch(batchRotate(selectedIds(), degrees, selectionCentreModel()),
+    return applyBatch(batchRotate(selectedGeometryIds(), degrees, selectionCentreModel()),
                       QStringLiteral("Pivoter"), {});
 }
 
@@ -587,10 +699,10 @@ bool EditController::rotateAround(double degrees, double pivotXmm, double pivotY
     if (std::abs(degrees) > 360.0) {
         return refuse(QStringLiteral("Pivoter : angle entre -360 et 360 degrés"));
     }
-    if (selectedIds().empty()) {
+    if (selectedGeometryIds().empty()) {
         return refuse(QStringLiteral("Pivoter : sélection vide"));
     }
-    return applyBatch(batchRotate(selectedIds(), degrees, {pivotXmm, pivotYmm}),
+    return applyBatch(batchRotate(selectedGeometryIds(), degrees, {pivotXmm, pivotYmm}),
                       QStringLiteral("Pivoter autour d'un centre"), {});
 }
 
@@ -600,24 +712,26 @@ QVariantMap EditController::selectionCentreMm() const {
 }
 
 bool EditController::rotate90(bool clockwise) {
-    return applyBatch(batchRotate(selectedIds(), clockwise ? -90.0 : 90.0, selectionCentreModel()),
-                      QStringLiteral("Pivoter de 90°"), {});
+    return applyBatch(
+        batchRotate(selectedGeometryIds(), clockwise ? -90.0 : 90.0, selectionCentreModel()),
+        QStringLiteral("Pivoter de 90°"), {});
 }
 
 bool EditController::mirror(bool horizontal) {
     return applyBatch(
-        batchMirror(selectedIds(), horizontal ? MirrorAxis::Horizontal : MirrorAxis::Vertical,
+        batchMirror(selectedGeometryIds(),
+                    horizontal ? MirrorAxis::Horizontal : MirrorAxis::Vertical,
                     selectionCentreModel()),
         horizontal ? QStringLiteral("Miroir horizontal") : QStringLiteral("Miroir vertical"), {});
 }
 
 bool EditController::scale(double factor, double anchorXmm, double anchorYmm) {
-    return applyBatch(batchScale(selectedIds(), factor, {anchorXmm, -anchorYmm}),
+    return applyBatch(batchScale(selectedGeometryIds(), factor, {anchorXmm, -anchorYmm}),
                       QStringLiteral("Redimensionner"), {});
 }
 
 bool EditController::duplicate(double offsetMm) {
-    const auto ids = selectedIds();
+    const auto ids = selectedGeometryIds();
     const auto batch = batchDuplicate(ids, {offsetMm, -offsetMm});
     if (batch.empty()) {
         return refuse(QStringLiteral("Dupliquer : sélection vide"));
@@ -626,15 +740,31 @@ bool EditController::duplicate(double offsetMm) {
     if (!result.committed) {
         return refuse(QStringLiteral("Duplication refusée"));
     }
-    (void)selectIds(createdObjectIds(result.report)); // les copies deviennent la sélection
+    // Les copies deviennent la sélection (broderies, ou formes si l'original n'était pas brodé).
+    selectMixedIds(createdObjectIds(result.report));
     say(QStringLiteral("%1 objet(s) dupliqué(s)").arg(ids.size()));
     return true;
 }
 
 bool EditController::deleteSelection() {
     const auto ids = selectedIds();
-    return applyBatch(batchRemove(ids), QStringLiteral("Supprimer"),
+    if (ids.empty()) {
+        // Aucune broderie visée, mais des formes non brodées (arbre, espace Vecteur) : Suppr les
+        // supprime au lieu de rester sans effet.
+        return selectedShapeCount() > 0 ? deleteShapes()
+                                        : refuse(QStringLiteral("Supprimer : sélection vide"));
+    }
+    // Même règle que l'espace Vecteur : l'objet part avec sa forme, sauf si une autre couche de
+    // points de cette forme reste (`with_source`, une seule étape d'annulation).
+    return applyBatch(batchRemove(ids, true), QStringLiteral("Supprimer"),
                       QStringLiteral("%1 objet(s) supprimé(s)").arg(ids.size()));
+}
+
+bool EditController::removeStitchesOnly() {
+    const auto ids = selectedIds();
+    return applyBatch(
+        batchRemove(ids, false), QStringLiteral("Retirer les points"),
+        QStringLiteral("Points retirés de %1 objet(s) : forme(s) conservée(s)").arg(ids.size()));
 }
 
 bool EditController::deleteShapes() {
@@ -673,14 +803,16 @@ bool EditController::distribute(bool horizontal) {
 
 bool EditController::placeSelection(double xMm, double yMm, double widthMm, double heightMm,
                                     double rotateDeg) {
-    const auto ids = selectedIds();
+    const auto ids = selectedGeometryIds();
     if (ids.empty()) {
         return refuse(QStringLiteral("Placer : sélection vide"));
     }
     const auto opt = [](double v) {
         return std::isfinite(v) ? std::optional<double>(v) : std::nullopt;
     };
-    if (ids.size() == 1) {
+    // `place` n'accepte qu'un objet de broderie : une forme non brodée passe par le chemin
+    // translation / échelle / rotation ci-dessous, qui accepte les formes.
+    if (ids.size() == 1 && studio_.session().project().findEmbroidery(ObjectId{ids.front()})) {
         PlaceRequest request{opt(xMm), opt(yMm), opt(widthMm), opt(heightMm),
                              std::isfinite(rotateDeg) ? rotateDeg : 0.0};
         return applyBatch(batchPlace(ids, request), QStringLiteral("Placer"), {});
@@ -768,19 +900,23 @@ bool EditController::applyColorFrom(const QString& sourceId) {
 // --- Déplacement souris -------------------------------------------------------------------------
 
 bool EditController::beginMove() {
-    const auto ids = selectedIds();
+    const auto ids = selectedGeometryIds();
     const auto box = selectionBounds();
     const auto& scene = studio_.scene();
-    if (ids.empty() || !box || !scene) {
+    // Sans scène (aucun point cousu, document tout vectoriel), le déplacement reste possible :
+    // seules les cibles d'aimantation manquent.
+    if (ids.empty() || !box) {
         move_.reset();
         return false;
     }
     MoveState state;
     state.ids = ids;
     state.moving = toModelBox(*box);
-    for (const auto& [id, other] : scene->objectBounds) {
-        if (std::ranges::find(ids, id) == ids.end() && visibleObject(id)) {
-            state.targets.push_back(toModelBox(other));
+    if (scene) {
+        for (const auto& [id, other] : scene->objectBounds) {
+            if (std::ranges::find(ids, id) == ids.end() && visibleObject(id)) {
+                state.targets.push_back(toModelBox(other));
+            }
         }
     }
     move_ = std::move(state);

@@ -147,7 +147,7 @@ ColumnLayout {
         Mini { objectName: "ungroupButton"; text: qsTr("Dégrouper"); enabled: bar.some; tooltip: qsTr("Dissoudre le groupe"); shortcutLabel: "Ctrl+Maj+G"; onClicked: editor.ungroup() }
         Mini { objectName: "pipetteButton"; text: qsTr("Pipette"); checkable: true; checked: editor.eyedropper; enabled: bar.some; tooltip: qsTr("Copier la couleur d'un objet vers la sélection"); shortcutLabel: "I"; onClicked: editor.eyedropper = !editor.eyedropper }
         Mini { objectName: "snapButton"; text: qsTr("Accrochage"); checkable: true; checked: editor.snapEnabled; tooltip: qsTr("Accrochage et repères au glisser (Alt = temporaire)"); onClicked: editor.snapEnabled = !editor.snapEnabled }
-        Mini { objectName: "deleteButton"; Layout.columnSpan: 2; text: qsTr("Supprimer"); enabled: bar.shapeScope ? editor.selectedShapeCount > 0 : bar.some; tooltip: bar.shapeScope ? qsTr("Supprimer la forme et ses broderies") : qsTr("Retirer la broderie (la forme est conservée)"); shortcutLabel: "Suppr"; onClicked: bar.shapeScope ? editor.deleteShapes() : editor.deleteSelection() }
+        Mini { objectName: "deleteButton"; Layout.columnSpan: 2; text: qsTr("Supprimer"); enabled: bar.shapeScope ? editor.selectedShapeCount > 0 : bar.some; tooltip: bar.shapeScope ? qsTr("Supprimer la forme et ses broderies") : qsTr("Supprimer l'objet : sa forme part aussi, sauf si une autre couche de points l'utilise"); shortcutLabel: "Suppr"; onClicked: bar.shapeScope ? editor.deleteShapes() : editor.deleteSelection() }
     }
 
     // Placement numérique (centre et taille de la boîte, en mm modèle : Y vers le haut).

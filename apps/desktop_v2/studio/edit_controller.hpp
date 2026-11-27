@@ -81,6 +81,11 @@ public:
     // contenus. `additive` : s'ajoute à la sélection courante.
     Q_INVOKABLE int selectRect(double x0, double y0, double x1, double y1, bool crossing,
                                bool additive);
+    // Espace Vecteur : mêmes gestes, mais par la FORME (son tracé), brodée ou non. Une forme
+    // brodée est désignée par sa broderie (comme un clic), une forme non brodée par elle-même.
+    Q_INVOKABLE int selectShapesRect(double x0, double y0, double x1, double y1, bool crossing,
+                                     bool additive);
+    Q_INVOKABLE int selectAllShapes();
     Q_INVOKABLE bool saveSelection(const QString& name);
     Q_INVOKABLE bool recallSelection(const QString& name);
     Q_INVOKABLE bool deleteSavedSelection(const QString& name);
@@ -96,8 +101,12 @@ public:
     Q_INVOKABLE bool mirror(bool horizontal);
     Q_INVOKABLE bool scale(double factor, double anchorXmm, double anchorYmm); // ancre en mm scène
     Q_INVOKABLE bool duplicate(double offsetMm = 5.0);
-    // Retire la BRODERIE des objets sélectionnés (la forme vectorielle reste, reconvertible).
+    // Suppr de l'espace Points : supprime les objets sélectionnés. Une forme n'est conservée que si
+    // une AUTRE de ses couches de points reste ; sinon elle part avec sa dernière couche (même
+    // résultat que Suppr dans l'espace Vecteur). Une étape d'annulation.
     Q_INVOKABLE bool deleteSelection();
+    // Retire seulement les POINTS des objets sélectionnés : la forme reste, reconvertible.
+    Q_INVOKABLE bool removeStitchesOnly();
     // Supprime la FORME sélectionnée (convertie ou non) et les broderies qui en dépendent, en une
     // seule étape d'annulation. Suppr de l'espace Vecteur.
     Q_INVOKABLE bool deleteShapes();
@@ -163,6 +172,12 @@ private:
     std::uint64_t gateStamp_{0};                   // documentStamp() au dernier changed rediffusé
     std::uint64_t treeGateStamp_{0};               // treeStamp() au dernier treeChanged
     [[nodiscard]] std::vector<std::uint64_t> selectedIds() const;
+    // Cibles des transformations géométriques (déplacer, pivoter, échelle, miroir, dupliquer) :
+    // les broderies de `selectedIds` PLUS les formes non brodées sélectionnées (les opérations
+    // `project_ops` correspondantes acceptent une forme vectorielle).
+    [[nodiscard]] std::vector<std::uint64_t> selectedGeometryIds() const;
+    // Remplace (ou complète) la sélection par des identifiants de broderie OU de forme.
+    void selectMixedIds(const std::vector<std::uint64_t>& ids, bool additive = false);
     [[nodiscard]] std::vector<std::uint64_t> smallObjects(double maxAreaMm2) const;
     [[nodiscard]] bool selectIds(const std::vector<std::uint64_t>& ids, bool additive = false);
     [[nodiscard]] bool visibleObject(std::uint64_t id) const;

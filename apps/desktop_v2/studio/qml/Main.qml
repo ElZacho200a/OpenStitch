@@ -267,6 +267,15 @@ Window {
             editor.deleteSelection()
     }
 
+    // Espace Vecteur : « tout sélectionner » vise les FORMES (brodées ou non) ; ailleurs, les
+    // objets de broderie.
+    function selectAll() {
+        if (workspaceCtl.current === "vector")
+            editor.selectAllShapes()
+        else
+            editor.selectAll()
+    }
+
     // The ONE dispatcher behind the palette (and any menu): shortcuts and buttons call the same
     // functions, so every path has the same effect, enabled state and undo step.
     function dispatch(id) {
@@ -300,7 +309,7 @@ Window {
         case "cmd.edit.mirror-h": editor.mirror(true); break
         case "cmd.edit.mirror-v": editor.mirror(false); break
         case "cmd.edit.eyedropper": editor.eyedropper = !editor.eyedropper; break
-        case "cmd.select.all": editor.selectAll(); break
+        case "cmd.select.all": selectAll(); break
         case "cmd.select.invert": editor.invertSelection(); break
         case "cmd.select.clear": studio.clearSelection(); break
         case "cmd.arrange.forward": editor.stack("forward"); break
@@ -394,7 +403,7 @@ Window {
             if (!canvas || !canvas.cancelGesture()) studio.clearSelection()
         }
     }
-    Shortcut { sequence: "Ctrl+A"; onActivated: editor.selectAll() }
+    Shortcut { sequence: "Ctrl+A"; onActivated: window.selectAll() }
     Shortcut { sequence: "Ctrl+I"; onActivated: editor.invertSelection() }
     // One focus-independent handler: selected path nodes first, otherwise the selected objects.
     Shortcut {

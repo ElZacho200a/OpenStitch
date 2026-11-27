@@ -9,7 +9,8 @@ Controls.Menu {
     id: menu
     objectName: "canvasContextMenu"
     readonly property bool hasSelection: editor.selectedCount > 0
-    // Espace Vecteur : « Supprimer » retire la forme et ses broderies (sinon : la broderie seule).
+    // Espace Vecteur : « Supprimer » retire la forme et toutes ses couches de points. Espace Points :
+    // l'objet, et sa forme s'il était sa dernière couche ; « Retirer les points » garde la forme.
     property bool shapeScope: false
     property real atX: 0
     property real atY: 0
@@ -50,6 +51,16 @@ Controls.Menu {
                               : qsTr("Supprimer %1 objet(s)").arg(editor.selectedCount)
         enabled: menu.shapeScope ? editor.selectedShapeCount > 0 : menu.hasSelection
         onTriggered: menu.shapeScope ? editor.deleteShapes() : editor.deleteSelection()
+    }
+    // Espace Points : retirer les points SANS la forme est un choix explicite, jamais l'effet
+    // silencieux de Suppr (qui supprime l'objet entier, comme dans l'espace Vecteur).
+    Controls.MenuItem {
+        objectName: "contextRemoveStitches"
+        visible: !menu.shapeScope
+        height: visible ? implicitHeight : 0
+        text: qsTr("Retirer les points (garder la forme)")
+        enabled: !menu.shapeScope && menu.hasSelection
+        onTriggered: editor.removeStitchesOnly()
     }
     Controls.MenuSeparator { }
     // Opérations sur les formes : aussi au clic droit, là où la main est déjà.
