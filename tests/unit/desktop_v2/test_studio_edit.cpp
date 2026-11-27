@@ -613,6 +613,21 @@ void StudioEditTest::unstitchedShapesAreSelectedAndTransformed() {
     QVERIFY(rig.session.selection().contains({TargetKind::EmbroideryObject, kRed1}));
     QCOMPARE(rig.editor.selectAllShapes(), 5);
     QVERIFY(rig.session.selection().contains({TargetKind::VectorObject, shape.value}));
+    QCOMPARE(rig.editor.selectedCount(), 5);
+    QCOMPARE(rig.editor.selectedEmbroideryCount(), 4); // la forme non brodée n'a pas de points
+
+    // Portée Vecteur (liée à l'espace actif) : « tout » et « inverser » visent les formes, par
+    // n'importe quel chemin ; hors Vecteur, seulement les objets brodés.
+    rig.editor.setShapeScope(true);
+    rig.session.selection().replace({Target{TargetKind::EmbroideryObject, kRed1}});
+    QCOMPARE(rig.editor.invertSelection(), 4);
+    QVERIFY(rig.session.selection().contains({TargetKind::VectorObject, shape.value}));
+    QVERIFY(!rig.session.selection().contains({TargetKind::EmbroideryObject, kRed1}));
+    rig.editor.selectNone();
+    QCOMPARE(rig.editor.selectAll(), 5);
+    rig.editor.setShapeScope(false);
+    QCOMPARE(rig.editor.selectAll(), 4);
+    QVERIFY(!rig.session.selection().contains({TargetKind::VectorObject, shape.value}));
 
     // Déplacement souris (aperçu puis validation) et rotation : une étape chacun.
     rig.session.selection().replace({Target{TargetKind::VectorObject, shape.value}});

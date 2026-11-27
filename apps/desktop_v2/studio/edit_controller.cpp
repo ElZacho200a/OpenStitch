@@ -197,6 +197,20 @@ void EditController::selectMixedIds(const std::vector<std::uint64_t>& ids, bool 
     studio_.session().selection().replace(std::move(targets));
 }
 
+int EditController::selectedEmbroideryCount() const {
+    return static_cast<int>(
+        std::ranges::count_if(studio_.session().selection().targets(), [](const Target& target) {
+            return target.kind == TargetKind::EmbroideryObject;
+        }));
+}
+
+void EditController::setShapeScope(bool value) {
+    if (value != shapeScope_) {
+        shapeScope_ = value;
+        emit shapeScopeChanged();
+    }
+}
+
 int EditController::selectedShapeCount() const {
     const auto& session = studio_.session();
     return static_cast<int>(
@@ -305,6 +319,9 @@ PointMm EditController::selectionCentreModel() const {
 // --- Sélection ----------------------------------------------------------------------------------
 
 int EditController::selectAll() {
+    if (shapeScope_) {
+        return selectAllShapes(); // espace Vecteur : les formes, brodées ou non
+    }
     std::vector<std::uint64_t> ids;
     for (const auto& object : studio_.session().project().embroidery_objects) {
         if (selectableObject(object.id.value)) {
@@ -324,6 +341,9 @@ void EditController::selectNone() {
 }
 
 int EditController::invertSelection() {
+    if (shapeScope_) {
+        return invertShapes();
+    }
     std::vector<std::uint64_t> ids;
     for (const auto& object : studio_.session().project().embroidery_objects) {
         const Target target{TargetKind::EmbroideryObject, object.id.value};
@@ -585,6 +605,27 @@ int EditController::selectAllShapes() {
     return static_cast<int>(ids.size());
 }
 
+int EditController::invertShapes() {
+    const auto& session = studio_.session();
+    const auto& project = session.project();
+    std::vector<ObjectId> designated;
+    for (const auto& target : session.selection().targets()) {
+        if (const auto shape = shapeOfTarget(project, target)) {
+            designated.push_back(*shape);
+        }
+    }
+    std::vector<std::uint64_t> ids;
+    for (const auto& shape : project.vector_objects) {
+        if (selectableShape(project, shape) &&
+            std::ranges::find(designated, shape.id) == designated.end()) {
+            ids.push_back(shapeSelectionId(project, shape.id));
+        }
+    }
+    selectMixedIds(ids);
+    say(QStringLiteral("Sélection inversée : %1 forme(s)").arg(ids.size()));
+    return static_cast<int>(ids.size());
+}
+
 bool EditController::saveSelection(const QString& name) {
     const auto ids = selectedIds();
     const QString trimmed = name.trimmed();
@@ -756,8 +797,26 @@ bool EditController::deleteSelection() {
     }
     // Même règle que l'espace Vecteur : l'objet part avec sa forme, sauf si une autre couche de
     // points de cette forme reste (`with_source`, une seule étape d'annulation).
-    return applyBatch(batchRemove(ids, true), QStringLiteral("Supprimer"),
-                      QStringLiteral("%1 objet(s) supprimé(s)").arg(ids.size()));
+    std::vector<ObjectId> shapes; // formes distinctes des objets visés
+    for (const auto id : ids) {
+        if (const auto* emb = studio_.session().project().findEmbroidery(ObjectId{id});
+            emb != nullptr && std::ranges::find(shapes, emb->source_vector) == shapes.end()) {
+            shapes.push_back(emb->source_vector);
+        }
+    }
+    if (!applyBatch(batchRemove(ids, true), QStringLiteral("Supprimer"), {})) {
+        return false;
+    }
+    // Dire ce qu'est devenue la forme : partie avec l'objet, ou gardée pour une autre couche.
+    const auto kept = std::ranges::count_if(shapes, [this](ObjectId shape) {
+        return studio_.session().project().findObject(shape) != nullptr;
+    });
+    say(kept == 0 ? QStringLiteral("%1 objet(s) supprimé(s) avec leur forme").arg(ids.size())
+                  : QStringLiteral("%1 objet(s) supprimé(s) ; %2 forme(s) gardée(s) pour une "
+                                   "autre couche de points")
+                        .arg(ids.size())
+                        .arg(kept));
+    return true;
 }
 
 bool EditController::removeStitchesOnly() {

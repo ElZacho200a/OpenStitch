@@ -32,7 +32,15 @@ class EditController : public QObject {
     Q_PROPERTY(QString message READ message NOTIFY messageChanged)
     Q_PROPERTY(bool snapEnabled READ snapEnabled WRITE setSnapEnabled NOTIFY snapChanged)
     Q_PROPERTY(bool eyedropper READ eyedropper WRITE setEyedropper NOTIFY eyedropperChanged)
+    // Cibles d'édition sélectionnées : objets de broderie ET formes non brodées (espace Vecteur).
     Q_PROPERTY(int selectedCount READ selectedCount NOTIFY selectionStateChanged)
+    // Objets de BRODERIE seuls : les commandes propres aux points (ordre de couture, grouper,
+    // aligner, pipette, calque) s'activent sur ce compte, pas sur `selectedCount`.
+    Q_PROPERTY(
+        int selectedEmbroideryCount READ selectedEmbroideryCount NOTIFY selectionStateChanged)
+    // Vrai dans l'espace Vecteur (lié par Main.qml) : « tout sélectionner » et « inverser » visent
+    // alors les FORMES, brodées ou non, quel que soit le chemin (raccourci, bouton, menu, palette).
+    Q_PROPERTY(bool shapeScope READ shapeScope WRITE setShapeScope NOTIFY shapeScopeChanged)
     // Formes éditables désignées par la sélection (broderie ou non) : cible de `deleteShapes`.
     Q_PROPERTY(int selectedShapeCount READ selectedShapeCount NOTIFY selectionStateChanged)
     // Boîte de la sélection (mm scène) : x, y, width, height, cx, cy ; vide sans sélection.
@@ -55,7 +63,10 @@ public:
     [[nodiscard]] bool eyedropper() const { return eyedropper_; }
     void setEyedropper(bool value);
     [[nodiscard]] int selectedCount() const;
+    [[nodiscard]] int selectedEmbroideryCount() const;
     [[nodiscard]] int selectedShapeCount() const;
+    [[nodiscard]] bool shapeScope() const { return shapeScope_; }
+    void setShapeScope(bool value);
     [[nodiscard]] QVariantMap selectionBox() const;
     [[nodiscard]] QVariantMap selectedIdSet() const;
     // Union des boîtes de la sélection, en mm scène ; vide sans sélection ni scène.
@@ -164,6 +175,7 @@ signals:
     void savedSelectionsChanged();
     void snapChanged();
     void eyedropperChanged();
+    void shapeScopeChanged();
 
 private:
     [[nodiscard]] QVariantList buildTree() const;
@@ -178,6 +190,9 @@ private:
     [[nodiscard]] std::vector<std::uint64_t> selectedGeometryIds() const;
     // Remplace (ou complète) la sélection par des identifiants de broderie OU de forme.
     void selectMixedIds(const std::vector<std::uint64_t>& ids, bool additive = false);
+    // Inversion par FORMES (espace Vecteur) : toute forme saisissable non désignée par la
+    // sélection (ni elle-même, ni l'une de ses broderies).
+    int invertShapes();
     [[nodiscard]] std::vector<std::uint64_t> smallObjects(double maxAreaMm2) const;
     [[nodiscard]] bool selectIds(const std::vector<std::uint64_t>& ids, bool additive = false);
     [[nodiscard]] bool visibleObject(std::uint64_t id) const;
@@ -193,6 +208,7 @@ private:
     QString message_;
     bool snap_{true};
     bool eyedropper_{false};
+    bool shapeScope_{false};
     std::vector<std::pair<QString, std::vector<std::uint64_t>>> saved_;
     struct MoveState {
         SnapBox moving;

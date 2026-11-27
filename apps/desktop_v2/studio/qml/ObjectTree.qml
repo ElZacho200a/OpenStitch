@@ -367,7 +367,7 @@ Item {
         Controls.MenuItem { text: qsTr("Sélectionner son contenu"); onTriggered: editor.selectByLayer(layerMenu.layerId) }
         Controls.MenuItem {
             text: qsTr("Déplacer la sélection ici")
-            enabled: editor.selectedCount > 0 && !(layerMenu.layer && layerMenu.layer.locked)
+            enabled: editor.selectedEmbroideryCount > 0 && !(layerMenu.layer && layerMenu.layer.locked)
             onTriggered: editor.moveSelectionToLayer(layerMenu.layerId)
         }
         Controls.MenuSeparator { }
