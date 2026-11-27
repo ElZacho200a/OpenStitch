@@ -28,7 +28,7 @@ l'identique (octet pour octet) par le script, sans fichier binaire dans le dép�
 | `holes` | aplat percé de trois trous |
 | `flat-scene` | illustration cinq couleurs |
 
-S'y ajoutent trois images du dépôt, à leur résolution native : `tests/fixtures/cli/logo_small.png`,
+S'y ajoutent trois images du dépôt, ramenées à une taille cible (40 mm pour le logo, 80 mm pour les deux autres, résolution déduite des pixels) : `tests/fixtures/cli/logo_small.png`,
 `tests/fixtures/tentabrode.png`, `tests/fixtures/ai-benchmark/marine-synth-01/source.png`.
 L'empreinte SHA-256 de chaque image est consignée : une image modifiée n'est jamais comparée
 à une ancienne mesure.
@@ -81,7 +81,9 @@ Faits mesurés, à expliquer par les lots suivants, pas encore des défauts éta
   (0,03 % et 0,09 % sans satin).
 - Le satin réduit les manques : `s-ribbon` 2,0 % → 0,03 %, `thin-lines` 3,2 % → 0,01 %.
 - `small-details` et `holes` ne prennent jamais de satin.
-- `repo-tentabrode` porte 50 erreurs qualité dans les deux profils.
+- Aucune erreur qualité sur le corpus. (Une première version mesurait `tentabrode` à 96 dpi,
+  soit 372 mm : ses 50 « erreurs » étaient des points hors du cadre de 100 mm, pas un défaut du
+  moteur. Les images du dépôt ont désormais une taille cible.)
 
 ## Limites
 
