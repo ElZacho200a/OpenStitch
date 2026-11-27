@@ -167,6 +167,9 @@ private slots:
         QCOMPARE(rig.session.selection().targets().size(), std::size_t{2});
         QVERIFY(rig.session.selection().contains({TargetKind::EmbroideryObject, first.value}));
         QVERIFY(rig.session.selection().contains({TargetKind::EmbroideryObject, third.value}));
+        // Bobine du fil sélectionné surlignée, l'autre non (selectedEntrySet).
+        QTRY_VERIFY(named(rig.window, "pointsThreadSwatch0")->property("selected").toBool());
+        QVERIFY(!named(rig.window, "pointsThreadSwatch1")->property("selected").toBool());
 
         const auto center = [&](const char* name) {
             const auto* item = named(rig.window, name);
