@@ -5,55 +5,55 @@
     "kind": "synthetic",
     "name": "logo-two-color",
     "purpose": "aplats chevauchants deux couleurs",
-    "sha256": "8c632d50f559006228dffd3a94a205067596c65ddec566790e2afdca32c81c89"
+    "sha256": "e2b825015b677b7b0528da4c99bb31c6c332aa825f2d7eaa251c96e0ddc92d49"
    },
    {
     "kind": "synthetic",
     "name": "ring",
     "purpose": "anneau large : satin fermé ou tatami",
-    "sha256": "3554a5e0b1c3aa2dc5db11560c3ab59314c18c8df53ee417f6dbfdb9c40f3ae0"
+    "sha256": "3e1b7536d42b2c7d6f9bbc9e22ca907d76d613819515f1acbebf035e0b602511"
    },
    {
     "kind": "synthetic",
     "name": "s-ribbon",
     "purpose": "ruban en S de 5 mm : colonne satin courbe",
-    "sha256": "e40331c8846a6432a6a49ee5c45e7c98e639cb292c7e237621ebb201b46b8de8"
+    "sha256": "71b8ad79c60bd1e5500fbfac19408f0ba448afba9da25f099633109058629950"
    },
    {
     "kind": "synthetic",
     "name": "star-outlined",
     "purpose": "étoile jaune à contour noir de 0,9 mm",
-    "sha256": "ded485cfb9a97f46e105e983398b71785dfc5f57077a33ce9366ab3047266a8c"
+    "sha256": "c9499cfbfed41e83040450d52d0ea1701c2954c1df10aee4a56d19fc2604a54f"
    },
    {
     "kind": "synthetic",
     "name": "letter-y",
     "purpose": "branche en Y de 4 mm : bifurcation",
-    "sha256": "3fb27c93b70a9ebb7608e0e3f2dd20e28c3703e47d57583d0e6d88f810d45c5d"
+    "sha256": "36ce1b9fe295caff63cbf4f4702c562e4bac82ccc11fe0fabae8ba174476a7d9"
    },
    {
     "kind": "synthetic",
     "name": "thin-lines",
     "purpose": "traits de 0,7 mm sur aplat (linework)",
-    "sha256": "81b6997b5df4b251bc5990a0feafba9a1f814e5ac23b5f8e0a923ebbce9e6eda"
+    "sha256": "8a050b478bee5c2e31a1e06e7c490d7c2aa14abc19b39ec5275263b82ba5509e"
    },
    {
     "kind": "synthetic",
     "name": "small-details",
     "purpose": "points de 1,6 et 3 mm : préservation des détails",
-    "sha256": "16c6956c58583e1e705b41bee393e037df5b9f46347965a913d9dffe73d5074b"
+    "sha256": "4579513d965dc576b430633a36ea42cd34c878e94e823f542f422eb0778a5079"
    },
    {
     "kind": "synthetic",
     "name": "holes",
     "purpose": "aplat percé de trois trous",
-    "sha256": "84c66444d864e427e48988a2305d492b22ec97e7defacfe6eb9364d73f1cc647"
+    "sha256": "72d74b047678feb25e59945490ab3f8799b2b9a74b47cf730149305edd66ed0e"
    },
    {
     "kind": "synthetic",
     "name": "flat-scene",
     "purpose": "illustration cinq couleurs",
-    "sha256": "0d6d85336738feb69607d9380247480593b9d5b120f8897fbf9e9275d8aa36f3"
+    "sha256": "e871c849dd7183ad15739e2ed1a3f422b80072d8f84dea788705d39e3ad0385e"
    },
    {
     "kind": "repository",
@@ -124,38 +124,7 @@
     "tatami": 2
    },
    "profile": "default",
-   "sha256": "8c632d50f559006228dffd3a94a205067596c65ddec566790e2afdca32c81c89",
-   "status": "measured",
-   "time_s": 0.154
-  },
-  {
-   "error": null,
-   "kind": "synthetic",
-   "metrics": {
-    "color_changes": 1,
-    "hotspot_area_mm2": 14.0,
-    "interior_hole_ratio": 1e-05,
-    "jumps": 2,
-    "layers_max": 5.28,
-    "layers_p99": 4.08,
-    "long_moves_without_trim": 0,
-    "lost_detail_ratio": 0.01102,
-    "missing_ratio": 0.00316,
-    "objects": 2,
-    "quality_errors": 0,
-    "quality_warnings": 0,
-    "short_stitches": 1,
-    "stitches": 1641,
-    "travel_mm": 20.614,
-    "trims": 2,
-    "wrong_colour_ratio": 0.01289
-   },
-   "name": "logo-two-color",
-   "object_types": {
-    "tatami": 2
-   },
-   "profile": "logo",
-   "sha256": "8c632d50f559006228dffd3a94a205067596c65ddec566790e2afdca32c81c89",
+   "sha256": "e2b825015b677b7b0528da4c99bb31c6c332aa825f2d7eaa251c96e0ddc92d49",
    "status": "measured",
    "time_s": 0.148
   },
@@ -185,10 +154,41 @@
    "object_types": {
     "tatami": 2
    },
-   "profile": "logo-compare",
-   "sha256": "8c632d50f559006228dffd3a94a205067596c65ddec566790e2afdca32c81c89",
+   "profile": "logo",
+   "sha256": "e2b825015b677b7b0528da4c99bb31c6c332aa825f2d7eaa251c96e0ddc92d49",
    "status": "measured",
-   "time_s": 0.143
+   "time_s": 0.151
+  },
+  {
+   "error": null,
+   "kind": "synthetic",
+   "metrics": {
+    "color_changes": 1,
+    "hotspot_area_mm2": 14.0,
+    "interior_hole_ratio": 1e-05,
+    "jumps": 2,
+    "layers_max": 5.28,
+    "layers_p99": 4.08,
+    "long_moves_without_trim": 0,
+    "lost_detail_ratio": 0.01102,
+    "missing_ratio": 0.00316,
+    "objects": 2,
+    "quality_errors": 0,
+    "quality_warnings": 0,
+    "short_stitches": 1,
+    "stitches": 1641,
+    "travel_mm": 20.614,
+    "trims": 2,
+    "wrong_colour_ratio": 0.01289
+   },
+   "name": "logo-two-color",
+   "object_types": {
+    "tatami": 2
+   },
+   "profile": "logo-compare",
+   "sha256": "e2b825015b677b7b0528da4c99bb31c6c332aa825f2d7eaa251c96e0ddc92d49",
+   "status": "measured",
+   "time_s": 0.147
   },
   {
    "error": null,
@@ -217,9 +217,9 @@
     "tatami": 1
    },
    "profile": "default",
-   "sha256": "3554a5e0b1c3aa2dc5db11560c3ab59314c18c8df53ee417f6dbfdb9c40f3ae0",
+   "sha256": "3e1b7536d42b2c7d6f9bbc9e22ca907d76d613819515f1acbebf035e0b602511",
    "status": "measured",
-   "time_s": 0.122
+   "time_s": 0.123
   },
   {
    "error": null,
@@ -248,9 +248,9 @@
     "auto_satin": 1
    },
    "profile": "logo",
-   "sha256": "3554a5e0b1c3aa2dc5db11560c3ab59314c18c8df53ee417f6dbfdb9c40f3ae0",
+   "sha256": "3e1b7536d42b2c7d6f9bbc9e22ca907d76d613819515f1acbebf035e0b602511",
    "status": "measured",
-   "time_s": 0.286
+   "time_s": 0.176
   },
   {
    "error": null,
@@ -279,9 +279,9 @@
     "auto_satin": 1
    },
    "profile": "logo-compare",
-   "sha256": "3554a5e0b1c3aa2dc5db11560c3ab59314c18c8df53ee417f6dbfdb9c40f3ae0",
+   "sha256": "3e1b7536d42b2c7d6f9bbc9e22ca907d76d613819515f1acbebf035e0b602511",
    "status": "measured",
-   "time_s": 0.204
+   "time_s": 0.184
   },
   {
    "error": null,
@@ -310,7 +310,7 @@
     "tatami": 1
    },
    "profile": "default",
-   "sha256": "e40331c8846a6432a6a49ee5c45e7c98e639cb292c7e237621ebb201b46b8de8",
+   "sha256": "71b8ad79c60bd1e5500fbfac19408f0ba448afba9da25f099633109058629950",
    "status": "measured",
    "time_s": 0.126
   },
@@ -341,9 +341,9 @@
     "auto_satin": 1
    },
    "profile": "logo",
-   "sha256": "e40331c8846a6432a6a49ee5c45e7c98e639cb292c7e237621ebb201b46b8de8",
+   "sha256": "71b8ad79c60bd1e5500fbfac19408f0ba448afba9da25f099633109058629950",
    "status": "measured",
-   "time_s": 0.214
+   "time_s": 0.219
   },
   {
    "error": null,
@@ -372,9 +372,9 @@
     "auto_satin": 1
    },
    "profile": "logo-compare",
-   "sha256": "e40331c8846a6432a6a49ee5c45e7c98e639cb292c7e237621ebb201b46b8de8",
+   "sha256": "71b8ad79c60bd1e5500fbfac19408f0ba448afba9da25f099633109058629950",
    "status": "measured",
-   "time_s": 0.245
+   "time_s": 0.244
   },
   {
    "error": null,
@@ -403,9 +403,9 @@
     "tatami": 2
    },
    "profile": "default",
-   "sha256": "ded485cfb9a97f46e105e983398b71785dfc5f57077a33ce9366ab3047266a8c",
+   "sha256": "c9499cfbfed41e83040450d52d0ea1701c2954c1df10aee4a56d19fc2604a54f",
    "status": "measured",
-   "time_s": 0.13
+   "time_s": 0.133
   },
   {
    "error": null,
@@ -435,9 +435,9 @@
     "tatami": 1
    },
    "profile": "logo",
-   "sha256": "ded485cfb9a97f46e105e983398b71785dfc5f57077a33ce9366ab3047266a8c",
+   "sha256": "c9499cfbfed41e83040450d52d0ea1701c2954c1df10aee4a56d19fc2604a54f",
    "status": "measured",
-   "time_s": 0.177
+   "time_s": 0.183
   },
   {
    "error": null,
@@ -467,9 +467,9 @@
     "tatami": 1
    },
    "profile": "logo-compare",
-   "sha256": "ded485cfb9a97f46e105e983398b71785dfc5f57077a33ce9366ab3047266a8c",
+   "sha256": "c9499cfbfed41e83040450d52d0ea1701c2954c1df10aee4a56d19fc2604a54f",
    "status": "measured",
-   "time_s": 0.184
+   "time_s": 0.182
   },
   {
    "error": null,
@@ -498,9 +498,9 @@
     "tatami": 1
    },
    "profile": "default",
-   "sha256": "3fb27c93b70a9ebb7608e0e3f2dd20e28c3703e47d57583d0e6d88f810d45c5d",
+   "sha256": "36ce1b9fe295caff63cbf4f4702c562e4bac82ccc11fe0fabae8ba174476a7d9",
    "status": "measured",
-   "time_s": 0.121
+   "time_s": 0.138
   },
   {
    "error": null,
@@ -529,9 +529,9 @@
     "auto_satin": 1
    },
    "profile": "logo",
-   "sha256": "3fb27c93b70a9ebb7608e0e3f2dd20e28c3703e47d57583d0e6d88f810d45c5d",
+   "sha256": "36ce1b9fe295caff63cbf4f4702c562e4bac82ccc11fe0fabae8ba174476a7d9",
    "status": "measured",
-   "time_s": 0.199
+   "time_s": 0.203
   },
   {
    "error": null,
@@ -560,9 +560,9 @@
     "auto_satin": 1
    },
    "profile": "logo-compare",
-   "sha256": "3fb27c93b70a9ebb7608e0e3f2dd20e28c3703e47d57583d0e6d88f810d45c5d",
+   "sha256": "36ce1b9fe295caff63cbf4f4702c562e4bac82ccc11fe0fabae8ba174476a7d9",
    "status": "measured",
-   "time_s": 0.206
+   "time_s": 0.212
   },
   {
    "error": null,
@@ -591,9 +591,9 @@
     "tatami": 13
    },
    "profile": "default",
-   "sha256": "81b6997b5df4b251bc5990a0feafba9a1f814e5ac23b5f8e0a923ebbce9e6eda",
+   "sha256": "8a050b478bee5c2e31a1e06e7c490d7c2aa14abc19b39ec5275263b82ba5509e",
    "status": "measured",
-   "time_s": 0.259
+   "time_s": 0.134
   },
   {
    "error": null,
@@ -622,9 +622,9 @@
     "auto_satin": 13
    },
    "profile": "logo",
-   "sha256": "81b6997b5df4b251bc5990a0feafba9a1f814e5ac23b5f8e0a923ebbce9e6eda",
+   "sha256": "8a050b478bee5c2e31a1e06e7c490d7c2aa14abc19b39ec5275263b82ba5509e",
    "status": "measured",
-   "time_s": 0.216
+   "time_s": 0.215
   },
   {
    "error": null,
@@ -653,9 +653,9 @@
     "auto_satin": 13
    },
    "profile": "logo-compare",
-   "sha256": "81b6997b5df4b251bc5990a0feafba9a1f814e5ac23b5f8e0a923ebbce9e6eda",
+   "sha256": "8a050b478bee5c2e31a1e06e7c490d7c2aa14abc19b39ec5275263b82ba5509e",
    "status": "measured",
-   "time_s": 0.225
+   "time_s": 0.34
   },
   {
    "error": null,
@@ -684,9 +684,9 @@
     "tatami": 9
    },
    "profile": "default",
-   "sha256": "16c6956c58583e1e705b41bee393e037df5b9f46347965a913d9dffe73d5074b",
+   "sha256": "4579513d965dc576b430633a36ea42cd34c878e94e823f542f422eb0778a5079",
    "status": "measured",
-   "time_s": 0.131
+   "time_s": 0.133
   },
   {
    "error": null,
@@ -715,9 +715,9 @@
     "tatami": 9
    },
    "profile": "logo",
-   "sha256": "16c6956c58583e1e705b41bee393e037df5b9f46347965a913d9dffe73d5074b",
+   "sha256": "4579513d965dc576b430633a36ea42cd34c878e94e823f542f422eb0778a5079",
    "status": "measured",
-   "time_s": 0.15
+   "time_s": 0.159
   },
   {
    "error": null,
@@ -746,9 +746,9 @@
     "tatami": 9
    },
    "profile": "logo-compare",
-   "sha256": "16c6956c58583e1e705b41bee393e037df5b9f46347965a913d9dffe73d5074b",
+   "sha256": "4579513d965dc576b430633a36ea42cd34c878e94e823f542f422eb0778a5079",
    "status": "measured",
-   "time_s": 0.157
+   "time_s": 0.15
   },
   {
    "error": null,
@@ -777,9 +777,9 @@
     "tatami": 1
    },
    "profile": "default",
-   "sha256": "84c66444d864e427e48988a2305d492b22ec97e7defacfe6eb9364d73f1cc647",
+   "sha256": "72d74b047678feb25e59945490ab3f8799b2b9a74b47cf730149305edd66ed0e",
    "status": "measured",
-   "time_s": 0.142
+   "time_s": 0.122
   },
   {
    "error": null,
@@ -808,9 +808,9 @@
     "tatami": 1
    },
    "profile": "logo",
-   "sha256": "84c66444d864e427e48988a2305d492b22ec97e7defacfe6eb9364d73f1cc647",
+   "sha256": "72d74b047678feb25e59945490ab3f8799b2b9a74b47cf730149305edd66ed0e",
    "status": "measured",
-   "time_s": 0.129
+   "time_s": 0.231
   },
   {
    "error": null,
@@ -839,7 +839,7 @@
     "tatami": 1
    },
    "profile": "logo-compare",
-   "sha256": "84c66444d864e427e48988a2305d492b22ec97e7defacfe6eb9364d73f1cc647",
+   "sha256": "72d74b047678feb25e59945490ab3f8799b2b9a74b47cf730149305edd66ed0e",
    "status": "measured",
    "time_s": 0.128
   },
@@ -870,9 +870,9 @@
     "tatami": 5
    },
    "profile": "default",
-   "sha256": "0d6d85336738feb69607d9380247480593b9d5b120f8897fbf9e9275d8aa36f3",
+   "sha256": "e871c849dd7183ad15739e2ed1a3f422b80072d8f84dea788705d39e3ad0385e",
    "status": "measured",
-   "time_s": 0.159
+   "time_s": 0.128
   },
   {
    "error": null,
@@ -902,9 +902,9 @@
     "tatami": 2
    },
    "profile": "logo",
-   "sha256": "0d6d85336738feb69607d9380247480593b9d5b120f8897fbf9e9275d8aa36f3",
+   "sha256": "e871c849dd7183ad15739e2ed1a3f422b80072d8f84dea788705d39e3ad0385e",
    "status": "measured",
-   "time_s": 0.253
+   "time_s": 0.245
   },
   {
    "error": null,
@@ -934,9 +934,9 @@
     "tatami": 2
    },
    "profile": "logo-compare",
-   "sha256": "0d6d85336738feb69607d9380247480593b9d5b120f8897fbf9e9275d8aa36f3",
+   "sha256": "e871c849dd7183ad15739e2ed1a3f422b80072d8f84dea788705d39e3ad0385e",
    "status": "measured",
-   "time_s": 0.246
+   "time_s": 0.307
   },
   {
    "error": null,
@@ -967,7 +967,7 @@
    "profile": "default",
    "sha256": "9d83b7bd5fef84993c31f69be7af045d53adee1899e2b5fd0c3231eb71fc4249",
    "status": "measured",
-   "time_s": 0.114
+   "time_s": 0.113
   },
   {
    "error": null,
@@ -999,7 +999,7 @@
    "profile": "logo",
    "sha256": "9d83b7bd5fef84993c31f69be7af045d53adee1899e2b5fd0c3231eb71fc4249",
    "status": "measured",
-   "time_s": 0.121
+   "time_s": 0.122
   },
   {
    "error": null,
@@ -1031,7 +1031,7 @@
    "profile": "logo-compare",
    "sha256": "9d83b7bd5fef84993c31f69be7af045d53adee1899e2b5fd0c3231eb71fc4249",
    "status": "measured",
-   "time_s": 0.126
+   "time_s": 0.175
   },
   {
    "error": null,
@@ -1063,7 +1063,7 @@
    "profile": "default",
    "sha256": "07bb7151fb3b2d7e12323da0100e1272c5f67983e7d76fa9ab8e3ec4d21f7f7d",
    "status": "measured",
-   "time_s": 0.491
+   "time_s": 0.414
   },
   {
    "error": null,
@@ -1096,7 +1096,7 @@
    "profile": "logo",
    "sha256": "07bb7151fb3b2d7e12323da0100e1272c5f67983e7d76fa9ab8e3ec4d21f7f7d",
    "status": "measured",
-   "time_s": 2.418
+   "time_s": 2.457
   },
   {
    "error": null,
@@ -1129,7 +1129,7 @@
    "profile": "logo-compare",
    "sha256": "07bb7151fb3b2d7e12323da0100e1272c5f67983e7d76fa9ab8e3ec4d21f7f7d",
    "status": "measured",
-   "time_s": 2.763
+   "time_s": 2.675
   },
   {
    "error": null,
@@ -1161,7 +1161,7 @@
    "profile": "default",
    "sha256": "824eb5c4f7d16807be5f37f7704bbb26520bc873d8ea11115ea3e8694811f885",
    "status": "measured",
-   "time_s": 0.136
+   "time_s": 0.255
   },
   {
    "error": null,
@@ -1194,7 +1194,7 @@
    "profile": "logo",
    "sha256": "824eb5c4f7d16807be5f37f7704bbb26520bc873d8ea11115ea3e8694811f885",
    "status": "measured",
-   "time_s": 0.237
+   "time_s": 0.235
   },
   {
    "error": null,
@@ -1227,7 +1227,7 @@
    "profile": "logo-compare",
    "sha256": "824eb5c4f7d16807be5f37f7704bbb26520bc873d8ea11115ea3e8694811f885",
    "status": "measured",
-   "time_s": 0.267
+   "time_s": 0.264
   }
  ],
  "schema": "openstitch.autodigitize-bench/1",

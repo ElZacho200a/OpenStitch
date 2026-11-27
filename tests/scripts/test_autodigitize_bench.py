@@ -65,18 +65,20 @@ class FakeEngine:
 
 
 class CorpusTests(unittest.TestCase):
-    def test_synthetic_images_are_byte_identical(self):
+    def test_synthetic_pixels_are_identical_between_renders(self):
         for name in ("ring", "thin-lines"):
-            self.assertEqual(bench.render_synthetic(name), bench.render_synthetic(name))
+            fresh = bench.synthetic_pixels.__wrapped__(name)  # sans le cache
+            self.assertEqual(fresh, bench.synthetic_pixels(name))
 
-    def test_images_differ_and_are_valid_png(self):
+    def test_images_differ_and_png_holds_the_pixels(self):
         seen = set()
         for name in bench.SYNTHETIC:
             data = bench.render_synthetic(name)
             self.assertTrue(data.startswith(b"\x89PNG"))
-            w, h, _channels, _pixels = bench.pngio.decode(data)
+            w, h, _channels, pixels = bench.pngio.decode(data)
             self.assertEqual((w, h), (bench.SIZE_PX, bench.SIZE_PX))
-            seen.add(bench.sha256(data))
+            self.assertEqual(pixels, bench.synthetic_pixels(name))
+            seen.add(bench.sha256(pixels))
         self.assertEqual(len(seen), len(bench.SYNTHETIC))
 
     def test_corpus_is_fifty_millimetres(self):
@@ -160,7 +162,7 @@ class RunAndCompareTests(unittest.TestCase):
         self.assertEqual(baseline["schema"], bench.REPORT_SCHEMA)
         hashes = {c["name"]: c["sha256"] for c in baseline["corpus"]["cases"]}
         for name in bench.SYNTHETIC:
-            self.assertEqual(hashes.get(name), bench.sha256(bench.render_synthetic(name)), name)
+            self.assertEqual(hashes.get(name), bench.sha256(bench.synthetic_pixels(name)), name)
 
 
 @unittest.skipUnless(os.environ.get("OPENSTITCH_CLI"), "OPENSTITCH_CLI non défini")
