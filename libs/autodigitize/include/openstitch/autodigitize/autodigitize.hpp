@@ -77,9 +77,9 @@ struct AutoOptions {
     // vectoriel et le balayage parallèle, tous réellement générés et mesurés
     // (`auto_satin::measure_result`). Éliminatoires : génération refusée, couverture <
     // `satin_min_coverage`, traversées qui se croisent, traversée plus longue que la largeur
-    // maximale d'un satin. Score : couverture, puis colonnes, retours et surépaisseur ; à score
-    // égal (écart < 1 point), l'ordre historique (squelette d'abord) l'emporte. Faux : comportement
-    // historique inchangé.
+    // maximale d'un satin. Score : couverture, puis colonnes et épaisseur du zigzag par case de
+    // 1 mm ; à score égal (écart < 1 point), l'ordre historique (squelette d'abord) l'emporte.
+    // Faux : comportement historique inchangé.
     bool satin_compare{false};
     // Largeur inscrite maximale d'une forme candidate au satin guidé large.
     Micrometers satin_wide_max_width{40'000};

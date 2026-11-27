@@ -526,19 +526,34 @@ forme compacte retenue pour le satin est réellement cousue par plusieurs candid
 
 Éliminatoires : génération refusée ou vide, couverture < `satin_min_coverage`, traversées qui se
 croisent, traversée plus longue que max(`satin_max_width`, `satin_compact_max_width`). Score des
-admissibles : `100 × couverture − 4 × (colonnes − 1) − 2 × max(0, retour max − 1 mm) − 1,5 ×
-max(0, pic de surépaisseur − 2)`. Un candidat ne remplace le précédent que s'il gagne au moins un
-point : à égalité, l'ordre historique (squelette) l'emporte. Aucun admissible : la voie du satin
-guidé large puis le tatami, comme avant. La stratégie gagnante est écrite dans
-`AutoSatinParams::strategy` ; la génération finale reprend les mêmes paramètres.
+admissibles : `100 × couverture − 4 × (colonnes − 1) − 8 × max(0, épaisseur du zigzag − 3)`.
+L'épaisseur du zigzag (`zigzag_peak_layers`) est la longueur des traversées et des retours par
+case de 1 mm, en couches de `project density` (2,5 mm de fil par mm²) ; elle surestime les côtés
+concaves (points courts filtrés ensuite), d'où une pénalité et non un éliminatoire. Le « pic de
+recouvrement » et le retour maximal de `measure_result` ne servent pas : le premier ne suivait pas
+la densité réelle, le second vaut à peu près la largeur du satin. Un candidat ne remplace le
+précédent que s'il gagne au moins un point : à égalité, l'ordre historique (squelette) l'emporte.
+Aucun admissible : la voie du satin guidé large puis le tatami, comme avant. La stratégie gagnante
+est écrite dans `AutoSatinParams::strategy` ; la génération finale reprend les mêmes paramètres.
 
-Banc `scripts/autodigitize_bench.py`, profil `logo-compare` contre `logo` (2026-11-27) : aucune
-régression sur 12 cas ; `repo-logo-small` surépaisseur max 4,13 → 3,08 couches ; `tentabrode`
-381 → 369 coupes, 81 786 → 79 952 points (82 squelettes, 29 axes médians, 14 balayages) ;
-illustration marine 6,63 → 6,38 couches, 21 → 20 coupes ; `letter-y` gagne l'axe médian (manques
-0,07 % → 0). Les synthétiques simples gardent le squelette. Les surépaisseurs de `flat-scene`
-(8,8 couches) et la perte de détail des traits fins ne dépendent pas de la stratégie : elles
-viennent du choix satin contre tatami et des recouvrements (lots suivants). Aucun essai brodé.
+Banc `scripts/autodigitize_bench.py`, profil `logo-compare` contre `logo` (2026-11-27), surépaisseur
+maximale mesurée par `project density` :
+
+| cas | couches max | points | coupes |
+|---|---|---|---|
+| repo-marine-synth | 6,63 → 5,39 | 9 038 → 8 754 | 21 → 20 |
+| thin-lines | 6,65 → 5,67 | 3 833 → 3 782 | 23 → 20 |
+| letter-y | 4,76 → 3,53 | 456 → 387 | 2 → 3 (déplacements 29 → 74 mm) |
+| repo-logo-small | 4,13 → 3,08 | 437 → 423 | 2 → 2 |
+| repo-tentabrode | 7,67 → 7,34 (p99 4,62 → 4,20) | 81 786 → 77 752 | 381 → 398 |
+| s-ribbon | 5,82 → 5,75 (p99 4,47 → 4,71) | 443 → 439 | 1 → 1 |
+
+Compromis assumé : moins de surépaisseur (risque de casse et de plissement) contre quelques coupes
+de plus sur `tentabrode` (+4 %) et `letter-y`. Les autres synthétiques gardent le squelette.
+`flat-scene` reste à 8,8 couches : la maison, compacte, n'a aucun candidat sans surépaisseur
+(squelette compact estimé à 9,5 couches, balayage aux traversées de 18 mm donc refusé) ; il faudrait
+la refuser au satin (tatami), ce que la mesure actuelle, trop pessimiste sur les rubans concaves,
+ne permet pas encore sans perdre aussi le satin de `s-ribbon`. Aucun essai brodé.
 
 **Limites** : la case du desktop n'a pas été compilée dans l'environnement de
 développement Linux (Qt absent), à vérifier au prochain build Windows ; une région à plusieurs trous n'est pas tentée ; la couverture est

@@ -126,8 +126,49 @@ struct SatinCandidate {
     bool compact_axis{false};
     bool admissible{false};
     double score{0.0};
+    double peak_layers{0.0}; // épaisseur maximale du zigzag sur une case de 1 mm
     auto_satin::SatinMetrics metrics;
 };
+
+// Épaisseur de fil maximale du zigzag (traversées a_i -> b_i et retours b_i -> a_{i+1}) sur une
+// grille de cases de 1 mm, dans l'unité du rapport `project density` : une « couche » est la
+// longueur de fil d'un remplissage à 0,4 mm d'écart (2,5 mm de fil par mm²). Un satin régulier
+// vaut ~2 couches ; les traversées qui convergent (côté concave, éventails) l'épaississent.
+// Sous-couches et compensation ignorées : mesure relative entre candidats. Déterministe (carte
+// ordonnée, échantillonnage à pas fixe de 0,1 mm).
+double zigzag_peak_layers(const auto_satin::SkeletonSatinResult& result) {
+    constexpr double kStepMm = 0.1;
+    constexpr double kLayerMmPerMm2 = 1.0 / 0.4;
+    std::map<std::pair<long long, long long>, double> cells;
+    const auto add = [&](Vec2um p, Vec2um q) {
+        const double dx = static_cast<double>(q.x.value - p.x.value) / 1000.0;
+        const double dy = static_cast<double>(q.y.value - p.y.value) / 1000.0;
+        const double len = std::hypot(dx, dy);
+        const int n = std::max(1, static_cast<int>(std::ceil(len / kStepMm)));
+        const double piece = len / n;
+        for (int k = 0; k < n; ++k) {
+            const double t = (k + 0.5) / n;
+            const double x = static_cast<double>(p.x.value) / 1000.0 + t * dx;
+            const double y = static_cast<double>(p.y.value) / 1000.0 + t * dy;
+            cells[{static_cast<long long>(std::floor(x)), static_cast<long long>(std::floor(y))}] +=
+                piece;
+        }
+    };
+    for (const auto& column : result.columns) {
+        const auto& c = column.crossings;
+        for (std::size_t i = 0; i < c.size(); ++i) {
+            add(c[i].a, c[i].b);
+            if (i + 1 < c.size()) {
+                add(c[i].b, c[i + 1].a);
+            }
+        }
+    }
+    double peak = 0.0;
+    for (const auto& [cell, mm] : cells) {
+        peak = std::max(peak, mm / kLayerMmPerMm2);
+    }
+    return peak;
+}
 
 auto_satin::SatinStrategy engine_strategy(document::AutoSatinStrategy s) {
     switch (s) {
@@ -143,15 +184,18 @@ auto_satin::SatinStrategy engine_strategy(document::AutoSatinStrategy s) {
     return auto_satin::SatinStrategy::Skeleton;
 }
 
+// Épaisseur du zigzag au-delà de laquelle un candidat est pénalisé. La mesure surestime les côtés
+// concaves (les points trop courts y sont filtrés à la génération finale) : elle sert à départager
+// les candidats, jamais à en éliminer un seul.
+constexpr double kSatinLayersSoft = 3.0;
+
 // Score explicable (plus haut = mieux) d'un candidat dont les éliminatoires sont passés :
 // couverture d'abord (100 points pour 100 %), puis pénalités de fragmentation (chaque colonne en
-// plus coûte une coupe), de long retour du zigzag (au-delà de 1 mm, visible) et de surépaisseur
-// (pic de fils superposés au-delà de 2).
-double satin_candidate_score(const auto_satin::SatinMetrics& m) {
+// plus coûte une coupe) et de surépaisseur (8 points par couche au-delà de `kSatinLayersSoft`).
+double satin_candidate_score(const auto_satin::SatinMetrics& m, double peakLayers) {
     double score = 100.0 * m.coverage_ratio;
     score -= 4.0 * std::max(0, m.columns - 1);
-    score -= 2.0 * std::max(0.0, m.max_return_mm - 1.0);
-    score -= 1.5 * std::max(0, m.overlap_peak - 2);
+    score -= 8.0 * std::max(0.0, peakLayers - kSatinLayersSoft);
     return score;
 }
 
@@ -169,9 +213,10 @@ SatinCandidate evaluate_satin_candidate(const geometry::PathSet& region,
         return c;
     }
     c.metrics = auto_satin::measure_result(*generated);
+    c.peak_layers = zigzag_peak_layers(*generated);
     c.admissible = c.metrics.coverage_ratio >= options.satin_min_coverage &&
                    c.metrics.crossing_pairs == 0 && c.metrics.max_crossing_mm <= maxCrossingMm;
-    c.score = c.admissible ? satin_candidate_score(c.metrics) : 0.0;
+    c.score = c.admissible ? satin_candidate_score(c.metrics, c.peak_layers) : 0.0;
     return c;
 }
 
