@@ -172,6 +172,7 @@ private slots:
     void layersTreeAndObjectEditing();
     void layerDeleteRequiresConfirmationWhenNotEmpty();
     void layerPanelRemoveButtonSharesTheConfirmation();
+    void objectRowDeleteMatchesTheDeleteKeyOfItsSpace();
     void layerWorkflowIsSharedLockedAndScoped();
     void contextMenuAndEyedropper();
     void shortcutsReachTheEditor();
@@ -1047,8 +1048,8 @@ void StudioEditTest::layerPanelRemoveButtonSharesTheConfirmation() {
     QCOMPARE(pending.value(QStringLiteral("objects")).toInt(), 1);
     auto* banner = tree->findChild<QObject*>(QStringLiteral("layerDeleteConfirm"));
     QVERIFY(banner);
-    // La fenêtre de test n'est pas affichée (offscreen) : la visibilité effective est vérifiée par
-    // les captures UX ; ici, le texte que le bandeau présenterait.
+    // La fenêtre de test n'est pas affichée (offscreen) : la visibilité effective du bandeau n'est
+    // pas prouvée ici (ni par les captures statiques) ; on vérifie le texte qu'il présenterait.
     bool namesTheLayer = false;
     for (auto* child : banner->findChildren<QObject*>()) {
         const auto text = child->property("text").toString();
@@ -1076,6 +1077,13 @@ void StudioEditTest::layerPanelRemoveButtonSharesTheConfirmation() {
     QCOMPARE(rig.editor.layers().size(), before + 1);
     QCOMPARE(shapeOf(rig.session.project(), kBlue).calque.value, layerId.toULongLong());
 
+    // Le calque en attente disparaît par un autre chemin : le bandeau ne vise plus un id périmé.
+    QVERIFY(QMetaObject::invokeMethod(remove, "clicked"));
+    QVERIFY(!tree->property("pendingDeleteLayer").isNull());
+    QVERIFY(rig.editor.removeLayer(layerId));
+    QTRY_VERIFY(tree->property("pendingDeleteLayer").isNull());
+    QVERIFY(rig.session.undo());
+
     // Un calque vide se supprime sans confirmation.
     QVERIFY(rig.editor.addLayer(QStringLiteral("Vide")));
     const auto emptyId = rig.editor.layers().front().toMap().value(QStringLiteral("id")).toString();
@@ -1084,6 +1092,42 @@ void StudioEditTest::layerPanelRemoveButtonSharesTheConfirmation() {
     QVERIFY(QMetaObject::invokeMethod(remove, "clicked"));
     QVERIFY(tree->property("pendingDeleteLayer").isNull());
     QCOMPARE(rig.editor.layers().size(), before + 1);
+
+    QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+}
+
+// Clic droit sur une ligne d'objet → « Supprimer » : même effet que Suppr dans l'espace de la
+// liste. Vecteurs : la forme et ses broderies ; Points : la broderie seule. Une étape d'annulation.
+void StudioEditTest::objectRowDeleteMatchesTheDeleteKeyOfItsSpace() {
+    Rig rig;
+    open(rig);
+    // Ce banc ne charge que Main.qml (un seul arbre) : on règle la portée comme le ferait l'espace
+    // hôte (VectorSpace la fixe à vrai, vérifié par test_studio_space_vector).
+    auto* tree = rig.window->findChild<QObject*>(QStringLiteral("objectTree"));
+    QVERIFY(tree);
+    QVERIFY(!tree->property("shapeScope").toBool());
+    const auto stitches = rig.session.project().embroidery_objects.size();
+    const auto shapes = rig.session.project().vector_objects.size();
+    const auto base = steps(rig);
+
+    select(rig, {kGreen});
+    QVariant done;
+    QVERIFY(QMetaObject::invokeMethod(tree, "deleteSelectedObjects", Q_RETURN_ARG(QVariant, done)));
+    QVERIFY(done.toBool());
+    QCOMPARE(rig.session.project().embroidery_objects.size(), stitches - 1);
+    QCOMPARE(rig.session.project().vector_objects.size(), shapes);
+    QCOMPARE(steps(rig), base + 1);
+    QVERIFY(rig.session.undo());
+
+    select(rig, {kGreen});
+    QVERIFY(tree->setProperty("shapeScope", true));
+    QVERIFY(QMetaObject::invokeMethod(tree, "deleteSelectedObjects", Q_RETURN_ARG(QVariant, done)));
+    QVERIFY(done.toBool());
+    QCOMPARE(rig.session.project().embroidery_objects.size(), stitches - 1);
+    QCOMPARE(rig.session.project().vector_objects.size(), shapes - 1);
+    QCOMPARE(steps(rig), base + 1);
+    QVERIFY(rig.session.undo());
+    QCOMPARE(rig.session.project().vector_objects.size(), shapes);
 
     QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
 }

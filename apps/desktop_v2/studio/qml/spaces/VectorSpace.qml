@@ -361,6 +361,7 @@ Item {
                     LayerPanel {
                         objectName: "layerPanel"
                         compactActions: root.height < 620
+                        shapeScope: true
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                     }

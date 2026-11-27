@@ -16,6 +16,8 @@ ColumnLayout {
     // Fixé par l'espace hôte d'après SA hauteur : le dériver de la hauteur de ce panneau créerait
     // une boucle de liaison avec la rangée d'actions.
     property bool compactActions: false
+    // Espace Vecteur : supprimer depuis la liste retire la forme et ses broderies (cf. ObjectTree).
+    property bool shapeScope: false
     // Le calque actif du document : le même dans tous les canevas (clic sur un calque de l'arbre).
     readonly property string layerId: editor.activeLayer
     readonly property bool layerLocked: {
@@ -28,6 +30,7 @@ ColumnLayout {
         function onDocumentReplaced() {
             objectTree.dragActive = false
             objectTree.anchorId = ""
+            objectTree.pendingDeleteLayer = null
             renameField.visible = false
             renameField.text = ""
         }
@@ -102,8 +105,10 @@ ColumnLayout {
             text: qsTr("Suppr. calque")
             implicitHeight: 28
             enabled: editor.layers.length > 1 && panel.layerId.length > 0
-            tooltip: qsTr("Supprimer le calque actif (pas l'objet sélectionné) ; ses objets rejoignent le calque voisin, après confirmation s'il n'est pas vide")
-            disabledReason: qsTr("Le dernier calque du document ne peut pas être supprimé.")
+            tooltip: qsTr("Supprimer le calque actif ; ses objets rejoignent le calque voisin, après confirmation s'il n'est pas vide. Pour supprimer un objet : clic droit sur sa ligne, ou Suppr.")
+            disabledReason: editor.layers.length === 0
+                            ? qsTr("Aucun calque dans ce document : « + Calque » en crée un.")
+                            : qsTr("Le dernier calque du document ne peut pas être supprimé.")
             onClicked: objectTree.requestDeleteLayer(panel.layerId)
         }
         StudioButton {
@@ -189,6 +194,7 @@ ColumnLayout {
 
     ObjectTree {
         id: objectTree
+        shapeScope: panel.shapeScope
         Layout.fillWidth: true
         Layout.fillHeight: true
         Layout.minimumHeight: 48
