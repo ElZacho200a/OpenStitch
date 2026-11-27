@@ -69,7 +69,7 @@ ColumnLayout {
             Controls.Menu {
                 id: moreMenu
                 Controls.MenuItem { text: qsTr("Dupliquer le calque"); enabled: panel.layerId.length > 0; onTriggered: editor.duplicateLayer(panel.layerId) }
-                Controls.MenuItem { text: qsTr("Supprimer le calque"); enabled: editor.layers.length > 1 && panel.layerId.length > 0; onTriggered: editor.removeLayer(panel.layerId) }
+                Controls.MenuItem { text: qsTr("Supprimer le calque"); enabled: editor.layers.length > 1 && panel.layerId.length > 0; onTriggered: objectTree.requestDeleteLayer(panel.layerId) }
                 Controls.MenuItem { text: qsTr("Monter le calque"); enabled: panel.layerId.length > 0; onTriggered: editor.moveLayer(panel.layerId, 1) }
                 Controls.MenuItem { text: qsTr("Descendre le calque"); enabled: panel.layerId.length > 0; onTriggered: editor.moveLayer(panel.layerId, -1) }
                 Controls.MenuItem { text: qsTr("Placer la sélection ici"); enabled: editor.selectedCount > 0 && panel.layerId.length > 0 && !panel.layerLocked; onTriggered: editor.moveSelectionToLayer(panel.layerId) }
@@ -97,11 +97,14 @@ ColumnLayout {
         }
         StudioButton {
             objectName: "layerRemoveButton"
-            text: qsTr("Supprimer")
+            // « Suppr. calque », pas « Supprimer » : posé juste au-dessus de la liste d'objets, un
+            // libellé nu laissait croire qu'il supprimait l'objet sélectionné.
+            text: qsTr("Suppr. calque")
             implicitHeight: 28
             enabled: editor.layers.length > 1 && panel.layerId.length > 0
+            tooltip: qsTr("Supprimer le calque actif (pas l'objet sélectionné) ; ses objets rejoignent le calque voisin, après confirmation s'il n'est pas vide")
             disabledReason: qsTr("Le dernier calque du document ne peut pas être supprimé.")
-            onClicked: editor.removeLayer(panel.layerId)
+            onClicked: objectTree.requestDeleteLayer(panel.layerId)
         }
         StudioButton {
             objectName: "layerUpButton"

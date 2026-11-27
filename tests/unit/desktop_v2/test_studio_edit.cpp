@@ -171,6 +171,7 @@ private slots:
     void handlesResizeAndRotate();
     void layersTreeAndObjectEditing();
     void layerDeleteRequiresConfirmationWhenNotEmpty();
+    void layerPanelRemoveButtonSharesTheConfirmation();
     void layerWorkflowIsSharedLockedAndScoped();
     void contextMenuAndEyedropper();
     void shortcutsReachTheEditor();
@@ -1004,6 +1005,85 @@ void StudioEditTest::layerDeleteRequiresConfirmationWhenNotEmpty() {
     QVERIFY(QMetaObject::invokeMethod(no, "clicked"));
     QCOMPARE(rig.editor.layers().size(), before);
     QVERIFY(tree->property("pendingDeleteLayer").isNull());
+
+    QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+}
+
+// Le bouton « Suppr. calque » du LayerPanel (juste au-dessus de la liste d'objets) passe par la
+// même confirmation que le menu contextuel de l'arbre : un calque non vide n'est jamais supprimé
+// d'un seul clic, la suppression confirmée est une seule étape d'annulation, un calque vide part
+// directement.
+void StudioEditTest::layerPanelRemoveButtonSharesTheConfirmation() {
+    Rig rig;
+    open(rig);
+    const auto before = rig.editor.layers().size();
+    QVERIFY(rig.editor.addLayer(QStringLiteral("Second")));
+    const auto layerId = rig.editor.layers().front().toMap().value(QStringLiteral("id")).toString();
+    select(rig, {kBlue});
+    QVERIFY(rig.editor.moveSelectionToLayer(layerId));
+    QVERIFY(rig.editor.setActiveLayer(layerId));
+    QCOMPARE(rig.editor.activeLayer(), layerId);
+
+    // Le LayerPanel existe dans deux espaces (Vecteur, Points) : bouton, arbre et bandeau sont
+    // cherchés dans le même panneau pour ne pas mélanger deux instances.
+    auto* panel = rig.window->findChild<QObject*>(QStringLiteral("layerPanel"));
+    QVERIFY(panel);
+    auto* tree = panel->property("tree").value<QObject*>();
+    QVERIFY(tree);
+    auto* remove = panel->findChild<QObject*>(QStringLiteral("layerRemoveButton"));
+    QVERIFY(remove);
+    QCOMPARE(remove->property("text").toString(), QStringLiteral("Suppr. calque"));
+    QVERIFY(remove->property("tooltip").toString().contains(QStringLiteral("calque actif")));
+    QVERIFY(remove->property("enabled").toBool());
+
+    // Un clic ne supprime rien : il pose la confirmation, avec le nom et le nombre d'objets.
+    const auto stepsBefore = steps(rig);
+    QVERIFY(QMetaObject::invokeMethod(remove, "clicked"));
+    QCOMPARE(rig.editor.layers().size(), before + 1);
+    QCOMPARE(steps(rig), stepsBefore);
+    const auto pending = tree->property("pendingDeleteLayer").toMap();
+    QCOMPARE(pending.value(QStringLiteral("id")).toString(), layerId);
+    QCOMPARE(pending.value(QStringLiteral("name")).toString(), QStringLiteral("Second"));
+    QCOMPARE(pending.value(QStringLiteral("objects")).toInt(), 1);
+    auto* banner = tree->findChild<QObject*>(QStringLiteral("layerDeleteConfirm"));
+    QVERIFY(banner);
+    // La fenêtre de test n'est pas affichée (offscreen) : la visibilité effective est vérifiée par
+    // les captures UX ; ici, le texte que le bandeau présenterait.
+    bool namesTheLayer = false;
+    for (auto* child : banner->findChildren<QObject*>()) {
+        const auto text = child->property("text").toString();
+        namesTheLayer = namesTheLayer || (text.contains(QStringLiteral("« Second »")) &&
+                                          text.contains(QStringLiteral("1 objet(s)")));
+    }
+    QVERIFY(namesTheLayer);
+
+    // « Annuler » garde le calque et ses objets.
+    auto* no = tree->findChild<QObject*>(QStringLiteral("layerDeleteConfirmNo"));
+    QVERIFY(no);
+    QVERIFY(QMetaObject::invokeMethod(no, "clicked"));
+    QVERIFY(tree->property("pendingDeleteLayer").isNull());
+    QCOMPARE(rig.editor.layers().size(), before + 1);
+    QCOMPARE(shapeOf(rig.session.project(), kBlue).calque.value, layerId.toULongLong());
+
+    // Confirmer supprime le calque en une seule étape annulable.
+    QVERIFY(QMetaObject::invokeMethod(remove, "clicked"));
+    auto* yes = tree->findChild<QObject*>(QStringLiteral("layerDeleteConfirmYes"));
+    QVERIFY(yes);
+    QVERIFY(QMetaObject::invokeMethod(yes, "clicked"));
+    QCOMPARE(rig.editor.layers().size(), before);
+    QCOMPARE(steps(rig), stepsBefore + 1);
+    QVERIFY(rig.session.undo());
+    QCOMPARE(rig.editor.layers().size(), before + 1);
+    QCOMPARE(shapeOf(rig.session.project(), kBlue).calque.value, layerId.toULongLong());
+
+    // Un calque vide se supprime sans confirmation.
+    QVERIFY(rig.editor.addLayer(QStringLiteral("Vide")));
+    const auto emptyId = rig.editor.layers().front().toMap().value(QStringLiteral("id")).toString();
+    QCOMPARE(rig.editor.layers().front().toMap().value(QStringLiteral("objects")).toInt(), 0);
+    QVERIFY(rig.editor.setActiveLayer(emptyId));
+    QVERIFY(QMetaObject::invokeMethod(remove, "clicked"));
+    QVERIFY(tree->property("pendingDeleteLayer").isNull());
+    QCOMPARE(rig.editor.layers().size(), before + 1);
 
     QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
 }

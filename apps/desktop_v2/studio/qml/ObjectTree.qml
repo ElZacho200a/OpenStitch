@@ -21,6 +21,19 @@ Item {
     // change l'ordre de couture) : {id, name, objects}, ou null hors confirmation en attente.
     property var pendingDeleteLayer: null
     property string dropId: "" // calque survolé pendant un glisser-déposer
+    // Point d'entrée unique de la suppression d'un calque (menu contextuel de l'arbre, bouton et
+    // menu « Plus… » du LayerPanel) : un calque vide part tout de suite, un calque non vide pose
+    // la confirmation ci-dessous. La suppression elle-même reste une seule commande annulable.
+    function requestDeleteLayer(id) {
+        if (!id || editor.layers.length <= 1) return
+        let layer = null
+        for (const l of editor.layers) if (l.id === id) { layer = l; break }
+        const objects = layer ? (layer.objects || 0) : 0
+        if (objects > 0)
+            root.pendingDeleteLayer = { id: id, name: layer.name || "", objects: objects }
+        else
+            editor.removeLayer(id)
+    }
     function layerDisplayIndex(id) {
         const list = editor.layers
         for (let i = 0; i < list.length; ++i)
@@ -382,16 +395,7 @@ Item {
             objectName: "layerContextDelete"
             text: qsTr("Supprimer (objets gardés dans le calque voisin)")
             enabled: editor.layers.length > 1
-            onTriggered: {
-                const objects = layerMenu.layer ? (layerMenu.layer.objects || 0) : 0
-                if (objects > 0) {
-                    root.pendingDeleteLayer = { id: layerMenu.layerId,
-                                                 name: layerMenu.layer.name || "",
-                                                 objects: objects }
-                } else {
-                    editor.removeLayer(layerMenu.layerId)
-                }
-            }
+            onTriggered: root.requestDeleteLayer(layerMenu.layerId)
         }
     }
 
