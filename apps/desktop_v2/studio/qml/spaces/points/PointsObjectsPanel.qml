@@ -16,6 +16,25 @@ ColumnLayout {
     // relisent cet ensemble (identifiant -> true).
     readonly property var selectedSet: studio.selectedIdSet
     readonly property int selectedCount: studio.selectedObjectCount
+    // Une sélection faite ailleurs (canevas, bobine, arbre) amène sa ligne à l'écran : sans cela
+    // le débutant ne voit pas quelle ligne correspond à la zone cliquée (QA OBJ-028). Contain :
+    // aucun défilement si la ligne est déjà visible (clic dans la liste elle-même).
+    function revealSelection() {
+        const id = studio.primarySelectionId
+        if (id.length === 0)
+            return
+        const rows = panel.shownObjects
+        for (let i = 0; i < rows.length; ++i) {
+            if (rows[i].id === id) {
+                objectList.positionViewAtIndex(i, ListView.Contain)
+                return
+            }
+        }
+    }
+    Connections {
+        target: studio
+        function onSelectionChanged() { Qt.callLater(panel.revealSelection) }
+    }
     function sourceOf(objectId) {
         return spaceCtl && spaceCtl.sources[objectId] ? spaceCtl.sources[objectId] : null
     }
