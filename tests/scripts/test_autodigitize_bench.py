@@ -81,6 +81,15 @@ class CorpusTests(unittest.TestCase):
             seen.add(bench.sha256(pixels))
         self.assertEqual(len(seen), len(bench.SYNTHETIC))
 
+    def test_repository_images_fit_the_default_frame(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cases = [c for c in bench.build_corpus(Path(tmp)) if c["kind"] == "repository"]
+        self.assertEqual(len(cases), len(bench.REPO_IMAGES))
+        for c in cases:
+            w, h = bench.png_size(Path(c["image"]).read_bytes())
+            longest_mm = max(w, h) * 25.4 / c["dpi"]
+            self.assertLessEqual(longest_mm, 80.01, c["name"])
+
     def test_corpus_is_fifty_millimetres(self):
         self.assertAlmostEqual(bench.SIZE_PX * bench.MM_PER_PX, 50.0, places=6)
 

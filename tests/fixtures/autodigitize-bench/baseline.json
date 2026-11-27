@@ -58,19 +58,19 @@
    {
     "kind": "repository",
     "name": "repo-logo-small",
-    "purpose": "tests/fixtures/cli/logo_small.png",
+    "purpose": "tests/fixtures/cli/logo_small.png à 40 mm",
     "sha256": "9d83b7bd5fef84993c31f69be7af045d53adee1899e2b5fd0c3231eb71fc4249"
    },
    {
     "kind": "repository",
     "name": "repo-tentabrode",
-    "purpose": "tests/fixtures/tentabrode.png",
+    "purpose": "tests/fixtures/tentabrode.png à 80 mm",
     "sha256": "07bb7151fb3b2d7e12323da0100e1272c5f67983e7d76fa9ab8e3ec4d21f7f7d"
    },
    {
     "kind": "repository",
     "name": "repo-marine-synth",
-    "purpose": "tests/fixtures/ai-benchmark/marine-synth-01/source.png",
+    "purpose": "tests/fixtures/ai-benchmark/marine-synth-01/source.png à 80 mm",
     "sha256": "824eb5c4f7d16807be5f37f7704bbb26520bc873d8ea11115ea3e8694811f885"
    }
   ],
@@ -126,7 +126,7 @@
    "profile": "default",
    "sha256": "e2b825015b677b7b0528da4c99bb31c6c332aa825f2d7eaa251c96e0ddc92d49",
    "status": "measured",
-   "time_s": 0.162
+   "time_s": 0.131
   },
   {
    "error": null,
@@ -157,7 +157,7 @@
    "profile": "logo",
    "sha256": "e2b825015b677b7b0528da4c99bb31c6c332aa825f2d7eaa251c96e0ddc92d49",
    "status": "measured",
-   "time_s": 0.142
+   "time_s": 0.167
   },
   {
    "error": null,
@@ -188,7 +188,7 @@
    "profile": "logo-compare",
    "sha256": "e2b825015b677b7b0528da4c99bb31c6c332aa825f2d7eaa251c96e0ddc92d49",
    "status": "measured",
-   "time_s": 0.144
+   "time_s": 0.145
   },
   {
    "error": null,
@@ -250,7 +250,7 @@
    "profile": "logo",
    "sha256": "3e1b7536d42b2c7d6f9bbc9e22ca907d76d613819515f1acbebf035e0b602511",
    "status": "measured",
-   "time_s": 0.179
+   "time_s": 0.174
   },
   {
    "error": null,
@@ -281,7 +281,7 @@
    "profile": "logo-compare",
    "sha256": "3e1b7536d42b2c7d6f9bbc9e22ca907d76d613819515f1acbebf035e0b602511",
    "status": "measured",
-   "time_s": 0.733
+   "time_s": 0.265
   },
   {
    "error": null,
@@ -312,7 +312,7 @@
    "profile": "default",
    "sha256": "71b8ad79c60bd1e5500fbfac19408f0ba448afba9da25f099633109058629950",
    "status": "measured",
-   "time_s": 0.383
+   "time_s": 0.119
   },
   {
    "error": null,
@@ -343,7 +343,7 @@
    "profile": "logo",
    "sha256": "71b8ad79c60bd1e5500fbfac19408f0ba448afba9da25f099633109058629950",
    "status": "measured",
-   "time_s": 1.537
+   "time_s": 0.21
   },
   {
    "error": null,
@@ -374,7 +374,7 @@
    "profile": "logo-compare",
    "sha256": "71b8ad79c60bd1e5500fbfac19408f0ba448afba9da25f099633109058629950",
    "status": "measured",
-   "time_s": 0.402
+   "time_s": 0.337
   },
   {
    "error": null,
@@ -405,7 +405,7 @@
    "profile": "default",
    "sha256": "c9499cfbfed41e83040450d52d0ea1701c2954c1df10aee4a56d19fc2604a54f",
    "status": "measured",
-   "time_s": 0.154
+   "time_s": 0.124
   },
   {
    "error": null,
@@ -437,7 +437,7 @@
    "profile": "logo",
    "sha256": "c9499cfbfed41e83040450d52d0ea1701c2954c1df10aee4a56d19fc2604a54f",
    "status": "measured",
-   "time_s": 0.227
+   "time_s": 0.184
   },
   {
    "error": null,
@@ -469,7 +469,7 @@
    "profile": "logo-compare",
    "sha256": "c9499cfbfed41e83040450d52d0ea1701c2954c1df10aee4a56d19fc2604a54f",
    "status": "measured",
-   "time_s": 0.22
+   "time_s": 0.179
   },
   {
    "error": null,
@@ -500,7 +500,7 @@
    "profile": "default",
    "sha256": "36ce1b9fe295caff63cbf4f4702c562e4bac82ccc11fe0fabae8ba174476a7d9",
    "status": "measured",
-   "time_s": 0.145
+   "time_s": 0.13
   },
   {
    "error": null,
@@ -531,7 +531,7 @@
    "profile": "logo",
    "sha256": "36ce1b9fe295caff63cbf4f4702c562e4bac82ccc11fe0fabae8ba174476a7d9",
    "status": "measured",
-   "time_s": 0.307
+   "time_s": 0.199
   },
   {
    "error": null,
@@ -562,7 +562,7 @@
    "profile": "logo-compare",
    "sha256": "36ce1b9fe295caff63cbf4f4702c562e4bac82ccc11fe0fabae8ba174476a7d9",
    "status": "measured",
-   "time_s": 0.192
+   "time_s": 0.19
   },
   {
    "error": null,
@@ -593,7 +593,7 @@
    "profile": "default",
    "sha256": "8a050b478bee5c2e31a1e06e7c490d7c2aa14abc19b39ec5275263b82ba5509e",
    "status": "measured",
-   "time_s": 0.134
+   "time_s": 0.148
   },
   {
    "error": null,
@@ -624,7 +624,7 @@
    "profile": "logo",
    "sha256": "8a050b478bee5c2e31a1e06e7c490d7c2aa14abc19b39ec5275263b82ba5509e",
    "status": "measured",
-   "time_s": 0.317
+   "time_s": 0.209
   },
   {
    "error": null,
@@ -655,7 +655,7 @@
    "profile": "logo-compare",
    "sha256": "8a050b478bee5c2e31a1e06e7c490d7c2aa14abc19b39ec5275263b82ba5509e",
    "status": "measured",
-   "time_s": 0.322
+   "time_s": 0.215
   },
   {
    "error": null,
@@ -686,7 +686,7 @@
    "profile": "default",
    "sha256": "4579513d965dc576b430633a36ea42cd34c878e94e823f542f422eb0778a5079",
    "status": "measured",
-   "time_s": 0.128
+   "time_s": 0.126
   },
   {
    "error": null,
@@ -717,7 +717,7 @@
    "profile": "logo",
    "sha256": "4579513d965dc576b430633a36ea42cd34c878e94e823f542f422eb0778a5079",
    "status": "measured",
-   "time_s": 0.147
+   "time_s": 0.15
   },
   {
    "error": null,
@@ -748,7 +748,7 @@
    "profile": "logo-compare",
    "sha256": "4579513d965dc576b430633a36ea42cd34c878e94e823f542f422eb0778a5079",
    "status": "measured",
-   "time_s": 0.145
+   "time_s": 0.155
   },
   {
    "error": null,
@@ -779,7 +779,7 @@
    "profile": "default",
    "sha256": "72d74b047678feb25e59945490ab3f8799b2b9a74b47cf730149305edd66ed0e",
    "status": "measured",
-   "time_s": 0.121
+   "time_s": 0.123
   },
   {
    "error": null,
@@ -810,7 +810,7 @@
    "profile": "logo",
    "sha256": "72d74b047678feb25e59945490ab3f8799b2b9a74b47cf730149305edd66ed0e",
    "status": "measured",
-   "time_s": 0.126
+   "time_s": 0.124
   },
   {
    "error": null,
@@ -841,7 +841,7 @@
    "profile": "logo-compare",
    "sha256": "72d74b047678feb25e59945490ab3f8799b2b9a74b47cf730149305edd66ed0e",
    "status": "measured",
-   "time_s": 0.121
+   "time_s": 0.126
   },
   {
    "error": null,
@@ -872,7 +872,7 @@
    "profile": "default",
    "sha256": "e871c849dd7183ad15739e2ed1a3f422b80072d8f84dea788705d39e3ad0385e",
    "status": "measured",
-   "time_s": 0.222
+   "time_s": 0.128
   },
   {
    "error": null,
@@ -904,7 +904,7 @@
    "profile": "logo",
    "sha256": "e871c849dd7183ad15739e2ed1a3f422b80072d8f84dea788705d39e3ad0385e",
    "status": "measured",
-   "time_s": 0.242
+   "time_s": 0.241
   },
   {
    "error": null,
@@ -936,7 +936,7 @@
    "profile": "logo-compare",
    "sha256": "e871c849dd7183ad15739e2ed1a3f422b80072d8f84dea788705d39e3ad0385e",
    "status": "measured",
-   "time_s": 0.341
+   "time_s": 0.241
   },
   {
    "error": null,
@@ -944,19 +944,19 @@
    "metrics": {
     "color_changes": 1,
     "hotspot_area_mm2": 0.0,
-    "interior_hole_ratio": 0.00055,
+    "interior_hole_ratio": 0.0,
     "jumps": 2,
-    "layers_max": 2.46,
-    "layers_p99": 2.29,
+    "layers_max": 3.42,
+    "layers_p99": 2.18,
     "long_moves_without_trim": 0,
     "lost_detail_ratio": 0.0,
-    "missing_ratio": 0.04215,
+    "missing_ratio": 0.02801,
     "objects": 2,
     "quality_errors": 0,
     "quality_warnings": 0,
     "short_stitches": 0,
-    "stitches": 349,
-    "travel_mm": 24.353,
+    "stitches": 529,
+    "travel_mm": 31.245,
     "trims": 2,
     "wrong_colour_ratio": 0.0
    },
@@ -967,27 +967,27 @@
    "profile": "default",
    "sha256": "9d83b7bd5fef84993c31f69be7af045d53adee1899e2b5fd0c3231eb71fc4249",
    "status": "measured",
-   "time_s": 0.12
+   "time_s": 0.113
   },
   {
    "error": null,
    "kind": "repository",
    "metrics": {
     "color_changes": 1,
-    "hotspot_area_mm2": 2.0,
+    "hotspot_area_mm2": 0.0,
     "interior_hole_ratio": 0.0,
     "jumps": 3,
-    "layers_max": 4.13,
-    "layers_p99": 3.95,
+    "layers_max": 3.09,
+    "layers_p99": 2.71,
     "long_moves_without_trim": 0,
     "lost_detail_ratio": 0.0,
-    "missing_ratio": 0.02163,
+    "missing_ratio": 0.01858,
     "objects": 2,
     "quality_errors": 0,
     "quality_warnings": 0,
     "short_stitches": 1,
-    "stitches": 437,
-    "travel_mm": 24.294,
+    "stitches": 580,
+    "travel_mm": 30.366,
     "trims": 2,
     "wrong_colour_ratio": 0.0
    },
@@ -999,7 +999,7 @@
    "profile": "logo",
    "sha256": "9d83b7bd5fef84993c31f69be7af045d53adee1899e2b5fd0c3231eb71fc4249",
    "status": "measured",
-   "time_s": 0.12
+   "time_s": 0.123
   },
   {
    "error": null,
@@ -1009,17 +1009,17 @@
     "hotspot_area_mm2": 0.0,
     "interior_hole_ratio": 0.0,
     "jumps": 3,
-    "layers_max": 3.08,
-    "layers_p99": 2.77,
+    "layers_max": 3.09,
+    "layers_p99": 2.71,
     "long_moves_without_trim": 0,
     "lost_detail_ratio": 0.0,
-    "missing_ratio": 0.02108,
+    "missing_ratio": 0.01858,
     "objects": 2,
     "quality_errors": 0,
     "quality_warnings": 0,
     "short_stitches": 1,
-    "stitches": 423,
-    "travel_mm": 23.84,
+    "stitches": 580,
+    "travel_mm": 30.366,
     "trims": 2,
     "wrong_colour_ratio": 0.0
    },
@@ -1031,203 +1031,203 @@
    "profile": "logo-compare",
    "sha256": "9d83b7bd5fef84993c31f69be7af045d53adee1899e2b5fd0c3231eb71fc4249",
    "status": "measured",
-   "time_s": 0.121
+   "time_s": 0.142
   },
   {
    "error": null,
    "kind": "repository",
    "metrics": {
     "color_changes": 7,
-    "hotspot_area_mm2": 49.0,
-    "interior_hole_ratio": 0.00918,
-    "jumps": 239,
-    "layers_max": 6.37,
-    "layers_p99": 2.94,
+    "hotspot_area_mm2": 45.0,
+    "interior_hole_ratio": 0.01312,
+    "jumps": 143,
+    "layers_max": 6.91,
+    "layers_p99": 4.53,
     "long_moves_without_trim": 0,
-    "lost_detail_ratio": 0.00184,
-    "missing_ratio": 0.02039,
-    "objects": 159,
-    "quality_errors": 50,
-    "quality_warnings": 4,
-    "short_stitches": 47,
-    "stitches": 60022,
-    "travel_mm": 12139.445,
-    "trims": 234,
-    "wrong_colour_ratio": 0.02065
+    "lost_detail_ratio": 0.0518,
+    "missing_ratio": 0.07897,
+    "objects": 91,
+    "quality_errors": 0,
+    "quality_warnings": 21,
+    "short_stitches": 106,
+    "stitches": 5654,
+    "travel_mm": 1735.216,
+    "trims": 113,
+    "wrong_colour_ratio": 0.0765
    },
    "name": "repo-tentabrode",
    "object_types": {
-    "running": 26,
-    "tatami": 133
+    "running": 58,
+    "tatami": 33
    },
    "profile": "default",
    "sha256": "07bb7151fb3b2d7e12323da0100e1272c5f67983e7d76fa9ab8e3ec4d21f7f7d",
    "status": "measured",
-   "time_s": 0.372
+   "time_s": 0.308
   },
   {
    "error": null,
    "kind": "repository",
    "metrics": {
     "color_changes": 7,
-    "hotspot_area_mm2": 1202.0,
-    "interior_hole_ratio": 0.00092,
-    "jumps": 720,
-    "layers_max": 7.67,
-    "layers_p99": 4.62,
+    "hotspot_area_mm2": 142.0,
+    "interior_hole_ratio": 0.00079,
+    "jumps": 297,
+    "layers_max": 7.41,
+    "layers_p99": 5.15,
     "long_moves_without_trim": 0,
-    "lost_detail_ratio": 0.0035,
-    "missing_ratio": 0.00592,
-    "objects": 159,
-    "quality_errors": 50,
-    "quality_warnings": 43,
-    "short_stitches": 543,
-    "stitches": 81786,
-    "travel_mm": 15390.813,
-    "trims": 381,
-    "wrong_colour_ratio": 0.0455
+    "lost_detail_ratio": 0.14349,
+    "missing_ratio": 0.02219,
+    "objects": 91,
+    "quality_errors": 0,
+    "quality_warnings": 12,
+    "short_stitches": 1006,
+    "stitches": 9979,
+    "travel_mm": 2259.173,
+    "trims": 152,
+    "wrong_colour_ratio": 0.15725
    },
    "name": "repo-tentabrode",
    "object_types": {
-    "auto_satin": 123,
-    "running": 20,
-    "tatami": 16
+    "auto_satin": 14,
+    "running": 56,
+    "tatami": 21
    },
    "profile": "logo",
    "sha256": "07bb7151fb3b2d7e12323da0100e1272c5f67983e7d76fa9ab8e3ec4d21f7f7d",
    "status": "measured",
-   "time_s": 2.569
+   "time_s": 0.709
   },
   {
    "error": null,
    "kind": "repository",
    "metrics": {
     "color_changes": 7,
-    "hotspot_area_mm2": 606.0,
-    "interior_hole_ratio": 0.0006,
-    "jumps": 703,
-    "layers_max": 7.34,
-    "layers_p99": 4.2,
+    "hotspot_area_mm2": 132.0,
+    "interior_hole_ratio": 0.0007,
+    "jumps": 273,
+    "layers_max": 6.85,
+    "layers_p99": 5.13,
     "long_moves_without_trim": 0,
-    "lost_detail_ratio": 0.00345,
-    "missing_ratio": 0.00547,
-    "objects": 159,
-    "quality_errors": 50,
-    "quality_warnings": 27,
-    "short_stitches": 519,
-    "stitches": 77752,
-    "travel_mm": 15513.142,
-    "trims": 398,
-    "wrong_colour_ratio": 0.04429
+    "lost_detail_ratio": 0.14309,
+    "missing_ratio": 0.02144,
+    "objects": 91,
+    "quality_errors": 0,
+    "quality_warnings": 12,
+    "short_stitches": 978,
+    "stitches": 9562,
+    "travel_mm": 2111.74,
+    "trims": 145,
+    "wrong_colour_ratio": 0.15677
    },
    "name": "repo-tentabrode",
    "object_types": {
-    "auto_satin": 125,
-    "running": 20,
-    "tatami": 14
+    "auto_satin": 16,
+    "running": 56,
+    "tatami": 19
    },
    "profile": "logo-compare",
    "sha256": "07bb7151fb3b2d7e12323da0100e1272c5f67983e7d76fa9ab8e3ec4d21f7f7d",
    "status": "measured",
-   "time_s": 2.512
+   "time_s": 0.68
   },
   {
    "error": null,
    "kind": "repository",
    "metrics": {
-    "color_changes": 7,
-    "hotspot_area_mm2": 0.0,
-    "interior_hole_ratio": 0.0243,
+    "color_changes": 6,
+    "hotspot_area_mm2": 1.0,
+    "interior_hole_ratio": 0.03189,
     "jumps": 20,
-    "layers_max": 3.89,
-    "layers_p99": 2.47,
+    "layers_max": 4.2,
+    "layers_p99": 2.42,
     "long_moves_without_trim": 0,
-    "lost_detail_ratio": 0.00311,
-    "missing_ratio": 0.0243,
-    "objects": 18,
+    "lost_detail_ratio": 0.0,
+    "missing_ratio": 0.03304,
+    "objects": 17,
     "quality_errors": 0,
     "quality_warnings": 0,
     "short_stitches": 4,
-    "stitches": 6921,
-    "travel_mm": 770.313,
+    "stitches": 6108,
+    "travel_mm": 780.607,
     "trims": 20,
-    "wrong_colour_ratio": 0.00926
+    "wrong_colour_ratio": 0.00569
    },
    "name": "repo-marine-synth",
    "object_types": {
-    "running": 2,
+    "running": 1,
     "tatami": 16
    },
    "profile": "default",
    "sha256": "824eb5c4f7d16807be5f37f7704bbb26520bc873d8ea11115ea3e8694811f885",
    "status": "measured",
-   "time_s": 0.141
+   "time_s": 0.143
   },
   {
    "error": null,
    "kind": "repository",
    "metrics": {
-    "color_changes": 7,
-    "hotspot_area_mm2": 92.0,
-    "interior_hole_ratio": 0.00299,
-    "jumps": 37,
-    "layers_max": 6.63,
+    "color_changes": 6,
+    "hotspot_area_mm2": 78.0,
+    "interior_hole_ratio": 0.00297,
+    "jumps": 41,
+    "layers_max": 6.17,
     "layers_p99": 4.28,
     "long_moves_without_trim": 0,
-    "lost_detail_ratio": 0.00332,
-    "missing_ratio": 0.00299,
-    "objects": 18,
+    "lost_detail_ratio": 0.0,
+    "missing_ratio": 0.00309,
+    "objects": 17,
     "quality_errors": 0,
-    "quality_warnings": 1,
-    "short_stitches": 30,
-    "stitches": 9038,
-    "travel_mm": 745.625,
-    "trims": 21,
-    "wrong_colour_ratio": 0.01841
+    "quality_warnings": 0,
+    "short_stitches": 20,
+    "stitches": 7199,
+    "travel_mm": 1114.839,
+    "trims": 26,
+    "wrong_colour_ratio": 0.01561
    },
    "name": "repo-marine-synth",
    "object_types": {
-    "auto_satin": 14,
-    "running": 2,
-    "tatami": 2
+    "auto_satin": 11,
+    "running": 1,
+    "tatami": 5
    },
    "profile": "logo",
    "sha256": "824eb5c4f7d16807be5f37f7704bbb26520bc873d8ea11115ea3e8694811f885",
    "status": "measured",
-   "time_s": 0.234
+   "time_s": 0.212
   },
   {
    "error": null,
    "kind": "repository",
    "metrics": {
-    "color_changes": 7,
-    "hotspot_area_mm2": 40.0,
-    "interior_hole_ratio": 0.00297,
-    "jumps": 34,
-    "layers_max": 5.39,
-    "layers_p99": 3.76,
+    "color_changes": 6,
+    "hotspot_area_mm2": 29.0,
+    "interior_hole_ratio": 0.0029,
+    "jumps": 38,
+    "layers_max": 5.4,
+    "layers_p99": 3.69,
     "long_moves_without_trim": 0,
-    "lost_detail_ratio": 0.00332,
-    "missing_ratio": 0.00297,
-    "objects": 18,
+    "lost_detail_ratio": 0.0,
+    "missing_ratio": 0.00302,
+    "objects": 17,
     "quality_errors": 0,
-    "quality_warnings": 1,
-    "short_stitches": 28,
-    "stitches": 8754,
-    "travel_mm": 744.377,
-    "trims": 20,
-    "wrong_colour_ratio": 0.01803
+    "quality_warnings": 0,
+    "short_stitches": 19,
+    "stitches": 6899,
+    "travel_mm": 1133.924,
+    "trims": 25,
+    "wrong_colour_ratio": 0.01485
    },
    "name": "repo-marine-synth",
    "object_types": {
-    "auto_satin": 14,
-    "running": 2,
-    "tatami": 2
+    "auto_satin": 12,
+    "running": 1,
+    "tatami": 4
    },
    "profile": "logo-compare",
    "sha256": "824eb5c4f7d16807be5f37f7704bbb26520bc873d8ea11115ea3e8694811f885",
    "status": "measured",
-   "time_s": 0.261
+   "time_s": 0.336
   }
  ],
  "schema": "openstitch.autodigitize-bench/1",
@@ -1236,12 +1236,12 @@
   "failed": 0,
   "measured": 36,
   "totals": {
-   "color_changes": 69,
-   "jumps": 2006,
-   "quality_errors": 150,
-   "quality_warnings": 78,
-   "stitches": 293162,
-   "trims": 1226
+   "color_changes": 66,
+   "jumps": 1065,
+   "quality_errors": 0,
+   "quality_warnings": 47,
+   "stitches": 94770,
+   "trims": 633
   }
  }
 }

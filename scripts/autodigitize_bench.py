@@ -202,12 +202,26 @@ SYNTHETIC = {
     "flat-scene": (_color_flat_scene, "illustration cinq couleurs"),
 }
 
-# Images du dépôt (résolution native du fichier, réglages par défaut du moteur).
+# Images du dépôt : (chemin, plus grand côté brodé en mm). La résolution est déduite de la taille
+# en pixels pour que le motif tienne dans le cadre par défaut de 100 mm : à 96 dpi, `tentabrode`
+# mesurerait 372 mm et chaque point hors cadre compterait comme une erreur qualité.
 REPO_IMAGES = {
-    "repo-logo-small": "tests/fixtures/cli/logo_small.png",
-    "repo-tentabrode": "tests/fixtures/tentabrode.png",
-    "repo-marine-synth": "tests/fixtures/ai-benchmark/marine-synth-01/source.png",
+    "repo-logo-small": ("tests/fixtures/cli/logo_small.png", 40.0),
+    "repo-tentabrode": ("tests/fixtures/tentabrode.png", 80.0),
+    "repo-marine-synth": ("tests/fixtures/ai-benchmark/marine-synth-01/source.png", 80.0),
 }
+
+
+def png_size(data: bytes) -> tuple:
+    """(largeur, hauteur) lues dans l'en-tête IHDR, sans décompresser l'image."""
+    if data[:8] != pngio.SIGNATURE or data[12:16] != b"IHDR":
+        raise ValueError("PNG invalide")
+    return int.from_bytes(data[16:20], "big"), int.from_bytes(data[20:24], "big")
+
+
+def dpi_for(data: bytes, longest_mm: float) -> float:
+    """Résolution qui donne `longest_mm` au plus grand côté de l'image."""
+    return round(max(png_size(data)) * 25.4 / longest_mm, 3)
 
 
 @functools.lru_cache(maxsize=None)
@@ -244,13 +258,14 @@ def build_corpus(out: Path, include_repo: bool = True, only: list | None = None)
         cases.append({"name": name, "kind": "synthetic", "image": str(path), "dpi": SYNTH_DPI,
                       "purpose": SYNTHETIC[name][1], "sha256": sha256(synthetic_pixels(name))})
     if include_repo:
-        for name, rel in REPO_IMAGES.items():
+        for name, (rel, longest_mm) in REPO_IMAGES.items():
             src = ROOT / rel
             if not src.is_file() or (only and name not in only):
                 continue
             data = src.read_bytes()
-            cases.append({"name": name, "kind": "repository", "image": str(src), "dpi": None,
-                          "purpose": rel, "sha256": sha256(data)})
+            cases.append({"name": name, "kind": "repository", "image": str(src),
+                          "dpi": dpi_for(data, longest_mm),
+                          "purpose": f"{rel} à {longest_mm:g} mm", "sha256": sha256(data)})
     return cases
 
 

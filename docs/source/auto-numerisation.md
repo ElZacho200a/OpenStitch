@@ -541,15 +541,14 @@ maximale mesurée par `project density` :
 
 | cas | couches max | points | coupes |
 |---|---|---|---|
-| repo-marine-synth | 6,63 → 5,39 | 9 038 → 8 754 | 21 → 20 |
+| repo-marine-synth (80 mm) | 6,17 → 5,40 (p99 4,28 → 3,69) | 7 199 → 6 899 | 26 → 25 |
 | thin-lines | 6,65 → 5,67 | 3 833 → 3 782 | 23 → 20 |
 | letter-y | 4,76 → 3,53 | 456 → 387 | 2 → 3 (déplacements 29 → 74 mm) |
-| repo-logo-small | 4,13 → 3,08 | 437 → 423 | 2 → 2 |
-| repo-tentabrode | 7,67 → 7,34 (p99 4,62 → 4,20) | 81 786 → 77 752 | 381 → 398 |
+| repo-logo-small (40 mm) | 3,09 → 3,09 | 580 → 580 | 2 → 2 |
+| repo-tentabrode (80 mm) | 7,41 → 6,85 | 9 979 → 9 562 | 152 → 145 |
 | s-ribbon | 5,82 → 5,75 (p99 4,47 → 4,71) | 443 → 439 | 1 → 1 |
 
-Compromis assumé : moins de surépaisseur (risque de casse et de plissement) contre quelques coupes
-de plus sur `tentabrode` (+4 %) et `letter-y`. Les autres synthétiques gardent le squelette.
+Seule contrepartie : `letter-y` gagne une coupe et 45 mm de déplacements pour une couche de moins. Les autres synthétiques gardent le squelette.
 `flat-scene` reste à 8,8 couches : la maison, compacte, n'a aucun candidat sans surépaisseur
 (squelette compact estimé à 9,5 couches, balayage aux traversées de 18 mm donc refusé) ; il faudrait
 la refuser au satin (tatami), ce que la mesure actuelle, trop pessimiste sur les rubans concaves,
