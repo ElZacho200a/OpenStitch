@@ -211,14 +211,20 @@ REPO_IMAGES = {
 
 
 @functools.lru_cache(maxsize=None)
-def render_synthetic(name: str) -> bytes:
-    """PNG RGB déterministe (octet pour octet) du cas synthétique `name`."""
+def synthetic_pixels(name: str) -> bytes:
+    """Pixels RGB bruts (ligne par ligne) du cas synthétique `name`, déterministes."""
     color_of = SYNTHETIC[name][0]
     buf = bytearray()
     for py in range(SIZE_PX):
         for px in range(SIZE_PX):
             buf.extend(color_of(px + 0.5, py + 0.5))
-    return pngio.encode(SIZE_PX, SIZE_PX, "RGB", bytes(buf))
+    return bytes(buf)
+
+
+def render_synthetic(name: str) -> bytes:
+    """PNG RGB du cas `name`. Les octets compressés dépendent de la version de zlib : l'empreinte
+    du corpus porte donc sur les pixels (`synthetic_pixels`), pas sur ce fichier."""
+    return pngio.encode(SIZE_PX, SIZE_PX, "RGB", synthetic_pixels(name))
 
 
 def sha256(data: bytes) -> str:
@@ -236,7 +242,7 @@ def build_corpus(out: Path, include_repo: bool = True, only: list | None = None)
         path = out / f"{name}.png"
         path.write_bytes(data)
         cases.append({"name": name, "kind": "synthetic", "image": str(path), "dpi": SYNTH_DPI,
-                      "purpose": SYNTHETIC[name][1], "sha256": sha256(data)})
+                      "purpose": SYNTHETIC[name][1], "sha256": sha256(synthetic_pixels(name))})
     if include_repo:
         for name, rel in REPO_IMAGES.items():
             src = ROOT / rel
