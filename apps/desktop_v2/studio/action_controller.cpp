@@ -177,11 +177,7 @@ QString ActionController::commandReason(const StudioCommand& command) const {
         return QStringLiteral("sélection requise");
     }
     if (command.needs == "multi") {
-        int selected = 0;
-        for (const auto& entry : studio_.objects()) {
-            selected += entry.toMap().value(QStringLiteral("selected")).toBool() ? 1 : 0;
-        }
-        if (selected < 2) {
+        if (studio_.selectedObjectCount() < 2) {
             return QStringLiteral("deux objets au moins");
         }
     }

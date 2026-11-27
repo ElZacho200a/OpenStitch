@@ -173,9 +173,9 @@ Item {
                                 enabled: studio.hasSelection
                                 tooltip: qsTr("N'afficher que les objets de la couleur du premier objet sélectionné")
                                 onClicked: {
-                                    var o = studio.objects
+                                    var o = studio.objects, set = studio.selectedIdSet
                                     for (var i = 0; i < o.length; ++i)
-                                        if (o[i].selected) { view.showOnlyColour(o[i].color.toString()); return }
+                                        if (set[o[i].id] === true) { view.showOnlyColour(o[i].color.toString()); return }
                                 }
                             }
                             StudioButton {
@@ -183,9 +183,9 @@ Item {
                                 text: qsTr("Uniquement ce type de points")
                                 enabled: studio.hasSelection
                                 onClicked: {
-                                    var o = studio.objects
+                                    var o = studio.objects, set = studio.selectedIdSet
                                     for (var i = 0; i < o.length; ++i)
-                                        if (o[i].selected) { view.showOnlyType(o[i].type); return }
+                                        if (set[o[i].id] === true) { view.showOnlyType(o[i].type); return }
                                 }
                             }
                         }

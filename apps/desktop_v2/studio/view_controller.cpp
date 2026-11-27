@@ -78,10 +78,11 @@ ViewController::ViewController(StudioController& studio, std::filesystem::path c
         configFile_ = configDir / "studio-view.txt";
         load();
     }
-    gateStamp_ = documentStamp(studio_);
+    gateStamp_ = contentStamp(studio_);
     connect(&studio_, &StudioController::changed, this, [this] {
-        const auto stamp = documentStamp(studio_);
-        if (stamp != gateStamp_) { // filtres et compteurs : pas de recalcul pour un statut
+        // Filtres et compteurs : ni un statut ni un clic de sélection ne les changent.
+        const auto stamp = contentStamp(studio_);
+        if (stamp != gateStamp_) {
             gateStamp_ = stamp;
             emit changed();
         }

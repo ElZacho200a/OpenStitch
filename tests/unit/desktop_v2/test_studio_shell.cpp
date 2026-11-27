@@ -148,8 +148,19 @@ void StudioShellTest::realProjectSelectionAndViewInteractions() {
     QVERIFY(!session.canUndo());
     QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, windowPoint(*canvas, firstPoint));
     QTRY_VERIFY(session.selection().contains({TargetKind::EmbroideryObject, firstId}));
-    QTRY_VERIFY(controller.objects().front().toMap().value(QStringLiteral("selected")).toBool());
+    QTRY_VERIFY(controller.selectedIdSet().value(QString::number(firstId)).toBool());
     QCOMPARE(controller.primarySelectionId(), QString::number(firstId));
+    // La ligne de l'objet sélectionné (et elle seule) est surlignée : l'état vient de
+    // selectedIdSet, plus d'un champ `selected` des lignes.
+    const auto rowAt = [&](int index) {
+        QQuickItem* row = nullptr;
+        QMetaObject::invokeMethod(objectList, "itemAtIndex", Q_RETURN_ARG(QQuickItem*, row),
+                                  Q_ARG(int, index));
+        return row;
+    };
+    QTRY_VERIFY(rowAt(0) != nullptr && rowAt(1) != nullptr);
+    QTRY_VERIFY(rowAt(0)->property("selected").toBool());
+    QVERIFY(!rowAt(1)->property("selected").toBool());
 
     QQuickItem* secondRow = nullptr;
     QTRY_VERIFY(QMetaObject::invokeMethod(objectList, "itemAtIndex",
@@ -160,8 +171,11 @@ void StudioShellTest::realProjectSelectionAndViewInteractions() {
         secondRow->mapToScene(QPointF(secondRow->width() / 2, secondRow->height() / 2)).toPoint());
     QTRY_VERIFY(session.selection().contains({TargetKind::EmbroideryObject, secondId}));
     QCOMPARE(session.selection().targets().size(), std::size_t{1});
-    QVERIFY(!controller.objects().front().toMap().value(QStringLiteral("selected")).toBool());
-    QVERIFY(controller.objects().back().toMap().value(QStringLiteral("selected")).toBool());
+    QVERIFY(!controller.selectedIdSet().contains(QString::number(firstId)));
+    QVERIFY(controller.selectedIdSet().value(QString::number(secondId)).toBool());
+    QCOMPARE(controller.selectedObjectCount(), 1);
+    QTRY_VERIFY(rowAt(1)->property("selected").toBool());
+    QVERIFY(!rowAt(0)->property("selected").toBool());
     QCOMPARE(controller.primarySelectionId(), QString::number(secondId));
 
     const ScenePoint cursor{canvas->width() * 0.4, canvas->height() * 0.4};
