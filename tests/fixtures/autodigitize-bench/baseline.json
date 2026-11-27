@@ -86,6 +86,14 @@
    "0.15",
    "--curve-tolerance",
    "0.1"
+  ],
+  "logo-compare": [
+   "--satin-bands",
+   "--satin-compare",
+   "--fill-overlap",
+   "0.15",
+   "--curve-tolerance",
+   "0.1"
   ]
  },
  "results": [
@@ -118,7 +126,7 @@
    "profile": "default",
    "sha256": "8c632d50f559006228dffd3a94a205067596c65ddec566790e2afdca32c81c89",
    "status": "measured",
-   "time_s": 0.13
+   "time_s": 0.154
   },
   {
    "error": null,
@@ -149,7 +157,38 @@
    "profile": "logo",
    "sha256": "8c632d50f559006228dffd3a94a205067596c65ddec566790e2afdca32c81c89",
    "status": "measured",
-   "time_s": 0.144
+   "time_s": 0.148
+  },
+  {
+   "error": null,
+   "kind": "synthetic",
+   "metrics": {
+    "color_changes": 1,
+    "hotspot_area_mm2": 14.0,
+    "interior_hole_ratio": 1e-05,
+    "jumps": 2,
+    "layers_max": 5.28,
+    "layers_p99": 4.08,
+    "long_moves_without_trim": 0,
+    "lost_detail_ratio": 0.01102,
+    "missing_ratio": 0.00316,
+    "objects": 2,
+    "quality_errors": 0,
+    "quality_warnings": 0,
+    "short_stitches": 1,
+    "stitches": 1641,
+    "travel_mm": 20.614,
+    "trims": 2,
+    "wrong_colour_ratio": 0.01289
+   },
+   "name": "logo-two-color",
+   "object_types": {
+    "tatami": 2
+   },
+   "profile": "logo-compare",
+   "sha256": "8c632d50f559006228dffd3a94a205067596c65ddec566790e2afdca32c81c89",
+   "status": "measured",
+   "time_s": 0.143
   },
   {
    "error": null,
@@ -211,7 +250,38 @@
    "profile": "logo",
    "sha256": "3554a5e0b1c3aa2dc5db11560c3ab59314c18c8df53ee417f6dbfdb9c40f3ae0",
    "status": "measured",
-   "time_s": 0.171
+   "time_s": 0.286
+  },
+  {
+   "error": null,
+   "kind": "synthetic",
+   "metrics": {
+    "color_changes": 0,
+    "hotspot_area_mm2": 0.0,
+    "interior_hole_ratio": 0.0,
+    "jumps": 2,
+    "layers_max": 3.42,
+    "layers_p99": 2.54,
+    "long_moves_without_trim": 0,
+    "lost_detail_ratio": 0.0,
+    "missing_ratio": 0.0,
+    "objects": 1,
+    "quality_errors": 0,
+    "quality_warnings": 0,
+    "short_stitches": 0,
+    "stitches": 635,
+    "travel_mm": 2.527,
+    "trims": 2,
+    "wrong_colour_ratio": 0.0
+   },
+   "name": "ring",
+   "object_types": {
+    "auto_satin": 1
+   },
+   "profile": "logo-compare",
+   "sha256": "3554a5e0b1c3aa2dc5db11560c3ab59314c18c8df53ee417f6dbfdb9c40f3ae0",
+   "status": "measured",
+   "time_s": 0.204
   },
   {
    "error": null,
@@ -242,7 +312,7 @@
    "profile": "default",
    "sha256": "e40331c8846a6432a6a49ee5c45e7c98e639cb292c7e237621ebb201b46b8de8",
    "status": "measured",
-   "time_s": 0.123
+   "time_s": 0.126
   },
   {
    "error": null,
@@ -273,7 +343,38 @@
    "profile": "logo",
    "sha256": "e40331c8846a6432a6a49ee5c45e7c98e639cb292c7e237621ebb201b46b8de8",
    "status": "measured",
-   "time_s": 0.211
+   "time_s": 0.214
+  },
+  {
+   "error": null,
+   "kind": "synthetic",
+   "metrics": {
+    "color_changes": 0,
+    "hotspot_area_mm2": 8.0,
+    "interior_hole_ratio": 0.0,
+    "jumps": 2,
+    "layers_max": 5.82,
+    "layers_p99": 4.47,
+    "long_moves_without_trim": 0,
+    "lost_detail_ratio": 0.0,
+    "missing_ratio": 0.00029,
+    "objects": 1,
+    "quality_errors": 0,
+    "quality_warnings": 0,
+    "short_stitches": 1,
+    "stitches": 443,
+    "travel_mm": 0.857,
+    "trims": 1,
+    "wrong_colour_ratio": 0.0
+   },
+   "name": "s-ribbon",
+   "object_types": {
+    "auto_satin": 1
+   },
+   "profile": "logo-compare",
+   "sha256": "e40331c8846a6432a6a49ee5c45e7c98e639cb292c7e237621ebb201b46b8de8",
+   "status": "measured",
+   "time_s": 0.245
   },
   {
    "error": null,
@@ -304,7 +405,7 @@
    "profile": "default",
    "sha256": "ded485cfb9a97f46e105e983398b71785dfc5f57077a33ce9366ab3047266a8c",
    "status": "measured",
-   "time_s": 0.128
+   "time_s": 0.13
   },
   {
    "error": null,
@@ -336,7 +437,39 @@
    "profile": "logo",
    "sha256": "ded485cfb9a97f46e105e983398b71785dfc5f57077a33ce9366ab3047266a8c",
    "status": "measured",
-   "time_s": 0.212
+   "time_s": 0.177
+  },
+  {
+   "error": null,
+   "kind": "synthetic",
+   "metrics": {
+    "color_changes": 1,
+    "hotspot_area_mm2": 13.0,
+    "interior_hole_ratio": 0.00087,
+    "jumps": 9,
+    "layers_max": 4.32,
+    "layers_p99": 4.19,
+    "long_moves_without_trim": 0,
+    "lost_detail_ratio": 0.02228,
+    "missing_ratio": 0.03339,
+    "objects": 2,
+    "quality_errors": 0,
+    "quality_warnings": 0,
+    "short_stitches": 5,
+    "stitches": 1579,
+    "travel_mm": 96.289,
+    "trims": 5,
+    "wrong_colour_ratio": 0.07119
+   },
+   "name": "star-outlined",
+   "object_types": {
+    "auto_satin": 1,
+    "tatami": 1
+   },
+   "profile": "logo-compare",
+   "sha256": "ded485cfb9a97f46e105e983398b71785dfc5f57077a33ce9366ab3047266a8c",
+   "status": "measured",
+   "time_s": 0.184
   },
   {
    "error": null,
@@ -367,7 +500,7 @@
    "profile": "default",
    "sha256": "3fb27c93b70a9ebb7608e0e3f2dd20e28c3703e47d57583d0e6d88f810d45c5d",
    "status": "measured",
-   "time_s": 0.123
+   "time_s": 0.121
   },
   {
    "error": null,
@@ -398,7 +531,38 @@
    "profile": "logo",
    "sha256": "3fb27c93b70a9ebb7608e0e3f2dd20e28c3703e47d57583d0e6d88f810d45c5d",
    "status": "measured",
-   "time_s": 0.213
+   "time_s": 0.199
+  },
+  {
+   "error": null,
+   "kind": "synthetic",
+   "metrics": {
+    "color_changes": 0,
+    "hotspot_area_mm2": 2.0,
+    "interior_hole_ratio": 0.0,
+    "jumps": 5,
+    "layers_max": 4.73,
+    "layers_p99": 3.67,
+    "long_moves_without_trim": 0,
+    "lost_detail_ratio": 0.0,
+    "missing_ratio": 0.0,
+    "objects": 1,
+    "quality_errors": 0,
+    "quality_warnings": 0,
+    "short_stitches": 3,
+    "stitches": 445,
+    "travel_mm": 29.342,
+    "trims": 2,
+    "wrong_colour_ratio": 0.0
+   },
+   "name": "letter-y",
+   "object_types": {
+    "auto_satin": 1
+   },
+   "profile": "logo-compare",
+   "sha256": "3fb27c93b70a9ebb7608e0e3f2dd20e28c3703e47d57583d0e6d88f810d45c5d",
+   "status": "measured",
+   "time_s": 0.206
   },
   {
    "error": null,
@@ -429,7 +593,7 @@
    "profile": "default",
    "sha256": "81b6997b5df4b251bc5990a0feafba9a1f814e5ac23b5f8e0a923ebbce9e6eda",
    "status": "measured",
-   "time_s": 0.158
+   "time_s": 0.259
   },
   {
    "error": null,
@@ -460,7 +624,38 @@
    "profile": "logo",
    "sha256": "81b6997b5df4b251bc5990a0feafba9a1f814e5ac23b5f8e0a923ebbce9e6eda",
    "status": "measured",
-   "time_s": 0.21
+   "time_s": 0.216
+  },
+  {
+   "error": null,
+   "kind": "synthetic",
+   "metrics": {
+    "color_changes": 1,
+    "hotspot_area_mm2": 35.0,
+    "interior_hole_ratio": 2e-05,
+    "jumps": 57,
+    "layers_max": 6.65,
+    "layers_p99": 4.5,
+    "long_moves_without_trim": 0,
+    "lost_detail_ratio": 0.03632,
+    "missing_ratio": 0.00016,
+    "objects": 13,
+    "quality_errors": 0,
+    "quality_warnings": 0,
+    "short_stitches": 42,
+    "stitches": 3826,
+    "travel_mm": 567.4,
+    "trims": 23,
+    "wrong_colour_ratio": 0.09578
+   },
+   "name": "thin-lines",
+   "object_types": {
+    "auto_satin": 13
+   },
+   "profile": "logo-compare",
+   "sha256": "81b6997b5df4b251bc5990a0feafba9a1f814e5ac23b5f8e0a923ebbce9e6eda",
+   "status": "measured",
+   "time_s": 0.225
   },
   {
    "error": null,
@@ -491,7 +686,7 @@
    "profile": "default",
    "sha256": "16c6956c58583e1e705b41bee393e037df5b9f46347965a913d9dffe73d5074b",
    "status": "measured",
-   "time_s": 0.132
+   "time_s": 0.131
   },
   {
    "error": null,
@@ -522,7 +717,38 @@
    "profile": "logo",
    "sha256": "16c6956c58583e1e705b41bee393e037df5b9f46347965a913d9dffe73d5074b",
    "status": "measured",
-   "time_s": 0.152
+   "time_s": 0.15
+  },
+  {
+   "error": null,
+   "kind": "synthetic",
+   "metrics": {
+    "color_changes": 1,
+    "hotspot_area_mm2": 17.0,
+    "interior_hole_ratio": 0.00088,
+    "jumps": 14,
+    "layers_max": 5.02,
+    "layers_p99": 3.79,
+    "long_moves_without_trim": 0,
+    "lost_detail_ratio": 0.02043,
+    "missing_ratio": 0.00106,
+    "objects": 9,
+    "quality_errors": 0,
+    "quality_warnings": 0,
+    "short_stitches": 9,
+    "stitches": 2783,
+    "travel_mm": 210.551,
+    "trims": 11,
+    "wrong_colour_ratio": 0.02462
+   },
+   "name": "small-details",
+   "object_types": {
+    "tatami": 9
+   },
+   "profile": "logo-compare",
+   "sha256": "16c6956c58583e1e705b41bee393e037df5b9f46347965a913d9dffe73d5074b",
+   "status": "measured",
+   "time_s": 0.157
   },
   {
    "error": null,
@@ -553,7 +779,7 @@
    "profile": "default",
    "sha256": "84c66444d864e427e48988a2305d492b22ec97e7defacfe6eb9364d73f1cc647",
    "status": "measured",
-   "time_s": 0.122
+   "time_s": 0.142
   },
   {
    "error": null,
@@ -584,7 +810,38 @@
    "profile": "logo",
    "sha256": "84c66444d864e427e48988a2305d492b22ec97e7defacfe6eb9364d73f1cc647",
    "status": "measured",
-   "time_s": 0.126
+   "time_s": 0.129
+  },
+  {
+   "error": null,
+   "kind": "synthetic",
+   "metrics": {
+    "color_changes": 0,
+    "hotspot_area_mm2": 0.0,
+    "interior_hole_ratio": 0.0,
+    "jumps": 1,
+    "layers_max": 2.98,
+    "layers_p99": 2.51,
+    "long_moves_without_trim": 0,
+    "lost_detail_ratio": 0.0,
+    "missing_ratio": 0.00416,
+    "objects": 1,
+    "quality_errors": 0,
+    "quality_warnings": 0,
+    "short_stitches": 0,
+    "stitches": 1406,
+    "travel_mm": 0.0,
+    "trims": 1,
+    "wrong_colour_ratio": 0.0
+   },
+   "name": "holes",
+   "object_types": {
+    "tatami": 1
+   },
+   "profile": "logo-compare",
+   "sha256": "84c66444d864e427e48988a2305d492b22ec97e7defacfe6eb9364d73f1cc647",
+   "status": "measured",
+   "time_s": 0.128
   },
   {
    "error": null,
@@ -615,7 +872,7 @@
    "profile": "default",
    "sha256": "0d6d85336738feb69607d9380247480593b9d5b120f8897fbf9e9275d8aa36f3",
    "status": "measured",
-   "time_s": 0.132
+   "time_s": 0.159
   },
   {
    "error": null,
@@ -647,7 +904,39 @@
    "profile": "logo",
    "sha256": "0d6d85336738feb69607d9380247480593b9d5b120f8897fbf9e9275d8aa36f3",
    "status": "measured",
-   "time_s": 0.251
+   "time_s": 0.253
+  },
+  {
+   "error": null,
+   "kind": "synthetic",
+   "metrics": {
+    "color_changes": 4,
+    "hotspot_area_mm2": 63.0,
+    "interior_hole_ratio": 0.00299,
+    "jumps": 10,
+    "layers_max": 8.81,
+    "layers_p99": 4.74,
+    "long_moves_without_trim": 0,
+    "lost_detail_ratio": 0.01898,
+    "missing_ratio": 0.00299,
+    "objects": 5,
+    "quality_errors": 0,
+    "quality_warnings": 1,
+    "short_stitches": 17,
+    "stitches": 3912,
+    "travel_mm": 228.892,
+    "trims": 7,
+    "wrong_colour_ratio": 0.02362
+   },
+   "name": "flat-scene",
+   "object_types": {
+    "auto_satin": 3,
+    "tatami": 2
+   },
+   "profile": "logo-compare",
+   "sha256": "0d6d85336738feb69607d9380247480593b9d5b120f8897fbf9e9275d8aa36f3",
+   "status": "measured",
+   "time_s": 0.246
   },
   {
    "error": null,
@@ -678,7 +967,7 @@
    "profile": "default",
    "sha256": "9d83b7bd5fef84993c31f69be7af045d53adee1899e2b5fd0c3231eb71fc4249",
    "status": "measured",
-   "time_s": 0.244
+   "time_s": 0.114
   },
   {
    "error": null,
@@ -710,7 +999,39 @@
    "profile": "logo",
    "sha256": "9d83b7bd5fef84993c31f69be7af045d53adee1899e2b5fd0c3231eb71fc4249",
    "status": "measured",
-   "time_s": 0.139
+   "time_s": 0.121
+  },
+  {
+   "error": null,
+   "kind": "repository",
+   "metrics": {
+    "color_changes": 1,
+    "hotspot_area_mm2": 0.0,
+    "interior_hole_ratio": 0.0,
+    "jumps": 3,
+    "layers_max": 3.08,
+    "layers_p99": 2.77,
+    "long_moves_without_trim": 0,
+    "lost_detail_ratio": 0.0,
+    "missing_ratio": 0.02108,
+    "objects": 2,
+    "quality_errors": 0,
+    "quality_warnings": 0,
+    "short_stitches": 1,
+    "stitches": 423,
+    "travel_mm": 23.84,
+    "trims": 2,
+    "wrong_colour_ratio": 0.0
+   },
+   "name": "repo-logo-small",
+   "object_types": {
+    "auto_satin": 1,
+    "tatami": 1
+   },
+   "profile": "logo-compare",
+   "sha256": "9d83b7bd5fef84993c31f69be7af045d53adee1899e2b5fd0c3231eb71fc4249",
+   "status": "measured",
+   "time_s": 0.126
   },
   {
    "error": null,
@@ -742,7 +1063,7 @@
    "profile": "default",
    "sha256": "07bb7151fb3b2d7e12323da0100e1272c5f67983e7d76fa9ab8e3ec4d21f7f7d",
    "status": "measured",
-   "time_s": 0.401
+   "time_s": 0.491
   },
   {
    "error": null,
@@ -775,7 +1096,40 @@
    "profile": "logo",
    "sha256": "07bb7151fb3b2d7e12323da0100e1272c5f67983e7d76fa9ab8e3ec4d21f7f7d",
    "status": "measured",
-   "time_s": 2.466
+   "time_s": 2.418
+  },
+  {
+   "error": null,
+   "kind": "repository",
+   "metrics": {
+    "color_changes": 7,
+    "hotspot_area_mm2": 932.0,
+    "interior_hole_ratio": 0.00087,
+    "jumps": 671,
+    "layers_max": 7.64,
+    "layers_p99": 4.47,
+    "long_moves_without_trim": 0,
+    "lost_detail_ratio": 0.00348,
+    "missing_ratio": 0.00582,
+    "objects": 159,
+    "quality_errors": 50,
+    "quality_warnings": 34,
+    "short_stitches": 506,
+    "stitches": 79952,
+    "travel_mm": 15333.623,
+    "trims": 369,
+    "wrong_colour_ratio": 0.04504
+   },
+   "name": "repo-tentabrode",
+   "object_types": {
+    "auto_satin": 125,
+    "running": 20,
+    "tatami": 14
+   },
+   "profile": "logo-compare",
+   "sha256": "07bb7151fb3b2d7e12323da0100e1272c5f67983e7d76fa9ab8e3ec4d21f7f7d",
+   "status": "measured",
+   "time_s": 2.763
   },
   {
    "error": null,
@@ -807,7 +1161,7 @@
    "profile": "default",
    "sha256": "824eb5c4f7d16807be5f37f7704bbb26520bc873d8ea11115ea3e8694811f885",
    "status": "measured",
-   "time_s": 0.135
+   "time_s": 0.136
   },
   {
    "error": null,
@@ -840,21 +1194,54 @@
    "profile": "logo",
    "sha256": "824eb5c4f7d16807be5f37f7704bbb26520bc873d8ea11115ea3e8694811f885",
    "status": "measured",
-   "time_s": 0.331
+   "time_s": 0.237
+  },
+  {
+   "error": null,
+   "kind": "repository",
+   "metrics": {
+    "color_changes": 7,
+    "hotspot_area_mm2": 51.0,
+    "interior_hole_ratio": 0.00293,
+    "jumps": 34,
+    "layers_max": 6.38,
+    "layers_p99": 3.92,
+    "long_moves_without_trim": 0,
+    "lost_detail_ratio": 0.00332,
+    "missing_ratio": 0.00293,
+    "objects": 18,
+    "quality_errors": 0,
+    "quality_warnings": 1,
+    "short_stitches": 28,
+    "stitches": 8825,
+    "travel_mm": 734.819,
+    "trims": 20,
+    "wrong_colour_ratio": 0.01848
+   },
+   "name": "repo-marine-synth",
+   "object_types": {
+    "auto_satin": 14,
+    "running": 2,
+    "tatami": 2
+   },
+   "profile": "logo-compare",
+   "sha256": "824eb5c4f7d16807be5f37f7704bbb26520bc873d8ea11115ea3e8694811f885",
+   "status": "measured",
+   "time_s": 0.267
   }
  ],
  "schema": "openstitch.autodigitize-bench/1",
  "summary": {
-  "cases": 24,
+  "cases": 36,
   "failed": 0,
-  "measured": 24,
+  "measured": 36,
   "totals": {
-   "color_changes": 46,
-   "jumps": 1165,
-   "quality_errors": 100,
-   "quality_warnings": 49,
-   "stitches": 189668,
-   "trims": 754
+   "color_changes": 69,
+   "jumps": 1975,
+   "quality_errors": 150,
+   "quality_warnings": 85,
+   "stitches": 295538,
+   "trims": 1199
   }
  }
 }

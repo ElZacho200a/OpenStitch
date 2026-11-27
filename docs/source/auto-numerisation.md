@@ -512,6 +512,34 @@ en tatami. Actif par défaut mais sans effet tant que `satin_bands` est faux. Re
 ellipses pleines gardent le tatami (un vrai satin tournant demande un axe courbe, pas fourni
 automatiquement) ; aucune validation sur machine.
 
+### Choix comparatif de la stratégie (`satin_compare`, AUTO-SATIN-01, expérimental)
+
+Sans l'option, une bande prend le **premier** squelette dont la couverture suffit. Avec
+`satin_compare` (CLI `--satin-compare`, MCP `satin_compare`, désactivé par défaut), chaque bande ou
+forme compacte retenue pour le satin est réellement cousue par plusieurs candidats, mesurés par
+`auto_satin::measure_result` :
+
+| forme | candidats, dans l'ordre |
+|---|---|
+| bande (`band_like`) | squelette, axe médian vectoriel, balayage parallèle |
+| compacte sans trou | squelette à axe compact, axe médian, balayage parallèle |
+
+Éliminatoires : génération refusée ou vide, couverture < `satin_min_coverage`, traversées qui se
+croisent, traversée plus longue que max(`satin_max_width`, `satin_compact_max_width`). Score des
+admissibles : `100 × couverture − 4 × (colonnes − 1) − 2 × max(0, retour max − 1 mm) − 1,5 ×
+max(0, pic de surépaisseur − 2)`. Un candidat ne remplace le précédent que s'il gagne au moins un
+point : à égalité, l'ordre historique (squelette) l'emporte. Aucun admissible : la voie du satin
+guidé large puis le tatami, comme avant. La stratégie gagnante est écrite dans
+`AutoSatinParams::strategy` ; la génération finale reprend les mêmes paramètres.
+
+Banc `scripts/autodigitize_bench.py`, profil `logo-compare` contre `logo` (2026-11-27) : aucune
+régression sur 12 cas ; `repo-logo-small` surépaisseur max 4,13 → 3,08 couches ; `tentabrode`
+381 → 369 coupes, 81 786 → 79 952 points (82 squelettes, 29 axes médians, 14 balayages) ;
+illustration marine 6,63 → 6,38 couches, 21 → 20 coupes ; `letter-y` gagne l'axe médian (manques
+0,07 % → 0). Les synthétiques simples gardent le squelette. Les surépaisseurs de `flat-scene`
+(8,8 couches) et la perte de détail des traits fins ne dépendent pas de la stratégie : elles
+viennent du choix satin contre tatami et des recouvrements (lots suivants). Aucun essai brodé.
+
 **Limites** : la case du desktop n'a pas été compilée dans l'environnement de
 développement Linux (Qt absent), à vérifier au prochain build Windows ; une région à plusieurs trous n'est pas tentée ; la couverture est
 géométrique, pas validée sur machine ; pas de satin en éventail ou concentrique pour les grands disques

@@ -116,29 +116,43 @@ class RunAndCompareTests(unittest.TestCase):
 
     def test_run_and_compare_detects_regression(self):
         with tempfile.TemporaryDirectory() as tmp:
+            runs = 2 * len(bench.PROFILES)  # 2 cas x profils
             base = self.run_fake(FakeEngine(), Path(tmp) / "a")
-            self.assertEqual(base["summary"]["measured"], 4)  # 2 cas x 2 profils
+            self.assertEqual(base["summary"]["measured"], runs)
             same = bench.compare(self.run_fake(FakeEngine(), Path(tmp) / "b"), base)
             self.assertEqual(same["regressions"], 0)
             worse = bench.compare(self.run_fake(FakeEngine(stitches=2000), Path(tmp) / "c"),
                                   base)
-            self.assertEqual(worse["regressions"], 4)
+            self.assertEqual(worse["regressions"], runs)
             better = bench.compare(self.run_fake(FakeEngine(stitches=900), Path(tmp) / "d"),
                                    base)
-            self.assertEqual(better["improvements"], 4)
+            self.assertEqual(better["improvements"], runs)
 
     def test_failed_stage_is_reported(self):
         with tempfile.TemporaryDirectory() as tmp:
             rep = self.run_fake(FakeEngine(fail_stage="fidelity"), Path(tmp))
-            self.assertEqual(rep["summary"]["failed"], 4)
+            self.assertEqual(rep["summary"]["failed"], 2 * len(bench.PROFILES))
             self.assertEqual(rep["results"][0]["error"]["stage"], "fidelity")
 
-    def test_synthetic_cases_pass_dpi(self):
+    def test_synthetic_cases_pass_dpi_and_profile_options(self):
         with tempfile.TemporaryDirectory() as tmp:
             engine = FakeEngine()
             self.run_fake(engine, Path(tmp))
-            digitize = [c for c in engine.calls if c[1] == "digitize"][0]
-            self.assertIn("--dpi", digitize)
+            digitize = [c for c in engine.calls if c[1] == "digitize"]
+            self.assertEqual(len(digitize), 2 * len(bench.PROFILES))
+            self.assertTrue(all("--dpi" in c for c in digitize))
+            satin_profiles = sum("--satin-bands" in opts for opts in bench.PROFILES.values())
+            self.assertEqual(sum("--satin-bands" in c for c in digitize), 2 * satin_profiles)
+
+    def test_new_profile_is_not_a_regression(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            current = self.run_fake(FakeEngine(), Path(tmp))
+            old = json.loads(json.dumps(current))
+            old["results"] = [r for r in old["results"] if r["profile"] == "default"]
+            result = bench.compare(current, old)
+            self.assertEqual(result["regressions"], 0)
+            notes = [c.get("note") for c in result["cases"] if c.get("note")]
+            self.assertTrue(notes and all("absent" in n for n in notes))
 
     def test_versioned_baseline_matches_corpus(self):
         path = ROOT / "tests/fixtures/autodigitize-bench/baseline.json"
@@ -156,7 +170,7 @@ class RealEngineTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             rep = bench.run_bench(engine, Path(tmp), include_repo=False,
                                   only=["ring", "logo-two-color"])
-        self.assertEqual(rep["summary"]["measured"], 4, rep["results"])
+        self.assertEqual(rep["summary"]["measured"], 2 * len(bench.PROFILES), rep["results"])
         for r in rep["results"]:
             self.assertGreater(r["metrics"]["stitches"], 0)
 

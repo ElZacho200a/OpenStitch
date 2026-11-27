@@ -71,6 +71,16 @@ struct AutoOptions {
     // car mesuré meilleur sur les anneaux larges (voir `docs/source/auto-numerisation.md`) ; les
     // disques et ellipses pleines gardent le tatami (la mesure ne donne aucun avantage).
     bool satin_wide_guided{true};
+    // AUTO-SATIN-01 (expérimental, désactivé par défaut) : avec `satin_bands`, une bande ou une
+    // forme compacte retenue pour le satin n'est plus cousue par le PREMIER squelette qui couvre,
+    // mais par le meilleur candidat admissible parmi le squelette (normal ou compact), l'axe médian
+    // vectoriel et le balayage parallèle, tous réellement générés et mesurés
+    // (`auto_satin::measure_result`). Éliminatoires : génération refusée, couverture <
+    // `satin_min_coverage`, traversées qui se croisent, traversée plus longue que la largeur
+    // maximale d'un satin. Score : couverture, puis colonnes, retours et surépaisseur ; à score
+    // égal (écart < 1 point), l'ordre historique (squelette d'abord) l'emporte. Faux : comportement
+    // historique inchangé.
+    bool satin_compare{false};
     // Largeur inscrite maximale d'une forme candidate au satin guidé large.
     Micrometers satin_wide_max_width{40'000};
 

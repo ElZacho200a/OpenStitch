@@ -70,6 +70,7 @@ changement de moteur, avec l'explication des écarts.
 |---|---|
 | `default` | aucune (réglages par défaut du moteur : aucun satin) |
 | `logo` | `--satin-bands --fill-overlap 0.15 --curve-tolerance 0.1` (préréglage Studio « Logo / aplats ») |
+| `logo-compare` | `logo` + `--satin-compare` (AUTO-SATIN-01, choix comparatif de la stratégie de satin) |
 
 ## Premiers constats sur la baseline (main 5be7463a, 2026-11-27)
 

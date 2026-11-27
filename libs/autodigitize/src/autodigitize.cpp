@@ -14,6 +14,7 @@
 #include <set>
 #include <utility>
 
+#include "openstitch/auto_satin/satin_strategy.hpp"
 #include "openstitch/auto_satin/skeleton_satin.hpp"
 #include "openstitch/geometry/boolean.hpp"
 #include "openstitch/geometry/moments.hpp"
@@ -113,7 +114,91 @@ struct SatinChoice {
     // automatique).
     bool guided{false};
     std::vector<Vec2um> guide;
+    // AUTO-SATIN-01 (`satin_compare`) : stratégie retenue parmi les candidats mesurés.
+    document::AutoSatinStrategy strategy{document::AutoSatinStrategy::Skeleton};
 };
+
+// --- AUTO-SATIN-01 : comparaison des stratégies de satin ---------------------------------------
+// Un candidat = une stratégie (et, pour le squelette, l'axe normal ou compact) réellement générée
+// sur la région puis mesurée. Fonction pure de (région, options) : déterministe.
+struct SatinCandidate {
+    document::AutoSatinStrategy strategy{document::AutoSatinStrategy::Skeleton};
+    bool compact_axis{false};
+    bool admissible{false};
+    double score{0.0};
+    auto_satin::SatinMetrics metrics;
+};
+
+auto_satin::SatinStrategy engine_strategy(document::AutoSatinStrategy s) {
+    switch (s) {
+    case document::AutoSatinStrategy::ParallelSweep:
+        return auto_satin::SatinStrategy::ParallelSweep;
+    case document::AutoSatinStrategy::MedialAxis:
+        return auto_satin::SatinStrategy::MedialAxis;
+    case document::AutoSatinStrategy::Guided:
+        return auto_satin::SatinStrategy::Guided;
+    case document::AutoSatinStrategy::Skeleton:
+        break;
+    }
+    return auto_satin::SatinStrategy::Skeleton;
+}
+
+// Score explicable (plus haut = mieux) d'un candidat dont les éliminatoires sont passés :
+// couverture d'abord (100 points pour 100 %), puis pénalités de fragmentation (chaque colonne en
+// plus coûte une coupe), de long retour du zigzag (au-delà de 1 mm, visible) et de surépaisseur
+// (pic de fils superposés au-delà de 2).
+double satin_candidate_score(const auto_satin::SatinMetrics& m) {
+    double score = 100.0 * m.coverage_ratio;
+    score -= 4.0 * std::max(0, m.columns - 1);
+    score -= 2.0 * std::max(0.0, m.max_return_mm - 1.0);
+    score -= 1.5 * std::max(0, m.overlap_peak - 2);
+    return score;
+}
+
+SatinCandidate evaluate_satin_candidate(const geometry::PathSet& region,
+                                        document::AutoSatinStrategy strategy, bool compact,
+                                        double maxCrossingMm, const AutoOptions& options) {
+    SatinCandidate c;
+    c.strategy = strategy;
+    c.compact_axis = compact;
+    auto_satin::SkeletonSatinParameters p;
+    p.measure_coverage = true;
+    p.compact_axis = compact;
+    const auto generated = auto_satin::generate_satin(engine_strategy(strategy), region, p);
+    if (!generated || generated->columns.empty() || !generated->diagnostics.coverage_measured) {
+        return c;
+    }
+    c.metrics = auto_satin::measure_result(*generated);
+    c.admissible = c.metrics.coverage_ratio >= options.satin_min_coverage &&
+                   c.metrics.crossing_pairs == 0 && c.metrics.max_crossing_mm <= maxCrossingMm;
+    c.score = c.admissible ? satin_candidate_score(c.metrics) : 0.0;
+    return c;
+}
+
+// Meilleur candidat admissible, ou `nullopt`. Les candidats sont évalués dans l'ordre historique
+// (squelette d'abord) ; un suivant ne l'emporte que s'il gagne au moins un point de score.
+std::optional<SatinCandidate> best_satin_candidate(const geometry::PathSet& region, bool bandLike,
+                                                   bool compact, const AutoOptions& options) {
+    using S = document::AutoSatinStrategy;
+    const double maxCrossingMm =
+        static_cast<double>(
+            std::max(options.satin_max_width.value, options.satin_compact_max_width.value)) /
+        1000.0;
+    std::vector<std::pair<S, bool>> plan;
+    if (bandLike) {
+        plan = {{S::Skeleton, false}, {S::MedialAxis, false}, {S::ParallelSweep, false}};
+    } else if (compact) {
+        plan = {{S::Skeleton, true}, {S::MedialAxis, false}, {S::ParallelSweep, false}};
+    }
+    std::optional<SatinCandidate> best;
+    for (const auto& [strategy, compactAxis] : plan) {
+        auto c = evaluate_satin_candidate(region, strategy, compactAxis, maxCrossingMm, options);
+        if (c.admissible && (!best || c.score >= best->score + 1.0)) {
+            best = std::move(c);
+        }
+    }
+    return best;
+}
 
 // Une région est satinable si le satin par squelette la couvre réellement : on
 // ESSAIE la génération (déterministe) et on mesure la couverture plutôt que de
@@ -145,12 +230,22 @@ SatinChoice choose_satin(const geometry::PathSet& region, const AutoOptions& opt
     };
 
     const bool bandLike = shape->band_like;
-    if (bandLike && covered(false)) {
+    const double compactLimit = static_cast<double>(options.satin_compact_max_width.value);
+    const bool compactEligible = !bandLike && compactLimit > 0.0 && region.holes.empty() &&
+                                 widthUm >= minWidth && widthUm <= compactLimit;
+    if (options.satin_compare && (bandLike || compactEligible)) {
+        // AUTO-SATIN-01 : candidats mesurés au lieu du premier squelette qui couvre.
+        if (const auto best = best_satin_candidate(region, bandLike, compactEligible, options)) {
+            SatinChoice choice;
+            choice.satin = true;
+            choice.compact_axis = best->compact_axis;
+            choice.strategy = best->strategy;
+            return choice;
+        }
+    } else if (bandLike && covered(false)) {
         return {true, false};
     }
-    const double compactMax = static_cast<double>(options.satin_compact_max_width.value);
-    if (!bandLike && compactMax > 0.0 && region.holes.empty() && widthUm >= minWidth &&
-        widthUm <= compactMax && covered(true)) {
+    if (!options.satin_compare && compactEligible && covered(true)) {
         return {true, true};
     }
     // HP-ENG-009 : forme large ou à trou refusée ci-dessus. Satin guidé seulement si la mesure le
@@ -202,6 +297,7 @@ void classify_and_build_embroidery(const geometry::PathSet& main, const RegionSo
         // Bande étroite (anneau, ruban, arc) ou petit disque -> auto-satin.
         document::AutoSatinParams sp;
         sp.compact_axis = satin.compact_axis;
+        sp.strategy = satin.strategy; // Skeleton sauf choix comparatif (`satin_compare`)
         if (satin.guided) {
             sp.strategy = document::AutoSatinStrategy::Guided;
             if (!satin.guide.empty()) {
