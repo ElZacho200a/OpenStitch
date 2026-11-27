@@ -1,0 +1,860 @@
+{
+ "corpus": {
+  "cases": [
+   {
+    "kind": "synthetic",
+    "name": "logo-two-color",
+    "purpose": "aplats chevauchants deux couleurs",
+    "sha256": "8c632d50f559006228dffd3a94a205067596c65ddec566790e2afdca32c81c89"
+   },
+   {
+    "kind": "synthetic",
+    "name": "ring",
+    "purpose": "anneau large : satin fermé ou tatami",
+    "sha256": "3554a5e0b1c3aa2dc5db11560c3ab59314c18c8df53ee417f6dbfdb9c40f3ae0"
+   },
+   {
+    "kind": "synthetic",
+    "name": "s-ribbon",
+    "purpose": "ruban en S de 5 mm : colonne satin courbe",
+    "sha256": "e40331c8846a6432a6a49ee5c45e7c98e639cb292c7e237621ebb201b46b8de8"
+   },
+   {
+    "kind": "synthetic",
+    "name": "star-outlined",
+    "purpose": "étoile jaune à contour noir de 0,9 mm",
+    "sha256": "ded485cfb9a97f46e105e983398b71785dfc5f57077a33ce9366ab3047266a8c"
+   },
+   {
+    "kind": "synthetic",
+    "name": "letter-y",
+    "purpose": "branche en Y de 4 mm : bifurcation",
+    "sha256": "3fb27c93b70a9ebb7608e0e3f2dd20e28c3703e47d57583d0e6d88f810d45c5d"
+   },
+   {
+    "kind": "synthetic",
+    "name": "thin-lines",
+    "purpose": "traits de 0,7 mm sur aplat (linework)",
+    "sha256": "81b6997b5df4b251bc5990a0feafba9a1f814e5ac23b5f8e0a923ebbce9e6eda"
+   },
+   {
+    "kind": "synthetic",
+    "name": "small-details",
+    "purpose": "points de 1,6 et 3 mm : préservation des détails",
+    "sha256": "16c6956c58583e1e705b41bee393e037df5b9f46347965a913d9dffe73d5074b"
+   },
+   {
+    "kind": "synthetic",
+    "name": "holes",
+    "purpose": "aplat percé de trois trous",
+    "sha256": "84c66444d864e427e48988a2305d492b22ec97e7defacfe6eb9364d73f1cc647"
+   },
+   {
+    "kind": "synthetic",
+    "name": "flat-scene",
+    "purpose": "illustration cinq couleurs",
+    "sha256": "0d6d85336738feb69607d9380247480593b9d5b120f8897fbf9e9275d8aa36f3"
+   },
+   {
+    "kind": "repository",
+    "name": "repo-logo-small",
+    "purpose": "tests/fixtures/cli/logo_small.png",
+    "sha256": "9d83b7bd5fef84993c31f69be7af045d53adee1899e2b5fd0c3231eb71fc4249"
+   },
+   {
+    "kind": "repository",
+    "name": "repo-tentabrode",
+    "purpose": "tests/fixtures/tentabrode.png",
+    "sha256": "07bb7151fb3b2d7e12323da0100e1272c5f67983e7d76fa9ab8e3ec4d21f7f7d"
+   },
+   {
+    "kind": "repository",
+    "name": "repo-marine-synth",
+    "purpose": "tests/fixtures/ai-benchmark/marine-synth-01/source.png",
+    "sha256": "824eb5c4f7d16807be5f37f7704bbb26520bc873d8ea11115ea3e8694811f885"
+   }
+  ],
+  "size_px": 400,
+  "synthetic_dpi": 203.2
+ },
+ "engine": "0.1.0",
+ "profiles": {
+  "default": [],
+  "logo": [
+   "--satin-bands",
+   "--fill-overlap",
+   "0.15",
+   "--curve-tolerance",
+   "0.1"
+  ]
+ },
+ "results": [
+  {
+   "error": null,
+   "kind": "synthetic",
+   "metrics": {
+    "color_changes": 1,
+    "hotspot_area_mm2": 0.0,
+    "interior_hole_ratio": 0.0,
+    "jumps": 2,
+    "layers_max": 2.83,
+    "layers_p99": 2.34,
+    "long_moves_without_trim": 0,
+    "lost_detail_ratio": 0.00142,
+    "missing_ratio": 0.00399,
+    "objects": 2,
+    "quality_errors": 0,
+    "quality_warnings": 0,
+    "short_stitches": 0,
+    "stitches": 1430,
+    "travel_mm": 12.247,
+    "trims": 2,
+    "wrong_colour_ratio": 0.00642
+   },
+   "name": "logo-two-color",
+   "object_types": {
+    "tatami": 2
+   },
+   "profile": "default",
+   "sha256": "8c632d50f559006228dffd3a94a205067596c65ddec566790e2afdca32c81c89",
+   "status": "measured",
+   "time_s": 0.13
+  },
+  {
+   "error": null,
+   "kind": "synthetic",
+   "metrics": {
+    "color_changes": 1,
+    "hotspot_area_mm2": 14.0,
+    "interior_hole_ratio": 1e-05,
+    "jumps": 2,
+    "layers_max": 5.28,
+    "layers_p99": 4.08,
+    "long_moves_without_trim": 0,
+    "lost_detail_ratio": 0.01102,
+    "missing_ratio": 0.00316,
+    "objects": 2,
+    "quality_errors": 0,
+    "quality_warnings": 0,
+    "short_stitches": 1,
+    "stitches": 1641,
+    "travel_mm": 20.614,
+    "trims": 2,
+    "wrong_colour_ratio": 0.01289
+   },
+   "name": "logo-two-color",
+   "object_types": {
+    "tatami": 2
+   },
+   "profile": "logo",
+   "sha256": "8c632d50f559006228dffd3a94a205067596c65ddec566790e2afdca32c81c89",
+   "status": "measured",
+   "time_s": 0.144
+  },
+  {
+   "error": null,
+   "kind": "synthetic",
+   "metrics": {
+    "color_changes": 0,
+    "hotspot_area_mm2": 0.0,
+    "interior_hole_ratio": 0.0,
+    "jumps": 1,
+    "layers_max": 2.51,
+    "layers_p99": 2.23,
+    "long_moves_without_trim": 0,
+    "lost_detail_ratio": 0.0,
+    "missing_ratio": 0.01539,
+    "objects": 1,
+    "quality_errors": 0,
+    "quality_warnings": 0,
+    "short_stitches": 0,
+    "stitches": 1014,
+    "travel_mm": 0.0,
+    "trims": 1,
+    "wrong_colour_ratio": 0.0
+   },
+   "name": "ring",
+   "object_types": {
+    "tatami": 1
+   },
+   "profile": "default",
+   "sha256": "3554a5e0b1c3aa2dc5db11560c3ab59314c18c8df53ee417f6dbfdb9c40f3ae0",
+   "status": "measured",
+   "time_s": 0.122
+  },
+  {
+   "error": null,
+   "kind": "synthetic",
+   "metrics": {
+    "color_changes": 0,
+    "hotspot_area_mm2": 0.0,
+    "interior_hole_ratio": 0.0,
+    "jumps": 2,
+    "layers_max": 3.42,
+    "layers_p99": 2.54,
+    "long_moves_without_trim": 0,
+    "lost_detail_ratio": 0.0,
+    "missing_ratio": 0.0,
+    "objects": 1,
+    "quality_errors": 0,
+    "quality_warnings": 0,
+    "short_stitches": 0,
+    "stitches": 635,
+    "travel_mm": 2.527,
+    "trims": 2,
+    "wrong_colour_ratio": 0.0
+   },
+   "name": "ring",
+   "object_types": {
+    "auto_satin": 1
+   },
+   "profile": "logo",
+   "sha256": "3554a5e0b1c3aa2dc5db11560c3ab59314c18c8df53ee417f6dbfdb9c40f3ae0",
+   "status": "measured",
+   "time_s": 0.171
+  },
+  {
+   "error": null,
+   "kind": "synthetic",
+   "metrics": {
+    "color_changes": 0,
+    "hotspot_area_mm2": 0.0,
+    "interior_hole_ratio": 0.0,
+    "jumps": 1,
+    "layers_max": 3.46,
+    "layers_p99": 2.71,
+    "long_moves_without_trim": 0,
+    "lost_detail_ratio": 0.0,
+    "missing_ratio": 0.02025,
+    "objects": 1,
+    "quality_errors": 0,
+    "quality_warnings": 0,
+    "short_stitches": 0,
+    "stitches": 571,
+    "travel_mm": 0.0,
+    "trims": 1,
+    "wrong_colour_ratio": 0.0
+   },
+   "name": "s-ribbon",
+   "object_types": {
+    "tatami": 1
+   },
+   "profile": "default",
+   "sha256": "e40331c8846a6432a6a49ee5c45e7c98e639cb292c7e237621ebb201b46b8de8",
+   "status": "measured",
+   "time_s": 0.123
+  },
+  {
+   "error": null,
+   "kind": "synthetic",
+   "metrics": {
+    "color_changes": 0,
+    "hotspot_area_mm2": 8.0,
+    "interior_hole_ratio": 0.0,
+    "jumps": 2,
+    "layers_max": 5.82,
+    "layers_p99": 4.47,
+    "long_moves_without_trim": 0,
+    "lost_detail_ratio": 0.0,
+    "missing_ratio": 0.00029,
+    "objects": 1,
+    "quality_errors": 0,
+    "quality_warnings": 0,
+    "short_stitches": 1,
+    "stitches": 443,
+    "travel_mm": 0.857,
+    "trims": 1,
+    "wrong_colour_ratio": 0.0
+   },
+   "name": "s-ribbon",
+   "object_types": {
+    "auto_satin": 1
+   },
+   "profile": "logo",
+   "sha256": "e40331c8846a6432a6a49ee5c45e7c98e639cb292c7e237621ebb201b46b8de8",
+   "status": "measured",
+   "time_s": 0.211
+  },
+  {
+   "error": null,
+   "kind": "synthetic",
+   "metrics": {
+    "color_changes": 1,
+    "hotspot_area_mm2": 0.0,
+    "interior_hole_ratio": 0.00045,
+    "jumps": 5,
+    "layers_max": 2.94,
+    "layers_p99": 2.45,
+    "long_moves_without_trim": 0,
+    "lost_detail_ratio": 0.00093,
+    "missing_ratio": 0.0216,
+    "objects": 2,
+    "quality_errors": 0,
+    "quality_warnings": 0,
+    "short_stitches": 5,
+    "stitches": 1057,
+    "travel_mm": 28.74,
+    "trims": 3,
+    "wrong_colour_ratio": 0.01831
+   },
+   "name": "star-outlined",
+   "object_types": {
+    "tatami": 2
+   },
+   "profile": "default",
+   "sha256": "ded485cfb9a97f46e105e983398b71785dfc5f57077a33ce9366ab3047266a8c",
+   "status": "measured",
+   "time_s": 0.128
+  },
+  {
+   "error": null,
+   "kind": "synthetic",
+   "metrics": {
+    "color_changes": 1,
+    "hotspot_area_mm2": 13.0,
+    "interior_hole_ratio": 0.00087,
+    "jumps": 9,
+    "layers_max": 4.32,
+    "layers_p99": 4.19,
+    "long_moves_without_trim": 0,
+    "lost_detail_ratio": 0.02228,
+    "missing_ratio": 0.03339,
+    "objects": 2,
+    "quality_errors": 0,
+    "quality_warnings": 0,
+    "short_stitches": 5,
+    "stitches": 1579,
+    "travel_mm": 96.289,
+    "trims": 5,
+    "wrong_colour_ratio": 0.07119
+   },
+   "name": "star-outlined",
+   "object_types": {
+    "auto_satin": 1,
+    "tatami": 1
+   },
+   "profile": "logo",
+   "sha256": "ded485cfb9a97f46e105e983398b71785dfc5f57077a33ce9366ab3047266a8c",
+   "status": "measured",
+   "time_s": 0.212
+  },
+  {
+   "error": null,
+   "kind": "synthetic",
+   "metrics": {
+    "color_changes": 0,
+    "hotspot_area_mm2": 0.0,
+    "interior_hole_ratio": 0.0,
+    "jumps": 1,
+    "layers_max": 3.25,
+    "layers_p99": 2.58,
+    "long_moves_without_trim": 0,
+    "lost_detail_ratio": 0.0,
+    "missing_ratio": 0.01033,
+    "objects": 1,
+    "quality_errors": 0,
+    "quality_warnings": 0,
+    "short_stitches": 1,
+    "stitches": 522,
+    "travel_mm": 0.0,
+    "trims": 1,
+    "wrong_colour_ratio": 0.0
+   },
+   "name": "letter-y",
+   "object_types": {
+    "tatami": 1
+   },
+   "profile": "default",
+   "sha256": "3fb27c93b70a9ebb7608e0e3f2dd20e28c3703e47d57583d0e6d88f810d45c5d",
+   "status": "measured",
+   "time_s": 0.123
+  },
+  {
+   "error": null,
+   "kind": "synthetic",
+   "metrics": {
+    "color_changes": 0,
+    "hotspot_area_mm2": 6.0,
+    "interior_hole_ratio": 0.0,
+    "jumps": 5,
+    "layers_max": 4.76,
+    "layers_p99": 4.2,
+    "long_moves_without_trim": 0,
+    "lost_detail_ratio": 0.0,
+    "missing_ratio": 0.00072,
+    "objects": 1,
+    "quality_errors": 0,
+    "quality_warnings": 0,
+    "short_stitches": 3,
+    "stitches": 456,
+    "travel_mm": 46.981,
+    "trims": 2,
+    "wrong_colour_ratio": 0.0
+   },
+   "name": "letter-y",
+   "object_types": {
+    "auto_satin": 1
+   },
+   "profile": "logo",
+   "sha256": "3fb27c93b70a9ebb7608e0e3f2dd20e28c3703e47d57583d0e6d88f810d45c5d",
+   "status": "measured",
+   "time_s": 0.213
+  },
+  {
+   "error": null,
+   "kind": "synthetic",
+   "metrics": {
+    "color_changes": 1,
+    "hotspot_area_mm2": 0.0,
+    "interior_hole_ratio": 0.01704,
+    "jumps": 17,
+    "layers_max": 3.86,
+    "layers_p99": 3.05,
+    "long_moves_without_trim": 0,
+    "lost_detail_ratio": 0.00032,
+    "missing_ratio": 0.03237,
+    "objects": 13,
+    "quality_errors": 0,
+    "quality_warnings": 0,
+    "short_stitches": 2,
+    "stitches": 2698,
+    "travel_mm": 327.717,
+    "trims": 17,
+    "wrong_colour_ratio": 0.02567
+   },
+   "name": "thin-lines",
+   "object_types": {
+    "tatami": 13
+   },
+   "profile": "default",
+   "sha256": "81b6997b5df4b251bc5990a0feafba9a1f814e5ac23b5f8e0a923ebbce9e6eda",
+   "status": "measured",
+   "time_s": 0.158
+  },
+  {
+   "error": null,
+   "kind": "synthetic",
+   "metrics": {
+    "color_changes": 1,
+    "hotspot_area_mm2": 39.0,
+    "interior_hole_ratio": 2e-05,
+    "jumps": 57,
+    "layers_max": 6.65,
+    "layers_p99": 4.5,
+    "long_moves_without_trim": 0,
+    "lost_detail_ratio": 0.03632,
+    "missing_ratio": 0.00012,
+    "objects": 13,
+    "quality_errors": 0,
+    "quality_warnings": 0,
+    "short_stitches": 42,
+    "stitches": 3833,
+    "travel_mm": 566.706,
+    "trims": 23,
+    "wrong_colour_ratio": 0.09578
+   },
+   "name": "thin-lines",
+   "object_types": {
+    "auto_satin": 13
+   },
+   "profile": "logo",
+   "sha256": "81b6997b5df4b251bc5990a0feafba9a1f814e5ac23b5f8e0a923ebbce9e6eda",
+   "status": "measured",
+   "time_s": 0.21
+  },
+  {
+   "error": null,
+   "kind": "synthetic",
+   "metrics": {
+    "color_changes": 1,
+    "hotspot_area_mm2": 0.0,
+    "interior_hole_ratio": 0.00452,
+    "jumps": 9,
+    "layers_max": 3.12,
+    "layers_p99": 2.36,
+    "long_moves_without_trim": 0,
+    "lost_detail_ratio": 0.00911,
+    "missing_ratio": 0.00516,
+    "objects": 9,
+    "quality_errors": 0,
+    "quality_warnings": 0,
+    "short_stitches": 0,
+    "stitches": 2362,
+    "travel_mm": 173.695,
+    "trims": 9,
+    "wrong_colour_ratio": 0.01372
+   },
+   "name": "small-details",
+   "object_types": {
+    "tatami": 9
+   },
+   "profile": "default",
+   "sha256": "16c6956c58583e1e705b41bee393e037df5b9f46347965a913d9dffe73d5074b",
+   "status": "measured",
+   "time_s": 0.132
+  },
+  {
+   "error": null,
+   "kind": "synthetic",
+   "metrics": {
+    "color_changes": 1,
+    "hotspot_area_mm2": 17.0,
+    "interior_hole_ratio": 0.00088,
+    "jumps": 14,
+    "layers_max": 5.02,
+    "layers_p99": 3.79,
+    "long_moves_without_trim": 0,
+    "lost_detail_ratio": 0.02043,
+    "missing_ratio": 0.00106,
+    "objects": 9,
+    "quality_errors": 0,
+    "quality_warnings": 0,
+    "short_stitches": 9,
+    "stitches": 2783,
+    "travel_mm": 210.551,
+    "trims": 11,
+    "wrong_colour_ratio": 0.02462
+   },
+   "name": "small-details",
+   "object_types": {
+    "tatami": 9
+   },
+   "profile": "logo",
+   "sha256": "16c6956c58583e1e705b41bee393e037df5b9f46347965a913d9dffe73d5074b",
+   "status": "measured",
+   "time_s": 0.152
+  },
+  {
+   "error": null,
+   "kind": "synthetic",
+   "metrics": {
+    "color_changes": 0,
+    "hotspot_area_mm2": 0.0,
+    "interior_hole_ratio": 0.0,
+    "jumps": 1,
+    "layers_max": 2.75,
+    "layers_p99": 2.35,
+    "long_moves_without_trim": 0,
+    "lost_detail_ratio": 0.0,
+    "missing_ratio": 0.00477,
+    "objects": 1,
+    "quality_errors": 0,
+    "quality_warnings": 0,
+    "short_stitches": 0,
+    "stitches": 1406,
+    "travel_mm": 0.0,
+    "trims": 1,
+    "wrong_colour_ratio": 0.0
+   },
+   "name": "holes",
+   "object_types": {
+    "tatami": 1
+   },
+   "profile": "default",
+   "sha256": "84c66444d864e427e48988a2305d492b22ec97e7defacfe6eb9364d73f1cc647",
+   "status": "measured",
+   "time_s": 0.122
+  },
+  {
+   "error": null,
+   "kind": "synthetic",
+   "metrics": {
+    "color_changes": 0,
+    "hotspot_area_mm2": 0.0,
+    "interior_hole_ratio": 0.0,
+    "jumps": 1,
+    "layers_max": 2.98,
+    "layers_p99": 2.51,
+    "long_moves_without_trim": 0,
+    "lost_detail_ratio": 0.0,
+    "missing_ratio": 0.00416,
+    "objects": 1,
+    "quality_errors": 0,
+    "quality_warnings": 0,
+    "short_stitches": 0,
+    "stitches": 1406,
+    "travel_mm": 0.0,
+    "trims": 1,
+    "wrong_colour_ratio": 0.0
+   },
+   "name": "holes",
+   "object_types": {
+    "tatami": 1
+   },
+   "profile": "logo",
+   "sha256": "84c66444d864e427e48988a2305d492b22ec97e7defacfe6eb9364d73f1cc647",
+   "status": "measured",
+   "time_s": 0.126
+  },
+  {
+   "error": null,
+   "kind": "synthetic",
+   "metrics": {
+    "color_changes": 4,
+    "hotspot_area_mm2": 0.0,
+    "interior_hole_ratio": 0.00643,
+    "jumps": 5,
+    "layers_max": 3.92,
+    "layers_p99": 2.5,
+    "long_moves_without_trim": 0,
+    "lost_detail_ratio": 0.00054,
+    "missing_ratio": 0.00643,
+    "objects": 5,
+    "quality_errors": 0,
+    "quality_warnings": 0,
+    "short_stitches": 0,
+    "stitches": 3367,
+    "travel_mm": 73.515,
+    "trims": 5,
+    "wrong_colour_ratio": 0.00991
+   },
+   "name": "flat-scene",
+   "object_types": {
+    "tatami": 5
+   },
+   "profile": "default",
+   "sha256": "0d6d85336738feb69607d9380247480593b9d5b120f8897fbf9e9275d8aa36f3",
+   "status": "measured",
+   "time_s": 0.132
+  },
+  {
+   "error": null,
+   "kind": "synthetic",
+   "metrics": {
+    "color_changes": 4,
+    "hotspot_area_mm2": 63.0,
+    "interior_hole_ratio": 0.00299,
+    "jumps": 10,
+    "layers_max": 8.81,
+    "layers_p99": 4.74,
+    "long_moves_without_trim": 0,
+    "lost_detail_ratio": 0.01898,
+    "missing_ratio": 0.00299,
+    "objects": 5,
+    "quality_errors": 0,
+    "quality_warnings": 1,
+    "short_stitches": 17,
+    "stitches": 3912,
+    "travel_mm": 228.892,
+    "trims": 7,
+    "wrong_colour_ratio": 0.02362
+   },
+   "name": "flat-scene",
+   "object_types": {
+    "auto_satin": 3,
+    "tatami": 2
+   },
+   "profile": "logo",
+   "sha256": "0d6d85336738feb69607d9380247480593b9d5b120f8897fbf9e9275d8aa36f3",
+   "status": "measured",
+   "time_s": 0.251
+  },
+  {
+   "error": null,
+   "kind": "repository",
+   "metrics": {
+    "color_changes": 1,
+    "hotspot_area_mm2": 0.0,
+    "interior_hole_ratio": 0.00055,
+    "jumps": 2,
+    "layers_max": 2.46,
+    "layers_p99": 2.29,
+    "long_moves_without_trim": 0,
+    "lost_detail_ratio": 0.0,
+    "missing_ratio": 0.04215,
+    "objects": 2,
+    "quality_errors": 0,
+    "quality_warnings": 0,
+    "short_stitches": 0,
+    "stitches": 349,
+    "travel_mm": 24.353,
+    "trims": 2,
+    "wrong_colour_ratio": 0.0
+   },
+   "name": "repo-logo-small",
+   "object_types": {
+    "tatami": 2
+   },
+   "profile": "default",
+   "sha256": "9d83b7bd5fef84993c31f69be7af045d53adee1899e2b5fd0c3231eb71fc4249",
+   "status": "measured",
+   "time_s": 0.244
+  },
+  {
+   "error": null,
+   "kind": "repository",
+   "metrics": {
+    "color_changes": 1,
+    "hotspot_area_mm2": 2.0,
+    "interior_hole_ratio": 0.0,
+    "jumps": 3,
+    "layers_max": 4.13,
+    "layers_p99": 3.95,
+    "long_moves_without_trim": 0,
+    "lost_detail_ratio": 0.0,
+    "missing_ratio": 0.02163,
+    "objects": 2,
+    "quality_errors": 0,
+    "quality_warnings": 0,
+    "short_stitches": 1,
+    "stitches": 437,
+    "travel_mm": 24.294,
+    "trims": 2,
+    "wrong_colour_ratio": 0.0
+   },
+   "name": "repo-logo-small",
+   "object_types": {
+    "auto_satin": 1,
+    "tatami": 1
+   },
+   "profile": "logo",
+   "sha256": "9d83b7bd5fef84993c31f69be7af045d53adee1899e2b5fd0c3231eb71fc4249",
+   "status": "measured",
+   "time_s": 0.139
+  },
+  {
+   "error": null,
+   "kind": "repository",
+   "metrics": {
+    "color_changes": 7,
+    "hotspot_area_mm2": 49.0,
+    "interior_hole_ratio": 0.00918,
+    "jumps": 239,
+    "layers_max": 6.37,
+    "layers_p99": 2.94,
+    "long_moves_without_trim": 0,
+    "lost_detail_ratio": 0.00184,
+    "missing_ratio": 0.02039,
+    "objects": 159,
+    "quality_errors": 50,
+    "quality_warnings": 4,
+    "short_stitches": 47,
+    "stitches": 60022,
+    "travel_mm": 12139.445,
+    "trims": 234,
+    "wrong_colour_ratio": 0.02065
+   },
+   "name": "repo-tentabrode",
+   "object_types": {
+    "running": 26,
+    "tatami": 133
+   },
+   "profile": "default",
+   "sha256": "07bb7151fb3b2d7e12323da0100e1272c5f67983e7d76fa9ab8e3ec4d21f7f7d",
+   "status": "measured",
+   "time_s": 0.401
+  },
+  {
+   "error": null,
+   "kind": "repository",
+   "metrics": {
+    "color_changes": 7,
+    "hotspot_area_mm2": 1202.0,
+    "interior_hole_ratio": 0.00092,
+    "jumps": 720,
+    "layers_max": 7.67,
+    "layers_p99": 4.62,
+    "long_moves_without_trim": 0,
+    "lost_detail_ratio": 0.0035,
+    "missing_ratio": 0.00592,
+    "objects": 159,
+    "quality_errors": 50,
+    "quality_warnings": 43,
+    "short_stitches": 543,
+    "stitches": 81786,
+    "travel_mm": 15390.813,
+    "trims": 381,
+    "wrong_colour_ratio": 0.0455
+   },
+   "name": "repo-tentabrode",
+   "object_types": {
+    "auto_satin": 123,
+    "running": 20,
+    "tatami": 16
+   },
+   "profile": "logo",
+   "sha256": "07bb7151fb3b2d7e12323da0100e1272c5f67983e7d76fa9ab8e3ec4d21f7f7d",
+   "status": "measured",
+   "time_s": 2.466
+  },
+  {
+   "error": null,
+   "kind": "repository",
+   "metrics": {
+    "color_changes": 7,
+    "hotspot_area_mm2": 0.0,
+    "interior_hole_ratio": 0.0243,
+    "jumps": 20,
+    "layers_max": 3.89,
+    "layers_p99": 2.47,
+    "long_moves_without_trim": 0,
+    "lost_detail_ratio": 0.00311,
+    "missing_ratio": 0.0243,
+    "objects": 18,
+    "quality_errors": 0,
+    "quality_warnings": 0,
+    "short_stitches": 4,
+    "stitches": 6921,
+    "travel_mm": 770.313,
+    "trims": 20,
+    "wrong_colour_ratio": 0.00926
+   },
+   "name": "repo-marine-synth",
+   "object_types": {
+    "running": 2,
+    "tatami": 16
+   },
+   "profile": "default",
+   "sha256": "824eb5c4f7d16807be5f37f7704bbb26520bc873d8ea11115ea3e8694811f885",
+   "status": "measured",
+   "time_s": 0.135
+  },
+  {
+   "error": null,
+   "kind": "repository",
+   "metrics": {
+    "color_changes": 7,
+    "hotspot_area_mm2": 92.0,
+    "interior_hole_ratio": 0.00299,
+    "jumps": 37,
+    "layers_max": 6.63,
+    "layers_p99": 4.28,
+    "long_moves_without_trim": 0,
+    "lost_detail_ratio": 0.00332,
+    "missing_ratio": 0.00299,
+    "objects": 18,
+    "quality_errors": 0,
+    "quality_warnings": 1,
+    "short_stitches": 30,
+    "stitches": 9038,
+    "travel_mm": 745.625,
+    "trims": 21,
+    "wrong_colour_ratio": 0.01841
+   },
+   "name": "repo-marine-synth",
+   "object_types": {
+    "auto_satin": 14,
+    "running": 2,
+    "tatami": 2
+   },
+   "profile": "logo",
+   "sha256": "824eb5c4f7d16807be5f37f7704bbb26520bc873d8ea11115ea3e8694811f885",
+   "status": "measured",
+   "time_s": 0.331
+  }
+ ],
+ "schema": "openstitch.autodigitize-bench/1",
+ "summary": {
+  "cases": 24,
+  "failed": 0,
+  "measured": 24,
+  "totals": {
+   "color_changes": 46,
+   "jumps": 1165,
+   "quality_errors": 100,
+   "quality_warnings": 49,
+   "stitches": 189668,
+   "trims": 754
+  }
+ }
+}
