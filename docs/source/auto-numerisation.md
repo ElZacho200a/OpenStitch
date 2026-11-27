@@ -525,7 +525,8 @@ forme compacte retenue pour le satin est réellement cousue par plusieurs candid
 | compacte sans trou | squelette à axe compact, axe médian, balayage parallèle |
 
 Éliminatoires : génération refusée ou vide, couverture < `satin_min_coverage`, traversées qui se
-croisent, traversée plus longue que max(`satin_max_width`, `satin_compact_max_width`). Score des
+croisent, traversée plus longue que min(max(`satin_max_width`, `satin_compact_max_width`),
+`satin_compare_max_stitch` = 10 mm). Score des
 admissibles : `100 × couverture − 4 × (colonnes − 1) − 8 × max(0, épaisseur du zigzag − 3)`.
 L'épaisseur du zigzag (`zigzag_peak_layers`) est la longueur des traversées et des retours par
 case de 1 mm, en couches de `project density` (2,5 mm de fil par mm²) ; elle surestime les côtés
@@ -547,12 +548,10 @@ maximale mesurée par `project density` :
 | repo-logo-small (40 mm) | 3,09 → 3,09 | 580 → 580 | 2 → 2 |
 | repo-tentabrode (80 mm) | 7,41 → 6,85 | 9 979 → 9 562 | 152 → 145 |
 | s-ribbon | 5,82 → 5,75 (p99 4,47 → 4,71) | 443 → 439 | 1 → 1 |
+| flat-scene | 8,81 → 7,00 | 3 912 → 3 973 | 7 → 10 |
 
 Seule contrepartie : `letter-y` gagne une coupe et 45 mm de déplacements pour une couche de moins. Les autres synthétiques gardent le squelette.
-`flat-scene` reste à 8,8 couches : la maison, compacte, n'a aucun candidat sans surépaisseur
-(squelette compact estimé à 9,5 couches, balayage aux traversées de 18 mm donc refusé) ; il faudrait
-la refuser au satin (tatami), ce que la mesure actuelle, trop pessimiste sur les rubans concaves,
-ne permet pas encore sans perdre aussi le satin de `s-ribbon`. Aucun essai brodé.
+`flat-scene` : la maison (20 mm, compacte) n'a aucun candidat léger ; sans limite de longueur, le squelette compact (traversées de 10,6 mm, 9,5 couches estimées) l'emportait. La limite de 10 mm l'élimine et la maison passe à l'axe médian (7,0 couches, 3 coupes de plus). Une limite à 8 mm la passerait en tatami (6,3 couches) mais ferait aussi passer le rectangle de `repo-logo-small` en tatami, dont le rendu laisse voir le tissu (manques 1,9 % → 4,3 %) : 10 mm est retenu. Aucun essai brodé.
 
 **Limites** : la case du desktop n'a pas été compilée dans l'environnement de
 développement Linux (Qt absent), à vérifier au prochain build Windows ; une région à plusieurs trous n'est pas tentée ; la couverture est

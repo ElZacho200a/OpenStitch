@@ -81,6 +81,9 @@ struct AutoOptions {
     // 1 mm ; à score égal (écart < 1 point), l'ordre historique (squelette d'abord) l'emporte.
     // Faux : comportement historique inchangé.
     bool satin_compare{false};
+    // Avec `satin_compare` : longueur maximale d'une traversée de satin. Au-delà, le fil accroche
+    // et se détend : le candidat est éliminé (la forme repasse au satin guidé large ou au tatami).
+    Micrometers satin_compare_max_stitch{10'000};
     // Largeur inscrite maximale d'une forme candidate au satin guidé large.
     Micrometers satin_wide_max_width{40'000};
 

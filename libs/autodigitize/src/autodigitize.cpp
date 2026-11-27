@@ -227,7 +227,8 @@ std::optional<SatinCandidate> best_satin_candidate(const geometry::PathSet& regi
     using S = document::AutoSatinStrategy;
     const double maxCrossingMm =
         static_cast<double>(
-            std::max(options.satin_max_width.value, options.satin_compact_max_width.value)) /
+            std::min(std::max(options.satin_max_width.value, options.satin_compact_max_width.value),
+                     options.satin_compare_max_stitch.value)) /
         1000.0;
     std::vector<std::pair<S, bool>> plan;
     if (bandLike) {

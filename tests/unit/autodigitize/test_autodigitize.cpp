@@ -1225,6 +1225,28 @@ TEST_CASE("satin compare : bande et disque compact restent en satin, choix deter
     }
 }
 
+TEST_CASE("satin compare : traversees plus longues que le maximum eliminees") {
+    // Disque de 10 mm : satin compact avec le maximum par defaut (10 mm), tatami s'il est ramene a
+    // 2 mm (aucun candidat admissible, et le satin guide n'apporte rien sur un disque plein).
+    const auto seg =
+        segmentation::segment(ring_image_px(25, 0), {.max_colors = 2, .min_region_px = 4});
+    REQUIRE(seg.has_value());
+    const auto run = [&](Micrometers maxStitch) {
+        IdGenerator<ObjectId> ids;
+        AutoOptions opt;
+        opt.mm_per_px = Millimeters{0.2};
+        opt.skip_largest_region = true;
+        opt.satin_bands = true;
+        opt.satin_compare = true;
+        opt.satin_compare_max_stitch = maxStitch;
+        auto r = auto_digitize(*seg, ids, opt);
+        REQUIRE(r.has_value());
+        return any_auto_satin(*r);
+    };
+    CHECK(run(AutoOptions{}.satin_compare_max_stitch));
+    CHECK_FALSE(run(Micrometers{2'000}));
+}
+
 TEST_CASE("satin compare : formes trop larges restent en tatami") {
     // Disque de 16 mm et anneau de 12 mm d'epaisseur : aucune voie satin admissible.
     const auto big = digitize_ring_compare(40, 0, true);
