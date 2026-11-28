@@ -491,6 +491,18 @@ void add_digitize_options(CLI::App* cmd, DigitizeOptionValues& v) {
                   "squelette, l'axe médian et le balayage parallèle réellement générés et "
                   "mesurés (couverture, colonnes, retours, surépaisseur) au lieu du premier "
                   "squelette qui couvre");
+    cmd->add_option("--satin-min-coverage", s.satin_min_coverage,
+                    "Avec --satin-bands : couverture minimale (0..1) d'un satin essayé, sinon "
+                    "repli tatami (défaut : 0.9)")
+        ->check(CLI::Range(0.0, 1.0));
+    cmd->add_option("--satin-compact-max-mm", s.satin_compact_max_mm,
+                    "Avec --satin-bands : largeur max (mm) d'une forme compacte cousue en satin "
+                    "à cordes parallèles ; 0 = jamais (défaut : 12)")
+        ->check(CLI::NonNegativeNumber);
+    cmd->add_option("--satin-max-stitch-mm", s.satin_compare_max_stitch_mm,
+                    "Avec --satin-compare : traversée de satin la plus longue admise (mm, "
+                    "défaut : 10)")
+        ->check(CLI::PositiveNumber);
     cmd->add_flag("--single-path", s.single_path,
                   "Mode contours : relie les traits en un minimum de polylignes (parcours "
                   "eulérien, repasse un court tronçon plutôt que de couper le fil)");

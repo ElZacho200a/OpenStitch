@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <functional>
 #include <limits>
 #include <map>
@@ -818,6 +819,7 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& input,
         std::vector<geometry::PathSet> sets; // vide : région ignorée
         SatinChoice satin;
         double minFill{0.0};
+        bool unvectorizable{false}; // HP-AUTO-024 : écartée hors fond, à signaler
     };
     const segmentation::Segmentation& constSeg = seg;
     std::vector<Vectorized> vectorized(regions.size());
@@ -840,7 +842,8 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& input,
         auto sets = vectorization::vectorize_region(constSeg, regions[i], vecOpts, TaskContext{},
                                                     pixelIndex);
         if (!sets || sets->empty()) {
-            return; // région non vectorisable : ignorée sans erreur
+            vectorized[i].unvectorizable = true; // ignorée, signalée ensuite (HP-AUTO-024)
+            return;
         }
         vectorized[i].sets = std::move(*sets);
         vectorized[i].minFill =
@@ -851,6 +854,19 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& input,
 
     for (std::size_t i = 0; i < regions.size(); ++i) {
         if (vectorized[i].sets.empty()) {
+            if (vectorized[i].unvectorizable) {
+                // HP-AUTO-024 : une région du motif ne disparaît plus en silence.
+                const auto* lost = constSeg.find(regions[i]);
+                const double mm = options.mm_per_px.value;
+                char buf[160];
+                std::snprintf(buf, sizeof buf,
+                              "région %u écartée (%.2f mm², %zu px) : contour non vectorisable "
+                              "(trop petite ou dégénérée)",
+                              static_cast<unsigned>(regions[i].value),
+                              static_cast<double>(lost ? lost->pixel_count : 0) * mm * mm,
+                              lost ? lost->pixel_count : std::size_t{0});
+                result.warnings.emplace_back(buf);
+            }
             continue;
         }
         const RegionId id = regions[i];

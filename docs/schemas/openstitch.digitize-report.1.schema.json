@@ -93,6 +93,15 @@
         },
         "satin_compare": {
           "type": "boolean"
+        },
+        "satin_min_coverage": {
+          "type": ["number", "null"]
+        },
+        "satin_compact_max_mm": {
+          "type": ["number", "null"]
+        },
+        "satin_compare_max_stitch_mm": {
+          "type": ["number", "null"]
         }
       },
       "required": [
