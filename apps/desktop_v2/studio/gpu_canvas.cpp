@@ -270,7 +270,7 @@ QVariantMap GpuCanvas::needleOrigin() const {
 }
 
 namespace {
-constexpr double kFillCenterGripPx = 12.0; // rayon de prise du viseur de centre
+constexpr double kFillCenterGripPx = 10.0; // rayon de prise du viseur de centre
 } // namespace
 
 std::optional<GpuCanvas::FillCenterView> GpuCanvas::fillCenterView() const {
@@ -286,17 +286,19 @@ std::optional<GpuCanvas::FillCenterView> GpuCanvas::fillCenterView() const {
         return std::nullopt;
     }
     std::optional<Vec2um> fixed;
+    bool contour = false;
     if (const auto* r = std::get_if<document::RadialFillParams>(&object->params)) {
         fixed = r->center;
     } else if (const auto* sp = std::get_if<document::SpiralFillParams>(&object->params)) {
         fixed = sp->center;
     } else if (const auto* c = std::get_if<document::ContourFillParams>(&object->params)) {
         fixed = c->center;
+        contour = true;
     } else {
         return std::nullopt;
     }
     if (fixed) {
-        return FillCenterView{{fixed->x.value / 1000.0, -fixed->y.value / 1000.0}, true};
+        return FillCenterView{{fixed->x.value / 1000.0, -fixed->y.value / 1000.0}, true, false};
     }
     // Centre automatique : milieu de l'emprise des points de l'objet (comme le générateur, au
     // retrait de bord près).
@@ -304,13 +306,14 @@ std::optional<GpuCanvas::FillCenterView> GpuCanvas::fillCenterView() const {
     if (!bounds) {
         return std::nullopt;
     }
-    return FillCenterView{{(bounds->x0 + bounds->x1) / 2.0, (bounds->y0 + bounds->y1) / 2.0},
-                          false};
+    return FillCenterView{
+        {(bounds->x0 + bounds->x1) / 2.0, (bounds->y0 + bounds->y1) / 2.0}, false, contour};
 }
 
 bool GpuCanvas::overFillCenter(const QPointF& screen) const {
     const auto view = fillCenterView();
-    if (!view) {
+    // Les poignées de la sélection restent prioritaires (petit objet à l'écran).
+    if (!view || (editor_ && handleAt(screen) >= 0)) {
         return false;
     }
     const auto s = camera_.worldToScreen(view->world);
@@ -327,6 +330,7 @@ QVariantMap GpuCanvas::fillCenter() const {
     const auto s = camera_.worldToScreen(dragging ? fillCenterDrag_ : view->world);
     out.insert(QStringLiteral("visible"), true);
     out.insert(QStringLiteral("fixed"), view->fixed || dragging);
+    out.insert(QStringLiteral("rings"), view->rings && !dragging);
     out.insert(QStringLiteral("dragging"), dragging);
     out.insert(QStringLiteral("x"), s.x);
     out.insert(QStringLiteral("y"), s.y);
@@ -1277,7 +1281,7 @@ void GpuCanvas::hoverMoveEvent(QHoverEvent* event) {
         Qt::SizeBDiagCursor, Qt::SizeHorCursor,   Qt::PointingHandCursor};
     if (overFillCenter(event->position())) {
         setHover(std::nullopt);
-        setCursor(Qt::SizeAllCursor);
+        setCursor(Qt::CrossCursor); // distinct du déplacement de l'objet
         return;
     }
     const int handle = editor_ ? handleAt(event->position()) : -1;

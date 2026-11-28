@@ -421,7 +421,6 @@ ParamLevel paramLevel(const ParamSpec& spec) {
                                                    "split_length_mm",
                                                    "entry_point_mm",
                                                    "exit_point_mm",
-                                                   "center_mm",
                                                    "sweep_angle_deg",
                                                    "lock_passes",
                                                    "lock_length_mm",

@@ -43,7 +43,8 @@ class GpuCanvas : public QQuickItem {
     // Point zéro de l'aiguille en pixels écran : { visible, custom, x, y }.
     Q_PROPERTY(QVariantMap needleOrigin READ needleOrigin NOTIFY overlayChanged)
     // Viseur du centre d'un remplissage radial / spirale / concentrique (objet seul sélectionné,
-    // espace Points), en pixels écran : { visible, fixed, dragging, x, y }. Se glisse au canevas
+    // espace Points), en pixels écran : { visible, fixed, rings, dragging, x, y } (`rings` :
+    // concentrique sans centre, les anneaux suivent le bord). Se glisse au canevas
     // (`fillCenterDropped`), double-clic : centre automatique (`fillCenterResetRequested`).
     Q_PROPERTY(QVariantMap fillCenter READ fillCenter NOTIFY overlayChanged)
     Q_PROPERTY(double zoom READ zoom NOTIFY viewChanged)
@@ -193,6 +194,7 @@ private:
     struct FillCenterView {
         ScenePoint world;
         bool fixed{false};
+        bool rings{false}; // concentrique sans centre : anneaux décalés du bord, pas de centre
     };
     [[nodiscard]] std::optional<FillCenterView> fillCenterView() const;
     [[nodiscard]] bool overFillCenter(const QPointF& screen) const;

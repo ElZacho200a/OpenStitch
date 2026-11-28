@@ -152,7 +152,7 @@ Item {
                         digitizeHub: digitizeHub
                         viewHub: viewHub
                     }
-                    PointsOptionsBar { Layout.fillWidth: true }
+                    PointsOptionsBar { Layout.fillWidth: true; canvas: spaceCanvas }
                 }
             }
 

@@ -4,8 +4,9 @@ import "."
 
 // Viseur du centre d'un remplissage radial, en spirale ou concentrique (objet seul sélectionné).
 // Un seul Canvas, repeint au changement de vue ou de sélection ; le geste (glisser, double-clic)
-// est porté par le canevas. Centre automatique : réticule en pointillés et libellé « Centre auto » ;
-// centre fixé : réticule plein d'accent et libellé « Centre ».
+// est porté par le canevas. Losange (le point zéro de l'aiguille est un cercle) : en pointillés
+// pour le centre automatique, plein d'accent pour un centre fixé. Concentrique sans centre : les
+// anneaux suivent le bord, le libellé le dit. Libellé sous le viseur, hors des poignées latérales.
 Canvas {
     id: overlay
     property var gpu: null
@@ -30,24 +31,30 @@ Canvas {
         var x = c.x, y = c.y
         if (x < -20 || y < -20 || x > width + 20 || y > height + 20) return
         var colour = String(c.fixed ? Theme.accent : Theme.foreground)
-        // Halo sombre sous le réticule : lisible sur n'importe quel fil.
+        var r = 11
+        function shape() {
+            ctx.beginPath()
+            ctx.moveTo(x, y - r); ctx.lineTo(x + r, y); ctx.lineTo(x, y + r); ctx.lineTo(x - r, y)
+            ctx.closePath()
+            ctx.moveTo(x - r - 6, y); ctx.lineTo(x - r + 3, y)
+            ctx.moveTo(x + r - 3, y); ctx.lineTo(x + r + 6, y)
+            ctx.moveTo(x, y - r - 6); ctx.lineTo(x, y - r + 3)
+            ctx.moveTo(x, y + r - 3); ctx.lineTo(x, y + r + 6)
+        }
+        // Liseré clair puis halo sombre : lisible sur un fil foncé comme sur un fil rose ou rouge.
+        ctx.lineWidth = 6
+        ctx.strokeStyle = String(Theme.foreground)
+        ctx.globalAlpha = 0.35
+        shape(); ctx.stroke()
         ctx.lineWidth = 4
         ctx.strokeStyle = String(Theme.background)
-        ctx.globalAlpha = 0.65
-        ctx.beginPath()
-        ctx.arc(x, y, 10, 0, 2 * Math.PI)
-        ctx.moveTo(x - 16, y); ctx.lineTo(x + 16, y)
-        ctx.moveTo(x, y - 16); ctx.lineTo(x, y + 16)
-        ctx.stroke()
+        ctx.globalAlpha = 0.75
+        shape(); ctx.stroke()
         ctx.globalAlpha = 1
         ctx.lineWidth = 2
         ctx.strokeStyle = colour
         ctx.setLineDash(c.fixed ? [] : [4, 3])
-        ctx.beginPath()
-        ctx.arc(x, y, 10, 0, 2 * Math.PI)
-        ctx.moveTo(x - 16, y); ctx.lineTo(x + 16, y)
-        ctx.moveTo(x, y - 16); ctx.lineTo(x, y + 16)
-        ctx.stroke()
+        shape(); ctx.stroke()
         ctx.setLineDash([])
         ctx.beginPath()
         ctx.arc(x, y, 3, 0, 2 * Math.PI)
@@ -55,14 +62,16 @@ Canvas {
         ctx.fill()
         if (!c.dragging) {
             ctx.font = "600 11px sans-serif"
-            ctx.textAlign = "left"
-            ctx.textBaseline = "middle"
-            var label = c.fixed ? qsTr("Centre") : qsTr("Centre auto")
+            ctx.textAlign = "center"
+            ctx.textBaseline = "top"
+            var label = c.fixed ? qsTr("Centre du remplissage")
+                      : c.rings ? qsTr("Anneaux du bord · glisser pour centrer")
+                      : qsTr("Centre auto · glisser pour déplacer")
             ctx.lineWidth = 3
             ctx.strokeStyle = String(Theme.background)
-            ctx.strokeText(label, x + 19, y - 15)
+            ctx.strokeText(label, x, y + r + 9)
             ctx.fillStyle = colour
-            ctx.fillText(label, x + 19, y - 15)
+            ctx.fillText(label, x, y + r + 9)
         }
     }
 }
