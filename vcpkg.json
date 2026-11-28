@@ -20,6 +20,10 @@
       "name": "opencv4",
       "default-features": false,
       "features": ["png", "jpeg", "tiff"]
+    },
+    {
+      "name": "pybind11",
+      "platform": "windows"
     }
   ],
   "features": {

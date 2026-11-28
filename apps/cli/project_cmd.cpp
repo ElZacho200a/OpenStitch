@@ -23,6 +23,11 @@
 #include "openstitch/formats/machine_design.hpp"
 #include "openstitch/formats/svg.hpp"
 #include "openstitch/project_io/machine_file.hpp"
+#ifdef OPENSTITCH_HAS_SCRIPTING
+#include <chrono>
+
+#include "openstitch/scripting/selection_script.hpp"
+#endif
 #include "openstitch/project_ops/analysis.hpp"
 #include "openstitch/project_ops/applique_cut.hpp"
 #include "openstitch/project_ops/color_registration.hpp"
@@ -1821,6 +1826,87 @@ CLI::App* register_project_commands(CLI::App& app, bool& jsonOut) {
         }
         g_exit = 0;
     });
+
+#ifdef OPENSTITCH_HAS_SCRIPTING
+    // script (SCRIPT-01) ------------------------------------------------------------------
+    struct ScriptArgs {
+        std::string file;
+        std::vector<std::string> where;
+        int timeoutMs{5000};
+        bool withStitches{false};
+    };
+    auto scFlow = std::make_shared<BatchFlow>();
+    auto scArgs = std::make_shared<ScriptArgs>();
+    c = project->add_subcommand("script",
+                                "Exécute un script Python sur une sélection d'objets (o.set(...), "
+                                "o.set_color(...)) puis applique son lot (transactionnel)");
+    c->add_option("osp", scFlow->osp, "Projet .osp")->required();
+    c->add_option("script", scArgs->file, "Fichier .py (« - » = stdin)")->required();
+    c->add_option("--where,-w", scArgs->where,
+                  "Sélection, mêmes critères que `project select` (défaut : tous les objets)");
+    c->add_option("--timeout-ms", scArgs->timeoutMs, "Délai avant interruption du script")
+        ->check(CLI::Range(10, 600000));
+    c->add_flag("--with-stitches", scArgs->withStitches,
+                "Renseigne o.stitches (génère les points, plus lent)");
+    c->add_option("--output,-o", scFlow->out, "Écrit le résultat ici (défaut : en place)");
+    c->add_option("--report", scFlow->reportPath, "Écrit le rapport JSON du lot dans ce fichier");
+    c->add_flag("--dry-run", scFlow->dryRun, "Simule et affiche les changements sans rien écrire");
+    c->add_flag("--no-clobber", scFlow->noClobber, "Refuse d'écraser le fichier de sortie");
+    c->add_flag("--json", jsonOut, "Rapport JSON du lot sur stdout");
+    c->callback([scFlow, scArgs, &jsonOut] {
+        scFlow->cmd = "script";
+        scFlow->json = jsonOut;
+        std::string source, err;
+        if (!read_all(scArgs->file, source, err)) {
+            g_exit = fail_with("script", jsonOut, po::code::kIo, err);
+            return;
+        }
+        int rc = 0;
+        auto opened = load("script", jsonOut, scFlow->osp, rc);
+        if (!opened) {
+            g_exit = rc;
+            return;
+        }
+        const auto ids = po::select_objects(opened->project, scArgs->where);
+        if (!ids) {
+            g_exit = fail_err("script", jsonOut, po::code::kUsage, ids.error());
+            return;
+        }
+        openstitch::scripting::ScriptOptions options;
+        options.timeout = std::chrono::milliseconds{scArgs->timeoutMs};
+        options.with_stitches = scArgs->withStitches;
+        const auto result =
+            openstitch::scripting::run_selection_script(opened->project, *ids, source, options);
+        if (!result) {
+            if (!result.error().detail.empty()) {
+                fmt::print(stderr, "{}", result.error().detail);
+            }
+            g_exit = fail_with("script", jsonOut, result.error().code.c_str(),
+                               result.error().message, result.error().hint);
+            return;
+        }
+        // La sortie du script (print) va sur stderr : stdout reste au rapport JSON.
+        if (!result->output.empty()) {
+            fmt::print(stderr, "{}", result->output);
+        }
+        if (!jsonOut) {
+            fmt::print("{} objet(s) sélectionné(s), {} changement(s)\n", ids->size(),
+                       result->changes.size());
+            for (const auto& change : result->changes) {
+                fmt::print("  objet {} {} : {} → {}\n", change.object.value, change.key,
+                           change.before, change.after);
+            }
+        }
+        if (result->operation_count == 0) {
+            if (jsonOut) {
+                fmt::print("{}\n", po::BatchReport{true, false, scFlow->dryRun}.to_json());
+            }
+            g_exit = 0;
+            return;
+        }
+        g_exit = run_batch_flow(*scFlow, result->batch_json, false);
+    });
+#endif
 
     // diff ------------------------------------------------------------------------------
     auto dfA = std::make_shared<std::string>();

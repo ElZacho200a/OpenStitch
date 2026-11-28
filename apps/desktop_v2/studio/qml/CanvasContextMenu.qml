@@ -19,6 +19,9 @@ Controls.Menu {
     property real atY: 0
     // Réglage du cadre, commun à tous les canevas (ouvert par SpaceHost).
     signal hoopRequested(real x, real y)
+    // Espace Points : ouvre le panneau « Script » (SCRIPT-01) sur la sélection courante.
+    property bool scriptAvailable: false
+    signal scriptRequested()
     function openAt(x, y) { atX = x; atY = y; popup(x, y) }
     // Largeur = entrée la plus large : sans cela le style Basic tronque les libellés longs
     // (« Séparer en formes indépendantes », raccourcis) au lieu d'élargir le menu.
@@ -48,6 +51,14 @@ Controls.Menu {
     }
     Controls.MenuSeparator { }
     Controls.MenuItem { objectName: "contextDuplicate"; text: qsTr("Dupliquer"); enabled: menu.hasSelection; onTriggered: editor.duplicate(5) }
+    Controls.MenuItem {
+        objectName: "contextScript"
+        text: qsTr("Script sur la sélection…")
+        visible: menu.scriptAvailable
+        height: visible ? implicitHeight : 0
+        enabled: menu.hasStitched
+        onTriggered: menu.scriptRequested()
+    }
     Controls.MenuItem {
         objectName: "contextDelete"
         text: menu.shapeScope ? qsTr("Supprimer %1 forme(s)").arg(editor.selectedShapeCount)

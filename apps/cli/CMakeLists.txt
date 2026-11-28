@@ -12,3 +12,10 @@ target_link_libraries(openstitch-cli
             openstitch::segmentation openstitch::project_io openstitch::autodigitize openstitch::stitch_analysis openstitch::project_ops openstitch::ai_segmentation
             openstitch::warnings
 )
+
+# SCRIPT-01 : `project script` seulement si CPython embarqué est disponible (Windows).
+if(TARGET openstitch_scripting)
+    target_link_libraries(openstitch-cli PRIVATE openstitch::scripting)
+    target_compile_definitions(openstitch-cli PRIVATE OPENSTITCH_HAS_SCRIPTING)
+    openstitch_deploy_python(openstitch-cli)
+endif()

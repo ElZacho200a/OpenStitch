@@ -66,6 +66,13 @@ target_link_libraries(openstitch_studio_ui PUBLIC openstitch::desktop_v2_core
     Qt6::GuiPrivate
     # QZipReader / QZipWriter (theme_controller.cpp) : import et export des archives de thèmes.
     Qt6::CorePrivate)
+# SCRIPT-01 : panneau « Script » (script Python sur la sélection) seulement si CPython
+# embarqué est disponible ; sinon le panneau reste masqué (aucun contexte `selectionScript`).
+if(TARGET openstitch_scripting)
+    target_sources(openstitch_studio_ui PRIVATE script_controller.cpp script_controller.hpp)
+    target_link_libraries(openstitch_studio_ui PUBLIC openstitch::scripting)
+    target_compile_definitions(openstitch_studio_ui PUBLIC OPENSTITCH_HAS_SCRIPTING)
+endif()
 
 # RENDER-PBR-01 : shader de fil du rendu réaliste (opt-in OPENSTITCH_THREAD_SHADER=1). Sans le
 # module qtshadertools, le Studio garde les matériaux de texture standard (aucun chemin perdu).
@@ -101,7 +108,7 @@ set(studio_qml_files
     qml/PreparePanel.qml qml/ImagePrepSection.qml qml/SegmentationSection.qml
     qml/RegionTools.qml qml/AiSection.qml qml/CompanionPanel.qml qml/PreferencesDialog.qml
     qml/HelpDialog.qml qml/ShortcutsSheet.qml
-    qml/SatinPanel.qml qml/FadeProperties.qml qml/FadeStylePreview.qml qml/BoundaryBlendPanel.qml qml/BoundaryBlendFrontiers.qml qml/PointEditPanel.qml qml/DigitizeHub.qml qml/CanvasToolRail.qml qml/ToolRail.qml qml/ToolOptions.qml qml/ToolOverlay.qml qml/RealisticToggle.qml qml/HandlesOverlay.qml qml/NeedleOriginMarker.qml qml/FillCenterMarker.qml qml/PullPanel.qml qml/AppliquePanel.qml qml/FixPanel.qml qml/qmldir
+    qml/SatinPanel.qml qml/FadeProperties.qml qml/FadeStylePreview.qml qml/BoundaryBlendPanel.qml qml/BoundaryBlendFrontiers.qml qml/PointEditPanel.qml qml/DigitizeHub.qml qml/CanvasToolRail.qml qml/ToolRail.qml qml/ToolOptions.qml qml/ToolOverlay.qml qml/RealisticToggle.qml qml/HandlesOverlay.qml qml/NeedleOriginMarker.qml qml/FillCenterMarker.qml qml/PullPanel.qml qml/AppliquePanel.qml qml/FixPanel.qml qml/ScriptPanel.qml qml/qmldir
     qml/spaces/SpaceHost.qml qml/spaces/ImageSpace.qml qml/spaces/SegmentationSpace.qml
     qml/spaces/VectorSpace.qml qml/spaces/PointsSpace.qml)
 list(APPEND studio_qml_files qml/spaces/vector/VectorShapePanel.qml)
@@ -126,6 +133,8 @@ if(TARGET openstitch-mcp)
     add_dependencies(openstitch_v2_studio openstitch-mcp)
 endif()
 qt_add_resources(openstitch_v2_studio studio_qml PREFIX "/studio" FILES ${studio_qml_files})
+# SCRIPT-01 : bibliothèque standard Python à côté de openstitch.exe (<exe>/python/Lib).
+openstitch_deploy_python(openstitch_v2_studio)
 
 # Thèmes livrés à côté de l'exécutable (<exe>/themes) : données seulement, chargées sans
 # compilation par le moteur de thèmes.

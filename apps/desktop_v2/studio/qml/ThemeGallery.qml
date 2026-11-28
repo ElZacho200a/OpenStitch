@@ -29,7 +29,7 @@ Controls.Popup {
                                           selected: qsTr("Sélection"), focus: qsTr("Focus"), disabled: qsTr("Inactif") })
     readonly property var iconNames: ["select", "pan", "fit", "open", "check", "save", "undo", "redo", "plus",
         "minus", "close", "layers", "needle", "chevron", "satin", "fade", "guide", "break", "rungs", "stitches",
-        "text", "eyedropper", "measure", "applique", "pull", "view", "thread", "analysis", "play", "realistic",
+        "text", "eyedropper", "measure", "applique", "script", "pull", "view", "thread", "analysis", "play", "realistic",
         "link", "edit", "tree", "list", "crop", "transparent", "rectangle", "ellipse", "polygon", "regular",
         "bezier", "freeform", "node", "knife", "warp", "bucket", "brush", "eraser"]
 

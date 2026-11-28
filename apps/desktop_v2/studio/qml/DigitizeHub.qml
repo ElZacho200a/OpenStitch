@@ -2,7 +2,7 @@
 import QtQuick
 import "."
 
-// Hub « numérisation avancée » (satin, retouche des points, tirage, appliqué) : UN
+// Hub « numérisation avancée » (satin, retouche des points, tirage, appliqué, script) : UN
 // panneau à la fois, posé sur le bord droit du canevas. Les boutons et les gestes ne sont plus
 // flottants : l'espace « Points » les porte dans sa barre de panneaux et sa barre d'options
 // (`toolbarVisible: false`). Inerte si l'hôte ne fournit pas les adaptateurs.
@@ -36,6 +36,7 @@ Item {
                     StudioButton { objectName: "pullPanelButton"; visible: typeof pull !== "undefined"; text: qsTr("Tirage"); checkable: true; checked: hub.openPanel === "pull"; onClicked: hub.toggle("pull") }
                     StudioButton { objectName: "fixPanelButton"; visible: typeof fix !== "undefined"; text: qsTr("Corriger"); checkable: true; checked: hub.openPanel === "fix"; onClicked: hub.toggle("fix") }
                     StudioButton { objectName: "appliquePanelButton"; visible: typeof applique !== "undefined"; text: qsTr("Appliqué"); checkable: true; checked: hub.openPanel === "applique"; onClicked: hub.toggle("applique") }
+                    StudioButton { objectName: "scriptPanelButton"; visible: typeof selectionScript !== "undefined"; text: qsTr("Script"); checkable: true; checked: hub.openPanel === "script"; onClicked: hub.toggle("script") }
                 }
             }
             Loader {
@@ -91,6 +92,7 @@ Item {
                 PullPanel { anchors.fill: parent; visible: hub.openPanel === "pull"; controller: typeof pull !== "undefined" ? pull : null }
                 AppliquePanel { anchors.fill: parent; visible: hub.openPanel === "applique"; controller: typeof applique !== "undefined" ? applique : null }
                 FixPanel { anchors.fill: parent; visible: hub.openPanel === "fix"; controller: typeof fix !== "undefined" ? fix : null }
+                ScriptPanel { anchors.fill: parent; visible: hub.openPanel === "script"; controller: typeof selectionScript !== "undefined" ? selectionScript : null }
             }
         }
     }
