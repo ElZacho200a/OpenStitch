@@ -11,6 +11,9 @@ Rectangle {
     objectName: "satinPanel"
     property var controller
     signal guidedTraceRequested()
+    // Guides d'un remplissage : ouvrir l'outil Guide du canevas (glisser, Maj+clic, barre d'options).
+    signal fillGuideTraceRequested()
+    function plural(n, one, many) { return n === 1 ? one.arg(n) : many.arg(n) }
     readonly property bool ready: controller !== undefined && controller !== null
     readonly property var actionController: typeof actions !== "undefined" ? actions : null
     readonly property bool guided: ready && controller.isGuidedSatin
@@ -247,25 +250,37 @@ Rectangle {
                       : panel.guided
                         ? (panel.controller.hasGuidedPath ? qsTr("Ligne centrale tracée.") : qsTr("Aperçu automatique."))
                       : panel.controller.breakLineCount < 0
-                        ? panel.controller.guideCount + qsTr(" guide(s) de satin")
-                        : panel.controller.guideCount + qsTr(" guide(s), ") + panel.controller.breakLineCount + qsTr(" ligne(s) de rupture")
+                        ? panel.plural(panel.controller.guideCount, qsTr("%1 guide de satin"), qsTr("%1 guides de satin"))
+                        : panel.plural(panel.controller.guideCount, qsTr("%1 guide"), qsTr("%1 guides")) + " · "
+                          + panel.plural(panel.controller.breakLineCount, qsTr("%1 rupture"), qsTr("%1 ruptures"))
             }
             Flow {
                 Layout.fillWidth: true
                 spacing: 4
                 visible: panel.guided || panel.showNumericGuides || panel.fillGuides
                 StudioButton {
+                    objectName: "fillGuidesTracePanel"
+                    visible: panel.fillGuides
+                    text: qsTr("Tracer au canevas")
+                    shortcutLabel: "D"
+                    tooltip: qsTr("Outil Guide : tracez, glissez un nœud pour remodeler, Maj+clic pour retirer un guide")
+                    onClicked: panel.fillGuideTraceRequested()
+                }
+                StudioButton {
                     objectName: "fillGuidesAutoPanel"
                     visible: panel.fillGuides
-                    text: qsTr("Guides auto")
+                    text: panel.controller.guideCount > 0 ? qsTr("Remplacer par auto") : qsTr("Guides auto")
                     enabled: !studio.busy
-                    tooltip: qsTr("Propose des guides d'après la forme (remplace les guides existants, annulable)")
+                    tooltip: panel.controller.guideCount < 0
+                             ? qsTr("Convertit ce tatami en remplissage directionnel et propose des guides d'après la forme (annulable)")
+                             : qsTr("Propose des guides d'après la forme ; remplace les guides existants (annulable)")
                     onClicked: panel.controller.autoFillGuides()
                 }
                 StudioButton {
                     objectName: "guidesClear"
                     visible: !panel.guided || panel.controller.guideCount > 0
                     text: panel.guided ? qsTr("Revenir à l’aperçu automatique") : qsTr("Retirer les guides")
+                    tooltip: panel.guided ? "" : qsTr("Retire tous les guides (annulable)")
                     enabled: panel.ready && panel.controller.guideCount > 0 && !studio.busy
                              && (!panel.guided || panel.controller.guidedSatinDisabledReason === "")
                     disabledReason: panel.guided ? panel.controller.guidedSatinDisabledReason
@@ -275,7 +290,8 @@ Rectangle {
                 StudioButton { objectName: "breaksClear"; text: qsTr("Retirer les ruptures")
                     visible: !panel.guided
                     enabled: panel.ready && panel.controller.breakLineCount > 0 && !studio.busy
-                    disabledReason: qsTr("Aucune ligne de rupture à retirer.")
+                    disabledReason: qsTr("Aucune rupture à retirer.")
+                    tooltip: qsTr("Retire toutes les ruptures (annulable)")
                     onClicked: panel.controller.clearGuides(true) }
             }
             Text {

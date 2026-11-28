@@ -235,6 +235,12 @@ Item {
                     id: digitizeHub
                     anchors.fill: parent
                     toolbarVisible: false
+                    onFillGuideTraceRequested: {
+                        spaceCanvas.panMode = false
+                        pointsRail.activateTool("guide")
+                        digitizeHub.openPanel = ""
+                        spaceCanvas.forceActiveFocus()
+                    }
                     onGuidedTraceRequested: {
                         spaceCanvas.panMode = false
                         pointsRail.activateTool("guide")
