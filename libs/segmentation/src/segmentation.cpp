@@ -22,7 +22,11 @@ namespace openstitch::segmentation {
 
 namespace {
 
-constexpr std::uint8_t kAlphaOpaque = 128; // seuil : en dessous, pixel de fond
+// Seuil historique d'opacité (en dessous, pixel de fond) : valeur par défaut de
+// `SegmentationOptions::alpha_threshold`.
+constexpr std::uint8_t kAlphaOpaque = 128;
+// HP-AUTO-016 : pixel de frange alpha retenu mais pas encore classé (le fond vaut -1).
+constexpr int kFringePending = -2;
 // Écart (ΔE76) toléré à un mélange fond/trait pour rattacher un pixel anticrénelé à son trait.
 constexpr double kFineBlendDeltaE = 12.0;
 
@@ -396,6 +400,167 @@ int label_region_components(const Segmentation& seg, RegionId id, cv::Mat& compo
     return cv::connectedComponents(mask, components, 4, CV_32S);
 }
 
+// Lab 8 bits d'OpenCV (Q8) ramené à L*a*b* : L* = L x 100 / 255 ; le décalage de 128 de a et b
+// s'annule dans les différences. Les distances qui en découlent sont des ΔE76.
+std::array<double, 3> lab_star(const LabQ8& v) {
+    return {static_cast<double>(v[0]) / static_cast<double>(kQ8) * 100.0 / 255.0,
+            static_cast<double>(v[1]) / static_cast<double>(kQ8),
+            static_cast<double>(v[2]) / static_cast<double>(kQ8)};
+}
+
+std::array<double, 3> lab_star_of_pixel(const cv::Mat& lab, int x, int y) {
+    const auto* px = lab.ptr<std::uint8_t>(y) + x * 3;
+    return lab_star(LabQ8{px[0] * kQ8, px[1] * kQ8, px[2] * kQ8});
+}
+
+double dist2(const std::array<double, 3>& a, const std::array<double, 3>& b) {
+    double d = 0.0;
+    for (std::size_t i = 0; i < 3; ++i) {
+        d += (a[i] - b[i]) * (a[i] - b[i]);
+    }
+    return d;
+}
+
+// Côté impair du carré structurant dont l'ouverture (ou la fermeture) supprime (ou comble) les
+// bandes de largeur <= `width_px` : au moins `width_px` + 1.
+int odd_kernel_side(int width_px) {
+    const int side = width_px + 1;
+    return side % 2 == 0 ? side + 1 : side;
+}
+
+// HP-AUTO-015 : rattache les pixels de transition (classe mince ET couleur de mélange des classes
+// épaisses voisines) à l'extrémité du mélange la plus proche en ΔE. Les pixels d'indice < 0 (fond,
+// frange en attente) ne sont ni candidats ni voisins. Décisions lues sur l'état d'entrée et écrites
+// dans une copie (passe synchrone) : même résultat quel que soit le nombre de fils.
+void resolve_transition_pixels(cv::Mat& colorIdx, const cv::Mat& lab,
+                               const std::vector<LabQ8>& centers,
+                               const TransitionPixelOptions& options,
+                               const std::vector<std::uint8_t>* fineMask) {
+    const int w = colorIdx.cols;
+    const int h = colorIdx.rows;
+    const int k = static_cast<int>(centers.size());
+    const int maxWidth = std::clamp(options.max_width_px, 1, 8);
+    const auto pixelCount = static_cast<std::size_t>(w) * static_cast<std::size_t>(h);
+    const auto at = [w](int x, int y) {
+        return static_cast<std::size_t>(y) * static_cast<std::size_t>(w) +
+               static_cast<std::size_t>(x);
+    };
+
+    // Classe mince : pixel retiré par l'ouverture du masque de sa classe. Chaque tâche n'écrit que
+    // les pixels de SA classe : écritures disjointes.
+    std::vector<std::uint8_t> thin(pixelCount, 0);
+    const int side = odd_kernel_side(maxWidth);
+    const cv::Mat kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(side, side));
+    parallel_for(static_cast<std::size_t>(k), [&](std::size_t cIndex) {
+        const int c = static_cast<int>(cIndex);
+        cv::Mat mask(h, w, CV_8U);
+        bool any = false;
+        for (int y = 0; y < h; ++y) {
+            const int* idx = colorIdx.ptr<int>(y);
+            auto* m = mask.ptr<std::uint8_t>(y);
+            for (int x = 0; x < w; ++x) {
+                m[x] = idx[x] == c ? 255 : 0;
+                any = any || idx[x] == c;
+            }
+        }
+        if (!any) {
+            return;
+        }
+        cv::Mat opened;
+        cv::morphologyEx(mask, opened, cv::MORPH_OPEN, kernel);
+        for (int y = 0; y < h; ++y) {
+            const auto* m = mask.ptr<std::uint8_t>(y);
+            const auto* o = opened.ptr<std::uint8_t>(y);
+            for (int x = 0; x < w; ++x) {
+                if (m[x] != 0 && o[x] == 0) {
+                    thin[at(x, y)] = 1;
+                }
+            }
+        }
+    });
+
+    std::vector<std::array<double, 3>> starCenters(centers.size());
+    for (std::size_t c = 0; c < centers.size(); ++c) {
+        starCenters[c] = lab_star(centers[c]);
+    }
+    const double maxD2 = options.max_delta_e * options.max_delta_e;
+    const int radius = maxWidth + 1;
+    cv::Mat out = colorIdx.clone();
+    parallel_for(static_cast<std::size_t>(h), [&](std::size_t rowIndex) {
+        const int y = static_cast<int>(rowIndex);
+        std::vector<std::uint8_t> seen(static_cast<std::size_t>(k), 0);
+        std::vector<int> neighbours;
+        for (int x = 0; x < w; ++x) {
+            const std::size_t i = at(x, y);
+            const int own = colorIdx.at<int>(y, x);
+            if (own < 0 || thin[i] == 0 || (fineMask != nullptr && (*fineMask)[i] != 0)) {
+                continue;
+            }
+            // Classes ÉPAISSES présentes dans la fenêtre, par indice croissant.
+            neighbours.clear();
+            std::fill(seen.begin(), seen.end(), 0);
+            for (int dy = -radius; dy <= radius; ++dy) {
+                const int ny = y + dy;
+                if (ny < 0 || ny >= h) {
+                    continue;
+                }
+                for (int dx = -radius; dx <= radius; ++dx) {
+                    const int nx = x + dx;
+                    if (nx < 0 || nx >= w) {
+                        continue;
+                    }
+                    const int c = colorIdx.at<int>(ny, nx);
+                    if (c < 0 || thin[at(nx, ny)] != 0 || seen[static_cast<std::size_t>(c)] != 0) {
+                        continue;
+                    }
+                    seen[static_cast<std::size_t>(c)] = 1;
+                    neighbours.push_back(c);
+                }
+            }
+            if (neighbours.empty()) {
+                continue;
+            }
+            std::sort(neighbours.begin(), neighbours.end());
+            const auto p = lab_star_of_pixel(lab, x, y);
+            double bestD2 = std::numeric_limits<double>::max();
+            int bestClass = -1;
+            for (std::size_t ia = 0; ia < neighbours.size(); ++ia) {
+                const int a = neighbours[ia];
+                const auto& ca = starCenters[static_cast<std::size_t>(a)];
+                const double da = dist2(p, ca);
+                if (da < bestD2) {
+                    bestD2 = da;
+                    bestClass = a;
+                }
+                for (std::size_t ib = ia + 1; ib < neighbours.size(); ++ib) {
+                    const int b = neighbours[ib];
+                    const auto& cb = starCenters[static_cast<std::size_t>(b)];
+                    double vv = 0.0;
+                    double pv = 0.0;
+                    for (std::size_t ch = 0; ch < 3; ++ch) {
+                        vv += (cb[ch] - ca[ch]) * (cb[ch] - ca[ch]);
+                        pv += (p[ch] - ca[ch]) * (cb[ch] - ca[ch]);
+                    }
+                    const double t = vv > 1e-9 ? std::clamp(pv / vv, 0.0, 1.0) : 0.0;
+                    std::array<double, 3> q{};
+                    for (std::size_t ch = 0; ch < 3; ++ch) {
+                        q[ch] = ca[ch] + t * (cb[ch] - ca[ch]);
+                    }
+                    const double d = dist2(p, q);
+                    if (d < bestD2) {
+                        bestD2 = d;
+                        bestClass = t <= 0.5 ? a : b;
+                    }
+                }
+            }
+            if (bestClass >= 0 && bestD2 <= maxD2) {
+                out.at<int>(y, x) = bestClass;
+            }
+        }
+    });
+    colorIdx = out;
+}
+
 std::vector<std::uint32_t> relabel(Segmentation& seg, std::uint32_t from, std::uint32_t to) {
     std::vector<std::uint32_t> changed;
     for (std::uint32_t i = 0; i < seg.labels.size(); ++i) {
@@ -516,6 +681,9 @@ Result<Segmentation> segment(const image::Image& img, const SegmentationOptions&
     cv::Mat rgb(img.height, img.width, CV_8UC3);
     std::vector<std::uint8_t> opaque(pixelCount, 0);
     std::size_t opaqueCount = 0;
+    // HP-AUTO-016 : seuil d'opacité réglable (128 = historique, `kAlphaOpaque`).
+    const std::uint8_t alphaThreshold =
+        options.alpha_threshold == 0 ? kAlphaOpaque : options.alpha_threshold;
     for (std::size_t i = 0; i < pixelCount; ++i) {
         const std::uint8_t* px = img.rgba.data() + i * 4;
         auto* dst =
@@ -524,11 +692,59 @@ Result<Segmentation> segment(const image::Image& img, const SegmentationOptions&
         dst[0] = px[0];
         dst[1] = px[1];
         dst[2] = px[2];
-        if (px[3] >= kAlphaOpaque) {
+        if (px[3] >= alphaThreshold) {
             opaque[i] = 1;
             ++opaqueCount;
         }
     }
+
+    // HP-AUTO-016 : frange alpha. `fringe[i]` = pixel retenu mais semi-transparent (sa couleur ne
+    // sert pas à la quantification, il prend la classe de ses voisins pleins).
+    std::vector<std::uint8_t> fringe;
+    std::size_t solidCount = opaqueCount;
+    if (options.alpha_fringe.has_value()) {
+        const AlphaFringeOptions& af = *options.alpha_fringe;
+        const auto alphaAt = [&](std::size_t i) { return img.rgba[i * 4 + 3]; };
+        if (af.max_gap_px > 0) {
+            // Interstices étroits de l'opaque (fermeture morphologique) : coutures et rayures
+            // semi-transparentes. La fermeture ne fait pas grossir la silhouette convexe.
+            cv::Mat base(img.height, img.width, CV_8U);
+            for (std::size_t i = 0; i < pixelCount; ++i) {
+                base.data[i] = opaque[i] != 0 ? 255 : 0;
+            }
+            const int side = odd_kernel_side(af.max_gap_px);
+            cv::Mat closed;
+            cv::morphologyEx(base, closed, cv::MORPH_CLOSE,
+                             cv::getStructuringElement(cv::MORPH_RECT, cv::Size(side, side)));
+            for (std::size_t i = 0; i < pixelCount; ++i) {
+                if (opaque[i] == 0 && closed.data[i] != 0 && alphaAt(i) >= af.min_alpha &&
+                    alphaAt(i) > 0) {
+                    opaque[i] = 1;
+                    ++opaqueCount;
+                }
+            }
+        }
+        fringe.assign(pixelCount, 0);
+        solidCount = 0;
+        for (std::size_t i = 0; i < pixelCount; ++i) {
+            if (opaque[i] == 0) {
+                continue;
+            }
+            if (alphaAt(i) < af.solid_alpha) {
+                fringe[i] = 1;
+            } else {
+                ++solidCount;
+            }
+        }
+        if (solidCount == 0) {
+            // Aucun pixel plein : chaque pixel retenu est quantifié sur sa propre couleur.
+            fringe.clear();
+            solidCount = opaqueCount;
+        }
+    }
+    const bool hasFringe = !fringe.empty();
+    const auto isFringe = [&](std::size_t i) { return hasFringe && fringe[i] != 0; };
+
     if (opaqueCount == 0) {
         return fail_coded(ErrorCategory::UserInput, kTransparentImage,
                           "L'image est entièrement transparente", {});
@@ -537,13 +753,13 @@ Result<Segmentation> segment(const image::Image& img, const SegmentationOptions&
     cv::Mat lab;
     cv::cvtColor(rgb, lab, cv::COLOR_RGB2Lab);
 
-    // k-means déterministe sur un échantillon de pixels opaques.
+    // k-means déterministe sur un échantillon de pixels opaques (pleins, si frange alpha).
     constexpr std::size_t kMaxSamples = 20'000;
-    const std::size_t stride = std::max<std::size_t>(1, opaqueCount / kMaxSamples);
+    const std::size_t stride = std::max<std::size_t>(1, solidCount / kMaxSamples);
     std::vector<LabQ8> samplesVec;
     std::size_t seen = 0;
     for (std::size_t i = 0; i < pixelCount; ++i) {
-        if (!opaque[i]) {
+        if (!opaque[i] || isFringe(i)) {
             continue;
         }
         if (seen++ % stride == 0) {
@@ -634,6 +850,11 @@ Result<Segmentation> segment(const image::Image& img, const SegmentationOptions&
             if (!opaqueRow[col]) {
                 continue;
             }
+            if (isFringe(rowIndex * static_cast<std::size_t>(img.width) +
+                         static_cast<std::size_t>(col))) {
+                out[col] = kFringePending;
+                continue;
+            }
             const std::uint8_t* px = labRow + col * 3;
             // Seuls les pixels protégés peuvent rejoindre une couleur rare ajoutée pour les traits.
             const auto& palette = isProtected(rowIndex * static_cast<std::size_t>(img.width) +
@@ -647,6 +868,96 @@ Result<Segmentation> segment(const image::Image& img, const SegmentationOptions&
 
     if (protect) {
         unify_fine_classes(colorIdx, lab, fine, centers, kFineBlendDeltaE);
+    }
+
+    // HP-AUTO-015 : pixels de transition des bords flous (désactivé sans option).
+    if (options.transition_pixels.has_value()) {
+        resolve_transition_pixels(colorIdx, lab, centers, *options.transition_pixels,
+                                  protect ? &fine.mask : nullptr);
+    }
+
+    // HP-AUTO-016 : les pixels de frange prennent, de proche en proche, la classe majoritaire de
+    // leurs 8 voisins déjà classés (égalité -> plus petit indice). Passes synchrones (lecture de
+    // l'état précédent, écriture dans une copie) : indépendant du nombre de fils. Les restants
+    // sont quantifiés sur leur propre couleur.
+    if (hasFringe) {
+        const int passes = std::max(options.alpha_fringe->max_fringe_px, 0);
+        for (int pass = 0; pass < passes; ++pass) {
+            cv::Mat next = colorIdx.clone();
+            std::vector<std::uint8_t> rowChanged(static_cast<std::size_t>(img.height), 0);
+            parallel_for(static_cast<std::size_t>(img.height), [&](std::size_t rowIndex) {
+                const int y = static_cast<int>(rowIndex);
+                const int* cur = colorIdx.ptr<int>(y);
+                int* out = next.ptr<int>(y);
+                for (int x = 0; x < img.width; ++x) {
+                    if (cur[x] != kFringePending) {
+                        continue;
+                    }
+                    std::array<int, 8> classes{};
+                    std::array<int, 8> votes{};
+                    int distinct = 0;
+                    for (int dy = -1; dy <= 1; ++dy) {
+                        for (int dx = -1; dx <= 1; ++dx) {
+                            const int nx = x + dx;
+                            const int ny = y + dy;
+                            if ((dx == 0 && dy == 0) || nx < 0 || ny < 0 || nx >= img.width ||
+                                ny >= img.height) {
+                                continue;
+                            }
+                            const int c = colorIdx.at<int>(ny, nx);
+                            if (c < 0) {
+                                continue;
+                            }
+                            int slot = 0;
+                            while (slot < distinct &&
+                                   classes[static_cast<std::size_t>(slot)] != c) {
+                                ++slot;
+                            }
+                            if (slot == distinct) {
+                                classes[static_cast<std::size_t>(distinct++)] = c;
+                            }
+                            ++votes[static_cast<std::size_t>(slot)];
+                        }
+                    }
+                    int best = -1;
+                    int bestVotes = 0;
+                    for (int s = 0; s < distinct; ++s) {
+                        const int c = classes[static_cast<std::size_t>(s)];
+                        const int v = votes[static_cast<std::size_t>(s)];
+                        if (v > bestVotes || (v == bestVotes && c < best)) {
+                            best = c;
+                            bestVotes = v;
+                        }
+                    }
+                    if (best >= 0) {
+                        out[x] = best;
+                        rowChanged[rowIndex] = 1;
+                    }
+                }
+            });
+            colorIdx = next;
+            if (std::none_of(rowChanged.begin(), rowChanged.end(),
+                             [](std::uint8_t v) { return v != 0; })) {
+                break;
+            }
+        }
+        parallel_for(static_cast<std::size_t>(img.height), [&](std::size_t rowIndex) {
+            const int y = static_cast<int>(rowIndex);
+            int* row = colorIdx.ptr<int>(y);
+            const auto* labRow = lab.ptr<std::uint8_t>(y);
+            for (int x = 0; x < img.width; ++x) {
+                if (row[x] != kFringePending) {
+                    continue;
+                }
+                const std::uint8_t* px = labRow + x * 3;
+                const auto& palette = isProtected(rowIndex * static_cast<std::size_t>(img.width) +
+                                                  static_cast<std::size_t>(x))
+                                          ? centers
+                                          : mainCenters;
+                row[x] =
+                    nearest_center(LabQ8{px[0] * kQ8, px[1] * kQ8, px[2] * kQ8}, palette, nullptr);
+            }
+        });
     }
 
     // Lissage optionnel : vote local majoritaire par classe de couleur, pour

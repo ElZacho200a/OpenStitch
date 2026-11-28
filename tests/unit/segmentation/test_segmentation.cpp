@@ -2,6 +2,8 @@
 #include <algorithm>
 #include <catch2/catch_test_macros.hpp>
 #include <chrono>
+#include <cmath>
+#include <deque>
 #include <map>
 #include <optional>
 #include <thread>
@@ -1156,5 +1158,283 @@ TEST_CASE("banc lissage : temps de segment() avec k classes", "[.perf015]") {
         WARN("PERF k=" << colors << " "
                        << std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count()
                        << " ms");
+    }
+}
+
+// --- HP-AUTO-015 : pixels de transition des bords flous ---------------------------------------
+
+namespace {
+
+constexpr std::array<std::uint8_t, 3> kCream{235, 225, 200};
+constexpr std::array<std::uint8_t, 3> kRed{200, 30, 40};
+
+// Distance signée (px) au bord d'un rectangle [x0, x1] x [y0, y1] (négative dedans).
+double box_sdf(double px, double py, double x0, double y0, double x1, double y1) {
+    const double cx = (x0 + x1) / 2.0;
+    const double cy = (y0 + y1) / 2.0;
+    const double qx = std::abs(px - cx) - (x1 - x0) / 2.0;
+    const double qy = std::abs(py - cy) - (y1 - y0) / 2.0;
+    const double outside = std::hypot(std::max(qx, 0.0), std::max(qy, 0.0));
+    return outside + std::min(std::max(qx, qy), 0.0);
+}
+
+// Logo synthétique à bords flous : fond crème, un disque rouge (centre (70, 50), rayon 25) et un
+// carré rouge [10, 35] x [85, 110], bords en rampe linéaire de 4 px (flou d'export anticrénelé).
+constexpr double kDiskCx = 70.0;
+constexpr double kDiskCy = 50.0;
+constexpr double kDiskR = 25.0;
+constexpr double kPi = 3.14159265358979;
+
+image::Image blurred_logo() {
+    image::Image img = blank(120, 120);
+    for (int y = 0; y < img.height; ++y) {
+        for (int x = 0; x < img.width; ++x) {
+            const double px = x + 0.5;
+            const double py = y + 0.5;
+            const double dDisk = std::hypot(px - kDiskCx, py - kDiskCy) - kDiskR;
+            const double dBox = box_sdf(px, py, 10.0, 85.0, 35.0, 110.0);
+            const double d = std::min(dDisk, dBox);
+            const double s = std::clamp(0.5 - d / 4.0, 0.0, 1.0); // part de rouge
+            const auto mix = [&](std::size_t ch) {
+                return static_cast<std::uint8_t>(
+                    std::lround(kCream[ch] + s * (static_cast<double>(kRed[ch]) - kCream[ch])));
+            };
+            set_px(img, x, y, mix(0), mix(1), mix(2));
+        }
+    }
+    return img;
+}
+
+} // namespace
+
+TEST_CASE("transition pixels: blurred logo leaves no thin halo region") {
+    const auto img = blurred_logo();
+    const SegmentationOptions plain{.max_colors = 4, .min_region_px = 16};
+
+    // Sans traitement : les mélanges forment des classes intermédiaires (régions-liserés).
+    const auto before = segment(img, plain);
+    REQUIRE(before.has_value());
+    CHECK(before->region_count() > 3);
+
+    SegmentationOptions fixed = plain;
+    fixed.transition_pixels = TransitionPixelOptions{};
+    const auto after = segment(img, fixed);
+    REQUIRE(after.has_value());
+    // Fond, disque, carré : rien d'autre, et chaque région porte la couleur d'un aplat.
+    CHECK(after->region_count() == 3);
+    for (const auto& slot : after->region_slots) {
+        if (!slot) {
+            continue;
+        }
+        const double toCream = cielab_delta_e(slot->rgb, kCream);
+        const double toRed = cielab_delta_e(slot->rgb, kRed);
+        CHECK(std::min(toCream, toRed) < 8.0);
+    }
+
+    // Perte de surface : écart d'aire / périmètre = déplacement moyen du bord. À 0,1 mm/px, la
+    // tolérance de 0,3 mm vaut 3 px.
+    constexpr double kMmPerPx = 0.1;
+    const auto disk = region_at(*after, static_cast<int>(kDiskCx), static_cast<int>(kDiskCy));
+    REQUIRE(disk.has_value());
+    const double diskArea = kPi * kDiskR * kDiskR;
+    const double diskShiftMm =
+        std::abs(static_cast<double>(after->find(*disk)->pixel_count) - diskArea) /
+        (2.0 * kPi * kDiskR) * kMmPerPx;
+    CHECK(diskShiftMm <= 0.3);
+    const auto box = region_at(*after, 22, 97);
+    REQUIRE(box.has_value());
+    const double boxShiftMm =
+        std::abs(static_cast<double>(after->find(*box)->pixel_count) - 25.0 * 25.0) / 100.0 *
+        kMmPerPx;
+    CHECK(boxShiftMm <= 0.3);
+}
+
+TEST_CASE("transition pixels: a genuine thin stroke of another colour is kept") {
+    // Trait bleu net de 2 px entre un aplat crème et un aplat rouge : pas un mélange des deux.
+    image::Image img = blank(60, 40);
+    for (int y = 0; y < img.height; ++y) {
+        for (int x = 0; x < img.width; ++x) {
+            if (x == 29 || x == 30) {
+                set_px(img, x, y, 30, 60, 200);
+            } else if (x < 29) {
+                set_px(img, x, y, kCream[0], kCream[1], kCream[2]);
+            } else {
+                set_px(img, x, y, kRed[0], kRed[1], kRed[2]);
+            }
+        }
+    }
+    SegmentationOptions options{.max_colors = 3, .min_region_px = 4};
+    options.transition_pixels = TransitionPixelOptions{};
+    const auto seg = segment(img, options);
+    REQUIRE(seg.has_value());
+    CHECK(seg->region_count() == 3);
+    const auto stroke = region_at(*seg, 29, 20);
+    REQUIRE(stroke.has_value());
+    CHECK(seg->find(*stroke)->pixel_count == 80u);
+}
+
+// --- HP-AUTO-016 : frange alpha -----------------------------------------------------------------
+
+namespace {
+
+// Deux carrés accolés (rouge x [10,40) et bleu x [40,70), y [10,50)) sur fond transparent,
+// exportés avec une frange : couture semi-transparente (alpha 90) en x = 40, rayure translucide
+// (alpha 100) dans le rouge en y = 30, anneau extérieur prémultiplié (alpha 160 puis 60).
+image::Image soft_alpha_logo() {
+    image::Image img = blank(80, 60);
+    const auto premul = [](std::uint8_t c, std::uint8_t a) {
+        return static_cast<std::uint8_t>(c * a / 255);
+    };
+    for (int y = 0; y < img.height; ++y) {
+        for (int x = 0; x < img.width; ++x) {
+            const int cx = std::clamp(x, 10, 69);
+            const int cy = std::clamp(y, 10, 49);
+            const bool left = cx < 40;
+            const std::uint8_t r = left ? 200 : 30;
+            const std::uint8_t g = left ? 30 : 60;
+            const std::uint8_t b = left ? 40 : 200;
+            const int ring = std::max(std::abs(x - cx), std::abs(y - cy));
+            if (ring == 0) {
+                if (x == 40) {
+                    set_px(img, x, y, 115, 45, 120, 90); // couture
+                } else if (y == 30 && x >= 12 && x < 38) {
+                    set_px(img, x, y, r, g, b, 100); // rayure translucide
+                } else {
+                    set_px(img, x, y, r, g, b, 255);
+                }
+            } else if (ring == 1) {
+                set_px(img, x, y, premul(r, 160), premul(g, 160), premul(b, 160), 160);
+            } else if (ring == 2) {
+                set_px(img, x, y, premul(r, 60), premul(g, 60), premul(b, 60), 60);
+            }
+        }
+    }
+    return img;
+}
+
+// Pixels de fond (label 0) non reliés au bord de l'image en 4-connexité : les trous.
+std::size_t hole_pixels(const Segmentation& seg) {
+    std::vector<char> reached(seg.labels.size(), 0);
+    std::deque<std::pair<int, int>> queue;
+    const auto push = [&](int x, int y) {
+        const auto i = static_cast<std::size_t>(y) * static_cast<std::size_t>(seg.width) +
+                       static_cast<std::size_t>(x);
+        if (seg.labels[i] == 0 && reached[i] == 0) {
+            reached[i] = 1;
+            queue.emplace_back(x, y);
+        }
+    };
+    for (int x = 0; x < seg.width; ++x) {
+        push(x, 0);
+        push(x, seg.height - 1);
+    }
+    for (int y = 0; y < seg.height; ++y) {
+        push(0, y);
+        push(seg.width - 1, y);
+    }
+    while (!queue.empty()) {
+        const auto [x, y] = queue.front();
+        queue.pop_front();
+        if (x > 0) {
+            push(x - 1, y);
+        }
+        if (y > 0) {
+            push(x, y - 1);
+        }
+        if (x + 1 < seg.width) {
+            push(x + 1, y);
+        }
+        if (y + 1 < seg.height) {
+            push(x, y + 1);
+        }
+    }
+    std::size_t holes = 0;
+    for (std::size_t i = 0; i < seg.labels.size(); ++i) {
+        if (seg.labels[i] == 0 && reached[i] == 0) {
+            ++holes;
+        }
+    }
+    return holes;
+}
+
+} // namespace
+
+TEST_CASE("alpha fringe: soft edged PNG leaves neither hole nor empty band") {
+    const auto img = soft_alpha_logo();
+    const SegmentationOptions plain{.max_colors = 4, .min_region_px = 4};
+
+    // Seuil dur historique : la couture est une bande vide, la rayure coupe le rouge en deux.
+    const auto before = segment(img, plain);
+    REQUIRE(before.has_value());
+    CHECK_FALSE(region_at(*before, 40, 30).has_value());
+    CHECK_FALSE(region_at(*before, 20, 30).has_value());
+
+    SegmentationOptions fringe = plain;
+    fringe.alpha_fringe = AlphaFringeOptions{};
+    const auto after = segment(img, fringe);
+    REQUIRE(after.has_value());
+    CHECK(hole_pixels(*after) == 0u);
+    // Aucune bande vide : toute la forme (anneau d'alpha >= 128 compris) est couverte.
+    std::size_t uncovered = 0;
+    for (int y = 9; y <= 50; ++y) {
+        for (int x = 9; x <= 70; ++x) {
+            if (!region_at(*after, x, y).has_value()) {
+                ++uncovered;
+            }
+        }
+    }
+    CHECK(uncovered == 0u);
+    // La silhouette ne grossit pas : l'anneau d'alpha 60 reste du fond.
+    CHECK_FALSE(region_at(*after, 8, 30).has_value());
+    CHECK_FALSE(region_at(*after, 71, 30).has_value());
+    // Deux régions, aux couleurs franches (pas de liseré sombre prémultiplié).
+    CHECK(after->region_count() == 2);
+    const auto red = region_at(*after, 20, 20);
+    const auto blue = region_at(*after, 60, 20);
+    REQUIRE(red.has_value());
+    REQUIRE(blue.has_value());
+    CHECK(*red != *blue);
+    CHECK(region_at(*after, 20, 30) == red);
+    CHECK(region_at(*after, 9, 9) == red);
+    CHECK(region_at(*after, 70, 50) == blue);
+    CHECK(cielab_delta_e(after->find(*red)->rgb, {200, 30, 40}) < 8.0);
+    CHECK(cielab_delta_e(after->find(*blue)->rgb, {30, 60, 200}) < 8.0);
+}
+
+TEST_CASE("alpha fringe: opacity threshold is adjustable") {
+    const auto img = soft_alpha_logo();
+    SegmentationOptions options{.max_colors = 4, .min_region_px = 4};
+    options.alpha_threshold = 64;
+    const auto seg = segment(img, options);
+    REQUIRE(seg.has_value());
+    CHECK(region_at(*seg, 40, 30).has_value());      // couture d'alpha 90 retenue
+    CHECK(region_at(*seg, 20, 30).has_value());      // rayure d'alpha 100 retenue
+    CHECK_FALSE(region_at(*seg, 8, 30).has_value()); // alpha 60 : fond
+}
+
+TEST_CASE("transition pixels and alpha fringe: same labels with one and eight threads") {
+    std::vector<std::pair<image::Image, SegmentationOptions>> cases;
+    SegmentationOptions a{.max_colors = 4, .min_region_px = 16, .smoothing_radius_px = 1};
+    a.transition_pixels = TransitionPixelOptions{};
+    cases.emplace_back(blurred_logo(), a);
+    SegmentationOptions b{.max_colors = 4, .min_region_px = 4};
+    b.alpha_fringe = AlphaFringeOptions{};
+    b.transition_pixels = TransitionPixelOptions{};
+    cases.emplace_back(soft_alpha_logo(), b);
+    for (const auto& [img, options] : cases) {
+        Result<Segmentation> single = fail(ErrorCategory::Internal, "non calcule");
+        Result<Segmentation> many = fail(ErrorCategory::Internal, "non calcule");
+        {
+            const ThreadCountOverride one("1");
+            single = segment(img, options);
+        }
+        {
+            const ThreadCountOverride eight("8");
+            many = segment(img, options);
+        }
+        REQUIRE(single.has_value());
+        REQUIRE(many.has_value());
+        CHECK(single->labels == many->labels);
+        CHECK(single->region_count() == many->region_count());
     }
 }

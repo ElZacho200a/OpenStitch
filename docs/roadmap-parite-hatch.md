@@ -4197,14 +4197,14 @@ une entrée P0 ouverte (§0.4).
 - Modules : `libs/image`.
 - Acceptation : une photo JPEG d'orientation 6 est chargée dans le bon sens (fixture de test).
 
-### HP-AUTO-015 — Pixels de transition des bords flous [P2] — ☐ À faire
+### HP-AUTO-015 — Pixels de transition des bords flous [P2] — ◐ Partiel (2026-11-28, option `transition_pixels`, non câblée)
 - État OpenStitch : affectation au centre le plus proche, aucun traitement des pixels mixtes (≈ `segmentation.cpp:202-231`).
 - À faire : détecter les pixels de transition et les rattacher à la région dominante (ou à la plus proche en ΔE) avant l'extraction des composantes.
 - Modules : `libs/segmentation`, `libs/autodigitize`.
 - Dépend de : corpus de HP-AUTO-001.
 - Acceptation : sur un logo aux bords flous, aucune région-liseré de 1 à 2 px ne subsiste ; pas de perte de surface au-delà de 0,3 mm.
 
-### HP-AUTO-016 — Alpha progressif au lieu du seuil dur [P2] — ☐ À faire
+### HP-AUTO-016 — Alpha progressif au lieu du seuil dur [P2] — ◐ Partiel (2026-11-28, options `alpha_threshold` / `alpha_fringe`, non câblées)
 - État OpenStitch : alpha < 128 = fond (`segmentation.hpp` ≈ l.100).
 - À faire : seuil réglable et traitement de la frange semi-transparente (érosion/rattachement) pour éviter trous et bandes vides.
 - Acceptation : un PNG à bord semi-transparent ne produit ni trou ni bande vide.
@@ -4704,6 +4704,7 @@ ouvrant le lot (§0.1).
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-11-28 | Claude (AUTO-DIGITIZE AD-3, sous-agent U-SEG) | **HP-AUTO-015 / HP-AUTO-016 ◐**. `SegmentationOptions::transition_pixels` : pixels minces et pixels de mélange Lab d'un bord flou rattachés à la région voisine la plus proche (logo flou : 3 régions franches au lieu de liserés, bord déplacé ≤ 0,3 mm). `alpha_threshold` (réglable, 128 par défaut) et `alpha_fringe` : interstices semi-transparents comblés, frange rattachée aux voisins pleins, silhouette non grossie. Options désactivées par défaut : banc AD-1 sans écart (24 mesures), `test_segmentation` 86/86. Reste : câblage CLI/MCP/Studio, mesure au banc avec l'option active avant tout passage par défaut. Risque : un trait gris entre noir et blanc ressemble à un mélange (garder `fine_structures`). |
 | 2026-11-28 | Claude (AUTO-DIGITIZE, HP-AUTO-024 partiel) | **HP-AUTO-024 ◐**. Une région du motif dont le contour n'est pas vectorisable produit un avertissement (id, aire en mm², pixels) au lieu de disparaître en silence. Réglages satin exposés : CLI `--satin-min-coverage`, `--satin-compact-max-mm`, `--satin-max-stitch-mm` ; MCP ; rapport `digitize-report/1` (null = défaut du moteur, schéma mis à jour). Défauts inchangés : banc AD-1 sans écart, 20/20 tests `cli_`. Reste : contours, CLAHE, inspecteur Studio. |
 | 2026-11-27 | Claude (AUTO-DIGITIZE AD-2, AUTO-SATIN-01 L1+L3) | **HP-AUTO-009 ◐** (inchangé, progrès). Option expérimentale `AutoOptions::satin_compare` (désactivée par défaut ; CLI `--satin-compare`, MCP `satin_compare`, balayage `satin-compare`, rapport de numérisation) : une bande ou une forme compacte retenue pour le satin est cousue par le meilleur candidat admissible entre squelette, axe médian et balayage parallèle, tous générés et mesurés (éliminatoires : couverture, traversées croisées, traversée > 10 mm ; score : couverture, colonnes, épaisseur du zigzag par case de 1 mm ; égalité → squelette). Banc AD-1 : réglages par défaut et logo identiques à main ; surépaisseur max marine 6,17 → 5,40, traits fins 6,65 → 5,67, `letter-y` 4,76 → 3,53, `tentabrode` 7,41 → 6,85 (152 → 145 coupes) ; contrepartie : une coupe de plus sur `letter-y`. `flat-scene` 8,81 → 7,00 couches (3 coupes de plus). Constat : le tatami de repli d'un petit rectangle de 10 mm laisse voir le tissu sur son bord (vu sur `repo-logo-small` avec une limite de 8 mm). Reste : guides automatiques et décomposition (L2), câblage Studio (AD-5), essais brodés. Doc : `auto-numerisation.md` §« Choix comparatif ». |
 | 2026-11-27 | Claude (AUTO-DIGITIZE AD-1, fiche E14) | **HP-AUTO-001 / HP-AUTO-013 ◐** (inchangés, outillés). Banc de mesure de l'auto-digitize `scripts/autodigitize_bench.py` : 9 images synthétiques de 50 mm générées octet pour octet + 3 images du dépôt, deux profils (défaut, « logo » = satin des bandes), mesures recopiées de `project check/fidelity/density`, comparaison à `tests/fixtures/autodigitize-bench/baseline.json` (moteur de main 5be7463a) avec tolérances et code de sortie. Deux exécutions identiques sur 24 mesures. Premiers constats : le profil logo met des surépaisseurs à 8,8 couches sur l'illustration et perd 3,6 % de détail sur les traits fins ; les images du dépôt sont ramenées à 40 ou 80 mm (à 96 dpi, `tentabrode` mesurerait 372 mm et sortirait du cadre). Doc : `docs/ai/autodigitize-bench.md`. Aucun code moteur modifié, aucun essai textile. |
