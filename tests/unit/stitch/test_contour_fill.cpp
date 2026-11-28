@@ -214,12 +214,21 @@ TEST_CASE("contour fill: centred rings keep the spacing on the far side") {
     const auto stitches = fill_contour(rect_mm(0, 0, 20, 20), p);
     REQUIRE(stitches.size() > 100);
     // Côté droit (x = 20, le plus loin du centre : 15 mm) : anneaux réguliers au plus à 0,4 mm.
+    // On mesure où chaque segment cousu croise la droite y = 10 mm : les points eux-mêmes tombent
+    // où l'échantillonnage de l'anneau les place (jusqu'à 3 mm d'écart), pas sur cette droite.
     std::vector<double> xs;
-    for (const FillStitch& s : stitches) {
-        const double y = s.pos.y.value / 1000.0;
-        if (std::abs(y - 10.0) < 0.02) {
-            xs.push_back(s.pos.x.value / 1000.0);
+    for (std::size_t i = 1; i < stitches.size(); ++i) {
+        if (stitches[i].jump) {
+            continue;
         }
+        const double x0 = stitches[i - 1].pos.x.value / 1000.0;
+        const double y0 = stitches[i - 1].pos.y.value / 1000.0;
+        const double x1 = stitches[i].pos.x.value / 1000.0;
+        const double y1 = stitches[i].pos.y.value / 1000.0;
+        if (y0 == y1 || (y0 - 10.0) * (y1 - 10.0) > 0.0) {
+            continue;
+        }
+        xs.push_back(x0 + (x1 - x0) * (10.0 - y0) / (y1 - y0));
     }
     std::sort(xs.begin(), xs.end());
     xs.erase(std::unique(xs.begin(), xs.end(),
