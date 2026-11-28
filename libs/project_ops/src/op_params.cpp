@@ -1032,6 +1032,7 @@ const std::vector<Field<document::ContourFillParams>>& fields_of<document::Conto
         v.push_back(mm_field<P>("min_length_mm", &P::min_length, 0.0, 7.0));
         v.push_back(mm_field<P>("inset_mm", &P::inset, 0.0, 10.0));
         v.push_back(bool_field<P>("spiral", &P::spiral));
+        v.push_back(point_field<P>("center_mm", &P::center));
         v.push_back(bool_field<P>("hidden_underpath", &P::hidden_underpath));
         v.push_back(mm_field<P>("pull_compensation_mm", &P::pull_compensation, 0.0, 3.0));
         v.push_back(enum_field<P>("pull_mode", &P::pull_mode, pull_mode_table()));

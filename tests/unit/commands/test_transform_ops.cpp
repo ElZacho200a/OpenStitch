@@ -4,6 +4,8 @@
 
 #include <cmath>
 #include <numbers>
+#include <optional>
+#include <variant>
 #include <vector>
 
 #include "openstitch/commands/transform_ops.hpp"
@@ -287,4 +289,45 @@ TEST_CASE("transform: manual stitch edits of a contour follow a move, rotation a
         CHECK(restored->overrides == savedOverrides);
         CHECK(restored->edited_fingerprint == savedFingerprint);
     }
+}
+
+TEST_CASE("transform: a chosen fill centre follows a move and a turn; auto stays auto") {
+    document::Project project;
+    document::ContourFillParams contour;
+    contour.center = pt(2'000, 1'000);
+    const ObjectId a = add_shape(project, rect(-10'000, -5'000, 10'000, 5'000), contour);
+    document::SpiralFillParams spiral; // centre automatique
+    const ObjectId b = add_shape(project, rect(20'000, -5'000, 30'000, 5'000), spiral);
+    document::RadialFillParams radial;
+    radial.center = pt(-3'000, 0);
+    const ObjectId c = add_shape(project, rect(-30'000, -5'000, -20'000, 5'000), radial);
+    const auto centre = [&](std::size_t index) {
+        return std::visit(
+            [](const auto& p) -> std::optional<Vec2um> {
+                if constexpr (requires { p.center; }) {
+                    return p.center;
+                } else {
+                    return std::nullopt;
+                }
+            },
+            project.embroidery_objects[index].params);
+    };
+
+    UndoStack stack;
+    stack.execute(make_transform_command(project, {a, b, c},
+                                         AffineTransform::translate(pt(1'000, -2'000)), "Deplacer"),
+                  project);
+    CHECK(centre(0) == pt(3'000, -1'000));
+    CHECK_FALSE(centre(1).has_value());
+    CHECK(centre(2) == pt(-2'000, -2'000));
+
+    stack.execute(make_transform_command(
+                      project, {a}, AffineTransform::rotation(pt(0, 0), Angle{kPi}), "Pivoter"),
+                  project);
+    CHECK(centre(0) == pt(-3'000, 1'000));
+
+    REQUIRE(stack.undo(project));
+    REQUIRE(stack.undo(project));
+    CHECK(centre(0) == pt(2'000, 1'000));
+    CHECK(centre(2) == pt(-3'000, 0));
 }

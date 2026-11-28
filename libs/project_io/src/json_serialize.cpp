@@ -685,6 +685,9 @@ json params_to_json(const document::StitchParams& params) {
                      {"inset", p.inset.value},
                      {"spiral", p.spiral},
                      {"hiddenUnderpath", p.hidden_underpath}};
+                if (p.center) { // FILL-CENTER : absent = anneaux décalés du bord
+                    j["center"] = {{"x", p.center->x.value}, {"y", p.center->y.value}};
+                }
             } else if constexpr (std::is_same_v<T, document::MotifRunParams>) {
                 j = {{"type", "motifRun"},
                      {"motif", static_cast<int>(p.motif)},
@@ -1306,6 +1309,10 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.spiral = j.value("spiral", true);
         p.hidden_underpath = j.value("hiddenUnderpath", true);
         read_simple_pull(j, p);
+        if (j.contains("center")) {
+            p.center =
+                Vec2um{Micrometers{j.at("center").at("x")}, Micrometers{j.at("center").at("y")}};
+        }
         return document::StitchParams{p};
     }
     if (type == "motifRun") {
