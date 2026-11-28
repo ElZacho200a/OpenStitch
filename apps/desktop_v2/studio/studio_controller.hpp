@@ -21,7 +21,11 @@ class StudioController : public QObject {
     Q_PROPERTY(QString title READ title NOTIFY changed)
     Q_PROPERTY(QString status READ status NOTIFY changed)
     Q_PROPERTY(bool busy READ busy NOTIFY changed)
-    Q_PROPERTY(QVariantList objects READ objects NOTIFY changed)
+    // Liste des objets : notifiée seulement quand le document change (pas pour un clic de
+    // sélection, qui recréerait toutes les lignes QML). L'état sélectionné : selectedIdSet.
+    Q_PROPERTY(QVariantList objects READ objects NOTIFY objectsChanged)
+    Q_PROPERTY(QVariantMap selectedIdSet READ selectedIdSet NOTIFY selectionChanged)
+    Q_PROPERTY(int selectedObjectCount READ selectedObjectCount NOTIFY selectionChanged)
     Q_PROPERTY(QString selectionInfo READ selectionInfo NOTIFY changed)
     Q_PROPERTY(int commandCount READ commandCount NOTIFY changed)
     Q_PROPERTY(bool dirty READ dirty NOTIFY changed)
@@ -50,6 +54,9 @@ public:
     // permet de prouver qu'une modification sans effet sur la broderie n'en déclenche aucune.
     [[nodiscard]] int sceneBuildCount() const { return sceneBuilds_; }
     [[nodiscard]] QVariantList objects() const;
+    // Identifiants (texte) des objets de broderie sélectionnés -> true ; recherche O(1) en QML.
+    [[nodiscard]] QVariantMap selectedIdSet() const;
+    [[nodiscard]] int selectedObjectCount() const;
     [[nodiscard]] QString selectionInfo() const;
     [[nodiscard]] int commandCount() const;
     [[nodiscard]] QVariantMap selectionTool() const { return toolInfo("select"); }
@@ -92,11 +99,13 @@ signals:
     void sceneChanged();
     void documentReplaced();
     void selectionChanged();
+    void objectsChanged();
     void loadFinished(bool success);
 
 private:
     [[nodiscard]] QVariantList buildObjects() const;
     mutable std::optional<QVariantList> objectsCache_;
+    std::optional<std::uint64_t> objectsStamp_; // contentStamp() de la liste diffusée
     void rebuildScene();
     bool writeProject(const QString& path);
     [[nodiscard]] QVariantMap toolInfo(std::string_view id) const;

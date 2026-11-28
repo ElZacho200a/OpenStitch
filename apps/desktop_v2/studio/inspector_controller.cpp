@@ -201,7 +201,12 @@ QString refusalOf(const project_ops::BatchReport& report) {
 
 InspectorController::InspectorController(StudioController& studio, QObject* parent)
     : QObject(parent), session_(studio.session()) {
-    documentToken_ = session_.subscribe([this](ChangeKind) { bump(); });
+    documentToken_ = session_.subscribe([this](ChangeKind kind) {
+        if (kind == ChangeKind::Replaced) {
+            cache_.reset(); // autre document : ses révisions peuvent recommencer aux mêmes valeurs
+        }
+        bump();
+    });
     selectionToken_ = session_.selection().subscribe([this](const SelectionModel&) { bump(); });
 }
 
@@ -211,13 +216,37 @@ void InspectorController::bump() {
 }
 
 QVariantMap InspectorController::field(const QString& key) const {
-    const auto s = selection();
-    for (const auto& spec : specsOf(s)) {
+    auto& cache = cacheForCurrentState();
+    if (const auto it = cache.fields.constFind(key); it != cache.fields.cend()) {
+        return *it;
+    }
+    if (!cache.specs) {
+        cache.specs = specsOf(cache.selection);
+    }
+    QVariantMap out;
+    for (const auto& spec : *cache.specs) {
         if (u8(spec.key) == key) {
-            return fieldMap(s, spec);
+            out = fieldMap(cache.selection, spec);
+            break;
         }
     }
-    return {};
+    cache.fields.insert(key, out);
+    return out;
+}
+
+InspectorController::Cache& InspectorController::cacheForCurrentState() const {
+    const auto documentRevision = session_.revision();
+    const auto selectionRevision = session_.selection().revision();
+    if (!cache_ || cache_->documentRevision != documentRevision ||
+        cache_->selectionRevision != selectionRevision) {
+        cache_.reset(); // un état périmé ne doit jamais survivre, même partiellement
+        Cache fresh;
+        fresh.documentRevision = documentRevision;
+        fresh.selectionRevision = selectionRevision;
+        fresh.selection = computeSelection();
+        cache_ = std::move(fresh);
+    }
+    return *cache_;
 }
 
 InspectorController::~InspectorController() {
@@ -266,7 +295,11 @@ QString InspectorController::setColour(const QString& hex) {
     return finish({}, QStringLiteral("Couleur modifiée."));
 }
 
-InspectorController::Selection InspectorController::selection() const {
+const InspectorController::Selection& InspectorController::selection() const {
+    return cacheForCurrentState().selection;
+}
+
+InspectorController::Selection InspectorController::computeSelection() const {
     const auto state = inspect(session_.project(), session_.selection().targets());
     Selection out;
     out.ids = state.ids;

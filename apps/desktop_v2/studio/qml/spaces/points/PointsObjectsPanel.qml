@@ -12,13 +12,28 @@ ColumnLayout {
     objectName: "pointsObjectsPanel"
     required property var workspace
     readonly property var spaceCtl: typeof pointsSpace !== "undefined" ? pointsSpace : null
-    readonly property int selectedCount: {
-        var count = 0
-        const entries = studio.objects
-        for (var i = 0; i < entries.length; ++i)
-            if (entries[i].selected)
-                ++count
-        return count
+    // Sélection hors des lignes : un clic ne recrée pas la liste, seules les lignes concernées
+    // relisent cet ensemble (identifiant -> true).
+    readonly property var selectedSet: studio.selectedIdSet
+    readonly property int selectedCount: studio.selectedObjectCount
+    // Une sélection faite ailleurs (canevas, bobine, arbre) amène sa ligne à l'écran : sans cela
+    // le débutant ne voit pas quelle ligne correspond à la zone cliquée (QA OBJ-028). Contain :
+    // aucun défilement si la ligne est déjà visible (clic dans la liste elle-même).
+    function revealSelection() {
+        const id = studio.primarySelectionId
+        if (id.length === 0)
+            return
+        const rows = panel.shownObjects
+        for (let i = 0; i < rows.length; ++i) {
+            if (rows[i].id === id) {
+                objectList.positionViewAtIndex(i, ListView.Contain)
+                return
+            }
+        }
+    }
+    Connections {
+        target: studio
+        function onSelectionChanged() { Qt.callLater(panel.revealSelection) }
     }
     function sourceOf(objectId) {
         return spaceCtl && spaceCtl.sources[objectId] ? spaceCtl.sources[objectId] : null
@@ -177,7 +192,8 @@ ColumnLayout {
             required property var modelData
             required property int index
             readonly property var source: panel.sourceOf(modelData.id)
-            readonly property bool primarySelected: modelData.selected && studio.primarySelectionId === modelData.id
+            readonly property bool selected: panel.selectedSet[modelData.id] === true
+            readonly property bool primarySelected: selected && studio.primarySelectionId === modelData.id
             width: objectList.width
             // Fenêtre basse : lignes compactes de hauteur fixe (le type passe dans la ligne du nom).
             // Sinon deux lignes de texte (nom + sous-titre) : la ligne grandit avec son contenu au
@@ -191,11 +207,11 @@ ColumnLayout {
             focusPolicy: Qt.StrongFocus
             Accessible.name: modelData.label
             Accessible.description: modelData.type
-            Accessible.selected: modelData.selected
+            Accessible.selected: objectRow.selected
             onClicked: studio.selectObject(modelData.id, false)
 
             background: Rectangle {
-                color: objectRow.modelData.selected ? Theme.accentSoft
+                color: objectRow.selected ? Theme.accentSoft
                        : objectRow.hovered ? Theme.raised : "transparent"
                 Rectangle {
                     width: objectRow.primarySelected ? 4 : 2
@@ -203,7 +219,7 @@ ColumnLayout {
                     anchors.top: parent.top
                     anchors.bottom: parent.bottom
                     color: objectRow.primarySelected ? Theme.accent : Theme.info
-                    visible: objectRow.modelData.selected
+                    visible: objectRow.selected
                 }
                 border.width: objectRow.activeFocus ? 1 : 0
                 border.color: Theme.accent
@@ -230,7 +246,7 @@ ColumnLayout {
                         Layout.fillWidth: true
                         text: objectRow.modelData.label
                               + (panel.compactRows ? "  ·  " + objectRow.modelData.type : "")
-                        color: objectRow.modelData.selected ? Theme.foreground : Theme.muted
+                        color: objectRow.selected ? Theme.foreground : Theme.muted
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.bodySize
                         elide: Text.ElideRight

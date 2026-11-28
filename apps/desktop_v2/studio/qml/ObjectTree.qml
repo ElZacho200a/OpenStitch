@@ -55,6 +55,24 @@ Item {
         studio.selectObject(id, Boolean(modifiers & Qt.ControlModifier))
         root.anchorId = id
     }
+    // Une sélection faite ailleurs (canevas, liste) amène la ligne de l'objet principal à l'écran
+    // (QA OBJ-028) ; un objet dans un calque replié reste replié. Contain : pas de saut si visible.
+    function revealSelection() {
+        const id = studio.primarySelectionId
+        if (id.length === 0)
+            return
+        const rows = root.folded.rows
+        for (let i = 0; i < rows.length; ++i) {
+            if (rows[i].kind === "object" && rows[i].id === id) {
+                view.positionViewAtIndex(i, ListView.Contain)
+                return
+            }
+        }
+    }
+    Connections {
+        target: studio
+        function onSelectionChanged() { Qt.callLater(root.revealSelection) }
+    }
     // Objets sélectionnés ({id: true}) : hors de `editor.tree`, qui ne se reconstruit pas à un clic.
     readonly property var selectedSet: editor.selectedIdSet
     property bool dragActive: false

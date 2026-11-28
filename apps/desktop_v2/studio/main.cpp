@@ -100,9 +100,10 @@ int main(int argc, char** argv) {
         {QStringLiteral("frame-stats"),
          QStringLiteral("Mesure les frames de la vraie fenêtre, écrit ce JSON, quitte"),
          QStringLiteral("json")});
-    parser.addOption({QStringLiteral("frame-scenario"),
-                      QStringLiteral("Scénario de mesure : idle (défaut) ou pan"),
-                      QStringLiteral("scenario"), QStringLiteral("idle")});
+    parser.addOption(
+        {QStringLiteral("frame-scenario"),
+         QStringLiteral("Scénario de mesure : idle (défaut), pan, select, click ou click-jitter"),
+         QStringLiteral("scenario"), QStringLiteral("idle")});
     parser.addOption({QStringLiteral("frame-seconds"), QStringLiteral("Durée de la mesure (s)"),
                       QStringLiteral("s"), QStringLiteral("8")});
     parser.process(app);

@@ -186,7 +186,7 @@ signals:
     void realisticRefreshRequested();
 
 private:
-    std::uint64_t gateStamp_{0}; // documentStamp() au dernier changed rediffusé
+    std::uint64_t gateStamp_{0}; // contentStamp() au dernier changed rediffusé
     struct SimData;              // effective sequence prefix data, built on a worker per scene
     void say(const QString& text);
     void onSceneChanged();
