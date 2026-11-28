@@ -979,3 +979,38 @@ part. Interlaced reste à 1,7 s à froid : environ 400 segments pèsent dans cha
 l'angle (rayon 4σ = 20 mm) ; réduire ce rayon ou échantillonner le champ sur une grille
 changerait la sortie. Parallélisme supplémentaire : les zones sont déjà réparties par le
 `parallel_for` des unités de génération.
+
+## 2026-11-28 : Suppr et annulation lentes dans Studio (panneau Fils caché)
+
+Symptôme : « les suppressions et les sélections sont redevenues lentes ». Mesure avec la sonde de
+frames (nouveau scénario `--frame-scenario delete` : sélection + Suppr par l'éditeur, puis
+annulation, en alternance), Release, `RuieGothique.osp` (435 objets), 1440×900.
+
+- La sélection seule n'avait pas régressé (scénario `select` : médiane 4,7 ms, comme après #473).
+- Une **suppression bloquait le fil d'interface 1,0 à 1,7 s**, une **annulation ~1 s**.
+  Les `PerfScope` existantes n'en expliquaient que ~200 ms. Sondes temporaires sur chaque récepteur
+  de `StudioController::changed` : `ThreadController` coûtait jusqu'à **775 ms par émission**.
+- Cause : `ThreadPanel.qml` reste instancié panneau fermé (`visible` seulement) ; ses `Repeater`
+  « Ordre de couture » (une ligne à deux boutons par objet), « Film couleur » et « Mes fils »
+  étaient repeuplés à chaque changement de contenu (`ThreadController::changed`, qui suit aussi
+  l'arrivée de la nouvelle scène de points). Chaque ligne du film relisait en plus
+  `controller.colorFilm.length` (liste reconstruite par ligne, O(n²)). Le coût touchait donc aussi
+  la première sélection après une édition, au retour de la scène.
+- Correctif : ces trois listes ne sont peuplées que panneau visible ET page affichée ; le film lit
+  `filmRepeater.count`. QTest : aucune ligne d'ordre ni de film sur la page « Plan ».
+- Revue UX indépendante (FRICTION) : page « Ordre » ouverte, chaque édition coûtait encore 1 à
+  2,6 s (sonde `delete` avec `OPENSTITCH_PROBE_THREAD_PAGE=order`). L'ordre de couture passe en
+  `ListView` virtualisée (seules les lignes visibles existent), modèle posé explicitement pour
+  garder la position de défilement ; ▼ désactivé sur la dernière ligne. Page « Ordre » ouverte :
+  Suppr ~240 ms, Annuler ~170 ms. Les onglets du panneau passent à la ligne (Flow) : « Coloris »,
+  « Tissu » et « Ordre » n'étaient plus atteignables à l'écran (LAY-014).
+
+| Geste (RuieGothique, médiane approx.) | avant | après |
+|---|---|---|
+| Suppr (sélection + suppression) | 1 000 – 1 700 ms | **~200 ms** |
+| Annuler | ~1 000 ms | **~130 ms** |
+| Sélection (`select`) | 4,7 ms | 4,7 ms |
+
+Reste (~200 ms par Suppr) : réparti entre `PointsSpaceController` (carte `sources`, jusqu'à 80 ms),
+`scene.apply(UI)` (~60 ms), `EditController` et `StudioController` (20-35 ms chacun). La sonde
+`click` ne sélectionne plus rien sur ce projet (`selected` = 0) : à revoir avant de s'y fier.

@@ -105,7 +105,8 @@ int main(int argc, char** argv) {
          QStringLiteral("json")});
     parser.addOption(
         {QStringLiteral("frame-scenario"),
-         QStringLiteral("Scénario de mesure : idle (défaut), pan, select, click ou click-jitter"),
+         QStringLiteral(
+             "Scénario de mesure : idle (défaut), pan, select, click, click-jitter ou delete"),
          QStringLiteral("scenario"), QStringLiteral("idle")});
     parser.addOption({QStringLiteral("frame-seconds"), QStringLiteral("Durée de la mesure (s)"),
                       QStringLiteral("s"), QStringLiteral("8")});

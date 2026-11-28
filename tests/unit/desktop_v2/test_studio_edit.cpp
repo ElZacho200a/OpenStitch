@@ -1222,9 +1222,12 @@ void StudioEditTest::objectRowDeleteMatchesTheDeleteKeyOfItsSpace() {
     QVERIFY(QMetaObject::invokeMethod(tree, "deleteSelectedObjects", Q_RETURN_ARG(QVariant, done)));
     QVERIFY(done.toBool());
     QCOMPARE(rig.session.project().embroidery_objects.size(), stitches - 1);
-    QCOMPARE(rig.session.project().vector_objects.size(), shapes);
+    // Suppr de l'espace Points (#474) : la forme part avec sa dernière couche de points, comme
+    // dans l'espace Vecteur ; elle ne reste que si une autre couche la brode encore.
+    QCOMPARE(rig.session.project().vector_objects.size(), shapes - 1);
     QCOMPARE(steps(rig), base + 1);
     QVERIFY(rig.session.undo());
+    QCOMPARE(rig.session.project().vector_objects.size(), shapes);
 
     select(rig, {kGreen});
     QVERIFY(tree->setProperty("shapeScope", true));
