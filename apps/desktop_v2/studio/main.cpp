@@ -109,6 +109,10 @@ int main(int argc, char** argv) {
     parser.addOption({QStringLiteral("frame-seconds"), QStringLiteral("Durée de la mesure (s)"),
                       QStringLiteral("s"), QStringLiteral("8")});
     parser.process(app);
+    if (parser.isSet(QStringLiteral("screenshot"))) {
+        // Une capture de recette ne lit ni n'écrit l'état de l'utilisateur.
+        QStandardPaths::setTestModeEnabled(true);
+    }
     {
         // Default font of every Qt control (Theme.fontFamily / Theme.bodySize): a control that is
         // not a Studio* component must still use the Studio type face, never the Qt default.
