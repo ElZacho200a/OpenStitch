@@ -30,9 +30,14 @@ ColumnLayout {
     property var pendingOptions: ({})
     function requestRegeneration(resegment) {
         // RegionController freezes these settings while the overwrite confirmation is shown.
-        pendingOptions = Object.assign({}, segmentationOptions)
+        pendingOptions = Object.assign({}, segmentationOptions, regionTools.satinOptions)
         regionTools.regenerate(resegment, false, pendingOptions)
     }
+    // Satin : réglé dans l'onglet Segmentation (état partagé studio.satinOptions) ; rappelé ici.
+    readonly property bool satinBands: regionTools.satinOptions.satin_bands === true
+    readonly property bool satinCompare: satinBands && regionTools.satinOptions.satin_compare === true
+    // Avertissements de la dernière génération : 3 lignes, le reste replié.
+    property bool warningsExpanded: false
     property int islandPx: 12
     property int holePx: 12
     function validHexColour(value) {
@@ -119,6 +124,134 @@ ColumnLayout {
         text: qsTr("Objets obsolètes : %1. Régénérez-les pour appliquer.").arg(regionTools.staleReason)
         wrapMode: Text.WordWrap
         color: Theme.accent; font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily
+    }
+
+    // OBJETS en tête de l'onglet : le bouton de génération et son résultat (résumé,
+    // avertissements) restent visibles sans défilement, même en petite fenêtre.
+    SectionLabel { text: qsTr("OBJETS") }
+    RowLayout {
+        Layout.fillWidth: true
+        StudioButton {
+            objectName: "regionRegenerate"
+            text: qsTr("Régénérer les objets")
+            emphasized: regionTools.stale
+            enabled: regionTools.hasSegmentation && !regionTools.busy
+            onClicked: section.requestRegeneration(false)
+        }
+        StudioButton {
+            objectName: "regionResegment"
+            text: qsTr("Re-segmenter")
+            enabled: imageTools.hasImage && !regionTools.busy
+            onClicked: section.requestRegeneration(true)
+        }
+        StudioButton {
+            objectName: "regionCancelTask"
+            text: qsTr("Annuler")
+            quiet: true
+            visible: regionTools.busy
+            onClicked: regionTools.cancelTask()
+        }
+    }
+    // Le satin se règle dans l'onglet Segmentation (un seul état) ; rappel de ce qui sera cousu.
+    Text {
+        objectName: "regionSatinStatus"
+        Layout.fillWidth: true
+        text: section.satinCompare ? qsTr("Satin sur les bandes, meilleur satin : réglage de l'onglet Segmentation.")
+              : section.satinBands ? qsTr("Satin sur les bandes : réglage de l'onglet Segmentation.")
+              : qsTr("Sans satin. « Satin sur les bandes » se règle dans l'onglet Segmentation.")
+        wrapMode: Text.WordWrap
+        color: Theme.muted; font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily
+    }
+    Rectangle {
+        objectName: "regionConfirm"
+        Layout.fillWidth: true
+        visible: section.confirmText.length > 0
+        implicitHeight: confirmColumn.implicitHeight + 16
+        color: Theme.accentSoft
+        border.color: Theme.accent
+        ColumnLayout {
+            id: confirmColumn
+            anchors.fill: parent
+            anchors.margins: 8
+            Text {
+                Layout.fillWidth: true
+                text: section.confirmText
+                wrapMode: Text.WordWrap
+                color: Theme.foreground; font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily
+            }
+            RowLayout {
+                StudioButton {
+                    objectName: "regionConfirmYes"
+                    text: qsTr("Remplacer les retouches")
+                    emphasized: true
+                    onClicked: regionTools.confirmRegeneration()
+                }
+                StudioButton {
+                    objectName: "regionConfirmNo"
+                    text: qsTr("Garder mes retouches")
+                    onClicked: regionTools.cancelConfirmation()
+                }
+            }
+        }
+    }
+    Text {
+        objectName: "regionMessage"
+        Layout.fillWidth: true
+        visible: regionTools.message.length > 0
+        text: regionTools.message
+        wrapMode: Text.WordWrap
+        color: regionTools.messageIsError ? Theme.error : Theme.success
+        font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily
+    }
+    // Avertissements de la dernière génération (régions écartées…) : résumé compté, trois lignes,
+    // le reste replié ; « Voir » sélectionne la région citée. Vidés seulement par la génération
+    // suivante.
+    ColumnLayout {
+        objectName: "regionWarnings"
+        Layout.fillWidth: true
+        spacing: 2
+        visible: regionTools.warnings.length > 0
+        Accessible.name: qsTr("Avertissements de la génération des objets")
+        Text {
+            objectName: "regionWarningSummary"
+            Layout.fillWidth: true
+            text: "⚠ " + qsTr("%1 à la dernière génération").arg(regionTools.warningSummary)
+            wrapMode: Text.WordWrap
+            color: Theme.warning; font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily
+        }
+        Repeater {
+            model: regionTools.warnings
+            delegate: RowLayout {
+                required property var modelData
+                required property int index
+                objectName: "regionWarningLine_" + index
+                Layout.fillWidth: true
+                visible: section.warningsExpanded || index < 3
+                spacing: 6
+                Text {
+                    Layout.fillWidth: true
+                    text: modelData.text
+                    wrapMode: Text.WordWrap
+                    color: Theme.muted; font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily
+                }
+                StudioButton {
+                    objectName: "regionWarningRow_" + index
+                    visible: modelData.region >= 0
+                    quiet: true
+                    text: qsTr("Voir")
+                    tooltip: qsTr("Sélectionner la région %1 sur le canevas").arg(modelData.region)
+                    onClicked: regionTools.selectRegion(modelData.region, "replace")
+                }
+            }
+        }
+        StudioButton {
+            objectName: "regionWarningsMore"
+            quiet: true
+            visible: regionTools.warnings.length > 3
+            text: section.warningsExpanded ? qsTr("Replier la liste")
+                                           : qsTr("Afficher les %1 autres").arg(regionTools.warnings.length - 3)
+            onClicked: section.warningsExpanded = !section.warningsExpanded
+        }
     }
 
     // Sélection, pinceau et gomme se font sur le canevas principal (SegmentationSpace.qml) :
@@ -430,69 +563,4 @@ ColumnLayout {
         color: Theme.muted; font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily
     }
 
-    SectionLabel { text: qsTr("OBJETS") }
-    RowLayout {
-        Layout.fillWidth: true
-        StudioButton {
-            objectName: "regionRegenerate"
-            text: qsTr("Régénérer les objets")
-            emphasized: regionTools.stale
-            enabled: regionTools.hasSegmentation && !regionTools.busy
-            onClicked: section.requestRegeneration(false)
-        }
-        StudioButton {
-            objectName: "regionResegment"
-            text: qsTr("Re-segmenter")
-            enabled: imageTools.hasImage && !regionTools.busy
-            onClicked: section.requestRegeneration(true)
-        }
-        StudioButton {
-            objectName: "regionCancelTask"
-            text: qsTr("Annuler")
-            quiet: true
-            visible: regionTools.busy
-            onClicked: regionTools.cancelTask()
-        }
-    }
-    Rectangle {
-        objectName: "regionConfirm"
-        Layout.fillWidth: true
-        visible: section.confirmText.length > 0
-        implicitHeight: confirmColumn.implicitHeight + 16
-        color: Theme.accentSoft
-        border.color: Theme.accent
-        ColumnLayout {
-            id: confirmColumn
-            anchors.fill: parent
-            anchors.margins: 8
-            Text {
-                Layout.fillWidth: true
-                text: section.confirmText
-                wrapMode: Text.WordWrap
-                color: Theme.foreground; font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily
-            }
-            RowLayout {
-                StudioButton {
-                    objectName: "regionConfirmYes"
-                    text: qsTr("Remplacer les retouches")
-                    emphasized: true
-                    onClicked: regionTools.confirmRegeneration()
-                }
-                StudioButton {
-                    objectName: "regionConfirmNo"
-                    text: qsTr("Garder mes retouches")
-                    onClicked: regionTools.cancelConfirmation()
-                }
-            }
-        }
-    }
-    Text {
-        objectName: "regionMessage"
-        Layout.fillWidth: true
-        visible: regionTools.message.length > 0
-        text: regionTools.message
-        wrapMode: Text.WordWrap
-        color: regionTools.messageIsError ? Theme.error : Theme.success
-        font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily
-    }
 }

@@ -3,6 +3,7 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
+#include <QQuickItem>
 #include <QQuickStyle>
 #include <QQuickWindow>
 #include <QSurfaceFormat>
@@ -11,6 +12,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QStandardPaths>
+#include <algorithm>
 #include <filesystem>
 #include <memory>
 
@@ -107,6 +109,10 @@ int main(int argc, char** argv) {
     parser.addOption({QStringLiteral("frame-seconds"), QStringLiteral("Durée de la mesure (s)"),
                       QStringLiteral("s"), QStringLiteral("8")});
     parser.process(app);
+    if (parser.isSet(QStringLiteral("screenshot"))) {
+        // Une capture de recette ne lit ni n'écrit l'état de l'utilisateur.
+        QStandardPaths::setTestModeEnabled(true);
+    }
     {
         // Default font of every Qt control (Theme.fontFamily / Theme.bodySize): a control that is
         // not a Studio* component must still use the Studio type face, never the Qt default.
@@ -224,6 +230,8 @@ int main(int argc, char** argv) {
     }
     // Recette « ia-segmenter » : la capture attend que l'analyse ait démarré puis fini.
     bool recipeAiPending = false;
+    // Recette « satin-comparatif » : la capture attend que le panneau ait défilé jusqu'au satin.
+    bool recipeScrollPending = false;
     if (parser.isSet(QStringLiteral("open-panels"))) {
         const auto names =
             parser.value(QStringLiteral("open-panels")).split(QLatin1Char(','), Qt::SkipEmptyParts);
@@ -271,6 +279,58 @@ int main(int argc, char** argv) {
                     // capture montre avec les fils retrouvés.
                     section->setProperty("fineStructures", true);
                 }
+            } else if (name == QStringLiteral("satin-comparatif") ||
+                       name == QStringLiteral("satin-sans")) {
+                // Recette (CX05) : onglet Segmentation, panneau défilé jusqu'au bloc BRODERIE sous
+                // « Appliquer ». « satin-comparatif » : satin et « meilleur satin » cochés,
+                // réglages avancés dépliés ; « satin-sans » : satin décoché, « meilleur satin »
+                // grisé.
+                const bool satinOn = name == QStringLiteral("satin-comparatif");
+                if (satinOn) {
+                    controller.setSatinOptions({{QStringLiteral("satin_bands"), true},
+                                                {QStringLiteral("satin_compare"), true}});
+                }
+                recipeScrollPending = true;
+                auto* scroll = new QTimer(&app);
+                scroll->setInterval(100);
+                QObject::connect(
+                    scroll, &QTimer::timeout, &app,
+                    [window, scroll, &imageTools, &recipeScrollPending, satinOn,
+                     ticks = 0]() mutable {
+                        auto* panels =
+                            window->findChild<QObject*>(QStringLiteral("segmentationPanels"));
+                        if (panels == nullptr || !imageTools.hasImage()) {
+                            return;
+                        }
+                        panels->setProperty("tab", 0);
+                        auto* section =
+                            panels->findChild<QObject*>(QStringLiteral("segmentationSection"));
+                        auto* target =
+                            panels->findChild<QQuickItem*>(QStringLiteral("segApplyButton"));
+                        if (section == nullptr || target == nullptr) {
+                            return;
+                        }
+                        section->setProperty("satinAdvancedOpen", satinOn);
+                        QQuickItem* flick = target->parentItem();
+                        while (flick != nullptr && !flick->inherits("QQuickFlickable")) {
+                            flick = flick->parentItem();
+                        }
+                        // Quelques passes : la mise en page se stabilise après le chargement.
+                        if (flick != nullptr) {
+                            auto* content = flick->property("contentItem").value<QQuickItem*>();
+                            const double y =
+                                content ? target->mapToItem(content, QPointF(0, 0)).y() : 0.0;
+                            const double maxY =
+                                flick->property("contentHeight").toDouble() - flick->height();
+                            flick->setProperty("contentY",
+                                               std::clamp(y - 40.0, 0.0, std::max(0.0, maxY)));
+                        }
+                        if (++ticks >= 8) {
+                            scroll->stop();
+                            recipeScrollPending = false;
+                        }
+                    });
+                scroll->start();
             } else if (name == QStringLiteral("avances")) {
                 // Recette : réglages avancés de l'inspecteur Points déjà affichés.
                 inspector.setShowAdvanced(true);
@@ -392,7 +452,7 @@ int main(int argc, char** argv) {
             if (!canvas) {
                 canvas = window->findChild<GpuCanvas*>(); // canevas de l'espace courant
             }
-            if (controller.busy() || imageTools.busy() || recipeAiPending) {
+            if (controller.busy() || imageTools.busy() || recipeAiPending || recipeScrollPending) {
                 return;
             }
             const auto screenshot = window->grabWindow();

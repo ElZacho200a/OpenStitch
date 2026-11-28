@@ -273,11 +273,30 @@ ColumnLayout {
                 text: qsTr("Bloc uni (débord 0,5 mm)")
                 palette.windowText: Theme.foreground
             }
+            // Satin : le même état que l'onglet Segmentation (studio.satinOptions), jamais une
+            // copie locale ; une case cochée ici l'est aussi là-bas.
             StudioCheckBox {
                 id: satinBox
                 objectName: "vectorConvertSatinBox"
                 Layout.fillWidth: true
-                text: qsTr("Bandes étroites en satin")
+                text: qsTr("Satin sur les bandes")
+                checked: studio.satinOptions.satin_bands === true
+                onToggled: {
+                    studio.satinOptions = Object.assign({}, studio.satinOptions, { satin_bands: checked })
+                    checked = Qt.binding(() => studio.satinOptions.satin_bands === true) // reste lié à l'état partagé
+                }
+                palette.windowText: Theme.foreground
+            }
+            StudioCheckBox {
+                objectName: "vectorConvertSatinCompareBox"
+                Layout.fillWidth: true
+                text: qsTr("Choisir le meilleur satin (expérimental)")
+                checked: satinBox.checked && studio.satinOptions.satin_compare === true
+                enabled: satinBox.checked
+                onToggled: {
+                    studio.satinOptions = Object.assign({}, studio.satinOptions, { satin_compare: checked })
+                    checked = Qt.binding(() => satinBox.checked && studio.satinOptions.satin_compare === true)
+                }
                 palette.windowText: Theme.foreground
             }
             RowLayout {
@@ -316,7 +335,6 @@ ColumnLayout {
                         panel.stage.convertToEmbroidery({
                             "pull": pullBox.checked ? "auto" : "none",
                             "overlapMm": overlapBox.checked ? 0.5 : 0.0,
-                            "satin": satinBox.checked,
                             "spacingMm": spacingSlider.value
                         })
                     }

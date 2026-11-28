@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "layers/vector_layer.hpp"
+#include "openstitch/autodigitize/autodigitize.hpp"
 #include "studio_controller.hpp"
 #include "task_manager.hpp"
 
@@ -93,10 +94,15 @@ public:
     //   pull      "none" | "auto"  compensation du tirage (défaut "auto")
     //   overlapMm double ≥ 0       débord sous les voisins (défaut 0,5 ; 0 = contours inchangés)
     //   insetMm   double ≥ 0       retrait du bord des tatamis (défaut 0,2)
-    //   satin     bool             bandes étroites en auto-satin (défaut faux)
     //   spacingMm double 0,1–2     espacement des rangées (tatami) / cordes (satin) ; 0 = défaut
+    // Le satin (bandes, meilleur satin, réglages avancés) n'est pas une option d'appel : c'est
+    // l'état partagé `StudioController::satinOptions`, le même que pour « Régénérer les objets ».
     Q_INVOKABLE bool convertToEmbroidery(const QVariantMap& options = {});
     [[nodiscard]] bool converting() const { return converting_; }
+    // Options réellement transmises au moteur par la dernière conversion lancée.
+    [[nodiscard]] const autodigitize::AutoOptions& lastAutoOptions() const {
+        return lastAutoOptions_;
+    }
 
 public:
     [[nodiscard]] double precisionMm() const { return precisionMm_; }
@@ -148,6 +154,7 @@ private:
     // File séparée : les reconstructions de calque (tasks_.cancelAll) n'annulent pas la conversion.
     TaskManager convertTasks_;
     bool converting_{false};
+    autodigitize::AutoOptions lastAutoOptions_;
     std::uint64_t buildRequest_{0};
     bool pending_{false};
     std::vector<std::uint64_t> pendingVisualKeys_;

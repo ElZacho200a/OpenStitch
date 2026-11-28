@@ -26,6 +26,33 @@ ColumnLayout {
                                       fine_structures: fineStructures })
     // The preview describes a specific parameter tuple. Invalidate/cancel it
     // immediately when colours, island size or smoothing changes.
+    // Satin de la génération des objets : état partagé `studio.satinOptions` (onglet Régions et
+    // espace Vecteurs lisent le même) ; une clé absente = valeur du moteur.
+    readonly property bool satinBands: studio.satinOptions.satin_bands === true
+    readonly property bool satinCompare: satinBands && studio.satinOptions.satin_compare === true
+    // Sans effet en zones de fondu (chaque zone devient un fondu).
+    readonly property bool satinAvailable: !blendZones
+    property bool satinAdvancedOpen: false
+    function setSatinOption(key, value) {
+        const next = Object.assign({}, studio.satinOptions)
+        if (value === undefined || value === null || value === "")
+            delete next[key]
+        else
+            next[key] = value
+        studio.satinOptions = next
+    }
+    // Champ avancé : "" si vide (défaut du moteur), null si invalide, sinon le nombre (0 à max).
+    function satinNumber(text, max) {
+        const t = String(text).trim().replace(",", ".")
+        if (t.length === 0)
+            return ""
+        const n = Number(t)
+        return isFinite(n) && n >= 0 && n <= max ? n : null
+    }
+    function commitSatinField(key, text, max) {
+        const n = section.satinNumber(text, max)
+        section.setSatinOption(key, n === null ? "" : n)
+    }
     // Aperçu en direct (comme en V1) : un changement de réglage relance l'aperçu après 350 ms, sans
     // toucher au document. Désactivable pour les grosses images.
     property bool liveEnabled: true
@@ -204,6 +231,123 @@ ColumnLayout {
             quiet: true
             visible: imageTools.segPreviewActive || imageTools.busy
             onClicked: imageTools.busy ? imageTools.cancelTask() : imageTools.cancelSegmentationPreview()
+        }
+    }
+    // Satin des objets de broderie, juste sous « Appliquer » : UN seul état (studio.satinOptions)
+    // pour « Régénérer les objets » (onglet Régions) et « Convertir en broderie » (Vecteurs).
+    SectionLabel { text: qsTr("BRODERIE") }
+    StudioCheckBox {
+        objectName: "regionSatinBands"
+        Layout.fillWidth: true
+        text: qsTr("Satin sur les bandes")
+        checked: section.satinBands
+        enabled: section.satinAvailable
+        onToggled: {
+            section.setSatinOption("satin_bands", checked)
+            checked = Qt.binding(() => section.satinBands) // reste lié à l'état partagé
+        }
+        palette.windowText: Theme.foreground
+        Accessible.name: qsTr("Coudre les bandes étroites en satin")
+    }
+    StudioCheckBox {
+        objectName: "regionSatinCompare"
+        Layout.fillWidth: true
+        text: qsTr("Choisir le meilleur satin (expérimental)")
+        checked: section.satinCompare
+        enabled: section.satinAvailable && section.satinBands
+        onToggled: {
+            section.setSatinOption("satin_compare", checked)
+            checked = Qt.binding(() => section.satinCompare)
+        }
+        palette.windowText: Theme.foreground
+        Accessible.name: qsTr("Choisir pour chaque bande le meilleur des satins mesurés")
+    }
+    // Un seul texte, trois états : ce que fait le satin, ce que change « meilleur satin », pourquoi
+    // c'est grisé.
+    Text {
+        objectName: "regionSatinHint"
+        Layout.fillWidth: true
+        text: !section.satinAvailable ? qsTr("Satin indisponible avec les zones de fondu.")
+              : !section.satinBands ? qsTr("Cochez « Satin sur les bandes » pour coudre les formes étroites (bordures, tiges, lettres) en satin plutôt qu'en remplissage. « Meilleur satin » demande cette case.")
+              : section.satinCompare ? qsTr("Pour chaque bande, trois satins sont essayés et mesurés ; le meilleur est gardé. Génération plus lente : vérifiez le résultat dans l'espace Points.")
+              : qsTr("Les formes étroites seront cousues en satin à la génération des objets. « Meilleur satin » compare en plus trois façons de les coudre.")
+        wrapMode: Text.WordWrap
+        color: Theme.muted; font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily
+    }
+    // Réglages avancés repliés par défaut : un débutant n'a rien à y toucher.
+    StudioButton {
+        objectName: "regionSatinAdvanced"
+        quiet: true
+        visible: section.satinBands && section.satinAvailable
+        text: section.satinAdvancedOpen ? qsTr("▾ Réglages avancés du satin") : qsTr("▸ Réglages avancés du satin")
+        Accessible.role: Accessible.Button
+        Accessible.checkable: true
+        Accessible.checked: section.satinAdvancedOpen
+        onClicked: section.satinAdvancedOpen = !section.satinAdvancedOpen
+    }
+    GridLayout {
+        objectName: "regionSatinAdvancedSection"
+        columns: 2
+        Layout.fillWidth: true
+        columnSpacing: 8
+        visible: section.satinAdvancedOpen && section.satinBands && section.satinAvailable
+        Text { text: qsTr("Couverture minimale (%)"); color: Theme.foreground; font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+        StudioTextField {
+            id: coverageField
+            objectName: "regionSatinMinCoverage"
+            Layout.preferredWidth: 80
+            placeholderText: qsTr("auto")
+            // Pas de liaison : la saisie n'est jamais réécrite pendant la frappe. Affichée en %,
+            // transmise en fraction (0 à 1) au moteur.
+            Component.onCompleted: text = studio.satinOptions.satin_min_coverage !== undefined ? String(Math.round(studio.satinOptions.satin_min_coverage * 1000) / 10) : ""
+            invalid: section.satinNumber(text, 100) === null
+            Accessible.name: qsTr("Part minimale de la forme couverte par le satin, en pour cent ; vide pour la valeur par défaut")
+            Controls.ToolTip.visible: hovered
+            Controls.ToolTip.delay: 600
+            Controls.ToolTip.text: qsTr("Un satin n'est retenu que s'il couvre au moins cette part de la forme ; sinon elle reste en remplissage.")
+            onTextChanged: {
+                const n = section.satinNumber(text, 100)
+                section.setSatinOption("satin_min_coverage", n === null || n === "" ? "" : n / 100)
+            }
+        }
+        Text { text: qsTr("Largeur max. d'une forme compacte (mm)"); color: Theme.foreground; font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+        StudioTextField {
+            id: compactField
+            objectName: "regionSatinCompactMax"
+            Layout.preferredWidth: 80
+            placeholderText: qsTr("auto")
+            Component.onCompleted: text = studio.satinOptions.satin_compact_max_mm !== undefined ? String(studio.satinOptions.satin_compact_max_mm) : ""
+            invalid: section.satinNumber(text, 1e6) === null
+            Accessible.name: qsTr("Largeur maximale en millimètres d'une forme compacte cousue en satin ; vide pour la valeur par défaut")
+            Controls.ToolTip.visible: hovered
+            Controls.ToolTip.delay: 600
+            Controls.ToolTip.text: qsTr("Disque ou forme ramassée : au-delà de cette largeur, elle reste en remplissage.")
+            onTextChanged: section.commitSatinField("satin_compact_max_mm", text, 1e6)
+        }
+        Text { text: qsTr("Point satin le plus long (mm)"); color: section.satinCompare ? Theme.foreground : Theme.faint; font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+        StudioTextField {
+            id: stitchField
+            objectName: "regionSatinMaxStitch"
+            Layout.preferredWidth: 80
+            enabled: section.satinCompare
+            placeholderText: qsTr("auto")
+            Component.onCompleted: text = studio.satinOptions.satin_compare_max_stitch_mm !== undefined ? String(studio.satinOptions.satin_compare_max_stitch_mm) : ""
+            invalid: section.satinNumber(text, 1e6) === null
+            Accessible.name: qsTr("Longueur maximale en millimètres d'un point satin pour le meilleur satin ; vide pour la valeur par défaut")
+            Controls.ToolTip.visible: hovered
+            Controls.ToolTip.delay: 600
+            Controls.ToolTip.text: qsTr("« Meilleur satin » écarte un satin dont un point serait plus long : il accrocherait.")
+            onTextChanged: section.commitSatinField("satin_compare_max_stitch_mm", text, 1e6)
+        }
+        Text {
+            objectName: "regionSatinAdvancedHint"
+            Layout.columnSpan: 2
+            Layout.fillWidth: true
+            readonly property bool anyInvalid: coverageField.invalid || compactField.invalid || stitchField.invalid
+            text: anyInvalid ? qsTr("Valeur ignorée : le défaut est utilisé. Saisissez un nombre positif (couverture : 0 à 100 %).")
+                             : qsTr("Vide : valeur par défaut. Le point le plus long ne s'applique qu'avec « meilleur satin ».")
+            wrapMode: Text.WordWrap
+            color: anyInvalid ? Theme.warning : Theme.muted; font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily
         }
     }
     ColumnLayout {

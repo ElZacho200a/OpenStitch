@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -142,6 +143,9 @@ struct Regeneration {
     std::size_t reused{0};     // objets numérisés inchangés : ID et points en cache conservés
     std::size_t lostRetouches{
         0}; // objets issus de régions dont des retouches de points sont remplacées
+    // Avertissements non bloquants du moteur (`AutoResult::warnings`, rapport du mode blend),
+    // dans son ordre : « région N écartée (… mm², … px) : contour non vectorisable », etc.
+    std::vector<std::string> warnings;
 };
 
 // Ce qu'une régénération touche : `retouchedObjects` = objets issus de la segmentation qui portent
