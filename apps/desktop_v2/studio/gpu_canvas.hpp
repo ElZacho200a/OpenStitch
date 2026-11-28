@@ -42,6 +42,10 @@ class GpuCanvas : public QQuickItem {
     Q_PROPERTY(QVariantList handlesOverlay READ handlesOverlay NOTIFY overlayChanged)
     // Point zéro de l'aiguille en pixels écran : { visible, custom, x, y }.
     Q_PROPERTY(QVariantMap needleOrigin READ needleOrigin NOTIFY overlayChanged)
+    // Viseur du centre d'un remplissage radial / spirale / concentrique (objet seul sélectionné,
+    // espace Points), en pixels écran : { visible, fixed, dragging, x, y }. Se glisse au canevas
+    // (`fillCenterDropped`), double-clic : centre automatique (`fillCenterResetRequested`).
+    Q_PROPERTY(QVariantMap fillCenter READ fillCenter NOTIFY overlayChanged)
     Q_PROPERTY(double zoom READ zoom NOTIFY viewChanged)
     Q_PROPERTY(bool zoomRectMode READ zoomRectMode WRITE setZoomRectMode NOTIFY zoomRectModeChanged)
     Q_PROPERTY(QRectF rubberBand READ rubberBand NOTIFY rubberBandChanged)
@@ -80,6 +84,7 @@ public:
     void setDigitize(DigitizeGestures* digitize);
     [[nodiscard]] QVariantList handlesOverlay() const;
     [[nodiscard]] QVariantMap needleOrigin() const;
+    [[nodiscard]] QVariantMap fillCenter() const;
     [[nodiscard]] double zoom() const { return camera_.scale(); }
     [[nodiscard]] bool zoomRectMode() const { return zoomRectMode_; }
     void setZoomRectMode(bool value);
@@ -163,6 +168,10 @@ signals:
     void overlayChanged();
     // Clic droit : position canevas et identifiant de l'objet touché (vide = fond).
     void contextMenuRequested(double x, double y, const QString& objectId);
+    // Viseur du centre relâché ailleurs : nouveau centre en mm modèle (Y vers le haut).
+    void fillCenterDropped(double xMm, double yMm);
+    // Double-clic sur un viseur fixé : revenir au centre automatique.
+    void fillCenterResetRequested();
 
 protected:
     QSGNode* updatePaintNode(QSGNode* oldNode, UpdatePaintNodeData*) override;
@@ -179,7 +188,14 @@ protected:
     void hoverLeaveEvent(QHoverEvent* event) override;
 
 private:
-    enum class Gesture { None, Pan, Marquee, Move, Handle, ZoomRect, Tool, Digitize };
+    enum class Gesture { None, Pan, Marquee, Move, Handle, ZoomRect, Tool, Digitize, FillCenter };
+    // Centre affiché (mm scène) et vrai s'il est fixé ; rien si le viseur n'a pas lieu d'être.
+    struct FillCenterView {
+        ScenePoint world;
+        bool fixed{false};
+    };
+    [[nodiscard]] std::optional<FillCenterView> fillCenterView() const;
+    [[nodiscard]] bool overFillCenter(const QPointF& screen) const;
     // 0..7 : NO N NE E SE S SO O ; 8 : rotation ; -1 : aucune.
     [[nodiscard]] int handleAt(const QPointF& p) const;
     [[nodiscard]] QPointF handlePoint(int handle, const QRectF& box) const;
@@ -236,6 +252,7 @@ private:
     double handleFactor_{1.0};
     double handleAngle_{0.0};
     double moveDx_{0.0}, moveDy_{0.0}; // mm, corrigés par l'accrochage
+    ScenePoint fillCenterDrag_{};      // mm scène, pendant le glisser du viseur
     QRectF marquee_, ghost_;
     QVariantList guides_;
     QString gestureInfo_;

@@ -172,6 +172,16 @@ Item {
                     digitize: root.digitizeController
                     focus: true
                     onContextMenuRequested: function(x, y, objectId) { contextMenu.openAt(x, y) }
+                    // Viseur du centre (radial, spirale, concentrique) : une commande annulable
+                    // par l'inspecteur, sur l'objet sélectionné.
+                    onFillCenterDropped: function(x, y) {
+                        if (typeof inspector !== "undefined" && inspector)
+                            inspector.setPoint("center_mm", x, y)
+                    }
+                    onFillCenterResetRequested: {
+                        if (typeof inspector !== "undefined" && inspector)
+                            inspector.clearParam("center_mm")
+                    }
                 }
 
                 HandlesOverlay {
@@ -199,6 +209,12 @@ Item {
 
                 NeedleOriginMarker {
                     objectName: "needleOriginMarker"
+                    anchors.fill: parent
+                    gpu: spaceCanvas
+                }
+
+                FillCenterMarker {
+                    objectName: "fillCenterMarker"
                     anchors.fill: parent
                     gpu: spaceCanvas
                 }

@@ -27,6 +27,7 @@ TEST_CASE("contour fill: osp round-trip keeps every setting") {
     params.inset = Micrometers{350};
     params.spiral = false;
     params.hidden_underpath = false;
+    params.center = Vec2um{Micrometers{-12'500}, Micrometers{8'000}}; // FILL-CENTER
     document::EmbroideryObject emb;
     emb.id = project.object_ids.next();
     emb.params = params;
