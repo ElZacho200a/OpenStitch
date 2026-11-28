@@ -998,6 +998,12 @@ annulation, en alternance), Release, `RuieGothique.osp` (435 objets), 1440×900.
   la première sélection après une édition, au retour de la scène.
 - Correctif : ces trois listes ne sont peuplées que panneau visible ET page affichée ; le film lit
   `filmRepeater.count`. QTest : aucune ligne d'ordre ni de film sur la page « Plan ».
+- Revue UX indépendante (FRICTION) : page « Ordre » ouverte, chaque édition coûtait encore 1 à
+  2,6 s (sonde `delete` avec `OPENSTITCH_PROBE_THREAD_PAGE=order`). L'ordre de couture passe en
+  `ListView` virtualisée (seules les lignes visibles existent), modèle posé explicitement pour
+  garder la position de défilement ; ▼ désactivé sur la dernière ligne. Page « Ordre » ouverte :
+  Suppr ~240 ms, Annuler ~170 ms. Les onglets du panneau passent à la ligne (Flow) : « Coloris »,
+  « Tissu » et « Ordre » n'étaient plus atteignables à l'écran (LAY-014).
 
 | Geste (RuieGothique, médiane approx.) | avant | après |
 |---|---|---|

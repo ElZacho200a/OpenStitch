@@ -685,6 +685,16 @@ void StudioViewTest::mainQmlHostsEveryPanel() {
     // panneau reste instancié, et ces lignes étaient recréées à chaque édition (Suppr ~1 s).
     QVERIFY(named(window, "orderDown0") == nullptr);
     QVERIFY(named(window, "filmSelect0") == nullptr);
+    // LAY-014 : tous les onglets restent dans le panneau (retour à la ligne, pas de défilement
+    // horizontal qui cachait « Ordre »).
+    {
+        auto* threadPanel = qobject_cast<QQuickItem*>(named(window, "threadPanel"));
+        auto* orderTab = qobject_cast<QQuickItem*>(named(window, "threadTab_order"));
+        QVERIFY(threadPanel && orderTab);
+        const QRectF tab = orderTab->mapRectToItem(
+            threadPanel, QRectF(0, 0, orderTab->width(), orderTab->height()));
+        QTRY_VERIFY(tab.right() <= threadPanel->width() + 0.5);
+    }
     auto* projectActions = named(window, "threadActionsFlow");
     QVERIFY(projectActions);
     QTRY_VERIFY(projectActions->height() >= projectActions->childrenRect().height() - 1.0);
@@ -730,6 +740,10 @@ void StudioViewTest::mainQmlHostsEveryPanel() {
     QVERIFY(press(window, "orderDown0"));
     QCOMPARE(threads.sewingOrder().first().toMap().value("id").toString(),
              QString::number(secondId));
+    // Liste virtualisée, suivie après l'édition ; ▼ désactivé sur la dernière ligne.
+    const auto lastRow = QStringLiteral("orderDown%1").arg(threads.sewingOrder().size() - 1);
+    QTRY_VERIFY(named(window, lastRow.toUtf8().constData()) != nullptr);
+    QVERIFY(!named(window, lastRow.toUtf8().constData())->property("enabled").toBool());
 
     // Panel "Analyse".
     QVERIFY(press(window, "analysisPanelButton"));

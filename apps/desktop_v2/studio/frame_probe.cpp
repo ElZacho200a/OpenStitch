@@ -108,6 +108,16 @@ void FrameProbe::start(GpuCanvas* canvas) {
     const bool clicks =
         scenario_ == QStringLiteral("click") || scenario_ == QStringLiteral("click-jitter");
     const bool deletes = scenario_ == QStringLiteral("delete");
+    // OPENSTITCH_PROBE_THREAD_PAGE=order (ou film, stock…) : mesurer avec le panneau Fils ouvert
+    // sur cette page, dont les listes suivent chaque édition.
+    if (const auto page = qEnvironmentVariable("OPENSTITCH_PROBE_THREAD_PAGE"); !page.isEmpty()) {
+        if (auto* hub = window_.findChild<QObject*>(QStringLiteral("viewHub"))) {
+            hub->setProperty("openPanel", QStringLiteral("threads"));
+        }
+        if (auto* threadPanel = window_.findChild<QObject*>(QStringLiteral("threadPanel"))) {
+            threadPanel->setProperty("page", page);
+        }
+    }
     if ((scenario_ == QStringLiteral("select") || clicks || deletes) && canvas_ &&
         canvas_->controller()) {
         // Sélections successives des zones aux formes les plus détaillées (plus une très simple,
