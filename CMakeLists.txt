@@ -56,6 +56,12 @@ add_subdirectory(libs/autodigitize)
 add_subdirectory(libs/project_io)
 add_subdirectory(libs/commands)
 add_subdirectory(libs/project_ops)
+# SCRIPT-01 : script Python sur la sélection (CPython embarqué via pybind11, vcpkg Windows
+# seulement). Absent = lib non compilée, commande CLI et panneau Studio masqués.
+include(OpenStitchPython)
+if(OPENSTITCH_WITH_PYTHON)
+    add_subdirectory(libs/scripting)
+endif()
 add_subdirectory(libs/mcp)
 add_subdirectory(libs/agent)
 # BUILD-OPT-01.6 : PCH/Unity opt-in (no-op par defaut).

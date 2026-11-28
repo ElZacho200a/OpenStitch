@@ -28,6 +28,9 @@
 #include "fade_controller.hpp"
 #include "file_controller.hpp"
 #include "fix_controller.hpp"
+#ifdef OPENSTITCH_HAS_SCRIPTING
+#include "script_controller.hpp"
+#endif
 #include "frame_probe.hpp"
 #include "gpu_canvas.hpp"
 #include "help_controller.hpp"
@@ -83,6 +86,7 @@ int main(int argc, char** argv) {
          QStringLiteral(
              "Recette : ouvre ces panneaux avant --screenshot (liste séparée par des "
              "virgules : vue, fils, analyse, satin, fondu, points, tirage, applique, corriger, "
+             "script, script-apercu (tout sélectionner puis aperçu du script), "
              "inspecteur, preferences, avances, recherche:<texte> ; un seul panneau à la fois "
              "par groupe, le dernier gagne)"),
          QStringLiteral("liste")});
@@ -186,6 +190,9 @@ int main(int argc, char** argv) {
     PullController pull(controller, &inspector);
     AppliqueController applique(controller, inspector);
     FixController fix(controller);
+#ifdef OPENSTITCH_HAS_SCRIPTING
+    ScriptController selectionScript(controller);
+#endif
     PointsSpaceController pointsSpace(controller);
     VectorSpaceController vectorStage(controller);
     QQmlApplicationEngine engine;
@@ -194,6 +201,9 @@ int main(int argc, char** argv) {
     engine.rootContext()->setContextProperty(QStringLiteral("pull"), &pull);
     engine.rootContext()->setContextProperty(QStringLiteral("applique"), &applique);
     engine.rootContext()->setContextProperty(QStringLiteral("fix"), &fix);
+#ifdef OPENSTITCH_HAS_SCRIPTING
+    engine.rootContext()->setContextProperty(QStringLiteral("selectionScript"), &selectionScript);
+#endif
     engine.addImageProvider(QStringLiteral("prepare"), imageTools.createProvider());
     engine.rootContext()->setContextProperty(QStringLiteral("satin"), &satin);
     engine.rootContext()->setContextProperty(QStringLiteral("fade"), &fade);
@@ -240,6 +250,10 @@ int main(int argc, char** argv) {
     bool recipeAiPending = false;
     // Recette « satin-comparatif » : la capture attend que le panneau ait défilé jusqu'au satin.
     bool recipeScrollPending = false;
+    // Recette « script-apercu » (SCRIPT-01) : tout sélectionner puis lancer l'aperçu du script ;
+    // la capture attend son résultat.
+    [[maybe_unused]] bool recipeScriptPreview = false;
+    bool recipeScriptPending = false;
     if (parser.isSet(QStringLiteral("open-panels"))) {
         const auto names =
             parser.value(QStringLiteral("open-panels")).split(QLatin1Char(','), Qt::SkipEmptyParts);
@@ -264,6 +278,10 @@ int main(int argc, char** argv) {
                        (name == QStringLiteral("satin") || name == QStringLiteral("points") ||
                         name == QStringLiteral("applique"))) {
                 digitizeHub->setProperty("openPanel", name);
+            } else if (digitizeHub && (name == QStringLiteral("script") ||
+                                       name == QStringLiteral("script-apercu"))) {
+                digitizeHub->setProperty("openPanel", QStringLiteral("script"));
+                recipeScriptPreview = name == QStringLiteral("script-apercu");
             } else if (digitizeHub && name == QStringLiteral("corriger")) {
                 digitizeHub->setProperty("openPanel", QStringLiteral("fix"));
             } else if (digitizeHub && name == QStringLiteral("fondu")) {
@@ -418,6 +436,26 @@ int main(int argc, char** argv) {
             }
         });
     }
+#ifdef OPENSTITCH_HAS_SCRIPTING
+    if (recipeScriptPreview) {
+        recipeScriptPending = true;
+        QObject::connect(&controller, &StudioController::loadFinished, &app, [&](bool success) {
+            if (!success) {
+                return;
+            }
+            (void)editor.selectAll();
+            QObject::connect(&selectionScript, &ScriptController::busyChanged, &app, [&] {
+                if (!selectionScript.busy()) {
+                    recipeScriptPending = false;
+                }
+            });
+            selectionScript.preview();
+            if (!selectionScript.busy()) {
+                recipeScriptPending = false;
+            }
+        });
+    }
+#endif
     if (!parser.positionalArguments().isEmpty()) {
         files.openPath(QDir::current().absoluteFilePath(parser.positionalArguments().first()));
     } else if (!parser.isSet(QStringLiteral("screenshot"))) {
@@ -467,7 +505,8 @@ int main(int argc, char** argv) {
             if (!canvas) {
                 canvas = window->findChild<GpuCanvas*>(); // canevas de l'espace courant
             }
-            if (controller.busy() || imageTools.busy() || recipeAiPending || recipeScrollPending) {
+            if (controller.busy() || imageTools.busy() || recipeAiPending || recipeScrollPending ||
+                recipeScriptPending) {
                 return;
             }
             const auto screenshot = window->grabWindow();

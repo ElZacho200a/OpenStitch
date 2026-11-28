@@ -259,7 +259,9 @@ Item {
 
                 CanvasContextMenu {
                     id: contextMenu
+                    scriptAvailable: typeof selectionScript !== "undefined"
                     onHoopRequested: function(x, y) { root.hoopRequested(x, y) }
+                    onScriptRequested: digitizeHub.openPanel = "script"
                 }
 
                 // Les deux hubs ne dessinent plus de boutons : la barre de panneaux les pilote.

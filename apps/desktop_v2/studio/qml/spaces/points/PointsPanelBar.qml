@@ -4,7 +4,7 @@ import QtQuick.Layouts
 import "../.."
 
 // Barre compacte des panneaux de l'espace « Points » : réglages par type de point à gauche
-// (Satin, Fondu, Retouche, Tirage, Appliqué), affichage à droite (Réaliste, Vue, Fils, Analyse,
+// (Satin, Fondu, Retouche, Tirage, Appliqué, Script), affichage à droite (Réaliste, Vue, Fils, Analyse,
 // Simulation). Un seul panneau latéral est ouvert à la fois : l'espace ferme le hub frère dès
 // qu'un hub ouvre un panneau. Étroite, la barre ne garde que les icônes (infobulles).
 Rectangle {
@@ -58,6 +58,7 @@ Rectangle {
         Tab { objectName: "pullPanelButton"; visible: bar.digitizeHub.ready && typeof pull !== "undefined"; iconName: "pull"; text: bar.labelSettings(qsTr("Tirage")); tooltip: qsTr("Compensation du tirage du tissu"); checked: bar.digitizeHub.openPanel === "pull"; onClicked: bar.digitizeHub.toggle("pull") }
         Tab { objectName: "fixPanelButton"; visible: bar.digitizeHub.ready && typeof fix !== "undefined"; iconName: "analysis"; text: bar.labelSettings(qsTr("Corriger")); tooltip: qsTr("Corriger les problèmes, réduire les fils"); checked: bar.digitizeHub.openPanel === "fix"; onClicked: bar.digitizeHub.toggle("fix") }
         Tab { objectName: "appliquePanelButton"; visible: bar.digitizeHub.ready && typeof applique !== "undefined"; iconName: "applique"; text: bar.labelSettings(qsTr("Appliqué")); tooltip: qsTr("Appliqué : placement, maintien, découpe"); checked: bar.digitizeHub.openPanel === "applique"; onClicked: bar.digitizeHub.toggle("applique") }
+        Tab { objectName: "scriptPanelButton"; visible: bar.digitizeHub.ready && typeof selectionScript !== "undefined"; iconName: "script"; text: bar.labelSettings(qsTr("Script")); tooltip: qsTr("Script Python : régler la sélection selon couleur, taille, position…"); checked: bar.digitizeHub.openPanel === "script"; onClicked: bar.digitizeHub.toggle("script") }
 
         Item { Layout.fillWidth: true }
 

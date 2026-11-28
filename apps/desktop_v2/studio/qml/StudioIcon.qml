@@ -41,6 +41,7 @@ case "plus": return "M4 10 L16 10 M10 4 L10 16";
         case "text": return "M4 5 L4 3.5 L16 3.5 L16 5 M10 3.5 L10 16.5 M7.5 16.5 L12.5 16.5";
         case "eyedropper": return "M13 3 L17 7 M12 4 L16 8 L8 16 L4 16 L4 12 Z M4 16 L2.5 17.5";
         case "measure": return "M2 13 L13 2 L18 7 L7 18 Z M5 10 L7 12 M8 7 L10 9 M11 4 L13 6";
+        case "script": return "M7 5 L2.5 10 L7 15 M13 5 L17.5 10 L13 15 M11.5 3.5 L8.5 16.5";
         case "applique": return "M3 10 C3 5 8 3 10 3 C13 3 17 5 17 10 C17 14 13 17 10 17 C6 17 3 14 3 10 Z M7 10 L9 12 L13 8";
         case "pull": return "M3 10 L17 10 M3 10 L6 7 M3 10 L6 13 M17 10 L14 7 M17 10 L14 13 M10 4 L10 7 M10 13 L10 16";
         case "view": return "M2 10 C5 5 15 5 18 10 C15 15 5 15 2 10 Z M10 7.5 A2.5 2.5 0 1 1 9.99 7.5";
