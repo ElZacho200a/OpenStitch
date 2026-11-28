@@ -94,7 +94,9 @@ Item {
         anchors.left: imageRailCard.visible ? imageRailCard.right : parent.left
         anchors.top: parent.top
         anchors.bottom: parent.bottom
-        anchors.right: sidePanel.visible ? sidePanel.left : parent.right
+        // Replié ou déplacé : le panneau ne retranche plus la largeur du canevas (il flotte
+        // par-dessus une fois détaché de sa position par défaut).
+        anchors.right: (sidePanel.visible && !sidePanel.freePositioned) ? sidePanel.left : parent.right
         anchors.margins: Theme.gap
         clip: true
 
@@ -215,50 +217,49 @@ Item {
     }
 
     // Panneau de l'espace : prétraitements (ImagePrepSection existant) + pile d'opérations.
-    StudioCard {
+    DockPanel {
         id: sidePanel
         objectName: "imageSidePanel"
-        visible: root.hasImage && root.prepReady
+        title: qsTr("Image")
+        spaceId: root.spaceId
+        available: root.hasImage && root.prepReady
+        floatLayer: root
         anchors.right: parent.right
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         anchors.margins: Theme.gap
         width: Math.min(340, Math.max(180, root.width * 0.38))
-        Controls.ScrollView {
-            anchors.fill: parent
-            anchors.margins: 8
-            contentWidth: availableWidth
-            clip: true
-            ColumnLayout {
-                width: Math.max(0, sidePanel.width - 28)
-                ImageLayerSelector {
-                    id: imageLayerSelector
-                    enabled: !studio.busy
-                    Layout.fillWidth: true
-                    visible: root.prepReady && imageTools.imageLayers.length > 1
-                    space: root.space
-                    layerNames: root.prepReady ? imageTools.imageLayers : []
-                    currentIndex: root.prepReady ? imageTools.imageLayerIndex : -1
-                    onLayerActivated: index => imageTools.selectImageLayer(index)
-                }
-                spacing: 10
-                ImageSizeSection {
-                    Layout.fillWidth: true
-                    space: root.space
-                }
-                Loader {
-                    Layout.fillWidth: true
-                    active: root.prepReady
-                    sourceComponent: ImagePrepSection {
-                        showThumbnails: false
-                        showHistory: false
-                    }
-                }
-                ImageOpStack {
-                    Layout.fillWidth: true
-                    space: root.space
-                }
+        applyHomeAnchors: function () {
+            sidePanel.anchors.right = parent.right
+            sidePanel.anchors.top = parent.top
+            sidePanel.anchors.bottom = parent.bottom
+        }
+
+        ImageLayerSelector {
+            id: imageLayerSelector
+            enabled: !studio.busy
+            Layout.fillWidth: true
+            visible: root.prepReady && imageTools.imageLayers.length > 1
+            space: root.space
+            layerNames: root.prepReady ? imageTools.imageLayers : []
+            currentIndex: root.prepReady ? imageTools.imageLayerIndex : -1
+            onLayerActivated: index => imageTools.selectImageLayer(index)
+        }
+        ImageSizeSection {
+            Layout.fillWidth: true
+            space: root.space
+        }
+        Loader {
+            Layout.fillWidth: true
+            active: root.prepReady
+            sourceComponent: ImagePrepSection {
+                showThumbnails: false
+                showHistory: false
             }
+        }
+        ImageOpStack {
+            Layout.fillWidth: true
+            space: root.space
         }
     }
 

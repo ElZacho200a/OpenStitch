@@ -180,7 +180,8 @@ Item {
         anchors.left: segRailCard.visible ? segRailCard.right : parent.left
         anchors.top: parent.top
         anchors.bottom: parent.bottom
-        anchors.right: panelLoader.active ? panelLoader.left : parent.right
+        anchors.right: (segmentationPanelsDock.visible && !segmentationPanelsDock.freePositioned)
+                       ? segmentationPanelsDock.left : parent.right
         anchors.margins: Theme.gap
         clip: true
 
@@ -772,17 +773,39 @@ Item {
         }
     }
 
-    Loader {
-        id: panelLoader
-        objectName: "segmentationPanelsLoader"
+    // DockPanel ancré en dur (pas le Loader directement) : un déplacement/détachement reparente
+    // le DockPanel, jamais le Loader — celui-ci reste tranquillement dans son contenu et continue
+    // de redimensionner SegmentationPanels comme avant (seul ce qui l'entoure a changé).
+    DockPanel {
+        id: segmentationPanelsDock
+        objectName: "segmentationPanelsDock"
+        title: qsTr("Segmentation")
+        spaceId: root.spaceId
+        floatLayer: root
+        // SegmentationPanels gère déjà son propre défilement par onglet : il lui faut la vraie
+        // hauteur du panneau, pas un second défilement.
+        scrollBody: false
+        available: root.hasTools
         anchors.right: parent.right
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         anchors.margins: Theme.gap
         anchors.leftMargin: 0
         width: Math.min(340, Math.max(180, root.width * 0.38))
-        active: root.hasTools
-        sourceComponent: SegmentationPanels {}
+        applyHomeAnchors: function () {
+            segmentationPanelsDock.anchors.right = parent.right
+            segmentationPanelsDock.anchors.top = parent.top
+            segmentationPanelsDock.anchors.bottom = parent.bottom
+        }
+
+        Loader {
+            id: panelLoader
+            objectName: "segmentationPanelsLoader"
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            active: root.hasTools
+            sourceComponent: SegmentationPanels {}
+        }
     }
 
     readonly property var editorController: editor

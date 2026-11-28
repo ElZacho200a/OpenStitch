@@ -232,14 +232,27 @@ Item {
             }
         }
 
-        StudioCard {
+        DockPanel {
+            id: vectorSideCard
             objectName: "vectorSideCard"
+            title: qsTr("Vecteurs")
+            spaceId: root.spaceId
+            floatLayer: root
+            // LayerPanel/ObjectTree et vectorActionsScroll gèrent déjà leur propre défilement avec
+            // Layout.fillHeight : il leur faut la vraie hauteur du panneau, pas un second scroll.
+            scrollBody: false
             Layout.preferredWidth: 320
             Layout.fillHeight: true
+            // Replié, le panneau garde sa place en haut de la colonne au lieu de se centrer.
+            Layout.alignment: Qt.AlignTop
+            applyHomeAnchors: function () {
+                vectorSideCard.Layout.preferredWidth = 320
+                vectorSideCard.Layout.fillHeight = true
+            }
             ColumnLayout {
                 id: sideColumn
-                anchors.fill: parent
-                anchors.margins: 2
+                Layout.fillWidth: true
+                Layout.fillHeight: true
                 spacing: 0
                 StudioComboBox {
                     objectName: "vectorImageLayerSelector"
@@ -324,7 +337,9 @@ Item {
                     objectName: "vectorInspectorTabs"
                     property int currentIndex: 0
                     Layout.fillWidth: true
-                    Layout.preferredHeight: Theme.controlHeight + 12
+                    // Fenêtre basse : rembourrage réduit, la liste garde sa place malgré l'en-tête
+                    // du panneau déplaçable.
+                    Layout.preferredHeight: Theme.controlHeight + (shapePanel.compact ? 4 : 12)
                     color: "transparent"
                     RowLayout {
                         anchors.fill: parent

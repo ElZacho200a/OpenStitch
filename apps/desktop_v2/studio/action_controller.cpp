@@ -75,6 +75,8 @@ const std::vector<StudioCommand>& studioCommands() {
             {"cmd.view.zoom-out", "Zoom arrière", "Vue", "", ""},
             {"cmd.view.zoom-selection", "Zoom sur la sélection", "Vue", "", "selection"},
             {"cmd.prefs.open", "Préférences…", "Application", "Ctrl+,", ""},
+            // Menu des panneaux de l'espace (DockPanel) : seul accès quand l'en-tête est compact.
+            {"cmd.panels.open", "Panneaux de l'espace…", "Application", "", ""},
             {"cmd.companion.open", "Compagnon IA", "Application", "Ctrl+J", ""},
             {"cmd.companion.toggle", "Compagnon IA : activer ou couper le pont", "Application",
              "Ctrl+Shift+J", ""},

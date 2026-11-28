@@ -24,6 +24,7 @@ Item {
     signal hoopRequested(real x, real y)
     objectName: "pointsSpace"
     required property var workspace
+    readonly property string spaceId: "points"
     property bool active: false
     readonly property var canvas: spaceCanvas
     readonly property var editorController: editor
@@ -66,6 +67,37 @@ Item {
 
     // Publication de l'état de l'étape « points ». La publication ne remplace le calcul de base
     // que lorsque l'amont (les formes) est sain : sinon le bandeau de l'amont garde la main.
+    // Hauteurs des deux panneaux de droite (Objets, Type de points), partagées entre leurs
+    // déclarations et leur remise en place (`applyHomeAnchors`). Un panneau replié ne réclame
+    // plus de hauteur : l'autre prend la place.
+    function objectsCardFills() {
+        return !inspectorArea.active && !pointsObjectsCard.collapsed
+    }
+    // Habillage du panneau Objets (en-tête, séparateur) ajouté aux hauteurs historiques : la liste
+    // et l'EditBar gardent exactement la place qu'elles avaient dans l'ancienne carte.
+    function objectsCardChrome() {
+        return pointsObjectsCard.chromeHeight
+    }
+    function objectsCardMinimum() {
+        if (pointsObjectsCard.collapsed || !inspectorArea.active) return 0
+        return (root.workspace.editOpen ? 275 : 200) + root.objectsCardChrome()
+    }
+    function objectsCardPreferred() {
+        if (pointsObjectsCard.collapsed || !inspectorArea.active) return -1
+        return Math.min(580, root.height * (root.workspace.editOpen ? 0.62 : root.height < 700 ? 0.34 : 0.38))
+               + root.objectsCardChrome()
+    }
+    function inspectorCardFills() {
+        return inspectorArea.active && !pointsInspectorCard.collapsed
+    }
+    function inspectorCardMinimum() {
+        return inspectorArea.active && !pointsInspectorCard.collapsed ? 150 : 0
+    }
+    function inspectorCardPreferred() {
+        if (pointsInspectorCard.collapsed || inspectorArea.active) return -1
+        return inspectorHint.implicitHeight + 2 * Theme.panelPadding + pointsInspectorCard.chromeHeight
+    }
+
     property string publishedKey: ""
     function publishStage() {
         if (!root.active) return
@@ -562,40 +594,69 @@ Item {
             Layout.fillHeight: true
             spacing: Theme.gap
 
-            StudioCard {
+            DockPanel {
+                id: pointsObjectsCard
                 objectName: "pointsObjectsCard"
+                title: qsTr("Objets")
+                spaceId: root.spaceId
+                floatLayer: root
+                // PointsObjectsPanel a sa propre ListView (Layout.fillHeight) : il lui faut la
+                // vraie hauteur du panneau, pas un second défilement.
+                scrollBody: false
                 Layout.fillWidth: true
-                Layout.fillHeight: !inspectorArea.active
+                Layout.fillHeight: root.objectsCardFills()
                 // When EditBar is open, allocate enough room for its own scroll area
                 // and the object tree. The point inspector remains independently scrollable.
-                Layout.minimumHeight: inspectorArea.active ? (root.workspace.editOpen ? 275 : 200) : 0
-                Layout.preferredHeight: inspectorArea.active
-                                        ? Math.min(580, root.height * (root.workspace.editOpen ? 0.62
-                                                                       : root.height < 700 ? 0.34 : 0.38))
-                                        : -1
+                Layout.minimumHeight: root.objectsCardMinimum()
+                Layout.preferredHeight: root.objectsCardPreferred()
+                // Mêmes liaisons qu'à la déclaration (Qt.binding, pas des valeurs figées) : le
+                // panneau remis à sa place suit toujours la sélection et l'ouverture de l'EditBar.
+                applyHomeAnchors: function () {
+                    pointsObjectsCard.Layout.fillWidth = true
+                    pointsObjectsCard.Layout.fillHeight = Qt.binding(() => root.objectsCardFills())
+                    pointsObjectsCard.Layout.minimumHeight = Qt.binding(() => root.objectsCardMinimum())
+                    pointsObjectsCard.Layout.preferredHeight = Qt.binding(() => root.objectsCardPreferred())
+                }
+
                 PointsObjectsPanel {
                     workspace: root.workspace
                     canvas: spaceCanvas
                     compactRows: root.height < 700
-                    anchors.fill: parent
-                    anchors.margins: 2
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    // Il prend la hauteur du panneau et se compresse lui-même (liste, EditBar
+                    // défilants), comme avec l'ancien anchors.fill : son minimum implicite ne doit
+                    // pas le faire déborder sous le panneau Type de points.
+                    Layout.minimumHeight: 0
                 }
             }
 
-            StudioCard {
+            DockPanel {
+                id: pointsInspectorCard
                 objectName: "pointsInspectorCard"
+                title: qsTr("Type de points")
+                spaceId: root.spaceId
+                floatLayer: root
+                // Inspector a son propre Flickable interne : il lui faut la vraie hauteur du
+                // panneau, pas un second défilement.
+                scrollBody: false
                 Layout.fillWidth: true
-                Layout.fillHeight: inspectorArea.active
-                Layout.minimumHeight: inspectorArea.active ? 150 : 0
-                Layout.preferredHeight: inspectorArea.active
-                                        ? -1 : inspectorHint.implicitHeight + 2 * Theme.panelPadding
+                Layout.fillHeight: root.inspectorCardFills()
+                Layout.minimumHeight: root.inspectorCardMinimum()
+                Layout.preferredHeight: root.inspectorCardPreferred()
+                applyHomeAnchors: function () {
+                    pointsInspectorCard.Layout.fillWidth = true
+                    pointsInspectorCard.Layout.fillHeight = Qt.binding(() => root.inspectorCardFills())
+                    pointsInspectorCard.Layout.minimumHeight = Qt.binding(() => root.inspectorCardMinimum())
+                    pointsInspectorCard.Layout.preferredHeight = Qt.binding(() => root.inspectorCardPreferred())
+                }
 
                 Item {
                     id: inspectorArea
                     objectName: "inspectorArea"
                     readonly property bool active: inspectorPanel.active
-                    anchors.fill: parent
-                    anchors.margins: 2
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
                     visible: active
                     clip: true
                     Inspector {
@@ -607,10 +668,10 @@ Item {
                 ColumnLayout {
                     id: inspectorHint
                     visible: !inspectorArea.active
-                    anchors.fill: parent
-                    anchors.margins: Theme.panelPadding
+                    Layout.fillWidth: true
+                    // Le titre est porté par l'en-tête du panneau : ici, seulement la consigne.
+                    Layout.margins: Theme.panelPadding
                     spacing: 6
-                    SectionLabel { text: qsTr("TYPE DE POINTS") }
                     Text {
                         Layout.fillWidth: true
                         text: root.height < 700
