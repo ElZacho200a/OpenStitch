@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <optional>
 #include <utility>
 
 #include "openstitch/core/parallel.hpp"
@@ -260,16 +261,20 @@ bool inside_even_odd(const std::vector<FlatRing>& rings, double x, double y) {
     return inside;
 }
 
-} // namespace
-
-std::vector<ColorSample> sample_region_colors(const image::Image& image, Millimeters mm_per_px,
-                                              const std::vector<geometry::PathSet>& shape,
-                                              std::size_t max_samples) {
-    std::vector<ColorSample> out;
-    if (image.empty() || mm_per_px.value <= 0.0 || max_samples == 0) {
-        return out;
-    }
+// Fenêtre d'échantillonnage d'une forme : anneaux aplatis et boîte englobante en pixels de
+// l'image (bornes incluses), dans le repère d'une image `width` x `height`.
+struct SampleWindow {
     std::vector<FlatRing> rings;
+    int x0{0};
+    int x1{-1};
+    int y0{0};
+    int y1{-1};
+};
+
+std::optional<SampleWindow> sample_window(int width, int height, Millimeters mm_per_px,
+                                          const std::vector<geometry::PathSet>& shape) {
+    SampleWindow win;
+    std::vector<FlatRing>& rings = win.rings;
     for (const auto& set : shape) {
         const auto flat = geometry::flatten_to_polygon(set, Micrometers{50});
         const auto add = [&rings](const geometry::Path& path) {
@@ -289,12 +294,12 @@ std::vector<ColorSample> sample_region_colors(const image::Image& image, Millime
         }
     }
     if (rings.empty()) {
-        return out;
+        return std::nullopt;
     }
 
     const double pxUm = mm_per_px.value * 1000.0;
-    const double w = image.width;
-    const double h = image.height;
+    const double w = width;
+    const double h = height;
     // Boîte englobante de la forme en pixels.
     double minX = 1e300;
     double maxX = -1e300;
@@ -308,13 +313,31 @@ std::vector<ColorSample> sample_region_colors(const image::Image& image, Millime
             maxY = std::max(maxY, y);
         }
     }
-    const int x0 = std::max(0, static_cast<int>(std::floor(minX / pxUm + w / 2.0 - 0.5)));
-    const int x1 = std::min(image.width - 1, static_cast<int>(std::ceil(maxX / pxUm + w / 2.0)));
-    const int y0 = std::max(0, static_cast<int>(std::floor(h / 2.0 - maxY / pxUm - 0.5)));
-    const int y1 = std::min(image.height - 1, static_cast<int>(std::ceil(h / 2.0 - minY / pxUm)));
-    if (x1 < x0 || y1 < y0) {
-        return out;
+    win.x0 = std::max(0, static_cast<int>(std::floor(minX / pxUm + w / 2.0 - 0.5)));
+    win.x1 = std::min(width - 1, static_cast<int>(std::ceil(maxX / pxUm + w / 2.0)));
+    win.y0 = std::max(0, static_cast<int>(std::floor(h / 2.0 - maxY / pxUm - 0.5)));
+    win.y1 = std::min(height - 1, static_cast<int>(std::ceil(h / 2.0 - minY / pxUm)));
+    if (win.x1 < win.x0 || win.y1 < win.y0) {
+        return std::nullopt;
     }
+    return win;
+}
+
+// Échantillons de la fenêtre `win`. Les coordonnées suivent l'image entière (`width` x `height`) ;
+// les pixels sont lus dans `pixels`, qui couvre au moins la fenêtre et dont le pixel (0, 0) est le
+// pixel (`off_x`, `off_y`) de l'image entière.
+std::vector<ColorSample> sample_window_colors(const SampleWindow& win, int width, int height,
+                                              Millimeters mm_per_px, const image::Image& pixels,
+                                              int off_x, int off_y, std::size_t max_samples) {
+    std::vector<ColorSample> out;
+    const std::vector<FlatRing>& rings = win.rings;
+    const int x0 = win.x0;
+    const int x1 = win.x1;
+    const int y0 = win.y0;
+    const int y1 = win.y1;
+    const double pxUm = mm_per_px.value * 1000.0;
+    const double w = width;
+    const double h = height;
     const double boxPixels = static_cast<double>(x1 - x0 + 1) * static_cast<double>(y1 - y0 + 1);
     const int stride = std::max(
         1, static_cast<int>(std::ceil(std::sqrt(boxPixels / static_cast<double>(max_samples)))));
@@ -332,9 +355,9 @@ std::vector<ColorSample> sample_region_colors(const image::Image& image, Millime
                 continue;
             }
             const std::uint8_t* pixel =
-                image.rgba.data() +
-                (static_cast<std::size_t>(py) * static_cast<std::size_t>(image.width) +
-                 static_cast<std::size_t>(px)) *
+                pixels.rgba.data() +
+                (static_cast<std::size_t>(py - off_y) * static_cast<std::size_t>(pixels.width) +
+                 static_cast<std::size_t>(px - off_x)) *
                     4;
             if (pixel[3] < 128) {
                 continue;
@@ -348,6 +371,22 @@ std::vector<ColorSample> sample_region_colors(const image::Image& image, Millime
     return out;
 }
 
+} // namespace
+
+std::vector<ColorSample> sample_region_colors(const image::Image& image, Millimeters mm_per_px,
+                                              const std::vector<geometry::PathSet>& shape,
+                                              std::size_t max_samples) {
+    if (image.empty() || mm_per_px.value <= 0.0 || max_samples == 0) {
+        return {};
+    }
+    const auto win = sample_window(image.width, image.height, mm_per_px, shape);
+    if (!win) {
+        return {};
+    }
+    return sample_window_colors(*win, image.width, image.height, mm_per_px, image, 0, 0,
+                                max_samples);
+}
+
 Result<RegionBlend> analyze_region_blend(const image::Image& image, Millimeters mm_per_px,
                                          const std::vector<geometry::PathSet>& shape,
                                          const thread_palette::ThreadChart* chart,
@@ -356,9 +395,46 @@ Result<RegionBlend> analyze_region_blend(const image::Image& image, Millimeters 
         return fail(ErrorCategory::UserInput, "Aucune image à analyser");
     }
     // Lissage bilatéral : le grain et le bruit JPEG ne doivent pas fausser l'ACP.
-    const auto smooth = image::apply_op(image, image::BilateralDenoiseOp{2});
-    const image::Image& source = smooth ? *smooth : image;
-    const auto samples = sample_region_colors(source, mm_per_px, shape);
+    // HP-PERF-026 : seule la fenêtre de la forme est lue ; on lisse donc cette fenêtre plus un
+    // halo au moins égal au rayon du filtre (diamètre 7 pour la force 2, rayon 3), pas l'image
+    // entière. Un pixel de la fenêtre ne voit que des pixels réels dans son rayon (ou le même bord
+    // répliqué quand le halo touche le bord de l'image) : valeurs identiques au lissage global.
+    constexpr int kStrength = 2;
+    constexpr int kHalo = (3 + 2 * kStrength) / 2 + 1;
+    std::vector<ColorSample> samples;
+    if (mm_per_px.value > 0.0) {
+        if (const auto win = sample_window(image.width, image.height, mm_per_px, shape)) {
+            const int cx0 = std::max(0, win->x0 - kHalo);
+            const int cx1 = std::min(image.width - 1, win->x1 + kHalo);
+            const int cy0 = std::max(0, win->y0 - kHalo);
+            const int cy1 = std::min(image.height - 1, win->y1 + kHalo);
+            const bool whole =
+                cx0 == 0 && cy0 == 0 && cx1 == image.width - 1 && cy1 == image.height - 1;
+            image::Image crop;
+            if (!whole) {
+                crop.width = cx1 - cx0 + 1;
+                crop.height = cy1 - cy0 + 1;
+                crop.source_had_alpha = image.source_had_alpha;
+                crop.rgba.resize(static_cast<std::size_t>(crop.width) * crop.height * 4);
+                const std::size_t rowBytes = static_cast<std::size_t>(crop.width) * 4;
+                for (int y = cy0; y <= cy1; ++y) {
+                    const auto src = image.rgba.begin() +
+                                     static_cast<std::ptrdiff_t>(
+                                         (static_cast<std::size_t>(y) * image.width + cx0) * 4);
+                    std::copy(src, src + static_cast<std::ptrdiff_t>(rowBytes),
+                              crop.rgba.begin() +
+                                  static_cast<std::ptrdiff_t>(static_cast<std::size_t>(y - cy0) *
+                                                              rowBytes));
+                }
+            }
+            const auto smooth =
+                image::apply_op(whole ? image : crop, image::BilateralDenoiseOp{kStrength});
+            samples = smooth ? sample_window_colors(*win, image.width, image.height, mm_per_px,
+                                                    *smooth, cx0, cy0, 20'000)
+                             : sample_window_colors(*win, image.width, image.height, mm_per_px,
+                                                    image, 0, 0, 20'000);
+        }
+    }
     if (samples.size() < 2) {
         return fail(ErrorCategory::UserInput, "La forme ne recouvre aucun pixel de l'image");
     }
