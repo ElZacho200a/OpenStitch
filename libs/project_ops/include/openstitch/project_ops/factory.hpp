@@ -81,8 +81,12 @@ struct DigitizeSettings {
     double curve_tolerance_mm{0.0}; // shapes
     bool satin_bands{false};        // shapes
     bool satin_compare{false};      // shapes, avec satin_bands : AUTO-SATIN-01 (expérimental)
-    bool single_path{false};        // contours
-    bool coherent_lines{false};     // contours : FDoG avant segmentation
+    // HP-AUTO-024 : réglages avancés du satin (absents : valeurs du moteur).
+    std::optional<double> satin_min_coverage;          // 0..1
+    std::optional<double> satin_compact_max_mm;        // largeur max d'une forme compacte en satin
+    std::optional<double> satin_compare_max_stitch_mm; // traversée max (satin_compare)
+    bool single_path{false};                           // contours
+    bool coherent_lines{false};                        // contours : FDoG avant segmentation
     // SEG-FINE-01 (expérimental) : les traits fins (cordages, nervures) lus sur l'image non
     // quantifiée survivent au lissage et au nettoyage des petites régions
     // (`SegmentationOptions::fine_structures`). Sans effet en modes blend et stipple.
