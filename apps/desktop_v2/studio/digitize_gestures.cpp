@@ -100,7 +100,9 @@ void DigitizeGestures::hover(double x, double y, double pxPerMm) {
     if (drag_ != Drag::None || !isFillGuideMode()) {
         return;
     }
-    scale_ = std::max(pxPerMm, 1e-6);
+    const double scale = std::max(pxPerMm, 1e-6);
+    const bool zoomed = std::abs(scale - scale_) > 1e-3 * scale; // espacement des poignées
+    scale_ = scale;
     const auto p = toModel(x, y);
     const int guide =
         satin_.fillGuideAt(mode_ == QLatin1String("break"), p.x, p.y, kGripPx / scale_);
@@ -108,6 +110,8 @@ void DigitizeGestures::hover(double x, double y, double pxPerMm) {
     // vers un nœud un peu à l'écart ne fait pas disparaître ses poignées.
     if (guide >= 0 && guide != hoverGuide_) {
         hoverGuide_ = guide;
+        rebuildStatic();
+    } else if (zoomed && hoverGuide_ >= 0) {
         rebuildStatic();
     }
 }
@@ -695,8 +699,17 @@ void DigitizeGestures::rebuildStatic() {
             if (guide != hoverGuide_) {
                 continue;
             }
+            // Affichage seulement : une poignée trop proche (à l'écran) de la précédente n'est
+            // pas dessinée ; le nœud reste saisissable (le plus proche du pointeur l'emporte).
+            const double minGap = 1.5 * kGripPx / scale_;
+            std::optional<PointMm> previous;
             for (const auto& rawPoint : map.value(QStringLiteral("nodes")).toList()) {
-                handles.points.push_back(toScene(mapPoint(rawPoint.toMap())));
+                const auto p = mapPoint(rawPoint.toMap());
+                if (previous && dist2(*previous, p) < minGap * minGap) {
+                    continue;
+                }
+                previous = p;
+                handles.points.push_back(toScene(p));
             }
         }
         static_.push_back(std::move(handles));
