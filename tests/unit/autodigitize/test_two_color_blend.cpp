@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "openstitch/autodigitize/two_color_blend.hpp"
+#include "openstitch/image/ops.hpp"
 #include "openstitch/stitch_generation/directional_fill.hpp"
 
 using namespace openstitch;
@@ -380,5 +381,55 @@ TEST_CASE("region blend: same samples with one thread and with several (HP-PERF-
         CHECK(one[i].pos.x.value == many[i].pos.x.value);
         CHECK(one[i].pos.y.value == many[i].pos.y.value);
         CHECK(one[i].rgb == many[i].rgb);
+    }
+}
+
+// HP-PERF-026 : le lissage bilatéral n'est plus appliqué qu'à la fenêtre de la forme (plus un
+// halo). Le résultat doit rester celui du lissage de l'image entière, y compris pour une forme qui
+// touche un bord, un coin ou déborde de l'image.
+TEST_CASE("region blend: windowed smoothing equals whole image smoothing (HP-PERF-026)") {
+    image::Image img;
+    img.width = 157;
+    img.height = 113;
+    img.rgba.resize(static_cast<std::size_t>(img.width) * img.height * 4);
+    std::uint32_t state = 12345u;
+    for (int y = 0; y < img.height; ++y) {
+        for (int x = 0; x < img.width; ++x) {
+            std::uint8_t* px = img.rgba.data() + (static_cast<std::size_t>(y) * img.width + x) * 4;
+            for (int c = 0; c < 3; ++c) {
+                state = state * 1664525u + 1013904223u;
+                const int noise = static_cast<int>((state >> 24) % 41) - 20;
+                const int base = c == 0 ? 40 + x * 180 / img.width
+                                        : (c == 1 ? 200 - y * 150 / img.height : 90 + (x ^ y) % 60);
+                px[c] = static_cast<std::uint8_t>(std::clamp(base + noise, 0, 255));
+            }
+            px[3] = (x * 7 + y * 3) % 23 == 0 ? 0 : 255;
+        }
+    }
+    const Millimeters mm{0.5};
+    const auto smooth = image::apply_op(img, image::BilateralDenoiseOp{2});
+    REQUIRE(smooth.has_value());
+    // Image 78,5 x 56,5 mm, centrée sur l'origine.
+    const std::vector<geometry::PathSet> shapes{
+        rect_um(-10'000, -8'000, 12'000, 9'000),    // intérieur
+        rect_um(-39'250, -28'250, -20'000, -5'000), // coin bas gauche
+        rect_um(15'000, 10'000, 60'000, 40'000),    // déborde en haut à droite
+        rect_um(-50'000, -40'000, 50'000, 40'000),  // plus grand que l'image
+        rect_um(-2'000, -30'000, 3'000, 30'000),    // bande verticale bord à bord
+    };
+    for (const auto& shape : shapes) {
+        const auto reference = analyze_two_color_blend(sample_region_colors(*smooth, mm, {shape}));
+        const auto windowed = analyze_region_blend(img, mm, {shape});
+        REQUIRE(reference.has_value());
+        REQUIRE(windowed.has_value());
+        const TwoColorBlend& a = *reference;
+        const TwoColorBlend& b = windowed->blend;
+        CHECK(a.background == b.background);
+        CHECK(a.foreground == b.foreground);
+        CHECK(a.mean_t == b.mean_t);
+        CHECK(a.foreground_density.from == b.foreground_density.from);
+        CHECK(a.foreground_density.to == b.foreground_density.to);
+        CHECK(a.foreground_density.spacing_from == b.foreground_density.spacing_from);
+        CHECK(a.foreground_density.spacing_to == b.foreground_density.spacing_to);
     }
 }
