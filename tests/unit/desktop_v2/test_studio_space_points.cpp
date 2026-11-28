@@ -400,6 +400,52 @@ private slots:
         QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
     }
 
+    // DockPanel dans un Layout : replier « Objets » laisse la hauteur à « Type de points » ; le
+    // déplacer puis le remettre en place lui rend sa position AU-DESSUS de l'inspecteur et ses
+    // hauteurs liées à la sélection (pas des valeurs figées au moment du retour).
+    void objectsPanelCollapsesFloatsAndReturnsInOrder() {
+        Rig rig;
+        open(rig);
+        rig.window->resize(1440, 900);
+        rig.studio.selectObject(
+            QString::number(rig.session.project().embroidery_objects.front().id.value));
+        QTRY_VERIFY_WITH_TIMEOUT(rig.inspector.count() > 0, 5'000);
+        auto* objects = named(rig.window, "pointsObjectsCard");
+        auto* inspector = named(rig.window, "pointsInspectorCard");
+        QVERIFY(objects && inspector);
+        const auto top = [](QQuickItem* item) { return item->mapToScene(QPointF(0.0, 0.0)).y(); };
+        QTRY_VERIFY(top(objects) < top(inspector));
+        // Mise en page stabilisée : Objets à sa hauteur préférée, l'inspecteur remplit le reste.
+        QTRY_VERIFY(objects->height() > 150.0 && objects->height() < inspector->height());
+        const double objectsHeight = objects->height();
+        const double inspectorHeight = inspector->height();
+        QVERIFY(objectsHeight > 150.0 && inspectorHeight > 150.0);
+
+        QVERIFY(press(rig.window, "pointsObjectsCard_collapseButton"));
+        QTRY_VERIFY(objects->height() < 80.0);
+        QTRY_VERIFY(inspector->height() > inspectorHeight + 100.0);
+        QVERIFY(press(rig.window, "pointsObjectsCard_collapseButton"));
+        QTRY_COMPARE(objects->height(), objectsHeight);
+
+        QVERIFY(QMetaObject::invokeMethod(objects, "nudge", Q_ARG(QVariant, -40.0),
+                                          Q_ARG(QVariant, 0.0)));
+        QTRY_VERIFY(objects->property("freePositioned").toBool());
+        // Sorti du Layout : l'inspecteur occupe toute la colonne.
+        QTRY_VERIFY(inspector->height() > inspectorHeight + 100.0);
+        QVERIFY(press(rig.window, "pointsObjectsCard_resetButton"));
+        QTRY_VERIFY(!objects->property("freePositioned").toBool());
+        QTRY_VERIFY(top(objects) < top(inspector));
+        QTRY_COMPARE(objects->height(), objectsHeight);
+
+        // Les hauteurs restent liées après le retour (pas figées) : ouvrir l'EditBar agrandit
+        // encore le panneau Objets.
+        rig.workspace->setEditOpen(true);
+        QTRY_VERIFY(objects->height() > objectsHeight + 100.0);
+        rig.workspace->setEditOpen(false);
+        QTRY_COMPARE(objects->height(), objectsHeight);
+        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+    }
+
     void everyPointTypeIsInTheSelector() {
         Rig rig;
         open(rig);

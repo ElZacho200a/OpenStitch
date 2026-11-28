@@ -260,6 +260,64 @@ private slots:
         QCOMPARE(canvas->sourceImage().data->after.height(), 120);
         QVERIFY(named(window, QStringLiteral("imageSidePanel"))->isVisible());
 
+        // Panneau malléable (DockPanel) : masquer puis rouvrir par le menu « Panneaux », replier,
+        // déplacer au clavier (le canevas récupère la largeur), tout remettre en place.
+        {
+            auto* sidePanel = named(window, QStringLiteral("imageSidePanel"));
+            auto* imageCanvas = named(window, QStringLiteral("imageCanvas"));
+            const double dockedHeight = sidePanel->height();
+            const double dockedX = sidePanel->x();
+            const double canvasWidth = imageCanvas->width();
+            QVERIFY(dockedHeight > 200.0);
+
+            QVERIFY(press(window, QStringLiteral("imageSidePanel_hideButton")));
+            QTRY_VERIFY(!sidePanel->isVisible());
+            QTRY_VERIFY(imageCanvas->width() > canvasWidth + 100.0);
+            QVERIFY(press(window, QStringLiteral("panelsMenuButton")));
+            QTRY_VERIFY(named(window, QStringLiteral("panelsMenu_imageSidePanel_toggleHidden")));
+            QVERIFY(press(window, QStringLiteral("panelsMenu_imageSidePanel_toggleHidden")));
+            QTRY_VERIFY(sidePanel->isVisible());
+            QTRY_COMPARE(imageCanvas->width(), canvasWidth);
+
+            QVERIFY(press(window, QStringLiteral("imageSidePanel_collapseButton")));
+            QTRY_VERIFY(sidePanel->height() < 80.0);
+            QVERIFY(press(window, QStringLiteral("imageSidePanel_collapseButton")));
+            QTRY_COMPARE(sidePanel->height(), dockedHeight);
+
+            auto* header = named(window, QStringLiteral("imageSidePanel_header"));
+            QVERIFY(header);
+            header->forceActiveFocus();
+            QTest::keyClick(window, Qt::Key_Left);
+            QTRY_VERIFY(sidePanel->property("freePositioned").toBool());
+            // Flottant : même taille, décalé de 20 px, il ne retranche plus la largeur du canevas.
+            QCOMPARE(sidePanel->height(), dockedHeight);
+            QTRY_VERIFY(imageCanvas->width() > canvasWidth + 100.0);
+            QVERIFY(named(window, QStringLiteral("imageSidePanel_resetButton"))->isVisible());
+            // Borné à l'espace : impossible de le pousser hors de la fenêtre.
+            for (int i = 0; i < 200; ++i) {
+                QTest::keyClick(window, Qt::Key_Up);
+            }
+            QCOMPARE(sidePanel->y(), 0.0);
+
+            QVERIFY(press(window, QStringLiteral("imageSidePanel_collapseButton")));
+            QTRY_VERIFY(sidePanel->height() < 80.0);
+            QVERIFY(press(window, QStringLiteral("panelsMenu_resetAll")));
+            QTRY_VERIFY(!sidePanel->property("freePositioned").toBool());
+            QTRY_COMPARE(sidePanel->height(), dockedHeight);
+            QTRY_COMPARE(sidePanel->x(), dockedX);
+            QTRY_COMPARE(imageCanvas->width(), canvasWidth);
+            QVERIFY(press(window, QStringLiteral("panelsMenuButton")));
+            QTRY_VERIFY(!named(window, QStringLiteral("panelsMenu_resetAll")) ||
+                        !named(window, QStringLiteral("panelsMenu_resetAll"))->isVisible());
+            // En-tête compact : le bouton disparaît, la palette (Ctrl+K) ouvre le même menu.
+            QVERIFY(actions.runCommand(QStringLiteral("cmd.panels.open")).isEmpty());
+            QTRY_VERIFY(named(window, QStringLiteral("panelsMenu_resetAll")) &&
+                        named(window, QStringLiteral("panelsMenu_resetAll"))->isVisible());
+            QVERIFY(press(window, QStringLiteral("panelsMenuButton")));
+            QTRY_VERIFY(!named(window, QStringLiteral("panelsMenu_resetAll")) ||
+                        !named(window, QStringLiteral("panelsMenu_resetAll"))->isVisible());
+        }
+
         // Molette sur la largeur (comme les champs numériques de V1) : +1 mm par cran, une seule
         // étape d'annulation après la rafale (validation différée).
         {
