@@ -21,6 +21,26 @@ Item {
     // change l'ordre de couture) : {id, name, objects}, ou null hors confirmation en attente.
     property var pendingDeleteLayer: null
     property string dropId: "" // calque survolé pendant un glisser-déposer
+    // Espace Vecteur : supprimer un objet de la liste retire sa FORME et ses broderies, comme Suppr
+    // et le menu du canevas de cet espace ; ailleurs, l'objet de broderie seul.
+    property bool shapeScope: false
+    // Clic droit sur une ligne d'objet → « Supprimer » : même effet que Suppr dans cet espace.
+    function deleteSelectedObjects() {
+        return root.shapeScope ? editor.deleteShapes() : editor.deleteSelection()
+    }
+    // Point d'entrée unique de la suppression d'un calque (menu contextuel de l'arbre, bouton et
+    // menu « Plus… » du LayerPanel) : un calque vide part tout de suite, un calque non vide pose
+    // la confirmation ci-dessous. La suppression elle-même reste une seule commande annulable.
+    function requestDeleteLayer(id) {
+        if (!id || editor.layers.length <= 1) return
+        let layer = null
+        for (const l of editor.layers) if (l.id === id) { layer = l; break }
+        const objects = layer ? (layer.objects || 0) : 0
+        if (objects > 0)
+            root.pendingDeleteLayer = { id: id, name: layer.name || "", objects: objects }
+        else
+            editor.removeLayer(id)
+    }
     function layerDisplayIndex(id) {
         const list = editor.layers
         for (let i = 0; i < list.length; ++i)
@@ -218,6 +238,12 @@ Item {
                         if (row.isLayer) {
                             layerMenu.layer = row.modelData
                             layerMenu.popup()
+                        } else if (row.isObject) {
+                            // Clic droit sur un objet non sélectionné : il devient la sélection
+                            // (le menu vise ce qu'on pointe, comme dans un explorateur de fichiers).
+                            if (!row.isSelected)
+                                root.clickObject(row.modelData.id, Qt.NoModifier)
+                            objectMenu.popup()
                         }
                         return
                     }
@@ -376,6 +402,31 @@ Item {
     }
 
     // Menu contextuel d'un calque (clic droit) : toutes les actions de calque à un clic.
+    // Menu d'une ligne d'objet : la suppression d'objet visible depuis la liste (le bouton
+    // « Suppr. calque » au-dessus vise le calque, pas l'objet).
+    Controls.Menu {
+        id: objectMenu
+        objectName: "objectContextMenu"
+        Controls.MenuItem {
+            objectName: "objectContextDelete"
+            text: root.shapeScope ? qsTr("Supprimer %1 forme(s)	Suppr").arg(editor.selectedShapeCount)
+                                  : qsTr("Supprimer %1 objet(s)	Suppr").arg(editor.selectedCount)
+            enabled: root.shapeScope ? editor.selectedShapeCount > 0 : editor.selectedCount > 0
+            onTriggered: root.deleteSelectedObjects()
+        }
+    }
+
+    // Le calque en attente de confirmation a disparu (annulation, autre document) : le bandeau
+    // ne doit jamais viser un identifiant périmé.
+    Connections {
+        target: editor
+        function onTreeChanged() {
+            if (root.pendingDeleteLayer === null) return
+            for (const l of editor.layers) if (l.id === root.pendingDeleteLayer.id) return
+            root.pendingDeleteLayer = null
+        }
+    }
+
     Controls.Menu {
         id: layerMenu
         objectName: "layerContextMenu"
@@ -398,18 +449,9 @@ Item {
         Controls.MenuSeparator { }
         Controls.MenuItem {
             objectName: "layerContextDelete"
-            text: qsTr("Supprimer (objets gardés dans le calque voisin)")
+            text: qsTr("Supprimer le calque (ses objets rejoignent le voisin)")
             enabled: editor.layers.length > 1
-            onTriggered: {
-                const objects = layerMenu.layer ? (layerMenu.layer.objects || 0) : 0
-                if (objects > 0) {
-                    root.pendingDeleteLayer = { id: layerMenu.layerId,
-                                                 name: layerMenu.layer.name || "",
-                                                 objects: objects }
-                } else {
-                    editor.removeLayer(layerMenu.layerId)
-                }
-            }
+            onTriggered: root.requestDeleteLayer(layerMenu.layerId)
         }
     }
 
@@ -436,7 +478,7 @@ Item {
             Text {
                 Layout.fillWidth: true
                 text: root.pendingDeleteLayer
-                      ? qsTr("Supprimer « %1 » : %2 objet(s) rejoindront le calque voisin, l'ordre de couture change.")
+                      ? qsTr("Supprimer le calque « %1 » : ses %2 objet(s) rejoindront le calque voisin et l'ordre de couture changera. Ctrl+Z annule.")
                             .arg(root.pendingDeleteLayer.name).arg(root.pendingDeleteLayer.objects)
                       : ""
                 wrapMode: Text.WordWrap
@@ -448,7 +490,6 @@ Item {
                 StudioButton {
                     objectName: "layerDeleteConfirmYes"
                     text: qsTr("Supprimer tout de même")
-                    emphasized: true
                     onClicked: {
                         editor.removeLayer(root.pendingDeleteLayer.id)
                         root.pendingDeleteLayer = null
