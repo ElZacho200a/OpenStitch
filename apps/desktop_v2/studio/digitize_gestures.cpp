@@ -118,6 +118,9 @@ QString DigitizeGestures::hint() const {
                   "Maj+clic sur un guide : le retirer.");
     }
     if (mode_ == QLatin1String("break")) {
+        if (!isFillGuideMode()) {
+            return tr("Tracez une ligne de rupture à travers le remplissage.");
+        }
         return tr("Tracez une ligne de rupture à travers le remplissage ; glissez un nœud pour la "
                   "remodeler ; Maj+clic sur une rupture : la retirer.");
     }
@@ -301,6 +304,8 @@ bool DigitizeGestures::press(double x, double y, double pxPerMm, Qt::KeyboardMod
     stroke_.clear();
     grip_.reset();
     hitIndex_ = -1;
+    pressObject_ = satinId();
+    pressRevision_ = studio_.session().revision();
 
     if (mode_ == QLatin1String("points")) {
         if (points_.objectId().isEmpty()) {
@@ -473,6 +478,15 @@ void DigitizeGestures::release(double x, double y, Qt::KeyboardModifiers mods) {
     auto stroke = std::move(stroke_);
     stroke_.clear();
     bool ok = true;
+    // Une poignée désigne un nœud par indices : si le document ou la sélection a changé pendant
+    // le geste (Ctrl+Z, sélection au clavier), ces indices ne désignent plus le même nœud.
+    if (grip && (satinId() != pressObject_ || studio_.session().revision() != pressRevision_)) {
+        note(tr("Le document a changé pendant le geste : déplacement annulé."), false);
+        info_.clear();
+        rebuildDynamic();
+        rebuildStatic();
+        return;
+    }
     switch (drag) {
     case Drag::Points:
         if (travelled) {
