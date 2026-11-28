@@ -248,6 +248,11 @@ private:
         transformPoint(p.entry_point);
         transformPoint(p.exit_point);
     }
+    // Centre choisi des remplissages radial, en spirale et concentrique (FILL-CENTER) : il suit
+    // l'objet (déplacement, rotation, échelle, miroir) ; absent = automatique, déjà relatif.
+    void transformParams(document::RadialFillParams& p) const { transformPoint(p.center); }
+    void transformParams(document::SpiralFillParams& p) const { transformPoint(p.center); }
+    void transformParams(document::ContourFillParams& p) const { transformPoint(p.center); }
     // Tout autre type de paramètres (futur) : inchangé.
     template <typename T> void transformParams(T&) const {}
 

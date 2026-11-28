@@ -22,10 +22,11 @@ constexpr double kMinSegmentUm = 100.0;
 constexpr std::size_t kMaxRoutedRuns = 2'048;
 constexpr double kMaxBridgeUm = 5'000.0; // Limiter les traversées cousues, surtout sur tissu fin.
 
-// Réordonne les portions déjà rognées de la spirale, sans modifier leurs trajets internes.
-// Une liaison courte est cousue seulement si le segment complet reste dans la région ;
-// sinon elle reste un saut. L'ordre angulaire de construction n'impose pas l'ordre de couture.
 using FillStitches = std::vector<FillStitch>;
+
+} // namespace
+
+namespace detail {
 
 FillStitches route_parts(const geometry::PathSet& region, double maxLen, FillStitches raw) {
     struct Run {
@@ -129,7 +130,7 @@ FillStitches route_parts(const geometry::PathSet& region, double maxLen, FillSti
     return jumps(routed) < jumps(raw) ? std::move(routed) : std::move(raw);
 }
 
-} // namespace
+} // namespace detail
 
 std::vector<FillStitch> fill_spiral(const geometry::PathSet& baseRegion,
                                     const document::SpiralFillParams& params) {

@@ -12,6 +12,7 @@
 #include <cmath>
 #include <cstdint>
 #include <optional>
+#include <variant>
 
 #include "canvas_renderer.hpp"
 #include "openstitch/stitch/sequence.hpp"
@@ -263,6 +264,74 @@ QVariantMap GpuCanvas::needleOrigin() const {
     const auto s = camera_.worldToScreen(world);
     out.insert(QStringLiteral("visible"), true);
     out.insert(QStringLiteral("custom"), custom.has_value());
+    out.insert(QStringLiteral("x"), s.x);
+    out.insert(QStringLiteral("y"), s.y);
+    return out;
+}
+
+namespace {
+constexpr double kFillCenterGripPx = 10.0; // rayon de prise du viseur de centre
+} // namespace
+
+std::optional<GpuCanvas::FillCenterView> GpuCanvas::fillCenterView() const {
+    // Espace Points seulement, un seul objet sélectionné, aucun outil ni geste de numérisation.
+    if (!controller_ || !scene_ || !layers_.stitches || selection_.size() != 1 ||
+        selection_.front().kind != TargetKind::EmbroideryObject ||
+        (digitize_ && digitize_->capturesMouse()) || (tools_ && tools_->capturesMouse())) {
+        return std::nullopt;
+    }
+    const auto* object =
+        controller_->session().project().findEmbroidery(ObjectId{selection_.front().id});
+    if (object == nullptr) {
+        return std::nullopt;
+    }
+    std::optional<Vec2um> fixed;
+    bool contour = false;
+    if (const auto* r = std::get_if<document::RadialFillParams>(&object->params)) {
+        fixed = r->center;
+    } else if (const auto* sp = std::get_if<document::SpiralFillParams>(&object->params)) {
+        fixed = sp->center;
+    } else if (const auto* c = std::get_if<document::ContourFillParams>(&object->params)) {
+        fixed = c->center;
+        contour = true;
+    } else {
+        return std::nullopt;
+    }
+    if (fixed) {
+        return FillCenterView{{fixed->x.value / 1000.0, -fixed->y.value / 1000.0}, true, false};
+    }
+    // Centre automatique : milieu de l'emprise des points de l'objet (comme le générateur, au
+    // retrait de bord près).
+    const auto bounds = scene_->boundsOf(selection_.front().id);
+    if (!bounds) {
+        return std::nullopt;
+    }
+    return FillCenterView{
+        {(bounds->x0 + bounds->x1) / 2.0, (bounds->y0 + bounds->y1) / 2.0}, false, contour};
+}
+
+bool GpuCanvas::overFillCenter(const QPointF& screen) const {
+    const auto view = fillCenterView();
+    // Les poignées de la sélection restent prioritaires (petit objet à l'écran).
+    if (!view || (editor_ && handleAt(screen) >= 0)) {
+        return false;
+    }
+    const auto s = camera_.worldToScreen(view->world);
+    return std::hypot(s.x - screen.x(), s.y - screen.y()) <= kFillCenterGripPx;
+}
+
+QVariantMap GpuCanvas::fillCenter() const {
+    QVariantMap out{{QStringLiteral("visible"), false}};
+    const auto view = fillCenterView();
+    if (!view) {
+        return out;
+    }
+    const bool dragging = gesture_ == Gesture::FillCenter && gestureActive_;
+    const auto s = camera_.worldToScreen(dragging ? fillCenterDrag_ : view->world);
+    out.insert(QStringLiteral("visible"), true);
+    out.insert(QStringLiteral("fixed"), view->fixed || dragging);
+    out.insert(QStringLiteral("rings"), view->rings && !dragging);
+    out.insert(QStringLiteral("dragging"), dragging);
     out.insert(QStringLiteral("x"), s.x);
     out.insert(QStringLiteral("y"), s.y);
     return out;
@@ -903,6 +972,11 @@ void GpuCanvas::mousePressEvent(QMouseEvent* event) {
                 gesture_ = Gesture::Marquee; // cadre de sélection sur le vide
             }
         }
+    } else if (controller_ && scene_ && event->button() == Qt::LeftButton &&
+               !(editor_ && editor_->eyedropper()) && overFillCenter(lastMouse_)) {
+        // Viseur du centre (radial, spirale, concentrique) : prioritaire sur la sélection.
+        gesture_ = Gesture::FillCenter;
+        fillCenterDrag_ = camera_.screenToWorld({lastMouse_.x(), lastMouse_.y()});
     } else if (controller_ && scene_ && event->button() == Qt::LeftButton) {
         const auto p = camera_.screenToWorld({lastMouse_.x(), lastMouse_.y()});
         const auto hit = scene_->pick(p.x, p.y, 5.0 / camera_.scale());
@@ -956,6 +1030,16 @@ void GpuCanvas::mouseMoveEvent(QMouseEvent* event) {
         if (digitize_) {
             const auto p = camera_.screenToWorld({pos.x(), pos.y()});
             digitize_->move(p.x, p.y, event->modifiers());
+        }
+    } else if (gesture_ == Gesture::FillCenter) {
+        const auto travel = pos - pressPos_;
+        if (gestureActive_ || std::abs(travel.x()) + std::abs(travel.y()) >= 3.0) {
+            gestureActive_ = true;
+            fillCenterDrag_ = camera_.screenToWorld({pos.x(), pos.y()});
+            gestureInfo_ = QStringLiteral("Centre : X %1 ; Y %2 mm")
+                               .arg(fillCenterDrag_.x, 0, 'f', 1)
+                               .arg(-fillCenterDrag_.y, 0, 'f', 1);
+            emit overlayChanged();
         }
     } else if (gesture_ != Gesture::None) {
         const auto travel = pos - pressPos_;
@@ -1061,6 +1145,19 @@ void GpuCanvas::mouseReleaseEvent(QMouseEvent* event) {
         event->accept();
         return;
     }
+    if (gesture_ == Gesture::FillCenter) {
+        const bool moved = gestureActive_;
+        const auto drop = fillCenterDrag_;
+        gesture_ = Gesture::None;
+        gestureActive_ = false;
+        gestureInfo_.clear();
+        emit overlayChanged();
+        if (moved) { // un simple clic ne fige pas le centre automatique
+            emit fillCenterDropped(drop.x, -drop.y);
+        }
+        event->accept();
+        return;
+    }
     if (gesture_ == Gesture::Digitize) {
         gesture_ = Gesture::None;
         gestureActive_ = false;
@@ -1124,6 +1221,15 @@ void GpuCanvas::mouseReleaseEvent(QMouseEvent* event) {
 }
 
 void GpuCanvas::mouseDoubleClickEvent(QMouseEvent* event) {
+    if (event->button() == Qt::LeftButton && overFillCenter(event->position())) {
+        const auto view = fillCenterView();
+        resetGesture();
+        if (view && view->fixed) {
+            emit fillCenterResetRequested();
+        }
+        event->accept();
+        return;
+    }
     if (tools_ && tools_->capturesMouse() && event->button() == Qt::LeftButton) {
         const auto p = camera_.screenToWorld({event->position().x(), event->position().y()});
         tools_->doubleClick(p.x, p.y, camera_.scale());
@@ -1173,6 +1279,11 @@ void GpuCanvas::hoverMoveEvent(QHoverEvent* event) {
         Qt::SizeFDiagCursor, Qt::SizeVerCursor,   Qt::SizeBDiagCursor,
         Qt::SizeHorCursor,   Qt::SizeFDiagCursor, Qt::SizeVerCursor,
         Qt::SizeBDiagCursor, Qt::SizeHorCursor,   Qt::PointingHandCursor};
+    if (overFillCenter(event->position())) {
+        setHover(std::nullopt);
+        setCursor(Qt::CrossCursor); // distinct du déplacement de l'objet
+        return;
+    }
     const int handle = editor_ ? handleAt(event->position()) : -1;
     if (handle >= 0) {
         setHover(std::nullopt);
