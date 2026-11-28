@@ -46,8 +46,8 @@ Rectangle {
         // Guides d'un remplissage : aide COURTE, lisible même à 1000 px (le détail est dans
         // l'infobulle de l'aide et des boutons).
         if (fillGuideTool)
-            return breakTool ? qsTr("Tracez une rupture · glisser un nœud : remodeler · Maj+clic : retirer")
-                             : qsTr("Tracez un guide · glisser un nœud : remodeler · Maj+clic : retirer")
+            return breakTool ? qsTr("Maj+clic : retirer · glisser un nœud : remodeler · tracer : ajouter une rupture")
+                             : qsTr("Maj+clic : retirer · glisser un nœud : remodeler · tracer : ajouter un guide")
         if (digitizeCtl && digitizeCtl.mode !== "")
             return digitizeCtl.hint !== "" ? digitizeCtl.hint : qsTr("Geste actif : cliquez sur le canevas ; Échap pour terminer.")
         if (toolCtl && toolCtl.hint !== "")
@@ -69,6 +69,9 @@ Rectangle {
 
         Text {
             objectName: "pointsMode"
+            // Fenêtre étroite, outils de guides : l'outil est déjà surligné dans le rail ; la
+            // place va à l'aide (Maj+clic) et aux boutons.
+            visible: !(bar.compact && bar.fillGuideTool)
             text: bar.guidedTrace ? qsTr("Ligne centrale du satin")
                   : bar.fillGuideTool ? (bar.breakTool ? qsTr("Ruptures du remplissage") : qsTr("Guides du remplissage"))
                   : bar.digitizeCtl && bar.digitizeCtl.mode !== "" ? bar.modeLabel(bar.digitizeCtl.mode)
