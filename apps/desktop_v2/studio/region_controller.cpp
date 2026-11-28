@@ -50,8 +50,10 @@ RegionController::RegionController(StudioController& studio, ImageController& im
     // avant), comme après une retouche de région.
     connect(&studio_, &StudioController::satinOptionsChanged, this, [this] {
         emit satinOptionsChanged();
-        if (hasSegmentation()) {
-            setStale(true, QStringLiteral("réglages satin modifiés"));
+        // Des régions déjà retouchées gardent leur raison (plus forte : formes à refaire aussi).
+        if (hasSegmentation() && !segmentationStale() &&
+            !studio_.session().project().embroidery_objects.empty()) {
+            setStale(true, satinReason());
         }
     });
     token_ = studio_.session().subscribe([this](ChangeKind kind) {

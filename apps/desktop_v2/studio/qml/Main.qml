@@ -75,12 +75,25 @@ Window {
     Binding {
         target: workspaceCtl
         property: "segmentationDirty"
-        value: typeof regionTools !== "undefined" && regionTools.stale
+        // Un changement de satin ne rend pas la segmentation obsolète : seulement les objets.
+        value: typeof regionTools !== "undefined" && regionTools.segmentationStale
         when: typeof regionTools !== "undefined"
     }
     Binding {
         target: workspaceCtl
         property: "dirtyReason"
+        value: typeof regionTools !== "undefined" ? regionTools.staleReason : ""
+        when: typeof regionTools !== "undefined"
+    }
+    Binding {
+        target: workspaceCtl
+        property: "objectsDirty"
+        value: typeof regionTools !== "undefined" && regionTools.objectsOnlyStale
+        when: typeof regionTools !== "undefined"
+    }
+    Binding {
+        target: workspaceCtl
+        property: "objectsReason"
         value: typeof regionTools !== "undefined" ? regionTools.staleReason : ""
         when: typeof regionTools !== "undefined"
     }

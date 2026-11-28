@@ -105,6 +105,8 @@ const std::array<StageStatus, 4>& WorkspaceController::base() const {
         StageInputs inputs;
         inputs.segmentationDirty = segmentationDirty_;
         inputs.dirtyReason = dirtyReason_.toStdString();
+        inputs.objectsDirty = objectsDirty_;
+        inputs.objectsReason = objectsReason_.toStdString();
         std::shared_ptr<const document::Project> snapshot;
         if (controller_) {
             snapshot = controller_->session().snapshot();

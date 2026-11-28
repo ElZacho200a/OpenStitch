@@ -694,9 +694,17 @@ private slots:
         QVERIFY(!rig.regions.stale());
         QVERIFY(rig.press("regionSatinBands"));
         QTRY_VERIFY(compare->isEnabled());
-        // Un autre satin : les objets sont périmés, « Régénérer les objets » mis en avant.
+        // Un autre satin : les objets sont périmés, « Régénérer les objets » mis en avant, et dit
+        // là où l'on coche (onglet Segmentation). La segmentation elle-même reste à jour.
         QTRY_VERIFY(rig.regions.stale());
+        QVERIFY(rig.regions.objectsOnlyStale());
+        QVERIFY(!rig.regions.segmentationStale());
         QVERIFY(rig.named("regionRegenerate")->property("emphasized").toBool());
+        QTRY_VERIFY(rig.named("segSatinStale")->isVisible());
+        QVERIFY(rig.named("segRegenerateObjects")->isVisible());
+        QTRY_COMPARE(rig.stage().value("state").toString(), QStringLiteral("upToDate"));
+        QTRY_VERIFY(rig.workspace->objectsDirty());
+        QVERIFY(!rig.workspace->segmentationDirty());
         QVERIFY(rig.studio.satinOptions().value("satin_bands").toBool());
         QVERIFY(rig.press("regionSatinCompare"));
         QTRY_VERIFY(advanced->isVisible());
@@ -727,6 +735,7 @@ private slots:
         QVERIFY(rig.press("regionRegenerate"));
         QTRY_COMPARE_WITH_TIMEOUT(done.count(), 1, 120'000);
         QVERIFY(!rig.regions.stale());
+        QTRY_VERIFY(!rig.workspace->objectsDirty());
         const auto& sent = rig.regions.lastDigitizeSettings();
         QVERIFY(sent.satin_bands);
         QVERIFY(sent.satin_compare);
@@ -746,8 +755,11 @@ private slots:
         QVERIFY(rig.press("regionSatinBands"));
         QTRY_VERIFY(!compare->isEnabled());
         QTRY_VERIFY(!rig.named("regionSatinAdvancedSection")->isVisible());
-        QVERIFY(rig.press("regionRegenerate"));
+        // Régénération directement depuis l'onglet Segmentation (même action).
+        QTRY_VERIFY(rig.named("segRegenerateObjects")->isVisible());
+        QVERIFY(rig.press("segRegenerateObjects"));
         QTRY_COMPARE_WITH_TIMEOUT(done.count(), 2, 120'000);
+        QTRY_VERIFY(!rig.named("segSatinStale")->isVisible());
         const auto& off = rig.regions.lastDigitizeSettings();
         QVERIFY(!off.satin_bands);
         QVERIFY(!off.satin_compare);
@@ -815,10 +827,36 @@ private slots:
         QVERIFY(rig.press("regionWarningsMore"));
         QTRY_VERIFY(rig.named("regionWarningLine_3")->isVisible());
         QVERIFY(!rig.named("regionWarningRow_3")->isVisible()); // pas de région citée
-        // « Voir » sélectionne la région citée.
+        // « Voir » sélectionne la région citée et cadre le canevas sur elle (centre de sa boîte).
+        const auto& seg = *rig.session.project().segmentation;
+        int left = seg.width, top = seg.height, right = -1, bottom = -1;
+        for (int y = 0; y < seg.height; ++y) {
+            for (int x = 0; x < seg.width; ++x) {
+                if (seg.labels[static_cast<std::size_t>(y) * seg.width + x] ==
+                    static_cast<std::uint32_t>(idOf(1))) {
+                    left = std::min(left, x);
+                    right = std::max(right, x);
+                    top = std::min(top, y);
+                    bottom = std::max(bottom, y);
+                }
+            }
+        }
+        QVERIFY(right >= left);
+        const double mm = rig.session.project().mm_per_px.value;
+        const double expectX = ((left + right + 1) / 2.0 - seg.width / 2.0) * mm;
+        const double expectY = ((top + bottom + 1) / 2.0 - seg.height / 2.0) * mm;
+        rig.canvas()->zoomToSceneRect(-200.0, -200.0, 200.0, 200.0); // vue d'ensemble, ailleurs
         QVERIFY(rig.press("regionWarningRow_1"));
         QCOMPARE(rig.regions.selectedCount(), 1);
         QCOMPARE(static_cast<qint64>(rig.regions.selected().front().toDouble()), idOf(1));
+        const auto view = rig.canvas()->viewState();
+        QVERIFY2(std::abs(view.value("centerX").toDouble() - expectX) < 0.5 &&
+                     std::abs(view.value("centerY").toDouble() - expectY) < 0.5,
+                 qPrintable(QStringLiteral("centre %1,%2 attendu %3,%4")
+                                .arg(view.value("centerX").toDouble())
+                                .arg(view.value("centerY").toDouble())
+                                .arg(expectX)
+                                .arg(expectY)));
         // Un autre message ne les efface pas.
         QCOMPARE(rig.regions.deleteSelected(), QString());
         QCOMPARE(rig.regions.warnings().size(), 4);

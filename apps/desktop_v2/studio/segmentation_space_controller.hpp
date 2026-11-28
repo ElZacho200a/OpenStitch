@@ -70,6 +70,9 @@ public:
     Q_INVOKABLE void detach();
     // Clic canevas (mm de scène) : sélection de la région sous le point ; faux hors image.
     Q_INVOKABLE bool pickAt(double xMm, double yMm, bool additive);
+    // Sélectionne la région `id` et cadre le canevas dessus (marge autour, petite région
+    // agrandie) ; faux si elle n'existe pas ou sans canevas.
+    Q_INVOKABLE bool focusRegion(double id);
     // Cadre ou lasso tracé sur le canevas : points {x, y} en mm de scène (le polygone peut déborder
     // de l'image). Voir `RegionController::selectInZone` ; renvoie le nombre de régions désignées.
     Q_INVOKABLE int selectInZone(const QVariantList& scenePointsMm, bool additive, bool touching);

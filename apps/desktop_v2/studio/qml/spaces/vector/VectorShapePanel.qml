@@ -321,7 +321,7 @@ ColumnLayout {
             }
             Text {
                 Layout.fillWidth: true
-                text: qsTr("Tout est décoché par défaut : les points suivent exactement les contours vectoriels. Le tirage auto agrandit les formes de 0,1 à 0,4 mm ; le bloc uni les fait déborder sous leurs voisines ; sans satin, tout est en remplissage. Modifiable ensuite objet par objet.")
+                text: qsTr("Tirage et bloc uni décochés : les points suivent exactement les contours vectoriels. Le tirage auto agrandit les formes de 0,1 à 0,4 mm ; le bloc uni les fait déborder sous leurs voisines. Le satin est le même réglage que dans l'onglet Segmentation ; sans lui, tout est en remplissage. Modifiable ensuite objet par objet.")
                 color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize; wrapMode: Text.WordWrap
             }
             RowLayout {
@@ -345,6 +345,46 @@ ColumnLayout {
                     onClicked: panel.convertOptionsOpen = false
                 }
             }
+        }
+    }
+    // Avertissements de la dernière conversion (même présentation que l'onglet Régions) : résumé
+    // compté, trois lignes, le reste replié ; vidés seulement par la conversion suivante.
+    property bool convertWarningsExpanded: false
+    readonly property var convertWarnings: panel.stage ? panel.stage.conversionWarnings : []
+    ColumnLayout {
+        objectName: "vectorConvertWarnings"
+        Layout.fillWidth: true
+        spacing: 2
+        visible: panel.convertWarnings.length > 0
+        Accessible.name: qsTr("Avertissements de la conversion en broderie")
+        Text {
+            objectName: "vectorConvertWarningSummary"
+            Layout.fillWidth: true
+            text: "⚠ " + (panel.convertWarnings.length === 1 ? qsTr("1 avertissement à la dernière conversion")
+                                                              : qsTr("%1 avertissements à la dernière conversion").arg(panel.convertWarnings.length))
+            wrapMode: Text.WordWrap
+            color: Theme.warning; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize
+        }
+        Repeater {
+            model: panel.convertWarnings
+            delegate: Text {
+                required property string modelData
+                required property int index
+                objectName: "vectorConvertWarningLine_" + index
+                Layout.fillWidth: true
+                visible: panel.convertWarningsExpanded || index < 3
+                text: modelData
+                wrapMode: Text.WordWrap
+                color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize
+            }
+        }
+        StudioButton {
+            objectName: "vectorConvertWarningsMore"
+            quiet: true
+            visible: panel.convertWarnings.length > 3
+            text: panel.convertWarningsExpanded ? qsTr("Replier la liste")
+                                                : qsTr("Afficher les %1 autres").arg(panel.convertWarnings.length - 3)
+            onClicked: panel.convertWarningsExpanded = !panel.convertWarningsExpanded
         }
     }
     Text {

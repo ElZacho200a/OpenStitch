@@ -235,7 +235,7 @@ ColumnLayout {
     }
     // Satin des objets de broderie, juste sous « Appliquer » : UN seul état (studio.satinOptions)
     // pour « Régénérer les objets » (onglet Régions) et « Convertir en broderie » (Vecteurs).
-    SectionLabel { text: qsTr("BRODERIE") }
+    SectionLabel { text: qsTr("BRODERIE (GÉNÉRATION DES OBJETS)") }
     StudioCheckBox {
         objectName: "regionSatinBands"
         Layout.fillWidth: true
@@ -273,6 +273,28 @@ ColumnLayout {
               : qsTr("Les formes étroites seront cousues en satin à la génération des objets. « Meilleur satin » compare en plus trois façons de les coudre.")
         wrapMode: Text.WordWrap
         color: Theme.muted; font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily
+    }
+    // Objets déjà générés avec un autre satin : le dire là où l'on coche, et régénérer d'ici
+    // (même action que « Régénérer les objets » de l'onglet Régions).
+    ColumnLayout {
+        objectName: "segSatinStale"
+        Layout.fillWidth: true
+        spacing: 4
+        visible: regionTools.objectsOnlyStale
+        Text {
+            Layout.fillWidth: true
+            text: qsTr("Les objets existants ne sont pas encore cousus avec ce réglage.")
+            wrapMode: Text.WordWrap
+            color: Theme.accent; font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily
+        }
+        StudioButton {
+            objectName: "segRegenerateObjects"
+            text: qsTr("Régénérer les objets")
+            emphasized: true
+            enabled: regionTools.hasSegmentation && !regionTools.busy && !imageTools.busy
+            tooltip: qsTr("Recrée les objets de broderie avec ces réglages (annulable, Ctrl+Z)")
+            onClicked: regionTools.regenerate(false, false, Object.assign({}, section.options, studio.satinOptions))
+        }
     }
     // Réglages avancés repliés par défaut : un débutant n'a rien à y toucher.
     StudioButton {

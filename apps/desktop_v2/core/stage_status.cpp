@@ -112,6 +112,11 @@ std::array<StageStatus, 4> computeStageStatus(const document::Project& project,
     } else if (out[2].state == StageState::Stale) {
         out[3] = make(StageId::Points, StageState::Stale,
                       "Points obsolètes : les formes ne sont pas à jour");
+    } else if (inputs.objectsDirty) {
+        out[3] = make(StageId::Points, StageState::Stale,
+                      "Objets à régénérer : " + (inputs.objectsReason.empty()
+                                                     ? std::string("réglages modifiés")
+                                                     : inputs.objectsReason));
     } else if (dangling > 0) {
         out[3] = make(StageId::Points, StageState::Stale,
                       std::to_string(dangling) + " objet(s) sans forme source");

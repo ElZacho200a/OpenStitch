@@ -38,6 +38,21 @@ ColumnLayout {
     readonly property bool satinCompare: satinBands && regionTools.satinOptions.satin_compare === true
     // Avertissements de la dernière génération : 3 lignes, le reste replié.
     property bool warningsExpanded: false
+    // « Voir » : sélectionne la région, cadre le canevas dessus (espace Segmentation) et fait
+    // défiler la liste des régions jusqu'à elle.
+    function focusRegion(id) {
+        if (typeof segmentationSpace !== "undefined" && segmentationSpace)
+            segmentationSpace.focusRegion(id)
+        else
+            regionTools.selectRegion(id, "replace")
+        const all = regionTools.regions
+        for (let i = 0; i < all.length; ++i) {
+            if (all[i].id === id) {
+                regionListView.positionViewAtIndex(i, ListView.Contain)
+                break
+            }
+        }
+    }
     property int islandPx: 12
     property int holePx: 12
     function validHexColour(value) {
@@ -240,7 +255,7 @@ ColumnLayout {
                     quiet: true
                     text: qsTr("Voir")
                     tooltip: qsTr("Sélectionner la région %1 sur le canevas").arg(modelData.region)
-                    onClicked: regionTools.selectRegion(modelData.region, "replace")
+                    onClicked: section.focusRegion(modelData.region)
                 }
             }
         }
@@ -294,6 +309,7 @@ ColumnLayout {
         color: Theme.surface
         border.color: Theme.border
         ListView {
+            id: regionListView
             objectName: "regionList"
             anchors.fill: parent
             anchors.margins: 2
