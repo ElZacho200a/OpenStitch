@@ -49,7 +49,8 @@ DigitizeGestures::DigitizeGestures(StudioController& studio, PointEditController
             (guidedTarget_ != satinId() || !satin_.isGuidedSatin() ||
              !satin_.guidedSatinDisabledReason().isEmpty())) {
             setMode({});
-        } else if (mode_ == QLatin1String("satin") || isGuideMode()) {
+        } else if (mode_ == QLatin1String("satin") || isGuideMode() ||
+                   mode_ == QLatin1String("break")) {
             rebuildStatic();
         }
     });
@@ -89,6 +90,11 @@ bool DigitizeGestures::isGuideMode() const {
     return mode_ == QLatin1String("guide") || mode_ == QLatin1String("guided");
 }
 
+bool DigitizeGestures::isFillGuideMode() const {
+    return (mode_ == QLatin1String("guide") || mode_ == QLatin1String("break")) &&
+           !satin_.isAutoSatin() && satin_.canGuideFill();
+}
+
 QString DigitizeGestures::hint() const {
     if (mode_ == QLatin1String("points")) {
         return tr("Cliquez un point, glissez pour déplacer ; rectangle pour sélectionner ; Maj : "
@@ -104,11 +110,16 @@ QString DigitizeGestures::hint() const {
                   "insérer un nœud ; Maj+clic sur un barreau : le retirer.");
     }
     if (mode_ == QLatin1String("guide")) {
-        return tr("Tracez un guide sur le remplissage ; sur le satin guidé, glissez ses nœuds "
-                  "pour remodeler la ligne centrale.");
+        if (satin_.isAutoSatin()) {
+            return tr("Tracez un guide sur le satin ; sur le satin guidé, glissez ses nœuds pour "
+                      "remodeler la ligne centrale.");
+        }
+        return tr("Tracez un guide sur le remplissage ; glissez un nœud pour le remodeler ; "
+                  "Maj+clic sur un guide : le retirer.");
     }
     if (mode_ == QLatin1String("break")) {
-        return tr("Tracez une ligne de rupture à travers le remplissage.");
+        return tr("Tracez une ligne de rupture à travers le remplissage ; glissez un nœud pour la "
+                  "remodeler ; Maj+clic sur une rupture : la retirer.");
     }
     if (mode_ == QLatin1String("rungs")) {
         return tr("Glissez de rail en rail pour poser chaque barreau, Entrée crée la colonne.");
@@ -128,6 +139,17 @@ std::vector<DigitizeGestures::Grip> DigitizeGestures::grips() const {
     std::vector<Grip> out;
     const auto id = satinId();
     if (id == 0) {
+        return out;
+    }
+    if (isFillGuideMode()) {
+        const auto curves = satin_.fillGuideCurves(mode_ == QLatin1String("break"));
+        for (int guide = 0; guide < curves.size(); ++guide) {
+            const auto nodes = curves[guide].toMap().value(QStringLiteral("nodes")).toList();
+            for (int node = 0; node < nodes.size(); ++node) {
+                out.push_back(
+                    {Grip::Type::FillGuideNode, guide, node, mapPoint(nodes[node].toMap())});
+            }
+        }
         return out;
     }
     if (isGuideMode()) {
@@ -362,7 +384,29 @@ bool DigitizeGestures::press(double x, double y, double pxPerMm, Qt::KeyboardMod
             note(tr("Sélectionnez un remplissage."), false);
             return false;
         }
-        if (isGuideMode()) {
+        if (isFillGuideMode()) {
+            const bool isBreak = mode_ == QLatin1String("break");
+            if (mods.testFlag(Qt::ShiftModifier)) {
+                // Maj+clic : retire le guide (ou la rupture) désigné, sans tracer.
+                const int hit = satin_.fillGuideAt(isBreak, anchor_.x, anchor_.y, kGripPx / scale_);
+                if (hit < 0) {
+                    note(isBreak ? tr("Aucune ligne de rupture sous le pointeur.")
+                                 : tr("Aucun guide sous le pointeur."),
+                         false);
+                    return false;
+                }
+                const bool ok = satin_.removeFillGuide(isBreak, hit);
+                note(satin_.message(), ok);
+                return false;
+            }
+            grip_ = gripAt(anchor_);
+            if (grip_ && grip_->type == Grip::Type::FillGuideNode) {
+                drag_ = Drag::GuideNode;
+                rebuildDynamic();
+                return true;
+            }
+            grip_.reset();
+        } else if (isGuideMode()) {
             grip_ = gripAt(anchor_);
             if (grip_ && grip_->type == Grip::Type::GuideNode) {
                 drag_ = Drag::GuideNode;
@@ -472,7 +516,11 @@ void DigitizeGestures::release(double x, double y, Qt::KeyboardModifiers mods) {
         }
         break;
     case Drag::GuideNode:
-        if (travelled && grip) {
+        if (travelled && grip && grip->type == Grip::Type::FillGuideNode) {
+            ok = satin_.moveFillGuidePoint(mode_ == QLatin1String("break"), grip->side, grip->index,
+                                           current.x, current.y);
+            note(satin_.message(), ok);
+        } else if (travelled && grip) {
             ok = satin_.moveAutoSatinGuidePoint(grip->side, grip->index, current.x, current.y);
             note(satin_.message(), ok);
         }
@@ -591,6 +639,23 @@ void DigitizeGestures::rebuildStatic() {
             }
             static_.push_back(std::move(stops));
         }
+    } else if (isFillGuideMode()) {
+        // Guides (ou ruptures) existants : tracé aplati + poignée sur chaque nœud éditable.
+        HandleItem handles{HandleItem::Kind::Handle, {}};
+        for (const auto& raw : satin_.fillGuideCurves(mode_ == QLatin1String("break"))) {
+            const auto map = raw.toMap();
+            HandleItem line{HandleItem::Kind::Line, {}};
+            for (const auto& rawPoint : map.value(QStringLiteral("curve")).toList()) {
+                line.points.push_back(toScene(mapPoint(rawPoint.toMap())));
+            }
+            if (line.points.size() >= 2) {
+                static_.push_back(std::move(line));
+            }
+            for (const auto& rawPoint : map.value(QStringLiteral("nodes")).toList()) {
+                handles.points.push_back(toScene(mapPoint(rawPoint.toMap())));
+            }
+        }
+        static_.push_back(std::move(handles));
     } else if (isGuideMode()) {
         const auto paths = satin_.autoSatinGuidePaths();
         HandleItem handles{HandleItem::Kind::Handle, {}};
