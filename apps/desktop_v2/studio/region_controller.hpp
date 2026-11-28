@@ -34,6 +34,10 @@ class RegionController : public QObject {
     Q_PROPERTY(int selectedCount READ selectedCount NOTIFY selectionChanged)
     Q_PROPERTY(bool stale READ stale NOTIFY staleChanged)
     Q_PROPERTY(QString staleReason READ staleReason NOTIFY staleChanged)
+    // Nuance de `stale` : seuls les objets sont à régénérer (réglage satin changé), la
+    // segmentation et les formes restent à jour.
+    Q_PROPERTY(bool objectsOnlyStale READ objectsOnlyStale NOTIFY staleChanged)
+    Q_PROPERTY(bool segmentationStale READ segmentationStale NOTIFY staleChanged)
     Q_PROPERTY(QVariantMap handEdits READ handEdits NOTIFY regionsChanged)
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
     Q_PROPERTY(QString message READ message NOTIFY messageChanged)
@@ -70,6 +74,9 @@ public:
     [[nodiscard]] int selectedCount() const { return static_cast<int>(selected_.size()); }
     [[nodiscard]] bool stale() const { return stale_; }
     [[nodiscard]] QString staleReason() const { return staleReason_; }
+    [[nodiscard]] bool objectsOnlyStale() const { return stale_ && staleReason_ == satinReason(); }
+    [[nodiscard]] bool segmentationStale() const { return stale_ && !objectsOnlyStale(); }
+    [[nodiscard]] static QString satinReason() { return QStringLiteral("réglages satin modifiés"); }
     [[nodiscard]] QVariantMap handEdits() const;
     [[nodiscard]] bool busy() const { return busy_; }
     [[nodiscard]] QString message() const { return message_; }

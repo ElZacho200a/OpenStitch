@@ -280,12 +280,15 @@ int main(int argc, char** argv) {
                     section->setProperty("fineStructures", true);
                 }
             } else if (name == QStringLiteral("satin-comparatif") ||
-                       name == QStringLiteral("satin-sans")) {
+                       name == QStringLiteral("satin-sans") ||
+                       name == QStringLiteral("satin-perime")) {
                 // Recette (CX05) : onglet Segmentation, panneau défilé jusqu'au bloc BRODERIE sous
                 // « Appliquer ». « satin-comparatif » : satin et « meilleur satin » cochés,
                 // réglages avancés dépliés ; « satin-sans » : satin décoché, « meilleur satin »
-                // grisé.
+                // grisé ; « satin-perime » : satin coché APRÈS le chargement du projet, ses objets
+                // deviennent à régénérer (bouton sous BRODERIE).
                 const bool satinOn = name == QStringLiteral("satin-comparatif");
+                const bool satinLate = name == QStringLiteral("satin-perime");
                 if (satinOn) {
                     controller.setSatinOptions({{QStringLiteral("satin_bands"), true},
                                                 {QStringLiteral("satin_compare"), true}});
@@ -295,12 +298,16 @@ int main(int argc, char** argv) {
                 scroll->setInterval(100);
                 QObject::connect(
                     scroll, &QTimer::timeout, &app,
-                    [window, scroll, &imageTools, &recipeScrollPending, satinOn,
-                     ticks = 0]() mutable {
+                    [window, scroll, &imageTools, &regionTools, &controller, &recipeScrollPending,
+                     satinOn, satinLate, ticks = 0]() mutable {
                         auto* panels =
                             window->findChild<QObject*>(QStringLiteral("segmentationPanels"));
-                        if (panels == nullptr || !imageTools.hasImage()) {
+                        if (panels == nullptr || !imageTools.hasImage() ||
+                            !regionTools.hasSegmentation()) {
                             return;
+                        }
+                        if (satinLate && ticks == 0) {
+                            controller.setSatinOptions({{QStringLiteral("satin_bands"), true}});
                         }
                         panels->setProperty("tab", 0);
                         auto* section =

@@ -105,6 +105,40 @@ bool SegmentationSpaceController::pickAt(double xMm, double yMm, bool additive) 
     return inside;
 }
 
+bool SegmentationSpaceController::focusRegion(double id) {
+    const auto& project = studio_.session().project();
+    const auto& source = project.imageSource();
+    if (id < 1.0 || !source.segmentation || source.mm_per_px.value <= 0.0) {
+        return false;
+    }
+    const auto index = static_cast<std::size_t>(id);
+    if (source.segmentation->find(RegionId{static_cast<std::uint64_t>(index)}) == nullptr) {
+        return false;
+    }
+    regions_.selectRegion(id, QStringLiteral("replace"));
+    auto* gpu = qobject_cast<GpuCanvas*>(canvas_.data());
+    if (gpu == nullptr) {
+        return false;
+    }
+    // Index des boîtes de la carte affichée ; reconstruit s'il ne couvre pas cette région.
+    if (index >= bounds_.size() || !bounds_[index].valid()) {
+        bounds_ = buildRegionBounds(project);
+    }
+    if (index >= bounds_.size() || !bounds_[index].valid()) {
+        return false;
+    }
+    const auto& box = bounds_[index];
+    // Pixels -> scène (mm, Y vers le bas, image centrée), comme `selectInZone`. Une région de
+    // quelques pixels reste lisible : cadre d'au moins 40 px, plus une marge de moitié.
+    const double mm = source.mm_per_px.value;
+    const double cx = (box.left + box.right + 1) / 2.0 - source.segmentation->width / 2.0;
+    const double cy = (box.top + box.bottom + 1) / 2.0 - source.segmentation->height / 2.0;
+    const double half =
+        std::max(20.0, 0.75 * std::max(box.right - box.left + 1, box.bottom - box.top + 1));
+    gpu->zoomToSceneRect((cx - half) * mm, (cy - half) * mm, (cx + half) * mm, (cy + half) * mm);
+    return true;
+}
+
 int SegmentationSpaceController::selectInZone(const QVariantList& scenePointsMm, bool additive,
                                               bool touching) {
     const auto& source = studio_.session().project().imageSource();
@@ -183,9 +217,14 @@ void SegmentationSpaceController::computeStage() {
             state = QStringLiteral("empty");
             detail = tr("Pas encore de segmentation");
         }
-    } else if (regions_.stale()) {
+    } else if (regions_.segmentationStale()) {
         state = QStringLiteral("stale");
         detail = tr("Corrections de régions non répercutées sur les formes : %1")
+                     .arg(regions_.staleReason());
+    } else if (regions_.objectsOnlyStale()) {
+        // Les régions sont à jour : seuls les objets attendent la nouvelle génération (satin).
+        state = QStringLiteral("upToDate");
+        detail = tr("%n région(s) ; objets à régénérer (%1)", nullptr, regionCount())
                      .arg(regions_.staleReason());
     } else {
         state = QStringLiteral("upToDate");

@@ -572,6 +572,14 @@ bool VectorSpaceController::updateAllLayersFromSegmentation() {
     return true;
 }
 
+void VectorSpaceController::publishConversionWarnings(const std::vector<std::string>& warnings) {
+    conversionWarnings_.clear();
+    for (const auto& warning : warnings) {
+        conversionWarnings_.push_back(QString::fromStdString(warning));
+    }
+    emit convertingChanged();
+}
+
 bool VectorSpaceController::convertToEmbroidery(const QVariantMap& conversion) {
     if (converting_) {
         return false;
@@ -593,6 +601,7 @@ bool VectorSpaceController::convertToEmbroidery(const QVariantMap& conversion) {
     // Satin : l'état partagé de l'interface (même case que l'onglet Segmentation).
     applySatinOptions(studio_.satinOptions(), options);
     lastAutoOptions_ = options;
+    conversionWarnings_.clear(); // ils décrivent la conversion précédente
     converting_ = true;
     emit convertingChanged();
     say(tr("Conversion en broderie…"));
@@ -622,6 +631,7 @@ bool VectorSpaceController::convertToEmbroidery(const QVariantMap& conversion) {
                 say(tr("Conversion refusée : aucun objet de broderie produit"));
                 return;
             }
+            publishConversionWarnings(result->warnings);
             const auto spacing = to_micrometers(Millimeters{spacingMm});
             for (auto& embroidery : result->embroideries) {
                 embroidery.id = session.allocateObjectId();

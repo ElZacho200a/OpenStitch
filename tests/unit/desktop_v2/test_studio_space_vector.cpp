@@ -1020,6 +1020,38 @@ private slots:
         QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
     }
 
+    // CX05 : les avertissements d'une conversion (VectorConversion::warnings) sont résumés,
+    // comptés et repliés au-delà de trois lignes ; seule la conversion suivante les vide.
+    void conversionWarningsAreShown() {
+        Rig rig;
+        open(rig);
+        enterSpace(rig);
+        const auto item = [&rig](const char* name) {
+            return deepItem(rig.window->contentItem(), QString::fromLatin1(name));
+        };
+        rig.stage.publishConversionWarnings({"forme 1 : contour ignoré", "forme 2 : contour ignoré",
+                                             "forme 3 : contour ignoré",
+                                             "forme 4 : contour ignoré"});
+        QCOMPARE(rig.stage.conversionWarnings().size(), 4);
+        auto* summary = item("vectorConvertWarningSummary");
+        QVERIFY(summary);
+        QTRY_VERIFY(summary->isVisible());
+        QVERIFY(summary->property("text").toString().contains(QStringLiteral("4 avertissements")));
+        QTRY_VERIFY(item("vectorConvertWarningLine_2") &&
+                    item("vectorConvertWarningLine_2")->isVisible());
+        QVERIFY(!item("vectorConvertWarningLine_3")->isVisible());
+        auto* more = item("vectorConvertWarningsMore");
+        QVERIFY(more && more->isVisible());
+        QVERIFY(QMetaObject::invokeMethod(more, "click"));
+        QTRY_VERIFY(item("vectorConvertWarningLine_3")->isVisible());
+        // La conversion suivante repart de zéro (dès son lancement).
+        QVERIFY(rig.stage.convertToEmbroidery());
+        QVERIFY(rig.stage.conversionWarnings().isEmpty());
+        QTRY_VERIFY(!summary->isVisible());
+        QTRY_VERIFY_WITH_TIMEOUT(!rig.stage.converting(), 15'000);
+        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+    }
+
     // Recette : ecrit le projet de l'espace pour la capture (OPENSTITCH_VECTOR_SAMPLE=chemin.osp).
     void writeSampleForCapture() {
         const auto path = qEnvironmentVariable("OPENSTITCH_VECTOR_SAMPLE");

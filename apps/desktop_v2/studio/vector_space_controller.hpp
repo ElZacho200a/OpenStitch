@@ -9,10 +9,12 @@
 #include <QObject>
 #include <QPointer>
 #include <QString>
+#include <QStringList>
 #include <QTimer>
 #include <QVariantMap>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "layers/vector_layer.hpp"
@@ -44,6 +46,9 @@ class VectorSpaceController : public QObject {
     Q_PROPERTY(QString message READ message NOTIFY messageChanged)
     // Conversion en broderie calculée hors du fil d'interface.
     Q_PROPERTY(bool converting READ converting NOTIFY convertingChanged)
+    // Avertissements du moteur de la dernière conversion réussie (`VectorConversion::warnings`),
+    // dans son ordre ; vidés seulement au lancement de la conversion suivante.
+    Q_PROPERTY(QStringList conversionWarnings READ conversionWarnings NOTIFY convertingChanged)
 public:
     explicit VectorSpaceController(StudioController& studio, QObject* parent = nullptr);
     ~VectorSpaceController() override;
@@ -99,6 +104,9 @@ public:
     // l'état partagé `StudioController::satinOptions`, le même que pour « Régénérer les objets ».
     Q_INVOKABLE bool convertToEmbroidery(const QVariantMap& options = {});
     [[nodiscard]] bool converting() const { return converting_; }
+    [[nodiscard]] QStringList conversionWarnings() const { return conversionWarnings_; }
+    // Publie les avertissements d'une conversion terminée (fil d'interface ; vide = efface).
+    void publishConversionWarnings(const std::vector<std::string>& warnings);
     // Options réellement transmises au moteur par la dernière conversion lancée.
     [[nodiscard]] const autodigitize::AutoOptions& lastAutoOptions() const {
         return lastAutoOptions_;
@@ -155,6 +163,7 @@ private:
     TaskManager convertTasks_;
     bool converting_{false};
     autodigitize::AutoOptions lastAutoOptions_;
+    QStringList conversionWarnings_;
     std::uint64_t buildRequest_{0};
     bool pending_{false};
     std::vector<std::uint64_t> pendingVisualKeys_;
