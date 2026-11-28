@@ -71,6 +71,21 @@ bool mouseClick(QQuickWindow* window, const char* name) {
     return true;
 }
 
+// Centre choisi d'un remplissage concentrique ou radial (nullopt : centre automatique).
+std::optional<Vec2um> chosenFillCenter(const document::Project& project, std::uint64_t id) {
+    const auto* object = project.findEmbroidery(ObjectId{id});
+    if (object == nullptr) {
+        return std::nullopt;
+    }
+    if (const auto* c = std::get_if<document::ContourFillParams>(&object->params)) {
+        return c->center;
+    }
+    if (const auto* r = std::get_if<document::RadialFillParams>(&object->params)) {
+        return r->center;
+    }
+    return std::nullopt;
+}
+
 struct Rig {
     DocumentSession session;
     StudioController studio{session};
@@ -710,6 +725,99 @@ private slots:
         QVERIFY(afterNext <= rig.view.simTotal());
         rig.view.previousLayer();
         QCOMPARE(rig.view.simPosition(), 0);
+    }
+
+    // FILL-CENTER : parcours réel à la souris dans l'espace Points. Le viseur du centre apparaît
+    // sur un remplissage concentrique (puis radial) sélectionné ; un simple clic ne fige rien ;
+    // le glisser fixe le centre au point visé en UNE étape d'annulation ; un double-clic sur le
+    // viseur fixé rend le centre automatique.
+    void fillCenterMarkerIsDraggedUndoneAndReset() {
+        Rig rig;
+        auto project = project_ops::create_empty_project({});
+        QVERIFY(project.has_value());
+        rig.session.replaceProject(std::move(*project), true);
+        QVERIFY(rig.session.applyBatch(batchAddRect({0, 0}, 20, 20), "Carre").committed);
+        open(rig, /*createProject=*/false);
+        auto* canvas = rig.window->findChild<GpuCanvas*>();
+        QVERIFY(canvas);
+        const auto id = rig.session.project().embroidery_objects.front().id.value;
+        const std::string sid = std::to_string(id);
+
+        const auto marker = [&] { return canvas->property("fillCenter").toMap(); };
+        const auto markerPoint = [&] {
+            const auto m = marker();
+            return canvas
+                ->mapToScene(QPointF(m.value(QStringLiteral("x")).toDouble(),
+                                     m.value(QStringLiteral("y")).toDouble()))
+                .toPoint();
+        };
+        // Point modèle (mm, Y vers le haut) -> point fenêtre.
+        const auto modelPoint = [&](double xMm, double yMm) {
+            const auto s = canvas->camera().worldToScreen({xMm, -yMm});
+            return canvas->mapToScene(QPointF(s.x, s.y)).toPoint();
+        };
+        const auto drag = [&](QPoint from, QPoint to) {
+            QTest::mousePress(rig.window, Qt::LeftButton, Qt::NoModifier, from);
+            for (int step = 1; step <= 6; ++step) {
+                QTest::mouseMove(rig.window, from + (to - from) * step / 6);
+            }
+            QTest::mouseRelease(rig.window, Qt::LeftButton, Qt::NoModifier, to);
+        };
+
+        for (const char* type : {"contour_fill", "radial_fill"}) {
+            const QByteArray tag(type);
+            QVERIFY(rig.session
+                        .applyBatch(R"({"schema":"openstitch.batch/1","operations":[)"
+                                    R"({"op":"set_stitch_type","object":)" +
+                                        sid + R"(,"type":")" + type + R"("}]})",
+                                    "Type")
+                        .committed);
+            rig.studio.selectObject(QString::number(id));
+            QTRY_VERIFY_WITH_TIMEOUT(!rig.studio.busy() && rig.studio.scene() != nullptr, 15'000);
+            canvas->fitDesign();
+            QTRY_VERIFY2(marker().value(QStringLiteral("visible")).toBool(), tag);
+            QVERIFY2(!marker().value(QStringLiteral("fixed")).toBool(), tag);
+            QVERIFY2(!chosenFillCenter(rig.session.project(), id), tag);
+            // Centre automatique : le milieu du carré, à un retrait près.
+            const auto autoCenter = markerPoint();
+            QVERIFY2((autoCenter - modelPoint(0, 0)).manhattanLength() <= 4, tag);
+
+            // Un simple clic sur le viseur ne fige pas le centre automatique.
+            const auto base = rig.session.historyPosition();
+            QTest::mouseClick(rig.window, Qt::LeftButton, Qt::NoModifier, autoCenter);
+            QCOMPARE(rig.session.historyPosition(), base);
+            QVERIFY2(!chosenFillCenter(rig.session.project(), id), tag);
+            QVERIFY2(!marker().value(QStringLiteral("fixed")).toBool(), tag);
+
+            // Glisser le viseur : le centre vaut le point visé, en une étape d'annulation.
+            const double tx = 5.0;
+            const double ty = -4.0;
+            const auto target = modelPoint(tx, ty);
+            drag(autoCenter, target);
+            QTRY_COMPARE(rig.session.historyPosition(), base + 1);
+            const auto chosen = chosenFillCenter(rig.session.project(), id);
+            QVERIFY2(chosen.has_value(), tag);
+            const double tolerance = std::max(0.1, 1.0 / canvas->zoom());
+            QVERIFY2(std::abs(chosen->x.value / 1000.0 - tx) <= tolerance, tag);
+            QVERIFY2(std::abs(chosen->y.value / 1000.0 - ty) <= tolerance, tag);
+            QTRY_VERIFY2(marker().value(QStringLiteral("fixed")).toBool(), tag);
+            QVERIFY2((markerPoint() - target).manhattanLength() <= 2, tag);
+
+            // Annuler : le centre redevient automatique ; rétablir le refixe.
+            QVERIFY(rig.session.undo());
+            QCOMPARE(rig.session.historyPosition(), base);
+            QVERIFY2(!chosenFillCenter(rig.session.project(), id), tag);
+            QVERIFY(rig.session.redo());
+            QVERIFY2(chosenFillCenter(rig.session.project(), id).has_value(), tag);
+
+            // Double-clic sur le viseur fixé : centre automatique, une étape de plus.
+            QTRY_VERIFY2(marker().value(QStringLiteral("fixed")).toBool(), tag);
+            QTest::mouseDClick(rig.window, Qt::LeftButton, Qt::NoModifier, markerPoint());
+            QTRY_COMPARE(rig.session.historyPosition(), base + 2);
+            QVERIFY2(!chosenFillCenter(rig.session.project(), id), tag);
+            QTRY_VERIFY2(!marker().value(QStringLiteral("fixed")).toBool(), tag);
+        }
+        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
     }
 };
 

@@ -187,3 +187,84 @@ TEST_CASE("contour fill: output is deterministic through the generation pipeline
                       [](const auto& c) { return c.type == stitch::CommandType::Stitch; });
     CHECK(stitchCount > 100);
 }
+
+// FILL-CENTER : centre choisi, anneaux homothétiques du contour vers ce point.
+TEST_CASE("contour fill: a chosen centre gives rings that converge on that point") {
+    auto p = params();
+    p.center = um(6, 8); // carré 20 x 20 mm, centre décalé vers le bas-gauche
+    const auto stitches = fill_contour(rect_mm(0, 0, 20, 20), p);
+    REQUIRE(stitches.size() > 100);
+    for (const FillStitch& s : stitches) {
+        CHECK(depth_mm(s.pos, 20.0) >= -0.03); // jamais hors du carré
+    }
+    // Région étoilée par rapport au centre : spirale continue, sans saut, finie au centre.
+    CHECK(
+        std::none_of(stitches.begin(), stitches.end(), [](const FillStitch& s) { return s.jump; }));
+    CHECK(dist_um(stitches.back().pos, um(6, 8)) < 50.0);
+    // Différent du concentrique historique (qui finit au milieu du carré).
+    const auto legacy = fill_contour(rect_mm(0, 0, 20, 20), params());
+    CHECK(dist_um(legacy.back().pos, um(10, 10)) < 1'500.0);
+    CHECK(dist_um(legacy.back().pos, um(6, 8)) > 2'000.0);
+}
+
+TEST_CASE("contour fill: centred rings keep the spacing on the far side") {
+    auto p = params();
+    p.spiral = false;
+    p.center = um(5, 10);
+    const auto stitches = fill_contour(rect_mm(0, 0, 20, 20), p);
+    REQUIRE(stitches.size() > 100);
+    // Côté droit (x = 20, le plus loin du centre : 15 mm) : anneaux réguliers au plus à 0,4 mm.
+    // On mesure où chaque segment cousu croise la droite y = 10 mm : les points eux-mêmes tombent
+    // où l'échantillonnage de l'anneau les place (jusqu'à 3 mm d'écart), pas sur cette droite.
+    std::vector<double> xs;
+    for (std::size_t i = 1; i < stitches.size(); ++i) {
+        if (stitches[i].jump) {
+            continue;
+        }
+        const double x0 = stitches[i - 1].pos.x.value / 1000.0;
+        const double y0 = stitches[i - 1].pos.y.value / 1000.0;
+        const double x1 = stitches[i].pos.x.value / 1000.0;
+        const double y1 = stitches[i].pos.y.value / 1000.0;
+        if (y0 == y1 || (y0 - 10.0) * (y1 - 10.0) > 0.0) {
+            continue;
+        }
+        xs.push_back(x0 + (x1 - x0) * (10.0 - y0) / (y1 - y0));
+    }
+    std::sort(xs.begin(), xs.end());
+    xs.erase(std::unique(xs.begin(), xs.end(),
+                         [](double a, double b) { return std::abs(a - b) < 0.01; }),
+             xs.end());
+    int farGaps = 0;
+    for (std::size_t i = 1; i < xs.size(); ++i) {
+        if (xs[i] > 12.0) {
+            CHECK(xs[i] - xs[i - 1] <= 0.41);
+            ++farGaps;
+        }
+    }
+    CHECK(farGaps > 10);
+}
+
+TEST_CASE("contour fill: centred rings are clipped at holes and deterministic") {
+    geometry::PathSet shape = rect_mm(0, 0, 30, 30);
+    shape.holes.push_back(polygon({um(10, 10), um(10, 20), um(20, 20), um(20, 10)}));
+    auto p = params();
+    p.center = um(15, 15); // au milieu du trou
+    const auto a = fill_contour(shape, p);
+    REQUIRE(a.size() > 200);
+    for (std::size_t i = 0; i < a.size(); ++i) {
+        const double x = a[i].pos.x.value / 1000.0;
+        const double y = a[i].pos.y.value / 1000.0;
+        CHECK_FALSE((x > 10.05 && x < 19.95 && y > 10.05 && y < 19.95));
+        if (i > 0 && !a[i].jump) {
+            const double mx = (x + a[i - 1].pos.x.value / 1000.0) / 2.0;
+            const double my = (y + a[i - 1].pos.y.value / 1000.0) / 2.0;
+            CHECK_FALSE((mx > 10.05 && mx < 19.95 && my > 10.05 && my < 19.95));
+        }
+    }
+    const auto b = fill_contour(shape, p);
+    REQUIRE(a.size() == b.size());
+    for (std::size_t i = 0; i < a.size(); ++i) {
+        CHECK(a[i].pos == b[i].pos);
+        CHECK(a[i].jump == b[i].jump);
+    }
+}

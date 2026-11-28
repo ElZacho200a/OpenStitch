@@ -538,6 +538,11 @@ struct ContourFillParams {
     bool hidden_underpath{true};          // liaisons longues cousues cachées (au lieu de sauts)
     Micrometers pull_compensation{0};     // HP-STI-033 : depassement du contour, 0-3 mm (defaut 0)
     PullMode pull_mode{PullMode::Manual}; // HP-STI-033 : Manual ou Auto
+    // Centre choisi (FILL-CENTER) : nullopt = anneaux décalés du bord (comportement historique) ;
+    // sinon les anneaux sont des copies réduites du contour vers ce point (homothétie), rognées à
+    // la région. L'écart vaut `row_spacing` du côté le plus éloigné du centre et se resserre du
+    // côté proche : la densité y augmente.
+    std::optional<Vec2um> center;
 
     bool operator==(const ContourFillParams&) const = default;
 };
