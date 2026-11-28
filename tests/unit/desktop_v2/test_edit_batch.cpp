@@ -60,6 +60,22 @@ TEST_CASE("remove is one undo step for the whole selection", "[desktop_v2][edit]
     CHECK(s.project().embroidery_objects.size() == 2);
 }
 
+TEST_CASE("remove with source deletes the shape with its last stitch layer", "[desktop_v2][edit]") {
+    auto s = newSession();
+    const auto a = addRect(s, {-20, 0}, 10, 10);
+    const auto shapes = s.project().vector_objects.size();
+    // Sans with_source : la forme reste, sans points.
+    REQUIRE(s.applyBatch(batchRemove({a}), "Retirer les points").committed);
+    CHECK(s.project().vector_objects.size() == shapes);
+    REQUIRE(s.undo());
+    // Avec : la forme part avec sa dernière couche, en une étape.
+    const auto depth = s.undoNames().size();
+    REQUIRE(s.applyBatch(batchRemove({a}, true), "Supprimer").committed);
+    CHECK(s.project().embroidery_objects.empty());
+    CHECK(s.project().vector_objects.size() == shapes - 1);
+    CHECK(s.undoNames().size() == depth + 1);
+}
+
 TEST_CASE("duplicate creates offset copies and reports every created id", "[desktop_v2][edit]") {
     auto s = newSession();
     const auto a = addRect(s, {-20, 0}, 10, 10);

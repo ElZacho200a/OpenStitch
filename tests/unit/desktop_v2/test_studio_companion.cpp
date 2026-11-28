@@ -443,6 +443,16 @@ void StudioCompanionTest::paletteCommandsRunThroughTheWindowDispatcher() {
     QCOMPARE(rig.session.undoNames().size(), steps + 1);
     QVERIFY(rig.actions.runCommand(QStringLiteral("cmd.edit.undo")).isEmpty());
     QCOMPARE(rig.session.undoNames().size(), steps);
+    // « Retirer les points (garder la forme) » : aussi depuis la palette (Maj+Suppr), une étape ;
+    // les points partent, la forme reste.
+    rig.controller.selectObject(QStringLiteral("101"));
+    const auto objects = rig.session.project().embroidery_objects.size();
+    const auto shapes = rig.session.project().vector_objects.size();
+    QVERIFY(rig.actions.runCommand(QStringLiteral("cmd.edit.remove-stitches")).isEmpty());
+    QCOMPARE(rig.session.project().embroidery_objects.size(), objects - 1);
+    QCOMPARE(rig.session.project().vector_objects.size(), shapes);
+    QCOMPARE(rig.session.undoNames().size(), steps + 1);
+    QVERIFY(rig.actions.runCommand(QStringLiteral("cmd.edit.undo")).isEmpty());
     // Outil.
     QVERIFY(rig.actions.runCommand(QStringLiteral("cmd.tool.draw.ellipse")).isEmpty());
     QCOMPARE(rig.tools.activeTool(), QStringLiteral("draw.ellipse"));
