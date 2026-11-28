@@ -217,6 +217,7 @@ Rectangle {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: threadSections.bottom
+        anchors.topMargin: 8
         anchors.bottom: parent.bottom
         anchors.leftMargin: 10
         anchors.rightMargin: 10
