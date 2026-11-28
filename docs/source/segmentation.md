@@ -184,6 +184,33 @@ visibles, tandis que des bordures et des ombres sont épaissies.
 traits restent à comparer. Deux traits parallèles écartés de moins que la portée du noyau peuvent
 se masquer mutuellement (le test de crête utilise alors la portée courte).
 
+## Bords flous et frange alpha (HP-AUTO-015, HP-AUTO-016, expérimental)
+
+Deux options de `SegmentationOptions`, **désactivées par défaut** (sans valeur, sortie octet pour
+octet identique à avant) :
+
+- `transition_pixels` (`TransitionPixelOptions`) : sur un bord flou ou anticrénelé, les pixels de
+  mélange tombent dans une classe intermédiaire et forment des régions-liserés de 1 à 2 px. Après
+  l'affectation au centre le plus proche, un pixel est réaffecté s'il est à la fois **mince** (sa
+  classe disparaît à l'ouverture par un carré de côté impair ≥ `max_width_px` + 1, défaut 2 px) et
+  **mélange** des classes épaisses de son voisinage (distance Lab au segment [centre a, centre b],
+  ou au centre d'une seule voisine, ≤ `max_delta_e`, défaut 12 ΔE). Il rejoint l'extrémité la
+  plus proche. Un trait fin d'une autre couleur (bleu entre crème et rouge) n'est pas un mélange et
+  reste ; un trait gris entre noir et blanc en est un : pour le garder, activer aussi
+  `fine_structures` (pixels protégés jamais réaffectés).
+- `alpha_threshold` (défaut 128, historique) règle le seuil d'opacité, et `alpha_fringe`
+  (`AlphaFringeOptions`) traite la frange semi-transparente : les interstices étroits de l'opaque
+  (fermeture morphologique couvrant `max_gap_px`, alpha ≥ `min_alpha`) sont rattachés à la forme
+  — couture semi-transparente entre deux aplats, rayure translucide — sans faire grossir la
+  silhouette ; les pixels d'alpha < `solid_alpha` (240) sont exclus du k-means et prennent, de
+  proche en proche (≤ `max_fringe_px` passes synchrones, vote 8-voisins, égalité → plus petit
+  indice), la classe de leurs voisins pleins : plus de liseré sombre dû à la prémultiplication.
+
+Ordre : affectation → `fine_structures` → transition → frange → lissage → composantes. Passes
+synchrones (lecture de l'état précédent), donc même résultat à 1 et 8 fils. Tests :
+`tests/unit/segmentation/test_segmentation.cpp` (« transition pixels: … », « alpha fringe: … »).
+Câblage CLI/MCP/Studio à faire.
+
 ## Identifiants stables
 
 Chaque région a un `RegionId` = index de slot + 1. Les slots ne sont **jamais**
