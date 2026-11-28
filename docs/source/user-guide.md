@@ -894,6 +894,21 @@ apparaît en son centre. Faites glisser la poignée pour tourner l'orientation d
 fils ; l'angle est appliqué au relâchement (annulable). C'est l'équivalent
 visuel de *Orientation du remplissage…*.
 
+## Viseur de centre (radial, spirale, concentrique)
+
+Dans Studio, espace **Points**, quand **un seul** objet radial, spirale ou concentrique est
+sélectionné, un viseur marque le centre du remplissage :
+
+- **« Centre auto »** (pointillés) : aucun centre fixé ; le centre affiché est le milieu de
+  l'emprise des points de l'objet ;
+- **« Centre »** (trait plein, couleur d'accent) : centre fixé par l'utilisateur.
+
+Faites **glisser** le viseur pour fixer le centre : une seule étape d'annulation (Ctrl+Z).
+Un simple clic sans déplacement ne fige rien. **Double-cliquez** sur un centre fixé pour revenir
+au centre automatique. La saisie numérique reste possible dans l'inspecteur (champ « Centre … »,
+X/Y en mm, niveau Expert, groupe « Géométrie et guides »). Pour le concentrique, un centre
+décentré resserre les anneaux du côté proche : vérifier la densité (voir *Objets de broderie*).
+
 ## Panneau Filtres d'affichage
 
 Dock (à droite, dès qu'il existe des objets) pour **isoler** ce qu'on regarde :

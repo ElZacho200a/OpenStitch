@@ -35,6 +35,28 @@ Le satin est particulier : il **porte sa propre géométrie** (deux rails
 
 | Point de croix (HP-STI-012) | `fill_cross_stitch` | `cell`, `grid_angle`, `full_cross`, `passes`, `hidden_underpath` | Nouveau |
 | Appliqué (HP-SPEC-001) | `generate_applique` | `placement_length`, `tack`, `tack_width`, `tack_spacing`, `cover_width`, `cover_density`, `cut_offset`, `stops` | Nouveau |
+| Concentrique (HP-STI-007) | `fill_contour` | `row_spacing`, `stitch_length`, `min_length`, `inset`, `spiral`, `center` (facultatif) | Nouveau |
+
+**Remplissage concentrique** (`ContourFillParams`, HP-STI-007). Des anneaux parallèles au contour
+de la région sont cousus de l'extérieur vers l'intérieur (`spiral` vrai : spirale continue ;
+faux : anneaux fermés reliés par un court pas). Deux géométries selon `center` :
+
+- **absent** (défaut, comportement historique) : anneaux décalés du bord par `inset_path_set`,
+  écart `row_spacing`, un anneau grandit autour de chaque trou ;
+- **présent** (FILL-CENTER, 2026-11-28) : l'anneau k est une **copie réduite** du contour
+  extérieur vers ce point, homothétie de facteur 1 − k/N avec N = ⌈Rmax / `row_spacing`⌉, Rmax
+  étant la plus grande distance du centre aux sommets du contour. Les anneaux sont rognés à la
+  région (trous compris) aux points d'intersection exacts. En spirale, l'échelle décroît
+  continûment le long de chaque tour : sans saut tant que la région est étoilée par rapport au
+  centre, fin au centre. Les portions rognées sont réordonnées comme celles de la spirale
+  (`route_parts`). Code : `fill_centered` dans `libs/stitch_generation/src/contour_fill.cpp`.
+
+**Précaution de brodabilité** : avec un centre, l'écart vaut `row_spacing` seulement du côté le
+plus éloigné du centre ; il se resserre du côté proche, où la densité augmente (fortement si le
+centre est près d'un bord). Contrôler la carte de densité, voire augmenter `row_spacing`.
+Exposé au CLI/MCP (`set_params` : `center_mm` = `[x, y]` en mm, `null` pour revenir au centre
+automatique) et dans Studio (viseur de centre au canevas, champ « Centre des anneaux » de
+l'inspecteur ; voir le guide utilisateur, *Viseur de centre*).
 
 Le remplissage directionnel est détaillé dans son chapitre (*Remplissage
 directionnel*) ; il se crée par conversion d'un tatami (inspecteur) ou via
