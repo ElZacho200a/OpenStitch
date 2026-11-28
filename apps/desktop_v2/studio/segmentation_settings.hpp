@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
+#include <QString>
 #include <QVariant>
 #include <QVariantMap>
 #include <algorithm>
 #include <cmath>
+#include <optional>
+
+#include "openstitch/project_ops/factory.hpp"
 
 namespace openstitch::desktop_v2::studio {
 
@@ -47,6 +51,65 @@ struct SegmentationSettings {
     out.blend_threads =
         std::clamp(static_cast<int>(number("blend_threads", defaults.blend_threads)), 2, 16);
     return out;
+}
+
+// Réglage avancé facultatif saisi dans un champ : absent, vide ou invalide (non numérique, négatif,
+// au-delà de `max`) = std::nullopt, c'est-à-dire la valeur par défaut du moteur. Une valeur valide
+// est transmise telle quelle (virgule décimale acceptée).
+[[nodiscard]] inline std::optional<double>
+optionalSettingFrom(const QVariantMap& map, const char* key, double max = HUGE_VAL) {
+    const auto value = map.value(QLatin1String(key));
+    if (!value.isValid() || value.isNull()) {
+        return std::nullopt;
+    }
+    QString text = value.toString().trimmed();
+    text.replace(QLatin1Char(','), QLatin1Char('.'));
+    if (text.isEmpty()) {
+        return std::nullopt;
+    }
+    bool ok = false;
+    const double v = text.toDouble(&ok);
+    if (!ok || !std::isfinite(v) || v < 0.0 || v > max) {
+        return std::nullopt;
+    }
+    return v;
+}
+
+// Réglages de la génération des objets (« Régénérer les objets », « Re-segmenter », « Mettre à
+// jour les formes ») : segmentation (mêmes clés que l'aperçu) et satin. Câblage seul : chaque
+// valeur va telle quelle dans `project_ops::DigitizeSettings`, les choix restent au moteur.
+//   satin_bands                 bool   bandes étroites cousues en satin
+//   satin_compare               bool   meilleur satin mesuré (sans effet sans satin_bands)
+//   satin_min_coverage          0..1   absent/vide = défaut du moteur
+//   satin_compact_max_mm        mm     idem (avec satin_bands)
+//   satin_compare_max_stitch_mm mm     idem (avec satin_compare)
+[[nodiscard]] inline project_ops::DigitizeSettings
+objectDigitizeSettingsFrom(const QVariantMap& map) {
+    project_ops::DigitizeSettings digitize;
+    const auto chosen = segmentationSettingsFrom(
+        map, {digitize.max_colors, digitize.min_region_px, digitize.smoothing_px});
+    digitize.max_colors = chosen.max_colors;
+    digitize.min_region_px = chosen.min_region_px;
+    digitize.smoothing_px = chosen.smoothing_radius_px;
+    digitize.fine_structures = chosen.fine_structures;
+    if (chosen.blend_zones) {
+        // Expérimental : zones de fondu, chaque zone cousue en fondu de fils mélangés.
+        digitize.mode = "blend";
+        digitize.blend_threads = chosen.blend_threads;
+    }
+    digitize.satin_bands = map.value(QLatin1String("satin_bands"), false).toBool();
+    // « Meilleur satin » n'existe qu'avec le satin : jamais transmis seul.
+    digitize.satin_compare =
+        digitize.satin_bands && map.value(QLatin1String("satin_compare"), false).toBool();
+    if (digitize.satin_bands) {
+        digitize.satin_min_coverage = optionalSettingFrom(map, "satin_min_coverage", 1.0);
+        digitize.satin_compact_max_mm = optionalSettingFrom(map, "satin_compact_max_mm");
+    }
+    if (digitize.satin_compare) {
+        digitize.satin_compare_max_stitch_mm =
+            optionalSettingFrom(map, "satin_compare_max_stitch_mm");
+    }
+    return digitize;
 }
 
 } // namespace openstitch::desktop_v2::studio

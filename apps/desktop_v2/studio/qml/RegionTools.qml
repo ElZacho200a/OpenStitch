@@ -30,8 +30,35 @@ ColumnLayout {
     property var pendingOptions: ({})
     function requestRegeneration(resegment) {
         // RegionController freezes these settings while the overwrite confirmation is shown.
-        pendingOptions = Object.assign({}, segmentationOptions)
+        pendingOptions = Object.assign({}, segmentationOptions, regionTools.satinOptions)
         regionTools.regenerate(resegment, false, pendingOptions)
+    }
+    // Satin de la génération des objets : l'état vit dans RegionController (partagé avec « Mettre
+    // à jour les formes ») ; une clé absente = valeur du moteur.
+    readonly property bool satinBands: regionTools.satinOptions.satin_bands === true
+    readonly property bool satinCompare: satinBands && regionTools.satinOptions.satin_compare === true
+    // Sans effet en zones de fondu (chaque zone devient un fondu).
+    readonly property bool satinAvailable: !(segmentationOptions && segmentationOptions.blend_zones === true)
+    property bool satinAdvancedOpen: false
+    function setSatinOption(key, value) {
+        const next = Object.assign({}, regionTools.satinOptions)
+        if (value === undefined || value === null || value === "")
+            delete next[key]
+        else
+            next[key] = value
+        regionTools.satinOptions = next
+    }
+    // Champ avancé : vide = défaut du moteur ; nombre >= 0 (et <= max) transmis tel quel.
+    function satinNumber(text, max) {
+        const t = String(text).trim().replace(",", ".")
+        if (t.length === 0)
+            return ""
+        const n = Number(t)
+        return isFinite(n) && n >= 0 && n <= max ? n : null
+    }
+    function commitSatinField(key, text, max) {
+        const n = section.satinNumber(text, max)
+        section.setSatinOption(key, n === null ? "" : n)
     }
     property int islandPx: 12
     property int holePx: 12
@@ -431,6 +458,98 @@ ColumnLayout {
     }
 
     SectionLabel { text: qsTr("OBJETS") }
+    StudioCheckBox {
+        objectName: "regionSatinBands"
+        Layout.fillWidth: true
+        text: qsTr("Satin sur les bandes")
+        checked: section.satinBands
+        enabled: section.satinAvailable
+        onToggled: section.setSatinOption("satin_bands", checked)
+        palette.windowText: Theme.foreground
+        Accessible.name: qsTr("Coudre les bandes étroites en satin")
+    }
+    StudioCheckBox {
+        objectName: "regionSatinCompare"
+        Layout.fillWidth: true
+        text: qsTr("Choisir le meilleur satin (expérimental)")
+        checked: section.satinCompare
+        enabled: section.satinAvailable && section.satinBands
+        onToggled: section.setSatinOption("satin_compare", checked)
+        palette.windowText: Theme.foreground
+        Accessible.name: qsTr("Choisir pour chaque bande le meilleur des satins mesurés")
+    }
+    // Un seul texte, trois états : ce que fait le satin, ce que change « meilleur satin », pourquoi
+    // c'est grisé.
+    Text {
+        objectName: "regionSatinHint"
+        Layout.fillWidth: true
+        text: !section.satinAvailable ? qsTr("Satin indisponible avec les zones de fondu.")
+              : !section.satinBands ? qsTr("Cochez « Satin sur les bandes » pour coudre les formes étroites (bordures, tiges, lettres) en satin plutôt qu'en remplissage.")
+              : section.satinCompare ? qsTr("Pour chaque bande, trois satins sont essayés et mesurés ; le meilleur est gardé. Génération plus lente : vérifiez le résultat dans l'espace Points.")
+              : qsTr("Les formes étroites seront cousues en satin. « Meilleur satin » compare en plus trois façons de les coudre.")
+        wrapMode: Text.WordWrap
+        color: Theme.muted; font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily
+    }
+    // Réglages avancés repliés par défaut : un débutant n'a rien à y toucher.
+    StudioButton {
+        objectName: "regionSatinAdvanced"
+        quiet: true
+        visible: section.satinBands && section.satinAvailable
+        text: section.satinAdvancedOpen ? qsTr("▾ Réglages avancés du satin") : qsTr("▸ Réglages avancés du satin")
+        Accessible.role: Accessible.Button
+        Accessible.checkable: true
+        Accessible.checked: section.satinAdvancedOpen
+        onClicked: section.satinAdvancedOpen = !section.satinAdvancedOpen
+    }
+    GridLayout {
+        objectName: "regionSatinAdvancedSection"
+        columns: 2
+        Layout.fillWidth: true
+        columnSpacing: 8
+        visible: section.satinAdvancedOpen && section.satinBands && section.satinAvailable
+        Text { text: qsTr("Couverture minimale (0 à 1)"); color: Theme.foreground; font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+        StudioTextField {
+            objectName: "regionSatinMinCoverage"
+            Layout.preferredWidth: 80
+            placeholderText: qsTr("auto")
+            // Pas de liaison : la saisie n'est jamais réécrite pendant la frappe.
+            Component.onCompleted: text = regionTools.satinOptions.satin_min_coverage !== undefined ? String(regionTools.satinOptions.satin_min_coverage) : ""
+            invalid: section.satinNumber(text, 1) === null
+            Accessible.name: qsTr("Part minimale de la forme couverte par le satin, de 0 à 1 ; vide pour la valeur par défaut")
+            onTextChanged: section.commitSatinField("satin_min_coverage", text, 1)
+        }
+        Text { text: qsTr("Largeur max. d'une forme compacte (mm)"); color: Theme.foreground; font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+        StudioTextField {
+            objectName: "regionSatinCompactMax"
+            Layout.preferredWidth: 80
+            placeholderText: qsTr("auto")
+            // Pas de liaison : la saisie n'est jamais réécrite pendant la frappe.
+            Component.onCompleted: text = regionTools.satinOptions.satin_compact_max_mm !== undefined ? String(regionTools.satinOptions.satin_compact_max_mm) : ""
+            invalid: section.satinNumber(text, 1e6) === null
+            Accessible.name: qsTr("Largeur maximale en millimètres d'une forme compacte cousue en satin ; vide pour la valeur par défaut")
+            onTextChanged: section.commitSatinField("satin_compact_max_mm", text, 1e6)
+        }
+        Text { text: qsTr("Point satin le plus long (mm)"); color: section.satinCompare ? Theme.foreground : Theme.faint; font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+        StudioTextField {
+            objectName: "regionSatinMaxStitch"
+            Layout.preferredWidth: 80
+            enabled: section.satinCompare
+            placeholderText: qsTr("auto")
+            // Pas de liaison : la saisie n'est jamais réécrite pendant la frappe.
+            Component.onCompleted: text = regionTools.satinOptions.satin_compare_max_stitch_mm !== undefined ? String(regionTools.satinOptions.satin_compare_max_stitch_mm) : ""
+            invalid: section.satinNumber(text, 1e6) === null
+            Accessible.name: qsTr("Longueur maximale en millimètres d'un point satin pour le meilleur satin ; vide pour la valeur par défaut")
+            onTextChanged: section.commitSatinField("satin_compare_max_stitch_mm", text, 1e6)
+        }
+        Text {
+            objectName: "regionSatinAdvancedHint"
+            Layout.columnSpan: 2
+            Layout.fillWidth: true
+            text: qsTr("Vide : valeur par défaut. Le point le plus long ne s'applique qu'avec « meilleur satin ».")
+            wrapMode: Text.WordWrap
+            color: Theme.muted; font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily
+        }
+    }
     RowLayout {
         Layout.fillWidth: true
         StudioButton {
@@ -494,5 +613,17 @@ ColumnLayout {
         wrapMode: Text.WordWrap
         color: regionTools.messageIsError ? Theme.error : Theme.success
         font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily
+    }
+    // Avertissements du moteur à la fin de la régénération (régions écartées, etc.) : une ligne
+    // chacun, sous le résumé, jusqu'au message suivant.
+    Text {
+        objectName: "regionWarnings"
+        Layout.fillWidth: true
+        visible: regionTools.warnings.length > 0
+        text: regionTools.warnings.map(w => "⚠ " + w).join("\n")
+        wrapMode: Text.WordWrap
+        color: Theme.warning
+        font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily
+        Accessible.name: qsTr("Avertissements de la génération des objets")
     }
 }

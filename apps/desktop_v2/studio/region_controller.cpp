@@ -120,7 +120,16 @@ QVariantMap RegionController::handEdits() const {
 void RegionController::setMessage(const QString& text, bool error) {
     message_ = text;
     messageIsError_ = error;
+    warnings_.clear(); // les avertissements accompagnent le seul résumé de régénération
     emit messageChanged();
+}
+
+void RegionController::setSatinOptions(const QVariantMap& options) {
+    if (options == satinOptions_) {
+        return;
+    }
+    satinOptions_ = options;
+    emit satinOptionsChanged();
 }
 
 void RegionController::setStale(bool stale, const QString& reason) {
@@ -663,7 +672,14 @@ QString RegionController::paintStroke(const QVariantList& pointsPx, bool erase) 
 
 // --- Régénération -------------------------------------------------------------------------
 
-void RegionController::regenerate(bool resegment, bool confirmed, const QVariantMap& settings) {
+void RegionController::regenerate(bool resegment, bool confirmed, const QVariantMap& request) {
+    // Réglages satin du panneau, sauf s'ils sont déjà dans la demande (reprise après confirmation).
+    QVariantMap settings = request;
+    for (auto it = satinOptions_.cbegin(); it != satinOptions_.cend(); ++it) {
+        if (!settings.contains(it.key())) {
+            settings.insert(it.key(), it.value());
+        }
+    }
     if (!confirmed) {
         const auto edits = countHandEdits(studio_.session().project());
         if (edits.retouchedObjects > 0) {
@@ -697,19 +713,9 @@ void RegionController::regenerate(bool resegment, bool confirmed, const QVariant
         (void)tasks_.cancel(task_);
         task_ = 0;
     }
-    project_ops::DigitizeSettings digitize;
-    // Mêmes clés et mêmes bornes que l'aperçu (`segmentationSettingsFrom`).
-    const auto chosen = segmentationSettingsFrom(
-        settings, {digitize.max_colors, digitize.min_region_px, digitize.smoothing_px});
-    digitize.max_colors = chosen.max_colors;
-    digitize.min_region_px = chosen.min_region_px;
-    digitize.smoothing_px = chosen.smoothing_radius_px;
-    digitize.fine_structures = chosen.fine_structures;
-    if (chosen.blend_zones) {
-        // Expérimental : zones de fondu, chaque zone cousue en fondu de fils mélangés.
-        digitize.mode = "blend";
-        digitize.blend_threads = chosen.blend_threads;
-    }
+    // Mêmes clés et mêmes bornes que l'aperçu (`segmentationSettingsFrom`), plus le satin.
+    const project_ops::DigitizeSettings digitize = objectDigitizeSettingsFrom(settings);
+    lastDigitizeSettings_ = digitize;
     const auto snapshot = studio_.session().snapshot();
     const auto revision = studio_.session().revision();
     const image::Image image = std::move(*working);
@@ -721,40 +727,49 @@ void RegionController::regenerate(bool resegment, bool confirmed, const QVariant
             return resegment ? resegmentObjects(snapshot, revision, image, digitize, task)
                              : regenerateObjects(snapshot, revision, image, digitize, task);
         },
-        [this](Result<Regeneration>&& r) {
-            task_ = 0;
-            busy_ = false;
-            emit busyChanged();
-            if (!r) {
-                setMessage(QStringLiteral("Régénération impossible : ") + errorText(r.error()),
-                           true);
-                return;
-            }
-            const auto applied = applyRegeneration(studio_.session(), *r);
-            if (!applied.ok) {
-                setMessage(QStringLiteral("Régénération : ") + fromUtf8(applied.message), true);
-                return;
-            }
-            setStale(false);
-            QString kept;
-            if (r->preserved > 0) {
-                kept += QStringLiteral(" %1 objet(s) dessiné(s) à la main conservé(s).")
-                            .arg(r->preserved);
-            }
-            if (r->lostRetouches > 0) {
-                kept +=
-                    QStringLiteral(" %1 objet(s) retouché(s) remplacé(s).").arg(r->lostRetouches);
-            }
-            if (r->reused > 0) {
-                kept += QStringLiteral(" %1 objet(s) inchangé(s) réutilisé(s).").arg(r->reused);
-            }
-            setMessage(QStringLiteral("Objets régénérés : %1 → %2. Annulable (Ctrl+Z).")
-                               .arg(r->objectsBefore)
-                               .arg(r->objectsAfter) +
-                           kept,
-                       false);
-            emit regenerated(static_cast<int>(r->objectsBefore), static_cast<int>(r->objectsAfter));
-        });
+        [this](Result<Regeneration>&& r) { finishRegeneration(std::move(r)); });
+}
+
+void RegionController::finishRegeneration(Result<Regeneration>&& r) {
+    task_ = 0;
+    busy_ = false;
+    emit busyChanged();
+    if (!r) {
+        setMessage(QStringLiteral("Régénération impossible : ") + errorText(r.error()), true);
+        return;
+    }
+    const auto applied = applyRegeneration(studio_.session(), *r);
+    if (!applied.ok) {
+        setMessage(QStringLiteral("Régénération : ") + fromUtf8(applied.message), true);
+        return;
+    }
+    setStale(false);
+    QString kept;
+    if (r->preserved > 0) {
+        kept += QStringLiteral(" %1 objet(s) dessiné(s) à la main conservé(s).").arg(r->preserved);
+    }
+    if (r->lostRetouches > 0) {
+        kept += QStringLiteral(" %1 objet(s) retouché(s) remplacé(s).").arg(r->lostRetouches);
+    }
+    if (r->reused > 0) {
+        kept += QStringLiteral(" %1 objet(s) inchangé(s) réutilisé(s).").arg(r->reused);
+    }
+    if (!r->warnings.empty()) {
+        kept += QStringLiteral(" %1 avertissement(s) : voir le détail.").arg(r->warnings.size());
+    }
+    setMessage(QStringLiteral("Objets régénérés : %1 → %2. Annulable (Ctrl+Z).")
+                       .arg(r->objectsBefore)
+                       .arg(r->objectsAfter) +
+                   kept,
+               false);
+    // Après `setMessage` (qui vide la liste) : même notification, lue avec le résumé.
+    for (const auto& warning : r->warnings) {
+        warnings_.push_back(fromUtf8(warning));
+    }
+    if (!warnings_.isEmpty()) {
+        emit messageChanged();
+    }
+    emit regenerated(static_cast<int>(r->objectsBefore), static_cast<int>(r->objectsAfter));
 }
 
 void RegionController::confirmRegeneration() {

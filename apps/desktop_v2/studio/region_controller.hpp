@@ -3,6 +3,7 @@
 
 #include <QObject>
 #include <QString>
+#include <QStringList>
 #include <QTimer>
 #include <QVariantList>
 #include <QVariantMap>
@@ -46,6 +47,15 @@ class RegionController : public QObject {
     // région qui absorbe l'unique région sélectionnée.
     Q_PROPERTY(bool mergeTargetMode READ mergeTargetMode WRITE setMergeTargetMode NOTIFY
                    mergeTargetModeChanged)
+    // Satin de la génération des objets (clés de `objectDigitizeSettingsFrom` : satin_bands,
+    // satin_compare, satin_min_coverage, satin_compact_max_mm, satin_compare_max_stitch_mm).
+    // Partagé par toutes les demandes de régénération (panneau Régions, « Mettre à jour les
+    // formes ») ; une clé absente garde la valeur du moteur.
+    Q_PROPERTY(
+        QVariantMap satinOptions READ satinOptions WRITE setSatinOptions NOTIFY satinOptionsChanged)
+    // Avertissements du moteur à la fin de la dernière régénération (régions écartées…), vidés
+    // par le message suivant.
+    Q_PROPERTY(QStringList warnings READ warnings NOTIFY messageChanged)
 public:
     RegionController(StudioController& studio, ImageController& images, QObject* parent = nullptr);
     ~RegionController() override;
@@ -70,6 +80,16 @@ public:
     [[nodiscard]] QString confirmText() const { return confirmText_; }
     [[nodiscard]] bool mergeTargetMode() const { return mergeTargetMode_; }
     void setMergeTargetMode(bool on);
+    [[nodiscard]] QVariantMap satinOptions() const { return satinOptions_; }
+    void setSatinOptions(const QVariantMap& options);
+    [[nodiscard]] QStringList warnings() const { return warnings_; }
+    // Réglages réellement transmis au moteur par la dernière régénération lancée.
+    [[nodiscard]] const project_ops::DigitizeSettings& lastDigitizeSettings() const {
+        return lastDigitizeSettings_;
+    }
+    // Fin d'une régénération (appelé sur le fil d'interface par la tâche) : applique le résultat
+    // en une étape d'annulation, puis publie le résumé et les avertissements du moteur.
+    void finishRegeneration(Result<Regeneration>&& result);
 
     // --- Sélection ---------------------------------------------------------------------------
     // mode : "replace" | "toggle" | "add".
@@ -146,6 +166,7 @@ signals:
     void toolChanged();
     void confirmChanged();
     void mergeTargetModeChanged();
+    void satinOptionsChanged();
     void confirmRequested(const QString& question);
     void regenerated(int objectsBefore, int objectsAfter);
 
@@ -179,6 +200,9 @@ private:
     QString confirmText_;
     bool pendingResegment_{false};
     QVariantMap pendingSettings_;
+    QVariantMap satinOptions_;
+    QStringList warnings_;
+    project_ops::DigitizeSettings lastDigitizeSettings_;
     bool mergeTargetMode_{false};
     // Révision de la sélection partagée déjà examinée : une demande « Aller à la région » n'est
     // reprise qu'une fois, mais chaque nouvelle demande l'est, même vers la même région.

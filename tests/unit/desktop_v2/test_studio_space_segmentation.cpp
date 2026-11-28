@@ -23,6 +23,7 @@
 
 #include "action_controller.hpp"
 #include "analysis_controller.hpp"
+#include "autodigitize_presets.hpp"
 #include "detail_zone_controller.hpp"
 #include "digitize_pipeline.hpp"
 #include "edit_controller.hpp"
@@ -33,6 +34,7 @@
 #include "layers/region_layer.hpp"
 #include "point_edit.hpp"
 #include "region_controller.hpp"
+#include "segmentation_settings.hpp"
 #include "segmentation_space_controller.hpp"
 #include "studio_controller.hpp"
 #include "thread_controller.hpp"
@@ -621,6 +623,156 @@ private slots:
         QCOMPARE(pending.value("smoothing_radius_px").toInt(), 2);
         if (rig.regions.busy())
             rig.regions.cancelTask();
+        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+    }
+
+    // CX05 : réglages satin de la génération des objets, câblage seul. Absents = défaut moteur,
+    // « meilleur satin » jamais transmis sans satin, valeurs valides transmises telles quelles.
+    void satinSettingsMapToDigitizeSettings() {
+        const auto none = objectDigitizeSettingsFrom({});
+        QVERIFY(!none.satin_bands);
+        QVERIFY(!none.satin_compare);
+        QVERIFY(!none.satin_min_coverage.has_value());
+        QVERIFY(!none.satin_compact_max_mm.has_value());
+        QVERIFY(!none.satin_compare_max_stitch_mm.has_value());
+        // Sans satin : la case « meilleur satin » et les réglages avancés ne passent pas.
+        const auto alone = objectDigitizeSettingsFrom({{"satin_compare", true},
+                                                       {"satin_min_coverage", 0.5},
+                                                       {"satin_compare_max_stitch_mm", 8.0}});
+        QVERIFY(!alone.satin_bands);
+        QVERIFY(!alone.satin_compare);
+        QVERIFY(!alone.satin_min_coverage.has_value());
+        QVERIFY(!alone.satin_compare_max_stitch_mm.has_value());
+        // Satin seul : la traversée max (propre au comparatif) reste au moteur.
+        const auto bands = objectDigitizeSettingsFrom({{"satin_bands", true},
+                                                       {"satin_min_coverage", "0,75"},
+                                                       {"satin_compact_max_mm", ""},
+                                                       {"satin_compare_max_stitch_mm", 8.0}});
+        QVERIFY(bands.satin_bands);
+        QVERIFY(!bands.satin_compare);
+        QCOMPARE(bands.satin_min_coverage.value_or(-1.0), 0.75);
+        QVERIFY(!bands.satin_compact_max_mm.has_value());
+        QVERIFY(!bands.satin_compare_max_stitch_mm.has_value());
+        // Valeurs invalides (hors bornes, texte) : défaut du moteur, jamais une valeur inventée.
+        const auto invalid = objectDigitizeSettingsFrom({{"satin_bands", true},
+                                                         {"satin_compare", true},
+                                                         {"satin_min_coverage", 1.5},
+                                                         {"satin_compact_max_mm", -2.0},
+                                                         {"satin_compare_max_stitch_mm", "abc"}});
+        QVERIFY(invalid.satin_compare);
+        QVERIFY(!invalid.satin_min_coverage.has_value());
+        QVERIFY(!invalid.satin_compact_max_mm.has_value());
+        QVERIFY(!invalid.satin_compare_max_stitch_mm.has_value());
+        // Les préréglages de numérisation ne changent pas : satin désactivé partout.
+        for (const auto& preset : AutodigitizePresetStore{}.all()) {
+            QVERIFY(!preset.settings.satin_bands);
+            QVERIFY(!preset.settings.satin_compare);
+            QVERIFY(!preset.settings.satin_min_coverage.has_value());
+        }
+    }
+
+    // CX05 : les cases et champs du panneau Régions arrivent tels quels dans les
+    // `DigitizeSettings` réellement transmis au moteur par « Régénérer les objets ».
+    void satinControlsReachTheEngine() {
+        Rig rig;
+        open(rig);
+        auto* panels = rig.named("segmentationPanels");
+        QVERIFY(panels);
+        panels->setProperty("tab", 1);
+        auto* tools = rig.named("regionTools");
+        auto* bands = rig.named("regionSatinBands");
+        auto* compare = rig.named("regionSatinCompare");
+        auto* advanced = rig.named("regionSatinAdvanced");
+        QVERIFY(tools && bands && compare && advanced);
+        // Débutant : satin décoché, « meilleur satin » grisé, réglages avancés cachés.
+        QVERIFY(!bands->property("checked").toBool());
+        QVERIFY(!compare->isEnabled());
+        QVERIFY(!advanced->isVisible());
+        QVERIFY(!rig.named("regionSatinAdvancedSection")->isVisible());
+        QVERIFY(rig.press("regionSatinBands"));
+        QTRY_VERIFY(compare->isEnabled());
+        QVERIFY(rig.press("regionSatinCompare"));
+        QTRY_VERIFY(advanced->isVisible());
+        QVERIFY(!rig.named("regionSatinAdvancedSection")->isVisible()); // replié par défaut
+        QVERIFY(rig.press("regionSatinAdvanced"));
+        QTRY_VERIFY(rig.named("regionSatinAdvancedSection")->isVisible());
+        QVERIFY(rig.named("regionSatinMinCoverage")->setProperty("text", QStringLiteral("0.85")));
+        QVERIFY(rig.named("regionSatinCompactMax")->setProperty("text", QStringLiteral("9,5")));
+        QVERIFY(rig.named("regionSatinMaxStitch")->setProperty("text", QStringLiteral("7.25")));
+        QSignalSpy done(&rig.regions, &RegionController::regenerated);
+        QVERIFY(rig.press("regionRegenerate"));
+        QTRY_COMPARE_WITH_TIMEOUT(done.count(), 1, 120'000);
+        const auto& sent = rig.regions.lastDigitizeSettings();
+        QVERIFY(sent.satin_bands);
+        QVERIFY(sent.satin_compare);
+        QCOMPARE(sent.satin_min_coverage.value_or(-1.0), 0.85);
+        QCOMPARE(sent.satin_compact_max_mm.value_or(-1.0), 9.5);
+        QCOMPARE(sent.satin_compare_max_stitch_mm.value_or(-1.0), 7.25);
+        // Le panneau a figé la même demande (réglages de segmentation compris).
+        const auto pending = tools->property("pendingOptions").toMap();
+        QCOMPARE(pending.value("satin_bands").toBool(), true);
+        QCOMPARE(pending.value("satin_compare").toBool(), true);
+        // Champs vidés : retour aux valeurs du moteur.
+        QVERIFY(rig.named("regionSatinMinCoverage")->setProperty("text", QString()));
+        QVERIFY(rig.named("regionSatinCompactMax")->setProperty("text", QString()));
+        QVERIFY(rig.named("regionSatinMaxStitch")->setProperty("text", QString()));
+        // Satin décoché : « meilleur satin » grisé et non transmis, réglages avancés cachés.
+        QVERIFY(rig.press("regionSatinBands"));
+        QTRY_VERIFY(!compare->isEnabled());
+        QTRY_VERIFY(!rig.named("regionSatinAdvancedSection")->isVisible());
+        QVERIFY(rig.press("regionRegenerate"));
+        QTRY_COMPARE_WITH_TIMEOUT(done.count(), 2, 120'000);
+        const auto& off = rig.regions.lastDigitizeSettings();
+        QVERIFY(!off.satin_bands);
+        QVERIFY(!off.satin_compare);
+        QVERIFY(!off.satin_min_coverage.has_value());
+        QVERIFY(!off.satin_compact_max_mm.has_value());
+        QVERIFY(!off.satin_compare_max_stitch_mm.has_value());
+        // « Mettre à jour les formes » (espace) suit les mêmes réglages satin.
+        QVERIFY(rig.press("regionSatinBands"));
+        QTRY_VERIFY(rig.regions.satinOptions().value("satin_bands").toBool());
+        rig.regions.selectAtPixel(20, 20);
+        QCOMPARE(rig.regions.deleteSelected(), QString());
+        QTRY_VERIFY(rig.space.canUpdateShapes());
+        rig.space.updateShapes(false);
+        QTRY_COMPARE_WITH_TIMEOUT(done.count(), 3, 120'000);
+        QVERIFY(rig.regions.lastDigitizeSettings().satin_bands);
+        QVERIFY(rig.regions.lastDigitizeSettings().satin_compare);
+        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+    }
+
+    // CX05 : un avertissement du moteur (région écartée) est visible à la fin de la génération,
+    // sous le résumé, puis effacé par le message suivant.
+    void regenerationWarningsAreShown() {
+        Rig rig;
+        open(rig);
+        auto* panels = rig.named("segmentationPanels");
+        QVERIFY(panels);
+        panels->setProperty("tab", 1);
+        Regeneration result;
+        result.after = std::make_shared<const document::Project>(rig.session.project());
+        result.revision = rig.session.revision();
+        result.objectsBefore = rig.session.project().embroidery_objects.size();
+        result.objectsAfter = result.objectsBefore;
+        result.warnings = {"région 7 écartée (0.12 mm², 3 px) : contour non vectorisable (trop "
+                           "petite ou dégénérée)"};
+        QSignalSpy done(&rig.regions, &RegionController::regenerated);
+        rig.regions.finishRegeneration(Result<Regeneration>{std::move(result)});
+        QCOMPARE(done.count(), 1);
+        QCOMPARE(rig.regions.warnings().size(), 1);
+        QVERIFY(
+            rig.regions.warnings().front().contains(QStringLiteral("contour non vectorisable")));
+        QVERIFY(rig.regions.message().contains(QStringLiteral("1 avertissement")));
+        QVERIFY(!rig.regions.messageIsError());
+        auto* shown = rig.named("regionWarnings");
+        QVERIFY(shown);
+        QTRY_VERIFY(shown->isVisible());
+        QVERIFY(shown->property("text").toString().contains(QStringLiteral("région 7 écartée")));
+        // Le message suivant (autre opération) remplace le résumé et ses avertissements.
+        rig.regions.selectAtPixel(20, 20);
+        QCOMPARE(rig.regions.deleteSelected(), QString());
+        QVERIFY(rig.regions.warnings().isEmpty());
+        QTRY_VERIFY(!shown->isVisible());
         QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
     }
 
