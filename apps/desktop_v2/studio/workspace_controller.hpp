@@ -39,6 +39,9 @@ class WorkspaceController : public QObject {
     Q_PROPERTY(bool segmentationDirty READ segmentationDirty WRITE setSegmentationDirty NOTIFY
                    spacesChanged)
     Q_PROPERTY(QString dirtyReason READ dirtyReason WRITE setDirtyReason NOTIFY spacesChanged)
+    // Seuls les objets de broderie sont à régénérer (réglage satin changé) : étape Points.
+    Q_PROPERTY(bool objectsDirty READ objectsDirty WRITE setObjectsDirty NOTIFY spacesChanged)
+    Q_PROPERTY(QString objectsReason READ objectsReason WRITE setObjectsReason NOTIFY spacesChanged)
     // Préférences de panneaux partagées par les espaces (restaurées avec la session).
     Q_PROPERTY(bool treeMode READ treeMode WRITE setTreeMode NOTIFY panelsChanged)
     Q_PROPERTY(bool editOpen READ editOpen WRITE setEditOpen NOTIFY panelsChanged)
@@ -57,6 +60,20 @@ public:
     void setSegmentationDirty(bool dirty);
     [[nodiscard]] QString dirtyReason() const { return dirtyReason_; }
     void setDirtyReason(const QString& reason);
+    [[nodiscard]] bool objectsDirty() const { return objectsDirty_; }
+    void setObjectsDirty(bool dirty) {
+        if (objectsDirty_ != dirty) {
+            objectsDirty_ = dirty;
+            invalidate(true);
+        }
+    }
+    [[nodiscard]] QString objectsReason() const { return objectsReason_; }
+    void setObjectsReason(const QString& reason) {
+        if (objectsReason_ != reason) {
+            objectsReason_ = reason;
+            invalidate(true);
+        }
+    }
     [[nodiscard]] bool treeMode() const { return treeMode_; }
     void setTreeMode(bool value);
     [[nodiscard]] bool editOpen() const { return editOpen_; }
@@ -101,6 +118,8 @@ private:
     QVariantMap view_;
     bool segmentationDirty_{false};
     QString dirtyReason_;
+    bool objectsDirty_{false};
+    QString objectsReason_;
     bool treeMode_{false};
     bool editOpen_{false};
     std::array<Published, 4> published_;

@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <functional>
 #include <limits>
 #include <map>
@@ -14,6 +15,7 @@
 #include <set>
 #include <utility>
 
+#include "openstitch/auto_satin/satin_strategy.hpp"
 #include "openstitch/auto_satin/skeleton_satin.hpp"
 #include "openstitch/geometry/boolean.hpp"
 #include "openstitch/geometry/moments.hpp"
@@ -113,7 +115,137 @@ struct SatinChoice {
     // automatique).
     bool guided{false};
     std::vector<Vec2um> guide;
+    // AUTO-SATIN-01 (`satin_compare`) : stratégie retenue parmi les candidats mesurés.
+    document::AutoSatinStrategy strategy{document::AutoSatinStrategy::Skeleton};
 };
+
+// --- AUTO-SATIN-01 : comparaison des stratégies de satin ---------------------------------------
+// Un candidat = une stratégie (et, pour le squelette, l'axe normal ou compact) réellement générée
+// sur la région puis mesurée. Fonction pure de (région, options) : déterministe.
+struct SatinCandidate {
+    document::AutoSatinStrategy strategy{document::AutoSatinStrategy::Skeleton};
+    bool compact_axis{false};
+    bool admissible{false};
+    double score{0.0};
+    double peak_layers{0.0}; // épaisseur maximale du zigzag sur une case de 1 mm
+    auto_satin::SatinMetrics metrics;
+};
+
+// Épaisseur de fil maximale du zigzag (traversées a_i -> b_i et retours b_i -> a_{i+1}) sur une
+// grille de cases de 1 mm, dans l'unité du rapport `project density` : une « couche » est la
+// longueur de fil d'un remplissage à 0,4 mm d'écart (2,5 mm de fil par mm²). Un satin régulier
+// vaut ~2 couches ; les traversées qui convergent (côté concave, éventails) l'épaississent.
+// Sous-couches et compensation ignorées : mesure relative entre candidats. Déterministe (carte
+// ordonnée, échantillonnage à pas fixe de 0,1 mm).
+double zigzag_peak_layers(const auto_satin::SkeletonSatinResult& result) {
+    constexpr double kStepMm = 0.1;
+    constexpr double kLayerMmPerMm2 = 1.0 / 0.4;
+    std::map<std::pair<long long, long long>, double> cells;
+    const auto add = [&](Vec2um p, Vec2um q) {
+        const double dx = static_cast<double>(q.x.value - p.x.value) / 1000.0;
+        const double dy = static_cast<double>(q.y.value - p.y.value) / 1000.0;
+        const double len = std::hypot(dx, dy);
+        const int n = std::max(1, static_cast<int>(std::ceil(len / kStepMm)));
+        const double piece = len / n;
+        for (int k = 0; k < n; ++k) {
+            const double t = (k + 0.5) / n;
+            const double x = static_cast<double>(p.x.value) / 1000.0 + t * dx;
+            const double y = static_cast<double>(p.y.value) / 1000.0 + t * dy;
+            cells[{static_cast<long long>(std::floor(x)), static_cast<long long>(std::floor(y))}] +=
+                piece;
+        }
+    };
+    for (const auto& column : result.columns) {
+        const auto& c = column.crossings;
+        for (std::size_t i = 0; i < c.size(); ++i) {
+            add(c[i].a, c[i].b);
+            if (i + 1 < c.size()) {
+                add(c[i].b, c[i + 1].a);
+            }
+        }
+    }
+    double peak = 0.0;
+    for (const auto& [cell, mm] : cells) {
+        peak = std::max(peak, mm / kLayerMmPerMm2);
+    }
+    return peak;
+}
+
+auto_satin::SatinStrategy engine_strategy(document::AutoSatinStrategy s) {
+    switch (s) {
+    case document::AutoSatinStrategy::ParallelSweep:
+        return auto_satin::SatinStrategy::ParallelSweep;
+    case document::AutoSatinStrategy::MedialAxis:
+        return auto_satin::SatinStrategy::MedialAxis;
+    case document::AutoSatinStrategy::Guided:
+        return auto_satin::SatinStrategy::Guided;
+    case document::AutoSatinStrategy::Skeleton:
+        break;
+    }
+    return auto_satin::SatinStrategy::Skeleton;
+}
+
+// Épaisseur du zigzag au-delà de laquelle un candidat est pénalisé. La mesure surestime les côtés
+// concaves (les points trop courts y sont filtrés à la génération finale) : elle sert à départager
+// les candidats, jamais à en éliminer un seul.
+constexpr double kSatinLayersSoft = 3.0;
+
+// Score explicable (plus haut = mieux) d'un candidat dont les éliminatoires sont passés :
+// couverture d'abord (100 points pour 100 %), puis pénalités de fragmentation (chaque colonne en
+// plus coûte une coupe) et de surépaisseur (8 points par couche au-delà de `kSatinLayersSoft`).
+double satin_candidate_score(const auto_satin::SatinMetrics& m, double peakLayers) {
+    double score = 100.0 * m.coverage_ratio;
+    score -= 4.0 * std::max(0, m.columns - 1);
+    score -= 8.0 * std::max(0.0, peakLayers - kSatinLayersSoft);
+    return score;
+}
+
+SatinCandidate evaluate_satin_candidate(const geometry::PathSet& region,
+                                        document::AutoSatinStrategy strategy, bool compact,
+                                        double maxCrossingMm, const AutoOptions& options) {
+    SatinCandidate c;
+    c.strategy = strategy;
+    c.compact_axis = compact;
+    auto_satin::SkeletonSatinParameters p;
+    p.measure_coverage = true;
+    p.compact_axis = compact;
+    const auto generated = auto_satin::generate_satin(engine_strategy(strategy), region, p);
+    if (!generated || generated->columns.empty() || !generated->diagnostics.coverage_measured) {
+        return c;
+    }
+    c.metrics = auto_satin::measure_result(*generated);
+    c.peak_layers = zigzag_peak_layers(*generated);
+    c.admissible = c.metrics.coverage_ratio >= options.satin_min_coverage &&
+                   c.metrics.crossing_pairs == 0 && c.metrics.max_crossing_mm <= maxCrossingMm;
+    c.score = c.admissible ? satin_candidate_score(c.metrics, c.peak_layers) : 0.0;
+    return c;
+}
+
+// Meilleur candidat admissible, ou `nullopt`. Les candidats sont évalués dans l'ordre historique
+// (squelette d'abord) ; un suivant ne l'emporte que s'il gagne au moins un point de score.
+std::optional<SatinCandidate> best_satin_candidate(const geometry::PathSet& region, bool bandLike,
+                                                   bool compact, const AutoOptions& options) {
+    using S = document::AutoSatinStrategy;
+    const double maxCrossingMm =
+        static_cast<double>(
+            std::min(std::max(options.satin_max_width.value, options.satin_compact_max_width.value),
+                     options.satin_compare_max_stitch.value)) /
+        1000.0;
+    std::vector<std::pair<S, bool>> plan;
+    if (bandLike) {
+        plan = {{S::Skeleton, false}, {S::MedialAxis, false}, {S::ParallelSweep, false}};
+    } else if (compact) {
+        plan = {{S::Skeleton, true}, {S::MedialAxis, false}, {S::ParallelSweep, false}};
+    }
+    std::optional<SatinCandidate> best;
+    for (const auto& [strategy, compactAxis] : plan) {
+        auto c = evaluate_satin_candidate(region, strategy, compactAxis, maxCrossingMm, options);
+        if (c.admissible && (!best || c.score >= best->score + 1.0)) {
+            best = std::move(c);
+        }
+    }
+    return best;
+}
 
 // Une région est satinable si le satin par squelette la couvre réellement : on
 // ESSAIE la génération (déterministe) et on mesure la couverture plutôt que de
@@ -145,12 +277,22 @@ SatinChoice choose_satin(const geometry::PathSet& region, const AutoOptions& opt
     };
 
     const bool bandLike = shape->band_like;
-    if (bandLike && covered(false)) {
+    const double compactLimit = static_cast<double>(options.satin_compact_max_width.value);
+    const bool compactEligible = !bandLike && compactLimit > 0.0 && region.holes.empty() &&
+                                 widthUm >= minWidth && widthUm <= compactLimit;
+    if (options.satin_compare && (bandLike || compactEligible)) {
+        // AUTO-SATIN-01 : candidats mesurés au lieu du premier squelette qui couvre.
+        if (const auto best = best_satin_candidate(region, bandLike, compactEligible, options)) {
+            SatinChoice choice;
+            choice.satin = true;
+            choice.compact_axis = best->compact_axis;
+            choice.strategy = best->strategy;
+            return choice;
+        }
+    } else if (bandLike && covered(false)) {
         return {true, false};
     }
-    const double compactMax = static_cast<double>(options.satin_compact_max_width.value);
-    if (!bandLike && compactMax > 0.0 && region.holes.empty() && widthUm >= minWidth &&
-        widthUm <= compactMax && covered(true)) {
+    if (!options.satin_compare && compactEligible && covered(true)) {
         return {true, true};
     }
     // HP-ENG-009 : forme large ou à trou refusée ci-dessus. Satin guidé seulement si la mesure le
@@ -202,6 +344,7 @@ void classify_and_build_embroidery(const geometry::PathSet& main, const RegionSo
         // Bande étroite (anneau, ruban, arc) ou petit disque -> auto-satin.
         document::AutoSatinParams sp;
         sp.compact_axis = satin.compact_axis;
+        sp.strategy = satin.strategy; // Skeleton sauf choix comparatif (`satin_compare`)
         if (satin.guided) {
             sp.strategy = document::AutoSatinStrategy::Guided;
             if (!satin.guide.empty()) {
@@ -676,6 +819,7 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& input,
         std::vector<geometry::PathSet> sets; // vide : région ignorée
         SatinChoice satin;
         double minFill{0.0};
+        bool unvectorizable{false}; // HP-AUTO-024 : écartée hors fond, à signaler
     };
     const segmentation::Segmentation& constSeg = seg;
     std::vector<Vectorized> vectorized(regions.size());
@@ -698,7 +842,8 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& input,
         auto sets = vectorization::vectorize_region(constSeg, regions[i], vecOpts, TaskContext{},
                                                     pixelIndex);
         if (!sets || sets->empty()) {
-            return; // région non vectorisable : ignorée sans erreur
+            vectorized[i].unvectorizable = true; // ignorée, signalée ensuite (HP-AUTO-024)
+            return;
         }
         vectorized[i].sets = std::move(*sets);
         vectorized[i].minFill =
@@ -709,6 +854,19 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& input,
 
     for (std::size_t i = 0; i < regions.size(); ++i) {
         if (vectorized[i].sets.empty()) {
+            if (vectorized[i].unvectorizable) {
+                // HP-AUTO-024 : une région du motif ne disparaît plus en silence.
+                const auto* lost = constSeg.find(regions[i]);
+                const double mm = options.mm_per_px.value;
+                char buf[160];
+                std::snprintf(buf, sizeof buf,
+                              "région %u écartée (%.2f mm², %zu px) : contour non vectorisable "
+                              "(trop petite ou dégénérée)",
+                              static_cast<unsigned>(regions[i].value),
+                              static_cast<double>(lost ? lost->pixel_count : 0) * mm * mm,
+                              lost ? lost->pixel_count : std::size_t{0});
+                result.warnings.emplace_back(buf);
+            }
             continue;
         }
         const RegionId id = regions[i];

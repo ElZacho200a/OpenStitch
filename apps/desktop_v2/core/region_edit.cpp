@@ -837,6 +837,8 @@ Result<Regeneration> regenerateObjects(std::shared_ptr<const document::Project> 
     if (task.cancelled()) {
         return cancelled_error();
     }
+    // HP-AUTO-024 : les régions écartées par le moteur sont signalées, jamais perdues en silence.
+    out.warnings = produced->objects.warnings;
 
     // Rebuilding the whole segmentation must not throw away the per-object stitch cache
     // for unchanged regions. Match the newly digitized vector paths against the old source
@@ -919,6 +921,7 @@ Result<Regeneration> regenerateObjects(std::shared_ptr<const document::Project> 
         if (task.cancelled()) {
             return cancelled_error();
         }
+        out.warnings.insert(out.warnings.end(), report.warnings.begin(), report.warnings.end());
     }
     if (copy->embroidery_objects.empty() && keptEmbroideries.empty()) {
         return fail(ErrorCategory::OperationImpossible, "Aucun objet de broderie généré",

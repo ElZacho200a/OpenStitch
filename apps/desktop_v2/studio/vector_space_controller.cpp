@@ -19,6 +19,7 @@
 #include "openstitch/core/units.hpp"
 #include "openstitch/project_ops/revectorize.hpp"
 #include "openstitch/vectorization/vectorize.hpp"
+#include "segmentation_settings.hpp"
 #include "stage_status.hpp"
 
 namespace openstitch::desktop_v2::studio {
@@ -571,6 +572,14 @@ bool VectorSpaceController::updateAllLayersFromSegmentation() {
     return true;
 }
 
+void VectorSpaceController::publishConversionWarnings(const std::vector<std::string>& warnings) {
+    conversionWarnings_.clear();
+    for (const auto& warning : warnings) {
+        conversionWarnings_.push_back(QString::fromStdString(warning));
+    }
+    emit convertingChanged();
+}
+
 bool VectorSpaceController::convertToEmbroidery(const QVariantMap& conversion) {
     if (converting_) {
         return false;
@@ -578,7 +587,6 @@ bool VectorSpaceController::convertToEmbroidery(const QVariantMap& conversion) {
     const bool autoPull = conversion.value("pull", "auto").toString() != "none";
     const double overlapMm = std::clamp(conversion.value("overlapMm", 0.5).toDouble(), 0.0, 2.0);
     const double insetMm = std::clamp(conversion.value("insetMm", 0.2).toDouble(), 0.0, 2.0);
-    const bool satin = conversion.value("satin", false).toBool();
     // 0 : on garde l'espacement par défaut des paramètres créés.
     const double spacingMm = std::clamp(conversion.value("spacingMm", 0.0).toDouble(), 0.0, 2.0);
     // La classification de chaque forme (tatami, contour…) est longue sur un gros motif : elle
@@ -586,21 +594,23 @@ bool VectorSpaceController::convertToEmbroidery(const QVariantMap& conversion) {
     // annulable) se fait ici, et seulement si le document n'a pas changé entre-temps.
     auto snapshot = studio_.session().snapshot();
     const auto revision = studio_.session().revision();
+    autodigitize::AutoOptions options;
+    options.mm_per_px = snapshot->imageSource().mm_per_px;
+    options.auto_pull_compensation = autoPull;
+    options.fill_inset = to_micrometers(Millimeters{insetMm});
+    // Satin : l'état partagé de l'interface (même case que l'onglet Segmentation).
+    applySatinOptions(studio_.satinOptions(), options);
+    lastAutoOptions_ = options;
+    conversionWarnings_.clear(); // ils décrivent la conversion précédente
     converting_ = true;
     emit convertingChanged();
     say(tr("Conversion en broderie…"));
     convertTasks_.submit<autodigitize::VectorConversion>(
         "studio.convert-vectors",
-        [snapshot, autoPull, insetMm,
-         satin](const TaskContext& task) -> Result<autodigitize::VectorConversion> {
+        [snapshot, options](const TaskContext& task) -> Result<autodigitize::VectorConversion> {
             if (task.cancelled()) {
                 return cancelled_error();
             }
-            autodigitize::AutoOptions options;
-            options.mm_per_px = snapshot->imageSource().mm_per_px;
-            options.auto_pull_compensation = autoPull;
-            options.fill_inset = to_micrometers(Millimeters{insetMm});
-            options.satin_bands = satin;
             auto ids = snapshot->object_ids; // copie : les vrais identifiants sont pris au retour
             return autodigitize::convert_vectors_to_embroidery(*snapshot, ids, options);
         },
@@ -621,6 +631,7 @@ bool VectorSpaceController::convertToEmbroidery(const QVariantMap& conversion) {
                 say(tr("Conversion refusée : aucun objet de broderie produit"));
                 return;
             }
+            publishConversionWarnings(result->warnings);
             const auto spacing = to_micrometers(Millimeters{spacingMm});
             for (auto& embroidery : result->embroideries) {
                 embroidery.id = session.allocateObjectId();

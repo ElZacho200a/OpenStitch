@@ -46,6 +46,10 @@ struct StageInputs {
     // `GuideInput::segmentationDirty`).
     bool segmentationDirty{false};
     std::string dirtyReason; // « des régions ont été retouchées »… (facultatif)
+    // Seuls les objets de broderie sont à régénérer (réglage de génération changé, p. ex. le
+    // satin) : segmentation et formes restent à jour, l'étape Points est obsolète.
+    bool objectsDirty{false};
+    std::string objectsReason; // « réglages satin modifiés »… (facultatif)
 };
 
 [[nodiscard]] std::array<StageStatus, 4> computeStageStatus(const document::Project& project,

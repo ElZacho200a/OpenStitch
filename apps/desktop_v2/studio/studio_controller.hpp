@@ -37,6 +37,11 @@ class StudioController : public QObject {
     Q_PROPERTY(QString primarySelectionId READ primarySelectionId NOTIFY selectionChanged)
     Q_PROPERTY(QVariantMap selectionTool READ selectionTool CONSTANT)
     Q_PROPERTY(QVariantMap panTool READ panTool CONSTANT)
+    // Satin de la génération automatique des objets, UN seul état pour toute l'interface
+    // (onglet Segmentation, « Régénérer les objets », « Convertir en broderie » des Vecteurs).
+    // Clés de `objectDigitizeSettingsFrom` (segmentation_settings.hpp) ; absente = défaut moteur.
+    Q_PROPERTY(
+        QVariantMap satinOptions READ satinOptions WRITE setSatinOptions NOTIFY satinOptionsChanged)
 public:
     explicit StudioController(DocumentSession& session, QObject* parent = nullptr);
     ~StudioController() override;
@@ -73,6 +78,13 @@ public:
                    ? QString::number(primary->id)
                    : QString{};
     }
+    [[nodiscard]] QVariantMap satinOptions() const { return satinOptions_; }
+    void setSatinOptions(const QVariantMap& options) {
+        if (options != satinOptions_) {
+            satinOptions_ = options;
+            emit satinOptionsChanged();
+        }
+    }
     Q_INVOKABLE void newProject();
     // Variante C++ : part d'un projet neuf déjà préparé (p. ex. le dernier cadre choisi).
     void newProject(document::Project seed);
@@ -101,6 +113,7 @@ signals:
     void selectionChanged();
     void objectsChanged();
     void loadFinished(bool success);
+    void satinOptionsChanged();
 
 private:
     [[nodiscard]] QVariantList buildObjects() const;
@@ -117,6 +130,7 @@ private:
     QString title_{QStringLiteral("Sans projet")};
     QString status_{QStringLiteral("Ouvrez un projet .osp pour explorer sa broderie")};
     QString path_;
+    QVariantMap satinOptions_;
     bool busy_{false};
     int sceneBuilds_{0};
     std::uint64_t request_{0};

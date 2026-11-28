@@ -3,6 +3,7 @@
 
 #include <QObject>
 #include <QString>
+#include <QStringList>
 #include <QTimer>
 #include <QVariantList>
 #include <QVariantMap>
@@ -33,6 +34,10 @@ class RegionController : public QObject {
     Q_PROPERTY(int selectedCount READ selectedCount NOTIFY selectionChanged)
     Q_PROPERTY(bool stale READ stale NOTIFY staleChanged)
     Q_PROPERTY(QString staleReason READ staleReason NOTIFY staleChanged)
+    // Nuance de `stale` : seuls les objets sont à régénérer (réglage satin changé), la
+    // segmentation et les formes restent à jour.
+    Q_PROPERTY(bool objectsOnlyStale READ objectsOnlyStale NOTIFY staleChanged)
+    Q_PROPERTY(bool segmentationStale READ segmentationStale NOTIFY staleChanged)
     Q_PROPERTY(QVariantMap handEdits READ handEdits NOTIFY regionsChanged)
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
     Q_PROPERTY(QString message READ message NOTIFY messageChanged)
@@ -46,6 +51,16 @@ class RegionController : public QObject {
     // région qui absorbe l'unique région sélectionnée.
     Q_PROPERTY(bool mergeTargetMode READ mergeTargetMode WRITE setMergeTargetMode NOTIFY
                    mergeTargetModeChanged)
+    // Satin de la génération des objets : relais de `StudioController::satinOptions` (un seul
+    // état pour toute l'interface). Un changement rend les objets de l'image périmés.
+    Q_PROPERTY(
+        QVariantMap satinOptions READ satinOptions WRITE setSatinOptions NOTIFY satinOptionsChanged)
+    // Avertissements du moteur de la dernière régénération réussie, dans son ordre :
+    // {text, region} (region = identifiant cité « région N », -1 sinon). État propre : vidé
+    // seulement au lancement de la génération suivante, jamais par un autre message.
+    Q_PROPERTY(QVariantList warnings READ warnings NOTIFY warningsChanged)
+    // Résumé court (« 3 régions écartées », « 1 avertissement »…) ; "" sans avertissement.
+    Q_PROPERTY(QString warningSummary READ warningSummary NOTIFY warningsChanged)
 public:
     RegionController(StudioController& studio, ImageController& images, QObject* parent = nullptr);
     ~RegionController() override;
@@ -59,6 +74,9 @@ public:
     [[nodiscard]] int selectedCount() const { return static_cast<int>(selected_.size()); }
     [[nodiscard]] bool stale() const { return stale_; }
     [[nodiscard]] QString staleReason() const { return staleReason_; }
+    [[nodiscard]] bool objectsOnlyStale() const { return stale_ && staleReason_ == satinReason(); }
+    [[nodiscard]] bool segmentationStale() const { return stale_ && !objectsOnlyStale(); }
+    [[nodiscard]] static QString satinReason() { return QStringLiteral("réglages satin modifiés"); }
     [[nodiscard]] QVariantMap handEdits() const;
     [[nodiscard]] bool busy() const { return busy_; }
     [[nodiscard]] QString message() const { return message_; }
@@ -70,6 +88,17 @@ public:
     [[nodiscard]] QString confirmText() const { return confirmText_; }
     [[nodiscard]] bool mergeTargetMode() const { return mergeTargetMode_; }
     void setMergeTargetMode(bool on);
+    [[nodiscard]] QVariantMap satinOptions() const { return studio_.satinOptions(); }
+    void setSatinOptions(const QVariantMap& options) { studio_.setSatinOptions(options); }
+    [[nodiscard]] QVariantList warnings() const { return warnings_; }
+    [[nodiscard]] QString warningSummary() const;
+    // Réglages réellement transmis au moteur par la dernière régénération lancée.
+    [[nodiscard]] const project_ops::DigitizeSettings& lastDigitizeSettings() const {
+        return lastDigitizeSettings_;
+    }
+    // Fin d'une régénération (appelé sur le fil d'interface par la tâche) : applique le résultat
+    // en une étape d'annulation, puis publie le résumé et les avertissements du moteur.
+    void finishRegeneration(Result<Regeneration>&& result);
 
     // --- Sélection ---------------------------------------------------------------------------
     // mode : "replace" | "toggle" | "add".
@@ -146,6 +175,8 @@ signals:
     void toolChanged();
     void confirmChanged();
     void mergeTargetModeChanged();
+    void satinOptionsChanged();
+    void warningsChanged();
     void confirmRequested(const QString& question);
     void regenerated(int objectsBefore, int objectsAfter);
 
@@ -179,6 +210,11 @@ private:
     QString confirmText_;
     bool pendingResegment_{false};
     QVariantMap pendingSettings_;
+    QVariantList warnings_;
+    void setWarnings(const std::vector<std::string>& warnings);
+    project_ops::DigitizeSettings lastDigitizeSettings_;
+    // Satin de la dernière génération réussie (défaut du moteur pour un document ouvert).
+    project_ops::DigitizeSettings generatedSatin_;
     bool mergeTargetMode_{false};
     // Révision de la sélection partagée déjà examinée : une demande « Aller à la région » n'est
     // reprise qu'une fois, mais chaque nouvelle demande l'est, même vers la même région.
