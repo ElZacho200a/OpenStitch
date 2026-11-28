@@ -1171,6 +1171,89 @@ TEST_CASE("satin bandes : petit disque en satin a cordes paralleles, grand disqu
     CHECK_FALSE(any_auto_satin(*wide));
 }
 
+namespace {
+
+// AUTO-SATIN-01 : stratégies des auto-satins produits, dans l'ordre des objets.
+std::vector<document::AutoSatinStrategy> satin_strategies(const AutoResult& r) {
+    std::vector<document::AutoSatinStrategy> out;
+    for (const auto& e : r.embroideries) {
+        if (e.is_auto_satin()) {
+            out.push_back(std::get<document::AutoSatinParams>(e.params).strategy);
+        }
+    }
+    return out;
+}
+
+Result<AutoResult> digitize_ring_compare(int outer, int inner, bool compare) {
+    const auto seg =
+        segmentation::segment(ring_image_px(outer, inner), {.max_colors = 2, .min_region_px = 4});
+    if (!seg) {
+        return std::unexpected(seg.error());
+    }
+    IdGenerator<ObjectId> ids;
+    AutoOptions opt;
+    opt.mm_per_px = Millimeters{0.2};
+    opt.skip_largest_region = true;
+    opt.satin_bands = true;
+    opt.satin_compare = compare;
+    return auto_digitize(*seg, ids, opt);
+}
+
+} // namespace
+
+TEST_CASE("satin compare : desactive par defaut, comportement historique inchange") {
+    CHECK_FALSE(AutoOptions{}.satin_compare);
+    const auto off = digitize_ring_compare(40, 33, false);
+    REQUIRE(off.has_value());
+    for (const auto s : satin_strategies(*off)) {
+        CHECK(s == document::AutoSatinStrategy::Skeleton);
+    }
+}
+
+TEST_CASE("satin compare : bande et disque compact restent en satin, choix deterministe") {
+    for (const auto& [outer, inner] : {std::pair{40, 33}, std::pair{25, 0}}) {
+        const auto a = digitize_ring_compare(outer, inner, true);
+        const auto b = digitize_ring_compare(outer, inner, true);
+        REQUIRE(a.has_value());
+        REQUIRE(b.has_value());
+        CHECK(any_auto_satin(*a));
+        CHECK(satin_strategies(*a) == satin_strategies(*b));
+        // Le satin guide large n'est jamais produit par la comparaison.
+        for (const auto s : satin_strategies(*a)) {
+            CHECK(s != document::AutoSatinStrategy::Guided);
+        }
+    }
+}
+
+TEST_CASE("satin compare : traversees plus longues que le maximum eliminees") {
+    // Disque de 10 mm : satin compact avec le maximum par defaut (10 mm), tatami s'il est ramene a
+    // 2 mm (aucun candidat admissible, et le satin guide n'apporte rien sur un disque plein).
+    const auto seg =
+        segmentation::segment(ring_image_px(25, 0), {.max_colors = 2, .min_region_px = 4});
+    REQUIRE(seg.has_value());
+    const auto run = [&](Micrometers maxStitch) {
+        IdGenerator<ObjectId> ids;
+        AutoOptions opt;
+        opt.mm_per_px = Millimeters{0.2};
+        opt.skip_largest_region = true;
+        opt.satin_bands = true;
+        opt.satin_compare = true;
+        opt.satin_compare_max_stitch = maxStitch;
+        auto r = auto_digitize(*seg, ids, opt);
+        REQUIRE(r.has_value());
+        return any_auto_satin(*r);
+    };
+    CHECK(run(AutoOptions{}.satin_compare_max_stitch));
+    CHECK_FALSE(run(Micrometers{2'000}));
+}
+
+TEST_CASE("satin compare : formes trop larges restent en tatami") {
+    // Disque de 16 mm et anneau de 12 mm d'epaisseur : aucune voie satin admissible.
+    const auto big = digitize_ring_compare(40, 0, true);
+    REQUIRE(big.has_value());
+    CHECK_FALSE(any_auto_satin(*big));
+}
+
 TEST_CASE("fond exterieur seulement : le blanc enferme dans le motif reste couso") {
     // Anneau rouge sur fond blanc : le disque blanc du centre a la couleur du fond mais ne touche
     // pas le pourtour de l'image.

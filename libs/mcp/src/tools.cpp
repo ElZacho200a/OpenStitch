@@ -325,7 +325,9 @@ void read_settings(const json& j, po::DigitizeSettings& s) {
     };
     static constexpr std::string_view kKeys =
         "dpi, max_colors, min_region_px, smoothing_px, skip_background, min_feature_mm, "
-        "min_region_mm2, mode, detail, technique, curve_tolerance_mm, satin_bands, single_path, "
+        "min_region_mm2, mode, detail, technique, curve_tolerance_mm, satin_bands, satin_compare, "
+        "satin_min_coverage, satin_compact_max_mm, satin_compare_max_stitch_mm, "
+        "single_path, "
         "coherent_lines, pre, dark_lines, dark_lines_width_mm, dark_lines_lightness, "
         "island_cleanup_mm2, fill_inset_mm, fill_overlap_mm, solid_block, rings_satin, flow_fill, "
         "trim_threshold_mm, lock";
@@ -360,6 +362,15 @@ void read_settings(const json& j, po::DigitizeSettings& s) {
             s.curve_tolerance_mm = non_negative("curve_tolerance_mm", v.get<double>());
         } else if (key == "satin_bands") {
             s.satin_bands = v.get<bool>();
+        } else if (key == "satin_compare") {
+            s.satin_compare = v.get<bool>();
+        } else if (key == "satin_min_coverage") {
+            s.satin_min_coverage = non_negative("satin_min_coverage", v.get<double>());
+        } else if (key == "satin_compact_max_mm") {
+            s.satin_compact_max_mm = non_negative("satin_compact_max_mm", v.get<double>());
+        } else if (key == "satin_compare_max_stitch_mm") {
+            s.satin_compare_max_stitch_mm =
+                non_negative("satin_compare_max_stitch_mm", v.get<double>());
         } else if (key == "single_path") {
             s.single_path = v.get<bool>();
         } else if (key == "coherent_lines") {

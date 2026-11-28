@@ -114,6 +114,7 @@ const std::vector<Setting>& settings_table() {
         {"detail", number(&DigitizeSettings::detail)},
         {"curve-tolerance", number(&DigitizeSettings::curve_tolerance_mm)},
         {"satin-bands", flag(&DigitizeSettings::satin_bands)},
+        {"satin-compare", flag(&DigitizeSettings::satin_compare)},
         {"dark-lines", flag(&DigitizeSettings::dark_lines)},
         {"dark-lines-width", number(&DigitizeSettings::dark_lines_width_mm)},
         {"dark-lines-lightness", number(&DigitizeSettings::dark_lines_lightness)},

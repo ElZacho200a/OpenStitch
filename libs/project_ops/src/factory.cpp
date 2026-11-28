@@ -378,6 +378,16 @@ autodigitize::AutoOptions make_auto_options(const DigitizeSettings& s, Millimete
     opts.skip_largest_region = skipLargest;
     opts.skip_background_outer_only = s.skip_background == 2;
     opts.satin_bands = s.satin_bands;
+    opts.satin_compare = s.satin_compare;
+    if (s.satin_min_coverage) {
+        opts.satin_min_coverage = *s.satin_min_coverage;
+    }
+    if (s.satin_compact_max_mm) {
+        opts.satin_compact_max_width = mm_to_um(*s.satin_compact_max_mm);
+    }
+    if (s.satin_compare_max_stitch_mm) {
+        opts.satin_compare_max_stitch = mm_to_um(*s.satin_compare_max_stitch_mm);
+    }
     opts.curve_tolerance = mm_to_um(s.curve_tolerance_mm);
     if (s.simplify_tolerance_um) {
         opts.simplify_tolerance = Micrometers{*s.simplify_tolerance_um};
