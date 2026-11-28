@@ -164,6 +164,50 @@ private slots:
         QCOMPARE(again->themeId(), QStringLiteral("neo-cobalt"));
     }
 
+    // Disposition des panneaux (DockPanel.qml) : fusion champ par champ, relue telle quelle à la
+    // session suivante, sans toucher à la session de document.
+    void panelLayoutPersistsAcrossSessions() {
+        {
+            auto p = prefs();
+            QVERIFY(p->panelLayout().isEmpty());
+            QSignalSpy changed(p.get(), &PreferencesController::panelLayoutChanged);
+            p->setPanelState(QStringLiteral("vectorSideCard"),
+                             {{QStringLiteral("hidden"), false},
+                              {QStringLiteral("collapsed"), true},
+                              {QStringLiteral("freePositioned"), true},
+                              {QStringLiteral("x"), 120.0},
+                              {QStringLiteral("y"), 48.0}});
+            QCOMPARE(changed.count(), 1);
+            // Fusion : un second appel partiel garde les autres champs et les autres panneaux.
+            p->setPanelState(QStringLiteral("vectorSideCard"), {{QStringLiteral("hidden"), true}});
+            p->setPanelState(QStringLiteral("imageSidePanel"),
+                             {{QStringLiteral("collapsed"), false}});
+            // Identifiant vide ou état vide : ignorés.
+            p->setPanelState(QString(), {{QStringLiteral("hidden"), true}});
+            p->setPanelState(QStringLiteral("pointsObjectsCard"), {});
+            QCOMPARE(changed.count(), 3);
+            p->rememberSession({{QStringLiteral("file"), QStringLiteral("C:/a.osp")}});
+        }
+        auto p = prefs();
+        const auto layout = p->panelLayout();
+        QCOMPARE(layout.size(), 2);
+        const auto vector = layout.value(QStringLiteral("vectorSideCard")).toMap();
+        QCOMPARE(vector.value(QStringLiteral("hidden")).toBool(), true);
+        QCOMPARE(vector.value(QStringLiteral("collapsed")).toBool(), true);
+        QCOMPARE(vector.value(QStringLiteral("freePositioned")).toBool(), true);
+        QCOMPARE(vector.value(QStringLiteral("x")).toDouble(), 120.0);
+        QCOMPARE(vector.value(QStringLiteral("y")).toDouble(), 48.0);
+        QCOMPARE(layout.value(QStringLiteral("imageSidePanel"))
+                     .toMap()
+                     .value(QStringLiteral("collapsed"))
+                     .toBool(),
+                 false);
+        // La disposition ne se mélange pas à la session de document (et réciproquement).
+        QCOMPARE(p->session().value(QStringLiteral("file")).toString(), QStringLiteral("C:/a.osp"));
+        p->forgetSession();
+        QCOMPARE(prefs()->panelLayout().size(), 2);
+    }
+
     void missingPreferredThemeFallsBackToDefault() {
         {
             auto p = prefs();

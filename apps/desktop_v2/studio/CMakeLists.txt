@@ -96,6 +96,7 @@ set(studio_qml_files
     qml/SectionLabel.qml qml/ActionPalette.qml qml/ObjectTree.qml qml/LayerPanel.qml
     qml/CanvasContextMenu.qml qml/HoopPopover.qml qml/TransformHandles.qml qml/EditBar.qml qml/FilePanel.qml
     qml/Inspector.qml qml/ParamField.qml qml/ParamSection.qml qml/RecipeCatalog.qml
+    qml/DockPanel.qml qml/DockPanelRegistry.qml
     qml/ViewPanel.qml qml/SimulationBar.qml qml/AnalysisPanel.qml qml/ThreadPanel.qml
     qml/PreparePanel.qml qml/ImagePrepSection.qml qml/SegmentationSection.qml
     qml/RegionTools.qml qml/AiSection.qml qml/CompanionPanel.qml qml/PreferencesDialog.qml
@@ -153,11 +154,10 @@ if(TARGET openstitch-mcp)
     add_dependencies(openstitch_v2_studio openstitch-mcp)
     add_custom_command(TARGET openstitch_v2_studio POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:openstitch_v2_studio>/mcp"
-        # Copie du dossier entier : TARGET_RUNTIME_DLLS ne liste que les cibles importées, pas
-        # les dépendances transitives d'OpenCV (libpng, jpeg, tiff, zlib, lzma, bz2) que vcpkg
-        # dépose à côté de openstitch-mcp. Sans elles le serveur meurt au chargement
-        # (0xC0000135) et Claude Code signale « connexion fermée ».
-        COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different
-            "$<TARGET_FILE_DIR:openstitch-mcp>" "$<TARGET_FILE_DIR:openstitch_v2_studio>/mcp"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:openstitch-mcp>"
+            "$<TARGET_FILE_DIR:openstitch_v2_studio>/mcp/$<TARGET_FILE_NAME:openstitch-mcp>"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_RUNTIME_DLLS:openstitch-mcp>
+            "$<TARGET_FILE_DIR:openstitch_v2_studio>/mcp"
+        COMMAND_EXPAND_LISTS
         COMMENT "Copie du serveur MCP et de ses DLL (mcp/) à côté de Studio")
 endif()

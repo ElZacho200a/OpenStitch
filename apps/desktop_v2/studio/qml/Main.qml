@@ -189,6 +189,97 @@ Window {
     }
     ActionPalette { id: palette }
     CompanionPanel { id: companionPanel }
+
+    // Registre des DockPanel : rouvrir un panneau masqué, le remettre à sa position par défaut, ou
+    // ramener un panneau détaché — sans avoir à le retrouver soi-même dans l'espace.
+    Controls.Popup {
+        id: panelsMenu
+        objectName: "panelsMenu"
+        parent: Controls.Overlay.overlay
+        modal: false
+        focus: true
+        width: 340
+        padding: 10
+        property var entries: []
+        function refresh() { panelsMenu.entries = DockPanelRegistry.panelsForSpace(workspaceCtl.current) }
+        // Sous le bouton « Panneaux », recalé dans la fenêtre à chaque ouverture.
+        function place() {
+            const overlay = Controls.Overlay.overlay
+            if (!overlay) return
+            // Bouton masqué (en-tête compact, ouverture depuis la palette) : en haut à droite.
+            const anchor = panelsMenuButton
+            const p = anchor && anchor.visible ? anchor.mapToItem(overlay, 0, anchor.height + 4)
+                                               : Qt.point(overlay.width - panelsMenu.width - Theme.gap, 64)
+            panelsMenu.x = Math.round(Math.max(Theme.gap, Math.min(p.x, overlay.width - panelsMenu.width - Theme.gap)))
+            panelsMenu.y = Math.round(Math.max(Theme.gap, p.y))
+        }
+        onAboutToShow: { panelsMenu.refresh(); panelsMenu.place() }
+        Connections {
+            target: DockPanelRegistry
+            function onChanged() { if (panelsMenu.visible) panelsMenu.refresh() }
+        }
+        Connections {
+            target: workspaceCtl
+            function onCurrentChanged() { if (panelsMenu.visible) panelsMenu.refresh() }
+        }
+        contentItem: ColumnLayout {
+            spacing: 6
+            StudioLabel { text: qsTr("Panneaux de cet espace"); role: "heading" }
+            StudioLabel {
+                visible: panelsMenu.entries.length === 0
+                text: qsTr("Aucun panneau dans cet espace.")
+                color: Theme.faint
+            }
+            Repeater {
+                model: panelsMenu.entries
+                delegate: RowLayout {
+                    id: entryRow
+                    required property var modelData
+                    Layout.fillWidth: true
+                    spacing: 6
+                    StudioLabel { text: entryRow.modelData.title; Layout.fillWidth: true; elide: Text.ElideRight }
+                    StudioButton {
+                        objectName: "panelsMenu_" + entryRow.modelData.id + "_toggleHidden"
+                        text: entryRow.modelData.panel.hidden ? qsTr("Afficher") : qsTr("Masquer")
+                        quiet: true
+                        onClicked: entryRow.modelData.panel.hidden = !entryRow.modelData.panel.hidden
+                    }
+                    StudioButton {
+                        objectName: "panelsMenu_" + entryRow.modelData.id + "_reset"
+                        visible: entryRow.modelData.panel.freePositioned
+                        text: qsTr("Position par défaut")
+                        quiet: true
+                        onClicked: entryRow.modelData.panel.resetPosition()
+                    }
+                    StudioButton {
+                        objectName: "panelsMenu_" + entryRow.modelData.id + "_detach"
+                        visible: entryRow.modelData.panel.detachable
+                        text: entryRow.modelData.panel.detached ? qsTr("Ramener") : qsTr("Détacher")
+                        quiet: true
+                        onClicked: entryRow.modelData.panel.detached ? entryRow.modelData.panel.reattach()
+                                                                      : entryRow.modelData.panel.detach()
+                    }
+                }
+            }
+            Rectangle {
+                visible: panelsMenu.entries.length > 0
+                Layout.fillWidth: true
+                Layout.preferredHeight: 1
+                color: Theme.divider
+            }
+            StudioButton {
+                objectName: "panelsMenu_resetAll"
+                visible: panelsMenu.entries.length > 0
+                Layout.fillWidth: true
+                text: qsTr("Tout remettre en place")
+                iconName: "undo"
+                tooltip: qsTr("Réaffiche, déplie et replace tous les panneaux de cet espace")
+                onClicked: {
+                    for (const entry of panelsMenu.entries) entry.panel.resetLayout()
+                }
+            }
+        }
+    }
     PreferencesDialog { id: prefsDialog; onGalleryRequested: themeGallery.openGallery() }
     ThemeGallery { id: themeGallery }
     // Recettes (--open-panels preferences, --theme-gallery) et palette de commandes.
@@ -316,6 +407,7 @@ Window {
         case "cmd.view.zoom-out": if (canvas) canvas.zoomAt(0.8, canvas.width / 2, canvas.height / 2); break
         case "cmd.view.zoom-selection": if (canvas) canvas.zoomToSelection(); break
         case "cmd.prefs.open": prefsDialog.openDialog(); break
+        case "cmd.panels.open": panelsMenu.open(); break
         case "cmd.companion.open": companionPanel.openPanel(); break
         case "cmd.companion.toggle":
             if (typeof companion !== "undefined")
@@ -328,7 +420,8 @@ Window {
         case "cmd.help.about": helpDialog.show("about"); break
         }
         // Keyboard control returns to the canvas, except when a dialog just took it.
-        if (id.indexOf("cmd.prefs") !== 0 && id.indexOf("cmd.companion") !== 0 && id.indexOf("cmd.help") !== 0)
+        if (id.indexOf("cmd.prefs") !== 0 && id.indexOf("cmd.companion") !== 0 && id.indexOf("cmd.help") !== 0
+                && id.indexOf("cmd.panels") !== 0)
             if (canvas)
                 canvas.forceActiveFocus()
     }
@@ -594,6 +687,19 @@ Window {
                     tooltip: qsTr("Récents, imports et exports")
                     enabled: !studio.busy
                     onClicked: filePanel.openMenu()
+                }
+
+                StudioButton {
+                    id: panelsMenuButton
+                    objectName: "panelsMenuButton"
+                    // En-tête compact : la place manque (Enregistrer serait coupé) ; le menu reste
+                    // ouvert à la palette (Ctrl+K ▸ « Panneaux de l'espace… »).
+                    visible: !headerCard.compact
+                    text: headerCard.wide ? qsTr("Panneaux") : ""
+                    iconName: "panels"
+                    quiet: true
+                    tooltip: qsTr("Afficher, replacer ou détacher les panneaux de cet espace")
+                    onClicked: panelsMenu.visible ? panelsMenu.close() : panelsMenu.open()
                 }
 
                 StudioButton {
