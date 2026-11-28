@@ -759,7 +759,13 @@ private slots:
         QTRY_VERIFY(rig.named("segRegenerateObjects")->isVisible());
         QVERIFY(rig.press("segRegenerateObjects"));
         QTRY_COMPARE_WITH_TIMEOUT(done.count(), 2, 120'000);
-        QTRY_VERIFY(!rig.named("segSatinStale")->isVisible());
+        // Le résultat s'affiche là où l'on a cliqué ; le bouton disparaît (objets à jour).
+        QTRY_VERIFY(!rig.named("segRegenerateObjects")->isVisible());
+        QTRY_VERIFY(rig.named("segRegenerateMessage")->isVisible());
+        QVERIFY(rig.named("segRegenerateMessage")
+                    ->property("text")
+                    .toString()
+                    .contains(QStringLiteral("Objets régénérés")));
         const auto& off = rig.regions.lastDigitizeSettings();
         QVERIFY(!off.satin_bands);
         QVERIFY(!off.satin_compare);
@@ -778,6 +784,93 @@ private slots:
         QTRY_COMPARE_WITH_TIMEOUT(done.count(), 3, 120'000);
         QVERIFY(rig.regions.lastDigitizeSettings().satin_bands);
         QVERIFY(rig.regions.lastDigitizeSettings().satin_compare);
+        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+    }
+
+    // CX05 : revenir au satin de la dernière génération retire l'état « objets à régénérer ».
+    void satinBackToGeneratedSettingsIsNotStale() {
+        Rig rig;
+        open(rig);
+        auto* panels = rig.named("segmentationPanels");
+        QVERIFY(panels);
+        panels->setProperty("tab", 0);
+        QVERIFY(!rig.regions.stale());
+        QTRY_VERIFY(rig.named("regionSatinBands")->isVisible());
+        QVERIFY(rig.press("regionSatinBands"));
+        QTRY_VERIFY(rig.regions.objectsOnlyStale());
+        QTRY_VERIFY(rig.named("segSatinStale")->isVisible());
+        QVERIFY(rig.press("regionSatinBands")); // retour au réglage de la génération
+        QTRY_VERIFY(!rig.regions.stale());
+        QTRY_VERIFY(!rig.named("segSatinStale")->isVisible());
+        // Une retouche de régions reste obsolète quel que soit le satin.
+        rig.regions.selectAtPixel(20, 20);
+        QCOMPARE(rig.regions.deleteSelected(), QString());
+        QVERIFY(rig.regions.segmentationStale());
+        QVERIFY(rig.press("regionSatinBands"));
+        QVERIFY(rig.press("regionSatinBands"));
+        QVERIFY(rig.regions.segmentationStale());
+        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+    }
+
+    // CX05 : depuis l'onglet Segmentation, « Régénérer les objets » avec des points retouchés
+    // pose la question à cet endroit (même état que l'onglet Régions) ; la confirmer régénère.
+    void satinRegenerateFromSegmentationAsksBeforeOverwriting() {
+        Rig rig;
+        open(rig);
+        std::uint64_t generated = 0;
+        for (const auto& e : rig.session.project().embroidery_objects) {
+            const auto* v = rig.session.project().findObject(e.source_vector);
+            if (v != nullptr && v->source_region) {
+                generated = e.id.value;
+                break;
+            }
+        }
+        QVERIFY(generated != 0);
+        const auto view = stitchPoints(rig.session.project(), generated);
+        QVERIFY(view.has_value());
+        bool moved = false;
+        for (const auto& p : view->points) {
+            if (p.movable) {
+                moved = moveStitchPoints(rig.session, generated,
+                                         {{p.index, PointMm{p.pos.x + 1.0, p.pos.y}}})
+                            .ok;
+                break;
+            }
+        }
+        QVERIFY(moved);
+        auto* panels = rig.named("segmentationPanels");
+        QVERIFY(panels);
+        panels->setProperty("tab", 0);
+        QTRY_VERIFY(rig.named("regionSatinBands")->isVisible());
+        QVERIFY(rig.press("regionSatinBands"));
+        QTRY_VERIFY(rig.named("segRegenerateObjects")->isVisible());
+        const auto depth = rig.session.undoNames().size();
+        QVERIFY(rig.press("segRegenerateObjects"));
+        // La question s'affiche ici, rien n'est encore modifié.
+        QTRY_VERIFY(!rig.regions.confirmText().isEmpty());
+        QTRY_VERIFY(rig.named("segRegenerateConfirm")->isVisible());
+        QVERIFY(!rig.named("segRegenerateObjects")->isVisible());
+        QCOMPARE(rig.session.undoNames().size(), depth);
+        // « Garder » referme sans rien faire ; le bouton revient.
+        QVERIFY(rig.press("segRegenerateConfirmNo"));
+        QTRY_VERIFY(!rig.named("segRegenerateConfirm")->isVisible());
+        QTRY_VERIFY(rig.named("segRegenerateObjects")->isVisible());
+        QCOMPARE(rig.session.undoNames().size(), depth);
+        // « Remplacer » régénère, avec le satin demandé ; le résultat s'affiche ici.
+        QVERIFY(rig.press("segRegenerateObjects"));
+        QTRY_VERIFY(rig.named("segRegenerateConfirm")->isVisible());
+        QSignalSpy done(&rig.regions, &RegionController::regenerated);
+        QVERIFY(rig.press("segRegenerateConfirmYes"));
+        QTRY_COMPARE_WITH_TIMEOUT(done.count(), 1, 120'000);
+        QCOMPARE(rig.session.undoNames().size(), depth + 1);
+        QVERIFY(rig.regions.lastDigitizeSettings().satin_bands);
+        QVERIFY(!rig.regions.stale());
+        QTRY_VERIFY(!rig.named("segRegenerateConfirm")->isVisible());
+        QTRY_VERIFY(rig.named("segRegenerateMessage")->isVisible());
+        QVERIFY(rig.named("segRegenerateMessage")
+                    ->property("text")
+                    .toString()
+                    .contains(QStringLiteral("Objets régénérés")));
         QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
     }
 

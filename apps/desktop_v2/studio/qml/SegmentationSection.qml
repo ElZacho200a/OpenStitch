@@ -275,25 +275,80 @@ ColumnLayout {
         color: Theme.muted; font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily
     }
     // Objets déjà générés avec un autre satin : le dire là où l'on coche, et régénérer d'ici
-    // (même action que « Régénérer les objets » de l'onglet Régions).
+    // (même action que « Régénérer les objets » de l'onglet Régions). La question avant d'écraser
+    // des retouches et le résultat viennent du même état du contrôleur (confirmText, message).
+    property bool regenerateRequestedHere: false
+    Connections {
+        target: studio
+        function onSatinOptionsChanged() { section.regenerateRequestedHere = false }
+    }
     ColumnLayout {
         objectName: "segSatinStale"
         Layout.fillWidth: true
         spacing: 4
-        visible: regionTools.objectsOnlyStale
+        visible: regionTools.objectsOnlyStale || (section.regenerateRequestedHere
+                 && (regionTools.confirmText.length > 0 || regionTools.busy || regionTools.message.length > 0))
         Text {
             Layout.fillWidth: true
+            visible: regionTools.objectsOnlyStale && regionTools.confirmText.length === 0
             text: qsTr("Les objets existants ne sont pas encore cousus avec ce réglage.")
             wrapMode: Text.WordWrap
             color: Theme.accent; font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily
         }
         StudioButton {
             objectName: "segRegenerateObjects"
+            visible: regionTools.objectsOnlyStale && regionTools.confirmText.length === 0
             text: qsTr("Régénérer les objets")
             emphasized: true
             enabled: regionTools.hasSegmentation && !regionTools.busy && !imageTools.busy
             tooltip: qsTr("Recrée les objets de broderie avec ces réglages (annulable, Ctrl+Z)")
-            onClicked: regionTools.regenerate(false, false, Object.assign({}, section.options, studio.satinOptions))
+            onClicked: {
+                section.regenerateRequestedHere = true
+                regionTools.regenerate(false, false, Object.assign({}, section.options, studio.satinOptions))
+            }
+        }
+        // Retouches de points à écraser : même question et mêmes choix que l'onglet Régions.
+        Rectangle {
+            objectName: "segRegenerateConfirm"
+            Layout.fillWidth: true
+            visible: regionTools.confirmText.length > 0
+            implicitHeight: segConfirmColumn.implicitHeight + 16
+            color: Theme.accentSoft
+            border.color: Theme.accent
+            ColumnLayout {
+                id: segConfirmColumn
+                anchors.fill: parent
+                anchors.margins: 8
+                Text {
+                    Layout.fillWidth: true
+                    text: regionTools.confirmText
+                    wrapMode: Text.WordWrap
+                    color: Theme.foreground; font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily
+                }
+                RowLayout {
+                    StudioButton {
+                        objectName: "segRegenerateConfirmYes"
+                        text: qsTr("Remplacer les retouches")
+                        emphasized: true
+                        onClicked: regionTools.confirmRegeneration()
+                    }
+                    StudioButton {
+                        objectName: "segRegenerateConfirmNo"
+                        text: qsTr("Garder mes retouches")
+                        onClicked: regionTools.cancelConfirmation()
+                    }
+                }
+            }
+        }
+        Text {
+            objectName: "segRegenerateMessage"
+            Layout.fillWidth: true
+            visible: section.regenerateRequestedHere && regionTools.confirmText.length === 0
+                     && (regionTools.busy || regionTools.message.length > 0)
+            text: regionTools.busy ? qsTr("Génération des objets…") : regionTools.message
+            wrapMode: Text.WordWrap
+            color: regionTools.messageIsError ? Theme.error : regionTools.busy ? Theme.muted : Theme.success
+            font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily
         }
     }
     // Réglages avancés repliés par défaut : un débutant n'a rien à y toucher.
