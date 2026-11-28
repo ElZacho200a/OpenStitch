@@ -229,4 +229,11 @@ struct Polar {
     return f;
 }
 
+// Réordonne les portions déjà rognées d'un tracé (spirale, anneaux centrés) sans modifier leurs
+// trajets internes : la première portion reste en tête ; une liaison courte est cousue seulement
+// si le segment complet reste dans la région, sinon c'est un saut. Rend `raw` inchangé si le
+// parcours réordonné n'a pas moins de sauts (défini dans spiral_fill.cpp).
+[[nodiscard]] std::vector<FillStitch> route_parts(const geometry::PathSet& region, double maxLen,
+                                                  std::vector<FillStitch> raw);
+
 } // namespace openstitch::stitch_generation::detail

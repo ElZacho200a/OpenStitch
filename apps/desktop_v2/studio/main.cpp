@@ -11,6 +11,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QStandardPaths>
+#include <QTemporaryDir>
 #include <filesystem>
 #include <memory>
 
@@ -132,8 +133,14 @@ int main(int argc, char** argv) {
     HistoryController history(controller);
     ActionController actions(controller);
     EditController editor(controller);
+    // Recette (--screenshot) : état de fichiers vierge (pas de reprise d'autosave, pas de fichiers
+    // récents) pour qu'une capture ne dépende jamais du travail en cours de l'utilisateur ni
+    // n'écrive dans son autosave.
+    QTemporaryDir recipeState;
     FileController files(controller, &actions,
-                         QStandardPaths::writableLocation(QStandardPaths::AppDataLocation));
+                         parser.isSet(QStringLiteral("screenshot")) && recipeState.isValid()
+                             ? recipeState.path()
+                             : QStandardPaths::writableLocation(QStandardPaths::AppDataLocation));
     InspectorController inspector(controller);
     ToolController tools(controller);
     // Journal d'usage local (docs/source/usage-log.md) : jamais envoyé, désactivable.
