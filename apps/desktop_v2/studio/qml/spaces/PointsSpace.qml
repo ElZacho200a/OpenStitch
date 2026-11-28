@@ -30,14 +30,7 @@ Item {
     readonly property var digitizeController: typeof digitizer !== "undefined" ? digitizer : null
     readonly property var toolController: typeof tools !== "undefined" ? tools : null
     readonly property var spaceController: typeof pointsSpace !== "undefined" ? pointsSpace : null
-    readonly property int selectedCount: {
-        var count = 0
-        const entries = studio.objects
-        for (var i = 0; i < entries.length; ++i)
-            if (entries[i].selected)
-                ++count
-        return count
-    }
+    readonly property int selectedCount: studio.selectedObjectCount
     readonly property var threadController: typeof threads !== "undefined" ? threads : null
 
     ColorDialog {
@@ -456,14 +449,16 @@ Item {
                         id: swatch
                         required property var modelData
                         objectName: "pointsThreadSwatch" + modelData.index
+                        readonly property bool selected: root.threadController
+                                                         && root.threadController.selectedEntrySet[String(modelData.index)] === true
                         width: swatches.tileWidth
                         height: 28
                         radius: height / 2 // bobine ronde
                         color: modelData.color
                         opacity: modelData.visible && swatches.dragFrom !== modelData.index ? 1 : 0.5
-                        border.width: modelData.selected || activeFocus || swatches.dropIndex === modelData.index ? 2 : 1
+                        border.width: swatch.selected || activeFocus || swatches.dropIndex === modelData.index ? 2 : 1
                         border.color: swatches.dropIndex === modelData.index ? Theme.accent
-                                    : modelData.selected || activeFocus ? Theme.foreground : Theme.border
+                                    : swatch.selected || activeFocus ? Theme.foreground : Theme.border
                         activeFocusOnTab: true
                         Accessible.role: Accessible.Button
                         Accessible.name: qsTr("Fil %1 · %2 objet(s)").arg(modelData.label).arg(modelData.objectCount)

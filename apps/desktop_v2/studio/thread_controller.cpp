@@ -46,9 +46,13 @@ std::filesystem::path pathOf(const QUrl& url) {
 ThreadController::ThreadController(StudioController& studio, std::filesystem::path configDir,
                                    QObject* parent)
     : QObject(parent), studio_(studio) {
-    gateStamp_ = documentStamp(studio_);
+    gateStamp_ = contentStamp(studio_);
+    // Les listes de fils ne dépendent pas de la sélection : un clic ne les recalcule pas (ni ne
+    // recrée leurs lignes QML) ; seul selectedEntrySet est rediffusé.
+    connect(&studio_, &StudioController::selectionChanged, this,
+            &ThreadController::selectionChanged);
     connect(&studio_, &StudioController::changed, this, [this] {
-        const auto stamp = documentStamp(studio_);
+        const auto stamp = contentStamp(studio_);
         if (stamp != gateStamp_) { // pas de recalcul des listes de fils pour un simple statut
             gateStamp_ = stamp;
             emit changed();
@@ -217,18 +221,10 @@ QVariantList ThreadController::entries() const {
             visible.insert(object.id.value);
         }
     }
-    std::unordered_set<std::uint64_t> selected;
-    for (const auto& target : studio_.session().selection().targets()) {
-        if (target.kind == TargetKind::EmbroideryObject) {
-            selected.insert(target.id);
-        }
-    }
     int index = 0;
     for (const auto& entry : threadEntries(project)) {
         bool anyVisible = false;
-        bool anySelected = false;
         for (const auto id : entry.objects) {
-            anySelected = anySelected || selected.contains(id);
             anyVisible = anyVisible || visible.contains(id);
         }
         list.push_back(
@@ -237,10 +233,30 @@ QVariantList ThreadController::entries() const {
                         {QStringLiteral("label"), q(entry.label)},
                         {QStringLiteral("color"), QColor(entry.rgb[0], entry.rgb[1], entry.rgb[2])},
                         {QStringLiteral("objectCount"), static_cast<int>(entry.objects.size())},
-                        {QStringLiteral("visible"), anyVisible},
-                        {QStringLiteral("selected"), anySelected}});
+                        {QStringLiteral("visible"), anyVisible}});
     }
     return list;
+}
+
+QVariantMap ThreadController::selectedEntrySet() const {
+    std::unordered_set<std::uint64_t> selected;
+    for (const auto& target : studio_.session().selection().targets()) {
+        if (target.kind == TargetKind::EmbroideryObject) {
+            selected.insert(target.id);
+        }
+    }
+    QVariantMap set;
+    if (selected.empty()) {
+        return set;
+    }
+    int index = 0;
+    for (const auto& entry : threadEntries(studio_.session().project())) {
+        if (std::ranges::any_of(entry.objects, [&](auto id) { return selected.contains(id); })) {
+            set.insert(QString::number(index), true);
+        }
+        ++index;
+    }
+    return set;
 }
 
 int ThreadController::threadCount() const {

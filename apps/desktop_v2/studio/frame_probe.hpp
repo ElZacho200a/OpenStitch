@@ -49,6 +49,15 @@ private:
     qint64 renderStart_{0};
     qint64 lastBeat_{0};
     std::uint64_t driverTick_{0};
+    struct SelectionSample {
+        std::uint64_t id;
+        std::size_t nodes;
+        double ms;
+        bool edited;
+        std::uint64_t selected;
+    };
+    std::vector<std::pair<std::size_t, std::uint64_t>> selectTargets_; // (nœuds, id)
+    std::vector<SelectionSample> selections_;
     bool running_{false};
 };
 

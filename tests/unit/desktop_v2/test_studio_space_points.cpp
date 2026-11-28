@@ -150,6 +150,49 @@ private slots:
                                                      QStringLiteral("Provided by the application"));
     }
 
+    // QA OBJ-028 : une sélection faite hors de la liste (canevas, bobine, arbre) amène la ligne
+    // de l'objet à l'écran, dans les deux sens ; un objet déjà visible ne fait pas défiler.
+    void objectListRevealsTheSelectedObject() {
+        Rig rig;
+        open(rig);
+        for (int i = 1; i < 60; ++i) {
+            // Petits carrés en grille dans le cadre (10 colonnes x 6 rangées).
+            const PointMm centre{-40.5 + 9.0 * (i % 10), -22.5 + 9.0 * (i / 10)};
+            QVERIFY(rig.session.applyBatch(batchAddRect(centre, 6, 6), "R").committed);
+        }
+        const auto& objects = rig.session.project().embroidery_objects;
+        QCOMPARE(objects.size(), std::size_t{60});
+        auto* list = named(rig.window, "objectList");
+        QVERIFY(list);
+        QTRY_COMPARE(list->property("count").toInt(), 60);
+        QTRY_VERIFY(list->height() > 0);
+        QVERIFY(list->property("contentHeight").toDouble() > list->height()); // la liste défile
+        const auto visible = [&](int index) {
+            QQuickItem* row = nullptr;
+            QMetaObject::invokeMethod(list, "itemAtIndex", Q_RETURN_ARG(QQuickItem*, row),
+                                      Q_ARG(int, index));
+            if (row == nullptr) {
+                return false;
+            }
+            const double top = list->property("contentY").toDouble();
+            return row->y() >= top - 0.5 && row->y() + row->height() <= top + list->height() + 0.5;
+        };
+        QVERIFY(visible(0));
+        QVERIFY(!visible(59));
+        rig.studio.selectObject(QString::number(objects.back().id.value));
+        QTRY_VERIFY(visible(59));
+        rig.studio.selectObject(QString::number(objects.front().id.value));
+        QTRY_VERIFY(visible(0));
+        const double top = list->property("contentY").toDouble();
+        rig.studio.selectObject(QString::number(objects[1].id.value)); // déjà visible
+        // Qt.callLater s'exécute à la prochaine itération : vider la file suffit, sans attente.
+        QCoreApplication::processEvents();
+        QCoreApplication::processEvents();
+        QVERIFY(
+            rig.session.selection().contains({TargetKind::EmbroideryObject, objects[1].id.value}));
+        QCOMPARE(list->property("contentY").toDouble(), top);
+    }
+
     void threadStripSelectsMovesAndRecolors() {
         Rig rig;
         open(rig);
@@ -167,6 +210,9 @@ private slots:
         QCOMPARE(rig.session.selection().targets().size(), std::size_t{2});
         QVERIFY(rig.session.selection().contains({TargetKind::EmbroideryObject, first.value}));
         QVERIFY(rig.session.selection().contains({TargetKind::EmbroideryObject, third.value}));
+        // Bobine du fil sélectionné surlignée, l'autre non (selectedEntrySet).
+        QTRY_VERIFY(named(rig.window, "pointsThreadSwatch0")->property("selected").toBool());
+        QVERIFY(!named(rig.window, "pointsThreadSwatch1")->property("selected").toBool());
 
         const auto center = [&](const char* name) {
             const auto* item = named(rig.window, name);
