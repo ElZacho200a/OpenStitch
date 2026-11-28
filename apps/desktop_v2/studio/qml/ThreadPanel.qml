@@ -176,7 +176,9 @@ Rectangle {
         onAccepted: panel.controller.exportThreadList(selectedFile)
     }
 
-    Flickable {
+    // Onglets sur plusieurs lignes au besoin : en défilement horizontal, « Coloris », « Tissu » et
+    // « Ordre » sortaient du panneau sans aucun indice (LAY-014).
+    Flow {
         id: threadSections
         objectName: "threadSections"
         anchors.left: parent.left
@@ -185,44 +187,37 @@ Rectangle {
         anchors.topMargin: 8
         anchors.leftMargin: 10
         anchors.rightMargin: 10
-        height: 34
-        contentWidth: threadTabs.childrenRect.width
-        contentHeight: height
-        flickableDirection: Flickable.HorizontalFlick
-        boundsBehavior: Flickable.StopAtBounds
-        clip: true
-        Row {
-            id: threadTabs
-            spacing: 4
-            Repeater {
-                model: [
-                    { id: "plan", text: qsTr("Projet") },
-                    { id: "catalog", text: qsTr("Nuanciers") },
-                    { id: "stock", text: qsTr("Mes fils") },
-                    { id: "film", text: qsTr("Film couleur") },
-                    { id: "colorways", text: qsTr("Coloris") },
-                    { id: "fabric", text: qsTr("Tissu") },
-                    { id: "order", text: qsTr("Ordre") }
-                ]
-                delegate: StudioButton {
-                    required property var modelData
-                    objectName: "threadTab_" + modelData.id
-                    text: modelData.text
-                    checkable: true
-                    checked: panel.page === modelData.id
-                    font.bold: checked
-                    active: checked
-                    onClicked: panel.page = modelData.id
-                }
+        spacing: 4
+        Repeater {
+            model: [
+                { id: "plan", text: qsTr("Projet") },
+                { id: "catalog", text: qsTr("Nuanciers") },
+                { id: "stock", text: qsTr("Mes fils") },
+                { id: "film", text: qsTr("Film couleur") },
+                { id: "colorways", text: qsTr("Coloris") },
+                { id: "fabric", text: qsTr("Tissu") },
+                { id: "order", text: qsTr("Ordre") }
+            ]
+            delegate: StudioButton {
+                required property var modelData
+                objectName: "threadTab_" + modelData.id
+                text: modelData.text
+                checkable: true
+                checked: panel.page === modelData.id
+                font.bold: checked
+                active: checked
+                onClicked: panel.page = modelData.id
             }
         }
     }
 
     Flickable {
+        id: pageScroll
         objectName: "threadPageScroll"
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: threadSections.bottom
+        anchors.topMargin: 8
         anchors.bottom: parent.bottom
         anchors.leftMargin: 10
         anchors.rightMargin: 10
@@ -522,16 +517,47 @@ Rectangle {
                 Layout.fillWidth: true
                 spacing: 8
                 SectionLabel { text: qsTr("ORDRE DE COUTURE") }
-            Repeater {
-                model: panel.controller ? panel.controller.sewingOrder : []
+            // Une ligne à deux boutons par objet : liste virtualisée (seules les lignes visibles
+            // existent), peuplée seulement page affichée. Un Repeater recréait les centaines de
+            // lignes à chaque édition du document, même panneau fermé (Suppr : 1 à 2,6 s).
+            ListView {
+                id: orderList
+                objectName: "threadOrderList"
+                Layout.fillWidth: true
+                Layout.preferredHeight: Math.min(contentHeight, Math.max(160, pageScroll.height - 40))
+                clip: true
+                spacing: 2
+                boundsBehavior: Flickable.StopAtBounds
+                Controls.ScrollBar.vertical: Controls.ScrollBar {}
+                // Modèle posé explicitement (pas de liaison) pour garder la position de défilement :
+                // remplacer le modèle ramènerait la liste en haut à chaque ▲/▼.
+                function refresh() {
+                    const keep = contentY
+                    model = panel.visible && panel.page === "order" && panel.controller
+                            ? panel.controller.sewingOrder : []
+                    forceLayout()
+                    contentY = Math.max(0, Math.min(keep, contentHeight - height))
+                }
+                Component.onCompleted: refresh()
+                Connections {
+                    target: panel.controller
+                    ignoreUnknownSignals: true
+                    function onChanged() { orderList.refresh() }
+                }
+                Connections {
+                    target: panel
+                    function onPageChanged() { orderList.refresh() }
+                    function onVisibleChanged() { orderList.refresh() }
+                    function onControllerChanged() { orderList.refresh() }
+                }
                 delegate: RowLayout {
                     id: ord
                     required property var modelData
-                    Layout.fillWidth: true
+                    width: ListView.view.width
                     Rectangle { implicitWidth: 14; implicitHeight: 14; radius: 3; color: ord.modelData.color; border.color: Theme.border }
                     Text { Layout.fillWidth: true; elide: Text.ElideRight; text: (ord.modelData.position + 1) + ". " + ord.modelData.name; color: Theme.foreground; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize }
                     StudioButton { objectName: "orderUp" + ord.modelData.position; text: "▲"; quiet: true; enabled: ord.modelData.position > 0; onClicked: panel.controller.moveInOrder(ord.modelData.id, ord.modelData.position - 1) }
-                    StudioButton { objectName: "orderDown" + ord.modelData.position; text: "▼"; quiet: true; onClicked: panel.controller.moveInOrder(ord.modelData.id, ord.modelData.position + 1) }
+                    StudioButton { objectName: "orderDown" + ord.modelData.position; text: "▼"; quiet: true; enabled: ord.modelData.position < orderList.count - 1; onClicked: panel.controller.moveInOrder(ord.modelData.id, ord.modelData.position + 1) }
                 }
             }
             }
@@ -554,7 +580,8 @@ Rectangle {
                     onToggled: if (panel.controller) panel.controller.limitToStock = checked
                 }
                 Repeater {
-                    model: panel.controller ? panel.controller.ownedThreads : []
+                    model: panel.visible && panel.page === "stock" && panel.controller
+                           ? panel.controller.ownedThreads : []
                     delegate: RowLayout {
                         id: stockRow
                         required property var modelData
@@ -648,7 +675,9 @@ Rectangle {
                           .arg(panel.controller ? panel.controller.filmChanges : 0)
                 }
                 Repeater {
-                    model: panel.controller ? panel.controller.colorFilm : []
+                    id: filmRepeater
+                    model: panel.visible && panel.page === "film" && panel.controller
+                           ? panel.controller.colorFilm : []
                     delegate: RowLayout {
                         id: filmRow
                         required property var modelData
@@ -698,8 +727,7 @@ Rectangle {
                             quiet: true
                             text: "↓"
                             enabled: !filmRow.modelData.locked &&
-                                     panel.controller &&
-                                     filmRow.modelData.index < panel.controller.colorFilm.length - 1
+                                     filmRow.modelData.index < filmRepeater.count - 1
                             onClicked: panel.controller.moveFilmBlock(filmRow.modelData.index,
                                                                        filmRow.modelData.index + 1)
                         }
@@ -708,7 +736,7 @@ Rectangle {
                 StudioButton {
                     objectName: "filmGroupByColor"
                     text: qsTr("Regrouper les passages d'une même couleur…")
-                    enabled: panel.controller && panel.controller.colorFilm.length > 1
+                    enabled: filmRepeater.count > 1
                     onClicked: filmDialog.open()
                 }
             }
