@@ -77,6 +77,7 @@ void DigitizeGestures::setMode(const QString& mode) {
         pointsTurnedOn_ = false;
     }
     mode_ = mode;
+    hoverGuide_ = -1;
     guidedTarget_ = mode_ == QLatin1String("guided") ? satinId() : 0;
     if (mode_ == QLatin1String("points") && !points_.active()) {
         points_.setActive(true);
@@ -93,6 +94,22 @@ bool DigitizeGestures::isGuideMode() const {
 bool DigitizeGestures::isFillGuideMode() const {
     return (mode_ == QLatin1String("guide") || mode_ == QLatin1String("break")) &&
            !satin_.isAutoSatin() && satin_.canGuideFill();
+}
+
+void DigitizeGestures::hover(double x, double y, double pxPerMm) {
+    if (drag_ != Drag::None || !isFillGuideMode()) {
+        return;
+    }
+    scale_ = std::max(pxPerMm, 1e-6);
+    const auto p = toModel(x, y);
+    const int guide =
+        satin_.fillGuideAt(mode_ == QLatin1String("break"), p.x, p.y, kGripPx / scale_);
+    // Le guide montré reste le dernier survolé tant qu'aucun autre ne l'est : aller du tracé
+    // vers un nœud un peu à l'écart ne fait pas disparaître ses poignées.
+    if (guide >= 0 && guide != hoverGuide_) {
+        hoverGuide_ = guide;
+        rebuildStatic();
+    }
 }
 
 QString DigitizeGestures::hint() const {
@@ -114,15 +131,15 @@ QString DigitizeGestures::hint() const {
             return tr("Tracez un guide sur le satin ; sur le satin guidé, glissez ses nœuds pour "
                       "remodeler la ligne centrale.");
         }
-        return tr("Tracez un guide sur le remplissage ; glissez un nœud pour le remodeler ; "
-                  "Maj+clic sur un guide : le retirer.");
+        return tr("Tracez un guide sur le remplissage ; survolez un guide pour voir ses nœuds, "
+                  "glissez-en un pour le remodeler ; Maj+clic sur un guide : le retirer.");
     }
     if (mode_ == QLatin1String("break")) {
         if (!isFillGuideMode()) {
             return tr("Tracez une ligne de rupture à travers le remplissage.");
         }
-        return tr("Tracez une ligne de rupture à travers le remplissage ; glissez un nœud pour la "
-                  "remodeler ; Maj+clic sur une rupture : la retirer.");
+        return tr("Tracez une ligne de rupture à travers le remplissage ; survolez une rupture "
+                  "pour voir ses nœuds, glissez-en un pour la remodeler ; Maj+clic : la retirer.");
     }
     if (mode_ == QLatin1String("rungs")) {
         return tr("Glissez de rail en rail pour poser chaque barreau, Entrée crée la colonne.");
@@ -145,8 +162,13 @@ std::vector<DigitizeGestures::Grip> DigitizeGestures::grips() const {
         return out;
     }
     if (isFillGuideMode()) {
+        // Seuls les nœuds du guide sous le pointeur sont saisissables (et dessinés) : sur un
+        // remplissage à huit guides automatiques, toutes les poignées formaient un amas.
         const auto curves = satin_.fillGuideCurves(mode_ == QLatin1String("break"));
         for (int guide = 0; guide < curves.size(); ++guide) {
+            if (guide != hoverGuide_) {
+                continue;
+            }
             const auto nodes = curves[guide].toMap().value(QStringLiteral("nodes")).toList();
             for (int node = 0; node < nodes.size(); ++node) {
                 out.push_back(
@@ -404,6 +426,7 @@ bool DigitizeGestures::press(double x, double y, double pxPerMm, Qt::KeyboardMod
                 note(satin_.message(), ok);
                 return false;
             }
+            hoverGuide_ = satin_.fillGuideAt(isBreak, anchor_.x, anchor_.y, kGripPx / scale_);
             grip_ = gripAt(anchor_);
             if (grip_ && grip_->type == Grip::Type::FillGuideNode) {
                 drag_ = Drag::GuideNode;
@@ -656,14 +679,21 @@ void DigitizeGestures::rebuildStatic() {
     } else if (isFillGuideMode()) {
         // Guides (ou ruptures) existants : tracé aplati + poignée sur chaque nœud éditable.
         HandleItem handles{HandleItem::Kind::Handle, {}};
-        for (const auto& raw : satin_.fillGuideCurves(mode_ == QLatin1String("break"))) {
-            const auto map = raw.toMap();
+        const auto curves = satin_.fillGuideCurves(mode_ == QLatin1String("break"));
+        if (hoverGuide_ >= curves.size()) {
+            hoverGuide_ = -1; // guide retiré (annulation, Maj+clic)
+        }
+        for (int guide = 0; guide < curves.size(); ++guide) {
+            const auto map = curves[guide].toMap();
             HandleItem line{HandleItem::Kind::Line, {}};
             for (const auto& rawPoint : map.value(QStringLiteral("curve")).toList()) {
                 line.points.push_back(toScene(mapPoint(rawPoint.toMap())));
             }
             if (line.points.size() >= 2) {
                 static_.push_back(std::move(line));
+            }
+            if (guide != hoverGuide_) {
+                continue;
             }
             for (const auto& rawPoint : map.value(QStringLiteral("nodes")).toList()) {
                 handles.points.push_back(toScene(mapPoint(rawPoint.toMap())));

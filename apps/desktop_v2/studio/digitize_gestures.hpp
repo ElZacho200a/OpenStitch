@@ -63,6 +63,8 @@ public:
     void release(double x, double y, Qt::KeyboardModifiers mods);
     // Entrée valide les barreaux en attente, Suppr efface les points choisis, Échap annule.
     bool keyPress(int key);
+    // Survol sans bouton (outils de guides) : montre les nœuds du guide sous le pointeur.
+    void hover(double x, double y, double pxPerMm);
     // Annule le geste en cours (ou les barreaux en attente) sans rien muter ; faux si rien à
     // annuler.
     Q_INVOKABLE bool cancel();
@@ -128,6 +130,7 @@ private:
     int fadeHandle_{-1};
     std::optional<Grip> grip_;
     // Objet et révision du document à l'appui : un glisser de poignée périmé est abandonné.
+    int hoverGuide_{-1}; // guide (ou rupture) dont les nœuds sont montrés et saisissables
     std::uint64_t pressObject_{0};
     std::uint64_t pressRevision_{0};
     std::vector<PointMm> stroke_;

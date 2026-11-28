@@ -456,6 +456,22 @@ void StudioDigitize2Test::fillGuideEditingByMouse() {
     QCOMPARE(curves.size(), count);
     // Les guides tracés sont dessinés : une ligne par guide et des poignées sur leurs nœuds.
     QVERIFY(static_cast<int>(rig.digitizer.staticItems().size()) >= count + 1);
+    const auto handlePoints = [&rig] {
+        for (const auto& item : rig.digitizer.staticItems()) {
+            if (item.kind == HandleItem::Kind::Handle) {
+                return static_cast<int>(item.points.size());
+            }
+        }
+        return -1;
+    };
+    // Les nœuds ne s'affichent que sur le guide survolé (huit guides auto = un amas sinon).
+    {
+        const auto last = curves.last().toMap();
+        const auto pts = last.value("curve").toList();
+        const auto mid = pts[pts.size() / 2].toMap();
+        QTest::mouseMove(rig.window, at(rig, mid.value("x").toDouble(), mid.value("y").toDouble()));
+        QTRY_COMPARE(handlePoints(), static_cast<int>(last.value("nodes").toList().size()));
+    }
 
     // Glisser le premier nœud du dernier guide : une étape, la courbe suit le pointeur.
     const auto lastGuide = curves.last().toMap();

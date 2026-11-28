@@ -12,6 +12,7 @@
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/geometry/polyline.hpp"
 #include "openstitch/geometry/primitives.hpp"
+#include "openstitch/geometry/simplify.hpp"
 #include "openstitch/stitch_generation/directional_fill.hpp"
 
 namespace openstitch::desktop_v2 {
@@ -20,6 +21,7 @@ namespace {
 
 constexpr double kMaxCoordMm = 1000.0;
 constexpr double kMinStepMm = 0.2; // points plus proches qu'un cinquième de mm : confondus
+constexpr std::int32_t kStrokeSimplifyUm = 250; // écart toléré en simplifiant un tracé
 
 Vec2um toUm(PointMm p) {
     return {to_micrometers(Millimeters{p.x}), to_micrometers(Millimeters{p.y})};
@@ -201,15 +203,23 @@ ServiceResult addDirectionGuide(DocumentSession& session, std::uint64_t objectId
     if (!params) {
         return {false, "Cet objet n'a pas de contour source : impossible de le guider."};
     }
+    // Un tracé à main levée donne un point par échantillon de souris : Douglas-Peucker à
+    // 0,25 mm ne garde que les nœuds utiles (peu de poignées à glisser, même forme).
+    geometry::Path line;
+    line.closed = false;
+    for (const Vec2um p : pts) {
+        line.nodes.push_back({p, geometry::NodeType::Corner, {}, {}});
+    }
+    line = geometry::simplify(line, Micrometers{kStrokeSimplifyUm});
     if (isBreak) {
-        geometry::Path line;
-        line.closed = false;
-        for (const Vec2um p : pts) {
-            line.nodes.push_back({p, geometry::NodeType::Corner, {}, {}});
-        }
         params->break_lines.push_back(std::move(line));
     } else {
-        params->guides.push_back(geometry::smooth_open_path(pts));
+        std::vector<Vec2um> kept;
+        kept.reserve(line.nodes.size());
+        for (const auto& node : line.nodes) {
+            kept.push_back(node.pos);
+        }
+        params->guides.push_back(geometry::smooth_open_path(kept));
     }
     const std::string label =
         isBreak ? "Tracer une ligne de rupture" : "Tracer un guide de direction";

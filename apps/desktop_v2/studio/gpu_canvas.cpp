@@ -1262,6 +1262,8 @@ void GpuCanvas::hoverMoveEvent(QHoverEvent* event) {
     if (digitize_ && digitize_->capturesMouse()) {
         setHover(std::nullopt);
         setCursor(Qt::CrossCursor);
+        const auto p = camera_.screenToWorld({event->position().x(), event->position().y()});
+        digitize_->hover(p.x, p.y, camera_.scale());
         return;
     }
     if (tools_ && tools_->capturesMouse()) {

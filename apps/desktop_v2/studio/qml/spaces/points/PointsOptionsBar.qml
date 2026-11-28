@@ -46,8 +46,8 @@ Rectangle {
         // Guides d'un remplissage : aide COURTE, lisible même à 1000 px (le détail est dans
         // l'infobulle de l'aide et des boutons).
         if (fillGuideTool)
-            return breakTool ? qsTr("Maj+clic : retirer · glisser un nœud : remodeler · tracer : ajouter une rupture")
-                             : qsTr("Maj+clic : retirer · glisser un nœud : remodeler · tracer : ajouter un guide")
+            return breakTool ? qsTr("Maj+clic : retirer · survoler puis glisser un nœud : remodeler · tracer : ajouter une rupture")
+                             : qsTr("Maj+clic : retirer · survoler puis glisser un nœud : remodeler · tracer : ajouter un guide")
         if (digitizeCtl && digitizeCtl.mode !== "")
             return digitizeCtl.hint !== "" ? digitizeCtl.hint : qsTr("Geste actif : cliquez sur le canevas ; Échap pour terminer.")
         if (toolCtl && toolCtl.hint !== "")

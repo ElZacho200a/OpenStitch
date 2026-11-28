@@ -273,7 +273,9 @@ Rectangle {
                     enabled: !studio.busy
                     tooltip: panel.controller.guideCount < 0
                              ? qsTr("Convertit ce tatami en remplissage directionnel et propose des guides d'après la forme (annulable)")
-                             : qsTr("Propose des guides d'après la forme ; remplace les guides existants (annulable)")
+                             : panel.controller.guideCount > 0
+                               ? qsTr("Remplace les guides, même retouchés, par ceux que propose la forme (annulable)")
+                               : qsTr("Propose des guides d'après la forme ; glissez ensuite leurs nœuds (annulable)")
                     onClicked: panel.controller.autoFillGuides()
                 }
                 StudioButton {
