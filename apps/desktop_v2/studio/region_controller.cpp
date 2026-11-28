@@ -7,6 +7,7 @@
 
 #include <QColor>
 #include <QImage>
+#include <QRegularExpression>
 #include <algorithm>
 #include <cmath>
 
@@ -45,6 +46,14 @@ RegionController::RegionController(StudioController& studio, ImageController& im
     refreshTimer_.setSingleShot(true);
     refreshTimer_.setInterval(0);
     connect(&refreshTimer_, &QTimer::timeout, this, [this] { refresh(); });
+    // Un autre satin demandé : les objets déjà générés ne le suivent plus (« Régénérer » mis en
+    // avant), comme après une retouche de région.
+    connect(&studio_, &StudioController::satinOptionsChanged, this, [this] {
+        emit satinOptionsChanged();
+        if (hasSegmentation()) {
+            setStale(true, QStringLiteral("réglages satin modifiés"));
+        }
+    });
     token_ = studio_.session().subscribe([this](ChangeKind kind) {
         const auto& session = studio_.session();
         const auto revision = session.revision();
@@ -120,16 +129,44 @@ QVariantMap RegionController::handEdits() const {
 void RegionController::setMessage(const QString& text, bool error) {
     message_ = text;
     messageIsError_ = error;
-    warnings_.clear(); // les avertissements accompagnent le seul résumé de régénération
     emit messageChanged();
 }
 
-void RegionController::setSatinOptions(const QVariantMap& options) {
-    if (options == satinOptions_) {
+void RegionController::setWarnings(const std::vector<std::string>& warnings) {
+    if (warnings.empty() && warnings_.isEmpty()) {
         return;
     }
-    satinOptions_ = options;
-    emit satinOptionsChanged();
+    // « région N écartée … » : l'identifiant cité permet de sélectionner la région d'un clic.
+    static const QRegularExpression cited(QStringLiteral("^région (\\d+) "));
+    warnings_.clear();
+    for (const auto& warning : warnings) {
+        const QString text = fromUtf8(warning);
+        const auto match = cited.match(text);
+        warnings_.push_back(QVariantMap{
+            {QStringLiteral("text"), text},
+            {QStringLiteral("region"), match.hasMatch() ? match.captured(1).toDouble() : -1.0}});
+    }
+    emit warningsChanged();
+}
+
+QString RegionController::warningSummary() const {
+    int discarded = 0;
+    for (const auto& item : warnings_) {
+        if (item.toMap().value(QStringLiteral("region")).toDouble() >= 0.0) {
+            ++discarded;
+        }
+    }
+    const int others = static_cast<int>(warnings_.size()) - discarded;
+    QStringList parts;
+    if (discarded > 0) {
+        parts << (discarded == 1 ? QStringLiteral("1 région écartée")
+                                 : QStringLiteral("%1 régions écartées").arg(discarded));
+    }
+    if (others > 0) {
+        parts << (others == 1 ? QStringLiteral("1 avertissement")
+                              : QStringLiteral("%1 avertissements").arg(others));
+    }
+    return parts.join(QStringLiteral(", "));
 }
 
 void RegionController::setStale(bool stale, const QString& reason) {
@@ -675,7 +712,8 @@ QString RegionController::paintStroke(const QVariantList& pointsPx, bool erase) 
 void RegionController::regenerate(bool resegment, bool confirmed, const QVariantMap& request) {
     // Réglages satin du panneau, sauf s'ils sont déjà dans la demande (reprise après confirmation).
     QVariantMap settings = request;
-    for (auto it = satinOptions_.cbegin(); it != satinOptions_.cend(); ++it) {
+    const QVariantMap satin = studio_.satinOptions();
+    for (auto it = satin.cbegin(); it != satin.cend(); ++it) {
         if (!settings.contains(it.key())) {
             settings.insert(it.key(), it.value());
         }
@@ -719,6 +757,7 @@ void RegionController::regenerate(bool resegment, bool confirmed, const QVariant
     const auto snapshot = studio_.session().snapshot();
     const auto revision = studio_.session().revision();
     const image::Image image = std::move(*working);
+    setWarnings({}); // les avertissements décrivent la génération précédente
     busy_ = true;
     emit busyChanged();
     task_ = tasks_.submit<Regeneration>(
@@ -754,21 +793,15 @@ void RegionController::finishRegeneration(Result<Regeneration>&& r) {
     if (r->reused > 0) {
         kept += QStringLiteral(" %1 objet(s) inchangé(s) réutilisé(s).").arg(r->reused);
     }
-    if (!r->warnings.empty()) {
-        kept += QStringLiteral(" %1 avertissement(s) : voir le détail.").arg(r->warnings.size());
+    setWarnings(r->warnings);
+    if (!warnings_.isEmpty()) {
+        kept += QStringLiteral(" %1 : voir le détail.").arg(warningSummary());
     }
     setMessage(QStringLiteral("Objets régénérés : %1 → %2. Annulable (Ctrl+Z).")
                        .arg(r->objectsBefore)
                        .arg(r->objectsAfter) +
                    kept,
                false);
-    // Après `setMessage` (qui vide la liste) : même notification, lue avec le résumé.
-    for (const auto& warning : r->warnings) {
-        warnings_.push_back(fromUtf8(warning));
-    }
-    if (!warnings_.isEmpty()) {
-        emit messageChanged();
-    }
     emit regenerated(static_cast<int>(r->objectsBefore), static_cast<int>(r->objectsAfter));
 }
 

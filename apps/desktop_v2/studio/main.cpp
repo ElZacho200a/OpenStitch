@@ -279,30 +279,38 @@ int main(int argc, char** argv) {
                     // capture montre avec les fils retrouvés.
                     section->setProperty("fineStructures", true);
                 }
-            } else if (name == QStringLiteral("satin-comparatif")) {
-                // Recette (CX05) : onglet Régions de l'espace Segmentation, satin et « meilleur
-                // satin » cochés, réglages avancés dépliés, panneau défilé jusqu'à OBJETS.
-                regionTools.setSatinOptions({{QStringLiteral("satin_bands"), true},
-                                             {QStringLiteral("satin_compare"), true}});
+            } else if (name == QStringLiteral("satin-comparatif") ||
+                       name == QStringLiteral("satin-sans")) {
+                // Recette (CX05) : onglet Segmentation, panneau défilé jusqu'au bloc BRODERIE sous
+                // « Appliquer ». « satin-comparatif » : satin et « meilleur satin » cochés,
+                // réglages avancés dépliés ; « satin-sans » : satin décoché, « meilleur satin »
+                // grisé.
+                const bool satinOn = name == QStringLiteral("satin-comparatif");
+                if (satinOn) {
+                    controller.setSatinOptions({{QStringLiteral("satin_bands"), true},
+                                                {QStringLiteral("satin_compare"), true}});
+                }
                 recipeScrollPending = true;
                 auto* scroll = new QTimer(&app);
                 scroll->setInterval(100);
                 QObject::connect(
                     scroll, &QTimer::timeout, &app,
-                    [window, scroll, &imageTools, &recipeScrollPending, ticks = 0]() mutable {
+                    [window, scroll, &imageTools, &recipeScrollPending, satinOn,
+                     ticks = 0]() mutable {
                         auto* panels =
                             window->findChild<QObject*>(QStringLiteral("segmentationPanels"));
                         if (panels == nullptr || !imageTools.hasImage()) {
                             return;
                         }
-                        panels->setProperty("tab", 1);
-                        auto* tools = panels->findChild<QObject*>(QStringLiteral("regionTools"));
+                        panels->setProperty("tab", 0);
+                        auto* section =
+                            panels->findChild<QObject*>(QStringLiteral("segmentationSection"));
                         auto* target =
-                            panels->findChild<QQuickItem*>(QStringLiteral("regionSatinBands"));
-                        if (tools == nullptr || target == nullptr) {
+                            panels->findChild<QQuickItem*>(QStringLiteral("segApplyButton"));
+                        if (section == nullptr || target == nullptr) {
                             return;
                         }
-                        tools->setProperty("satinAdvancedOpen", true);
+                        section->setProperty("satinAdvancedOpen", satinOn);
                         QQuickItem* flick = target->parentItem();
                         while (flick != nullptr && !flick->inherits("QQuickFlickable")) {
                             flick = flick->parentItem();

@@ -671,37 +671,62 @@ private slots:
         }
     }
 
-    // CX05 : les cases et champs du panneau Régions arrivent tels quels dans les
-    // `DigitizeSettings` réellement transmis au moteur par « Régénérer les objets ».
+    // CX05 : les cases et champs satin de l'onglet Segmentation (sous « Appliquer ») arrivent
+    // tels quels dans les `DigitizeSettings` réellement transmis au moteur par « Régénérer les
+    // objets » ; changer le satin rend les objets périmés.
     void satinControlsReachTheEngine() {
         Rig rig;
         open(rig);
         auto* panels = rig.named("segmentationPanels");
         QVERIFY(panels);
-        panels->setProperty("tab", 1);
+        panels->setProperty("tab", 0);
         auto* tools = rig.named("regionTools");
         auto* bands = rig.named("regionSatinBands");
         auto* compare = rig.named("regionSatinCompare");
         auto* advanced = rig.named("regionSatinAdvanced");
         QVERIFY(tools && bands && compare && advanced);
         // Débutant : satin décoché, « meilleur satin » grisé, réglages avancés cachés.
+        QTRY_VERIFY(bands->isVisible());
         QVERIFY(!bands->property("checked").toBool());
         QVERIFY(!compare->isEnabled());
         QVERIFY(!advanced->isVisible());
         QVERIFY(!rig.named("regionSatinAdvancedSection")->isVisible());
+        QVERIFY(!rig.regions.stale());
         QVERIFY(rig.press("regionSatinBands"));
         QTRY_VERIFY(compare->isEnabled());
+        // Un autre satin : les objets sont périmés, « Régénérer les objets » mis en avant.
+        QTRY_VERIFY(rig.regions.stale());
+        QVERIFY(rig.named("regionRegenerate")->property("emphasized").toBool());
+        QVERIFY(rig.studio.satinOptions().value("satin_bands").toBool());
         QVERIFY(rig.press("regionSatinCompare"));
         QTRY_VERIFY(advanced->isVisible());
         QVERIFY(!rig.named("regionSatinAdvancedSection")->isVisible()); // replié par défaut
         QVERIFY(rig.press("regionSatinAdvanced"));
         QTRY_VERIFY(rig.named("regionSatinAdvancedSection")->isVisible());
-        QVERIFY(rig.named("regionSatinMinCoverage")->setProperty("text", QStringLiteral("0.85")));
+        // Valeur invalide : ignorée (défaut du moteur), et l'interface le dit.
+        auto* coverage = rig.named("regionSatinMinCoverage");
+        QVERIFY(coverage->setProperty("text", QStringLiteral("150")));
+        QVERIFY(coverage->property("invalid").toBool());
+        QVERIFY(!rig.studio.satinOptions().contains("satin_min_coverage"));
+        QTRY_VERIFY(rig.named("regionSatinAdvancedHint")
+                        ->property("text")
+                        .toString()
+                        .contains(QStringLiteral("Valeur ignorée")));
+        // Couverture saisie en % (85), transmise en fraction (0,85).
+        QVERIFY(coverage->setProperty("text", QStringLiteral("85")));
         QVERIFY(rig.named("regionSatinCompactMax")->setProperty("text", QStringLiteral("9,5")));
         QVERIFY(rig.named("regionSatinMaxStitch")->setProperty("text", QStringLiteral("7.25")));
+        // Onglet Régions : rappel du satin choisi, génération.
+        panels->setProperty("tab", 1);
+        QTRY_VERIFY(rig.named("regionSatinStatus")->isVisible());
+        QVERIFY(rig.named("regionSatinStatus")
+                    ->property("text")
+                    .toString()
+                    .contains(QStringLiteral("meilleur satin")));
         QSignalSpy done(&rig.regions, &RegionController::regenerated);
         QVERIFY(rig.press("regionRegenerate"));
         QTRY_COMPARE_WITH_TIMEOUT(done.count(), 1, 120'000);
+        QVERIFY(!rig.regions.stale());
         const auto& sent = rig.regions.lastDigitizeSettings();
         QVERIFY(sent.satin_bands);
         QVERIFY(sent.satin_compare);
@@ -713,7 +738,8 @@ private slots:
         QCOMPARE(pending.value("satin_bands").toBool(), true);
         QCOMPARE(pending.value("satin_compare").toBool(), true);
         // Champs vidés : retour aux valeurs du moteur.
-        QVERIFY(rig.named("regionSatinMinCoverage")->setProperty("text", QString()));
+        panels->setProperty("tab", 0);
+        QVERIFY(coverage->setProperty("text", QString()));
         QVERIFY(rig.named("regionSatinCompactMax")->setProperty("text", QString()));
         QVERIFY(rig.named("regionSatinMaxStitch")->setProperty("text", QString()));
         // Satin décoché : « meilleur satin » grisé et non transmis, réglages avancés cachés.
@@ -728,9 +754,11 @@ private slots:
         QVERIFY(!off.satin_min_coverage.has_value());
         QVERIFY(!off.satin_compact_max_mm.has_value());
         QVERIFY(!off.satin_compare_max_stitch_mm.has_value());
+        // L'état partagé repilote la case (liaison conservée après un clic).
+        rig.studio.setSatinOptions({{"satin_bands", true}, {"satin_compare", true}});
+        QTRY_VERIFY(bands->property("checked").toBool());
+        QTRY_VERIFY(compare->property("checked").toBool());
         // « Mettre à jour les formes » (espace) suit les mêmes réglages satin.
-        QVERIFY(rig.press("regionSatinBands"));
-        QTRY_VERIFY(rig.regions.satinOptions().value("satin_bands").toBool());
         rig.regions.selectAtPixel(20, 20);
         QCOMPARE(rig.regions.deleteSelected(), QString());
         QTRY_VERIFY(rig.space.canUpdateShapes());
@@ -741,38 +769,64 @@ private slots:
         QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
     }
 
-    // CX05 : un avertissement du moteur (région écartée) est visible à la fin de la génération,
-    // sous le résumé, puis effacé par le message suivant.
+    // CX05 : les avertissements du moteur (régions écartées) sont résumés et comptés près du
+    // bouton de génération, trois lignes puis le reste replié, « Voir » sélectionne la région ;
+    // ils survivent aux messages suivants et ne sont vidés qu'à la génération suivante.
     void regenerationWarningsAreShown() {
         Rig rig;
         open(rig);
         auto* panels = rig.named("segmentationPanels");
         QVERIFY(panels);
         panels->setProperty("tab", 1);
+        const auto regions = rig.regions.regions();
+        QVERIFY(regions.size() >= 3);
+        const auto idOf = [&regions](int i) {
+            return static_cast<qint64>(regions.at(i).toMap().value("id").toDouble());
+        };
+        const auto discarded = [](qint64 id) {
+            return "région " + std::to_string(id) +
+                   " écartée (0.12 mm², 3 px) : contour non vectorisable (trop petite ou "
+                   "dégénérée)";
+        };
         Regeneration result;
         result.after = std::make_shared<const document::Project>(rig.session.project());
         result.revision = rig.session.revision();
         result.objectsBefore = rig.session.project().embroidery_objects.size();
         result.objectsAfter = result.objectsBefore;
-        result.warnings = {"région 7 écartée (0.12 mm², 3 px) : contour non vectorisable (trop "
-                           "petite ou dégénérée)"};
+        result.warnings = {discarded(idOf(0)), discarded(idOf(1)), discarded(idOf(2)),
+                           "garde-fou des contours : segment ignoré"};
         QSignalSpy done(&rig.regions, &RegionController::regenerated);
         rig.regions.finishRegeneration(Result<Regeneration>{std::move(result)});
         QCOMPARE(done.count(), 1);
-        QCOMPARE(rig.regions.warnings().size(), 1);
-        QVERIFY(
-            rig.regions.warnings().front().contains(QStringLiteral("contour non vectorisable")));
-        QVERIFY(rig.regions.message().contains(QStringLiteral("1 avertissement")));
+        QCOMPARE(rig.regions.warnings().size(), 4);
+        QCOMPARE(rig.regions.warningSummary(),
+                 QStringLiteral("3 régions écartées, 1 avertissement"));
+        QVERIFY(rig.regions.message().contains(QStringLiteral("3 régions écartées")));
         QVERIFY(!rig.regions.messageIsError());
-        auto* shown = rig.named("regionWarnings");
-        QVERIFY(shown);
-        QTRY_VERIFY(shown->isVisible());
-        QVERIFY(shown->property("text").toString().contains(QStringLiteral("région 7 écartée")));
-        // Le message suivant (autre opération) remplace le résumé et ses avertissements.
-        rig.regions.selectAtPixel(20, 20);
+        auto* summary = rig.named("regionWarningSummary");
+        QVERIFY(summary);
+        QTRY_VERIFY(summary->isVisible());
+        QVERIFY(
+            summary->property("text").toString().contains(QStringLiteral("3 régions écartées")));
+        // Trois lignes visibles, la quatrième repliée.
+        QTRY_VERIFY(rig.named("regionWarningLine_2") &&
+                    rig.named("regionWarningLine_2")->isVisible());
+        QVERIFY(!rig.named("regionWarningLine_3")->isVisible());
+        QVERIFY(rig.press("regionWarningsMore"));
+        QTRY_VERIFY(rig.named("regionWarningLine_3")->isVisible());
+        QVERIFY(!rig.named("regionWarningRow_3")->isVisible()); // pas de région citée
+        // « Voir » sélectionne la région citée.
+        QVERIFY(rig.press("regionWarningRow_1"));
+        QCOMPARE(rig.regions.selectedCount(), 1);
+        QCOMPARE(static_cast<qint64>(rig.regions.selected().front().toDouble()), idOf(1));
+        // Un autre message ne les efface pas.
         QCOMPARE(rig.regions.deleteSelected(), QString());
+        QCOMPARE(rig.regions.warnings().size(), 4);
+        QVERIFY(summary->isVisible());
+        // La génération suivante repart de zéro.
+        QVERIFY(rig.press("regionRegenerate"));
         QVERIFY(rig.regions.warnings().isEmpty());
-        QTRY_VERIFY(!shown->isVisible());
+        QTRY_COMPARE_WITH_TIMEOUT(done.count(), 2, 120'000);
         QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
     }
 

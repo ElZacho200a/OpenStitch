@@ -961,6 +961,65 @@ private slots:
         QCOMPARE(rig.session.project().embroidery_objects.size(), std::size_t{0});
     }
 
+    // CX05 : « Convertir en broderie » et l'onglet Segmentation partagent UN état satin
+    // (StudioController::satinOptions), mêmes libellés, et il arrive tel quel aux AutoOptions.
+    void satinChoiceIsSharedAndReachesAutoOptions() {
+        Rig rig;
+        open(rig);
+        enterSpace(rig);
+        const auto item = [&rig](const char* name) {
+            return deepItem(rig.window->contentItem(), QString::fromLatin1(name));
+        };
+        const auto press = [&item](const char* name) {
+            auto* target = item(name);
+            return target && target->isEnabled() && QMetaObject::invokeMethod(target, "click");
+        };
+        QVERIFY(press("vectorConvertButton"));
+        auto* bands = item("vectorConvertSatinBox");
+        auto* compare = item("vectorConvertSatinCompareBox");
+        QVERIFY(bands && compare);
+        QTRY_VERIFY(bands->isVisible());
+        QCOMPARE(bands->property("text").toString(), QStringLiteral("Satin sur les bandes"));
+        QCOMPARE(compare->property("text").toString(),
+                 QStringLiteral("Choisir le meilleur satin (expérimental)"));
+        QVERIFY(!bands->property("checked").toBool());
+        QVERIFY(!compare->isEnabled());
+        // Coché ailleurs (onglet Segmentation = même état) : reflété ici.
+        rig.controller.setSatinOptions({{"satin_bands", true}});
+        QTRY_VERIFY(bands->property("checked").toBool());
+        QTRY_VERIFY(compare->isEnabled());
+        // Coché ici : écrit dans l'état partagé.
+        QVERIFY(press("vectorConvertSatinCompareBox"));
+        QTRY_VERIFY(rig.controller.satinOptions().value("satin_compare").toBool());
+        QVERIFY(press("vectorConvertSatinBox"));
+        QTRY_VERIFY(!rig.controller.satinOptions().value("satin_bands").toBool());
+        QTRY_VERIFY(!compare->isEnabled());
+        QVERIFY(press("vectorConvertSatinBox"));
+        QTRY_VERIFY(rig.controller.satinOptions().value("satin_bands").toBool());
+        QTRY_VERIFY(compare->property("checked").toBool()); // le choix « meilleur satin » revient
+        auto options = rig.controller.satinOptions();
+        options.insert("satin_compare_max_stitch_mm", 7.5);
+        options.insert("satin_min_coverage", 0.8);
+        rig.controller.setSatinOptions(options);
+        QVERIFY(rig.stage.convertToEmbroidery());
+        const auto& sent = rig.stage.lastAutoOptions();
+        QVERIFY(sent.satin_bands);
+        QVERIFY(sent.satin_compare);
+        QCOMPARE(sent.satin_compare_max_stitch.value, 7500);
+        QCOMPARE(sent.satin_min_coverage, 0.8);
+        QCOMPARE(sent.satin_compact_max_width.value,
+                 autodigitize::AutoOptions{}.satin_compact_max_width.value);
+        QTRY_VERIFY_WITH_TIMEOUT(!rig.stage.converting(), 15'000);
+        // Satin décoché : rien de satin ne part au moteur.
+        rig.controller.setSatinOptions({{"satin_compare", true}});
+        QVERIFY(rig.session.undo());
+        QVERIFY(rig.stage.convertToEmbroidery());
+        QVERIFY(!rig.stage.lastAutoOptions().satin_bands);
+        QVERIFY(!rig.stage.lastAutoOptions().satin_compare);
+        QTRY_VERIFY_WITH_TIMEOUT(!rig.stage.converting(), 15'000);
+        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+    }
+
     // Recette : ecrit le projet de l'espace pour la capture (OPENSTITCH_VECTOR_SAMPLE=chemin.osp).
     void writeSampleForCapture() {
         const auto path = qEnvironmentVariable("OPENSTITCH_VECTOR_SAMPLE");

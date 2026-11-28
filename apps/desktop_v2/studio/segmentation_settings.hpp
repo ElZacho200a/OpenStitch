@@ -8,6 +8,8 @@
 #include <cmath>
 #include <optional>
 
+#include "openstitch/autodigitize/autodigitize.hpp"
+#include "openstitch/core/units.hpp"
 #include "openstitch/project_ops/factory.hpp"
 
 namespace openstitch::desktop_v2::studio {
@@ -110,6 +112,25 @@ objectDigitizeSettingsFrom(const QVariantMap& map) {
             optionalSettingFrom(map, "satin_compare_max_stitch_mm");
     }
     return digitize;
+}
+
+// Même satin pour « Convertir en broderie » (espace Vecteurs), qui appelle directement
+// `autodigitize::convert_vectors_to_embroidery` : seules les valeurs choisies remplacent celles
+// du moteur (mm -> µm à la frontière, comme `project_ops::make_auto_options`).
+inline void applySatinOptions(const QVariantMap& map, autodigitize::AutoOptions& options) {
+    const auto satin = objectDigitizeSettingsFrom(map);
+    options.satin_bands = satin.satin_bands;
+    options.satin_compare = satin.satin_compare;
+    if (satin.satin_min_coverage) {
+        options.satin_min_coverage = *satin.satin_min_coverage;
+    }
+    if (satin.satin_compact_max_mm) {
+        options.satin_compact_max_width = to_micrometers(Millimeters{*satin.satin_compact_max_mm});
+    }
+    if (satin.satin_compare_max_stitch_mm) {
+        options.satin_compare_max_stitch =
+            to_micrometers(Millimeters{*satin.satin_compare_max_stitch_mm});
+    }
 }
 
 } // namespace openstitch::desktop_v2::studio
