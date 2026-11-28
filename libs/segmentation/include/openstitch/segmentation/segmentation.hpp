@@ -76,6 +76,39 @@ std::vector<DetailMaskChange> paint_detail_disc(DetailMask& mask, int width, int
 // Rétablit les anciennes valeurs d'un coup de pinceau.
 void revert_detail_changes(DetailMask& mask, const std::vector<DetailMaskChange>& changes);
 
+// HP-AUTO-015 : pixels de transition des bords flous. Sur un bord anticrénelé ou flouté, les
+// pixels de mélange entre deux aplats tombent dans une classe intermédiaire et forment une
+// région-liseré de 1 à 2 px le long du bord. Un pixel est « de transition » si (1) sa classe est
+// MINCE à cet endroit (il disparaît à l'ouverture morphologique du masque de sa classe par un carré
+// de côté `max_width_px` + 1) et (2) sa couleur est un MÉLANGE des classes épaisses présentes
+// autour de lui (fenêtre de rayon `max_width_px` + 1) : distance Lab au segment [centre a, centre
+// b] (ou au centre d'une seule voisine) <= `max_delta_e`. Il rejoint alors l'extrémité la plus
+// proche en ΔE (la voisine dominante dans le mélange). Un trait fin d'une autre couleur (rouge
+// entre blanc et bleu) n'est pas un mélange : il reste. Les pixels protégés par
+// `fine_structures` ne sont jamais réaffectés.
+struct TransitionPixelOptions {
+    int max_width_px{2};      // largeur maximale d'un liseré (1..8)
+    double max_delta_e{12.0}; // écart toléré au mélange (ΔE76)
+};
+
+// HP-AUTO-016 : frange alpha. Sans cette option, un pixel d'alpha < `alpha_threshold` est du fond
+// et la couleur des pixels semi-transparents (souvent assombrie par la prémultiplication ou mêlée
+// au fond d'export) est quantifiée telle quelle : liserés sombres, trous et bandes vides le long
+// des coutures. Avec cette option :
+// - un pixel d'alpha >= `min_alpha` situé dans un interstice de l'opaque (fermeture morphologique
+//   du masque `alpha >= alpha_threshold` par un carré couvrant `max_gap_px`) est rattaché à la
+//   forme : couture semi-transparente entre deux aplats, rayure translucide dans une forme ;
+// - la silhouette extérieure ne grossit pas (la fermeture ne comble que les creux étroits) ;
+// - les pixels d'alpha < `solid_alpha` ne servent pas à la quantification ; ils prennent, de proche
+//   en proche (au plus `max_fringe_px` pas, 8-voisinage, vote majoritaire, égalité -> plus petit
+//   indice de classe), la classe de leurs voisins pleins. Au-delà, leur propre couleur décide.
+struct AlphaFringeOptions {
+    std::uint8_t min_alpha{16};    // en dessous : toujours du fond, même dans un interstice
+    std::uint8_t solid_alpha{240}; // à partir de : pixel plein, quantifié sur sa propre couleur
+    int max_gap_px{3};             // largeur des interstices comblés (0 = aucun)
+    int max_fringe_px{4};          // portée du rattachement aux voisins pleins
+};
+
 struct SegmentationOptions {
     int max_colors{8};     // 2..64
     int min_region_px{16}; // régions plus petites absorbées par leur voisine
@@ -107,10 +140,21 @@ struct SegmentationOptions {
     // seule région) ; (4) jamais absorbés par le nettoyage des petites régions, qui se juge sur la
     // part de pixels protégés (>= 50 %) et non sur la seule aire.
     std::optional<FineStructureOptions> fine_structures{};
+
+    // HP-AUTO-016 : seuil d'opacité (1..255 ; 0 vaut 128). Un pixel d'alpha < `alpha_threshold`
+    // est du fond. 128 = comportement historique.
+    std::uint8_t alpha_threshold{128};
+    // HP-AUTO-016 (DÉSACTIVÉ par défaut) : traitement de la frange semi-transparente, voir
+    // `AlphaFringeOptions`. Sans valeur, résultat strictement celui d'avant.
+    std::optional<AlphaFringeOptions> alpha_fringe{};
+    // HP-AUTO-015 (DÉSACTIVÉ par défaut) : rattachement des pixels de transition des bords flous,
+    // voir `TransitionPixelOptions`. Sans valeur, résultat strictement celui d'avant.
+    std::optional<TransitionPixelOptions> transition_pixels{};
 };
 
 // Quantifie l'image en CIELAB (k-means déterministe) puis extrait les
-// composantes connexes (4-connexité). Les pixels d'alpha < 128 forment le fond.
+// composantes connexes (4-connexité). Les pixels d'alpha < `alpha_threshold` (128 par défaut)
+// forment le fond (voir aussi `alpha_fringe`).
 [[nodiscard]] Result<Segmentation> segment(const image::Image& img,
                                            const SegmentationOptions& options);
 
