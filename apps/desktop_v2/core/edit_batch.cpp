@@ -84,14 +84,14 @@ std::optional<std::uint64_t> singleInt(const std::string& json, const std::strin
 
 } // namespace
 
-std::string batchRemove(const std::vector<std::uint64_t>& ids) {
+std::string batchRemove(const std::vector<std::uint64_t>& ids, bool withSource) {
     if (ids.empty()) {
         return {};
     }
     std::string ops;
     for (std::size_t i = 0; i < ids.size(); ++i) {
         ops += std::string(i == 0 ? "" : ",") + R"({"op":"remove_object","object":)" +
-               std::to_string(ids[i]) + "}";
+               std::to_string(ids[i]) + (withSource ? R"(,"with_source":true})" : "}");
     }
     return wrap(ops);
 }

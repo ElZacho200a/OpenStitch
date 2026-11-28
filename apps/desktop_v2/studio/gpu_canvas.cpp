@@ -1097,7 +1097,13 @@ void GpuCanvas::mouseReleaseEvent(QMouseEvent* event) {
             // Glisser de gauche à droite : fenêtre (objets entièrement dedans) ; de droite à
             // gauche : capture (tout objet touché), comme dans les logiciels de dessin.
             const bool crossing = event->position().x() < pressPos_.x();
-            editor_->selectRect(a.x, a.y, b.x, b.y, crossing, ctrl);
+            if (vectorPicker_ && layers_.vectors && !layers_.stitches) {
+                // Espace Vecteur : le cadre retient les FORMES (brodées ou non), comme le clic ;
+                // l'index des points ne connaît que les formes déjà brodées.
+                editor_->selectShapesRect(a.x, a.y, b.x, b.y, crossing, ctrl);
+            } else {
+                editor_->selectRect(a.x, a.y, b.x, b.y, crossing, ctrl);
+            }
         } else if (gesture == Gesture::Move) {
             editor_->commitMove(dx, dy);
         } else if (gesture == Gesture::Handle) {
