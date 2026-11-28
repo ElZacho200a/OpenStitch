@@ -36,4 +36,39 @@ ServiceResult addDirectionGuide(DocumentSession& session, std::uint64_t objectId
 ServiceResult clearDirectionGuides(DocumentSession& session, std::uint64_t objectId,
                                    bool breakLines);
 
+// --- Gestion des guides d'un remplissage directionnel (affichage et retouche au canevas) ------
+
+// Vrai si l'objet peut recevoir des guides de direction : remplissage directionnel, ou tatami doté
+// d'un contour source (converti au premier guide).
+[[nodiscard]] bool canDirectionGuide(const document::Project& project, std::uint64_t objectId);
+
+// Un guide (ou une ligne de rupture) tel que dessiné : `nodes` = nœuds éditables (positions des
+// ancres), `curve` = tracé aplati (Béziers comprises) pour l'affichage et la désignation.
+struct FillGuideCurve {
+    std::vector<PointMm> nodes;
+    std::vector<PointMm> curve;
+};
+// Guides (`breakLines == false`) ou lignes de rupture d'un remplissage directionnel, dans l'ordre
+// du document. Vide si l'objet n'est pas directionnel.
+[[nodiscard]] std::vector<FillGuideCurve> fillGuideCurves(const document::Project& project,
+                                                          std::uint64_t objectId, bool breakLines);
+
+// Indice du guide (ou de la rupture) dont le tracé passe à moins de `toleranceMm` de `p` ; le plus
+// proche en cas d'égalité de tolérance, -1 si aucun.
+[[nodiscard]] int fillGuideAt(const document::Project& project, std::uint64_t objectId,
+                              bool breakLines, PointMm p, double toleranceMm);
+
+// Déplace le nœud `nodeIndex` du guide `guideIndex` (ses tangentes, relatives, le suivent) : une
+// étape d'annulation.
+ServiceResult moveFillGuideNode(DocumentSession& session, std::uint64_t objectId, bool breakLines,
+                                std::size_t guideIndex, std::size_t nodeIndex, PointMm to);
+
+// Retire UN guide (ou une rupture) : une étape d'annulation.
+ServiceResult removeFillGuide(DocumentSession& session, std::uint64_t objectId, bool breakLines,
+                              std::size_t guideIndex);
+
+// Remplace les guides par ceux que propose la forme (opération `directional_guides`, axe médian de
+// chaque région source) ; un tatami est converti dans la même étape. Ruptures conservées.
+ServiceResult autoDirectionGuides(DocumentSession& session, std::uint64_t objectId);
+
 } // namespace openstitch::desktop_v2

@@ -84,6 +84,22 @@ public:
     // Tableau de courbes centrales : [[{x,y}, ...], ...] en mm modèle.
     Q_INVOKABLE [[nodiscard]] QVariantList autoSatinGuidePaths() const;
     Q_INVOKABLE bool moveAutoSatinGuidePoint(int guide, int node, double xMm, double yMm);
+
+    // Guides d'un remplissage (directionnel, ou convertible au premier guide).
+    Q_PROPERTY(bool canGuideFill READ canGuideFill NOTIFY changed)
+public:
+    [[nodiscard]] bool canGuideFill() const { return canGuideFill_; }
+    // [{nodes: [{x,y}], curve: [{x,y}]}] en mm modèle (guides ou lignes de rupture).
+    Q_INVOKABLE [[nodiscard]] QVariantList fillGuideCurves(bool breakLines) const;
+    // Indice du guide sous (x, y) à `toleranceMm` près, -1 si aucun.
+    Q_INVOKABLE [[nodiscard]] int fillGuideAt(bool breakLines, double xMm, double yMm,
+                                              double toleranceMm) const;
+    Q_INVOKABLE bool moveFillGuidePoint(bool breakLines, int guide, int node, double xMm,
+                                        double yMm);
+    Q_INVOKABLE bool removeFillGuide(bool breakLines, int guide);
+    // Retire le dernier guide tracé (ou la dernière rupture).
+    Q_INVOKABLE bool removeLastFillGuide(bool breakLines);
+    Q_INVOKABLE bool autoFillGuides();
 signals:
     void changed();
     void messageChanged();
@@ -103,6 +119,7 @@ private:
     int rungs_{0};
     int guides_{-1};
     int breaks_{-1};
+    bool canGuideFill_{false};
     std::optional<document::AutoSatinStrategy> autoStrategy_;
     bool hasGuidedPath_{false};
     SatinDiagnosis diagnosis_;

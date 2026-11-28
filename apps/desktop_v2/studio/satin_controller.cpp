@@ -50,6 +50,7 @@ void SatinController::refresh() {
     id_ = count == 1 ? id : 0;
     railA_ = railB_ = rungs_ = 0;
     guides_ = breaks_ = -1;
+    canGuideFill_ = false;
     autoStrategy_.reset();
     hasGuidedPath_ = false;
     diagnosis_ = SatinDiagnosis{};
@@ -61,6 +62,7 @@ void SatinController::refresh() {
         diagnosis_ = diagnoseSatin(project, id_);
         guides_ = directionGuideCount(project, id_);
         breaks_ = desktop_v2::breakLineCount(project, id_);
+        canGuideFill_ = canDirectionGuide(project, id_);
         if (const auto* object = project.findEmbroidery(ObjectId{id_})) {
             if (const auto* params = std::get_if<document::AutoSatinParams>(&object->params)) {
                 autoStrategy_ = params->strategy;
@@ -304,6 +306,78 @@ bool SatinController::clearGuides(bool breakLines) {
     return report(clearDirectionGuides(studio_.session(), id_, breakLines),
                   breakLines ? QStringLiteral("Lignes de rupture effacées.")
                              : QStringLiteral("Guides effacés."));
+}
+
+namespace {
+QVariantList toVariant(const std::vector<PointMm>& points) {
+    QVariantList list;
+    for (const auto& p : points) {
+        list.push_back(QVariantMap{{QStringLiteral("x"), p.x}, {QStringLiteral("y"), p.y}});
+    }
+    return list;
+}
+} // namespace
+
+QVariantList SatinController::fillGuideCurves(bool breakLines) const {
+    QVariantList result;
+    if (id_ == 0) {
+        return result;
+    }
+    for (const auto& curve :
+         desktop_v2::fillGuideCurves(studio_.session().project(), id_, breakLines)) {
+        result.push_back(QVariantMap{{QStringLiteral("nodes"), toVariant(curve.nodes)},
+                                     {QStringLiteral("curve"), toVariant(curve.curve)}});
+    }
+    return result;
+}
+
+int SatinController::fillGuideAt(bool breakLines, double xMm, double yMm,
+                                 double toleranceMm) const {
+    if (id_ == 0) {
+        return -1;
+    }
+    return desktop_v2::fillGuideAt(studio_.session().project(), id_, breakLines, PointMm{xMm, yMm},
+                                   toleranceMm);
+}
+
+bool SatinController::moveFillGuidePoint(bool breakLines, int guide, int node, double xMm,
+                                         double yMm) {
+    if (id_ == 0 || guide < 0 || node < 0) {
+        return refuse(QStringLiteral("Sélectionnez un nœud de guide."));
+    }
+    return report(desktop_v2::moveFillGuideNode(studio_.session(), id_, breakLines,
+                                                static_cast<std::size_t>(guide),
+                                                static_cast<std::size_t>(node), PointMm{xMm, yMm}),
+                  breakLines ? QStringLiteral("Nœud de la ligne de rupture déplacé.")
+                             : QStringLiteral("Nœud du guide déplacé."));
+}
+
+bool SatinController::removeFillGuide(bool breakLines, int guide) {
+    if (id_ == 0 || guide < 0) {
+        return refuse(QStringLiteral("Désignez un guide à retirer."));
+    }
+    return report(desktop_v2::removeFillGuide(studio_.session(), id_, breakLines,
+                                              static_cast<std::size_t>(guide)),
+                  breakLines ? QStringLiteral("Ligne de rupture retirée.")
+                             : QStringLiteral("Guide retiré."));
+}
+
+bool SatinController::removeLastFillGuide(bool breakLines) {
+    const int count = breakLines ? breaks_ : guides_;
+    if (id_ == 0 || count <= 0) {
+        return refuse(breakLines ? QStringLiteral("Aucune ligne de rupture à retirer.")
+                                 : QStringLiteral("Aucun guide à retirer."));
+    }
+    return removeFillGuide(breakLines, count - 1);
+}
+
+bool SatinController::autoFillGuides() {
+    if (id_ == 0) {
+        return refuse(QStringLiteral("Sélectionnez un remplissage."));
+    }
+    return report(desktop_v2::autoDirectionGuides(studio_.session(), id_),
+                  QStringLiteral("Guides proposés d'après la forme : glissez leurs nœuds pour "
+                                 "les ajuster."));
 }
 
 } // namespace openstitch::desktop_v2::studio

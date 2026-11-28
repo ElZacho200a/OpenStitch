@@ -83,7 +83,7 @@ signals:
 private:
     enum class Drag { None, Points, Rect, Fade, RailNode, RungEnd, GuideNode, Stroke, NewRung };
     struct Grip {
-        enum class Type { RailNode, RungEnd, GuideNode };
+        enum class Type { RailNode, RungEnd, GuideNode, FillGuideNode };
         Type type{Type::RailNode};
         int side{0};  // rail: 0=A, 1=B ; guide: indice de la courbe
         int index{0}; // nœud ou barreau
@@ -93,6 +93,8 @@ private:
     [[nodiscard]] static ScenePoint toScene(PointMm p) { return {p.x, -p.y}; }
     [[nodiscard]] std::uint64_t satinId() const { return satin_.objectId().toULongLong(); }
     [[nodiscard]] bool isGuideMode() const;
+    // Guide ou rupture d'un remplissage (pas d'un satin automatique) : poignées des guides tracés.
+    [[nodiscard]] bool isFillGuideMode() const;
     [[nodiscard]] std::vector<Grip> grips() const;
     [[nodiscard]] std::optional<Grip> gripAt(PointMm p) const;
     [[nodiscard]] int fadeHandleAt(PointMm p) const;

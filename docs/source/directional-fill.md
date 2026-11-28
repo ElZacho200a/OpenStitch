@@ -691,6 +691,31 @@ thèmes).
 - Toute édition passe par `EditDirectionalFillCommand` (ou
   `SetStitchParamsCommand` depuis l'inspecteur) : undo/redo exact.
 
+### Gestion des guides dans Studio (2026-11-28)
+
+Jusqu'ici, l'outil Guide de l'espace Points de Studio savait seulement **tracer**
+un guide et le panneau Satin **tout effacer**, derrière « Saisie par
+coordonnées » : les guides tracés n'étaient ni visibles ni retouchables. Les
+outils **Guide** (D) et **Rupture** (Maj+D), sur un tatami ou un remplissage
+directionnel, affichent désormais au canevas les guides (ou ruptures) existants
+avec une poignée par nœud :
+
+- **glisser un nœud** remodèle le guide (ses tangentes, relatives, le suivent) ;
+- **Maj+clic sur un tracé** retire ce guide seul (désignation à 9 px du tracé
+  aplati, le plus proche l'emporte) ;
+- la **barre d'options** affiche le nombre de guides et propose « Guides auto »
+  (opération `directional_guides`, la même que l'action « Guides de direction
+  automatiques »), « Retirer le dernier » et « Tout retirer » ;
+- le panneau Satin montre la section « Guides de direction » (nombre, Guides
+  auto, Retirer) pour tout remplissage guidable, sans ouvrir la saisie par
+  coordonnées.
+
+Chaque action est UNE étape d'annulation. Services sans Qt dans
+`apps/desktop_v2/core/direction_guides.hpp` (`fillGuideCurves`, `fillGuideAt`,
+`moveFillGuideNode`, `removeFillGuide`, `autoDirectionGuides`,
+`canDirectionGuide`) ; adaptateur `SatinController`, gestes `DigitizeGestures`.
+Le satin automatique garde son propre mode (ligne centrale du satin guidé).
+
 ## Tests
 
 `tests/unit/stitch/test_directional_fill.cpp` :
