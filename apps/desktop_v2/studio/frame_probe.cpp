@@ -107,7 +107,9 @@ void FrameProbe::start(GpuCanvas* canvas) {
     }
     const bool clicks =
         scenario_ == QStringLiteral("click") || scenario_ == QStringLiteral("click-jitter");
-    if ((scenario_ == QStringLiteral("select") || clicks) && canvas_ && canvas_->controller()) {
+    const bool deletes = scenario_ == QStringLiteral("delete");
+    if ((scenario_ == QStringLiteral("select") || clicks || deletes) && canvas_ &&
+        canvas_->controller()) {
         // Sélections successives des zones aux formes les plus détaillées (plus une très simple,
         // témoin) : mesure le temps bloquant de chaque sélection sur le fil d'interface.
         auto* controller = canvas_->controller();
@@ -135,6 +137,30 @@ void FrameProbe::start(GpuCanvas* canvas) {
         driver_.setInterval(600);
         connect(&driver_, &QTimer::timeout, this, [this] {
             if (selectTargets_.empty() || !canvas_ || !canvas_->controller()) {
+                return;
+            }
+            if (scenario_ == QStringLiteral("delete")) {
+                // Tick pair : sélectionner puis Suppr (chemin de l'éditeur) ; tick impair :
+                // annuler. Mesure le temps bloquant de chaque geste sur le fil d'interface ; le
+                // travail différé (scène, listes) apparaît dans les frames et le journal perf.
+                auto* controller = canvas_->controller();
+                auto* editor = canvas_->editor();
+                if (editor == nullptr) {
+                    return;
+                }
+                const bool undo = (driverTick_ % 2) == 1;
+                const auto [nodes, id] = selectTargets_[(driverTick_ / 2) % selectTargets_.size()];
+                ++driverTick_;
+                QElapsedTimer timer;
+                timer.start();
+                if (undo) {
+                    controller->undo();
+                } else {
+                    controller->selectObject(QString::number(id));
+                    editor->deleteSelection();
+                }
+                const double ms = static_cast<double>(timer.nsecsElapsed()) / 1.0e6;
+                selections_.push_back({undo ? 0 : id, nodes, ms, !undo, 0});
                 return;
             }
             const auto [nodes, id] = selectTargets_[driverTick_++ % selectTargets_.size()];

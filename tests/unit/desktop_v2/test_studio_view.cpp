@@ -681,6 +681,10 @@ void StudioViewTest::mainQmlHostsEveryPanel() {
 
     QVERIFY(press(window, "threadTab_plan"));
     QTRY_VERIFY(named(window, "threadRow0") != nullptr);
+    // Les listes longues des pages masquées (ordre de couture, film) ne sont pas peuplées : le
+    // panneau reste instancié, et ces lignes étaient recréées à chaque édition (Suppr ~1 s).
+    QVERIFY(named(window, "orderDown0") == nullptr);
+    QVERIFY(named(window, "filmSelect0") == nullptr);
     auto* projectActions = named(window, "threadActionsFlow");
     QVERIFY(projectActions);
     QTRY_VERIFY(projectActions->height() >= projectActions->childrenRect().height() - 1.0);

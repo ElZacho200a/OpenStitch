@@ -522,8 +522,11 @@ Rectangle {
                 Layout.fillWidth: true
                 spacing: 8
                 SectionLabel { text: qsTr("ORDRE DE COUTURE") }
+            // Peuplé seulement page affichée : le panneau reste instancié fermé, et ces centaines de
+            // lignes à boutons étaient recréées à chaque édition du document (Suppr : ~0,8 s).
             Repeater {
-                model: panel.controller ? panel.controller.sewingOrder : []
+                model: panel.visible && panel.page === "order" && panel.controller
+                       ? panel.controller.sewingOrder : []
                 delegate: RowLayout {
                     id: ord
                     required property var modelData
@@ -554,7 +557,8 @@ Rectangle {
                     onToggled: if (panel.controller) panel.controller.limitToStock = checked
                 }
                 Repeater {
-                    model: panel.controller ? panel.controller.ownedThreads : []
+                    model: panel.visible && panel.page === "stock" && panel.controller
+                           ? panel.controller.ownedThreads : []
                     delegate: RowLayout {
                         id: stockRow
                         required property var modelData
@@ -648,7 +652,9 @@ Rectangle {
                           .arg(panel.controller ? panel.controller.filmChanges : 0)
                 }
                 Repeater {
-                    model: panel.controller ? panel.controller.colorFilm : []
+                    id: filmRepeater
+                    model: panel.visible && panel.page === "film" && panel.controller
+                           ? panel.controller.colorFilm : []
                     delegate: RowLayout {
                         id: filmRow
                         required property var modelData
@@ -698,8 +704,7 @@ Rectangle {
                             quiet: true
                             text: "↓"
                             enabled: !filmRow.modelData.locked &&
-                                     panel.controller &&
-                                     filmRow.modelData.index < panel.controller.colorFilm.length - 1
+                                     filmRow.modelData.index < filmRepeater.count - 1
                             onClicked: panel.controller.moveFilmBlock(filmRow.modelData.index,
                                                                        filmRow.modelData.index + 1)
                         }
@@ -708,7 +713,7 @@ Rectangle {
                 StudioButton {
                     objectName: "filmGroupByColor"
                     text: qsTr("Regrouper les passages d'une même couleur…")
-                    enabled: panel.controller && panel.controller.colorFilm.length > 1
+                    enabled: filmRepeater.count > 1
                     onClicked: filmDialog.open()
                 }
             }
