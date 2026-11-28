@@ -970,6 +970,25 @@ void StudioDigitizeTest::mainQmlHostsDigitizePanels() {
     QTRY_VERIFY(satin.breakLineCount() >= 1);
     QVERIFY(session.undo());
     QVERIFY(session.undo());
+    // Guides d'un remplissage sans passer par la saisie numérique : section visible, outil de
+    // tracé au canevas proposé, « Guides auto » en UNE étape annulable.
+    QVERIFY(press(window, "numericGuidesToggle")); // referme la saisie par coordonnées
+    QTRY_VERIFY(!startX->isVisible());
+    // Un tatami neuf (l'objet courant est une colonne satin, qui ne se guide pas ainsi).
+    QVERIFY(session.applyBatch(batchAddRect({80, 0}, 40, 20), "Rectangle tatami").committed);
+    QTRY_VERIFY_WITH_TIMEOUT(!studio.busy(), 15'000);
+    studio.selectObject(QString::number(session.project().embroidery_objects.back().id.value));
+    QTRY_VERIFY(satin.canGuideFill());
+    QTRY_VERIFY(named(window, "fillGuidesTracePanel")->isVisible());
+    QTRY_VERIFY(named(window, "fillGuidesAutoPanel")->isVisible());
+    const auto autoDepth = session.undoNames().size();
+    QVERIFY(press(window, "fillGuidesAutoPanel"));
+    QCOMPARE(session.undoNames().size(), autoDepth + 1);
+    QTRY_VERIFY(satin.guideCount() >= 1);
+    QTRY_COMPARE(named(window, "fillGuidesAutoPanel")->property("text").toString(),
+                 QStringLiteral("Remplacer par auto"));
+    QVERIFY(session.undo()); // guides auto
+    QVERIFY(session.undo()); // rectangle tatami
     const auto rung = [](double x, double y0, double y1) {
         return QVariantMap{{"ax", x}, {"ay", y0}, {"bx", x}, {"by", y1}};
     };
