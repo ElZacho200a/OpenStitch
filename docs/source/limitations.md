@@ -38,7 +38,7 @@ fonctionnalité, vérifié dans le code.
 | Cadre de broderie | Implémenté | Affichage | document | oui | taille réglable et persistée ; rectangle simple (pas de profils/formes) |
 | Palette de fils | Partiellement implémenté | — | thread_palette | oui | fil assigné par objet, panneau Fils, film couleur, « limiter à N fils », import CSV/JSON (HP-THR-001/003/004, partiel 005/011) ; nuanciers de marques à importer par l'utilisateur, intégrés = démo (HP-THR-002) ; aucun format machine (DST) ne porte les noms de fils |
 | Édition manuelle des points | Partiel (Lot 8.2) | canevas | desktop/commands | QTest | déplacement d'un point + undo/redo ; Stitch/Jump/Trim UI restent à faire |
-| Remplissages courbe/radial/spirale/motif | Non implémenté | — | — | — | prévus |
+| Remplissages radial/spirale/concentrique/motif | Implémenté | Studio V2 (inspecteur, viseur de centre au canevas) | stitch_generation | Catch2 + QTest | centre choisi (radial, spirale, concentrique) ; pas de sous-couche ; remplissage « courbe » non implémenté |
 | Profils machine/cadres avancés | Non implémenté | — | — | — | cadre = rectangle simple (taille réglable) |
 | Compensation directionnelle | Partiel | — | — | — | satin uniquement |
 | Tâches asynchrones | Non implémenté | — | — | — | traitements synchrones |

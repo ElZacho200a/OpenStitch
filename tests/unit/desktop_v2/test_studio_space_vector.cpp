@@ -350,6 +350,11 @@ private slots:
         auto* scroll = deepItem(rig.window->contentItem(), QStringLiteral("vectorActionsScroll"));
         auto* panel = deepItem(rig.window->contentItem(), QStringLiteral("layerPanel"));
         QVERIFY(tabs && layers && edit && scroll && panel);
+        // Supprimer depuis la liste de cet espace vise la forme (comme Suppr), pas la broderie
+        // seule.
+        QVERIFY(panel->property("shapeScope").toBool());
+        auto* tree = deepItem(panel, QStringLiteral("objectTree"));
+        QVERIFY(tree && tree->property("shapeScope").toBool());
         QCOMPARE(tabs->property("currentIndex").toInt(), 0);
         QVERIFY(panel->isVisible());
         QVERIFY(!scroll->isVisible());

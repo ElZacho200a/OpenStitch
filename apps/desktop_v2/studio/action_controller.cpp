@@ -49,6 +49,8 @@ const std::vector<StudioCommand>& studioCommands() {
             {"cmd.edit.redo", "Rétablir", "Édition", "Ctrl+Y", "redo"},
             {"cmd.edit.duplicate", "Dupliquer la sélection", "Édition", "Ctrl+D", "selection"},
             {"cmd.edit.delete", "Supprimer la sélection", "Édition", "Suppr", "selection"},
+            {"cmd.edit.remove-stitches", "Retirer les points (garder la forme)", "Édition",
+             "Shift+Suppr", "selection"},
             {"cmd.edit.group", "Grouper la sélection", "Édition", "Ctrl+G", "multi"},
             {"cmd.edit.ungroup", "Dissocier le groupe", "Édition", "Ctrl+Shift+G", "selection"},
             {"cmd.edit.rotate-cw", "Pivoter de 90° (horaire)", "Édition", "Ctrl+R", "selection"},

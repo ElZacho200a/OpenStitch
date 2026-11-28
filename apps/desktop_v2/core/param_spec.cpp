@@ -228,6 +228,7 @@ std::vector<ParamSpec> completeTable() {
          "mm"});
     add({"contour_fill", "inset_mm", "Retrait du bord", K::Number, 0.0, 10.0, 0.05, "mm"});
     add({"contour_fill", "spiral", "Anneaux en spirale continue", K::Bool, 0, 1, 1, ""});
+    add({"contour_fill", "center_mm", "Centre des anneaux", K::Point, -5000, 5000, 0.1, "mm"});
     add({"contour_fill", "hidden_underpath", "Liaisons cachées", K::Bool, 0, 1, 1, ""});
     add({"contour_fill", "pull_compensation_mm", "Compensation de tirage", K::Number, 0.0, 3.0,
          0.05, "mm"});
@@ -420,7 +421,6 @@ ParamLevel paramLevel(const ParamSpec& spec) {
                                                    "split_length_mm",
                                                    "entry_point_mm",
                                                    "exit_point_mm",
-                                                   "center_mm",
                                                    "sweep_angle_deg",
                                                    "lock_passes",
                                                    "lock_length_mm",
@@ -655,6 +655,7 @@ Opt readP(const document::ContourFillParams& p, std::string_view key) {
     PS_MM("min_length_mm", min_length);
     PS_MM("inset_mm", inset);
     PS_B("spiral", spiral);
+    PS_PT("center_mm", center);
     PS_B("hidden_underpath", hidden_underpath);
     PS_MM("pull_compensation_mm", pull_compensation);
     PS_E("pull_mode", pull_mode);
@@ -789,6 +790,9 @@ std::optional<Vec2um> pointOf(const document::EmbroideryObject& o, std::string_v
     }
     if (const auto* sp = std::get_if<SpiralFillParams>(&o.params)) {
         return key == "center_mm" ? sp->center : std::nullopt;
+    }
+    if (const auto* c = std::get_if<ContourFillParams>(&o.params)) {
+        return key == "center_mm" ? c->center : std::nullopt;
     }
     return std::nullopt;
 }

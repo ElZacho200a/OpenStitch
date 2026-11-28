@@ -17,7 +17,10 @@ namespace openstitch::desktop_v2 {
 enum class MirrorAxis { Horizontal, Vertical };
 
 // Hors limites du catalogue ou aucun objet : chaîne vide (rien à faire), jamais de valeur corrigée.
-[[nodiscard]] std::string batchRemove(const std::vector<std::uint64_t>& ids);
+// `withSource` : la forme source part avec sa DERNIÈRE couche de points (`remove_object`
+// with_source) ; sinon elle reste toujours, sans points.
+[[nodiscard]] std::string batchRemove(const std::vector<std::uint64_t>& ids,
+                                      bool withSource = false);
 // Copie décalée de `offset` (|coord| <= 1000 mm) ; l'original est conservé.
 [[nodiscard]] std::string batchDuplicate(const std::vector<std::uint64_t>& ids, PointMm offset);
 // Angle en degrés, sens antihoraire dans le repère modèle (Y vers le haut), [-360 ; 360].

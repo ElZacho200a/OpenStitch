@@ -486,6 +486,11 @@ void add_digitize_options(CLI::App* cmd, DigitizeOptionValues& v) {
                   "Mode formes : les bandes étroites (anneaux, rubans, traits épais) deviennent "
                   "de l'auto-satin au lieu d'un tatami ; repli tatami si la couverture est "
                   "insuffisante");
+    cmd->add_flag("--satin-compare", s.satin_compare,
+                  "Expérimental, avec --satin-bands : chaque satin est choisi parmi le "
+                  "squelette, l'axe médian et le balayage parallèle réellement générés et "
+                  "mesurés (couverture, colonnes, retours, surépaisseur) au lieu du premier "
+                  "squelette qui couvre");
     cmd->add_flag("--single-path", s.single_path,
                   "Mode contours : relie les traits en un minimum de polylignes (parcours "
                   "eulérien, repasse un court tronçon plutôt que de couper le fil)");

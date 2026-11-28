@@ -23,6 +23,13 @@ ColumnLayout {
     readonly property real crumbMm2: crumbTenths / 10
     readonly property int crumbCount: { editor.tree; return editor.smallObjectCount(crumbMm2) }
     readonly property bool many: editor.selectedCount > 1
+    // Commandes propres aux POINTS (ordre de couture, grouper, aligner, couleur, calque) : seuls les
+    // objets brodés comptent ; une forme non brodée les laisse grisées avec la raison.
+    readonly property bool stitched: editor.selectedEmbroideryCount > 0
+    readonly property bool manyStitched: editor.selectedEmbroideryCount > 1
+    readonly property string needStitched: editor.selectedCount > 0
+        ? qsTr("Réservé aux objets brodés : convertissez d'abord la forme en broderie")
+        : qsTr("Sélectionnez d'abord un objet brodé")
     readonly property var box: editor.selectionBox
     readonly property bool hasBox: box.width !== undefined
     readonly property string needOne: qsTr("Sélectionnez d'abord un objet")
@@ -76,11 +83,11 @@ ColumnLayout {
         objectName: "editSelectionFlow"
         Mini { objectName: "selectAllButton"; text: qsTr("Tout"); tooltip: qsTr("Tout sélectionner"); shortcutLabel: "Ctrl+A"; onClicked: editor.selectAll() }
         Mini { objectName: "invertButton"; text: qsTr("Inverser"); tooltip: qsTr("Inverser la sélection"); shortcutLabel: "Ctrl+I"; onClicked: editor.invertSelection() }
-        Mini { objectName: "sameColorButton"; text: qsTr("Même couleur"); tooltip: qsTr("Ajouter les objets de la même couleur"); enabled: bar.some; onClicked: editor.selectSameColor() }
-        Mini { objectName: "neighborsButton"; text: qsTr("Voisines"); tooltip: qsTr("Ajouter les objets qui touchent la sélection"); enabled: bar.some; onClicked: editor.selectNeighbors() }
+        Mini { objectName: "sameColorButton"; text: qsTr("Même couleur"); tooltip: qsTr("Ajouter les objets de la même couleur"); enabled: bar.stitched; disabledReason: bar.needStitched; onClicked: editor.selectSameColor() }
+        Mini { objectName: "neighborsButton"; text: qsTr("Voisines"); tooltip: qsTr("Ajouter les objets qui touchent la sélection"); enabled: bar.stitched; disabledReason: bar.needStitched; onClicked: editor.selectNeighbors() }
         Mini { text: qsTr("Par type ▾"); tooltip: qsTr("Sélectionner par type de points"); onClicked: typeMenu.popup() }
         Mini { text: qsTr("Rappeler ▾"); tooltip: qsTr("Restaurer une sélection mémorisée"); enabled: editor.savedSelections.length > 0; disabledReason: qsTr("Aucune sélection mémorisée"); onClicked: recallMenu.popup() }
-        Mini { Layout.columnSpan: 2; text: qsTr("Mémoriser la sélection"); enabled: bar.some; onClicked: editor.saveSelection(qsTr("Sélection %1").arg(editor.savedSelections.length + 1)) }
+        Mini { Layout.columnSpan: 2; text: qsTr("Mémoriser la sélection"); enabled: bar.stitched; disabledReason: bar.needStitched; onClicked: editor.saveSelection(qsTr("Sélection %1").arg(editor.savedSelections.length + 1)) }
     }
 
     SectionLabel { text: qsTr("MIETTES"); Layout.topMargin: 4 }
@@ -135,19 +142,20 @@ ColumnLayout {
         Mini { objectName: "rotateCcwButton"; text: qsTr("↺ 90°"); enabled: bar.some; tooltip: qsTr("Pivoter de 90° (antihoraire)"); shortcutLabel: "Ctrl+Maj+R"; onClicked: editor.rotate90(false) }
         Mini { objectName: "mirrorHButton"; text: qsTr("Miroir ↔"); enabled: bar.some; tooltip: qsTr("Miroir horizontal"); shortcutLabel: "Ctrl+Maj+H"; onClicked: editor.mirror(true) }
         Mini { objectName: "mirrorVButton"; text: qsTr("Miroir ↕"); enabled: bar.some; tooltip: qsTr("Miroir vertical"); shortcutLabel: "Ctrl+Maj+V"; onClicked: editor.mirror(false) }
-        Mini { text: qsTr("Aligner ▾"); enabled: bar.many; tooltip: qsTr("Aligner ou répartir"); disabledReason: bar.needTwo; onClicked: alignMenu.popup() }
+        Mini { text: qsTr("Aligner ▾"); enabled: bar.manyStitched; tooltip: qsTr("Aligner ou répartir"); disabledReason: bar.stitched || editor.selectedCount === 0 ? bar.needTwo : bar.needStitched; onClicked: alignMenu.popup() }
         Mini { objectName: "duplicateButton"; text: qsTr("Dupliquer"); enabled: bar.some; tooltip: qsTr("Dupliquer la sélection"); shortcutLabel: "Ctrl+D"; onClicked: editor.duplicate(5) }
     }
 
     SectionLabel { text: qsTr("ORGANISER"); Layout.topMargin: 4 }
     Group {
-        Mini { objectName: "frontButton"; text: qsTr("Premier plan"); enabled: bar.some; tooltip: qsTr("Coudre en dernier (dessus)"); shortcutLabel: "Fin"; onClicked: editor.stack("front") }
-        Mini { objectName: "backButton"; text: qsTr("Arrière-plan"); enabled: bar.some; tooltip: qsTr("Coudre en premier (dessous)"); shortcutLabel: "Origine"; onClicked: editor.stack("back") }
-        Mini { objectName: "groupButton"; text: qsTr("Grouper"); enabled: bar.many; disabledReason: bar.needTwo; tooltip: qsTr("Grouper la sélection"); shortcutLabel: "Ctrl+G"; onClicked: editor.group("") }
-        Mini { objectName: "ungroupButton"; text: qsTr("Dégrouper"); enabled: bar.some; tooltip: qsTr("Dissoudre le groupe"); shortcutLabel: "Ctrl+Maj+G"; onClicked: editor.ungroup() }
-        Mini { objectName: "pipetteButton"; text: qsTr("Pipette"); checkable: true; checked: editor.eyedropper; enabled: bar.some; tooltip: qsTr("Copier la couleur d'un objet vers la sélection"); shortcutLabel: "I"; onClicked: editor.eyedropper = !editor.eyedropper }
+        Mini { objectName: "frontButton"; text: qsTr("Premier plan"); enabled: bar.stitched; disabledReason: bar.needStitched; tooltip: qsTr("Coudre en dernier (dessus)"); shortcutLabel: "Fin"; onClicked: editor.stack("front") }
+        Mini { objectName: "backButton"; text: qsTr("Arrière-plan"); enabled: bar.stitched; disabledReason: bar.needStitched; tooltip: qsTr("Coudre en premier (dessous)"); shortcutLabel: "Origine"; onClicked: editor.stack("back") }
+        Mini { objectName: "groupButton"; text: qsTr("Grouper"); enabled: bar.manyStitched; disabledReason: bar.stitched || editor.selectedCount === 0 ? bar.needTwo : bar.needStitched; tooltip: qsTr("Grouper la sélection"); shortcutLabel: "Ctrl+G"; onClicked: editor.group("") }
+        Mini { objectName: "ungroupButton"; text: qsTr("Dégrouper"); enabled: bar.stitched; disabledReason: bar.needStitched; tooltip: qsTr("Dissoudre le groupe"); shortcutLabel: "Ctrl+Maj+G"; onClicked: editor.ungroup() }
+        Mini { objectName: "pipetteButton"; text: qsTr("Pipette"); checkable: true; checked: editor.eyedropper; enabled: bar.stitched; disabledReason: bar.needStitched; tooltip: qsTr("Copier la couleur d'un objet vers la sélection"); shortcutLabel: "I"; onClicked: editor.eyedropper = !editor.eyedropper }
         Mini { objectName: "snapButton"; text: qsTr("Accrochage"); checkable: true; checked: editor.snapEnabled; tooltip: qsTr("Accrochage et repères au glisser (Alt = temporaire)"); onClicked: editor.snapEnabled = !editor.snapEnabled }
-        Mini { objectName: "deleteButton"; Layout.columnSpan: 2; text: qsTr("Supprimer"); enabled: bar.shapeScope ? editor.selectedShapeCount > 0 : bar.some; tooltip: bar.shapeScope ? qsTr("Supprimer la forme et ses broderies") : qsTr("Retirer la broderie (la forme est conservée)"); shortcutLabel: "Suppr"; onClicked: bar.shapeScope ? editor.deleteShapes() : editor.deleteSelection() }
+        Mini { objectName: "deleteButton"; Layout.columnSpan: 2; text: qsTr("Supprimer"); enabled: bar.shapeScope ? editor.selectedShapeCount > 0 : bar.some; tooltip: bar.shapeScope ? qsTr("Supprimer la forme et ses broderies") : qsTr("Supprimer l'objet : sa forme part aussi, sauf si une autre couche de points l'utilise"); shortcutLabel: "Suppr"; onClicked: bar.shapeScope ? editor.deleteShapes() : editor.deleteSelection() }
+        Mini { objectName: "removeStitchesButton"; visible: !bar.shapeScope; Layout.columnSpan: 2; text: qsTr("Retirer les points (garder la forme)"); enabled: bar.stitched; disabledReason: bar.needStitched; tooltip: qsTr("Retirer les points des objets sélectionnés ; la forme reste, reconvertible"); shortcutLabel: "Maj+Suppr"; onClicked: editor.removeStitchesOnly() }
     }
 
     // Placement numérique (centre et taille de la boîte, en mm modèle : Y vers le haut).
@@ -270,7 +278,7 @@ ColumnLayout {
         Controls.MenuItem { text: qsTr("En haut"); onTriggered: editor.align("top") }
         Controls.MenuItem { text: qsTr("Centrer verticalement"); onTriggered: editor.align("centerV") }
         Controls.MenuItem { text: qsTr("En bas"); onTriggered: editor.align("bottom") }
-        Controls.MenuItem { text: qsTr("Répartir horizontalement"); enabled: editor.selectedCount > 2; onTriggered: editor.distribute(true) }
-        Controls.MenuItem { text: qsTr("Répartir verticalement"); enabled: editor.selectedCount > 2; onTriggered: editor.distribute(false) }
+        Controls.MenuItem { text: qsTr("Répartir horizontalement"); enabled: editor.selectedEmbroideryCount > 2; onTriggered: editor.distribute(true) }
+        Controls.MenuItem { text: qsTr("Répartir verticalement"); enabled: editor.selectedEmbroideryCount > 2; onTriggered: editor.distribute(false) }
     }
 }

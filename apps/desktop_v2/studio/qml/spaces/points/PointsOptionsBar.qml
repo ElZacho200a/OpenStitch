@@ -13,6 +13,8 @@ Rectangle {
     readonly property var digitizeCtl: typeof digitizer !== "undefined" ? digitizer : null
     readonly property var satinCtl: typeof satin !== "undefined" ? satin : null
     readonly property var spaceCtl: typeof pointsSpace !== "undefined" ? pointsSpace : null
+    // Canevas de l'espace : son viseur de centre (radial, spirale, concentrique) change l'aide.
+    property var canvas: null
     readonly property bool compact: width < 900
     readonly property bool needleToolActive: toolCtl !== null && toolCtl.activeTool === "needle.origin"
     readonly property string stateName: spaceCtl ? spaceCtl.state : "empty"
@@ -25,6 +27,10 @@ Rectangle {
             return digitizeCtl.hint !== "" ? digitizeCtl.hint : qsTr("Geste actif : cliquez sur le canevas ; Échap pour terminer.")
         if (toolCtl && toolCtl.hint !== "")
             return toolCtl.hint
+        var centre = canvas ? canvas.fillCenter : null
+        if (centre && centre.visible)
+            return centre.fixed ? qsTr("Glissez le viseur pour déplacer le centre ; double-clic : centre automatique.")
+                                : qsTr("Glissez le viseur pour choisir le centre du remplissage.")
         return qsTr("Cliquez sur un fil ou choisissez un objet dans la liste.")
     }
     color: "transparent" // posée dans une carte (StudioCard) qui porte le fond

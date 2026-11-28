@@ -80,6 +80,7 @@ struct DigitizeSettings {
     std::string technique{"auto"};  // contours : auto | running | legacy-satin
     double curve_tolerance_mm{0.0}; // shapes
     bool satin_bands{false};        // shapes
+    bool satin_compare{false};      // shapes, avec satin_bands : AUTO-SATIN-01 (expérimental)
     bool single_path{false};        // contours
     bool coherent_lines{false};     // contours : FDoG avant segmentation
     // SEG-FINE-01 (expérimental) : les traits fins (cordages, nervures) lus sur l'image non
