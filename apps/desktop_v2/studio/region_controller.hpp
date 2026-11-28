@@ -213,6 +213,8 @@ private:
     QVariantList warnings_;
     void setWarnings(const std::vector<std::string>& warnings);
     project_ops::DigitizeSettings lastDigitizeSettings_;
+    // Satin de la dernière génération réussie (défaut du moteur pour un document ouvert).
+    project_ops::DigitizeSettings generatedSatin_;
     bool mergeTargetMode_{false};
     // Révision de la sélection partagée déjà examinée : une demande « Aller à la région » n'est
     // reprise qu'une fois, mais chaque nouvelle demande l'est, même vers la même région.

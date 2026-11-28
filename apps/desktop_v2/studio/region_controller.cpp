@@ -51,9 +51,23 @@ RegionController::RegionController(StudioController& studio, ImageController& im
     connect(&studio_, &StudioController::satinOptionsChanged, this, [this] {
         emit satinOptionsChanged();
         // Des régions déjà retouchées gardent leur raison (plus forte : formes à refaire aussi).
-        if (hasSegmentation() && !segmentationStale() &&
-            !studio_.session().project().embroidery_objects.empty()) {
+        if (!hasSegmentation() || segmentationStale() ||
+            studio_.session().project().embroidery_objects.empty()) {
+            return;
+        }
+        // Comparé au satin de la dernière génération : revenir à ce réglage n'appelle plus de
+        // régénération.
+        const auto wanted = objectDigitizeSettingsFrom(studio_.satinOptions());
+        const auto& made = generatedSatin_;
+        const bool same = wanted.satin_bands == made.satin_bands &&
+                          wanted.satin_compare == made.satin_compare &&
+                          wanted.satin_min_coverage == made.satin_min_coverage &&
+                          wanted.satin_compact_max_mm == made.satin_compact_max_mm &&
+                          wanted.satin_compare_max_stitch_mm == made.satin_compare_max_stitch_mm;
+        if (!same) {
             setStale(true, satinReason());
+        } else if (objectsOnlyStale()) {
+            setStale(false);
         }
     });
     token_ = studio_.session().subscribe([this](ChangeKind kind) {
@@ -62,6 +76,8 @@ RegionController::RegionController(StudioController& studio, ImageController& im
         const auto source = session.project().imageSourceId();
         if (kind == ChangeKind::Replaced) {
             staleSources_.clear();
+            // Document ouvert : réglages de sa génération inconnus, supposés ceux du moteur.
+            generatedSatin_ = project_ops::DigitizeSettings{};
         }
         if (kind == ChangeKind::Replaced || source != observedImageSource_) {
             observedImageSource_ = source;
@@ -795,6 +811,7 @@ void RegionController::finishRegeneration(Result<Regeneration>&& r) {
     if (r->reused > 0) {
         kept += QStringLiteral(" %1 objet(s) inchangé(s) réutilisé(s).").arg(r->reused);
     }
+    generatedSatin_ = lastDigitizeSettings_; // référence du satin « à jour »
     setWarnings(r->warnings);
     if (!warnings_.isEmpty()) {
         kept += QStringLiteral(" %1 : voir le détail.").arg(warningSummary());
