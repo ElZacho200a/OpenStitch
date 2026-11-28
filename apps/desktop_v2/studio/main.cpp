@@ -82,6 +82,10 @@ int main(int argc, char** argv) {
                       QStringLiteral("Recette : active ce geste du canevas après l'ouverture "
                                      "(points, satin, guide, break, rungs, fade)"),
                       QStringLiteral("geste")});
+    parser.addOption({QStringLiteral("hover-at"),
+                      QStringLiteral("Recette : survol simulé avant --screenshot, en mm modèle "
+                                     "(montre les nœuds du guide survolé)"),
+                      QStringLiteral("x,y")});
     parser.addOption(
         {QStringLiteral("open-panels"),
          QStringLiteral(
@@ -487,6 +491,15 @@ int main(int argc, char** argv) {
             // Recette --digitize-mode : la surcouche des gestes est un Canvas QML repeint au
             // cadre suivant ; laisser une demi-seconde de calme avant la capture.
             static int idleTicks = 0;
+            static bool hovered = false;
+            if (!hovered && canvas && parser.isSet(QStringLiteral("hover-at"))) {
+                hovered = true;
+                const auto xy = parser.value(QStringLiteral("hover-at")).split(QLatin1Char(','));
+                if (xy.size() == 2) {
+                    // Scène : Y vers le bas (modèle : Y vers le haut).
+                    digitizer.hover(xy[0].toDouble(), -xy[1].toDouble(), canvas->camera().scale());
+                }
+            }
             if (parser.isSet(QStringLiteral("digitize-mode")) && ++idleTicks < 10) {
                 window->update();
                 return;

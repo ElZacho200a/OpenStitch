@@ -709,7 +709,7 @@ avec une poignée par nœud :
   guides restent en trait fin (sur un motif réel, huit guides auto formaient sinon
   un amas de poignées) ;
 - la **barre d'options** affiche le nombre de guides et propose « Guides auto »
-  (opération `directional_guides` avec `simplify_mm` 0,5 : une poignée par
+  (opération `directional_guides` avec `simplify_mm` 1 : une poignée par
   inflexion au lieu d'un nœud tous les 2,5 mm), « Retirer le dernier » et
   « Tout retirer » ; un tracé à main levée est simplifié à 0,25 mm ;
 - le panneau Satin montre la section « Guides de direction » (nombre, Guides

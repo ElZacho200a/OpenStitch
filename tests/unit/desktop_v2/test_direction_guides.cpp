@@ -155,7 +155,7 @@ TEST_CASE("auto guides convert a fill in one undo step and keep break lines",
     CHECK(f.typeOf(f.tatami) == "directional");
     const auto first = fillGuideCurves(f.session.project(), f.tatami, false);
     REQUIRE_FALSE(first.empty());
-    // Studio simplifie les guides auto (0,5 mm) : moins de nœuds que le rééchantillonnage
+    // Studio simplifie les guides auto (1 mm) : moins de nœuds que le rééchantillonnage
     // historique tous les 2,5 mm, pour des poignées qu'on peut distinguer et saisir.
     {
         const auto* emb = f.session.project().findEmbroidery(ObjectId{f.tatami});
