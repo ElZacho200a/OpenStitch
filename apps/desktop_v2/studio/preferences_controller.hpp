@@ -33,6 +33,7 @@ class PreferencesController : public QObject {
     Q_PROPERTY(bool reducedMotion READ reducedMotion WRITE setReducedMotion NOTIFY changed)
     Q_PROPERTY(QStringList languages READ languages CONSTANT)
     Q_PROPERTY(QVariantMap session READ session NOTIFY sessionChanged)
+    Q_PROPERTY(QVariantMap panelLayout READ panelLayout NOTIFY panelLayoutChanged)
 public:
     explicit PreferencesController(std::filesystem::path configDir, QObject* parent = nullptr);
 
@@ -45,6 +46,11 @@ public:
     [[nodiscard]] bool reducedMotion() const { return reducedMotion_; }
     [[nodiscard]] QStringList languages() const { return {QStringLiteral("fr")}; }
     [[nodiscard]] QVariantMap session() const;
+    // Disposition des panneaux dock (DockPanel.qml) : clé = identifiant stable du panneau
+    // (objectName), valeur = {hidden, collapsed, detached: bool, x, y: double si déplacé}.
+    // Distinct de `session` (restauration de document) : c'est une préférence d'interface
+    // qui survit à un changement de fichier ou d'espace.
+    [[nodiscard]] QVariantMap panelLayout() const;
 
     void setTheme(const QString& id);
     void setThemeId(const QString& id);
@@ -55,6 +61,9 @@ public:
     // inconnues ignorées ; écrit aussitôt (une coupure ne perd rien).
     Q_INVOKABLE void rememberSession(const QVariantMap& state);
     Q_INVOKABLE void forgetSession();
+    // Fusionne `state` dans l'état mémorisé de `panelId` (ne touche pas les autres champs ni
+    // les autres panneaux) et écrit aussitôt.
+    Q_INVOKABLE void setPanelState(const QString& panelId, const QVariantMap& state);
     Q_INVOKABLE void resetDefaults();
     [[nodiscard]] const std::filesystem::path& preferencesFile() const { return prefsFile_; }
     [[nodiscard]] const std::filesystem::path& sessionFile() const { return extraFile_; }
@@ -62,6 +71,7 @@ public:
 signals:
     void changed();
     void sessionChanged();
+    void panelLayoutChanged();
 
 private:
     void load();
@@ -72,6 +82,8 @@ private:
     Preferences prefs_;
     bool reducedMotion_{false};
     std::map<std::string, std::string> session_;
+    // panelId -> (champ -> valeur texte) ; voir panelLayout()/setPanelState().
+    std::map<std::string, std::map<std::string, std::string>> panelLayout_;
 };
 
 } // namespace openstitch::desktop_v2::studio

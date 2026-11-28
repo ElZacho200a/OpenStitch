@@ -6,6 +6,8 @@ Inspector 1.0 Inspector.qml
 RecipeCatalog 1.0 RecipeCatalog.qml
 ParamField 1.0 ParamField.qml
 ParamSection 1.0 ParamSection.qml
+DockPanel 1.0 DockPanel.qml
+singleton DockPanelRegistry 1.0 DockPanelRegistry.qml
 StudioLabel 1.0 StudioLabel.qml
 StudioPanel 1.0 StudioPanel.qml
 StudioCard 1.0 StudioCard.qml

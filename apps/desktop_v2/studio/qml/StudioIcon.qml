@@ -80,6 +80,12 @@ case "plus": return "M4 10 L16 10 M10 4 L10 16";
         case "eraser": return "M8 17 L3 12 L11 4 L17 10 L10 17 Z M7 8 L13 14 M10 17 L17 17";
         // Verrouillage d'une région (RegionTools, menu contextuel de segmentation).
         case "lock": return "M5 9 L5 17 L15 17 L15 9 Z M7 9 L7 6 C7 3 13 3 13 6 L13 9";
+        // Détacher un panneau (DockPanel) dans une fenêtre séparée : cadre + flèche sortante.
+        case "detach": return "M4 9 L4 16 L11 16 L11 13 M9 4 L16 4 L16 11 M16 4 L8 12";
+        // Menu « Panneaux » : une fenêtre et son panneau latéral.
+        case "panels": return "M3 4 L17 4 L17 16 L3 16 Z M12 4 L12 16 M13.5 7 L15.5 7 M13.5 10 L15.5 10";
+        // Poignée de glisser (en-tête des DockPanel) : deux colonnes de points.
+        case "grip": return "M7 5 L7 6.5 M13 5 L13 6.5 M7 9.5 L7 11 M13 9.5 L13 11 M7 14 L7 15.5 M13 14 L13 15.5";
         default: return "";
         }
     }
