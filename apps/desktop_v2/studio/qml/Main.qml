@@ -256,6 +256,9 @@ Window {
     // document ; Suppr supprime alors les régions sélectionnées (une étape d'annulation).
     readonly property bool regionsSelected: typeof regionTools !== "undefined" && regionTools !== null &&
                                            workspaceCtl.current === "segmentation" && regionTools.selectedCount > 0
+    // Espace Vecteur : « tout sélectionner » et « inverser » visent les FORMES, brodées ou non, par
+    // tous les chemins (raccourci, bouton, menu, palette) ; ailleurs, les objets de broderie.
+    Binding { target: editor; property: "shapeScope"; value: workspaceCtl.current === "vector" }
     function deleteSelection() {
         if (window.regionsSelected)
             regionTools.deleteSelected()
@@ -293,6 +296,7 @@ Window {
         case "cmd.edit.redo": redoWithFeedback(); break
         case "cmd.edit.duplicate": duplicateWithFeedback(); break
         case "cmd.edit.delete": deleteSelection(); break
+        case "cmd.edit.remove-stitches": editor.removeStitchesOnly(); break
         case "cmd.edit.group": editor.group(""); break
         case "cmd.edit.ungroup": editor.ungroup(); break
         case "cmd.edit.rotate-cw": editor.rotate90(true); break
@@ -404,8 +408,14 @@ Window {
                   (toolController !== null && toolController.selectedNodeCount > 0))
         onActivated: window.deleteSelection()
     }
+    // Maj+Suppr : retirer seulement les points, la forme reste (reconvertible).
+    Shortcut {
+        sequence: "Shift+Delete"
+        enabled: !window.keyboardOwnedByControl && editor.selectedEmbroideryCount > 0
+        onActivated: editor.removeStitchesOnly()
+    }
     Shortcut { sequence: "Ctrl+D"; enabled: studio.hasSelection; onActivated: window.duplicateWithFeedback() }
-    Shortcut { sequence: "Ctrl+G"; enabled: editor.selectedCount > 1; onActivated: editor.group("") }
+    Shortcut { sequence: "Ctrl+G"; enabled: editor.selectedEmbroideryCount > 1; onActivated: editor.group("") }
     Shortcut { sequence: "Ctrl+Shift+G"; enabled: studio.hasSelection; onActivated: editor.ungroup() }
     Shortcut { sequence: "Ctrl+R"; enabled: studio.hasSelection; onActivated: editor.rotate90(true) }
     Shortcut { sequence: "Ctrl+Shift+R"; enabled: studio.hasSelection; onActivated: editor.rotate90(false) }

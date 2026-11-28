@@ -9,7 +9,11 @@ Controls.Menu {
     id: menu
     objectName: "canvasContextMenu"
     readonly property bool hasSelection: editor.selectedCount > 0
-    // Espace Vecteur : « Supprimer » retire la forme et ses broderies (sinon : la broderie seule).
+    // Commandes propres aux points : seuls les objets brodés comptent (une forme non brodée de
+    // l'espace Vecteur se déplace, se duplique et se supprime, mais n'a ni couleur ni rang).
+    readonly property bool hasStitched: editor.selectedEmbroideryCount > 0
+    // Espace Vecteur : « Supprimer » retire la forme et toutes ses couches de points. Espace Points :
+    // l'objet, et sa forme s'il était sa dernière couche ; « Retirer les points » garde la forme.
     property bool shapeScope: false
     property real atX: 0
     property real atY: 0
@@ -24,8 +28,8 @@ Controls.Menu {
         title: qsTr("Sélection")
         Controls.MenuItem { text: qsTr("Tout sélectionner"); onTriggered: editor.selectAll() }
         Controls.MenuItem { text: qsTr("Inverser la sélection"); onTriggered: editor.invertSelection() }
-        Controls.MenuItem { text: qsTr("Même couleur"); enabled: menu.hasSelection; onTriggered: editor.selectSameColor() }
-        Controls.MenuItem { text: qsTr("Avec les voisines"); enabled: menu.hasSelection; onTriggered: editor.selectNeighbors() }
+        Controls.MenuItem { text: qsTr("Même couleur"); enabled: menu.hasStitched; onTriggered: editor.selectSameColor() }
+        Controls.MenuItem { text: qsTr("Avec les voisines"); enabled: menu.hasStitched; onTriggered: editor.selectNeighbors() }
         Controls.MenuItem { text: qsTr("Désélectionner"); enabled: menu.hasSelection; onTriggered: editor.selectNone() }
     }
     Controls.Menu {
@@ -50,6 +54,16 @@ Controls.Menu {
                               : qsTr("Supprimer %1 objet(s)").arg(editor.selectedCount)
         enabled: menu.shapeScope ? editor.selectedShapeCount > 0 : menu.hasSelection
         onTriggered: menu.shapeScope ? editor.deleteShapes() : editor.deleteSelection()
+    }
+    // Espace Points : retirer les points SANS la forme est un choix explicite, jamais l'effet
+    // silencieux de Suppr (qui supprime l'objet entier, comme dans l'espace Vecteur).
+    Controls.MenuItem {
+        objectName: "contextRemoveStitches"
+        visible: !menu.shapeScope
+        height: visible ? implicitHeight : 0
+        text: qsTr("Retirer les points (garder la forme)\tMaj+Suppr")
+        enabled: !menu.shapeScope && menu.hasStitched
+        onTriggered: editor.removeStitchesOnly()
     }
     Controls.MenuSeparator { }
     // Opérations sur les formes : aussi au clic droit, là où la main est déjà.
@@ -85,7 +99,7 @@ Controls.Menu {
     }
     Controls.Menu {
         title: qsTr("Ordre de couture")
-        enabled: menu.hasSelection
+        enabled: menu.hasStitched
         Controls.MenuItem { text: qsTr("Mettre au premier plan"); onTriggered: editor.stack("front") }
         Controls.MenuItem { text: qsTr("Avancer"); onTriggered: editor.stack("forward") }
         Controls.MenuItem { text: qsTr("Reculer"); onTriggered: editor.stack("backward") }
@@ -93,18 +107,18 @@ Controls.Menu {
     }
     Controls.Menu {
         title: qsTr("Aligner")
-        enabled: editor.selectedCount > 1
+        enabled: editor.selectedEmbroideryCount > 1
         Controls.MenuItem { text: qsTr("À gauche"); onTriggered: editor.align("left") }
         Controls.MenuItem { text: qsTr("Centrer horizontalement"); onTriggered: editor.align("centerH") }
         Controls.MenuItem { text: qsTr("À droite"); onTriggered: editor.align("right") }
         Controls.MenuItem { text: qsTr("En haut"); onTriggered: editor.align("top") }
         Controls.MenuItem { text: qsTr("Centrer verticalement"); onTriggered: editor.align("centerV") }
         Controls.MenuItem { text: qsTr("En bas"); onTriggered: editor.align("bottom") }
-        Controls.MenuItem { text: qsTr("Répartir horizontalement"); enabled: editor.selectedCount > 2; onTriggered: editor.distribute(true) }
-        Controls.MenuItem { text: qsTr("Répartir verticalement"); enabled: editor.selectedCount > 2; onTriggered: editor.distribute(false) }
+        Controls.MenuItem { text: qsTr("Répartir horizontalement"); enabled: editor.selectedEmbroideryCount > 2; onTriggered: editor.distribute(true) }
+        Controls.MenuItem { text: qsTr("Répartir verticalement"); enabled: editor.selectedEmbroideryCount > 2; onTriggered: editor.distribute(false) }
     }
-    Controls.MenuItem { text: qsTr("Grouper"); enabled: editor.selectedCount > 1; onTriggered: editor.group("") }
-    Controls.MenuItem { text: qsTr("Dégrouper"); enabled: menu.hasSelection; onTriggered: editor.ungroup() }
+    Controls.MenuItem { text: qsTr("Grouper"); enabled: editor.selectedEmbroideryCount > 1; onTriggered: editor.group("") }
+    Controls.MenuItem { text: qsTr("Dégrouper"); enabled: menu.hasStitched; onTriggered: editor.ungroup() }
     Controls.MenuSeparator { }
     Controls.MenuItem {
         objectName: "contextHoop"
@@ -114,7 +128,7 @@ Controls.Menu {
     Controls.Menu {
         id: layerMenu
         title: qsTr("Déplacer vers le calque")
-        enabled: menu.hasSelection && editor.layers.length > 0
+        enabled: menu.hasStitched && editor.layers.length > 0
         Instantiator {
             model: editor.layers
             Controls.MenuItem {

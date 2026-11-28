@@ -72,7 +72,7 @@ ColumnLayout {
                 Controls.MenuItem { text: qsTr("Supprimer le calque"); enabled: editor.layers.length > 1 && panel.layerId.length > 0; onTriggered: editor.removeLayer(panel.layerId) }
                 Controls.MenuItem { text: qsTr("Monter le calque"); enabled: panel.layerId.length > 0; onTriggered: editor.moveLayer(panel.layerId, 1) }
                 Controls.MenuItem { text: qsTr("Descendre le calque"); enabled: panel.layerId.length > 0; onTriggered: editor.moveLayer(panel.layerId, -1) }
-                Controls.MenuItem { text: qsTr("Placer la sélection ici"); enabled: editor.selectedCount > 0 && panel.layerId.length > 0 && !panel.layerLocked; onTriggered: editor.moveSelectionToLayer(panel.layerId) }
+                Controls.MenuItem { text: qsTr("Placer la sélection ici"); enabled: editor.selectedEmbroideryCount > 0 && panel.layerId.length > 0 && !panel.layerLocked; onTriggered: editor.moveSelectionToLayer(panel.layerId) }
                 Controls.MenuItem { text: qsTr("Isoler le calque"); enabled: editor.layers.length > 1 && panel.layerId.length > 0; onTriggered: editor.isolateLayer(panel.layerId) }
                 Controls.MenuItem { text: qsTr("Tout afficher"); enabled: editor.layers.some(l => !l.visible); onTriggered: editor.showAllLayers() }
             }
@@ -123,7 +123,7 @@ ColumnLayout {
             objectName: "layerMoveHereButton"
             text: qsTr("Placer ici")
             implicitHeight: 28
-            enabled: editor.selectedCount > 0 && panel.layerId.length > 0 && !panel.layerLocked
+            enabled: editor.selectedEmbroideryCount > 0 && panel.layerId.length > 0 && !panel.layerLocked
             disabledReason: panel.layerLocked ? qsTr("Le calque actif est verrouillé.") : ""
             tooltip: qsTr("Déplacer la sélection dans ce calque")
             onClicked: editor.moveSelectionToLayer(panel.layerId)
