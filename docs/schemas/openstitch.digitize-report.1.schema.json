@@ -90,6 +90,9 @@
         },
         "satin_bands": {
           "type": "boolean"
+        },
+        "satin_compare": {
+          "type": "boolean"
         }
       },
       "required": [

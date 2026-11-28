@@ -512,6 +512,47 @@ en tatami. Actif par défaut mais sans effet tant que `satin_bands` est faux. Re
 ellipses pleines gardent le tatami (un vrai satin tournant demande un axe courbe, pas fourni
 automatiquement) ; aucune validation sur machine.
 
+### Choix comparatif de la stratégie (`satin_compare`, AUTO-SATIN-01, expérimental)
+
+Sans l'option, une bande prend le **premier** squelette dont la couverture suffit. Avec
+`satin_compare` (CLI `--satin-compare`, MCP `satin_compare`, désactivé par défaut), chaque bande ou
+forme compacte retenue pour le satin est réellement cousue par plusieurs candidats, mesurés par
+`auto_satin::measure_result` :
+
+| forme | candidats, dans l'ordre |
+|---|---|
+| bande (`band_like`) | squelette, axe médian vectoriel, balayage parallèle |
+| compacte sans trou | squelette à axe compact, axe médian, balayage parallèle |
+
+Éliminatoires : génération refusée ou vide, couverture < `satin_min_coverage`, traversées qui se
+croisent, traversée plus longue que min(max(`satin_max_width`, `satin_compact_max_width`),
+`satin_compare_max_stitch` = 10 mm). Score des
+admissibles : `100 × couverture − 4 × (colonnes − 1) − 8 × max(0, épaisseur du zigzag − 3)`.
+L'épaisseur du zigzag (`zigzag_peak_layers`) est la longueur des traversées et des retours par
+case de 1 mm, en couches de `project density` (2,5 mm de fil par mm²) ; elle surestime les côtés
+concaves (points courts filtrés ensuite), d'où une pénalité et non un éliminatoire. Le « pic de
+recouvrement » et le retour maximal de `measure_result` ne servent pas : le premier ne suivait pas
+la densité réelle, le second vaut à peu près la largeur du satin. Un candidat ne remplace le
+précédent que s'il gagne au moins un point : à égalité, l'ordre historique (squelette) l'emporte.
+Aucun admissible : la voie du satin guidé large puis le tatami, comme avant. La stratégie gagnante
+est écrite dans `AutoSatinParams::strategy` ; la génération finale reprend les mêmes paramètres.
+
+Banc `scripts/autodigitize_bench.py`, profil `logo-compare` contre `logo` (2026-11-27), surépaisseur
+maximale mesurée par `project density` :
+
+| cas | couches max | points | coupes |
+|---|---|---|---|
+| repo-marine-synth (80 mm) | 6,17 → 5,40 (p99 4,28 → 3,69) | 7 199 → 6 899 | 26 → 25 |
+| thin-lines | 6,65 → 5,67 | 3 833 → 3 782 | 23 → 20 |
+| letter-y | 4,76 → 3,53 | 456 → 387 | 2 → 3 (déplacements 29 → 74 mm) |
+| repo-logo-small (40 mm) | 3,09 → 3,09 | 580 → 580 | 2 → 2 |
+| repo-tentabrode (80 mm) | 7,41 → 6,85 | 9 979 → 9 562 | 152 → 145 |
+| s-ribbon | 5,82 → 5,75 (p99 4,47 → 4,71) | 443 → 439 | 1 → 1 |
+| flat-scene | 8,81 → 7,00 | 3 912 → 3 973 | 7 → 10 |
+
+Seule contrepartie : `letter-y` gagne une coupe et 45 mm de déplacements pour une couche de moins. Les autres synthétiques gardent le squelette.
+`flat-scene` : la maison (20 mm, compacte) n'a aucun candidat léger ; sans limite de longueur, le squelette compact (traversées de 10,6 mm, 9,5 couches estimées) l'emportait. La limite de 10 mm l'élimine et la maison passe à l'axe médian (7,0 couches, 3 coupes de plus). Une limite à 8 mm la passerait en tatami (6,3 couches) mais ferait aussi passer le rectangle de `repo-logo-small` en tatami, dont le rendu laisse voir le tissu (manques 1,9 % → 4,3 %) : 10 mm est retenu. Aucun essai brodé.
+
 **Limites** : la case du desktop n'a pas été compilée dans l'environnement de
 développement Linux (Qt absent), à vérifier au prochain build Windows ; une région à plusieurs trous n'est pas tentée ; la couverture est
 géométrique, pas validée sur machine ; pas de satin en éventail ou concentrique pour les grands disques

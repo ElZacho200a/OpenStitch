@@ -121,7 +121,8 @@ Result<std::string> digitize_report_json(const document::Project& project,
                          {"detail", settings.detail},
                          {"technique", settings.technique},
                          {"curve_tolerance_mm", settings.curve_tolerance_mm},
-                         {"satin_bands", settings.satin_bands}};
+                         {"satin_bands", settings.satin_bands},
+                         {"satin_compare", settings.satin_compare}};
     if (!settings.profile_path.empty()) {
         j["settings"]["profile"] = settings.profile_path;
     }

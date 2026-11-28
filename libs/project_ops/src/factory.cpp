@@ -378,6 +378,7 @@ autodigitize::AutoOptions make_auto_options(const DigitizeSettings& s, Millimete
     opts.skip_largest_region = skipLargest;
     opts.skip_background_outer_only = s.skip_background == 2;
     opts.satin_bands = s.satin_bands;
+    opts.satin_compare = s.satin_compare;
     opts.curve_tolerance = mm_to_um(s.curve_tolerance_mm);
     if (s.simplify_tolerance_um) {
         opts.simplify_tolerance = Micrometers{*s.simplify_tolerance_um};
