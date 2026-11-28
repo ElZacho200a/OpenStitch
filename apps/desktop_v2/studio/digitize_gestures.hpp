@@ -127,6 +127,9 @@ private:
     bool additive_{false};
     int fadeHandle_{-1};
     std::optional<Grip> grip_;
+    // Objet et révision du document à l'appui : un glisser de poignée périmé est abandonné.
+    std::uint64_t pressObject_{0};
+    std::uint64_t pressRevision_{0};
     std::vector<PointMm> stroke_;
     std::vector<std::pair<PointMm, PointMm>> rungs_;
     QVariantMap fadePreview_;
