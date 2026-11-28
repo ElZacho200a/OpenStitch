@@ -1849,7 +1849,11 @@ OpSpec op_directional_guides() {
                 "directionnel) et REMPLACE ses guides par ceux de l'axe médian de sa forme (même "
                 "algorithme que « Générer un guide depuis la forme » du bureau). Les lignes de "
                 "rupture sont conservées.";
-    s.args = {arg("object", "object_id", "objet de broderie (tatami ou directionnel)", true)};
+    s.args = {arg("object", "object_id", "objet de broderie (tatami ou directionnel)", true),
+              arg("simplify_mm", "number",
+                  "simplification des guides (Douglas-Peucker) : peu de nœuds, retouchables "
+                  "à la main ; absent ou 0 = un nœud tous les 2,5 mm (historique)",
+                  false, "mm", "[0 ; 2]")};
     s.example = R"({"op":"directional_guides","object":28})";
     s.apply = guarded([](OpContext& ctx) {
         const auto& emb = need_emb(ctx, "object");
@@ -1863,9 +1867,14 @@ OpSpec op_directional_guides() {
         if (source == nullptr || source->paths.empty()) {
             refuse(code::kRefused, "aucun contour source pour le remplissage directionnel");
         }
+        stitch_generation::DirectionalGuideOptions options;
+        if (ctx.args.contains("simplify_mm")) {
+            options.simplify_tolerance = to_micrometers(Millimeters{
+                number_in_range("simplify_mm", ctx.args.at("simplify_mm"), 0.0, 2.0, "mm")});
+        }
         std::vector<geometry::Path> guides;
         for (const auto& set : source->paths) {
-            auto g = stitch_generation::directional_guides_from_region(set);
+            auto g = stitch_generation::directional_guides_from_region(set, options);
             guides.insert(guides.end(), std::make_move_iterator(g.begin()),
                           std::make_move_iterator(g.end()));
         }

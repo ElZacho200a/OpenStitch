@@ -388,9 +388,11 @@ ServiceResult autoDirectionGuides(DocumentSession& session, std::uint64_t object
     }
     // Même algorithme et même opération que l'action « Guides de direction automatiques »
     // (`directional_guides` : axe médian de la forme, ruptures conservées) : UNE étape.
+    // Simplifiés à 0,5 mm : une poignée par inflexion au lieu d'un nœud tous les 2,5 mm, que
+    // l'on ne pourrait ni distinguer ni saisir au zoom « Ajuster ».
     const std::string batch = R"({"schema":"openstitch.batch/1","operations":[)"
                               R"({"op":"directional_guides","object":)" +
-                              std::to_string(objectId) + "}]}";
+                              std::to_string(objectId) + R"(,"simplify_mm":0.5}]})";
     const auto r = session.applyBatch(batch, "Générer les guides de direction");
     if (!r.committed) {
         return {false, r.report.outcomes.empty() || r.report.outcomes.back().message.empty()

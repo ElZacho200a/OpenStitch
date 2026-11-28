@@ -9,6 +9,7 @@
 #include "document_session.hpp"
 #include "inspector_model.hpp"
 #include "object_labels.hpp"
+#include "openstitch/stitch_generation/directional_fill.hpp"
 
 using namespace openstitch;
 using namespace openstitch::desktop_v2;
@@ -154,6 +155,26 @@ TEST_CASE("auto guides convert a fill in one undo step and keep break lines",
     CHECK(f.typeOf(f.tatami) == "directional");
     const auto first = fillGuideCurves(f.session.project(), f.tatami, false);
     REQUIRE_FALSE(first.empty());
+    // Studio simplifie les guides auto (0,5 mm) : moins de nœuds que le rééchantillonnage
+    // historique tous les 2,5 mm, pour des poignées qu'on peut distinguer et saisir.
+    {
+        const auto* emb = f.session.project().findEmbroidery(ObjectId{f.tatami});
+        const auto* source = f.session.project().findObject(emb->source_vector);
+        REQUIRE(source != nullptr);
+        std::size_t dense = 0;
+        for (const auto& set : source->paths) {
+            for (const auto& g : stitch_generation::directional_guides_from_region(set)) {
+                dense += g.nodes.size();
+            }
+        }
+        std::size_t light = 0;
+        for (const auto& c : first) {
+            light += c.nodes.size();
+        }
+        CHECK(light <= dense);
+        // Strictement moins dès que le défaut a des nœuds intermédiaires à retirer.
+        CHECK((light < dense || dense <= 2 * first.size()));
+    }
 
     // Les ruptures sont conservées quand les guides sont régénérés.
     REQUIRE(addDirectionGuide(f.session, f.tatami, {{-8, 0}, {8, 0}}, true).ok);

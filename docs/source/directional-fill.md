@@ -687,7 +687,9 @@ thèmes).
   forme ramifiée n'avaient aucun guide proche et restaient mal couverts. L'action
   **remplace** les guides existants — y compris le guide droit posé par la
   conversion depuis un tatami — au lieu de s'y ajouter ; les lignes de rupture
-  sont conservées.
+  sont conservées. Option `simplify_tolerance` (op : `simplify_mm`, [0 ; 2] mm,
+  0 par défaut = historique) : Douglas-Peucker sur les points rééchantillonnés
+  avant le lissage, pour des guides à peu de nœuds retouchables à la main.
 - Toute édition passe par `EditDirectionalFillCommand` (ou
   `SetStitchParamsCommand` depuis l'inspecteur) : undo/redo exact.
 
@@ -703,9 +705,13 @@ avec une poignée par nœud :
 - **glisser un nœud** remodèle le guide (ses tangentes, relatives, le suivent) ;
 - **Maj+clic sur un tracé** retire ce guide seul (désignation à 9 px du tracé
   aplati, le plus proche l'emporte) ;
+- seuls les nœuds du guide **survolé** sont dessinés et saisissables, les autres
+  guides restent en trait fin (sur un motif réel, huit guides auto formaient sinon
+  un amas de poignées) ;
 - la **barre d'options** affiche le nombre de guides et propose « Guides auto »
-  (opération `directional_guides`, la même que l'action « Guides de direction
-  automatiques »), « Retirer le dernier » et « Tout retirer » ;
+  (opération `directional_guides` avec `simplify_mm` 0,5 : une poignée par
+  inflexion au lieu d'un nœud tous les 2,5 mm), « Retirer le dernier » et
+  « Tout retirer » ; un tracé à main levée est simplifié à 0,25 mm ;
 - le panneau Satin montre la section « Guides de direction » (nombre, Guides
   auto, Retirer) pour tout remplissage guidable, sans ouvrir la saisie par
   coordonnées.
