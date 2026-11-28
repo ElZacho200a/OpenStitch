@@ -78,6 +78,14 @@ int main(int argc, char** argv) {
     parser.addOption({QStringLiteral("select-object"),
                       QStringLiteral("Sélection initiale par identifiant (recette reproductible)"),
                       QStringLiteral("id")});
+    parser.addOption({QStringLiteral("digitize-mode"),
+                      QStringLiteral("Recette : active ce geste du canevas après l'ouverture "
+                                     "(points, satin, guide, break, rungs, fade)"),
+                      QStringLiteral("geste")});
+    parser.addOption({QStringLiteral("hover-at"),
+                      QStringLiteral("Recette : survol simulé avant --screenshot, en mm modèle "
+                                     "(montre les nœuds du guide survolé)"),
+                      QStringLiteral("x,y")});
     parser.addOption(
         {QStringLiteral("open-panels"),
          QStringLiteral(
@@ -418,6 +426,16 @@ int main(int argc, char** argv) {
             }
         });
     }
+    if (parser.isSet(QStringLiteral("digitize-mode"))) {
+        // Connecté APRÈS --select-object : le geste s'ouvre sur l'objet déjà sélectionné.
+        const auto mode = parser.value(QStringLiteral("digitize-mode"));
+        QObject::connect(&controller, &StudioController::loadFinished, &app,
+                         [&digitizer, mode](bool success) {
+                             if (success) {
+                                 digitizer.setMode(mode);
+                             }
+                         });
+    }
     if (!parser.positionalArguments().isEmpty()) {
         files.openPath(QDir::current().absoluteFilePath(parser.positionalArguments().first()));
     } else if (!parser.isSet(QStringLiteral("screenshot"))) {
@@ -468,6 +486,22 @@ int main(int argc, char** argv) {
                 canvas = window->findChild<GpuCanvas*>(); // canevas de l'espace courant
             }
             if (controller.busy() || imageTools.busy() || recipeAiPending || recipeScrollPending) {
+                return;
+            }
+            // Recette --digitize-mode : la surcouche des gestes est un Canvas QML repeint au
+            // cadre suivant ; laisser une demi-seconde de calme avant la capture.
+            static int idleTicks = 0;
+            static bool hovered = false;
+            if (!hovered && canvas && parser.isSet(QStringLiteral("hover-at"))) {
+                hovered = true;
+                const auto xy = parser.value(QStringLiteral("hover-at")).split(QLatin1Char(','));
+                if (xy.size() == 2) {
+                    // Scène : Y vers le bas (modèle : Y vers le haut).
+                    digitizer.hover(xy[0].toDouble(), -xy[1].toDouble(), canvas->camera().scale());
+                }
+            }
+            if (parser.isSet(QStringLiteral("digitize-mode")) && ++idleTicks < 10) {
+                window->update();
                 return;
             }
             const auto screenshot = window->grabWindow();

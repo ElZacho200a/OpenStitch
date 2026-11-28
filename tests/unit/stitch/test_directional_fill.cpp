@@ -198,6 +198,49 @@ TEST_CASE("directional guides: branched shape gets one guide per significant bra
     }
 }
 
+TEST_CASE("directional guides: simplify_tolerance keeps few editable nodes") {
+    // Une bande en arc : l'axe médian rééchantillonné tous les 2,5 mm donne beaucoup de nœuds.
+    std::vector<Vec2um> outer;
+    std::vector<Vec2um> inner;
+    for (int k = 0; k <= 24; ++k) {
+        const double a = std::numbers::pi * k / 24.0;
+        outer.push_back({Micrometers{static_cast<std::int32_t>(40'000 * std::cos(a))},
+                         Micrometers{static_cast<std::int32_t>(40'000 * std::sin(a))}});
+        inner.push_back({Micrometers{static_cast<std::int32_t>(32'000 * std::cos(a))},
+                         Micrometers{static_cast<std::int32_t>(32'000 * std::sin(a))}});
+    }
+    std::vector<Vec2um> ring(outer.begin(), outer.end());
+    ring.insert(ring.end(), inner.rbegin(), inner.rend());
+    const geometry::PathSet region{polygon(ring), {}};
+
+    const auto dense = directional_guides_from_region(region);
+    DirectionalGuideOptions simple;
+    simple.simplify_tolerance = Micrometers{500};
+    const auto light = directional_guides_from_region(region, simple);
+    REQUIRE_FALSE(dense.empty());
+    REQUIRE(light.size() == dense.size());
+    // Défaut inchangé : 0 = résultat historique.
+    DirectionalGuideOptions zero;
+    zero.simplify_tolerance = Micrometers{0};
+    const auto same = directional_guides_from_region(region, zero);
+    REQUIRE(same.size() == dense.size());
+    for (std::size_t i = 0; i < dense.size(); ++i) {
+        CHECK(same[i] == dense[i]);
+        // Moins de nœuds, mêmes extrémités, toujours un guide ouvert.
+        CHECK(light[i].nodes.size() < dense[i].nodes.size());
+        CHECK(light[i].nodes.size() >= 2);
+        CHECK_FALSE(light[i].closed);
+        CHECK(light[i].nodes.front().pos == dense[i].nodes.front().pos);
+        CHECK(light[i].nodes.back().pos == dense[i].nodes.back().pos);
+    }
+    // Déterministe.
+    const auto again = directional_guides_from_region(region, simple);
+    REQUIRE(again.size() == light.size());
+    for (std::size_t i = 0; i < light.size(); ++i) {
+        CHECK(again[i] == light[i]);
+    }
+}
+
 TEST_CASE("directional guides: max_guides caps the result and output is deterministic") {
     const auto region = t_shape_mm();
     DirectionalGuideOptions capped;

@@ -144,6 +144,10 @@ struct DirectionalGuideOptions {
     Micrometers min_path_length{1'500};
     Micrometers node_spacing{2'500};
     std::size_t max_guides{8};
+    // Douglas-Peucker appliqué aux points rééchantillonnés avant le lissage : ne garde que les
+    // nœuds qui portent la forme (guides retouchables à la main, une poignée par inflexion).
+    // 0 (défaut) = rééchantillonnage seul, résultat historique inchangé octet pour octet.
+    Micrometers simplify_tolerance{0};
 };
 
 [[nodiscard]] std::vector<geometry::Path>

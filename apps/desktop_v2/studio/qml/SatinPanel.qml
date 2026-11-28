@@ -11,11 +11,16 @@ Rectangle {
     objectName: "satinPanel"
     property var controller
     signal guidedTraceRequested()
+    // Guides d'un remplissage : ouvrir l'outil Guide du canevas (glisser, Maj+clic, barre d'options).
+    signal fillGuideTraceRequested()
+    function plural(n, one, many) { return n === 1 ? one.arg(n) : many.arg(n) }
     readonly property bool ready: controller !== undefined && controller !== null
     readonly property var actionController: typeof actions !== "undefined" ? actions : null
     readonly property bool guided: ready && controller.isGuidedSatin
     readonly property string selectedObjectId: ready ? controller.objectId : ""
     readonly property bool showNumericGuides: !guided && numericGuidesOpen && selectedObjectId !== ""
+    // Remplissage guidable (directionnel ou convertible) : la gestion des guides reste visible.
+    readonly property bool fillGuides: ready && !guided && controller.canGuideFill && !controller.isAutoSatin
     readonly property bool compactPresentation: !showNumericGuides && (!ready || !controller.isSatin)
     property bool numericGuidesOpen: false
     property string guidedRefusal: ""
@@ -234,9 +239,9 @@ Rectangle {
                 tooltip: qsTr("Crée une ligne de rupture entre deux points du modèle (mm)")
                 onClicked: panel.controller.addGuide(panel.guidePoints(), true)
             }
-            SectionLabel { visible: panel.showNumericGuides; text: qsTr("GUIDES DE DIRECTION") }
+            SectionLabel { visible: panel.showNumericGuides || panel.fillGuides; text: qsTr("GUIDES DE DIRECTION") }
             Text {
-                visible: panel.guided || panel.showNumericGuides
+                visible: panel.guided || panel.showNumericGuides || panel.fillGuides
                 Layout.fillWidth: true
                 wrapMode: Text.Wrap
                 color: Theme.faint
@@ -245,19 +250,40 @@ Rectangle {
                       : panel.guided
                         ? (panel.controller.hasGuidedPath ? qsTr("Ligne centrale tracée.") : qsTr("Aperçu automatique."))
                       : panel.controller.breakLineCount < 0
-                        ? panel.controller.guideCount + qsTr(" guide(s) de satin")
-                        : panel.controller.guideCount + qsTr(" guide(s), ") + panel.controller.breakLineCount + qsTr(" ligne(s) de rupture")
+                        ? panel.plural(panel.controller.guideCount, qsTr("%1 guide de satin"), qsTr("%1 guides de satin"))
+                        : panel.plural(panel.controller.guideCount, qsTr("%1 guide"), qsTr("%1 guides")) + " · "
+                          + panel.plural(panel.controller.breakLineCount, qsTr("%1 rupture"), qsTr("%1 ruptures"))
             }
             Flow {
                 Layout.fillWidth: true
                 spacing: 4
-                visible: panel.guided || panel.showNumericGuides
-                enabled: panel.ready && panel.controller.guideCount >= 0
+                visible: panel.guided || panel.showNumericGuides || panel.fillGuides
+                StudioButton {
+                    objectName: "fillGuidesTracePanel"
+                    visible: panel.fillGuides
+                    text: qsTr("Tracer au canevas")
+                    shortcutLabel: "D"
+                    tooltip: qsTr("Outil Guide : tracez, glissez un nœud pour remodeler, Maj+clic pour retirer un guide")
+                    onClicked: panel.fillGuideTraceRequested()
+                }
+                StudioButton {
+                    objectName: "fillGuidesAutoPanel"
+                    visible: panel.fillGuides
+                    text: panel.controller.guideCount > 0 ? qsTr("Remplacer par auto") : qsTr("Guides auto")
+                    enabled: !studio.busy
+                    tooltip: panel.controller.guideCount < 0
+                             ? qsTr("Convertit ce tatami en remplissage directionnel et propose des guides d'après la forme (annulable)")
+                             : panel.controller.guideCount > 0
+                               ? qsTr("Remplace les guides, même retouchés, par ceux que propose la forme (annulable)")
+                               : qsTr("Propose des guides d'après la forme ; glissez ensuite leurs nœuds (annulable)")
+                    onClicked: panel.controller.autoFillGuides()
+                }
                 StudioButton {
                     objectName: "guidesClear"
                     visible: !panel.guided || panel.controller.guideCount > 0
                     text: panel.guided ? qsTr("Revenir à l’aperçu automatique") : qsTr("Retirer les guides")
-                    enabled: panel.ready && panel.controller.guideCount > 0
+                    tooltip: panel.guided ? "" : qsTr("Retire tous les guides (annulable)")
+                    enabled: panel.ready && panel.controller.guideCount > 0 && !studio.busy
                              && (!panel.guided || panel.controller.guidedSatinDisabledReason === "")
                     disabledReason: panel.guided ? panel.controller.guidedSatinDisabledReason
                                                  : qsTr("Aucun guide à retirer.")
@@ -265,7 +291,9 @@ Rectangle {
                 }
                 StudioButton { objectName: "breaksClear"; text: qsTr("Retirer les ruptures")
                     visible: !panel.guided
-                    enabled: panel.ready && panel.controller.breakLineCount >= 0
+                    enabled: panel.ready && panel.controller.breakLineCount > 0 && !studio.busy
+                    disabledReason: qsTr("Aucune rupture à retirer.")
+                    tooltip: qsTr("Retire toutes les ruptures (annulable)")
                     onClicked: panel.controller.clearGuides(true) }
             }
             Text {

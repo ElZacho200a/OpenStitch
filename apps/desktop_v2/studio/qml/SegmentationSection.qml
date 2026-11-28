@@ -379,9 +379,11 @@ ColumnLayout {
             Component.onCompleted: text = studio.satinOptions.satin_min_coverage !== undefined ? String(Math.round(studio.satinOptions.satin_min_coverage * 1000) / 10) : ""
             invalid: section.satinNumber(text, 100) === null
             Accessible.name: qsTr("Part minimale de la forme couverte par le satin, en pour cent ; vide pour la valeur par défaut")
-            Controls.ToolTip.visible: hovered
-            Controls.ToolTip.delay: 600
-            Controls.ToolTip.text: qsTr("Un satin n'est retenu que s'il couvre au moins cette part de la forme ; sinon elle reste en remplissage.")
+            StudioToolTip {
+                text: qsTr("Un satin n'est retenu que s'il couvre au moins cette part de la forme ; sinon elle reste en remplissage.")
+                visible: parent.hovered
+                delay: 600
+            }
             onTextChanged: {
                 const n = section.satinNumber(text, 100)
                 section.setSatinOption("satin_min_coverage", n === null || n === "" ? "" : n / 100)
@@ -396,9 +398,11 @@ ColumnLayout {
             Component.onCompleted: text = studio.satinOptions.satin_compact_max_mm !== undefined ? String(studio.satinOptions.satin_compact_max_mm) : ""
             invalid: section.satinNumber(text, 1e6) === null
             Accessible.name: qsTr("Largeur maximale en millimètres d'une forme compacte cousue en satin ; vide pour la valeur par défaut")
-            Controls.ToolTip.visible: hovered
-            Controls.ToolTip.delay: 600
-            Controls.ToolTip.text: qsTr("Disque ou forme ramassée : au-delà de cette largeur, elle reste en remplissage.")
+            StudioToolTip {
+                text: qsTr("Disque ou forme ramassée : au-delà de cette largeur, elle reste en remplissage.")
+                visible: parent.hovered
+                delay: 600
+            }
             onTextChanged: section.commitSatinField("satin_compact_max_mm", text, 1e6)
         }
         Text { text: qsTr("Point satin le plus long (mm)"); color: section.satinCompare ? Theme.foreground : Theme.faint; font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily; Layout.fillWidth: true; wrapMode: Text.WordWrap }
@@ -411,9 +415,11 @@ ColumnLayout {
             Component.onCompleted: text = studio.satinOptions.satin_compare_max_stitch_mm !== undefined ? String(studio.satinOptions.satin_compare_max_stitch_mm) : ""
             invalid: section.satinNumber(text, 1e6) === null
             Accessible.name: qsTr("Longueur maximale en millimètres d'un point satin pour le meilleur satin ; vide pour la valeur par défaut")
-            Controls.ToolTip.visible: hovered
-            Controls.ToolTip.delay: 600
-            Controls.ToolTip.text: qsTr("« Meilleur satin » écarte un satin dont un point serait plus long : il accrocherait.")
+            StudioToolTip {
+                text: qsTr("« Meilleur satin » écarte un satin dont un point serait plus long : il accrocherait.")
+                visible: parent.hovered
+                delay: 600
+            }
             onTextChanged: section.commitSatinField("satin_compare_max_stitch_mm", text, 1e6)
         }
         Text {

@@ -16,6 +16,7 @@
 #include "openstitch/geometry/offset.hpp"
 #include "openstitch/geometry/polyline.hpp"
 #include "openstitch/geometry/primitives.hpp"
+#include "openstitch/geometry/simplify.hpp"
 #include "openstitch/stitch_generation/adaptive_pull.hpp"
 #include "openstitch/stitch_generation/row_mask.hpp"
 
@@ -3510,6 +3511,18 @@ std::vector<geometry::Path> directional_guides_from_region(const geometry::PathS
         }
         if (sampled.size() < 2) {
             return std::nullopt;
+        }
+        if (options.simplify_tolerance.value > 0 && sampled.size() > 2) {
+            geometry::Path line;
+            line.closed = false;
+            for (const Vec2um p : sampled) {
+                line.nodes.push_back({p, geometry::NodeType::Corner, {}, {}});
+            }
+            line = geometry::simplify(line, options.simplify_tolerance);
+            sampled.clear();
+            for (const auto& node : line.nodes) {
+                sampled.push_back(node.pos);
+            }
         }
         geometry::Path guide;
         if (sampled.size() == 2) {

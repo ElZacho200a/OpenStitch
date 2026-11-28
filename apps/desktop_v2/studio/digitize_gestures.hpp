@@ -63,6 +63,8 @@ public:
     void release(double x, double y, Qt::KeyboardModifiers mods);
     // Entrée valide les barreaux en attente, Suppr efface les points choisis, Échap annule.
     bool keyPress(int key);
+    // Survol sans bouton (outils de guides) : montre les nœuds du guide sous le pointeur.
+    void hover(double x, double y, double pxPerMm);
     // Annule le geste en cours (ou les barreaux en attente) sans rien muter ; faux si rien à
     // annuler.
     Q_INVOKABLE bool cancel();
@@ -83,7 +85,7 @@ signals:
 private:
     enum class Drag { None, Points, Rect, Fade, RailNode, RungEnd, GuideNode, Stroke, NewRung };
     struct Grip {
-        enum class Type { RailNode, RungEnd, GuideNode };
+        enum class Type { RailNode, RungEnd, GuideNode, FillGuideNode };
         Type type{Type::RailNode};
         int side{0};  // rail: 0=A, 1=B ; guide: indice de la courbe
         int index{0}; // nœud ou barreau
@@ -93,6 +95,8 @@ private:
     [[nodiscard]] static ScenePoint toScene(PointMm p) { return {p.x, -p.y}; }
     [[nodiscard]] std::uint64_t satinId() const { return satin_.objectId().toULongLong(); }
     [[nodiscard]] bool isGuideMode() const;
+    // Guide ou rupture d'un remplissage (pas d'un satin automatique) : poignées des guides tracés.
+    [[nodiscard]] bool isFillGuideMode() const;
     [[nodiscard]] std::vector<Grip> grips() const;
     [[nodiscard]] std::optional<Grip> gripAt(PointMm p) const;
     [[nodiscard]] int fadeHandleAt(PointMm p) const;
@@ -125,6 +129,10 @@ private:
     bool additive_{false};
     int fadeHandle_{-1};
     std::optional<Grip> grip_;
+    // Objet et révision du document à l'appui : un glisser de poignée périmé est abandonné.
+    int hoverGuide_{-1}; // guide (ou rupture) dont les nœuds sont montrés et saisissables
+    std::uint64_t pressObject_{0};
+    std::uint64_t pressRevision_{0};
     std::vector<PointMm> stroke_;
     std::vector<std::pair<PointMm, PointMm>> rungs_;
     QVariantMap fadePreview_;

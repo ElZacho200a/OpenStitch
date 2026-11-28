@@ -137,6 +137,7 @@ private slots:
     void fadeThreadStopsByMouse();
     void satinHandlesAndRungsByMouse();
     void guideStrokeByMouse();
+    void fillGuideEditingByMouse();
     void guidedSatinStartsFromPanelAndTracesOnCanvas();
     void pullAndCalibration();
     void appliqueConvertAndCut();
@@ -440,6 +441,71 @@ void StudioDigitize2Test::guideStrokeByMouse() {
     drag(rig, at(rig, 0, -8), at(rig, 0, 8));
     QCOMPARE(rig.steps(), depth + 1);
     QTRY_VERIFY(rig.satin.breakLineCount() >= 1);
+}
+
+void StudioDigitize2Test::fillGuideEditingByMouse() {
+    Rig rig;
+    open(rig);
+    const auto base = dstBytes(rig.session);
+    rig.digitizer.setMode(QStringLiteral("guide"));
+    drag(rig, at(rig, -12, -3), at(rig, 12, 3));
+    QTRY_VERIFY(rig.satin.guideCount() >= 1);
+    QVERIFY(rig.satin.canGuideFill());
+    const int count = rig.satin.guideCount();
+    const auto curves = rig.satin.fillGuideCurves(false);
+    QCOMPARE(curves.size(), count);
+    // Les guides tracés sont dessinés : une ligne par guide et des poignées sur leurs nœuds.
+    QVERIFY(static_cast<int>(rig.digitizer.staticItems().size()) >= count + 1);
+    const auto handlePoints = [&rig] {
+        for (const auto& item : rig.digitizer.staticItems()) {
+            if (item.kind == HandleItem::Kind::Handle) {
+                return static_cast<int>(item.points.size());
+            }
+        }
+        return -1;
+    };
+    // Les nœuds ne s'affichent que sur le guide survolé (huit guides auto = un amas sinon).
+    {
+        const auto last = curves.last().toMap();
+        const auto pts = last.value("curve").toList();
+        const auto mid = pts[pts.size() / 2].toMap();
+        QTest::mouseMove(rig.window, at(rig, mid.value("x").toDouble(), mid.value("y").toDouble()));
+        QTRY_COMPARE(handlePoints(), static_cast<int>(last.value("nodes").toList().size()));
+    }
+
+    // Glisser le premier nœud du dernier guide : une étape, la courbe suit le pointeur.
+    const auto lastGuide = curves.last().toMap();
+    const auto node = lastGuide.value("nodes").toList().first().toMap();
+    const double nx = node.value("x").toDouble();
+    const double ny = node.value("y").toDouble();
+    const auto depth = rig.steps();
+    drag(rig, at(rig, nx, ny), at(rig, nx, ny + 3));
+    QCOMPARE(rig.steps(), depth + 1);
+    QCOMPARE(rig.satin.guideCount(), count);
+    const auto moved =
+        rig.satin.fillGuideCurves(false).last().toMap().value("nodes").toList().first().toMap();
+    QVERIFY(std::abs(moved.value("y").toDouble() - (ny + 3)) < 0.5);
+
+    // Maj+clic sur le tracé : retire CE guide seulement.
+    const auto curve = rig.satin.fillGuideCurves(false).last().toMap().value("curve").toList();
+    const auto mid = curve[curve.size() / 2].toMap();
+    QTest::mouseClick(rig.window, Qt::LeftButton, Qt::ShiftModifier,
+                      at(rig, mid.value("x").toDouble(), mid.value("y").toDouble()));
+    QCOMPARE(rig.steps(), depth + 2);
+    QTRY_COMPARE(rig.satin.guideCount(), count - 1);
+
+    // Barre d'options : retirer le dernier, proposer automatiquement, tout retirer.
+    QVERIFY(rig.satin.removeLastFillGuide(false) || count - 1 == 0);
+    QVERIFY(rig.satin.autoFillGuides());
+    QTRY_VERIFY(rig.satin.guideCount() >= 1);
+    QVERIFY(rig.satin.clearGuides(false));
+    QTRY_COMPARE(rig.satin.guideCount(), 0);
+    QVERIFY(!rig.satin.removeLastFillGuide(false)); // refus clair, aucune étape
+
+    while (rig.steps() > depth - 1) {
+        QVERIFY(rig.session.undo());
+    }
+    QVERIFY(dstBytes(rig.session) == base);
 }
 
 void StudioDigitize2Test::guidedSatinStartsFromPanelAndTracesOnCanvas() {

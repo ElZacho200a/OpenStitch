@@ -255,6 +255,10 @@ Item {
                     objectName: "transformHandles"
                     anchors.fill: parent
                     canvas: spaceCanvas
+                    // Outils de guides : la souris va aux nœuds des guides, le cadre de
+                    // sélection serait inerte et masquerait les poignées des nœuds.
+                    visible: !root.digitizeController
+                             || ["guide", "break", "guided"].indexOf(root.digitizeController.mode) < 0
                 }
 
                 CanvasContextMenu {
@@ -267,6 +271,12 @@ Item {
                     id: digitizeHub
                     anchors.fill: parent
                     toolbarVisible: false
+                    onFillGuideTraceRequested: {
+                        spaceCanvas.panMode = false
+                        pointsRail.activateTool("guide")
+                        digitizeHub.openPanel = ""
+                        spaceCanvas.forceActiveFocus()
+                    }
                     onGuidedTraceRequested: {
                         spaceCanvas.panMode = false
                         pointsRail.activateTool("guide")

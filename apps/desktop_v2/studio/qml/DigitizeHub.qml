@@ -11,6 +11,7 @@ Item {
     objectName: "digitizeHub"
     property string openPanel: ""
     signal guidedTraceRequested()
+    signal fillGuideTraceRequested()
     // Vrai : le hub dessine sa propre barre de boutons (usage historique). L'espace « Points » la
     // remplace par ses barres et la met à faux.
     property bool toolbarVisible: true
@@ -86,6 +87,7 @@ Item {
                     visible: hub.openPanel === "satin"
                     controller: satin
                     onGuidedTraceRequested: hub.guidedTraceRequested()
+                    onFillGuideTraceRequested: hub.fillGuideTraceRequested()
                 }
                 PointEditPanel { anchors.fill: parent; visible: hub.openPanel === "points"; controller: pointEdit }
                 PullPanel { anchors.fill: parent; visible: hub.openPanel === "pull"; controller: typeof pull !== "undefined" ? pull : null }

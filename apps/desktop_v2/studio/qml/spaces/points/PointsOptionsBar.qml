@@ -19,10 +19,35 @@ Rectangle {
     readonly property bool needleToolActive: toolCtl !== null && toolCtl.activeTool === "needle.origin"
     readonly property string stateName: spaceCtl ? spaceCtl.state : "empty"
     readonly property bool guidedTrace: digitizeCtl && digitizeCtl.mode === "guided" && satinCtl !== null
+    readonly property bool breakTool: digitizeCtl !== null && digitizeCtl.mode === "break"
+    readonly property bool fillGuideTool: digitizeCtl !== null && satinCtl !== null
+        && (digitizeCtl.mode === "guide" || breakTool)
+        && !satinCtl.isAutoSatin && satinCtl.canGuideFill
+    // Remplissage pas encore directionnel : compteurs à -1, affichés comme « aucun ».
+    readonly property int fillGuideTotal: !fillGuideTool ? 0
+        : Math.max(0, breakTool ? satinCtl.breakLineCount : satinCtl.guideCount)
+    readonly property bool busy: typeof studio !== "undefined" && studio.busy
+    // Nom lisible du geste actif (jamais l'identifiant interne « break », « rungs »…).
+    function modeLabel(mode) {
+        switch (mode) {
+        case "points": return qsTr("Geste points")
+        case "satin": return qsTr("Geste satin")
+        case "guide": return qsTr("Guide de direction")
+        case "break": return qsTr("Ligne de rupture")
+        case "rungs": return qsTr("Barreaux")
+        case "fade": return qsTr("Fondu")
+        default: return qsTr("Geste")
+        }
+    }
     readonly property string hintText: {
         if (guidedTrace)
             return satinCtl.hasGuidedPath ? qsTr("Glissez les nœuds pour ajuster la ligne centrale.")
                                          : qsTr("Glissez au centre de la bande, d’une extrémité à l’autre.")
+        // Guides d'un remplissage : aide COURTE, lisible même à 1000 px (le détail est dans
+        // l'infobulle de l'aide et des boutons).
+        if (fillGuideTool)
+            return breakTool ? qsTr("Maj+clic : retirer · survoler puis glisser un nœud : remodeler · tracer : ajouter une rupture")
+                             : qsTr("Maj+clic : retirer · survoler puis glisser un nœud : remodeler · tracer : ajouter un guide")
         if (digitizeCtl && digitizeCtl.mode !== "")
             return digitizeCtl.hint !== "" ? digitizeCtl.hint : qsTr("Geste actif : cliquez sur le canevas ; Échap pour terminer.")
         if (toolCtl && toolCtl.hint !== "")
@@ -44,8 +69,12 @@ Rectangle {
 
         Text {
             objectName: "pointsMode"
+            // Fenêtre étroite, outils de guides : l'outil est déjà surligné dans le rail ; la
+            // place va à l'aide (Maj+clic) et aux boutons.
+            visible: !(bar.compact && bar.fillGuideTool)
             text: bar.guidedTrace ? qsTr("Ligne centrale du satin")
-                  : bar.digitizeCtl && bar.digitizeCtl.mode !== "" ? qsTr("Geste : ") + bar.digitizeCtl.mode
+                  : bar.fillGuideTool ? (bar.breakTool ? qsTr("Ruptures du remplissage") : qsTr("Guides du remplissage"))
+                  : bar.digitizeCtl && bar.digitizeCtl.mode !== "" ? bar.modeLabel(bar.digitizeCtl.mode)
                   : bar.toolCtl && bar.toolCtl.activeTool === "needle.origin" ? qsTr("Point zéro")
                   : qsTr("Sélection")
             color: Theme.foreground
@@ -63,6 +92,13 @@ Rectangle {
             font.family: Theme.fontFamily
             font.pixelSize: Theme.smallSize
             elide: Text.ElideRight
+            // Aide coupée (fenêtre étroite) : le texte entier au survol.
+            HoverHandler { id: hintHover; acceptedDevices: PointerDevice.Mouse }
+            StudioToolTip {
+                text: parent.text
+                visible: hintHover.hovered && parent.truncated
+                delay: 300
+            }
         }
 
         // Saisie numérique du point zéro (mm, repère document) : le contrôleur valide, arrondit et
@@ -113,6 +149,57 @@ Rectangle {
                     font.pixelSize: Theme.smallSize
                 }
             }
+        }
+
+        // Guides d'un remplissage (outil Guide ou Rupture) : nombre tracé, proposition automatique,
+        // retrait du dernier ou de tous. Chaque action est UNE étape annulable.
+        Text {
+            objectName: "fillGuideCount"
+            visible: bar.fillGuideTool
+            text: !bar.fillGuideTool ? ""
+                  : bar.breakTool
+                    ? (bar.fillGuideTotal === 0 ? qsTr("Aucune rupture")
+                       : bar.fillGuideTotal === 1 ? qsTr("1 rupture") : qsTr("%1 ruptures").arg(bar.fillGuideTotal))
+                    : (bar.fillGuideTotal === 0 ? qsTr("Aucun guide")
+                       : bar.fillGuideTotal === 1 ? qsTr("1 guide") : qsTr("%1 guides").arg(bar.fillGuideTotal))
+            color: Theme.foreground
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.smallSize
+            Layout.leftMargin: 8
+        }
+        StudioButton {
+            objectName: "fillGuidesAuto"
+            visible: bar.fillGuideTool && !bar.breakTool
+            text: bar.fillGuideTotal > 0 ? qsTr("Remplacer par auto") : qsTr("Guides auto")
+            quiet: true
+            enabled: !bar.busy
+            tooltip: bar.satinCtl && bar.satinCtl.guideCount < 0
+                     ? qsTr("Convertit ce tatami en remplissage directionnel et propose des guides d'après la forme (annulable)")
+                     : bar.fillGuideTotal > 0
+                       ? qsTr("Remplace les guides, même retouchés, par ceux que propose la forme (annulable)")
+                       : qsTr("Propose des guides d'après la forme ; glissez ensuite leurs nœuds")
+            onClicked: bar.satinCtl.autoFillGuides()
+        }
+        StudioButton {
+            objectName: "fillGuidesRemoveLast"
+            visible: bar.fillGuideTool
+            text: qsTr("Retirer le dernier")
+            quiet: true
+            enabled: !bar.busy && bar.fillGuideTotal > 0
+            disabledReason: bar.breakTool ? qsTr("Aucune rupture à retirer.") : qsTr("Aucun guide à retirer.")
+            tooltip: bar.breakTool ? qsTr("Retire la dernière rupture tracée ; Maj+clic sur une rupture la retire")
+                                   : qsTr("Retire le dernier guide tracé ; Maj+clic sur un guide le retire")
+            onClicked: bar.satinCtl.removeLastFillGuide(bar.breakTool)
+        }
+        StudioButton {
+            objectName: "fillGuidesClear"
+            visible: bar.fillGuideTool
+            text: qsTr("Tout retirer")
+            tooltip: bar.breakTool ? qsTr("Retire toutes les ruptures (annulable)") : qsTr("Retire tous les guides (annulable)")
+            quiet: true
+            enabled: !bar.busy && bar.fillGuideTotal > 0
+            disabledReason: bar.breakTool ? qsTr("Aucune rupture à retirer.") : qsTr("Aucun guide à retirer.")
+            onClicked: bar.satinCtl.clearGuides(bar.breakTool)
         }
 
         StudioButton {
