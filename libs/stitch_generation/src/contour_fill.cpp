@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "openstitch/stitch_generation/contour_fill.hpp"
 
+#include "fill_geometry.hpp"
 #include "pull_grow.hpp"
 
 #include <algorithm>
@@ -16,7 +17,9 @@ namespace openstitch::stitch_generation {
 
 namespace {
 
-constexpr int kMaxLevels = 1'500;             // garde-fou : anneaux successifs d'une région
+constexpr int kMaxLevels = 1'500; // garde-fou : anneaux successifs d'une région
+constexpr std::size_t kMaxCenteredSamples = 3'000'000; // garde-fou du mode centré
+constexpr double kMinSpanUm = 100.0;                   // éclat rogné ignoré en dessous
 constexpr double kSharpCos = 0.9063077870366; // cos(25°) : au-delà, le sommet est un coin forcé
 
 struct Pt {
@@ -325,6 +328,84 @@ private:
     std::vector<FillStitch> out_;
 };
 
+// Mode centré : anneaux homothétiques du contour extérieur vers `c` (facteur 1 - k/N), rognés à
+// la région (trous compris) aux points exacts d'entrée et de sortie, puis portions réordonnées
+// comme la spirale. Avec `spiral`, l'échelle décroît continûment le long de chaque tour (aucun
+// saut de tour à tour dans une région étoilée par rapport au centre).
+std::vector<FillStitch> fill_centered(const geometry::PathSet& region, Ring root, Pt c,
+                                      double spacing, double maxLen, double minLen, bool spiral) {
+    using detail::P2;
+    double rmax = 0.0;
+    for (const Pt& v : root.v) {
+        rmax = std::max(rmax, norm(v - c));
+    }
+    if (rmax <= 1.0) {
+        return {};
+    }
+    const int rings = std::clamp(static_cast<int>(std::ceil(rmax / spacing - 1e-9)), 1, kMaxLevels);
+    const double n = double(rings);
+
+    detail::FillEmitter emit(region, maxLen, 0.0);
+    std::size_t samples = 0;
+    bool open = false; // la corde précédente se terminait dans la région
+    bool havePrev = false;
+    P2 prev{};
+    const auto chord_to = [&](P2 next, bool linked) {
+        if (!havePrev || !linked) {
+            prev = next;
+            havePrev = true;
+            open = false;
+            // Départ d'anneau : visité seulement s'il est dans la région.
+            if (detail::point_in_region(region, next)) {
+                emit.start_at(next);
+                open = true;
+            }
+            return;
+        }
+        const auto spans = detail::inside_intervals(region, prev, next);
+        if (spans.empty()) {
+            open = false;
+        }
+        for (const auto& [t0, t1] : spans) {
+            const P2 a = detail::lerp(prev, next, t0);
+            const P2 e = detail::lerp(prev, next, t1);
+            const bool continues = open && t0 <= 1e-9;
+            if (std::hypot(e.x - a.x, e.y - a.y) < kMinSpanUm && !continues) {
+                open = false;
+                continue;
+            }
+            if (!continues) {
+                emit.start_at(a);
+            }
+            emit.line_to(e);
+            open = t1 >= 1.0 - 1e-9;
+        }
+        prev = next;
+    };
+    const auto at = [&](double t, double scale) {
+        const Pt q = c + (ring_at(root, t) - c) * scale;
+        return P2{q.x, q.y};
+    };
+
+    for (int k = 0; k < rings && samples < kMaxCenteredSamples; ++k) {
+        const double scale = 1.0 - double(k) / n;
+        // Fractions de l'anneau réduit : toutes les longueurs sont multipliées par `scale`.
+        const std::vector<double> t = sample_fractions(root, maxLen / scale, minLen / scale);
+        samples += t.size();
+        for (std::size_t i = 0; i < t.size(); ++i) {
+            const double s = spiral ? scale - t[i] / n : scale;
+            chord_to(at(t[i], s), spiral ? (k > 0 || i > 0) : i > 0);
+        }
+        if (!spiral) {
+            chord_to(at(1.0, scale), true); // anneau fermé
+        }
+    }
+    if (spiral) {
+        chord_to(P2{c.x, c.y}, true); // fin du dernier tour au centre
+    }
+    return detail::route_parts(region, maxLen, emit.take());
+}
+
 } // namespace
 
 std::vector<FillStitch> fill_contour(const geometry::PathSet& baseRegion,
@@ -349,6 +430,12 @@ std::vector<FillStitch> fill_contour(const geometry::PathSet& baseRegion,
         }
     }
     root = rotate_to(root, root.v[first]);
+
+    if (params.center) {
+        return fill_centered(region, std::move(root),
+                             Pt{double(params.center->x.value), double(params.center->y.value)},
+                             double(spacingUm), maxLen, minLen, params.spiral);
+    }
 
     Node tree;
     tree.set = region;

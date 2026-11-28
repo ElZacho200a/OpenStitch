@@ -165,12 +165,16 @@ private slots:
     void transformsAreOneUndoStepAndPersist();
     void invalidTransformsAreRefused();
     void deleteShapesRemovesTheShapeAndItsEmbroideries();
+    void deletingOneLayerKeepsTheShapeOfTheOthers();
+    void unstitchedShapesAreSelectedAndTransformed();
     void placementInMillimetres();
     void alignDistributeStackGroup();
     void mouseMoveWithSnapGuidesAndUndo();
     void handlesResizeAndRotate();
     void layersTreeAndObjectEditing();
     void layerDeleteRequiresConfirmationWhenNotEmpty();
+    void layerPanelRemoveButtonSharesTheConfirmation();
+    void objectRowDeleteMatchesTheDeleteKeyOfItsSpace();
     void layerWorkflowIsSharedLockedAndScoped();
     void contextMenuAndEyedropper();
     void shortcutsReachTheEditor();
@@ -518,9 +522,19 @@ void StudioEditTest::deleteShapesRemovesTheShapeAndItsEmbroideries() {
     const auto shapes = rig.session.project().vector_objects.size();
     const auto base = steps(rig);
 
-    // Espace Points : la broderie seule disparait, la forme reste (reconvertible).
+    // Espace Points : Suppr supprime l'objet ENTIER (sa forme part avec sa seule couche), comme
+    // dans l'espace Vecteur ; une étape d'annulation.
     select(rig, {kGreen});
     QVERIFY(rig.editor.deleteSelection());
+    QCOMPARE(rig.session.project().embroidery_objects.size(), stitches - 1);
+    QCOMPARE(rig.session.project().vector_objects.size(), shapes - 1);
+    QCOMPARE(steps(rig), base + 1);
+    QVERIFY(rig.session.undo());
+    QCOMPARE(rig.session.project().vector_objects.size(), shapes);
+
+    // « Retirer les points » est le choix explicite qui garde la forme (reconvertible).
+    select(rig, {kGreen});
+    QVERIFY(rig.editor.removeStitchesOnly());
     QCOMPARE(rig.session.project().embroidery_objects.size(), stitches - 1);
     QCOMPARE(rig.session.project().vector_objects.size(), shapes);
     QVERIFY(rig.session.undo());
@@ -545,6 +559,101 @@ void StudioEditTest::deleteShapesRemovesTheShapeAndItsEmbroideries() {
     QCOMPARE(rig.session.project().findObject(source),
              static_cast<const document::VectorObject*>(nullptr));
     QVERIFY(!rig.editor.deleteShapes()); // plus rien a supprimer : refuse, sans etape
+}
+
+void StudioEditTest::deletingOneLayerKeepsTheShapeOfTheOthers() {
+    // Forme du vert à DEUX couches de points (102 et 106) : supprimer l'une garde la forme ;
+    // supprimer la dernière l'emporte.
+    auto project = editFixture();
+    auto second = *project.findEmbroidery(ObjectId{kGreen});
+    second.id = ObjectId{106};
+    second.name = "Ligne 106";
+    project.embroidery_objects.push_back(second);
+    Rig rig;
+    open(rig, std::move(project));
+    const auto shape = shapeOf(rig.session.project(), kGreen).id;
+
+    select(rig, {106});
+    QVERIFY(rig.editor.deleteSelection());
+    QVERIFY(rig.session.project().findObject(shape) != nullptr);
+    QVERIFY(rig.session.project().findEmbroidery(ObjectId{kGreen}) != nullptr);
+
+    select(rig, {kGreen});
+    QVERIFY(rig.editor.deleteSelection());
+    QCOMPARE(rig.session.project().findObject(shape),
+             static_cast<const document::VectorObject*>(nullptr));
+
+    // Les deux couches d'un coup : une seule étape, la forme part aussi.
+    QVERIFY(rig.session.undo());
+    QVERIFY(rig.session.undo());
+    const auto base = steps(rig);
+    select(rig, {kGreen, 106});
+    QVERIFY(rig.editor.deleteSelection());
+    QCOMPARE(steps(rig), base + 1);
+    QCOMPARE(rig.session.project().findObject(shape),
+             static_cast<const document::VectorObject*>(nullptr));
+}
+
+void StudioEditTest::unstitchedShapesAreSelectedAndTransformed() {
+    // Espace Vecteur : une forme pas encore brodée se sélectionne au cadre et à « tout
+    // sélectionner », se déplace, pivote, se duplique et se supprime comme une forme brodée.
+    Rig rig;
+    open(rig);
+    const auto shape = shapeOf(rig.session.project(), kLone).id;
+    rig.session.execute(std::make_unique<commands::RemoveEmbroideryObjectCommand>(ObjectId{kLone}));
+    settle(rig);
+    const auto base = steps(rig);
+
+    // Cadre (repère scène : Y vers le bas) autour de la forme isolée (40..50 mm, y modèle 25).
+    QCOMPARE(rig.editor.selectShapesRect(38, -27, 52, -23, false, false), 1);
+    QCOMPARE(rig.session.selection().targets(),
+             (std::vector<Target>{{TargetKind::VectorObject, shape.value}}));
+    QCOMPARE(rig.editor.selectedCount(), 1);
+    QVERIFY(!rig.editor.selectionBox().isEmpty());
+    // Une forme brodée prise au cadre reste désignée par sa broderie (comme un clic).
+    QCOMPARE(rig.editor.selectShapesRect(-20, -12, 20, -8, false, true), 2);
+    QVERIFY(rig.session.selection().contains({TargetKind::EmbroideryObject, kRed1}));
+    QCOMPARE(rig.editor.selectAllShapes(), 5);
+    QVERIFY(rig.session.selection().contains({TargetKind::VectorObject, shape.value}));
+    QCOMPARE(rig.editor.selectedCount(), 5);
+    QCOMPARE(rig.editor.selectedEmbroideryCount(), 4); // la forme non brodée n'a pas de points
+
+    // Portée Vecteur (liée à l'espace actif) : « tout » et « inverser » visent les formes, par
+    // n'importe quel chemin ; hors Vecteur, seulement les objets brodés.
+    rig.editor.setShapeScope(true);
+    rig.session.selection().replace({Target{TargetKind::EmbroideryObject, kRed1}});
+    QCOMPARE(rig.editor.invertSelection(), 4);
+    QVERIFY(rig.session.selection().contains({TargetKind::VectorObject, shape.value}));
+    QVERIFY(!rig.session.selection().contains({TargetKind::EmbroideryObject, kRed1}));
+    rig.editor.selectNone();
+    QCOMPARE(rig.editor.selectAll(), 5);
+    rig.editor.setShapeScope(false);
+    QCOMPARE(rig.editor.selectAll(), 4);
+    QVERIFY(!rig.session.selection().contains({TargetKind::VectorObject, shape.value}));
+
+    // Déplacement souris (aperçu puis validation) et rotation : une étape chacun.
+    rig.session.selection().replace({Target{TargetKind::VectorObject, shape.value}});
+    const double x0 = nodeX(rig.session.project(), kLone, 0);
+    QVERIFY(rig.editor.beginMove());
+    QVERIFY(rig.editor.commitMove(10.0, 0.0));
+    QCOMPARE(steps(rig), base + 1);
+    QVERIFY(std::abs(nodeX(rig.session.project(), kLone, 0) - (x0 + 10.0)) < 0.01);
+    QVERIFY(rig.editor.rotate90(true));
+    QCOMPARE(steps(rig), base + 2);
+    QVERIFY(std::abs(nodeX(rig.session.project(), kLone, 0) -
+                     nodeX(rig.session.project(), kLone, 1)) < 0.02);
+
+    // Duplication : la copie (forme non brodée) devient la sélection.
+    const auto shapes = rig.session.project().vector_objects.size();
+    QVERIFY(rig.editor.duplicate(5));
+    QCOMPARE(rig.session.project().vector_objects.size(), shapes + 1);
+    QCOMPARE(rig.session.selection().targets().size(), std::size_t{1});
+    QCOMPARE(rig.session.selection().targets().front().kind, TargetKind::VectorObject);
+    QVERIFY(rig.session.selection().targets().front().id != shape.value);
+
+    // Suppr hors de l'espace Vecteur sur une forme non brodée : la forme part (pas sans effet).
+    QVERIFY(rig.editor.deleteSelection());
+    QCOMPARE(rig.session.project().vector_objects.size(), shapes);
 }
 
 void StudioEditTest::invalidTransformsAreRefused() {
@@ -1008,6 +1117,128 @@ void StudioEditTest::layerDeleteRequiresConfirmationWhenNotEmpty() {
     QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
 }
 
+// Le bouton « Suppr. calque » du LayerPanel (juste au-dessus de la liste d'objets) passe par la
+// même confirmation que le menu contextuel de l'arbre : un calque non vide n'est jamais supprimé
+// d'un seul clic, la suppression confirmée est une seule étape d'annulation, un calque vide part
+// directement.
+void StudioEditTest::layerPanelRemoveButtonSharesTheConfirmation() {
+    Rig rig;
+    open(rig);
+    const auto before = rig.editor.layers().size();
+    QVERIFY(rig.editor.addLayer(QStringLiteral("Second")));
+    const auto layerId = rig.editor.layers().front().toMap().value(QStringLiteral("id")).toString();
+    select(rig, {kBlue});
+    QVERIFY(rig.editor.moveSelectionToLayer(layerId));
+    QVERIFY(rig.editor.setActiveLayer(layerId));
+    QCOMPARE(rig.editor.activeLayer(), layerId);
+
+    // Le LayerPanel existe dans deux espaces (Vecteur, Points) : bouton, arbre et bandeau sont
+    // cherchés dans le même panneau pour ne pas mélanger deux instances.
+    auto* panel = rig.window->findChild<QObject*>(QStringLiteral("layerPanel"));
+    QVERIFY(panel);
+    auto* tree = panel->property("tree").value<QObject*>();
+    QVERIFY(tree);
+    auto* remove = panel->findChild<QObject*>(QStringLiteral("layerRemoveButton"));
+    QVERIFY(remove);
+    QCOMPARE(remove->property("text").toString(), QStringLiteral("Suppr. calque"));
+    QVERIFY(remove->property("tooltip").toString().contains(QStringLiteral("calque actif")));
+    QVERIFY(remove->property("enabled").toBool());
+
+    // Un clic ne supprime rien : il pose la confirmation, avec le nom et le nombre d'objets.
+    const auto stepsBefore = steps(rig);
+    QVERIFY(QMetaObject::invokeMethod(remove, "clicked"));
+    QCOMPARE(rig.editor.layers().size(), before + 1);
+    QCOMPARE(steps(rig), stepsBefore);
+    const auto pending = tree->property("pendingDeleteLayer").toMap();
+    QCOMPARE(pending.value(QStringLiteral("id")).toString(), layerId);
+    QCOMPARE(pending.value(QStringLiteral("name")).toString(), QStringLiteral("Second"));
+    QCOMPARE(pending.value(QStringLiteral("objects")).toInt(), 1);
+    auto* banner = tree->findChild<QObject*>(QStringLiteral("layerDeleteConfirm"));
+    QVERIFY(banner);
+    // La fenêtre de test n'est pas affichée (offscreen) : la visibilité effective du bandeau n'est
+    // pas prouvée ici (ni par les captures statiques) ; on vérifie le texte qu'il présenterait.
+    bool namesTheLayer = false;
+    for (auto* child : banner->findChildren<QObject*>()) {
+        const auto text = child->property("text").toString();
+        namesTheLayer = namesTheLayer || (text.contains(QStringLiteral("« Second »")) &&
+                                          text.contains(QStringLiteral("1 objet(s)")));
+    }
+    QVERIFY(namesTheLayer);
+
+    // « Annuler » garde le calque et ses objets.
+    auto* no = tree->findChild<QObject*>(QStringLiteral("layerDeleteConfirmNo"));
+    QVERIFY(no);
+    QVERIFY(QMetaObject::invokeMethod(no, "clicked"));
+    QVERIFY(tree->property("pendingDeleteLayer").isNull());
+    QCOMPARE(rig.editor.layers().size(), before + 1);
+    QCOMPARE(shapeOf(rig.session.project(), kBlue).calque.value, layerId.toULongLong());
+
+    // Confirmer supprime le calque en une seule étape annulable.
+    QVERIFY(QMetaObject::invokeMethod(remove, "clicked"));
+    auto* yes = tree->findChild<QObject*>(QStringLiteral("layerDeleteConfirmYes"));
+    QVERIFY(yes);
+    QVERIFY(QMetaObject::invokeMethod(yes, "clicked"));
+    QCOMPARE(rig.editor.layers().size(), before);
+    QCOMPARE(steps(rig), stepsBefore + 1);
+    QVERIFY(rig.session.undo());
+    QCOMPARE(rig.editor.layers().size(), before + 1);
+    QCOMPARE(shapeOf(rig.session.project(), kBlue).calque.value, layerId.toULongLong());
+
+    // Le calque en attente disparaît par un autre chemin : le bandeau ne vise plus un id périmé.
+    QVERIFY(QMetaObject::invokeMethod(remove, "clicked"));
+    QVERIFY(!tree->property("pendingDeleteLayer").isNull());
+    QVERIFY(rig.editor.removeLayer(layerId));
+    QTRY_VERIFY(tree->property("pendingDeleteLayer").isNull());
+    QVERIFY(rig.session.undo());
+
+    // Un calque vide se supprime sans confirmation.
+    QVERIFY(rig.editor.addLayer(QStringLiteral("Vide")));
+    const auto emptyId = rig.editor.layers().front().toMap().value(QStringLiteral("id")).toString();
+    QCOMPARE(rig.editor.layers().front().toMap().value(QStringLiteral("objects")).toInt(), 0);
+    QVERIFY(rig.editor.setActiveLayer(emptyId));
+    QVERIFY(QMetaObject::invokeMethod(remove, "clicked"));
+    QVERIFY(tree->property("pendingDeleteLayer").isNull());
+    QCOMPARE(rig.editor.layers().size(), before + 1);
+
+    QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+}
+
+// Clic droit sur une ligne d'objet → « Supprimer » : même effet que Suppr dans l'espace de la
+// liste. Vecteurs : la forme et ses broderies ; Points : la broderie seule. Une étape d'annulation.
+void StudioEditTest::objectRowDeleteMatchesTheDeleteKeyOfItsSpace() {
+    Rig rig;
+    open(rig);
+    // Ce banc ne charge que Main.qml (un seul arbre) : on règle la portée comme le ferait l'espace
+    // hôte (VectorSpace la fixe à vrai, vérifié par test_studio_space_vector).
+    auto* tree = rig.window->findChild<QObject*>(QStringLiteral("objectTree"));
+    QVERIFY(tree);
+    QVERIFY(!tree->property("shapeScope").toBool());
+    const auto stitches = rig.session.project().embroidery_objects.size();
+    const auto shapes = rig.session.project().vector_objects.size();
+    const auto base = steps(rig);
+
+    select(rig, {kGreen});
+    QVariant done;
+    QVERIFY(QMetaObject::invokeMethod(tree, "deleteSelectedObjects", Q_RETURN_ARG(QVariant, done)));
+    QVERIFY(done.toBool());
+    QCOMPARE(rig.session.project().embroidery_objects.size(), stitches - 1);
+    QCOMPARE(rig.session.project().vector_objects.size(), shapes);
+    QCOMPARE(steps(rig), base + 1);
+    QVERIFY(rig.session.undo());
+
+    select(rig, {kGreen});
+    QVERIFY(tree->setProperty("shapeScope", true));
+    QVERIFY(QMetaObject::invokeMethod(tree, "deleteSelectedObjects", Q_RETURN_ARG(QVariant, done)));
+    QVERIFY(done.toBool());
+    QCOMPARE(rig.session.project().embroidery_objects.size(), stitches - 1);
+    QCOMPARE(rig.session.project().vector_objects.size(), shapes - 1);
+    QCOMPARE(steps(rig), base + 1);
+    QVERIFY(rig.session.undo());
+    QCOMPARE(rig.session.project().vector_objects.size(), shapes);
+
+    QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+}
+
 void StudioEditTest::contextMenuAndEyedropper() {
     Rig rig;
     open(rig);
@@ -1027,6 +1258,22 @@ void StudioEditTest::contextMenuAndEyedropper() {
     QCOMPARE(rig.session.project().embroidery_objects.size(), count - 1);
     QVERIFY(rig.session.undo());
     QCOMPARE(rig.session.project().embroidery_objects.size(), count);
+    // Espace Points : « Retirer les points (garder la forme) » est l'entrée explicite qui garde
+    // la forme ; Suppr, lui, supprime l'objet entier.
+    // (Déclencher « Supprimer » a refermé le menu : on le rouvre sur le même objet.)
+    QTRY_VERIFY(!menu->property("visible").toBool());
+    QTest::mouseClick(rig.window, Qt::RightButton, Qt::NoModifier, at(rig, -10, -10));
+    QTRY_VERIFY(menu->property("visible").toBool());
+    QTRY_COMPARE(selected(rig), (std::vector<std::uint64_t>{kGreen}));
+    auto* strip = rig.window->findChild<QObject*>(QStringLiteral("contextRemoveStitches"));
+    QVERIFY(strip);
+    QTRY_VERIFY(strip->property("visible").toBool());
+    QTRY_VERIFY(strip->property("enabled").toBool());
+    const auto shapes = rig.session.project().vector_objects.size();
+    QVERIFY(QMetaObject::invokeMethod(strip, "triggered"));
+    QCOMPARE(rig.session.project().embroidery_objects.size(), count - 1);
+    QCOMPARE(rig.session.project().vector_objects.size(), shapes);
+    QVERIFY(rig.session.undo());
     QMetaObject::invokeMethod(menu, "close");
 
     // QA-STUDIO-001 POP-004 : clic droit sur le vide désélectionne ; le menu grise

@@ -99,6 +99,31 @@ TEST_CASE("ops serialization is deterministic for the comparison helper", "[proj
     REQUIRE(serialize(p) == serialize(p));
 }
 
+TEST_CASE("contour_fill accepts a chosen center and clears it with null",
+          "[project_ops][contour]") {
+    auto project = make_project();
+    const json set{
+        {"schema", "openstitch.batch/1"},
+        {"operations",
+         json::array(
+             {{{"op", "set_stitch_type"}, {"object", 2}, {"type", "contour_fill"}},
+              {{"op", "set_params"}, {"object", 2}, {"params", {{"center_mm", {7.5, -3}}}}}})}};
+    const auto report = project_ops::apply_batch(project, set.dump());
+    REQUIRE(report.ok);
+    const auto* object = project.findEmbroidery(ObjectId{2});
+    REQUIRE(object != nullptr);
+    const auto* contour = std::get_if<document::ContourFillParams>(&object->params);
+    REQUIRE(contour != nullptr);
+    REQUIRE(contour->center);
+    CHECK(contour->center->x.value == 7500);
+    CHECK(contour->center->y.value == -3000);
+    const auto cleared = project_ops::apply_batch(
+        project, batch(R"({"op":"set_params","object":2,"params":{"center_mm":null}})"));
+    REQUIRE(cleared.ok);
+    CHECK_FALSE(std::get<document::ContourFillParams>(project.findEmbroidery(ObjectId{2})->params)
+                    .center.has_value());
+}
+
 TEST_CASE("spiral_fill is a native stitch type with a shared configurable center",
           "[project_ops][spiral]") {
     auto project = make_project();

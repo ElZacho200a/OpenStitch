@@ -120,7 +120,9 @@ dans `live_preview` n'est **pas** une confirmation d'application.
 
 L'opération `set_stitch_type` accepte aussi `spiral_fill`. Le paramètre
 `center_mm:[x,y]` de `set_params` définit un centre *commun en coordonnées du
-projet* pour plusieurs objets. Un vrai remplissage en spirale est différent
+projet* pour plusieurs objets ; il vaut aussi pour `contour_fill` (concentrique :
+anneaux homothétiques vers ce point, plus denses du côté proche du centre) et
+`center_mm: null` rétablit le centre automatique. Un vrai remplissage en spirale est différent
 d'un remplissage directionnel guidé par une polyligne en spirale.
 
 ## Mémoire sémantique dans le projet OSP

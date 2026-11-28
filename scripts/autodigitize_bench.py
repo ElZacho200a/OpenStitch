@@ -274,6 +274,9 @@ def build_corpus(out: Path, include_repo: bool = True, only: list | None = None)
 PROFILES = {
     "default": [],
     "logo": ["--satin-bands", "--fill-overlap", "0.15", "--curve-tolerance", "0.1"],
+    # AUTO-SATIN-01 : même profil, satin choisi parmi les candidats mesurés.
+    "logo-compare": ["--satin-bands", "--satin-compare", "--fill-overlap", "0.15",
+                     "--curve-tolerance", "0.1"],
 }
 
 # --- Mesures ---------------------------------------------------------------------------------
