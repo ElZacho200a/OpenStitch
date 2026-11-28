@@ -7,7 +7,7 @@ import "../.."
 // Panneaux de l'espace « Segmentation » : les sections existantes (segmentation couleur, édition
 // des régions, IA) instanciées directement, sans PreparePanel. Aucune logique ici : tout passe
 // par imageTools / regionTools (RegionController, une étape d'annulation par geste).
-Rectangle {
+Item {
     id: panel
     objectName: "segmentationPanels"
     property int tab: 0
@@ -22,9 +22,8 @@ Rectangle {
         if (tab !== 0 && typeof imageTools !== "undefined")
             imageTools.cancelSegmentationPreview()
     }
-    color: Theme.panel
-    radius: Theme.cardRadius
-    border.color: Theme.divider
+    // Carte/bordure fournies par DockPanel (segmentationPanelsDock, SegmentationSpace.qml) : ce
+    // composant n'est plus utilisé nu ailleurs, pas besoin de son propre habillage.
 
     ColumnLayout {
         anchors.fill: parent

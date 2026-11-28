@@ -32,6 +32,7 @@ void PreferencesController::load() {
     prefs_ = loadPreferences(prefsFile_);
     reducedMotion_ = false;
     session_.clear();
+    panelLayout_.clear();
     std::ifstream in(extraFile_);
     std::string line;
     while (std::getline(in, line)) {
@@ -43,6 +44,16 @@ void PreferencesController::load() {
         const auto value = trim(line.substr(eq + 1));
         if (key == "reducedMotion") {
             reducedMotion_ = value == "1";
+            continue;
+        }
+        // "panel.<id>.<field>=<valeur>" : clé ouverte, pas d'allowlist (le nombre de panneaux
+        // ×4 espaces grossira avec le temps).
+        if (key.rfind("panel.", 0) == 0) {
+            const auto rest = key.substr(6);
+            const auto dot = rest.find('.');
+            if (dot != std::string::npos && dot > 0 && dot + 1 < rest.size()) {
+                panelLayout_[rest.substr(0, dot)][rest.substr(dot + 1)] = value;
+            }
             continue;
         }
         for (const char* known : kSessionKeys) {
@@ -68,6 +79,11 @@ void PreferencesController::save() const {
     out << "reducedMotion=" << (reducedMotion_ ? "1" : "0") << '\n';
     for (const auto& [key, value] : session_) {
         out << key << '=' << value << '\n';
+    }
+    for (const auto& [panelId, fields] : panelLayout_) {
+        for (const auto& [field, value] : fields) {
+            out << "panel." << panelId << '.' << field << '=' << value << '\n';
+        }
     }
 }
 
@@ -114,6 +130,45 @@ QVariantMap PreferencesController::session() const {
         map.insert(QString::fromStdString(key), QString::fromStdString(value));
     }
     return map;
+}
+
+namespace {
+// x/y sont une position libre en pixels (nombre) ; les autres champs connus sont des bascules.
+bool isNumericPanelField(const std::string& field) {
+    return field == "x" || field == "y";
+}
+} // namespace
+
+QVariantMap PreferencesController::panelLayout() const {
+    QVariantMap map;
+    for (const auto& [panelId, fields] : panelLayout_) {
+        QVariantMap entry;
+        for (const auto& [field, value] : fields) {
+            const auto qvalue = QString::fromStdString(value);
+            entry.insert(QString::fromStdString(field),
+                         isNumericPanelField(field) ? QVariant(qvalue.toDouble())
+                                                    : QVariant(qvalue == QStringLiteral("1")));
+        }
+        map.insert(QString::fromStdString(panelId), entry);
+    }
+    return map;
+}
+
+void PreferencesController::setPanelState(const QString& panelId, const QVariantMap& state) {
+    if (panelId.isEmpty() || state.isEmpty()) {
+        return;
+    }
+    auto& fields = panelLayout_[panelId.toStdString()];
+    for (auto it = state.constBegin(); it != state.constEnd(); ++it) {
+        const auto field = it.key().toStdString();
+        QString text = it.value().toString();
+        if (it.value().typeId() == QMetaType::Bool) {
+            text = it.value().toBool() ? QStringLiteral("1") : QStringLiteral("0");
+        }
+        fields[field] = text.toStdString();
+    }
+    save();
+    emit panelLayoutChanged();
 }
 
 void PreferencesController::setTheme(const QString& id) {
